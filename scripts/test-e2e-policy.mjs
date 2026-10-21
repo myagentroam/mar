@@ -7,6 +7,7 @@ export const integrationTestFiles = [
   'mar-agent-warm-recovery/mar-agent-warm-recovery.spec.ts',
   'node-control.spec.ts',
   'server-auth.spec.ts',
+  'server-skill-cleanup-shutdown.spec.ts',
   'server-web-push-clients.spec.ts',
   'server-web-hosting.spec.ts',
   'server-database-identity.spec.ts',
