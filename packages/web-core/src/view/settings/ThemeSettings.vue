@@ -14,7 +14,6 @@ import {
   ZoomIn
 } from '@element-plus/icons-vue';
 import {
-  CUSTOM_THEME_TOKENS,
   type BuiltinTheme,
   type CustomTheme,
   type ThemePreference
@@ -22,6 +21,7 @@ import {
 import { themePreferenceService } from '../../service/ThemePreferenceService.js';
 import { analyzeCustomTheme, createThemeSource } from '../../util/custom-theme.js';
 import ThemePreview from './ThemePreview.vue';
+import ThemeTokenHelp from './ThemeTokenHelp.vue';
 
 const { t } = useI18n();
 const service = themePreferenceService();
@@ -61,7 +61,7 @@ const swatchTokens = [
   '--mar-bg-page',
   '--mar-bg-panel',
   '--mar-text-primary',
-  '--el-color-primary',
+  '--mar-color-brand',
   '--mar-color-accent'
 ];
 const themeOptions = computed<Array<ThemeRow & { colors: Record<string, string> }>>(() =>
@@ -332,6 +332,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           <el-button :icon="Download" @click="exportFile">{{ t('customThemes.export') }}</el-button>
         </div>
         <el-form-item :label="t('customThemes.json')" prop="source">
+          <template #label>
+            <span class="editor-label"
+              >{{ t('customThemes.json') }}<ThemeTokenHelp :colors="previewColors"
+            /></span>
+          </template>
           <el-input
             v-model="draft.source"
             type="textarea"
@@ -372,11 +377,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
             </li>
           </ul>
         </div>
-        <details class="token-reference">
-          <summary>{{ t('customThemes.tokens') }}</summary>
-          <p>{{ t('customThemes.tokenHint') }}</p>
-          <code v-for="token in CUSTOM_THEME_TOKENS" :key="token">{{ token }}</code>
-        </details>
         <div class="preview-heading">
           <h3>{{ t('customThemes.preview') }}</h3>
           <el-button :icon="ZoomIn" @click="expandedPreview = true">{{
@@ -550,19 +550,10 @@ aside {
 .warnings li + li {
   margin-top: 0.5rem;
 }
-.token-reference {
-  margin-bottom: 1rem;
-  font-size: 0.929rem;
-  color: var(--mar-text-secondary);
-}
-.token-reference summary {
-  cursor: pointer;
-}
-.token-reference code {
-  display: block;
-  font-family: var(--mar-font-mono);
-  overflow-wrap: anywhere;
-  line-height: 1.7;
+.editor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 @media (min-width: 1001px) {
   .editor-layout > :deep(.el-form) {

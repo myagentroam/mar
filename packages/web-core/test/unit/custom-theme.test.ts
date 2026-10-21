@@ -83,8 +83,7 @@ describe('Custom theme validation', () => {
     expect(result.colors).toEqual({
       '--mar-bg-panel': '#1234',
       '--mar-text-primary': '#abcdef88',
-      '--mar-color-brand': '#abc',
-      '--el-color-primary': '#123456'
+      '--mar-color-brand': '#abc'
     });
     expect(result.warnings.filter((item) => item.code === 'unknown')).toHaveLength(3);
     expect(result.warnings.filter((item) => item.code === 'color')).toHaveLength(3);
@@ -224,5 +223,32 @@ describe('Custom theme persistence and application', () => {
     expect(service.customThemes.value[0]?.source).toBe(item.source);
     expect(service.theme.value).toBe(item.id);
     expect(styles.get('--mar-bg-panel')).toBe('#123');
+  });
+});
+
+describe('Canonical theme tokens', () => {
+  it('reads legacy colors without applying library variables and gives explicit MAR keys precedence', () => {
+    expect(analyzeCustomTheme(source({ '--el-color-primary': '#123456' })).colors).toEqual({
+      '--mar-color-brand': '#123456'
+    });
+    for (const colors of [
+      { '--el-color-primary': '#123456', '--mar-color-brand': '#abcdef' },
+      { '--mar-color-brand': '#abcdef', '--el-color-primary': '#123456' }
+    ]) {
+      expect(analyzeCustomTheme(source(colors)).colors).toEqual({ '--mar-color-brand': '#abcdef' });
+    }
+    expect(
+      analyzeCustomTheme(source({ '--el-color-primary': 'url(https://invalid.test)' })).colors
+    ).toEqual({});
+    const service = createThemePreferenceService();
+    const legacy = source({ '--el-color-primary': '#123456' });
+    const item = service.saveCustomTheme(legacy);
+    service.setTheme(item.id);
+    expect(styles.get('--mar-color-brand')).toBe('#123456');
+    expect(styles.has('--el-color-primary')).toBe(false);
+    expect(item.source).toBe(legacy);
+    const copy = JSON.parse(service.duplicateSource(legacy, 'Copy'));
+    expect(copy.colors['--mar-color-brand']).toBe('#123456');
+    expect(copy.colors).not.toHaveProperty('--el-color-primary');
   });
 });

@@ -156,10 +156,11 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   await expect(editor).toHaveAttribute('readonly', '');
   await expect(page.locator('.validation')).toContainText('No detected warnings.');
   const validation = await page.locator('.validation').boundingBox();
-  const reference = await page.locator('.token-reference').boundingBox();
   const preview = await page.locator('.preview-heading').boundingBox();
-  expect(validation!.y + validation!.height).toBeLessThanOrEqual(reference!.y);
-  expect(reference!.y + reference!.height).toBeLessThanOrEqual(preview!.y);
+  expect(validation!.y + validation!.height).toBeLessThanOrEqual(preview!.y);
+  await expect(
+    page.getByRole('button', { name: 'Theme color reference', exact: true })
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /New (dark|light) theme/ })).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: 'Base theme', exact: true })).toHaveCount(0);
@@ -229,7 +230,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
     '--mar-bg-page',
     '--mar-bg-panel',
     '--mar-color-brand-selected',
-    '--el-fill-color'
+    '--mar-control-fill-color'
   ]) {
     expect(
       await page.evaluate((key) => document.documentElement.style.getPropertyValue(key), token)
@@ -266,7 +267,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   await page.reload();
   await expect(violet.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
   expect(
-    await page.evaluate(() => document.documentElement.style.getPropertyValue('--el-color-primary'))
+    await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-color-brand'))
   ).toBe('#c792ea');
   await violet.getByRole('button', { name: /^Inspect /u }).click();
   await editor.fill(saved + ' ');
@@ -349,7 +350,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(editor).toHaveValue(source);
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   expect(
-    await page.evaluate(() => document.documentElement.style.getPropertyValue('--el-color-primary'))
+    await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-color-brand'))
   ).toBe('');
   await page.screenshot({
     path: testInfo.outputPath('theme-expanded.png'),
@@ -401,4 +402,131 @@ for (const locale of ['en-US', 'zh-CN']) {
     expect(dialogBounds!.x).toBeGreaterThanOrEqual(16);
     expect(dialogBounds!.x + dialogBounds!.width).toBeLessThanOrEqual(374);
   });
+}
+
+for (const scheme of ['Light', 'Dark']) {
+  test('MAR variables drive every component alias in ' + scheme + ' palettes', async ({ page }) => {
+    const { LEGACY_THEME_TOKENS } =
+      await import('../../packages/web-core/src/model/custom-theme.js');
+    const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+    const row = page
+      .locator('.theme-option')
+      .filter({ has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true }) });
+    await useThemeMenu(page, row, 'Duplicate');
+    const source = JSON.parse(await editor.inputValue());
+    expect(Object.keys(source.colors).every((key) => key.startsWith('--mar-'))).toBe(true);
+    for (const [index, token] of [...new Set(Object.values(LEGACY_THEME_TOKENS))].entries())
+      source.colors[token] = '#' + (0x203040 + index * 0x030507).toString(16).padStart(6, '0');
+    source.colors['--mar-color-brand'] = '#654321';
+    source.colors['--mar-control-bg-color-overlay'] = '#345678';
+    source.colors['--mar-bg-panel'] = '#123456';
+    source.colors['--mar-bg-page'] = scheme === 'Light' ? '#ffffff' : '#000000';
+    await editor.fill(JSON.stringify(source));
+    const inspectAliases = (element: Element, aliases: Record<string, string>) => {
+      const style = getComputedStyle(element);
+      return Object.entries(aliases).map(([alias, target]) => ({
+        alias,
+        target,
+        actual: style.getPropertyValue(alias).trim(),
+        expected: style.getPropertyValue(target).trim()
+      }));
+    };
+    for (const result of await page
+      .locator('.theme-preview')
+      .evaluate(inspectAliases, LEGACY_THEME_TOKENS)) {
+      expect(result.actual, result.alias).toBe(result.expected);
+      expect(result.actual, result.alias).toBe(source.colors[result.target]);
+      expect(result.actual).not.toBe('');
+    }
+    await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+    await page
+      .locator('.theme-option')
+      .filter({ has: page.getByRole('button', { name: 'Inspect ' + source.name, exact: true }) })
+      .getByRole('button', { name: 'Apply theme', exact: true })
+      .click();
+    for (const result of await page.locator('html').evaluate(inspectAliases, LEGACY_THEME_TOKENS)) {
+      expect(result.actual, result.alias).toBe(result.expected);
+      expect(result.actual, result.alias).toBe(source.colors[result.target]);
+    }
+    await expect(page.locator('.actions .el-button--primary')).toHaveCSS(
+      'background-color',
+      'rgb(101, 67, 33)'
+    );
+    await page.getByRole('button', { name: 'Theme color reference', exact: true }).click();
+    await expect(
+      page.getByRole('dialog', { name: 'Theme color reference', exact: true }).locator('.el-dialog')
+    ).toHaveCSS('background-color', 'rgb(18, 52, 86)');
+    await page.keyboard.press('Escape');
+    await page
+      .locator('.theme-option')
+      .first()
+      .getByRole('button', { name: /^More actions for / })
+      .click();
+    await expect(page.getByRole('menu')).toHaveCSS('background-color', 'rgb(52, 86, 120)');
+  });
+}
+
+for (const locale of ['en-US', 'zh-CN']) {
+  test(
+    'theme color help supports search, copying and narrow layouts in ' + locale,
+    async ({ page, context }, testInfo) => {
+      await page.goto(fixture.url + 'custom-theme.html?locale=' + locale);
+      const title = locale === 'en-US' ? 'Theme color reference' : '主题颜色说明';
+      const searchLabel = locale === 'en-US' ? 'Search names or descriptions' : '搜索变量名或用途';
+      const trigger = page.getByRole('button', { name: title, exact: true });
+      await trigger.focus();
+      await trigger.press('Enter');
+      const dialog = page.getByRole('dialog', { name: title, exact: true });
+      await expect(dialog.locator('.token-row')).toHaveCount(CUSTOM_THEME_TOKENS.length);
+      for (const description of await dialog.locator('dd').allTextContents())
+        expect(description.trim()).not.toBe('');
+      await dialog
+        .getByRole('textbox', { name: searchLabel })
+        .fill(locale === 'en-US' ? 'Page canvas' : '页面底层背景');
+      await expect(dialog.locator('.token-row')).toHaveCount(1);
+      await expect(dialog.locator('code')).toHaveText('--mar-bg-page');
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await dialog
+        .getByRole('button', {
+          name: locale === 'en-US' ? 'Copy --mar-bg-page' : '复制 --mar-bg-page',
+          exact: true
+        })
+        .click();
+      await expect
+        .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+        .toBe('--mar-bg-page');
+      await page.evaluate(() => {
+        Object.defineProperty(navigator.clipboard, 'writeText', {
+          configurable: true,
+          value: async () => {
+            throw new Error('Clipboard unavailable');
+          }
+        });
+      });
+      await dialog
+        .getByRole('button', {
+          name: locale === 'en-US' ? 'Copy --mar-bg-page' : '复制 --mar-bg-page',
+          exact: true
+        })
+        .click();
+      await expect(page.locator('.el-message--error')).toContainText(
+        locale === 'en-US'
+          ? 'Could not copy the variable name. Select and copy it manually.'
+          : '无法复制变量名，请选中变量名手动复制。'
+      );
+      await page.setViewportSize({ width: 390, height: 844 });
+      await dialog.getByRole('textbox', { name: searchLabel }).fill('');
+      const bounds = await dialog.locator('.el-dialog').boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(15);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true
+      );
+      await page.screenshot({ path: testInfo.outputPath('theme-help-' + locale + '.png') });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await trigger.click();
+      await expect(dialog.getByRole('textbox', { name: searchLabel })).toHaveValue('');
+    }
+  );
 }
