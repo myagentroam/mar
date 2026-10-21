@@ -58,12 +58,53 @@ describe('Server Skill source domain', () => {
     ).rejects.toThrow('SKILL_SOURCE_LIMIT_EXCEEDED');
     expect(fixture.connection.beginTransaction).not.toHaveBeenCalled();
   });
+
+  it('Rechecks capacity under the owner lock and rolls back when the last slot was taken', async () => {
+    const fixture = sourceFixture();
+    fixture.transactionCount = 20;
+    await expect(
+      new SkillSourceService(fixture.database, fixture.authorization).create(7, {
+        kind: 'REPOSITORY',
+        scope: 'PERSONAL',
+        name: 'Last slot',
+        locator: 'https://github.com/acme/skills'
+      })
+    ).rejects.toThrow('SKILL_SOURCE_LIMIT_EXCEEDED');
+    expect(fixture.connection.execute.mock.calls.map(([sql]) => sql)).toEqual([
+      expect.stringContaining('FOR UPDATE'),
+      expect.stringContaining('COUNT(*)')
+    ]);
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.connection.commit).not.toHaveBeenCalled();
+    expect(fixture.connection.release).toHaveBeenCalledOnce();
+  });
+
+  it('Locks the organization owner before its actor reference and final count', async () => {
+    const fixture = sourceFixture();
+    await new SkillSourceService(fixture.database, fixture.authorization).create(7, {
+      kind: 'REPOSITORY',
+      scope: 'ORGANIZATION',
+      organizationId: 3,
+      name: 'Organization source',
+      locator: 'https://github.com/acme/skills'
+    });
+    expect(fixture.connection.execute.mock.calls.slice(0, 3)).toEqual([
+      [expect.stringMatching(/FROM organizations.*FOR UPDATE/u), [3]],
+      [expect.stringMatching(/FROM users.*FOR SHARE/u), [7]],
+      [expect.stringContaining('COUNT(*)'), ['ORGANIZATION:3:']]
+    ]);
+  });
 });
 
 function sourceFixture() {
-  const fixture: { source: Record<string, unknown>; sourceCount: number } = {
+  const fixture: {
+    source: Record<string, unknown>;
+    sourceCount: number;
+    transactionCount: number;
+  } = {
     source: { built_in: false, scope: 'PERSONAL', owner_user_id: 7 },
-    sourceCount: 0
+    sourceCount: 0,
+    transactionCount: 0
   };
   const connection = {
     beginTransaction: vi.fn(async () => undefined),
@@ -71,6 +112,7 @@ function sourceFixture() {
     rollback: vi.fn(async () => undefined),
     release: vi.fn(),
     execute: vi.fn(async (sql: string, values: readonly unknown[] = []) => {
+      if (sql.includes('COUNT(*)')) return [[{ total: fixture.transactionCount }], []];
       if (sql.includes('SELECT id FROM users')) return [[{ id: values[0] }], []];
       if (sql.includes('SELECT id FROM organizations')) return [[{ id: values[0] }], []];
       if (sql.includes('built_in,scope,owner_organization_id,owner_user_id'))
