@@ -871,6 +871,7 @@ export function createSessionOpener(services: SessionServices) {
                 const refreshed = await restoreMessages(store, sessionId, committed.records, {
                   includeImages: true,
                   currentTurnId: turnId,
+                  messageSources,
                   projection: committed.projection
                 });
                 const restoredIds = new Set(committed.records.map((record) => record.recordId));

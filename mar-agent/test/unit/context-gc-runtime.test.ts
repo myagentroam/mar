@@ -513,6 +513,140 @@ describe('context GC runtime integration', () => {
     }
   });
 
+  it('anchors Compact to the latest completed message restored by GC in the same execution', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-compact-message-anchor-'));
+    homes.push(home);
+    await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
+    const initial = new ContextGcAdapter();
+    let context!: CoreSessionExtensionContext;
+    let normalCalls = 0;
+    let gcCommitted = false;
+    let compactRequested = false;
+    const runGc = ContextGcRuntime.prototype.run;
+    vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+      this: ContextGcRuntime,
+      input
+    ) {
+      const result = await runGc.call(this, input);
+      gcCommitted ||= Boolean(result);
+      return result;
+    });
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start(request) {
+        const call = ++normalCalls;
+        if (call < 4) {
+          for await (const event of initial.start(request))
+            yield event.type === 'usage'
+              ? {
+                  ...event,
+                  usage: { ...event.usage, inputTokens: 4_000, contextInputTokens: 4_000 }
+                }
+              : event;
+          return;
+        }
+        await request.onAttemptDiagnostic?.({
+          protocol: 'ANTHROPIC_MESSAGES',
+          transport: 'HTTP',
+          state: 'STARTED',
+          attempt: 1,
+          maxAttempts: 5,
+          continuation: false,
+          credentialReason: 'REQUEST'
+        });
+        yield {
+          type: 'text.completed',
+          itemId: call === 4 ? 'latest-message-before-gc' : 'finished-after-compact',
+          text: call === 4 ? 'The file change is verified.' : 'Finished after Compact.'
+        };
+        if (call === 4)
+          await context.session.append({ content: 'Continue after GC.', delivery: 'boundary' });
+        yield {
+          type: 'usage',
+          usage: {
+            inputTokens: call === 4 ? 6_400 : 100,
+            contextInputTokens: call === 4 ? 6_400 : 100,
+            outputTokens: 10
+          }
+        };
+        yield { type: 'completed', reason: 'completed' };
+        await request.onAttemptDiagnostic?.({
+          protocol: 'ANTHROPIC_MESSAGES',
+          transport: 'HTTP',
+          state: 'SUCCEEDED',
+          attempt: 1,
+          maxAttempts: 5,
+          continuation: false,
+          credentialReason: 'REQUEST',
+          semanticEventObserved: true
+        });
+      }
+    };
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host,
+      models: [model],
+      adapterFactory: () => adapter,
+      runtimeExtensions: [
+        {
+          id: 'gc-then-compact',
+          apiVersion: '1.0',
+          attachSession(value) {
+            context = value;
+            value.hooks.intercept('compact.generate', async () => ({
+              summary: 'Continue from the verified change.'
+            }));
+            value.hooks.intercept('model.request', async (request, _call, next) => {
+              if (gcCommitted && !compactRequested) {
+                compactRequested = true;
+                await value.session.compact({ async: false });
+              }
+              return next(request);
+            });
+          }
+        }
+      ]
+    });
+    let sessionId: string;
+    try {
+      const session = await agent.createSession({ workspace: home });
+      sessionId = session.id;
+      expect(await session.run({ prompt: 'Update the file and continue.' }).result()).toMatchObject(
+        { status: 'completed' }
+      );
+      expect(gcCommitted).toBe(true);
+      expect(compactRequested).toBe(true);
+      expect(normalCalls).toBe(5);
+    } finally {
+      await agent.dispose();
+    }
+    const store = await JsonlSessionStore.open(home);
+    try {
+      const records = await store.read(sessionId!);
+      const checkpoint = records.find((record) => record.type === 'context.gc.completed')!;
+      const compact = records.find((record) => record.type === 'compact.completed')!;
+      expect(checkpoint).toBeDefined();
+      expect(compact.sequence).toBeGreaterThan(checkpoint.sequence);
+      const latestMessage = records.findLast(
+        (record) => record.type === 'message.completed' && record.sequence < checkpoint.sequence
+      )!;
+      expect(latestMessage.payload).toMatchObject({ itemId: 'latest-message-before-gc' });
+      expect(compact.executionId).toBe(latestMessage.executionId);
+      const compacting = host.events.filter(
+        (event) => event.type === 'context.compacting' && event.stage === 'GENERATING'
+      );
+      expect(compacting).toHaveLength(1);
+      for (const event of compacting)
+        expect(event).toMatchObject({
+          executionId: latestMessage.executionId,
+          anchor: { kind: 'message', id: (latestMessage.payload as { itemId: string }).itemId }
+        });
+    } finally {
+      await store.close();
+    }
+  });
+
   it('continues through GC and automatic Compact above the former execution budget', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-auto-compact-'));
     homes.push(home);
