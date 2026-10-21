@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/code-navigation",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Shared pure language detection and file-reference extraction for MyAgentRoam.",
   "license": "Apache-2.0",
   "type": "module",
