@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import mysql, { type PoolConnection, type RowDataPacket } from 'mysql2/promise';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -89,7 +89,8 @@ async function withFixture(kind: Kind, run: (fixture: Fixture) => Promise<void>)
           name: 'example',
           description: 'Fixture',
           commitSha: 'a'.repeat(40),
-          contentHash: 'b'.repeat(64),
+          // Different candidates must not serialize on the independent cache-key coordinator.
+          contentHash: createHash('sha256').update(request.skillPath!).digest('hex'),
           archiveHash: 'c'.repeat(64),
           contentBytes: 1,
           tlsVerified: true,

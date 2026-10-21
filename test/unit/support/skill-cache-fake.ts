@@ -67,7 +67,16 @@ export class SkillCacheFake {
   raw = {
     execute: async (sql: string, values: readonly unknown[] = []) => {
       await this.beforeSql(sql, values);
-      if (sql.includes('COUNT(*)')) return [[{ total: this.favorites.size }], []];
+      if (sql.includes('COUNT(*)'))
+        return [
+          [
+            {
+              total: [...this.favorites.values()].filter((row) => row['owner_key'] === values[0])
+                .length
+            }
+          ],
+          []
+        ];
       if (sql.includes('SELECT * FROM skill_favorites'))
         return [[this.favorites.get(String(values[0]))].filter(Boolean), []];
       if (sql.includes('SELECT DISTINCT cache_key'))
@@ -108,6 +117,17 @@ export class SkillCacheFake {
             return [[{ released: 1 }], []];
           }
           if (sql.includes('cached_versions')) return [[{ total: 0 }], []];
+          if (sql.includes('COUNT(*) AS total FROM skill_favorites'))
+            return [
+              [
+                {
+                  total: [...this.favorites.values()].filter(
+                    (row) => row['owner_key'] === values[0]
+                  ).length
+                }
+              ],
+              []
+            ];
           if (sql.includes('SELECT id FROM users')) return [[{ id: values[0] }], []];
           if (sql.includes('SELECT id,enabled FROM skill_sources'))
             return [[{ id: values[0], enabled: 1 }], []];
@@ -170,6 +190,7 @@ export class SkillCacheFake {
                 repository_url: values[5],
                 skill_path: values[7],
                 normalized_name: values[8],
+                owner_key: values.at(-1),
                 created_at: values[12]
               })
             );
