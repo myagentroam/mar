@@ -55,7 +55,7 @@ defineProps<{ page: ShallowUnwrapRef<ReturnType<typeof createWorkbenchPageContro
         @clear-password-error="page.passwordValidationError = ''"
         @refresh-sessions="page.refreshAdminSessions"
         @logout-session="page.logoutAdminSession"
-        @change-password="page.changePassword"
+        :change-password="page.changePassword"
         @logout="page.logout"
         @create-registration-token="page.createRegistrationToken"
       />

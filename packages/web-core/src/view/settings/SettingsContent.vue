@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Delete, Key, Link, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import { iconThemes } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
@@ -40,6 +40,11 @@ const props = defineProps<{
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
   readonly loading: boolean;
+  readonly changePassword: (input: {
+    readonly currentPassword: string;
+    readonly password: string;
+    readonly confirmation: string;
+  }) => Promise<boolean>;
   readonly formatSessionTime: (value: number) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly quickPrompts: readonly QuickPrompt[];
@@ -53,13 +58,6 @@ const emit = defineEmits<{
   clearPasswordError: [];
   refreshSessions: [];
   logoutSession: [session: UserSessionSummary];
-  changePassword: [
-    input: {
-      readonly currentPassword: string;
-      readonly password: string;
-      readonly confirmation: string;
-    }
-  ];
   logout: [];
   createRegistrationToken: [];
 }>();
@@ -78,6 +76,26 @@ const thirdPartyGroups = ['web', 'server', 'execution', 'tools', 'icons', 'compu
 const currentPassword = ref('');
 const password = ref('');
 const confirmation = ref('');
+const passwordSubmitting = ref(false);
+let passwordDialogGeneration = 0;
+watch(
+  passwordDialogOpen,
+  () => {
+    passwordDialogGeneration += 1;
+    currentPassword.value = '';
+    password.value = '';
+    confirmation.value = '';
+    passwordSubmitting.value = false;
+    emit('clearPasswordError');
+  },
+  { flush: 'sync' }
+);
+watch(
+  () => props.section,
+  (section) => {
+    if (section !== 'account') closePasswordDialog();
+  }
+);
 
 async function updateLocale(value: AppLocale): Promise<void> {
   const previous = locale.value;
@@ -92,19 +110,23 @@ async function updateLocale(value: AppLocale): Promise<void> {
     ElMessage.error(translate('common.localeUpdateFailed'));
   }
 }
-function submitPasswordChange(): void {
-  emit('changePassword', {
-    currentPassword: currentPassword.value,
-    password: password.value,
-    confirmation: confirmation.value
-  });
+async function submitPasswordChange(): Promise<void> {
+  if (props.loading || passwordSubmitting.value) return;
+  const generation = passwordDialogGeneration;
+  passwordSubmitting.value = true;
+  try {
+    const changed = await props.changePassword({
+      currentPassword: currentPassword.value,
+      password: password.value,
+      confirmation: confirmation.value
+    });
+    if (changed && generation === passwordDialogGeneration) closePasswordDialog();
+  } finally {
+    if (generation === passwordDialogGeneration) passwordSubmitting.value = false;
+  }
 }
 function closePasswordDialog(): void {
   passwordDialogOpen.value = false;
-  currentPassword.value = '';
-  password.value = '';
-  confirmation.value = '';
-  emit('clearPasswordError');
 }
 async function confirmLogoutSession(session: UserSessionSummary): Promise<void> {
   try {
@@ -200,7 +222,6 @@ async function confirmLogout(): Promise<void> {
         v-model="passwordDialogOpen"
         :title="translate('generated.settingsContent.changePassword2')"
         width="min(420px, calc(100vw - 32px))"
-        @closed="closePasswordDialog"
       >
         <el-form label-position="top" @submit.prevent="submitPasswordChange">
           <el-form-item :label="translate('generated.settingsContent.currentPassword')" required
@@ -238,9 +259,12 @@ async function confirmLogout(): Promise<void> {
           ><el-button @click="closePasswordDialog">{{
             translate('generated.settingsContent.cancel')
           }}</el-button
-          ><el-button :loading="loading" type="primary" @click="submitPasswordChange">{{
-            translate('generated.settingsContent.confirmChange')
-          }}</el-button></template
+          ><el-button
+            :loading="loading || passwordSubmitting"
+            type="primary"
+            @click="submitPasswordChange"
+            >{{ translate('generated.settingsContent.confirmChange') }}</el-button
+          ></template
         >
       </el-dialog>
     </section>
