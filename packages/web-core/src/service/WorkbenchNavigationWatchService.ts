@@ -19,6 +19,16 @@ export function createWorkbenchNavigationWatchService(options: {
 }) {
   let restoreWorkspaceWatch = false;
 
+  function requestSessionWatch(sessionId: string): void {
+    if (options.workspaceTarget() === undefined || options.selectedSessionId() !== sessionId)
+      return;
+    if (options.currentSurface() !== 'workbench') {
+      restoreWorkspaceWatch = true;
+      return;
+    }
+    options.coordinator()?.beginSession(sessionId);
+  }
+
   function transition(
     previousView: NavigationWatchSurface,
     nextView: NavigationWatchSurface
@@ -47,5 +57,5 @@ export function createWorkbenchNavigationWatchService(options: {
     });
   }
 
-  return { transition };
+  return { transition, requestSessionWatch };
 }
