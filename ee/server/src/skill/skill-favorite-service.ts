@@ -1,5 +1,6 @@
 import { readVisibleCatalog } from '../rbac/catalog-list-query.js';
 import { SkillFavoriteService as Core } from '@myagentroam/server-core/skill-favorite-service';
+import type { SkillFavoriteSummary } from '@myagentroam/server-core/skill-favorite-service';
 export * from '@myagentroam/server-core/skill-favorite-service';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { lockOrganizationReference } from '../rbac/organization-reference.js';
@@ -33,8 +34,14 @@ export class SkillFavoriteService extends Core {
   }
   protected override async lockOrganization(
     connection: PoolConnection,
-    organizationId: number | null
+    organizationId: number | null,
+    exclusive = false,
+    scope?: SkillFavoriteSummary['scope']
   ): Promise<void> {
-    await lockOrganizationReference(connection, organizationId);
+    await lockOrganizationReference(
+      connection,
+      scope === 'ENTERPRISE' ? 1 : organizationId,
+      exclusive
+    );
   }
 }

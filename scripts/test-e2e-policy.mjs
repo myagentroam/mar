@@ -11,6 +11,7 @@ export const integrationTestFiles = [
   'server-web-hosting.spec.ts',
   'server-database-identity.spec.ts',
   'server-skill-cache.spec.ts',
+  'server-skill-owner-capacity.spec.ts',
   'server-management-pagination.spec.ts',
   'server-template-publish-state.spec.ts',
   'server-service-tier-migration.spec.ts',
