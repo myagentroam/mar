@@ -48,7 +48,9 @@ export abstract class SkillFavoriteService {
   protected abstract favoriteRows(actorUserId: number): Promise<RowDataPacket[]>;
   protected abstract lockOrganization(
     connection: PoolConnection,
-    organizationId: number | null
+    organizationId: number | null,
+    exclusive?: boolean,
+    scope?: SkillFavoriteSummary['scope']
   ): Promise<void>;
   constructor(
     protected readonly database: CatalogDatabase,
@@ -124,9 +126,17 @@ export abstract class SkillFavoriteService {
     const connection = await this.database.raw.getConnection();
     try {
       await connection.beginTransaction();
-      await this.lockOrganization(connection, organizationId);
-      await lockMysqlUsers(connection, [actorUserId, ownerUserId]);
+      // Match organization deletion: organization, users, then dependent resources.
+      await this.lockOrganization(connection, organizationId, true, input.scope);
+      await lockMysqlUsers(connection, [actorUserId, ownerUserId], ownerUserId !== null);
       await lockMysqlSkillSource(connection, input.sourceId);
+      // Establish the count snapshot only after acquiring the owner protection.
+      const [countRows] = await connection.execute<RowDataPacket[]>(
+        'SELECT COUNT(*) AS total FROM skill_favorites WHERE owner_key=?',
+        [key]
+      );
+      if (Number(countRows[0]?.['total'] ?? 0) >= 500)
+        throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
       await connection.execute(
         `INSERT INTO skill_favorites
          (id,source_id,scope,owner_organization_id,owner_user_id,repository_url,

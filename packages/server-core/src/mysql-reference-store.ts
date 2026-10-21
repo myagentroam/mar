@@ -22,10 +22,11 @@ export async function withMysqlTransaction<T>(
   }
 }
 
-/** Shared parent locks pair with exclusive locks in parent-deletion entry points. */
+/** Shared by default; owner writers may request exclusive protection before reading counts. */
 export async function lockMysqlUsers(
   connection: PoolConnection,
-  values: readonly (number | null | undefined)[]
+  values: readonly (number | null | undefined)[],
+  exclusive = false
 ): Promise<void> {
   const ids = [
     ...new Set(values.filter((value): value is number => value !== null && value !== undefined))
@@ -33,7 +34,7 @@ export async function lockMysqlUsers(
   if (ids.length === 0) return;
   if (ids.some((id) => !Number.isSafeInteger(id) || id < 1)) throw new Error('USER_NOT_FOUND');
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT id FROM users WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id FOR SHARE`,
+    `SELECT id FROM users WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id ${exclusive ? 'FOR UPDATE' : 'FOR SHARE'}`,
     ids
   );
   if (rows.length !== ids.length) throw new Error('USER_NOT_FOUND');

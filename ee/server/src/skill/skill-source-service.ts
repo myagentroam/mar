@@ -25,8 +25,9 @@ export class SkillSourceService extends Core {
   }
   protected override async lockOrganization(
     connection: PoolConnection,
-    organizationId: number | null
+    organizationId: number | null,
+    exclusive = false
   ): Promise<void> {
-    await lockOrganizationReference(connection, organizationId);
+    await lockOrganizationReference(connection, organizationId, exclusive);
   }
 }

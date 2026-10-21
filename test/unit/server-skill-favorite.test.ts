@@ -56,9 +56,11 @@ describe('Server Skill favorite', () => {
   it('Favorites pin Commits, write immutable caches, and record TLS status', async () => {
     const cache = await mkdtemp(path.join(tmpdir(), 'mar-skill-favorite-'));
     roots.push(cache);
+    let transactionCount = 0;
     const connection = {
       beginTransaction: vi.fn(async () => undefined),
       execute: vi.fn(async (sql: string, values?: readonly unknown[]) => {
+        if (sql.includes('COUNT(*)')) return [[{ total: transactionCount }], []];
         if (sql.includes('SELECT id FROM users')) return [[{ id: values?.[0] }], []];
         if (sql.includes('SELECT id,enabled FROM skill_sources'))
           return [[{ id: values?.[0], enabled: 1 }], []];
@@ -134,6 +136,23 @@ describe('Server Skill favorite', () => {
     expect(
       connection.execute.mock.calls.find(([sql]) => String(sql).includes('skill_versions'))?.[1]
     ).toEqual(expect.arrayContaining([false]));
+    expect(connection.execute.mock.calls.slice(0, 3).map(([sql]) => sql)).toEqual([
+      expect.stringContaining('FOR UPDATE'),
+      expect.stringContaining('FROM skill_sources'),
+      expect.stringContaining('COUNT(*)')
+    ]);
+    transactionCount = 500;
+    await expect(
+      service.create(7, {
+        sourceId: 'repo-1',
+        candidateId: 'acme/skills/other',
+        skillPath: 'skills/other',
+        scope: 'PERSONAL'
+      })
+    ).rejects.toThrow('SKILL_SOURCE_LIMIT_EXCEEDED');
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.commit).toHaveBeenCalledOnce();
+    expect(connection.release).toHaveBeenCalledTimes(2);
   });
 
   it('Update checks compare only upstream repository Commits without changing favorite versions', async () => {
