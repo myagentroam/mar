@@ -211,6 +211,12 @@ export const personalSettingsZhCN = {
       overlays: '浮层'
     },
     tokenDescriptions: {
+      'table-header-bg': '表格表头背景',
+      'table-row-hover-bg': '表格行悬停背景',
+      'color-brand-disabled': '禁用的主色链接与文字操作',
+      'control-link-text': '主色文字操作、链接与朴素标签文字',
+      'control-link-hover': '主色链接与文字操作悬停色',
+
       'bg-page': '页面底层背景',
       'bg-panel': '面板、对话框和主要内容容器背景',
       'bg-subtle': '次级凹入区域背景',

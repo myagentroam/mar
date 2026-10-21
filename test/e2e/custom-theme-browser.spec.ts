@@ -1,3 +1,4 @@
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
@@ -154,7 +155,10 @@ test('built-ins are read-only, copies include every color, and reset restores sa
     rows.nth(1).getByRole('button', { name: 'Inspect Light', exact: true })
   ).toBeVisible();
   await expect(editor).toHaveAttribute('readonly', '');
-  await expect(page.locator('.validation')).toContainText('No detected warnings.');
+  // The original white-on-blue palette is preserved; its real contrast warning is advisory.
+  await expect(page.locator('.validation')).toContainText(
+    '--mar-color-on-accent / --mar-color-brand'
+  );
   const validation = await page.locator('.validation').boundingBox();
   const preview = await page.locator('.preview-heading').boundingBox();
   expect(validation!.y + validation!.height).toBeLessThanOrEqual(preview!.y);
@@ -243,7 +247,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
 }, testInfo) => {
   const options = page.locator('.theme-option');
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
-  await expect(page.getByRole('table')).toHaveCount(0);
+  await expect(page.locator('.theme-settings').getByRole('table')).toHaveCount(0);
   await expect(options.first().getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
   await options
     .nth(1)
@@ -288,14 +292,18 @@ test('filled primary controls use the same foreground as the theme preview', asy
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
   const sample = page.locator('.theme-preview .preview-button.primary');
-  await expect(sample).toHaveCSS('color', 'rgb(14, 17, 22)');
-  await expect(save).toHaveCSS('color', 'rgb(14, 17, 22)');
+  await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({
     version: 1,
     name: 'Palenight sample',
     colors: {
       '--el-color-primary': '#c792ea',
-      '--mar-color-on-accent': '#202331'
+      '--mar-color-on-accent': '#202331',
+      '--mar-control-color-primary-light-3': '#112233',
+      '--mar-control-color-primary-dark-2': '#223344',
+      '--mar-color-brand-hover': '#abcdef',
+      '--mar-color-brand-active': '#fedcba'
     }
   });
   await editor.fill(custom);
@@ -306,10 +314,21 @@ test('filled primary controls use the same foreground as the theme preview', asy
     .click();
   await expect(sample).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
+  await sample.hover();
+  await expect(sample).toHaveCSS('background-color', 'rgb(17, 34, 51)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(17, 34, 51)');
+  await page.mouse.down();
+  await expect(sample).toHaveCSS('background-color', 'rgb(34, 51, 68)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(34, 51, 68)');
+  await page.mouse.up();
   await save.hover();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
+  await expect(save).toHaveCSS('background-color', 'rgb(17, 34, 51)');
+  await expect(save).toHaveCSS('border-color', 'rgb(17, 34, 51)');
   await page.mouse.down();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
+  await expect(save).toHaveCSS('background-color', 'rgb(34, 51, 68)');
+  await expect(save).toHaveCSS('border-color', 'rgb(34, 51, 68)');
   await page.mouse.up();
 });
 
@@ -527,6 +546,123 @@ for (const locale of ['en-US', 'zh-CN']) {
       await expect(dialog).toBeHidden();
       await trigger.click();
       await expect(dialog.getByRole('textbox', { name: searchLabel })).toHaveValue('');
+    }
+  );
+}
+
+for (const scheme of ['Light', 'Dark']) {
+  test(
+    'real controls preserve the built-in ' + scheme + ' palette and respond to custom states',
+    async ({ page }) => {
+      const controls = page.getByRole('region', { name: 'Real theme controls' });
+      const row = page.locator('.theme-option').filter({
+        has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
+      });
+      if (scheme === 'Light')
+        await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
+      else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+      const panel = scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(255, 255, 255)';
+      await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
+      await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
+      await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
+      await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
+        'background-color',
+        panel
+      );
+      await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
+        'color',
+        'rgb(255, 255, 255)'
+      );
+      await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
+        'background-color',
+        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(10, 111, 216)'
+      );
+      expect(
+        resolvedColorToHex(
+          await controls
+            .getByRole('button', { name: 'Sample disabled primary', exact: true })
+            .evaluate((element) => getComputedStyle(element).color)
+        )
+      ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
+      await expect(controls.locator('.el-table th')).toHaveCSS(
+        'background-color',
+        scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(243, 246, 249)'
+      );
+      await controls.locator('.el-table__body tr').first().hover();
+      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+        'background-color',
+        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(237, 242, 247)'
+      );
+      await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
+      await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
+        'color',
+        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(84, 154, 228)'
+      );
+
+      await useThemeMenu(page, row, 'Duplicate');
+      const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+      const theme = JSON.parse(await editor.inputValue());
+      Object.assign(theme.colors, {
+        '--mar-bg-panel': '#123456',
+        '--mar-table-header-bg': '#234567',
+        '--mar-table-row-hover-bg': '#345678',
+        '--mar-color-on-accent': '#fedcba',
+        '--mar-control-link-text': '#abcdef',
+        '--mar-control-link-hover': '#bcdefa',
+        '--mar-color-brand-disabled': '#cdefab'
+      });
+      await editor.fill(JSON.stringify(theme));
+      await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect ' + theme.name, exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+      await expect(controls.locator('.el-input__wrapper')).toHaveCSS(
+        'background-color',
+        'rgb(18, 52, 86)'
+      );
+      await expect(controls.locator('.el-select__wrapper')).toHaveCSS(
+        'background-color',
+        'rgb(18, 52, 86)'
+      );
+      await expect(controls.locator('.el-table')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
+      await expect(controls.locator('.el-table th')).toHaveCSS(
+        'background-color',
+        'rgb(35, 69, 103)'
+      );
+      await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
+        'color',
+        'rgb(254, 220, 186)'
+      );
+      const disabledPrimary = controls.getByRole('button', {
+        name: 'Sample disabled primary',
+        exact: true
+      });
+      const disabledColor = async () =>
+        resolvedColorToHex(
+          await disabledPrimary.evaluate((element) => getComputedStyle(element).color)
+        );
+      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      await disabledPrimary.hover();
+      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
+        'color',
+        'rgb(171, 205, 239)'
+      );
+      await expect(
+        controls.getByRole('button', { name: 'Sample disabled link', exact: true })
+      ).toHaveCSS('color', 'rgb(205, 239, 171)');
+      await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
+      await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
+        'color',
+        'rgb(188, 222, 250)'
+      );
+      await controls.locator('.el-table__body tr').first().hover();
+      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+        'background-color',
+        'rgb(52, 86, 120)'
+      );
     }
   );
 }

@@ -305,11 +305,12 @@ input::placeholder {
 }
 .preview-button.primary:hover {
   color: var(--mar-color-on-accent);
-  background: var(--mar-color-brand-hover);
-  border-color: var(--mar-color-brand-hover);
+  background: var(--el-color-primary-light-3);
+  border-color: var(--el-color-primary-light-3);
 }
 .preview-button.primary:active {
-  background: var(--mar-color-brand-active);
+  background: var(--el-color-primary-dark-2);
+  border-color: var(--el-color-primary-dark-2);
 }
 .preview-button:disabled {
   background: var(--el-fill-color-light);

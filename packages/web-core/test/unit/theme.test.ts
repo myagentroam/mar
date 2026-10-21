@@ -59,6 +59,16 @@ function stubBrowserEnvironment() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Web theme preference', () => {
+  it('loads the production stylesheet stack in the theme browser fixture', () => {
+    const cssImports = (path: string) => {
+      const file = new URL(path, import.meta.url);
+      return [...readFileSync(file, 'utf8').matchAll(/import '([^']+\.css)'/gu)].map(
+        ([, specifier]) => (specifier!.startsWith('.') ? new URL(specifier!, file).href : specifier)
+      );
+    };
+    expect(cssImports('../e2e/custom-theme-app.ts')).toEqual(cssImports('../../src/bootstrap.ts'));
+  });
+
   it('uses the shared neutral daylight palette with accessible interactive and text colors', () => {
     const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
     const daylight = styleDeclarations(source, ':root')[0]!;

@@ -214,6 +214,12 @@ export const personalSettingsEnUS = {
       overlays: 'Overlays'
     },
     tokenDescriptions: {
+      'table-header-bg': 'Table header backgrounds',
+      'table-row-hover-bg': 'Table row hover backgrounds',
+      'color-brand-disabled': 'Disabled primary link and text actions',
+      'control-link-text': 'Primary text actions, links and plain labels',
+      'control-link-hover': 'Primary link and text action hover color',
+
       'bg-page': 'Page canvas',
       'bg-panel': 'Main panels, dialogs and content surfaces',
       'bg-subtle': 'Recessed secondary surfaces',
