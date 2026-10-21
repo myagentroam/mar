@@ -1565,6 +1565,7 @@ export class NodeConnector {
         this.workspaceCoordinator.invalidateChanges(workspaceId);
         this.workspaceSessionService.invalidate(workspaceId);
         this.workspaceCoordinator.clearWatches(workspaceId);
+        this.workspaceWorkbenchService.clearWorkspace(workspaceId);
         this.promptCompletion?.invalidateWorkspace(workspaceId);
       }
     );
