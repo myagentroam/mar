@@ -14,7 +14,108 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
+function tabSessionFixture() {
+  const session: Session = { id: 'outside-page', workspaceId: 'workspace-1', runner: 'mar-agent' };
+  let revision = 0;
+  const options: WorkbenchSessionSelectionOptions = {
+    workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+    selectedSessionId: ref(),
+    selectedRunId: ref(),
+    sessions: ref([]),
+    runs: ref([]),
+    turns: ref([]),
+    nextCursor: ref(null),
+    loadingInitial: ref(false),
+    initialLoadFailed: ref(false),
+    contextUsage: ref(),
+    queue: ref({ version: 0, paused: false, items: [] }),
+    positioning: ref(false),
+    draftOpen: ref(false),
+    composerMode: ref('message'),
+    selectedCommand: ref(),
+    commandPickerOpen: ref(false),
+    nextRequest: () => ++revision,
+    currentRequest: () => revision,
+    closeMobileSurface: vi.fn(),
+    workspaceTabId: () => 'tab',
+    ensureSessionVisible: vi.fn(),
+    markSessionRead: vi.fn(async () => undefined),
+    saveCurrent: vi.fn(),
+    selectWorkspace: vi.fn(),
+    applyComposerConfiguration: vi.fn(),
+    restoreCachedDetail: () => undefined,
+    cachedQueue: () => ({ version: 0, paused: false, items: [] }),
+    restoreProjection: vi.fn(),
+    resetProjection: vi.fn(),
+    openRun: vi.fn(),
+    scrollLatest: vi.fn(async () => undefined),
+    beginInitialRender: vi.fn(async () => undefined),
+    request: vi.fn(async () => ({ session })) as WorkbenchSessionSelectionOptions['request'],
+    sessionPathId: (id) => id,
+    replaceSession: vi.fn(),
+    canWatch: () => true,
+    beginWatch: vi.fn(async () => undefined),
+    applySnapshot: vi.fn(() => false),
+    mergeTurns: vi.fn(() => false),
+    notice: vi.fn(),
+    errorMessage: String
+  };
+  return { session, options, service: createWorkbenchSessionSelectionService(options) };
+}
+
 describe('Shared session selection', () => {
+  it('opens a pagination-external Tab target by identity and reads only after history succeeds', async () => {
+    const f = tabSessionFixture();
+    let finish!: () => void;
+    vi.mocked(f.options.beginWatch).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const pending = f.service.openWorkspaceTabSession(f.session.id);
+    await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+    expect(f.options.markSessionRead).not.toHaveBeenCalled();
+    await f.service.openWorkspaceTabSession(f.session.id);
+    expect(f.options.request).toHaveBeenCalledOnce();
+    finish();
+    await pending;
+    expect(f.options.markSessionRead).toHaveBeenCalledExactlyOnceWith(
+      'node-1',
+      'workspace-1',
+      'outside-page'
+    );
+    const scrolls = vi.mocked(f.options.scrollLatest).mock.calls.length;
+    await f.service.openWorkspaceTabSession(f.session.id);
+    expect(f.options.request).toHaveBeenCalledOnce();
+    expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
+  });
+
+  it.each(['identity', 'history', 'mismatch', 'superseded'] as const)(
+    'does not read a Tab target after %s failure or replacement',
+    async (failure) => {
+      const f = tabSessionFixture();
+      f.options.sessions.value = [f.session];
+      if (failure === 'identity')
+        vi.mocked(f.options.request).mockRejectedValue(new Error('FORBIDDEN'));
+      if (failure === 'history')
+        vi.mocked(f.options.beginWatch).mockRejectedValue(
+          new Error('SESSION_HISTORY_INITIAL_FAILED')
+        );
+      if (failure === 'mismatch')
+        vi.mocked(f.options.request).mockResolvedValue({
+          session: { ...f.session, workspaceId: 'other-workspace' }
+        });
+      if (failure === 'superseded')
+        vi.mocked(f.options.beginWatch).mockImplementation(async () => {
+          f.options.nextRequest();
+        });
+      await f.service.openWorkspaceTabSession(f.session.id);
+      expect(f.options.markSessionRead).not.toHaveBeenCalled();
+      if (failure !== 'superseded') expect(f.options.initialLoadFailed.value).toBe(true);
+    }
+  );
+
   it('keeps repeated session selection inert during and after loading while allowing explicit reload', async () => {
     const session: Session = { id: 'session-1', workspaceId: 'workspace-1', runner: 'mar-agent' };
     let finish!: (value: { session: Session }) => void;

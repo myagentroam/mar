@@ -87,11 +87,13 @@ function recoveryFixture(
   const active = { target: notification('active').target as NotificationTarget | undefined };
   const server = {
     entries,
+    recentRuns: [] as RecentRun[],
     readError: undefined as Error | undefined,
     readGate: undefined as (() => Promise<void>) | undefined
   };
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
-    if (path === '/api/notifications') return { notifications: server.entries };
+    if (path === '/api/notifications')
+      return { notifications: server.entries, recentRuns: server.recentRuns };
     if (path.endsWith('/read') && init?.method === 'POST') {
       await server.readGate?.();
       if (server.readError !== undefined) throw server.readError;
@@ -644,10 +646,68 @@ describe('Web Workbench notification state', () => {
       source: 'server'
     });
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('unloaded-session');
     state.notifications.value = state.notifications.value.map((entry) =>
       entry.id === 'tail' ? { ...entry, read: true } : entry
     );
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
+  });
+
+  it('chooses unread sessions once each before active tasks in the existing order', async () => {
+    const f = recoveryFixture([
+      { ...notification('expired'), expiresAt: Date.now() },
+      { ...notification('already-read'), read: true },
+      hostedNotification('hosted'),
+      { ...notification('other-node'), target: { ...notification('n').target!, nodeId: 'node-2' } },
+      notification('first', 'unloaded'),
+      notification('duplicate', 'unloaded'),
+      notification('second', 'second')
+    ]);
+    f.server.recentRuns = [workspaceRun()];
+    await f.state.load();
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('unloaded');
+    await f.state.markSessionRead('node-1', 'workspace-1', 'unloaded');
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('second');
+    expect(f.state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+    await f.state.markSessionRead('node-1', 'workspace-1', 'second');
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('session-1');
+  });
+
+  it('chooses same-identity active Run sessions and follows authoritative terminal changes', async () => {
+    let recentRuns = [
+      { ...workspaceRun('SUCCEEDED'), runId: 'terminal', sortAt: 500 },
+      { ...workspaceRun(), nodeId: 'node-2', runId: 'other-node', sortAt: 400 },
+      { ...workspaceRun(), workspaceId: 'workspace-2', runId: 'other-workspace', sortAt: 300 },
+      {
+        ...workspaceRun('STARTING'),
+        runId: 'first',
+        sessionId: 'first-session',
+        startedAt: 200,
+        sortAt: 200
+      },
+      {
+        ...workspaceRun(),
+        runId: 'duplicate',
+        sessionId: 'first-session',
+        startedAt: 190,
+        sortAt: 190
+      },
+      { ...workspaceRun('CANCELLING'), runId: 'second', sessionId: 'second-session', sortAt: 100 }
+    ];
+    const request = vi.fn(async () => ({ notifications: [], recentRuns }));
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
+      request: request as never
+    });
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('first-session');
+    recentRuns = recentRuns.map((run) =>
+      run.sessionId === 'first-session' ? { ...run, status: 'SUCCEEDED' as const } : run
+    );
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('second-session');
+    recentRuns = [];
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
   it('keeps Workspace activity independent of remaining unread sessions through authoritative refreshes', async () => {

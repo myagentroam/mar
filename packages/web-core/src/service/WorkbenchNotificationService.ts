@@ -101,6 +101,7 @@ export interface WorkbenchNotificationService {
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
+  workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
   hasUnreadConversation(nodeId: string, conversationId: string): boolean;
   notify(input: WorkbenchNotificationInput): void;
@@ -113,7 +114,7 @@ export interface WorkbenchNotificationService {
   openPendingSystemNotification(): Promise<boolean>;
   markAllRead(): void;
   markRead(id: string): void;
-  markSessionRead(nodeId: string, workspaceId: string, sessionId: string): void;
+  markSessionRead(nodeId: string, workspaceId: string, sessionId: string): Promise<void>;
   markConversationRead(nodeId: string, conversationId: string): void;
   clearWebUpdate(): void;
   remove(id: string): void;
@@ -607,8 +608,12 @@ export function createWorkbenchNotificationService(
   }
 
   function hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean {
+    return firstUnreadWorkspaceSession(nodeId, workspaceId) !== undefined;
+  }
+
+  function firstUnreadWorkspaceSession(nodeId: string, workspaceId: string): string | undefined {
     const now = Date.now();
-    return notifications.value.some(
+    const entry = notifications.value.find(
       (notification) =>
         !notification.read &&
         notification.source === 'server' &&
@@ -616,6 +621,19 @@ export function createWorkbenchNotificationService(
         notification.target?.targetType === 'WORKSPACE_SESSION' &&
         notification.target.nodeId === nodeId &&
         notification.target.workspaceId === workspaceId
+    );
+    return entry?.target?.targetType === 'WORKSPACE_SESSION' ? entry.target.sessionId : undefined;
+  }
+
+  function workspaceTabSession(nodeId: string, workspaceId: string): string | undefined {
+    return (
+      firstUnreadWorkspaceSession(nodeId, workspaceId) ??
+      recentRuns.value.find(
+        (run) =>
+          run.nodeId === nodeId &&
+          run.workspaceId === workspaceId &&
+          activeRecentRunStatus(run.status)
+      )?.sessionId
     );
   }
 
@@ -633,8 +651,8 @@ export function createWorkbenchNotificationService(
     );
   }
 
-  function markSessionRead(nodeId: string, workspaceId: string, sessionId: string): void {
-    void readTarget({ targetType: 'WORKSPACE_SESSION', nodeId, workspaceId, sessionId });
+  function markSessionRead(nodeId: string, workspaceId: string, sessionId: string): Promise<void> {
+    return readTarget({ targetType: 'WORKSPACE_SESSION', nodeId, workspaceId, sessionId });
   }
 
   function hasUnreadConversation(nodeId: string, conversationId: string): boolean {
@@ -734,6 +752,7 @@ export function createWorkbenchNotificationService(
     systemNotifications,
     hasActiveWorkspaceRun,
     hasUnreadWorkspace,
+    workspaceTabSession,
     hasUnreadSession,
     hasUnreadConversation,
     notify,
