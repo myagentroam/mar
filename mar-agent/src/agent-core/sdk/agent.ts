@@ -60,6 +60,11 @@ export async function createMarAgentWithAdapter(
     string,
     { readonly kind: 'clear' | 'delete'; readonly pending: Promise<void> }
   >();
+  const assertSessionAdmission = (sessionId?: string): void => {
+    if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
+    if (sessionId !== undefined && sessionLifecycles.has(sessionId))
+      throw new MarAgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
+  };
   const trackSessionLifecycle = (
     sessionId: string,
     kind: 'clear' | 'delete',
@@ -237,10 +242,9 @@ export async function createMarAgentWithAdapter(
     modelState: () => ({ models, defaultModelId, generation: modelGeneration }),
     createAdapter,
     activeAdaptersExcept,
+    assertSessionAdmission,
     assertCanStart: (sessionId) => {
-      if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
-      if (sessionId !== undefined && sessionLifecycles.has(sessionId))
-        throw new MarAgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
+      assertSessionAdmission(sessionId);
       if (reconfiguring)
         throw new MarAgentError(
           'MAR_AGENT_EXECUTION_ACTIVE',

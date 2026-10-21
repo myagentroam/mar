@@ -256,6 +256,7 @@ interface SessionServices {
   ) => ModelAdapter;
   readonly activeAdaptersExcept: (sessionId: string) => ReadonlySet<ModelAdapter>;
   readonly assertCanStart: (sessionId?: string) => void;
+  readonly assertSessionAdmission: (sessionId: string) => void;
 }
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
@@ -3039,7 +3040,7 @@ export function createSessionOpener(services: SessionServices) {
       compact: (input = {}) => {
         const requests = sessionRuntime.execution?.compactRequests;
         if (requests) {
-          services.assertCanStart(sessionId);
+          services.assertSessionAdmission(sessionId);
           return requests.request(input);
         }
         return execution('compact', {

@@ -199,6 +199,39 @@ describe('Core explicit Session ending boundary', () => {
     );
   });
 
+  it.each(['delete', 'dispose'] as const)(
+    'rejects existing Compact joins as soon as %s is accepted',
+    async (kind) => {
+      const sampled = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      let signal: AbortSignal | undefined;
+      const f = await fixture([], () => answer());
+      const start = f.adapter.start.bind(f.adapter);
+      vi.spyOn(f.adapter, 'start').mockImplementation(async function* (request, callSignal) {
+        signal = callSignal;
+        sampled.resolve();
+        await resume.promise;
+        yield* start(request, callSignal);
+      });
+      const result = f.session.run({ prompt: 'active execution' }).result();
+      await sampled.promise;
+      const ending = kind === 'delete' ? f.agent.deleteSession(f.session.id) : f.agent.dispose();
+      try {
+        expect(() => f.session.compact({ async: true })).toThrowError(
+          expect.objectContaining({
+            code: kind === 'delete' ? 'MAR_AGENT_SESSION_CLOSING' : 'MAR_AGENT_DISPOSED'
+          })
+        );
+        await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+      } finally {
+        resume.resolve();
+        await ending;
+        await result;
+      }
+      expect(await result).toHaveProperty('status', 'cancelled');
+    }
+  );
+
   it.each(['clearSession', 'deleteSession'] as const)(
     'keeps %s admission closed and joins its Host cleanup before Agent disposal',
     async (operation) => {

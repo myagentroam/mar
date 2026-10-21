@@ -4,9 +4,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { MarAgent } from '../../src/agent-core/sdk/types.js';
+import type { ExecutionHandle, MarAgent } from '../../src/agent-core/sdk/types.js';
 import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
+import type {
+  ModelAdapter,
+  ModelEvent,
+  ModelRequest
+} from '../../src/agent-core/model/contracts.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
 import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
 import { CompactRequests } from '../../src/agent-core/runtime/compaction/requests.js';
@@ -600,6 +604,122 @@ describe('asynchronous Compact', () => {
     expect((await blocking.result()).status).toBe('completed');
     expect((await result).status).toBe('completed');
     expect(f.requests).toHaveLength(1);
+  });
+
+  it('joins active subagent Compact while model reconfiguration drains an idle parent Adapter', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-compact-reconfiguration-'));
+    homes.push(home);
+    await writeFile(join(home, 'evidence.txt'), 'CHILD_EVIDENCE');
+    const resumeChild = barrier();
+    const finishChild = barrier();
+    const releaseCompact = barrier();
+    const releaseReconfiguration = barrier();
+    let childStarted = false;
+    let closingParent = false;
+    let generations = 0;
+    let childRounds = 0;
+    let parentContext!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
+    const agent = await createMarAgentWithAdapter({
+      mode: 'normal',
+      host,
+      models: [configuration],
+      runtimeExtensions: [
+        {
+          id: 'reconfiguration-compact',
+          apiVersion: '1.0',
+          attachSession(context) {
+            if (context.agents) parentContext = context;
+            context.hooks.intercept('compact.generate', async () => {
+              generations++;
+              await releaseCompact.promise;
+              return { summary: 'CHILD_HANDOFF' };
+            });
+          }
+        }
+      ],
+      adapterFactory: (selected) => {
+        const adapter: ModelAdapter = {
+          configuration: selected,
+          async *start(request) {
+            if (effectiveInstructions(request).includes('non-recursive subagent')) {
+              if (++childRounds === 1) {
+                childStarted = true;
+                await resumeChild.promise;
+                yield* readCall('child-read', 100);
+              } else {
+                await finishChild.promise;
+                yield* response('child done', 100);
+              }
+            } else yield* response('parent done', 100);
+          },
+          createTurnSession: () => ({ start: adapter.start.bind(adapter), close: async () => {} }),
+          async close() {
+            closingParent = true;
+            await releaseReconfiguration.promise;
+          }
+        };
+        return adapter;
+      }
+    });
+    agents.push(agent);
+    const parent = await agent.createSession({ workspace: home });
+    const compacts: ExecutionHandle[] = [];
+    let reconfiguration: Promise<void> | undefined;
+    try {
+      expect(await parent.run({ prompt: 'initialize parent' }).result()).toHaveProperty(
+        'status',
+        'completed'
+      );
+      const task = await parentContext.agents!.spawn({
+        prompt: 'read evidence and finish',
+        background: true
+      });
+      await vi.waitFor(() => expect(childStarted).toBe(true));
+      expect(await agent.getSession(task.agentId)).toHaveProperty('source.type', 'subagent');
+      const child = await agent.openSession(task.agentId);
+      const background = child.compact({ async: true });
+      compacts.push(background);
+      resumeChild.release();
+      await vi.waitFor(() => expect(generations).toBe(1));
+      reconfiguration = agent.reconfigureModels({
+        models: [{ ...configuration, name: 'Reconfigured' }]
+      });
+      void reconfiguration.catch(() => undefined);
+      await vi.waitFor(() => expect(closingParent).toBe(true));
+      expect(() => parent.run({ prompt: 'new execution during reconfiguration' })).toThrowError(
+        expect.objectContaining({ code: 'MAR_AGENT_EXECUTION_ACTIVE' })
+      );
+      const joined = child.compact({ async: false });
+      compacts.push(joined);
+      expect(joined.executionId).toBe(background.executionId);
+      expect(generations).toBe(1);
+      releaseCompact.release();
+      finishChild.release();
+      expect(await background.result()).toMatchObject({ status: 'completed' });
+      expect(await joined.result()).toMatchObject({ status: 'completed' });
+      releaseReconfiguration.release();
+      await reconfiguration;
+      expect(
+        await parentContext.agents!.wait({ agentId: task.agentId, waitMs: 1000 })
+      ).toHaveProperty('status', 'completed');
+      const store = await JsonlSessionStore.open(home);
+      try {
+        expect(
+          (await store.read(task.agentId)).filter((record) => record.type === 'compact.completed')
+        ).toHaveLength(1);
+      } finally {
+        await store.close();
+      }
+      expect(generations).toBe(1);
+    } finally {
+      resumeChild.release();
+      finishChild.release();
+      releaseCompact.release();
+      releaseReconfiguration.release();
+      await reconfiguration;
+      await Promise.all(compacts.map((handle) => handle.result()));
+    }
   });
 
   it.each(['sdk', 'core'] as const)(
