@@ -59,6 +59,10 @@ describe('Server Skill favorite', () => {
     const connection = {
       beginTransaction: vi.fn(async () => undefined),
       execute: vi.fn(async (sql: string, values?: readonly unknown[]) => {
+        if (sql.includes('DATABASE()')) return [[{ database_name: 'favorite-test' }], []];
+        if (sql.includes('GET_LOCK')) return [[{ acquired: 1 }], []];
+        if (sql.includes('RELEASE_LOCK')) return [[{ released: 1 }], []];
+        if (sql.includes('cached_versions')) return [[{ total: 0 }], []];
         if (sql.includes('SELECT id FROM users')) return [[{ id: values?.[0] }], []];
         if (sql.includes('SELECT id,enabled FROM skill_sources'))
           return [[{ id: values?.[0], enabled: 1 }], []];
@@ -68,6 +72,8 @@ describe('Server Skill favorite', () => {
       }),
       commit: vi.fn(async () => undefined),
       rollback: vi.fn(async () => undefined),
+      on: vi.fn(),
+      removeListener: vi.fn(),
       release: vi.fn()
     };
     const raw = {
@@ -132,7 +138,9 @@ describe('Server Skill favorite', () => {
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(warnCacheUsage).toHaveBeenCalledWith(10, 12);
     expect(
-      connection.execute.mock.calls.find(([sql]) => String(sql).includes('skill_versions'))?.[1]
+      connection.execute.mock.calls.find(([sql]) =>
+        String(sql).includes('INSERT INTO skill_versions')
+      )?.[1]
     ).toEqual(expect.arrayContaining([false]));
   });
 
