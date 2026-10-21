@@ -1923,9 +1923,12 @@ describe('Node continuous Run lifecycle', () => {
   it('resumes the FIFO after a paused queue and continues the existing QueueItem', async () => {
     const { runtime, session } = fixture();
     const starts: string[] = [];
+    const emitQueue = vi.fn((_workspaceId: string, sessionId: string) =>
+      runtime.sessionQueue(sessionId)
+    );
     const coordinator = new ContinuousRunCoordinator({
       runtime,
-      emitQueue: () => undefined,
+      emitQueue,
       emitConversation: () => undefined,
       clearImages: () => undefined,
       cleanupAttachments: () => undefined,
@@ -1952,6 +1955,7 @@ describe('Node continuous Run lifecycle', () => {
     }).item;
     coordinator.prepare(waiting.id, prepared(waiting.id, session.id));
     runtime.pauseSessionQueue(session.id);
+    const pausedVersion = runtime.sessionQueue(session.id).version;
     const resumed = coordinator.accept({
       runId: 'new-run-after-pause',
       sessionId: session.id,
@@ -1968,6 +1972,12 @@ describe('Node continuous Run lifecycle', () => {
       })
     ).toBe('STARTED');
     expect(runtime.sessionQueue(session.id).paused).toBe(false);
+    expect(emitQueue).toHaveBeenCalledExactlyOnceWith(session.workspaceId, session.id);
+    expect(emitQueue).toHaveLastReturnedWith({
+      version: pausedVersion + 1,
+      paused: false,
+      itemIds: [waiting.id]
+    });
     await coordinator.dispatch(session.id);
     expect(starts).toHaveLength(1);
     const resumedExecutionId = starts[0]!;

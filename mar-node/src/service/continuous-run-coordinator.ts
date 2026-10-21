@@ -335,6 +335,8 @@ export class ContinuousRunCoordinator<TAttachment> {
       return 'ACCEPTED';
     }
     if (startsAcceptedRun) {
+      if (this.options.runtime.sessionQueue(sessionId).version !== queueVersionBeforeSettle)
+        this.publish(sessionId);
       this.schedule(sessionId);
       return 'STARTED';
     }
