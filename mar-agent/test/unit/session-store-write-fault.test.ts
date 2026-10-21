@@ -19,6 +19,8 @@ const io = vi.hoisted(() => ({
   injected: false,
   writes: 0,
   opens: 0,
+  indexPath: '',
+  indexFailures: 0,
   failure: Object.assign(new Error('Simulated session disk failure.'), { code: 'ENOSPC' })
 }));
 
@@ -26,6 +28,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (args[1] === io.indexPath && io.injected && io.indexFailures === 0) {
+        io.indexFailures++;
+        throw Object.assign(new Error('Simulated secondary index persistence failure.'), {
+          code: 'EIO'
+        });
+      }
+      return fs.rename(...args);
+    },
     open: async (...args: Parameters<typeof fs.open>) => {
       if (args[0] !== io.path || args[1] !== 'a') return fs.open(...args);
       io.opens++;
@@ -77,6 +88,7 @@ const stores: JsonlSessionStore[] = [];
 const agents: MarAgent[] = [];
 afterEach(async () => {
   io.path = '';
+  io.indexPath = '';
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
   await Promise.all(stores.splice(0).map((store) => store.close()));
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
@@ -267,9 +279,14 @@ describe('Session writer uncertain append failure', () => {
     }
   });
 
-  it.each([false, true])(
-    'settles SDK failure cleanup without publishing an unpersisted terminal (cancel=%s)',
-    async (cancel) => {
+  it.each([
+    { cancel: false, indexFault: false },
+    { cancel: true, indexFault: false },
+    { cancel: false, indexFault: true },
+    { cancel: true, indexFault: true }
+  ])(
+    'settles SDK failure cleanup without publishing an unpersisted terminal (cancel=$cancel, indexFault=$indexFault)',
+    async ({ cancel, indexFault }) => {
       const { home, store, session, path } = await fixture();
       const workspace = join(home, 'workspace');
       await mkdir(workspace);
@@ -304,6 +321,8 @@ describe('Session writer uncertain append failure', () => {
       const sdkSession = await agent.openSession(session.id);
       const before = await readFile(path);
       const error = arm(path, 'partial');
+      io.indexFailures = 0;
+      if (indexFault) io.indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
       const append = store.append;
       const attempted: string[] = [];
       const spy = vi
@@ -319,17 +338,19 @@ describe('Session writer uncertain append failure', () => {
         });
       const handle = sdkSession.run({ prompt: 'Write failure' });
       try {
+        const expected = cancel
+          ? { status: 'cancelled' }
+          : {
+              status: 'failed',
+              errorCode: 'ENOSPC',
+              errorMessage: `ENOSPC: ${error.message}`
+            };
+        // A secondary release failure must not replace the first outcome or leave the stream open.
+        if (indexFault) await expect(handle.result()).resolves.toMatchObject(expected);
         const events: MarAgentEvent[] = [];
         for await (const event of handle) events.push(event);
-        await expect(handle.result()).resolves.toMatchObject(
-          cancel
-            ? { status: 'cancelled' }
-            : {
-                status: 'failed',
-                errorCode: 'ENOSPC',
-                errorMessage: `ENOSPC: ${error.message}`
-              }
-        );
+        await expect(handle.result()).resolves.toMatchObject(expected);
+        expect(io.indexFailures).toBe(indexFault ? 1 : 0);
         expect(handle.persistedEvents).toBe(false);
         expect(attempted).toContain(cancel ? 'execution.cancelled' : 'execution.failed');
         expect(
