@@ -255,7 +255,7 @@ interface SessionServices {
     models: ReadonlyMap<string, ResolvedModelConfiguration>
   ) => ModelAdapter;
   readonly activeAdaptersExcept: (sessionId: string) => ReadonlySet<ModelAdapter>;
-  readonly assertCanStart: () => void;
+  readonly assertCanStart: (sessionId: string) => void;
 }
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
@@ -436,7 +436,7 @@ export function createSessionOpener(services: SessionServices) {
       input: RunInput,
       internal: InternalExecutionOptions = {}
     ): InternalExecutionHandle => {
-      services.assertCanStart();
+      services.assertCanStart(sessionId);
       if ([...active.keys()].some((key) => key.startsWith(`${sessionId}:`)))
         throw new MarAgentError(
           'MAR_AGENT_EXECUTION_ACTIVE',
@@ -2978,7 +2978,7 @@ export function createSessionOpener(services: SessionServices) {
       sessionRuntime.agentsBackend ??= createExtensionAgentsBackend({
         existingController: () => sessionRuntime.subagents,
         controller: async () => {
-          services.assertCanStart();
+          services.assertCanStart(sessionId);
           if (sessionRuntime.subagents === undefined) await openSession(sessionId);
           if (!sessionRuntime.subagents)
             throw new MarAgentError(
@@ -3035,12 +3035,17 @@ export function createSessionOpener(services: SessionServices) {
       plan: (input) => execution('plan', input),
       steer: (input) =>
         sessionRuntime.execution?.steer?.(input) ?? Promise.resolve({ status: 'notAccepted' }),
-      compact: (input = {}) =>
-        sessionRuntime.execution?.compactRequests?.request(input) ??
-        execution('compact', {
+      compact: (input = {}) => {
+        const requests = sessionRuntime.execution?.compactRequests;
+        if (requests) {
+          services.assertCanStart(sessionId);
+          return requests.request(input);
+        }
+        return execution('compact', {
           prompt: input.prompt ?? DEFAULT_COMPACTION_FOCUS,
           ...input
-        }),
+        });
+      },
       cancel: async (executionId) => active.get(`${sessionId}:${executionId}`)?.abort(),
       startSubagentTurn: (turn) =>
         execution(
