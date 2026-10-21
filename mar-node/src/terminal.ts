@@ -491,14 +491,13 @@ export class TerminalManager {
     const summary = this.notifySummary(terminal);
     try {
       if (terminal.pty !== undefined) {
-        if (this.platform === 'win32') {
-          // Killing only the shell bypasses node-pty's native console cleanup.
-          try {
-            terminal.pty.kill();
-          } catch {
-            await this.terminate(terminal.pty, this.platform);
-          }
-        } else await this.terminate(terminal.pty, this.platform);
+        // Native PTY hangup reaches POSIX foreground jobs in a separate process group
+        // and releases the native console on Windows; shell-group TERM cannot do this.
+        try {
+          terminal.pty.kill();
+        } catch {
+          await this.terminate(terminal.pty, this.platform);
+        }
       }
       if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
     } finally {
@@ -507,14 +506,19 @@ export class TerminalManager {
     return summary;
   }
 
-  async shutdown(): Promise<void> {
-    if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
-    this.idleTimer = undefined;
+  /** Ends current terminals without disposing the manager's idle collection. */
+  async closeAll(): Promise<void> {
     await Promise.all(
       [...this.terminals.values()]
         .filter((terminal) => terminal.state === 'RUNNING')
         .map((terminal) => this.close(terminal.id))
     );
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
+    this.idleTimer = undefined;
+    await this.closeAll();
   }
 
   onFrame(listener: (frame: TerminalDataFrame) => void): () => void {

@@ -1369,7 +1369,9 @@ export class NodeConnector {
             message:
               'This Node connection was replaced by a newer instance with the same identity. Check for duplicate processes.'
           });
-        if (code === 4003 || code === 1001) void this.terminalManager.shutdown();
+        // Credential revocation ends terminals, but the control channel can still reconnect.
+        // Only final Node disposal shuts down the manager and its idle collector.
+        if (code === 4003) void this.terminalManager.closeAll();
       }
     });
     this.controlMessages = new NodeControlMessageService({
