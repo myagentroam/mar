@@ -541,6 +541,167 @@ describe('Server conversation template service', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it.each(['RUNNING', 'SUCCEEDED'] as const)(
+    'returns the committed failure when a delayed %s refresh arrives',
+    async (lateStatus) => {
+      const fixture = serviceFixture();
+      fixture.database.raw.execute.mockImplementation(async (sql) =>
+        String(sql).includes('FROM conversation_template_publish_jobs')
+          ? [[{ ...fixture.transactionState.jobRow }], []]
+          : [[templateRow()], []]
+      );
+      const service = new ConversationTemplateService(
+        fixture.database,
+        fixture.resources,
+        fixture.models
+      );
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const late = service.publishStatus(2, 'template-1', 'request-1', async () => {
+        entered.resolve();
+        await release.promise;
+        return lateStatus === 'SUCCEEDED'
+          ? { job: succeededJob, version }
+          : { job: { ...succeededJob, status: 'RUNNING', stage: 'COPYING', versionId: undefined } };
+      });
+      await entered.promise;
+      expect(fixture.connection.beginTransaction).not.toHaveBeenCalled();
+      const failed = await service.publishStatus(2, 'template-1', 'request-1', async () => ({
+        job: {
+          ...succeededJob,
+          status: 'FAILED',
+          stage: 'COPYING',
+          versionId: undefined,
+          errorCode: 'PUBLISH_FAILED',
+          errorSummary: 'Publishing failed.'
+        }
+      }));
+      release.resolve();
+      expect(await late).toEqual(failed);
+      expect(fixture.transactionState.jobRow.status).toBe('FAILED');
+      expect(fixture.database.audit).not.toHaveBeenCalled();
+      expect(
+        fixture.connection.execute.mock.calls.some(([sql]) =>
+          String(sql).includes('INSERT INTO conversation_template_versions')
+        )
+      ).toBe(false);
+    }
+  );
+
+  it('does not regress RUNNING to QUEUED or repeat success registration for an in-flight refresh', async () => {
+    const fixture = serviceFixture();
+    fixture.database.raw.execute.mockImplementation(async (sql) =>
+      String(sql).includes('FROM conversation_template_publish_jobs')
+        ? [[{ ...fixture.transactionState.jobRow }], []]
+        : [[templateRow()], []]
+    );
+    const service = new ConversationTemplateService(
+      fixture.database,
+      fixture.resources,
+      fixture.models
+    );
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const duplicate = service.publishStatus(2, 'template-1', 'request-1', async () => {
+      entered.resolve();
+      await release.promise;
+      return { job: succeededJob, version };
+    });
+    await entered.promise;
+    const running = { ...succeededJob, status: 'RUNNING', stage: 'COPYING', versionId: undefined };
+    await expect(
+      service.publishStatus(2, 'template-1', 'request-1', async () => ({ job: running }))
+    ).resolves.toMatchObject({ status: 'RUNNING' });
+    await expect(
+      service.publishStatus(2, 'template-1', 'request-1', async () => ({
+        job: { ...running, status: 'QUEUED', stage: 'VALIDATING' }
+      }))
+    ).resolves.toMatchObject({ status: 'RUNNING', stage: 'COPYING' });
+    const success = await service.publishStatus(2, 'template-1', 'request-1', async () => ({
+      job: succeededJob,
+      version
+    }));
+    release.resolve();
+    expect(await duplicate).toEqual(success);
+    expect(
+      fixture.connection.execute.mock.calls.filter(([sql]) =>
+        String(sql).includes('INSERT INTO conversation_template_versions')
+      )
+    ).toHaveLength(1);
+    expect(fixture.database.audit).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a committed success when an in-flight publish dispatch subsequently fails', async () => {
+    const fixture = serviceFixture();
+    fixture.database.raw.execute.mockImplementation(async (sql) =>
+      String(sql).includes('FROM conversation_template_publish_jobs')
+        ? [[{ ...fixture.transactionState.jobRow }], []]
+        : [[templateRow()], []]
+    );
+    const service = new ConversationTemplateService(
+      fixture.database,
+      fixture.resources,
+      fixture.models
+    );
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const dispatch = service.publish(
+      1,
+      'template-1',
+      { templateId: 'template-1', draftRevision: 1, requestId: 'request-1' },
+      async () => {
+        entered.resolve();
+        await release.promise;
+        throw new Error('TRANSPORT_FAILED');
+      }
+    );
+    try {
+      await entered.promise;
+      const success = await service.publishStatus(2, 'template-1', 'request-1', async () => ({
+        job: succeededJob,
+        version
+      }));
+      release.resolve();
+      expect(await dispatch).toEqual(success);
+      expect(fixture.transactionState.jobRow.status).toBe('SUCCEEDED');
+      expect(fixture.database.audit).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      await Promise.allSettled([dispatch]);
+    }
+  });
+
+  it('does not recreate a publish job removed while refresh is in flight', async () => {
+    const fixture = serviceFixture();
+    fixture.database.raw.execute
+      .mockResolvedValueOnce([[templateRow()], []])
+      .mockResolvedValueOnce([[fixture.transactionState.jobRow], []]);
+    const execute = fixture.connection.execute.getMockImplementation()!;
+    fixture.connection.execute.mockImplementation(async (...args) =>
+      String(args[0]).includes('FROM conversation_template_publish_jobs')
+        ? [[], []]
+        : execute(...args)
+    );
+    const service = new ConversationTemplateService(
+      fixture.database,
+      fixture.resources,
+      fixture.models
+    );
+    await expect(
+      service.publishStatus(2, 'template-1', 'request-1', async () => ({
+        job: succeededJob,
+        version
+      }))
+    ).rejects.toThrow('CONVERSATION_TEMPLATE_PUBLISH_JOB_NOT_FOUND');
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.database.audit).not.toHaveBeenCalled();
+    expect(
+      fixture.connection.execute.mock.calls.some(([sql]) =>
+        String(sql).includes('INSERT INTO conversation_template_versions')
+      )
+    ).toBe(false);
+  });
+
   it('re-dispatches an existing queued publish job with its original requester', async () => {
     const fixture = serviceFixture();
     fixture.database.raw.execute
@@ -890,12 +1051,36 @@ function serviceFixture() {
     readonly publishInsert: { affectedRows: number };
     versionInsertError?: Error;
     publishTemplateRow?: Record<string, unknown>;
-  } = { publishInsert: { affectedRows: 1 } };
+    jobRow: Record<string, unknown>;
+  } = {
+    publishInsert: { affectedRows: 1 },
+    jobRow: publishJobRow({
+      stage: 'VALIDATING',
+      status: 'QUEUED',
+      version_id: null
+    })
+  };
   const connection = {
     beginTransaction: vi.fn(async () => undefined),
     execute: vi.fn<(...args: unknown[]) => Promise<[unknown, unknown]>>(async (sql, values) => {
       const statement = String(sql);
       const parameters = Array.isArray(values) ? values : [];
+      if (statement.includes('FROM conversation_template_publish_jobs'))
+        return [[{ ...transactionState.jobRow }], []];
+      if (
+        statement.includes('UPDATE conversation_template_publish_jobs') &&
+        statement.includes('SET stage=')
+      ) {
+        const [stage, status, version_id, error_code, error_summary, updated_at] = parameters;
+        Object.assign(transactionState.jobRow, {
+          stage,
+          status,
+          version_id,
+          error_code,
+          error_summary,
+          updated_at
+        });
+      }
       if (statement.includes('SELECT id FROM users')) return [[{ id: parameters[0] }], []];
       if (statement.includes('FROM nodes WHERE id=?'))
         return [
@@ -931,8 +1116,22 @@ function serviceFixture() {
           ],
           []
         ];
-      if (statement.includes('INSERT IGNORE INTO conversation_template_publish_jobs'))
+      if (statement.includes('INSERT IGNORE INTO conversation_template_publish_jobs')) {
+        transactionState.jobRow = publishJobRow({
+          id: parameters[0],
+          template_id: parameters[1],
+          source_node_id: parameters[2],
+          source_workspace_id: parameters[3],
+          draft_revision: parameters[4],
+          requested_by_user_id: parameters[5],
+          created_at: parameters[6],
+          updated_at: parameters[7],
+          status: 'QUEUED',
+          stage: 'VALIDATING',
+          version_id: null
+        });
         return [transactionState.publishInsert, []];
+      }
       if (statement.includes('INSERT INTO conversation_template_versions')) {
         if (transactionState.versionInsertError !== undefined)
           throw transactionState.versionInsertError;
