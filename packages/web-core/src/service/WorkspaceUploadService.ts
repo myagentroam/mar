@@ -71,6 +71,24 @@ const STORAGE_KEY = 'mar.workspace-upload-tasks';
 const CHUNK_BYTES = 512 * 1024;
 const MAX_CONCURRENT_UPLOADS = 2;
 
+interface RecoveryReceiver {
+  receive(expected: StoredWorkspaceUploadTask, failed: WorkspaceUploadTask): void;
+}
+
+// Only live restored owners are registered here; disposed owners never resume subscriptions.
+const recoveryReceivers = new Map<string, RecoveryReceiver>();
+
+function matchesRecoveryEntry(value: unknown, expected: StoredWorkspaceUploadTask): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as StoredWorkspaceUploadTask;
+  // Restoring changes presentation, not the upload attempt or its recovery ownership.
+  return (
+    JSON.stringify(
+      entry.status === 'INTERRUPTED' ? { ...entry, status: expected.status } : entry
+    ) === JSON.stringify(expected)
+  );
+}
+
 export function parseStoredWorkspaceUploads(value: unknown): WorkspaceUploadTask[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): WorkspaceUploadTask[] => {
@@ -124,8 +142,10 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   const directRequests = new Map<string, AbortController>();
   const cancellations = new Map<string, Promise<boolean>>();
   const committing = new Set<string>();
-  const disposedRecoveryEntries = new Map<string, string>();
+  const disposedRecoveryEntries = new Map<string, StoredWorkspaceUploadTask>();
   const recoveryOwner = crypto.randomUUID();
+  const recoveryGenerations = new Map<string, string>();
+  const recoveryReceiver: RecoveryReceiver = { receive: receiveCleanupFailure };
   let closed = false;
 
   const activeCount = computed(
@@ -145,27 +165,29 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     );
   });
 
+  function storedTask(task: WorkspaceUploadTask): StoredWorkspaceUploadTask {
+    return {
+      recoveryOwner: recoveryGenerations.get(task.id) ?? recoveryOwner,
+      id: task.id,
+      nodeId: task.nodeId,
+      workspaceId: task.workspaceId,
+      directory: task.directory,
+      name: task.name,
+      size: task.size,
+      overwrite: task.overwrite,
+      ...(task.uploadId === undefined ? {} : { uploadId: task.uploadId }),
+      receivedBytes: task.receivedBytes,
+      directCleanupPending: task.directCleanupPending === true,
+      cleanupUnconfirmed: task.cleanupUnconfirmed === true,
+      status: task.status as StoredWorkspaceUploadTask['status'],
+      ...(task.error === undefined ? {} : { error: task.error })
+    };
+  }
+
   function persist(): StoredWorkspaceUploadTask[] {
     const stored: StoredWorkspaceUploadTask[] = tasks.value.flatMap((task) => {
       if (!['QUEUED', 'UPLOADING', 'FAILED', 'INTERRUPTED'].includes(task.status)) return [];
-      return [
-        {
-          recoveryOwner,
-          id: task.id,
-          nodeId: task.nodeId,
-          workspaceId: task.workspaceId,
-          directory: task.directory,
-          name: task.name,
-          size: task.size,
-          overwrite: task.overwrite,
-          ...(task.uploadId === undefined ? {} : { uploadId: task.uploadId }),
-          receivedBytes: task.receivedBytes,
-          directCleanupPending: task.directCleanupPending === true,
-          cleanupUnconfirmed: task.cleanupUnconfirmed === true,
-          status: task.status as StoredWorkspaceUploadTask['status'],
-          ...(task.error === undefined ? {} : { error: task.error })
-        }
-      ];
+      return [storedTask(task)];
     });
     try {
       if (stored.length === 0) window.sessionStorage.removeItem(STORAGE_KEY);
@@ -180,11 +202,16 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     const expected = disposedRecoveryEntries.get(task.id);
     if (!closed || expected === undefined) return;
     disposedRecoveryEntries.delete(task.id);
+    const receiver = recoveryReceivers.get(task.id);
+    if (receiver !== undefined) {
+      receiver.receive(expected, task);
+      return;
+    }
     try {
       const current: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]');
       if (!Array.isArray(current)) return;
       // Patch only the unchanged recovery entry, never an old owner's entire snapshot.
-      const index = current.findIndex((entry) => JSON.stringify(entry) === expected);
+      const index = current.findIndex((entry) => matchesRecoveryEntry(entry, expected));
       if (index === -1) return;
       current[index] = {
         ...current[index],
@@ -200,13 +227,51 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     }
   }
 
+  function receiveCleanupFailure(
+    expected: StoredWorkspaceUploadTask,
+    failed: WorkspaceUploadTask
+  ): void {
+    if (closed) return;
+    const task = tasks.value.find((item) => item.id === expected.id);
+    if (task?.status !== 'INTERRUPTED' || !matchesRecoveryEntry(storedTask(task), expected)) return;
+    // Merge recovery metadata into the current owner, never publish old page callbacks or drain.
+    Object.assign(task, {
+      uploadId: failed.uploadId,
+      receivedBytes: failed.receivedBytes,
+      cleanupUnconfirmed: true,
+      error: failed.error
+    });
+    persist();
+  }
+
+  function releaseRecoveryReceivers(): void {
+    for (const id of recoveryGenerations.keys()) {
+      if (recoveryReceivers.get(id) === recoveryReceiver) recoveryReceivers.delete(id);
+    }
+  }
+
+  function invalidateRecovery(task: WorkspaceUploadTask): void {
+    recoveryGenerations.set(task.id, crypto.randomUUID());
+  }
+
   function restore(): void {
     if (closed) return;
+    releaseRecoveryReceivers();
+    recoveryGenerations.clear();
     try {
-      tasks.value = parseStoredWorkspaceUploads(
-        JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]') as unknown
-      );
-      // Claim recovery before yielding: a resumed task may otherwise recreate an identical row.
+      const stored: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]');
+      tasks.value = parseStoredWorkspaceUploads(stored);
+      for (const task of tasks.value) {
+        const original = Array.isArray(stored)
+          ? stored.find((entry) => entry?.id === task.id)
+          : undefined;
+        recoveryGenerations.set(
+          task.id,
+          typeof original?.recoveryOwner === 'string' ? original.recoveryOwner : recoveryOwner
+        );
+        recoveryReceivers.set(task.id, recoveryReceiver);
+      }
+      // Preserve restore-only lineage; an actual user mutation invalidates it synchronously.
       persist();
     } catch {
       window.sessionStorage.removeItem(STORAGE_KEY);
@@ -482,6 +547,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   async function cancel(task: WorkspaceUploadTask): Promise<boolean> {
     const pending = cancellations.get(task.id);
     if (pending !== undefined) return pending;
+    if (!closed) invalidateRecovery(task);
     // A cancellation before create returns owns no remote identity yet. Do not cache it:
     // the in-flight create still has to hand its late identity back to this cleanup path.
     const cancellation = cancelUpload(task);
@@ -544,6 +610,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     }
     if (task.uploadId !== undefined && !(await cancel(task))) return;
     if (closed) return;
+    invalidateRecovery(task);
     task.cancelled = false;
     delete task.uploadId;
     task.receivedBytes = 0;
@@ -563,6 +630,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     input.value = '';
     pendingRecoveryId.value = undefined;
     if (file === undefined || task === undefined) return;
+    invalidateRecovery(task);
     if (file.name !== task.name || file.size !== task.size) {
       task.error = translate('generated.workspaceUploadService.selectTheOriginalFileWithTheSame');
       changed(task);
@@ -587,7 +655,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     if (closed) return;
     closed = true;
     stopPersisting();
-    for (const stored of persist()) disposedRecoveryEntries.set(stored.id, JSON.stringify(stored));
+    for (const stored of persist()) disposedRecoveryEntries.set(stored.id, stored);
+    releaseRecoveryReceivers();
     // Keep the recovery snapshot, but never let this old owner overwrite a new page.
     // A submitted complete is authoritative; cancelling it cannot promise rollback.
     for (const task of tasks.value) {

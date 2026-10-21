@@ -243,46 +243,118 @@ describe('Web Workspace Upload State', () => {
     }
   );
 
-  it('does not patch a new owner that resumes the same task back into an identical create state', async () => {
-    const create = gate<void>();
-    const cleanup = gate<void>();
-    const resumedCreate = gate<void>();
-    let creates = 0;
-    const request = vi.fn(async (path: string) => {
-      if (path.endsWith('/uploads')) {
-        const attempt = ++creates;
-        await (attempt === 1 ? create.promise : resumedCreate.promise);
-        return {
-          upload: { uploadId: attempt === 1 ? 'late-id' : 'resumed-id', receivedBytes: 0, size: 0 }
-        };
-      }
-      if (path.endsWith('/late-id/cancel')) {
+  it.each(['restored', 'restored-twice', 'restored-then-disposed'] as const)(
+    'hands late cleanup failures across a restore-only handoff: %s',
+    async (handoff) => {
+      const create = gate<void>();
+      const cleanup = gate<void>();
+      let failCleanup = true;
+      const request = vi.fn(async (path: string) => {
+        if (path.endsWith('/uploads')) {
+          await create.promise;
+          return { upload: { uploadId: 'late-id', receivedBytes: 0, size: 0 } };
+        }
         await cleanup.promise;
-        throw new Error('UPLOAD_NETWORK_FAILED');
+        if (failCleanup) throw new Error('UPLOAD_NETWORK_FAILED');
+        return {};
+      });
+      const { service, options, storage, onTaskChanged, onFilesChanged } =
+        lifecycleFixture(request);
+      service.queue([emptyUpload()]);
+      const oldTask = service.tasks.value[0]!;
+      service.dispose();
+      create.resolve();
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      let current = createWorkspaceUploadService(options);
+      current.restore();
+      if (handoff !== 'restored') {
+        current.dispose();
+        if (handoff === 'restored-twice') {
+          current = createWorkspaceUploadService(options);
+          current.restore();
+        }
       }
-      return {};
-    });
-    const { service, options, storage } = lifecycleFixture(request);
-    service.queue([emptyUpload()]);
-    const task = service.tasks.value[0]!;
-    service.dispose();
-    create.resolve();
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
-    const nextOwner = createWorkspaceUploadService(options);
-    nextOwner.restore();
-    await nextOwner.retry(nextOwner.tasks.value[0]!);
-    nextOwner.recover({
-      target: { files: [new File([], task.name)], value: 'selected' }
-    } as unknown as Event);
-    await vi.waitFor(() => expect(creates).toBe(2));
-    const snapshot = storage.get('mar.workspace-upload-tasks');
-    cleanup.resolve();
-    await vi.waitFor(() => expect(task.status).toBe('FAILED'));
-    expect(storage.get('mar.workspace-upload-tasks')).toBe(snapshot);
-    nextOwner.dispose();
-    resumedCreate.resolve();
-    await vi.waitFor(() => expect(nextOwner.tasks.value[0]!.status).toBe('CANCELLED'));
-  });
+      await nextTick();
+      onTaskChanged.mockClear();
+      cleanup.resolve();
+      await vi.waitFor(() => expect(oldTask.status).toBe('FAILED'));
+      await nextTick();
+      expect(JSON.parse(storage.get('mar.workspace-upload-tasks')!)[0]).toMatchObject({
+        uploadId: 'late-id',
+        cleanupUnconfirmed: true,
+        error: 'UPLOAD_NETWORK_FAILED'
+      });
+      if (handoff === 'restored-then-disposed') {
+        current = createWorkspaceUploadService(options);
+        current.restore();
+      }
+      expect(current.tasks.value[0]).toMatchObject({
+        status: 'INTERRUPTED',
+        uploadId: 'late-id',
+        cleanupUnconfirmed: true,
+        error: 'UPLOAD_NETWORK_FAILED'
+      });
+      expect(onTaskChanged).not.toHaveBeenCalled();
+      expect(onFilesChanged).not.toHaveBeenCalled();
+      failCleanup = false;
+      expect(await current.cancel(current.tasks.value[0]!)).toBe(true);
+      expect(request.mock.calls.map(([path]) => path)).toEqual([
+        '/api/workspaces/workspace-1/uploads',
+        '/api/workspaces/workspace-1/uploads/late-id/cancel',
+        '/api/workspaces/workspace-1/uploads/late-id/cancel'
+      ]);
+      current.dispose();
+    }
+  );
+
+  it.each(['active', 'disposed'] as const)(
+    'does not patch a %s new owner that resumes the same task back into an identical create state',
+    async (ownerState) => {
+      const create = gate<void>();
+      const cleanup = gate<void>();
+      const resumedCreate = gate<void>();
+      let creates = 0;
+      const request = vi.fn(async (path: string) => {
+        if (path.endsWith('/uploads')) {
+          const attempt = ++creates;
+          await (attempt === 1 ? create.promise : resumedCreate.promise);
+          return {
+            upload: {
+              uploadId: attempt === 1 ? 'late-id' : 'resumed-id',
+              receivedBytes: 0,
+              size: 0
+            }
+          };
+        }
+        if (path.endsWith('/late-id/cancel')) {
+          await cleanup.promise;
+          throw new Error('UPLOAD_NETWORK_FAILED');
+        }
+        return {};
+      });
+      const { service, options, storage } = lifecycleFixture(request);
+      service.queue([emptyUpload()]);
+      const task = service.tasks.value[0]!;
+      service.dispose();
+      create.resolve();
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      const nextOwner = createWorkspaceUploadService(options);
+      nextOwner.restore();
+      await nextOwner.retry(nextOwner.tasks.value[0]!);
+      nextOwner.recover({
+        target: { files: [new File([], task.name)], value: 'selected' }
+      } as unknown as Event);
+      await vi.waitFor(() => expect(creates).toBe(2));
+      if (ownerState === 'disposed') nextOwner.dispose();
+      const snapshot = storage.get('mar.workspace-upload-tasks');
+      cleanup.resolve();
+      await vi.waitFor(() => expect(task.status).toBe('FAILED'));
+      expect(storage.get('mar.workspace-upload-tasks')).toBe(snapshot);
+      nextOwner.dispose();
+      resumedCreate.resolve();
+      await vi.waitFor(() => expect(nextOwner.tasks.value[0]!.status).toBe('CANCELLED'));
+    }
+  );
 
   it('does not roll back or publish completion already submitted before disposal', async () => {
     const complete = gate<void>();

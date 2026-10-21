@@ -94,7 +94,7 @@ test('Workspace upload page teardown cleans late creates without draining or ove
   }
 });
 
-test('Workspace upload late cleanup failure survives teardown and reload for an explicit cleanup retry', async ({
+test('Workspace upload restore before late cleanup failure preserves the warning and original cleanup retry', async ({
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
@@ -107,6 +107,10 @@ test('Workspace upload late cleanup failure survives teardown and reload for an 
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let releaseCleanup!: () => void;
+  const cleanupGate = new Promise<void>((resolve) => {
+    releaseCleanup = resolve;
+  });
   await page.route(/\/api\/workspaces\/workspace-1\/uploads(?:\/.*)?(?:\?.*)?$/, async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/preflight'))
@@ -118,6 +122,7 @@ test('Workspace upload late cleanup failure survives teardown and reload for an 
     }
     if (path.endsWith('/cancel')) {
       cancels.push(path);
+      await cleanupGate;
       if (failCleanup)
         return route.fulfill({
           status: 503,
@@ -151,13 +156,36 @@ test('Workspace upload late cleanup failure survives teardown and reload for an 
     });
     await page.getByRole('button', { name: '开始上传', exact: true }).click();
     await expect.poll(() => creates.length).toBe(1);
-    await page.evaluate(() => {
+    const remountUrl = await page.evaluate(() => {
+      const bootstrap = performance
+        .getEntriesByType('resource')
+        .find((entry) => new URL(entry.name).pathname.endsWith('/ee/web/src/bootstrap.ts'));
+      if (bootstrap === undefined) throw new Error('Console bootstrap was not loaded');
       const root = document.querySelector('#app') as HTMLElement & {
         __vue_app__: { unmount(): void };
       };
       root.__vue_app__.unmount();
+      const url = new URL(bootstrap.name);
+      url.searchParams.set('upload-recovery-remount', '1');
+      return url.href;
     });
     release();
+    await expect.poll(() => cancels.length).toBe(1);
+    // Remount the actual Console in this document so the disposed owner's gated request survives.
+    await page.evaluate(async (url) => {
+      await import(url);
+    }, remountUrl);
+    await page.getByRole('button', { name: '打开通知中心' }).click();
+    const transfer = page.getByRole('complementary', { name: '通知中心' });
+    const task = transfer.locator('.workbench-notification-upload');
+    await expect(task).toHaveCount(1);
+    await expect(task.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => JSON.parse(sessionStorage.getItem('mar.workspace-upload-tasks')!)[0]
+      )
+    ).toMatchObject({ status: 'INTERRUPTED', cleanupUnconfirmed: false });
+    releaseCleanup();
     await expect
       .poll(() =>
         page.evaluate(() =>
@@ -171,16 +199,16 @@ test('Workspace upload late cleanup failure survives teardown and reload for an 
           cleanupUnconfirmed: true
         })
       ]);
-    await page.reload();
-    await page.getByRole('button', { name: '打开通知中心' }).click();
-    const transfer = page.getByRole('complementary', { name: '通知中心' });
-    const task = transfer.locator('.workbench-notification-upload');
-    await expect(task).toHaveCount(1);
     await expect(task).toContainText('late-recovery.txt');
     await expect(task).toContainText(
       '未能确认临时上传已清理，任务已保留。请重试或联系管理员核查节点。'
     );
     await expect(task.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
+    await page.reload();
+    await page.getByRole('button', { name: '打开通知中心' }).click();
+    await expect(task).toContainText(
+      '未能确认临时上传已清理，任务已保留。请重试或联系管理员核查节点。'
+    );
     failCleanup = false;
     await task.getByRole('button', { name: '删除 late-recovery.txt', exact: true }).click();
     await expect.poll(() => cancels.length).toBe(2);
@@ -195,6 +223,7 @@ test('Workspace upload late cleanup failure survives teardown and reload for an 
     expect(forbidden).toEqual([]);
   } finally {
     release();
+    releaseCleanup();
   }
 });
 
