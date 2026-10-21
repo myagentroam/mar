@@ -1,0 +1,7 @@
+node_modules/
+dist/
+**/.vitepress/cache/
+pnpm-lock.yaml
+**/test/runs/
+.e2e/
+mar-node/vendor/ctags/licenses/official-snapshot/

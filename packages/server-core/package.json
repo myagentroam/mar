@@ -1,0 +1,660 @@
+{
+  "name": "@myagentroam/server-core",
+  "version": "0.10.69",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "test:unit": "vitest run --config vitest.config.mts"
+  },
+  "exports": {
+    "./database-identity": {
+      "development": "./src/database-identity.ts",
+      "types": "./dist/database-identity.d.ts",
+      "import": "./dist/database-identity.js"
+    },
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./auth": {
+      "development": "./src/auth.ts",
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./password": {
+      "development": "./src/password.ts",
+      "types": "./dist/password.d.ts",
+      "import": "./dist/password.js"
+    },
+    "./session-token": {
+      "development": "./src/session-token.ts",
+      "types": "./dist/session-token.d.ts",
+      "import": "./dist/session-token.js"
+    },
+    "./session": {
+      "development": "./src/session.ts",
+      "types": "./dist/session.d.ts",
+      "import": "./dist/session.js"
+    },
+    "./http-errors": {
+      "development": "./src/http-errors.ts",
+      "types": "./dist/http-errors.d.ts",
+      "import": "./dist/http-errors.js"
+    },
+    "./login-rate": {
+      "development": "./src/login-rate.ts",
+      "types": "./dist/login-rate.d.ts",
+      "import": "./dist/login-rate.js"
+    },
+    "./auth-contracts": {
+      "development": "./src/auth-contracts.ts",
+      "types": "./dist/auth-contracts.d.ts",
+      "import": "./dist/auth-contracts.js"
+    },
+    "./auth-routes": {
+      "development": "./src/auth-routes.ts",
+      "types": "./dist/auth-routes.d.ts",
+      "import": "./dist/auth-routes.js"
+    },
+    "./product-capabilities": {
+      "development": "./src/product-capabilities.ts",
+      "types": "./dist/product-capabilities.d.ts",
+      "import": "./dist/product-capabilities.js"
+    },
+    "./mysql-migrations": {
+      "development": "./src/mysql-migrations.ts",
+      "types": "./dist/mysql-migrations.d.ts",
+      "import": "./dist/mysql-migrations.js"
+    },
+    "./mysql-schema": {
+      "development": "./src/mysql-schema.ts",
+      "types": "./dist/mysql-schema.d.ts",
+      "import": "./dist/mysql-schema.js"
+    },
+    "./mysql-reference-store": {
+      "development": "./src/mysql-reference-store.ts",
+      "types": "./dist/mysql-reference-store.d.ts",
+      "import": "./dist/mysql-reference-store.js"
+    },
+    "./mysql-schema-support": {
+      "development": "./src/mysql-schema-support.ts",
+      "types": "./dist/mysql-schema-support.d.ts",
+      "import": "./dist/mysql-schema-support.js"
+    },
+    "./mysql-authentication": {
+      "development": "./src/mysql-authentication.ts",
+      "types": "./dist/mysql-authentication.d.ts",
+      "import": "./dist/mysql-authentication.js"
+    },
+    "./mysql-connection": {
+      "development": "./src/mysql-connection.ts",
+      "types": "./dist/mysql-connection.d.ts",
+      "import": "./dist/mysql-connection.js"
+    },
+    "./node-identity": {
+      "development": "./src/node-identity.ts",
+      "types": "./dist/node-identity.d.ts",
+      "import": "./dist/node-identity.js"
+    },
+    "./workspace-group": {
+      "development": "./src/workspace-group.ts",
+      "types": "./dist/workspace-group.d.ts",
+      "import": "./dist/workspace-group.js"
+    },
+    "./mysql-node-identity": {
+      "development": "./src/mysql-node-identity.ts",
+      "types": "./dist/mysql-node-identity.d.ts",
+      "import": "./dist/mysql-node-identity.js"
+    },
+    "./node-identity-control": {
+      "development": "./src/node-identity-control.ts",
+      "types": "./dist/node-identity-control.d.ts",
+      "import": "./dist/node-identity-control.js"
+    },
+    "./node-registration-route": {
+      "development": "./src/node-registration-route.ts",
+      "types": "./dist/node-registration-route.d.ts",
+      "import": "./dist/node-registration-route.js"
+    },
+    "./node-projection": {
+      "development": "./src/node-projection.ts",
+      "types": "./dist/node-projection.d.ts",
+      "import": "./dist/node-projection.js"
+    },
+    "./node-request-channel": {
+      "development": "./src/node-request-channel.ts",
+      "types": "./dist/node-request-channel.d.ts",
+      "import": "./dist/node-request-channel.js"
+    },
+    "./workspace-routes": {
+      "development": "./src/workspace-routes.ts",
+      "types": "./dist/workspace-routes.d.ts",
+      "import": "./dist/workspace-routes.js"
+    },
+    "./workspace-route-contracts": {
+      "development": "./src/workspace-route-contracts.ts",
+      "types": "./dist/workspace-route-contracts.d.ts",
+      "import": "./dist/workspace-route-contracts.js"
+    },
+    "./workspace-http-support": {
+      "development": "./src/workspace-http-support.ts",
+      "types": "./dist/workspace-http-support.d.ts",
+      "import": "./dist/workspace-http-support.js"
+    },
+    "./file-content-stream": {
+      "development": "./src/file-content-stream.ts",
+      "types": "./dist/file-content-stream.d.ts",
+      "import": "./dist/file-content-stream.js"
+    },
+    "./workbench-relay-service": {
+      "development": "./src/workbench-relay-service.ts",
+      "types": "./dist/workbench-relay-service.d.ts",
+      "import": "./dist/workbench-relay-service.js"
+    },
+    "./direct-transfer-coordinator": {
+      "development": "./src/direct-transfer-coordinator.ts",
+      "types": "./dist/direct-transfer-coordinator.d.ts",
+      "import": "./dist/direct-transfer-coordinator.js"
+    },
+    "./terminal-direct-coordinator": {
+      "development": "./src/terminal-direct-coordinator.ts",
+      "types": "./dist/terminal-direct-coordinator.d.ts",
+      "import": "./dist/terminal-direct-coordinator.js"
+    },
+    "./workbench-route": {
+      "development": "./src/workbench-route.ts",
+      "types": "./dist/workbench-route.d.ts",
+      "import": "./dist/workbench-route.js"
+    },
+    "./node-message-projector": {
+      "development": "./src/node-message-projector.ts",
+      "types": "./dist/node-message-projector.d.ts",
+      "import": "./dist/node-message-projector.js"
+    },
+    "./terminal-relay-service": {
+      "development": "./src/terminal-relay-service.ts",
+      "types": "./dist/terminal-relay-service.d.ts",
+      "import": "./dist/terminal-relay-service.js"
+    },
+    "./terminal-routes": {
+      "development": "./src/terminal-routes.ts",
+      "types": "./dist/terminal-routes.d.ts",
+      "import": "./dist/terminal-routes.js"
+    },
+    "./secret-environment": {
+      "development": "./src/secret-environment.ts",
+      "types": "./dist/secret-environment.d.ts",
+      "import": "./dist/secret-environment.js"
+    },
+    "./conversation-audit": {
+      "development": "./src/conversation-audit.ts",
+      "types": "./dist/conversation-audit.d.ts",
+      "import": "./dist/conversation-audit.js"
+    },
+    "./run-http-support": {
+      "development": "./src/run-http-support.ts",
+      "types": "./dist/run-http-support.d.ts",
+      "import": "./dist/run-http-support.js"
+    },
+    "./session-run-contracts": {
+      "development": "./src/session-run-contracts.ts",
+      "types": "./dist/session-run-contracts.d.ts",
+      "import": "./dist/session-run-contracts.js"
+    },
+    "./run-model-payload": {
+      "development": "./src/run-model-payload.ts",
+      "types": "./dist/run-model-payload.d.ts",
+      "import": "./dist/run-model-payload.js"
+    },
+    "./session-input-service": {
+      "development": "./src/session-input-service.ts",
+      "types": "./dist/session-input-service.d.ts",
+      "import": "./dist/session-input-service.js"
+    },
+    "./session-channel-service": {
+      "development": "./src/session-channel-service.ts",
+      "types": "./dist/session-channel-service.d.ts",
+      "import": "./dist/session-channel-service.js"
+    },
+    "./session-shares": {
+      "development": "./src/session-shares.ts",
+      "types": "./dist/session-shares.d.ts",
+      "import": "./dist/session-shares.js"
+    },
+    "./mysql-session-shares": {
+      "development": "./src/mysql-session-shares.ts",
+      "types": "./dist/mysql-session-shares.d.ts",
+      "import": "./dist/mysql-session-shares.js"
+    },
+    "./session-share-routes": {
+      "development": "./src/session-share-routes.ts",
+      "types": "./dist/session-share-routes.d.ts",
+      "import": "./dist/session-share-routes.js"
+    },
+    "./session-run-routes": {
+      "development": "./src/session-run-routes.ts",
+      "types": "./dist/session-run-routes.d.ts",
+      "import": "./dist/session-run-routes.js"
+    },
+    "./run-control-routes": {
+      "development": "./src/run-control-routes.ts",
+      "types": "./dist/run-control-routes.d.ts",
+      "import": "./dist/run-control-routes.js"
+    },
+    "./personal-instruction-service": {
+      "development": "./src/personal-instruction-service.ts",
+      "types": "./dist/personal-instruction-service.d.ts",
+      "import": "./dist/personal-instruction-service.js"
+    },
+    "./personal-instruction-routes": {
+      "development": "./src/personal-instruction-routes.ts",
+      "types": "./dist/personal-instruction-routes.d.ts",
+      "import": "./dist/personal-instruction-routes.js"
+    },
+    "./quick-prompt-service": {
+      "development": "./src/quick-prompt-service.ts",
+      "types": "./dist/quick-prompt-service.d.ts",
+      "import": "./dist/quick-prompt-service.js"
+    },
+    "./quick-prompt-routes": {
+      "development": "./src/quick-prompt-routes.ts",
+      "types": "./dist/quick-prompt-routes.d.ts",
+      "import": "./dist/quick-prompt-routes.js"
+    },
+    "./mar-agent-model-service": {
+      "development": "./src/mar-agent-model-service.ts",
+      "types": "./dist/mar-agent-model-service.d.ts",
+      "import": "./dist/mar-agent-model-service.js"
+    },
+    "./prompt-completion-settings": {
+      "development": "./src/prompt-completion-settings.ts",
+      "types": "./dist/prompt-completion-settings.d.ts",
+      "import": "./dist/prompt-completion-settings.js"
+    },
+    "./runtime-credential-service": {
+      "development": "./src/runtime-credential-service.ts",
+      "types": "./dist/runtime-credential-service.d.ts",
+      "import": "./dist/runtime-credential-service.js"
+    },
+    "./mar-agent-runtime-model-service": {
+      "development": "./src/mar-agent-runtime-model-service.ts",
+      "types": "./dist/mar-agent-runtime-model-service.d.ts",
+      "import": "./dist/mar-agent-runtime-model-service.js"
+    },
+    "./image-generation-configuration-service": {
+      "development": "./src/image-generation-configuration-service.ts",
+      "types": "./dist/image-generation-configuration-service.d.ts",
+      "import": "./dist/image-generation-configuration-service.js"
+    },
+    "./credential-document": {
+      "development": "./src/credential-document.ts",
+      "types": "./dist/credential-document.d.ts",
+      "import": "./dist/credential-document.js"
+    },
+    "./codex-credential-service": {
+      "development": "./src/codex-credential-service.ts",
+      "types": "./dist/codex-credential-service.d.ts",
+      "import": "./dist/codex-credential-service.js"
+    },
+    "./credential-scope-policy": {
+      "development": "./src/credential-scope-policy.ts",
+      "types": "./dist/credential-scope-policy.d.ts",
+      "import": "./dist/credential-scope-policy.js"
+    },
+    "./codex-credential-routes": {
+      "development": "./src/codex-credential-routes.ts",
+      "types": "./dist/codex-credential-routes.d.ts",
+      "import": "./dist/codex-credential-routes.js"
+    },
+    "./mar-agent-model-routes": {
+      "development": "./src/mar-agent-model-routes.ts",
+      "types": "./dist/mar-agent-model-routes.d.ts",
+      "import": "./dist/mar-agent-model-routes.js"
+    },
+    "./prompt-completion-routes": {
+      "development": "./src/prompt-completion-routes.ts",
+      "types": "./dist/prompt-completion-routes.d.ts",
+      "import": "./dist/prompt-completion-routes.js"
+    },
+    "./runtime-credential-channel": {
+      "development": "./src/runtime-credential-channel.ts",
+      "types": "./dist/runtime-credential-channel.d.ts",
+      "import": "./dist/runtime-credential-channel.js"
+    },
+    "./workbench-notification-service": {
+      "development": "./src/workbench-notification-service.ts",
+      "types": "./dist/workbench-notification-service.d.ts",
+      "import": "./dist/workbench-notification-service.js"
+    },
+    "./recent-run-service": {
+      "development": "./src/recent-run-service.ts",
+      "types": "./dist/recent-run-service.d.ts",
+      "import": "./dist/recent-run-service.js"
+    },
+    "./notification-contracts": {
+      "development": "./src/notification-contracts.ts",
+      "types": "./dist/notification-contracts.d.ts",
+      "import": "./dist/notification-contracts.js"
+    },
+    "./notification-routes": {
+      "development": "./src/notification-routes.ts",
+      "types": "./dist/notification-routes.d.ts",
+      "import": "./dist/notification-routes.js"
+    },
+    "./node-upgrade-service": {
+      "development": "./src/node-upgrade-service.ts",
+      "types": "./dist/node-upgrade-service.d.ts",
+      "import": "./dist/node-upgrade-service.js"
+    },
+    "./runner-routes": {
+      "development": "./src/runner-routes.ts",
+      "types": "./dist/runner-routes.d.ts",
+      "import": "./dist/runner-routes.js"
+    },
+    "./runner-capabilities": {
+      "development": "./src/runner-capabilities.ts",
+      "types": "./dist/runner-capabilities.d.ts",
+      "import": "./dist/runner-capabilities.js"
+    },
+    "./node-upgrade-routes": {
+      "development": "./src/node-upgrade-routes.ts",
+      "types": "./dist/node-upgrade-routes.d.ts",
+      "import": "./dist/node-upgrade-routes.js"
+    },
+    "./environment-secret-contracts": {
+      "development": "./src/environment-secret-contracts.ts",
+      "types": "./dist/environment-secret-contracts.d.ts",
+      "import": "./dist/environment-secret-contracts.js"
+    },
+    "./environment-secret-store": {
+      "development": "./src/environment-secret-store.ts",
+      "types": "./dist/environment-secret-store.d.ts",
+      "import": "./dist/environment-secret-store.js"
+    },
+    "./environment-secret-routes": {
+      "development": "./src/environment-secret-routes.ts",
+      "types": "./dist/environment-secret-routes.d.ts",
+      "import": "./dist/environment-secret-routes.js"
+    },
+    "./domain-errors": {
+      "development": "./src/domain-errors.ts",
+      "types": "./dist/domain-errors.d.ts",
+      "import": "./dist/domain-errors.js"
+    },
+    "./skill-network-policy": {
+      "development": "./src/skill-network-policy.ts",
+      "types": "./dist/skill-network-policy.d.ts",
+      "import": "./dist/skill-network-policy.js"
+    },
+    "./system-settings-routes": {
+      "development": "./src/system-settings-routes.ts",
+      "types": "./dist/system-settings-routes.d.ts",
+      "import": "./dist/system-settings-routes.js"
+    },
+    "./mail-smtp-service": {
+      "development": "./src/mail-smtp-service.ts",
+      "types": "./dist/mail-smtp-service.d.ts",
+      "import": "./dist/mail-smtp-service.js"
+    },
+    "./mail-template-service": {
+      "development": "./src/mail-template-service.ts",
+      "types": "./dist/mail-template-service.d.ts",
+      "import": "./dist/mail-template-service.js"
+    },
+    "./mail-routes": {
+      "development": "./src/mail-routes.ts",
+      "types": "./dist/mail-routes.d.ts",
+      "import": "./dist/mail-routes.js"
+    },
+    "./notification-channel-service": {
+      "development": "./src/notification-channel-service.ts",
+      "types": "./dist/notification-channel-service.d.ts",
+      "import": "./dist/notification-channel-service.js"
+    },
+    "./mail-notification-service": {
+      "development": "./src/mail-notification-service.ts",
+      "types": "./dist/mail-notification-service.d.ts",
+      "import": "./dist/mail-notification-service.js"
+    },
+    "./mail-notification-channel": {
+      "development": "./src/mail-notification-channel.ts",
+      "types": "./dist/mail-notification-channel.d.ts",
+      "import": "./dist/mail-notification-channel.js"
+    },
+    "./html-preview-origin": {
+      "development": "./src/html-preview-origin.ts",
+      "types": "./dist/html-preview-origin.d.ts",
+      "import": "./dist/html-preview-origin.js"
+    },
+    "./html-preview-routes": {
+      "development": "./src/html-preview-routes.ts",
+      "types": "./dist/html-preview-routes.d.ts",
+      "import": "./dist/html-preview-routes.js"
+    },
+    "./marctl-routes": {
+      "development": "./src/marctl-routes.ts",
+      "types": "./dist/marctl-routes.d.ts",
+      "import": "./dist/marctl-routes.js"
+    },
+    "./marctl-user-credentials": {
+      "development": "./src/marctl-user-credentials.ts",
+      "types": "./dist/marctl-user-credentials.d.ts",
+      "import": "./dist/marctl-user-credentials.js"
+    },
+    "./catalog-policy": {
+      "development": "./src/catalog-policy.ts",
+      "types": "./dist/catalog-policy.d.ts",
+      "import": "./dist/catalog-policy.js"
+    },
+    "./skill-source-service": {
+      "development": "./src/skill-source-service.ts",
+      "types": "./dist/skill-source-service.d.ts",
+      "import": "./dist/skill-source-service.js"
+    },
+    "./skill-favorite-service": {
+      "development": "./src/skill-favorite-service.ts",
+      "types": "./dist/skill-favorite-service.d.ts",
+      "import": "./dist/skill-favorite-service.js"
+    },
+    "./mcp-service": {
+      "development": "./src/mcp-service.ts",
+      "types": "./dist/mcp-service.d.ts",
+      "import": "./dist/mcp-service.js"
+    },
+    "./github-skill-provider": {
+      "development": "./src/github-skill-provider.ts",
+      "types": "./dist/github-skill-provider.d.ts",
+      "import": "./dist/github-skill-provider.js"
+    },
+    "./git-skill-repository": {
+      "development": "./src/git-skill-repository.ts",
+      "types": "./dist/git-skill-repository.d.ts",
+      "import": "./dist/git-skill-repository.js"
+    },
+    "./skill-artifact-service": {
+      "development": "./src/skill-artifact-service.ts",
+      "types": "./dist/skill-artifact-service.d.ts",
+      "import": "./dist/skill-artifact-service.js"
+    },
+    "./skill-discovery-service": {
+      "development": "./src/skill-discovery-service.ts",
+      "types": "./dist/skill-discovery-service.d.ts",
+      "import": "./dist/skill-discovery-service.js"
+    },
+    "./catalog-route-contracts": {
+      "development": "./src/catalog-route-contracts.ts",
+      "types": "./dist/catalog-route-contracts.d.ts",
+      "import": "./dist/catalog-route-contracts.js"
+    },
+    "./skill-source-routes": {
+      "development": "./src/skill-source-routes.ts",
+      "types": "./dist/skill-source-routes.d.ts",
+      "import": "./dist/skill-source-routes.js"
+    },
+    "./skill-favorite-routes": {
+      "development": "./src/skill-favorite-routes.ts",
+      "types": "./dist/skill-favorite-routes.d.ts",
+      "import": "./dist/skill-favorite-routes.js"
+    },
+    "./skill-target-routes": {
+      "development": "./src/skill-target-routes.ts",
+      "types": "./dist/skill-target-routes.d.ts",
+      "import": "./dist/skill-target-routes.js"
+    },
+    "./mcp-routes": {
+      "development": "./src/mcp-routes.ts",
+      "types": "./dist/mcp-routes.d.ts",
+      "import": "./dist/mcp-routes.js"
+    },
+    "./hosted-contracts": {
+      "development": "./src/hosted-contracts.ts",
+      "types": "./dist/hosted-contracts.d.ts",
+      "import": "./dist/hosted-contracts.js"
+    },
+    "./hosted-http-support": {
+      "development": "./src/hosted-http-support.ts",
+      "types": "./dist/hosted-http-support.d.ts",
+      "import": "./dist/hosted-http-support.js"
+    },
+    "./conversation-template-service": {
+      "development": "./src/conversation-template-service.ts",
+      "types": "./dist/conversation-template-service.d.ts",
+      "import": "./dist/conversation-template-service.js"
+    },
+    "./hosted-conversation-directory-service": {
+      "development": "./src/hosted-conversation-directory-service.ts",
+      "types": "./dist/hosted-conversation-directory-service.d.ts",
+      "import": "./dist/hosted-conversation-directory-service.js"
+    },
+    "./hosted-conversation-activity-service": {
+      "development": "./src/hosted-conversation-activity-service.ts",
+      "types": "./dist/hosted-conversation-activity-service.d.ts",
+      "import": "./dist/hosted-conversation-activity-service.js"
+    },
+    "./conversation-template-routes": {
+      "development": "./src/conversation-template-routes.ts",
+      "types": "./dist/conversation-template-routes.d.ts",
+      "import": "./dist/conversation-template-routes.js"
+    },
+    "./hosted-conversation-routes": {
+      "development": "./src/hosted-conversation-routes.ts",
+      "types": "./dist/hosted-conversation-routes.d.ts",
+      "import": "./dist/hosted-conversation-routes.js"
+    },
+    "./conversation-hosting-routes": {
+      "development": "./src/conversation-hosting-routes.ts",
+      "types": "./dist/conversation-hosting-routes.d.ts",
+      "import": "./dist/conversation-hosting-routes.js"
+    },
+    "./computer-use-routes": {
+      "development": "./src/computer-use-routes.ts",
+      "types": "./dist/computer-use-routes.d.ts",
+      "import": "./dist/computer-use-routes.js"
+    },
+    "./web-search-routes": {
+      "development": "./src/web-search-routes.ts",
+      "types": "./dist/web-search-routes.d.ts",
+      "import": "./dist/web-search-routes.js"
+    },
+    "./personal-git-service": {
+      "development": "./src/personal-git-service.ts",
+      "types": "./dist/personal-git-service.d.ts",
+      "import": "./dist/personal-git-service.js"
+    },
+    "./personal-git-routes": {
+      "development": "./src/personal-git-routes.ts",
+      "types": "./dist/personal-git-routes.d.ts",
+      "import": "./dist/personal-git-routes.js"
+    },
+    "./web-static-routes": {
+      "development": "./src/web-static-routes.ts",
+      "types": "./dist/web-static-routes.d.ts",
+      "import": "./dist/web-static-routes.js"
+    },
+    "./git-execution-forwarding": {
+      "development": "./src/git-execution-forwarding.ts",
+      "types": "./dist/git-execution-forwarding.d.ts",
+      "import": "./dist/git-execution-forwarding.js"
+    },
+    "./audit": {
+      "development": "./src/audit.ts",
+      "types": "./dist/audit.d.ts",
+      "import": "./dist/audit.js"
+    },
+    "./model-usage-grant": {
+      "development": "./src/model-usage-grant.ts",
+      "types": "./dist/model-usage-grant.d.ts",
+      "import": "./dist/model-usage-grant.js"
+    },
+    "./model-usage-store": {
+      "development": "./src/model-usage-store.ts",
+      "types": "./dist/model-usage-store.d.ts",
+      "import": "./dist/model-usage-store.js"
+    },
+    "./model-usage-query": {
+      "development": "./src/model-usage-query.ts",
+      "types": "./dist/model-usage-query.d.ts",
+      "import": "./dist/model-usage-query.js"
+    },
+    "./model-usage-routes": {
+      "development": "./src/model-usage-routes.ts",
+      "types": "./dist/model-usage-routes.d.ts",
+      "import": "./dist/model-usage-routes.js"
+    },
+    "./management-pagination": {
+      "development": "./src/management-pagination.ts",
+      "types": "./dist/management-pagination.d.ts",
+      "import": "./dist/management-pagination.js"
+    },
+    "./web-push-clients": {
+      "development": "./src/web-push-clients.ts",
+      "types": "./dist/web-push-clients.d.ts",
+      "import": "./dist/web-push-clients.js"
+    },
+    "./web-push-configuration": {
+      "development": "./src/web-push-configuration.ts",
+      "types": "./dist/web-push-configuration.d.ts",
+      "import": "./dist/web-push-configuration.js"
+    },
+    "./web-push-dispatcher": {
+      "development": "./src/web-push-dispatcher.ts",
+      "types": "./dist/web-push-dispatcher.d.ts",
+      "import": "./dist/web-push-dispatcher.js"
+    },
+    "./web-push-routes": {
+      "development": "./src/web-push-routes.ts",
+      "types": "./dist/web-push-routes.d.ts",
+      "import": "./dist/web-push-routes.js"
+    },
+    "./web-push-transport": {
+      "development": "./src/web-push-transport.ts",
+      "types": "./dist/web-push-transport.d.ts",
+      "import": "./dist/web-push-transport.js"
+    }
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.0",
+    "@myagentroam/protocol": "workspace:*",
+    "fastify": "^5.1.0",
+    "mysql2": "^3.23.4",
+    "nodemailer": "^10.0.11",
+    "undici": "7.29.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.21.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1"
+  }
+}

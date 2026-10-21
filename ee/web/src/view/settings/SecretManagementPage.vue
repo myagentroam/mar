@@ -1,0 +1,46 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
+import type { OrganizationSummary } from '@/service/EnterpriseManagementService';
+import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
+import CorePage from '@myagentroam/web-core/SecretManagementPage.vue';
+import { translate } from '@/service/LocalePreferenceService';
+import { errorMessage } from '@/util/workbench-presentation';
+
+const props = defineProps<{
+  readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
+  readonly writable: boolean;
+  readonly edition: 'COMMUNITY' | 'ENTERPRISE';
+  readonly role: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER' | null;
+}>();
+const organizations = ref<readonly OrganizationSummary[]>([]);
+
+onMounted(async () => {
+  if (props.edition !== 'ENTERPRISE' || props.role === 'MEMBER') return;
+  try {
+    organizations.value = (
+      await props.request<{ organizations: readonly OrganizationSummary[] }>('/api/organizations')
+    ).organizations;
+  } catch (error) {
+    ElMessage.error(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.secretManagementPage.unableToLoadOrganizations')
+    );
+  }
+});
+</script>
+
+<template>
+  <CorePage :request="request" :writable="writable">
+    <EnvironmentSecretManager
+      :request="request"
+      :scopes="
+        edition === 'ENTERPRISE' && role !== 'MEMBER' ? ['PERSONAL', 'ORGANIZATION'] : ['PERSONAL']
+      "
+      :organizations="organizations"
+      :writable="writable"
+      :active="true"
+    />
+  </CorePage>
+</template>

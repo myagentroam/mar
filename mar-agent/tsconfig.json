@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": false,
+    "declaration": true,
+    "declarationMap": false,
+    "allowJs": true
+  },
+  "include": ["src/**/*.ts", "src/agent-core/tools/code-mode/*.js"]
+}

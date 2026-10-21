@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../ee/web/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "vite.config.ts", "../ee/web/src/**/*.d.ts"]
+}

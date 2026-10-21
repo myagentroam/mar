@@ -1,0 +1,592 @@
+<script setup lang="ts">
+import { Close, Plus } from '@element-plus/icons-vue';
+import { computed, nextTick, ref, watch } from 'vue';
+import { createScopedHttpService } from '../../service/ScopedHttpService.js';
+import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
+import TerminalTabView from './TerminalTabView.vue';
+import { translate } from '../../service/LocalePreferenceService.js';
+
+interface TerminalProfile {
+  readonly id: string;
+  readonly label: string;
+  readonly isDefault: boolean;
+}
+interface TerminalCapability {
+  readonly available: boolean;
+  readonly reasonCode: string | null;
+  readonly supportsReplay: boolean;
+  readonly supportsConPty: boolean;
+  readonly supportsTakeover: boolean;
+  readonly profiles: readonly TerminalProfile[];
+}
+interface TerminalSummary {
+  readonly id: string;
+  readonly workspaceId: string | null;
+  readonly profileId: string;
+  readonly state: 'RUNNING' | 'EXITED' | 'CLOSED';
+  readonly latestSequence: number;
+}
+const props = defineProps<{
+  readonly errorMessage: (error: unknown) => string;
+  readonly nodeId: string | undefined;
+  readonly direct?: Pick<ReturnType<typeof createTerminalDirectClient>, 'attach'>;
+  readonly workspaceId: string | undefined;
+  readonly csrfToken: string;
+  readonly renewCsrfToken: () => Promise<string>;
+  readonly enabled: boolean;
+  readonly capability: TerminalCapability | undefined;
+  readonly nodeOsRelease: string | undefined;
+  readonly visible: boolean;
+  readonly mobileMode: boolean;
+  /** Inactive tabs keep their mounted relay without reading or clearing Workspace state. */
+  readonly active: boolean;
+}>();
+const emit = defineEmits<{ notice: [message: string]; collapse: [] }>();
+
+const selectedProfileId = ref<string>();
+const creating = ref(false);
+const closingId = ref<string>();
+const expanded = ref(false);
+const hasOpened = ref(false);
+const autoCreateAttempted = ref(false);
+const refreshing = ref(false);
+let refreshRevision = 0;
+let focusRequested = false;
+const terminals = ref<TerminalSummary[]>([]);
+const activeTerminalId = ref<string>();
+const terminalViews = new Map<string, { focus(): void }>();
+const http = createScopedHttpService({
+  csrfToken: () => props.csrfToken,
+  renewCsrfToken: props.renewCsrfToken
+});
+
+const canUseTerminal = computed(
+  () => props.enabled && props.nodeId !== undefined && props.capability?.available === true
+);
+const windowsBuildNumber = computed(() => {
+  if (props.capability?.supportsConPty !== true || props.nodeOsRelease === undefined)
+    return undefined;
+  const build = /^\d+\.\d+\.(\d+)(?:\.|$)/u.exec(props.nodeOsRelease)?.[1];
+  if (build === undefined) return undefined;
+  const parsed = Number(build);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+});
+const profiles = computed(() =>
+  (props.capability?.profiles ?? []).map((profile) => {
+    const canonicalLabel = profile.label.replace(/\s*\(Tab completion supported\)$/u, '');
+    const labelKey = {
+      'User Shell': 'nodeMessages.userShell',
+      'Windows Command Prompt': 'nodeMessages.windowsCommandPrompt'
+    }[canonicalLabel];
+    return {
+      ...profile,
+      label: labelKey === undefined ? canonicalLabel : translate(labelKey)
+    };
+  })
+);
+const contextLabel = computed(() =>
+  props.workspaceId === undefined
+    ? translate('generated.terminalDock.nodeTerminal')
+    : translate('generated.terminalDock.workspaceTerminal')
+);
+const terminalActionTitle = computed(() => {
+  if (canUseTerminal.value) return translate('generated.terminalDock.newTerminal');
+  if (props.nodeId === undefined)
+    return translate('generated.terminalDock.selectAnOnlineNodeFirst');
+  return (
+    props.capability?.reasonCode ?? translate('generated.terminalDock.theTargetNodeDoesNotProvideA')
+  );
+});
+
+function selectTerminal(terminalId: string): void {
+  if (activeTerminalId.value === terminalId) return;
+  activeTerminalId.value = terminalId;
+}
+function insertOpenedTerminal(terminal: TerminalSummary): void {
+  terminals.value = [...terminals.value.filter((item) => item.id !== terminal.id), terminal].filter(
+    (item) => item.state === 'RUNNING'
+  );
+}
+function setExpanded(value: boolean): void {
+  if (value && !expanded.value) autoCreateAttempted.value = false;
+  expanded.value = value;
+  if (value) hasOpened.value = true;
+}
+function toggleExpanded(): void {
+  setExpanded(!expanded.value);
+}
+async function focusActiveTerminal(): Promise<void> {
+  focusRequested = true;
+  setExpanded(true);
+  await ensureTerminalForExpandedDock();
+  await focusSelectedTerminalIfReady();
+}
+async function toggleTerminal(): Promise<void> {
+  if (expanded.value) {
+    focusRequested = false;
+    setExpanded(false);
+    return;
+  }
+  await focusActiveTerminal();
+}
+async function focusSelectedTerminalIfReady(): Promise<void> {
+  if (!focusRequested || !expanded.value || !props.active || !props.visible) return;
+  await nextTick();
+  const terminalId = activeTerminalId.value;
+  const terminalView = terminalId === undefined ? undefined : terminalViews.get(terminalId);
+  if (terminalView === undefined) return;
+  terminalView.focus();
+  focusRequested = false;
+}
+async function refreshContext(): Promise<void> {
+  // Manifest is briefly cleared during Node switches; do not unmount this tab's xterm in that loading state.
+  if (!props.active || props.nodeId === undefined || props.capability === undefined) return;
+  const revision = ++refreshRevision;
+  if (!canUseTerminal.value) {
+    terminals.value = [];
+    activeTerminalId.value = undefined;
+    refreshing.value = false;
+    return;
+  }
+  refreshing.value = true;
+  try {
+    const result = await http.request<{ terminals: readonly TerminalSummary[] }>(
+      `/api/terminals?nodeId=${encodeURIComponent(props.nodeId)}`
+    );
+    if (revision !== refreshRevision) return;
+    const owned = new Set(terminals.value.map((terminal) => terminal.id));
+    terminals.value = result.terminals.filter(
+      (terminal) =>
+        owned.has(terminal.id) &&
+        terminal.state === 'RUNNING' &&
+        terminal.workspaceId === (props.workspaceId ?? null)
+    );
+    if (!terminals.value.some((terminal) => terminal.id === activeTerminalId.value))
+      activeTerminalId.value = terminals.value[0]?.id;
+  } catch (error) {
+    if (revision !== refreshRevision) return;
+    emit(
+      'notice',
+      translate('generated.terminalDock.unableToLoadTerminals', { value0: message(error) })
+    );
+  } finally {
+    if (revision !== refreshRevision) return;
+    refreshing.value = false;
+    void ensureTerminalForExpandedDock();
+  }
+}
+async function openTerminal(): Promise<void> {
+  if (!canUseTerminal.value || props.nodeId === undefined || creating.value) return;
+  autoCreateAttempted.value = true;
+  const nodeId = props.nodeId;
+  const workspaceId = props.workspaceId;
+  creating.value = true;
+  try {
+    const result = await http.request<{ terminal: TerminalSummary }>('/api/terminals', {
+      method: 'POST',
+      body: JSON.stringify({
+        nodeId,
+        ...(workspaceId === undefined ? {} : { workspaceId }),
+        ...(selectedProfileId.value === undefined ? {} : { profileId: selectedProfileId.value }),
+        rows: 18,
+        cols: 100
+      })
+    });
+    if (!props.active || nodeId !== props.nodeId || workspaceId !== props.workspaceId) return;
+    insertOpenedTerminal(result.terminal);
+    selectTerminal(result.terminal.id);
+  } catch (error) {
+    if (!props.active || nodeId !== props.nodeId || workspaceId !== props.workspaceId) return;
+    emit(
+      'notice',
+      translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) })
+    );
+  } finally {
+    creating.value = false;
+    void ensureTerminalForExpandedDock();
+  }
+}
+async function ensureTerminalForExpandedDock(): Promise<void> {
+  if (
+    !expanded.value ||
+    !props.visible ||
+    refreshing.value ||
+    creating.value ||
+    autoCreateAttempted.value ||
+    !canUseTerminal.value ||
+    props.workspaceId === undefined ||
+    terminals.value.length > 0
+  )
+    return;
+  await openTerminal();
+}
+function collapseDock(): void {
+  setExpanded(false);
+  emit('collapse');
+}
+async function closeTerminal(terminalId: string): Promise<void> {
+  if (props.nodeId === undefined) return;
+  closingId.value = terminalId;
+  try {
+    await http.request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ nodeId: props.nodeId })
+    });
+    terminals.value = terminals.value.filter((item) => item.id !== terminalId);
+    if (activeTerminalId.value === terminalId) {
+      activeTerminalId.value = undefined;
+      const next = terminals.value[0];
+      if (next !== undefined) selectTerminal(next.id);
+    }
+    if (terminals.value.length === 0) collapseDock();
+  } catch (error) {
+    emit(
+      'notice',
+      translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) })
+    );
+  } finally {
+    closingId.value = undefined;
+  }
+}
+function handleTerminalExited(terminalId: string): void {
+  const wasActive = activeTerminalId.value === terminalId;
+  terminals.value = terminals.value.filter((item) => item.id !== terminalId);
+  if (wasActive) activeTerminalId.value = terminals.value[0]?.id;
+  if (terminals.value.length === 0 && expanded.value) collapseDock();
+}
+function message(error: unknown): string {
+  return props.errorMessage(error);
+}
+
+watch(
+  () => [props.nodeId, props.workspaceId] as const,
+  () => {
+    autoCreateAttempted.value = false;
+  }
+);
+watch(
+  () => props.capability?.profiles,
+  (next) => {
+    selectedProfileId.value = next?.find((profile) => profile.isDefault)?.id ?? next?.[0]?.id;
+  },
+  { immediate: true }
+);
+watch(
+  () =>
+    [
+      props.nodeId,
+      props.workspaceId,
+      props.enabled,
+      props.capability?.available,
+      props.active
+    ] as const,
+  () => {
+    void refreshContext();
+  },
+  { immediate: true }
+);
+watch(
+  () => [props.mobileMode, props.visible] as const,
+  ([mobileMode, visible]) => {
+    if (mobileMode && visible) setExpanded(true);
+  },
+  { immediate: true }
+);
+watch(
+  () =>
+    [
+      expanded.value,
+      props.visible,
+      canUseTerminal.value,
+      terminals.value.length,
+      activeTerminalId.value,
+      refreshing.value,
+      creating.value
+    ] as const,
+  () => {
+    void ensureTerminalForExpandedDock();
+    void focusSelectedTerminalIfReady();
+  },
+  { immediate: true }
+);
+
+async function release(): Promise<void> {
+  refreshRevision += 1;
+  expanded.value = false;
+  try {
+    const results = await Promise.allSettled(
+      terminals.value.map((terminal) =>
+        http.request(`/api/terminals/${encodeURIComponent(terminal.id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ nodeId: props.nodeId })
+        })
+      )
+    );
+    const failed = results.filter((result) => result.status === 'rejected');
+    const firstFailure = failed[0];
+    if (firstFailure !== undefined)
+      emit(
+        'notice',
+        translate('generated.terminalDock.unableToReleaseTerminals', {
+          value0: failed.length,
+          value1: message(firstFailure.reason)
+        })
+      );
+  } finally {
+    terminals.value = [];
+    activeTerminalId.value = undefined;
+  }
+}
+
+defineExpose({ release, toggle: toggleTerminal });
+</script>
+
+<template>
+  <section class="admin-terminal" :aria-label="translate('common.adminTerminal')">
+    <header class="admin-terminal-header">
+      <h2>{{ contextLabel }}</h2>
+      <div class="admin-terminal-actions">
+        <label v-if="profiles.length > 1" class="terminal-profile">
+          {{ translate('generated.terminalDock.terminalProfile') }}
+          <el-select
+            v-model="selectedProfileId"
+            :aria-label="translate('generated.terminalDock.terminalProfile2')"
+            size="small"
+            :disabled="!canUseTerminal || creating"
+          >
+            <el-option
+              v-for="profile in profiles"
+              :key="profile.id"
+              :value="profile.id"
+              :label="profile.label"
+            />
+          </el-select>
+        </label>
+        <el-button
+          v-if="!mobileMode"
+          size="small"
+          :aria-label="
+            expanded
+              ? translate('generated.terminalDock.collapseTerminal')
+              : translate('generated.terminalDock.expandTerminal')
+          "
+          :title="
+            expanded
+              ? translate('generated.terminalDock.collapseTerminal2')
+              : translate('generated.terminalDock.expandTerminal2')
+          "
+          @click="toggleExpanded"
+        >
+          <span>{{
+            expanded
+              ? translate('generated.terminalDock.collapseTerminal3')
+              : translate('generated.terminalDock.expandTerminal3')
+          }}</span>
+        </el-button>
+      </div>
+    </header>
+    <div v-if="hasOpened" v-show="expanded">
+      <div
+        class="terminal-tabs"
+        role="tablist"
+        :aria-label="translate('generated.terminalDock.list', { value0: contextLabel })"
+      >
+        <div
+          v-for="(item, index) in terminals"
+          :key="item.id"
+          class="terminal-tab"
+          :class="{ active: item.id === activeTerminalId }"
+        >
+          <button
+            class="terminal-tab-select"
+            type="button"
+            role="tab"
+            :aria-selected="item.id === activeTerminalId"
+            @click="selectTerminal(item.id)"
+          >
+            <span>Terminal {{ index + 1 }}</span>
+          </button>
+          <button
+            class="terminal-tab-close icon-button utility-control"
+            type="button"
+            :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
+            :disabled="closingId === item.id"
+            @click="closeTerminal(item.id)"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+        <button
+          class="terminal-tab terminal-tab-add"
+          type="button"
+          :aria-label="translate('generated.terminalDock.newTerminal2')"
+          :disabled="!canUseTerminal || creating"
+          :title="terminalActionTitle"
+          @click="openTerminal"
+        >
+          <el-icon><Plus /></el-icon>
+        </button>
+      </div>
+      <div class="terminal-context-cache">
+        <TerminalTabView
+          v-for="item in terminals"
+          :key="item.id"
+          :ref="
+            (instance) => {
+              if (instance === null) terminalViews.delete(item.id);
+              else terminalViews.set(item.id, instance as unknown as { focus(): void });
+            }
+          "
+          :terminal-id="item.id"
+          :node-id="nodeId ?? ''"
+          :direct="direct"
+          :workspace-id="workspaceId"
+          :csrf-token="csrfToken"
+          :renew-csrf-token="renewCsrfToken"
+          :windows-con-pty="capability?.supportsConPty === true"
+          :windows-build-number="windowsBuildNumber"
+          :active="item.id === activeTerminalId"
+          :visible="active && visible && expanded"
+          @exited="handleTerminalExited"
+          @notice="emit('notice', $event)"
+        />
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.admin-terminal {
+  background: var(--mar-bg-subtle);
+}
+
+.admin-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 32px;
+  padding: 0.2rem 0.55rem;
+}
+
+.admin-terminal-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.admin-terminal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.admin-terminal-actions button {
+  width: auto;
+  min-height: 28px;
+  border-radius: 6px;
+}
+
+.terminal-tabs {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  border-top: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-subtle);
+  padding: 3px;
+}
+
+.terminal-tab {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 100px;
+  border-radius: var(--el-border-radius-base);
+  background: transparent;
+  color: var(--mar-text-tertiary);
+  font-size: 0.75rem;
+}
+
+.terminal-tab-select {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  padding: 0.3rem 32px 0.3rem 0.55rem;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+}
+
+.terminal-tab.active {
+  background: var(--mar-color-brand-selected);
+  color: var(--mar-color-brand-text);
+}
+
+.terminal-tab:not(.active):hover:not(:disabled) {
+  background: var(--mar-bg-tab-inactive);
+  color: var(--mar-text-primary);
+}
+
+.terminal-tab-add {
+  min-width: 32px;
+  justify-content: center;
+  padding: 0.3rem 0.55rem;
+  border: 0;
+  cursor: pointer;
+}
+
+.terminal-tab-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.terminal-tab-close {
+  position: absolute;
+  right: 3px;
+  display: inline-grid;
+  align-self: center;
+  margin: 2px 0;
+  place-items: center;
+}
+
+.terminal-profile {
+  gap: 2px;
+  font-size: 0.62rem;
+}
+
+.terminal-profile select {
+  min-width: 112px;
+  padding: 0.31rem;
+}
+
+@media (max-width: 767px) {
+  .admin-terminal {
+    background: var(--mar-bg-page);
+  }
+
+  .admin-terminal-header {
+    min-height: 0;
+    flex: none;
+    margin-bottom: 0.45rem;
+    padding: 0.7rem 0.7rem 0;
+  }
+}
+
+@media (max-width: 460px) {
+  .admin-terminal-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 460px) {
+  .admin-terminal-actions {
+    justify-content: start;
+  }
+}
+</style>

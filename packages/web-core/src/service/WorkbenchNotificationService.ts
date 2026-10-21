@@ -1,0 +1,904 @@
+import { computed, ref, watch, type Ref, type WatchStopHandle } from 'vue';
+import type { WorkbenchLiveEvent } from '../service/WorkbenchLiveService.js';
+import type { WorkspaceUploadTask } from '../service/WorkspaceUploadService.js';
+import { errorCode } from '../util/api-error.js';
+import {
+  activeRecentRunStatus,
+  recentRunTimeReference
+} from '../util/notification-presentation.js';
+import { translate } from './LocalePreferenceService.js';
+import {
+  createWorkbenchSystemNotificationService,
+  isWorkbenchForeground
+} from './WorkbenchSystemNotificationService.js';
+
+export type WorkbenchNotificationKind =
+  'upload' | 'run' | 'approval' | 'plan' | 'user-input' | 'schedule' | 'agent' | 'web-update';
+
+export interface WorkbenchNotification {
+  readonly id: string;
+  readonly kind: WorkbenchNotificationKind;
+  readonly title: string;
+  readonly message: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly expiresAt: number;
+  readonly read: boolean;
+  readonly source?: 'server' | 'local';
+  readonly target?: WorkbenchNotificationTarget;
+  readonly action?: 'RELOAD_PAGE';
+}
+
+export type NotificationTarget =
+  | {
+      readonly targetType: 'WORKSPACE_SESSION';
+      readonly nodeId: string;
+      readonly workspaceId: string;
+      readonly sessionId: string;
+      readonly sessionName?: string;
+    }
+  | {
+      readonly targetType: 'HOSTED_CONVERSATION';
+      readonly nodeId: string;
+      readonly conversationId: string;
+      readonly conversationName: string;
+    };
+
+export interface LocalWorkspaceNotificationTarget {
+  readonly targetType?: undefined;
+  readonly nodeId: string;
+  readonly workspaceId?: string;
+  readonly sessionId?: string;
+  readonly sessionName?: string;
+}
+
+export type WorkbenchNotificationTarget = NotificationTarget | LocalWorkspaceNotificationTarget;
+
+type ActiveNotificationTarget =
+  | Pick<
+      Extract<NotificationTarget, { targetType: 'WORKSPACE_SESSION' }>,
+      'targetType' | 'nodeId' | 'workspaceId' | 'sessionId'
+    >
+  | Pick<
+      Extract<NotificationTarget, { targetType: 'HOSTED_CONVERSATION' }>,
+      'targetType' | 'nodeId' | 'conversationId'
+    >;
+
+export interface RecentRun {
+  readonly nodeId: string;
+  readonly runId: string;
+  readonly workspaceId: string;
+  readonly workspaceName?: string;
+  readonly sessionId: string;
+  readonly sessionTitle: string;
+  readonly userMessage?: string;
+  readonly runner: string;
+  readonly status:
+    'STARTING' | 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
+  readonly createdAt: number;
+  readonly startedAt: number;
+  readonly completedAt: number | null;
+  readonly sortAt: number;
+  readonly updatedAt: number;
+  readonly version: number;
+}
+
+export interface WorkbenchNotificationInput extends Omit<
+  WorkbenchNotification,
+  'createdAt' | 'updatedAt' | 'expiresAt' | 'read'
+> {
+  readonly createdAt?: number;
+  readonly expiresAt?: number;
+  /** Current-session events remain listed but do not count as unread or open the panel. */
+  readonly read?: boolean;
+}
+
+export interface WorkbenchNotificationService {
+  readonly notifications: Ref<WorkbenchNotification[]>;
+  readonly unreadCount: Readonly<Ref<number>>;
+  readonly notificationRevision: Readonly<Ref<number>>;
+  readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
+  readonly recentRuns: Readonly<Ref<RecentRun[]>>;
+  hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
+  hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
+  hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
+  hasUnreadConversation(nodeId: string, conversationId: string): boolean;
+  notify(input: WorkbenchNotificationInput): void;
+  recordUpload(task: WorkspaceUploadTask): void;
+  project(event: WorkbenchLiveEvent): boolean;
+  projectServerMessage(message: unknown): boolean;
+  load(): Promise<void>;
+  recover(): Promise<void>;
+  openNotification(notification: WorkbenchNotification | string): Promise<void>;
+  openPendingSystemNotification(): Promise<boolean>;
+  markAllRead(): void;
+  markRead(id: string): void;
+  markSessionRead(nodeId: string, workspaceId: string, sessionId: string): void;
+  markConversationRead(nodeId: string, conversationId: string): void;
+  clearWebUpdate(): void;
+  remove(id: string): void;
+  start(): Promise<void>;
+  dispose(): void;
+}
+
+const TTL_MS = 24 * 60 * 60_000;
+const SWEEP_MS = 5 * 60_000;
+
+export function sweepExpiredNotificationIds(ids: Map<string, number>, now = Date.now()): void {
+  for (const [id, expiresAt] of ids) {
+    if (expiresAt <= now) ids.delete(id);
+  }
+}
+
+function hasUnexpiredNotificationId(
+  ids: Map<string, number>,
+  id: string,
+  now = Date.now()
+): boolean {
+  const expiresAt = ids.get(id);
+  if (expiresAt === undefined) return false;
+  if (expiresAt <= now) {
+    ids.delete(id);
+    return false;
+  }
+  return true;
+}
+
+export function createWorkbenchNotificationService(
+  username: Ref<string | undefined>,
+  options: {
+    readonly request?: <T>(path: string, init?: RequestInit) => Promise<T>;
+    readonly activeTarget?: () => ActiveNotificationTarget | undefined;
+    readonly onWorkspaceRunCompleted?: (nodeId: string, workspaceId: string) => void;
+    readonly onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>;
+  } = {}
+): WorkbenchNotificationService {
+  const notifications = ref<WorkbenchNotification[]>([]);
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
+  let loadGeneration = 0;
+  let refreshRequested = false;
+  let refreshPromise: Promise<void> | undefined;
+  let recoveryPromise: Promise<void> | undefined;
+  let pendingRecovery:
+    | {
+        readonly target: ActiveNotificationTarget | undefined;
+        readonly account: string | undefined;
+      }
+    | undefined;
+  const pendingCreatedNotificationIds = new Map<string, number>();
+  const handledCreatedNotificationIds = new Map<string, number>();
+  const notificationRevision = ref(0);
+  const recentRuns = ref<RecentRun[]>([]);
+  const unreadCount = computed(
+    () =>
+      notifications.value.filter(
+        (notification) => !notification.read && notification.expiresAt > Date.now()
+      ).length
+  );
+  const applicationBadge = createApplicationBadgeSynchronization(unreadCount);
+  let openingNotificationCount = 0;
+  let notificationClickGeneration = 0;
+  const systemNotifications = createWorkbenchSystemNotificationService(
+    username,
+    openNotification,
+    options.request
+  );
+
+  function storageKey(): string | undefined {
+    return username.value === undefined
+      ? undefined
+      : `mar.workbench.notifications.v1.${username.value}`;
+  }
+
+  function persist(): void {
+    const key = storageKey();
+    if (key === undefined) return;
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify(
+          notifications.value.filter(
+            (notification) =>
+              notification.source !== 'server' &&
+              (notification.kind === 'upload' || notification.kind === 'web-update')
+          )
+        )
+      );
+    } catch {
+      // Unavailable local storage does not affect notifications on the current page.
+    }
+  }
+
+  function removeExpired(now = Date.now()): void {
+    sweepExpiredNotificationIds(pendingCreatedNotificationIds, now);
+    sweepExpiredNotificationIds(handledCreatedNotificationIds, now);
+    const next = notifications.value.filter((notification) => notification.expiresAt > now);
+    if (next.length !== notifications.value.length) {
+      notifications.value = next;
+      persist();
+    }
+  }
+
+  function restore(): void {
+    const key = storageKey();
+    notifications.value = [];
+    if (key === undefined) return;
+    try {
+      const value = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
+      if (!Array.isArray(value)) return;
+      notifications.value = parseStoredWorkbenchNotifications(value)
+        .filter(
+          (notification) => notification.kind === 'upload' || notification.kind === 'web-update'
+        )
+        .map((notification) => ({
+          ...notification,
+          source: 'local' as const,
+          read: notification.kind === 'upload' ? true : notification.read
+        }));
+      persist();
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+
+  function notify(input: WorkbenchNotificationInput): void {
+    const now = Date.now();
+    removeExpired(now);
+    if (input.expiresAt !== undefined && input.expiresAt <= now) return;
+    const existing = notifications.value.find((notification) => notification.id === input.id);
+    const notification: WorkbenchNotification = {
+      ...input,
+      createdAt: existing?.createdAt ?? input.createdAt ?? now,
+      updatedAt: now,
+      expiresAt: input.expiresAt ?? existing?.expiresAt ?? now + TTL_MS,
+      read: input.kind === 'upload' ? true : (existing?.read ?? input.read ?? false)
+    };
+    notifications.value = [
+      notification,
+      ...notifications.value.filter(
+        (item) =>
+          item.id !== input.id && (input.kind !== 'web-update' || item.kind !== 'web-update')
+      )
+    ];
+    persist();
+    if (existing === undefined && (input.kind === 'upload' || !notification.read))
+      notificationRevision.value += 1;
+  }
+
+  function recordUpload(task: WorkspaceUploadTask): void {
+    if (task.status === 'CANCELLED') {
+      remove(`upload:${task.id}`);
+      return;
+    }
+    const terminal = task.status === 'COMPLETED' || task.status === 'FAILED';
+    notify({
+      id: `upload:${task.id}`,
+      kind: 'upload',
+      source: 'local',
+      title:
+        task.status === 'FAILED'
+          ? translate('generated.workbenchNotificationService.fileUploadFailed')
+          : task.status === 'COMPLETED'
+            ? translate('generated.workbenchNotificationService.fileUploadCompleted')
+            : translate('generated.workbenchNotificationService.uploadingFile'),
+      message: `${task.name}${task.error === undefined ? '' : ` · ${task.error}`}`,
+      target: { nodeId: task.nodeId, workspaceId: task.workspaceId },
+      ...(terminal ? {} : { expiresAt: Date.now() + TTL_MS })
+    });
+  }
+
+  function project(event: WorkbenchLiveEvent): boolean {
+    void event;
+    return false;
+  }
+
+  function applyServerSnapshot(result: {
+    notifications: WorkbenchNotification[];
+    recentRuns?: unknown[];
+  }): void {
+    const local = notifications.value.filter((notification) => notification.source !== 'server');
+    notifications.value = [
+      ...result.notifications
+        .filter(isNotification)
+        .map((notification) => ({ ...notification, source: 'server' as const })),
+      ...local
+    ].sort((left, right) => right.createdAt - left.createdAt);
+    recentRuns.value = (result.recentRuns ?? []).filter(isRecentRun).sort(compareRecentRuns);
+  }
+
+  function confirmPendingCreatedNotifications(): void {
+    if (pendingCreatedNotificationIds.size === 0) return;
+    const now = Date.now();
+    let confirmedUnread = 0;
+    for (const [id, expiresAt] of pendingCreatedNotificationIds) {
+      pendingCreatedNotificationIds.delete(id);
+      if (expiresAt <= now) {
+        handledCreatedNotificationIds.delete(id);
+        continue;
+      }
+      const notification = notifications.value.find(
+        (item) => item.source === 'server' && item.id === id
+      );
+      if (notification !== undefined && notification.expiresAt <= now) {
+        handledCreatedNotificationIds.delete(id);
+        continue;
+      }
+      if (notification !== undefined && !notification.read) {
+        confirmedUnread += 1;
+        void systemNotifications.show(notification, () =>
+          notifications.value.some(
+            (item) =>
+              item.source === 'server' &&
+              item.id === notification.id &&
+              !item.read &&
+              item.expiresAt > Date.now()
+          )
+        );
+      }
+      handledCreatedNotificationIds.set(id, expiresAt);
+    }
+    notificationRevision.value += confirmedUnread;
+  }
+
+  async function drainRefreshes(generation: number): Promise<void> {
+    while (generation === loadGeneration && refreshRequested) {
+      refreshRequested = false;
+      let result: {
+        notifications: WorkbenchNotification[];
+        recentRuns?: unknown[];
+      };
+      try {
+        result = await options.request!<{
+          notifications: WorkbenchNotification[];
+          recentRuns?: unknown[];
+        }>('/api/notifications');
+      } catch (error) {
+        if (generation !== loadGeneration) return;
+        if (refreshRequested) continue;
+        throw error;
+      }
+      if (generation !== loadGeneration) return;
+      applyServerSnapshot(result);
+      applicationBadge.reconcile();
+      if (!refreshRequested) confirmPendingCreatedNotifications();
+    }
+  }
+
+  async function load(): Promise<void> {
+    if (options.request === undefined) return;
+    refreshRequested = true;
+    if (refreshPromise === undefined) {
+      const generation = loadGeneration;
+      const operation = drainRefreshes(generation);
+      const tracked = operation.finally(() => {
+        if (refreshPromise !== tracked) return;
+        refreshPromise = undefined;
+        if (generation === loadGeneration && refreshRequested) refreshQuietly();
+      });
+      refreshPromise = tracked;
+    }
+    return refreshPromise;
+  }
+
+  function refreshQuietly(): void {
+    void load().catch(() => undefined);
+  }
+
+  function handleFocus(): void {
+    if (username.value !== undefined && isWorkbenchForeground())
+      void recover().catch(() => undefined);
+  }
+
+  async function openNotification(input: WorkbenchNotification | string): Promise<void> {
+    const account = username.value;
+    const generation = loadGeneration;
+    const clickGeneration = ++notificationClickGeneration;
+    const id = typeof input === 'string' ? input : input.id;
+    openingNotificationCount += 1;
+    try {
+      if (typeof input === 'string' || input.source === 'server') await load();
+      if (
+        generation !== loadGeneration ||
+        clickGeneration !== notificationClickGeneration ||
+        account !== username.value
+      )
+        return;
+      const notification = notifications.value.find(
+        (item) =>
+          item.id === id &&
+          item.expiresAt > Date.now() &&
+          (typeof input !== 'string' || item.source === 'server')
+      );
+      if (notification === undefined) return;
+      markRead(notification.id);
+      await options.onNotificationClick?.(notification);
+    } finally {
+      if (generation === loadGeneration) openingNotificationCount -= 1;
+    }
+  }
+
+  function recover(): Promise<void> {
+    if (openingNotificationCount > 0 || systemNotifications.hasPending()) return load();
+    const target = isWorkbenchForeground() ? options.activeTarget?.() : undefined;
+    pendingRecovery = {
+      target: target === undefined ? undefined : { ...target },
+      account: username.value
+    };
+    if (recoveryPromise !== undefined) return recoveryPromise;
+    const generation = loadGeneration;
+    const operation = (async () => {
+      while (generation === loadGeneration && pendingRecovery !== undefined) {
+        const { target: active, account } = pendingRecovery;
+        pendingRecovery = undefined;
+        const canRead = () =>
+          generation === loadGeneration &&
+          openingNotificationCount === 0 &&
+          account === username.value &&
+          active !== undefined &&
+          isActiveTarget(active) &&
+          isWorkbenchForeground();
+        try {
+          await load();
+        } catch (error) {
+          if (generation !== loadGeneration) return;
+          if (pendingRecovery !== undefined) continue;
+          throw error;
+        }
+        if (active === undefined || !canRead()) continue;
+        const unread =
+          active.targetType === 'WORKSPACE_SESSION'
+            ? hasUnreadSession(active.nodeId, active.workspaceId, active.sessionId)
+            : hasUnreadConversation(active.nodeId, active.conversationId);
+        if (unread) await readTarget(active, true, canRead);
+      }
+    })();
+    const tracked = operation.finally(() => {
+      if (recoveryPromise === tracked) recoveryPromise = undefined;
+    });
+    recoveryPromise = tracked;
+    return tracked;
+  }
+
+  function requestAndRefresh(
+    path: string,
+    init: RequestInit,
+    retryOnFailure = false,
+    isCurrent: () => boolean = () => true
+  ): Promise<void> {
+    if (options.request === undefined) return Promise.resolve();
+    const generation = loadGeneration;
+    return options
+      .request(path, init)
+      .catch(async (error: unknown) => {
+        if (
+          retryOnFailure &&
+          generation === loadGeneration &&
+          isCurrent() &&
+          errorCode(error) !== 'UNAUTHENTICATED' &&
+          !(error instanceof Error && error.name === 'AbortError')
+        )
+          await options.request!(path, init).catch(() => undefined);
+      })
+      .then(() => {
+        if (generation === loadGeneration) return load().catch(() => undefined);
+      });
+  }
+
+  function projectServerMessage(value: unknown): boolean {
+    if (isRecord(value) && typeof value.type === 'string' && value.type.startsWith('recent-run.')) {
+      refreshQuietly();
+      return true;
+    }
+    if (
+      !isRecord(value) ||
+      typeof value.type !== 'string' ||
+      !value.type.startsWith('notification.')
+    )
+      return false;
+    if (value.type === 'notification.created' && isNotification(value.notification)) {
+      const notification = value.notification;
+      const now = Date.now();
+      if (notification.expiresAt <= now) {
+        refreshQuietly();
+        return true;
+      }
+      if (
+        hasUnexpiredNotificationId(handledCreatedNotificationIds, notification.id, now) ||
+        hasUnexpiredNotificationId(pendingCreatedNotificationIds, notification.id, now)
+      ) {
+        refreshQuietly();
+        return true;
+      }
+      if (notification.kind === 'run' && notification.target?.targetType === 'WORKSPACE_SESSION')
+        options.onWorkspaceRunCompleted?.(
+          notification.target.nodeId,
+          notification.target.workspaceId
+        );
+      const active =
+        isWorkbenchForeground() &&
+        notification.target !== undefined &&
+        isActiveTarget(notification.target);
+      if (active && !notification.read) {
+        handledCreatedNotificationIds.set(notification.id, notification.expiresAt);
+        requestAndRefresh(
+          `/api/notifications/${encodeURIComponent(notification.id)}/read`,
+          {
+            method: 'POST',
+            body: '{}'
+          },
+          true,
+          () =>
+            openingNotificationCount === 0 &&
+            !systemNotifications.hasPending() &&
+            isWorkbenchForeground() &&
+            notification.expiresAt > Date.now() &&
+            notification.target !== undefined &&
+            isActiveTarget(notification.target)
+        );
+        return true;
+      }
+      if (notification.read) {
+        handledCreatedNotificationIds.set(notification.id, notification.expiresAt);
+        refreshQuietly();
+        return true;
+      }
+      pendingCreatedNotificationIds.set(notification.id, notification.expiresAt);
+      void load().catch(() => undefined);
+      return true;
+    }
+    refreshQuietly();
+    return true;
+  }
+
+  function isActiveTarget(target: WorkbenchNotificationTarget | ActiveNotificationTarget): boolean {
+    const active = options.activeTarget?.();
+    if (active === undefined || target.targetType === undefined) return false;
+    if (target.targetType === 'HOSTED_CONVERSATION')
+      return (
+        active.targetType === 'HOSTED_CONVERSATION' &&
+        active.nodeId === target.nodeId &&
+        active.conversationId === target.conversationId
+      );
+    return (
+      active.targetType === 'WORKSPACE_SESSION' &&
+      active.nodeId === target.nodeId &&
+      active.workspaceId === target.workspaceId &&
+      active.sessionId === target.sessionId
+    );
+  }
+
+  function markAllRead(): void {
+    const unread = notifications.value.filter((notification) => !notification.read);
+    const localUnread = unread.filter((notification) => notification.source !== 'server');
+    if (localUnread.length > 0) {
+      const localIds = new Set(localUnread.map((notification) => notification.id));
+      notifications.value = notifications.value.map((notification) =>
+        localIds.has(notification.id) ? { ...notification, read: true } : notification
+      );
+      persist();
+    }
+    if (options.request !== undefined)
+      requestAndRefresh('/api/notifications/read-all', { method: 'POST', body: '{}' });
+  }
+
+  function markRead(id: string): void {
+    const notification = notifications.value.find((item) => item.id === id);
+    if (notification === undefined || notification.read) return;
+    if (notification.source === 'server') {
+      requestAndRefresh(`/api/notifications/${encodeURIComponent(id)}/read`, {
+        method: 'POST',
+        body: '{}'
+      });
+      return;
+    }
+    notifications.value = notifications.value.map((item) =>
+      item.id === id ? { ...item, read: true } : item
+    );
+    persist();
+  }
+
+  function hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean {
+    return recentRuns.value.some(
+      (run) =>
+        run.nodeId === nodeId &&
+        run.workspaceId === workspaceId &&
+        activeRecentRunStatus(run.status)
+    );
+  }
+
+  function hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean {
+    const now = Date.now();
+    return notifications.value.some(
+      (notification) =>
+        !notification.read &&
+        notification.source === 'server' &&
+        notification.expiresAt > now &&
+        notification.target?.targetType === 'WORKSPACE_SESSION' &&
+        notification.target.nodeId === nodeId &&
+        notification.target.workspaceId === workspaceId
+    );
+  }
+
+  function hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean {
+    const now = Date.now();
+    return notifications.value.some(
+      (notification) =>
+        !notification.read &&
+        notification.source === 'server' &&
+        notification.expiresAt > now &&
+        notification.target?.targetType === 'WORKSPACE_SESSION' &&
+        notification.target?.nodeId === nodeId &&
+        notification.target.workspaceId === workspaceId &&
+        notification.target.sessionId === sessionId
+    );
+  }
+
+  function markSessionRead(nodeId: string, workspaceId: string, sessionId: string): void {
+    void readTarget({ targetType: 'WORKSPACE_SESSION', nodeId, workspaceId, sessionId });
+  }
+
+  function hasUnreadConversation(nodeId: string, conversationId: string): boolean {
+    const now = Date.now();
+    return notifications.value.some(
+      (notification) =>
+        !notification.read &&
+        notification.source === 'server' &&
+        notification.expiresAt > now &&
+        notification.target?.targetType === 'HOSTED_CONVERSATION' &&
+        notification.target.nodeId === nodeId &&
+        notification.target.conversationId === conversationId
+    );
+  }
+
+  function markConversationRead(nodeId: string, conversationId: string): void {
+    void readTarget({ targetType: 'HOSTED_CONVERSATION', nodeId, conversationId });
+  }
+
+  function readTarget(
+    target: ActiveNotificationTarget,
+    retryOnFailure = false,
+    isCurrent?: () => boolean
+  ): Promise<void> {
+    if (
+      openingNotificationCount > 0 ||
+      systemNotifications.hasPending() ||
+      !isWorkbenchForeground()
+    )
+      return Promise.resolve();
+    const { nodeId } = target;
+    const workspace = target.targetType === 'WORKSPACE_SESSION';
+    const body = workspace
+      ? { nodeId, workspaceId: target.workspaceId, sessionId: target.sessionId }
+      : { nodeId, conversationId: target.conversationId };
+    return requestAndRefresh(
+      `/api/notifications/${workspace ? 'session' : 'conversation'}/read`,
+      { method: 'POST', body: JSON.stringify(body) },
+      retryOnFailure,
+      isCurrent
+    );
+  }
+
+  function remove(id: string): void {
+    const notification = notifications.value.find((item) => item.id === id);
+    if (notification?.source === 'server') {
+      requestAndRefresh(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return;
+    }
+    notifications.value = notifications.value.filter((item) => item.id !== id);
+    persist();
+  }
+
+  function clearWebUpdate(): void {
+    const next = notifications.value.filter((notification) => notification.kind !== 'web-update');
+    if (next.length === notifications.value.length) return;
+    notifications.value = next;
+    persist();
+  }
+
+  async function start(): Promise<void> {
+    const generation = loadGeneration;
+    systemNotifications.start();
+    applicationBadge.start();
+    if (typeof window !== 'undefined') window.addEventListener('focus', handleFocus);
+    restore();
+    await load().catch(() => undefined);
+    if (generation === loadGeneration && sweepTimer === undefined)
+      sweepTimer = setInterval(removeExpired, SWEEP_MS);
+  }
+
+  function dispose(): void {
+    if (typeof window !== 'undefined') window.removeEventListener('focus', handleFocus);
+    systemNotifications.dispose();
+    openingNotificationCount = 0;
+    applicationBadge.dispose();
+    loadGeneration += 1;
+    refreshRequested = false;
+    refreshPromise = undefined;
+    recoveryPromise = undefined;
+    pendingRecovery = undefined;
+    pendingCreatedNotificationIds.clear();
+    handledCreatedNotificationIds.clear();
+    notifications.value = notifications.value.filter(
+      (notification) => notification.source !== 'server'
+    );
+    recentRuns.value = [];
+    if (sweepTimer !== undefined) clearInterval(sweepTimer);
+    sweepTimer = undefined;
+  }
+
+  return {
+    notifications,
+    recentRuns,
+    unreadCount,
+    notificationRevision,
+    systemNotifications,
+    hasActiveWorkspaceRun,
+    hasUnreadWorkspace,
+    hasUnreadSession,
+    hasUnreadConversation,
+    notify,
+    recordUpload,
+    project,
+    projectServerMessage,
+    load,
+    recover,
+    openNotification,
+    openPendingSystemNotification: systemNotifications.openPending,
+    markAllRead,
+    markRead,
+    markSessionRead,
+    markConversationRead,
+    clearWebUpdate,
+    remove,
+    start,
+    dispose
+  };
+}
+
+function createApplicationBadgeSynchronization(unreadCount: Readonly<Ref<number>>) {
+  let stop: WatchStopHandle | undefined;
+  let pendingCount: number | undefined;
+  let applying = false;
+
+  async function applyPending(): Promise<void> {
+    applying = true;
+    while (pendingCount !== undefined) {
+      const count = pendingCount;
+      pendingCount = undefined;
+      if (typeof navigator === 'undefined') continue;
+      const badgeNavigator = navigator as Navigator & {
+        readonly setAppBadge?: (contents?: number) => Promise<void>;
+        readonly clearAppBadge?: () => Promise<void>;
+      };
+      try {
+        if (count > 0) await badgeNavigator.setAppBadge?.(count);
+        else if (badgeNavigator.clearAppBadge !== undefined) await badgeNavigator.clearAppBadge();
+        else await badgeNavigator.setAppBadge?.(0);
+      } catch {
+        // A later count change, Server refresh, or focus will retry the latest badge.
+      }
+    }
+    applying = false;
+  }
+
+  function sync(count: number): void {
+    pendingCount = count;
+    if (!applying) void applyPending();
+  }
+
+  function reconcile(): void {
+    if (stop !== undefined) sync(unreadCount.value);
+  }
+
+  function start(): void {
+    if (stop !== undefined) return;
+    stop = watch(unreadCount, sync, { immediate: true });
+    if (typeof window !== 'undefined') window.addEventListener('focus', reconcile);
+  }
+
+  function dispose(): void {
+    if (typeof window !== 'undefined') window.removeEventListener('focus', reconcile);
+    stop?.();
+    stop = undefined;
+    sync(0);
+  }
+
+  return { start, reconcile, dispose };
+}
+
+function compareRecentRuns(left: RecentRun, right: RecentRun): number {
+  return (
+    Number(activeRecentRunStatus(right.status)) - Number(activeRecentRunStatus(left.status)) ||
+    recentRunTimeReference(right) - recentRunTimeReference(left) ||
+    right.createdAt - left.createdAt ||
+    right.runId.localeCompare(left.runId)
+  );
+}
+
+function isRecentRun(value: unknown): value is RecentRun {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.nodeId === 'string' &&
+    typeof value.runId === 'string' &&
+    typeof value.workspaceId === 'string' &&
+    (value.workspaceName === undefined || typeof value.workspaceName === 'string') &&
+    typeof value.sessionId === 'string' &&
+    typeof value.sessionTitle === 'string' &&
+    (value.userMessage === undefined || typeof value.userMessage === 'string') &&
+    typeof value.runner === 'string' &&
+    [
+      'STARTING',
+      'RUNNING',
+      'CANCELLING',
+      'SUCCEEDED',
+      'FAILED',
+      'CANCELLED',
+      'INTERRUPTED'
+    ].includes(String(value.status)) &&
+    typeof value.createdAt === 'number' &&
+    typeof value.startedAt === 'number' &&
+    (value.completedAt === null || typeof value.completedAt === 'number') &&
+    typeof value.sortAt === 'number' &&
+    typeof value.updatedAt === 'number' &&
+    typeof value.version === 'number'
+  );
+}
+
+export function parseStoredWorkbenchNotifications(
+  value: unknown,
+  now = Date.now()
+): WorkbenchNotification[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isNotification).filter((item) => item.expiresAt > now);
+}
+
+function isNotification(value: unknown): value is WorkbenchNotification {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Partial<WorkbenchNotification>;
+  return (
+    typeof item.id === 'string' &&
+    (item.kind === 'upload' ||
+      item.kind === 'run' ||
+      item.kind === 'approval' ||
+      item.kind === 'plan' ||
+      item.kind === 'user-input' ||
+      item.kind === 'agent' ||
+      item.kind === 'web-update') &&
+    typeof item.title === 'string' &&
+    typeof item.message === 'string' &&
+    typeof item.createdAt === 'number' &&
+    typeof item.updatedAt === 'number' &&
+    typeof item.expiresAt === 'number' &&
+    typeof item.read === 'boolean' &&
+    (item.action === undefined || item.action === 'RELOAD_PAGE') &&
+    (item.target === undefined || isNotificationTarget(item.target))
+  );
+}
+
+function isNotificationTarget(value: unknown): value is WorkbenchNotificationTarget {
+  if (!isRecord(value) || typeof value.nodeId !== 'string') return false;
+  if (value.targetType === 'HOSTED_CONVERSATION')
+    return (
+      typeof value.conversationId === 'string' &&
+      typeof value.conversationName === 'string' &&
+      value.workspaceId === undefined &&
+      value.sessionId === undefined
+    );
+  if (value.targetType === 'WORKSPACE_SESSION')
+    return (
+      typeof value.workspaceId === 'string' &&
+      typeof value.sessionId === 'string' &&
+      (value.sessionName === undefined || typeof value.sessionName === 'string') &&
+      value.conversationId === undefined
+    );
+  return (
+    value.targetType === undefined &&
+    (value.workspaceId === undefined || typeof value.workspaceId === 'string') &&
+    (value.sessionId === undefined || typeof value.sessionId === 'string') &&
+    (value.sessionName === undefined || typeof value.sessionName === 'string')
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

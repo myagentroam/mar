@@ -1,0 +1,28 @@
+{
+  "name": "@myagentroam/web-console",
+  "version": "0.10.69",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm build:app && pnpm build:docs",
+    "build:app": "node ../scripts/clean-build-output.mjs dist && vite build",
+    "build:docs": "pnpm docs:assets && pnpm docs:validate && vitepress build docs",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "dev": "node scripts/dev.mjs",
+    "dev:app": "vite",
+    "docs:assets": "node scripts/prepare-docs-assets.mjs",
+    "docs:validate": "node ../scripts/validate-help-docs.mjs",
+    "docs:dev": "pnpm docs:assets && vitepress dev docs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@myagentroam-enterprise/web-implementation": "workspace:*",
+    "vue": "^3.5.41"
+  },
+  "devDependencies": {
+    "@myagentroam/web-core": "workspace:*",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vue-tsc": "^3.3.9"
+  },
+  "license": "LicenseRef-MAR-ESAL-1.0"
+}

@@ -1,0 +1,168 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  CONVERSATION_INITIAL_SEGMENT_LIMIT,
+  CONVERSATION_INITIAL_RENDER_CHARACTERS,
+  CONVERSATION_INITIAL_RENDER_ITEMS,
+  CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT,
+  CONVERSATION_RECENT_SEGMENT_LIMIT,
+  CONVERSATION_SEGMENT_PAGE_SIZE,
+  initialConversationRenderItemCount,
+  latestConversationItems,
+  limitConversationHistory
+} from '../../src/util/conversation-history.js';
+import { createConversationStateService } from '../../src/service/ConversationStateService.js';
+
+function turn(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    sessionId: 'session-1',
+    runId: null,
+    status: 'RUNNING',
+    items: [],
+    ...overrides
+  };
+}
+
+describe('Conversation History Window and Render State', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('Releases the waiter when the render window is replaced or canceled; an old confirmation cannot complete the new window', async () => {
+    const state = createConversationStateService();
+    const first = state.beginInitialRender();
+    const firstVersion = state.initialRenderVersion.value;
+    let settled = false;
+    const next = state.beginInitialRender().then(() => {
+      settled = true;
+    });
+    await first;
+    state.confirmInitialRender(firstVersion);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    state.cancelInitialRender();
+    await next;
+    expect(settled).toBe(true);
+    expect(state.nextDetailRequest()).toBe(1);
+    expect(state.nextDetailRequest()).toBe(2);
+    expect(state.currentDetailRequest()).toBe(2);
+  });
+
+  it('Resolves the render wait within its bound when the timeline is not mounted, without leaving a loading state hanging', async () => {
+    vi.useFakeTimers();
+    const state = createConversationStateService();
+    const settled = vi.fn();
+    const completed = state.beginInitialRender().then(settled);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await completed;
+    expect(settled).toHaveBeenCalledOnce();
+    state.cancelInitialRender();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('Retains the contiguous newest history window within the byte limit without mutating the original records', () => {
+    const original = Array.from({ length: 20 }, (_, index) => ({
+      ...turn(`turn-${index}`),
+      items: [
+        {
+          id: `item-${index}`,
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: { text: 'x'.repeat(2_000) }
+        }
+      ]
+    }));
+    const limited = limitConversationHistory(original, 6_000);
+    expect(new TextEncoder().encode(JSON.stringify(limited)).byteLength).toBeLessThanOrEqual(6_000);
+    expect(limited.length).toBeGreaterThan(0);
+    expect(limited.length).toBeLessThan(original.length);
+    expect(limited).toEqual(original.slice(-limited.length));
+    expect(limited.at(-1)?.id).toBe('turn-19');
+    expect(original).toHaveLength(20);
+    expect(original[0]?.items[0]?.payload.text).toHaveLength(2_000);
+  });
+
+  it('Waits for the timeline to confirm the current render generation before completing the initial render', async () => {
+    const state = createConversationStateService();
+    let settled = false;
+    const completed = state.beginInitialRender().then(() => {
+      settled = true;
+    });
+
+    expect(state.initialRenderVersion.value).toBe(1);
+    state.confirmInitialRender(2);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    state.confirmInitialRender(1);
+    await completed;
+    expect(settled).toBe(true);
+  });
+
+  it('Keeps the newest content on the initial screen within item-count and content-size limits; later extensions preserve order', () => {
+    const oversized = Array.from({ length: CONVERSATION_INITIAL_RENDER_ITEMS + 5 }, (_, index) => ({
+      id: `item-${index + 1}`,
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      payload: { text: index === 0 ? 'x'.repeat(CONVERSATION_INITIAL_RENDER_CHARACTERS) : 'ok' }
+    }));
+    const turns = [
+      turn('turn-1', { items: oversized.slice(0, 20) }),
+      turn('turn-2', { items: oversized.slice(20) })
+    ];
+
+    const initialCount = initialConversationRenderItemCount(turns as never);
+    const initial = latestConversationItems(turns as never, initialCount);
+    const expanded = latestConversationItems(turns as never, initialCount + 8);
+
+    expect(initialCount).toBe(CONVERSATION_INITIAL_RENDER_ITEMS);
+    expect(initial.flatMap((item) => item.items).map((item) => item.id)).toEqual(
+      oversized.slice(-CONVERSATION_INITIAL_RENDER_ITEMS).map((item) => item.id)
+    );
+    expect(expanded.flatMap((item) => item.items).map((item) => item.id)).toEqual(
+      oversized.slice(-(CONVERSATION_INITIAL_RENDER_ITEMS + 5)).map((item) => item.id)
+    );
+  });
+
+  it('Displays a single oversized latest Item on the initial screen', () => {
+    const turns = [
+      turn('turn-1', {
+        items: [
+          {
+            id: 'large-item',
+            kind: 'assistant_message',
+            status: 'COMPLETED',
+            payload: { text: 'x'.repeat(CONVERSATION_INITIAL_RENDER_CHARACTERS + 1) }
+          }
+        ]
+      })
+    ];
+
+    expect(initialConversationRenderItemCount(turns as never)).toBe(1);
+    expect(latestConversationItems(turns as never, 1)[0]?.items[0]?.id).toBe('large-item');
+  });
+
+  it('Defers earlier Items after the initial content reaches the character limit', () => {
+    const turns = [
+      turn('turn-1', {
+        items: ['oldest', 'middle', 'latest'].map((id) => ({
+          id,
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: { text: 'x'.repeat(Math.ceil(CONVERSATION_INITIAL_RENDER_CHARACTERS / 2)) }
+        }))
+      })
+    ];
+
+    const initialCount = initialConversationRenderItemCount(turns as never);
+
+    expect(initialCount).toBe(1);
+    expect(latestConversationItems(turns as never, initialCount)[0]?.items[0]?.id).toBe('latest');
+  });
+
+  it('Uses 10 Turns for the initial screen and page size, and 15 Turns for the retained window', () => {
+    expect(CONVERSATION_INITIAL_SEGMENT_LIMIT).toBe(10);
+    expect(CONVERSATION_SEGMENT_PAGE_SIZE).toBe(10);
+    expect(CONVERSATION_RECENT_SEGMENT_LIMIT).toBe(15);
+    expect(CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT).toBe(30);
+  });
+});

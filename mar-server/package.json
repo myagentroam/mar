@@ -1,0 +1,28 @@
+{
+  "name": "@myagentroam/server",
+  "version": "0.10.69",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist",
+    "web"
+  ],
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "build": "node ../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json && node scripts/copy-web-distribution.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch --conditions=development src/main.ts",
+    "start": "node dist/main.js",
+    "reset-password": "tsx --conditions=development src/reset-password.ts",
+    "license": "tsx --conditions=development src/license.ts"
+  },
+  "dependencies": {
+    "@myagentroam-enterprise/server-implementation": "workspace:*"
+  },
+  "devDependencies": {
+    "@myagentroam/web-console": "workspace:*"
+  },
+  "license": "LicenseRef-MAR-ESAL-1.0"
+}

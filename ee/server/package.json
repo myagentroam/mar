@@ -1,0 +1,50 @@
+{
+  "name": "@myagentroam-enterprise/server-implementation",
+  "version": "0.10.69",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.0",
+    "@myagentroam/protocol": "workspace:*",
+    "fastify": "^5.1.0",
+    "mysql2": "^3.23.4",
+    "undici": "7.29.0",
+    "ws": "^8.21.3",
+    "zod": "^3.24.1",
+    "@myagentroam/server-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/app.ts",
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    },
+    "./reset-password": {
+      "development": "./src/reset-password.ts",
+      "import": "./dist/reset-password.js"
+    },
+    "./license": {
+      "development": "./src/license/license-cli.ts",
+      "import": "./dist/license/license-cli.js"
+    },
+    "./license-host": {
+      "development": "./src/license/license-service.ts",
+      "types": "./dist/license/license-service.d.ts",
+      "import": "./dist/license/license-service.js"
+    }
+  },
+  "license": "LicenseRef-MAR-ESAL-1.0"
+}

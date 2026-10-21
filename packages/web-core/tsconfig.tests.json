@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "declaration": false, "allowImportingTsExtensions": true },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.mts", "vite.config.mts"]
+}

@@ -1,0 +1,63 @@
+---
+title: Deploy MyAgentRoam Server and Web
+lastUpdated: 2026-10-21
+---
+
+# Deploy MyAgentRoam Server and Web
+
+The public product repository's single root `compose.yaml` runs MySQL, SearXNG, and Server with its bundled Web application. Your reverse proxy provides the production HTTPS entry point.
+
+## One deployment entry point
+
+There is one source, build, and deployment baseline, using `mar-server/`, `mar-web-console/`, and the root `compose.yaml`. Without activation it is Community, with Workspace sessions, files, Git, terminals, model and credential management, Skill/MCP configuration, personal templates, and hosted conversations. A valid Enterprise license enables organizations, users, sharing, SSO, and auditing in the same installation without replacing images.
+
+In both license states, `/` is the public home page, `/console` is the workbench, and `/docs/` is the documentation center. Verify sign-in and a Workspace operation rather than treating `/health` alone as proof that the full workbench is usable.
+
+## Procedure
+
+1. In an administrator-only source deployment directory, copy the root template and protect it:
+
+   ```bash
+   cp .env.example .env
+   chmod 600 .env
+   ```
+
+   Edit every blank value before continuing. Set `MAR_PUBLIC_ORIGIN` to your external HTTPS origin, generate separate strong MySQL root/application passwords and a long random `MAR_SEARXNG_SECRET`, and set `MAR_SERVER_SSH_DIR` to an existing absolute directory. Use a URL-safe application password because Compose embeds `MAR_MYSQL_PASSWORD` in a database URL. The template intentionally has no working secrets; Compose rejects missing required values.
+
+   `MAR_SERVER_SSH_DIR` must be the deployment account's absolute `.ssh` path. Compose mounts it read-only. Create a correctly protected empty directory even if SSH skill sources are not yet used.
+
+2. Restrict the directory and verify non-interactive repository access:
+
+   ```bash
+   chmod 700 /home/mar/.ssh
+   chmod 600 /home/mar/.ssh/config /home/mar/.ssh/id_* 2>/dev/null || true
+   GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
+     git ls-remote git@codeup.aliyun.com:group/project.git HEAD
+   ```
+
+   In `.ssh/config`, use `~/.ssh/key-name` for `IdentityFile`. The host deployment UID should match the image `node` user UID (`1000` by default).
+
+3. Start and inspect the services:
+
+   ```bash
+   docker compose up -d --build
+   docker compose ps
+   curl -fsS http://127.0.0.1:5190/health
+   ```
+
+4. Proxy HTTPS traffic to the unified Server host port `5190`. Allow Upgrade/WebSocket requests and do not cache `/api/` or upgraded connections.
+5. Open `MAR_PUBLIC_ORIGIN` in a browser.
+
+**Success:** all three Compose services—MySQL, SearXNG, and Server—are healthy, and `/console` opens for sign-in through the HTTPS site.
+
+For failures, inspect `docker compose logs mysql`, verify the external origin, certificate chain, `/api/` proxying, and outbound HTTPS/WSS from Nodes. Never expose an inbound Node port.
+
+Keep `.env` out of Git, chats, and the Web root because it contains database credentials.
+
+Next: [First Sign-in](first-login.md). See also [Network, TLS, and WebSocket](../deployment/network.md).
+
+All deployments require a valid real host UUID. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. Community and Enterprise share this requirement.
+
+## Connect an independent Node
+
+The Server hosts Web and API only; it does not include a Node executor. Before using Workspaces, Agents, files, terminals or hosted conversations, [install and register a separate Node](../deployment/node-installation.md). Configure hosting and browser execution dependencies on the Node host, not in the Server image.

@@ -1,0 +1,216 @@
+MyAgentRoam Enterprise Source-Available License 1.0
+Short name: MAR-ESAL-1.0
+Local license identifier: LicenseRef-MAR-ESAL-1.0
+Copyright 2026 aCHAOS
+Licensor and contact: aCHAOS (achaosxyz@gmail.com)
+
+1. Parties and acceptance
+
+"Licensor" means aCHAOS, who grants this license only for rights that aCHAOS owns
+or is authorized to license. Other copyright holders retain their rights and
+attribution; this license does not assert ownership of their work. Notices and
+rights inquiries may be sent to achaosxyz@gmail.com.
+
+"You" means the individual or organization exercising the rights below. If You
+act for an organization, You must have authority to do so. Exercising rights
+granted by this license constitutes acceptance of its conditions. Rights that
+applicable law does not allow to be waived or restricted remain unaffected.
+
+2. Covered software and independent components
+
+"Covered Software" means the original MyAgentRoam implementation, tests and
+documentation in ee/, the product composition in mar-server/ and
+mar-web-console/, and copies, protected portions and derivative works of those
+materials, in source or compiled form. Independently licensed materials in those
+directories remain under their own licenses. A combined product artifact that
+contains Covered Software remains subject to this license for its covered parts,
+whether it displays Community or Enterprise status.
+
+Independent Apache-2.0 components, including Agent, Node, Protocol, Server Core,
+Web Core, Code Navigation, marctl and independently licensed runtime components,
+remain under their applicable licenses. This license does not restrict use,
+modification, distribution or commercial operation of independent components
+without Covered Software. Third-party licenses and notices remain intact.
+Combining those components with Covered Software does not replace their licenses.
+
+3. Internal use and development grant
+
+Subject to this license, Licensor grants You a worldwide, non-exclusive,
+royalty-free, non-sublicensable copyright license to obtain Covered Software from
+official sources, inspect, internally copy, compile and modify it, and:
+
+(a) use Community features for Your own personal or organizational purposes;
+(b) use Enterprise Features as permitted by Section 4;
+(c) conduct isolated, non-production evaluation, development, testing and security
+    research, including testing Enterprise Features without an Enterprise License;
+(d) submit contributions to the official project as permitted by Section 8.
+
+"Internal Use" means use by You and personnel acting solely on Your behalf for
+Your own activities. Your organization may use the software for its internal
+commercial work. Deploying on cloud infrastructure that You control, internal
+backup and deployment copies, and necessary transmission of frontend resources
+to Your authorized internal users are permitted. Such users receive no separate
+redistribution or service-provider rights. You remain responsible for their use.
+
+Being a company, developing paid work, or selling Your own independent output is
+not itself an additional licensing condition. Internal hosted conversations
+(HostedConversation) are product functionality, not permission to operate a
+hosted service for third parties. Section 5 applies to all external distribution
+and operation, including free services.
+
+4. Enterprise features and activation
+
+"Enterprise Features" means organization and multi-user administration,
+enterprise roles and organizational permissions, shared-resource authorization,
+SSO, enterprise operation auditing and their associated governance capabilities
+identified as Enterprise in the corresponding product release. These obligations
+cannot be expanded retroactively for that release. Workspace operation, Agent
+execution, files, Git, terminals, personal configuration, templates and internal
+hosted conversations are not Enterprise Features merely because EE code is
+present. Executing the license verifier in Community state is not Enterprise use.
+
+Except for the isolated activities in Section 3(c) and permitted frozen-state
+continuation below, Enterprise Features require a valid Enterprise License
+issued by Licensor. "Enterprise License" means the signed activation document
+for the authorized enterprise, host, feature scope and validity period. It is the
+only enterprise authorization; this license creates no separate commercial,
+reseller, hosting, OEM or white-label authorization or additional seat/node limit.
+
+An Enterprise License does not grant redistribution, resale, third-party hosting
+or other rights prohibited by Section 5. Public source availability, compiling or
+modifying the software, or removing activation checks does not replace the
+required Enterprise License. You may not forge or use unauthorized activation
+documents, or bypass activation for unlicensed production Enterprise use. Lawful
+non-production testing, security research and non-waivable legal rights remain
+permitted within Section 3(c).
+
+Expiration does not itself terminate the free Community grant or delete Your
+data. For an installation lawfully activated before expiration, continued
+internal use of existing configured login, registered Node/Workspace access,
+Agent, files, Git, terminals, hosted conversations and audit operation is
+permitted in the product's frozen state. Enterprise management writes remain
+unlicensed until a valid Enterprise License is obtained. This limited continuation
+does not renew the Enterprise License, allow new management permissions or permit
+circumventing the management freeze. No new remote shutdown obligation is created.
+
+5. Prohibited redistribution and external operation
+
+Except for internal copies and transmissions under Section 3 and deliberate
+contributions to the official project under Section 8, You may not publish,
+redistribute, transfer, sublicense, sell, resell, rent or otherwise supply Covered
+Software, its protected portions or modifications to third parties. This includes
+source mirrors, independent forks, binaries, installation packages, container
+images, embedding, OEM, white-label and bundled software or hardware delivery.
+
+You may not operate Covered Software for third parties, provide third-party
+accounts or access to its platform capabilities, or offer hosting, SaaS, PaaS,
+API access, dedicated or managed cloud services, outsourced operation, or paid
+services whose substance is delivery or operation of the Covered Software.
+Free access, advertising, lead generation, indirect payment, rebranding,
+interface changes or additional wrappers do not create an exception. Mere
+delivery of Your own independent work product is not such operation.
+
+These restrictions apply before and after Enterprise activation. There is no
+additional paid authorization or approval exception for these activities under
+this license. Licensor's own publication and distribution of materials that
+Licensor is entitled to license are not third-party redistribution by You.
+Receiving EE frontend resources in a browser does not relicense them as MIT or
+Apache-2.0. A restriction here does not override Section 2 or mandatory legal
+exceptions in Section 12.
+
+6. Notices, modifications and trademarks
+
+Retain this license and applicable copyright, patent, attribution and third-party
+notices in permitted copies or substantial portions of Covered Software. Mark
+Your modified files as modified and identify the modifier. Do not represent a
+modified version as an official release, misrepresent authorship, or imply
+Licensor's endorsement. This license grants no trademark rights except ordinary
+identification of origin and preservation of required notices. It imposes no
+technical anti-tampering, telemetry or user-code inspection obligation.
+
+7. Data and output
+
+You retain Your rights to Your data, prompts, code and independent output.
+Processing them with MyAgentRoam does not make them Covered Software or transfer
+their ownership to Licensor. Output containing actual protected Covered Software
+or third-party materials remains subject to the applicable rights and licenses.
+Nothing here grants rights in someone else's data or authorizes unlawful use.
+
+8. Contributions and patents
+
+You retain copyright in Your independently authored modifications. No ownership
+is assigned automatically by modifying or using the software. A "Contribution"
+is material You intentionally submit to an official repository or issue tracker,
+or directly to Licensor, for inclusion in Covered Software, excluding material
+expressly marked "Not a Contribution" or governed by an agreed separate contract.
+
+For such Contributions, You grant Licensor a perpetual, worldwide, non-exclusive,
+royalty-free copyright license to reproduce, modify, incorporate, publicly
+display, distribute and sublicense the Contribution as part of official
+MyAgentRoam products under this license. You must have the authority to make that
+grant and disclose relevant third-party terms. This grant does not transfer
+copyright, grant rights You do not hold, or impose new terms retroactively on
+previous contributions. Contribution permission does not authorize independent
+EE distribution. Contributions to independent Apache components follow Apache-2.0
+instead, unless a separately agreed contribution contract applies.
+
+Licensor grants a non-exclusive, worldwide, royalty-free patent license, limited
+to patent claims Licensor controls that are necessarily infringed by exercising
+the rights expressly granted for Covered Software. It does not extend to
+infringement introduced solely by Your modifications or independent combinations.
+Contributors grant Licensor and recipients the corresponding necessary patent
+rights for their accepted Contributions within the same permitted scope.
+
+9. Breach and termination
+
+If You violate this license, Your rights under it terminate and You must stop the
+violating activity immediately. If a non-deliberate, remediable breach is Your
+first breach, rights are reinstated when You fully remedy it within 30 days after
+receiving notice from Licensor. This cure period permits no continued unlicensed
+Enterprise use, distribution or third-party operation. Deliberate activation
+forgery or circumvention and repeated breaches have no automatic reinstatement.
+Reinstatement does not grant any rights prohibited by Section 5.
+
+After termination, cease uses no longer permitted by this license. You may retain
+copies strictly required by applicable law and make copies necessary to export
+Your own data, but may not use them for further operation or distribution.
+Independent component licenses are not terminated by this provision. License
+expiration alone is governed by Section 4, not this breach provision.
+
+10. Warranty disclaimer
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, COVERED SOFTWARE IS PROVIDED "AS IS"
+AND "AS AVAILABLE", WITHOUT EXPRESS OR IMPLIED WARRANTIES, INCLUDING WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT,
+CONTINUED AVAILABILITY OR ERROR-FREE OPERATION. You are responsible for lawful
+use, data protection, backups and deployment security. An Enterprise activation
+does not itself promise support, updates, service levels or indemnification.
+Express obligations in a separate written service agreement remain applicable.
+
+11. Liability
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR AND CONTRIBUTORS ARE NOT
+LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE DAMAGES,
+LOST PROFITS, LOST REVENUE, BUSINESS INTERRUPTION OR LOSS OF DATA ARISING FROM
+COVERED SOFTWARE OR ITS USE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH LOSS.
+Liability that cannot lawfully be excluded, including mandatory statutory
+liability, remains unaffected. A separate written paid-service agreement governs
+its expressly agreed warranties, remedies and liability limits; it does not by
+itself confer redistribution or external-operation rights under this license.
+
+12. Applicable law, language and remaining rights
+
+Applicable law is determined by the ordinary choice-of-law rules of the court
+with jurisdiction. Disputes may be brought before a court having jurisdiction
+under applicable law; this license imposes no exclusive forum or mandatory
+arbitration and does not waive mandatory consumer or other statutory protections.
+Parties may agree separately to a lawful dispute-resolution arrangement, which
+does not create permissions prohibited by Section 5.
+
+The English text of this license controls; translations and summaries are for
+convenience unless mandatory law requires otherwise. If a provision is
+unenforceable, the remaining independently enforceable provisions continue to
+apply. Future license revisions do not revoke rights validly granted for copies
+already obtained under this version. All rights not expressly granted are
+reserved. This is a source-available license, not an OSI-approved open-source
+license; the local identifier does not claim official SPDX registration.

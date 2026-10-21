@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible product issue. Do not disclose vulnerabilities here.
+body:
+  - type: markdown
+    attributes:
+      value: 'For suspected vulnerabilities, use SECURITY.md and report privately. Remove credentials, host identifiers, and private project data from all attachments.'
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include Server and Node versions if they differ.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, deployment method, Agent runner, and Community or Enterprise activation state. No host UUID or License document.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal example using disposable data.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Stable error codes, relevant logs, or screenshots. Never attach raw session histories or credentials.

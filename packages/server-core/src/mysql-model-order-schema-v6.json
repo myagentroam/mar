@@ -1,0 +1,3 @@
+{
+  "user_mar_agent_model_orders": "CREATE TABLE `user_mar_agent_model_orders` (\n  `user_id` bigint unsigned NOT NULL,\n  `model_id` varchar(128) NOT NULL,\n  `sort_order` int unsigned NOT NULL,\n  `updated_at` bigint NOT NULL,\n  PRIMARY KEY (`user_id`,`model_id`),\n  KEY `user_mar_agent_model_orders_directory` (`user_id`,`sort_order`),\n  KEY `user_mar_agent_model_orders_model_fk` (`model_id`),\n  CONSTRAINT `user_mar_agent_model_orders_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,\n  CONSTRAINT `user_mar_agent_model_orders_model_fk` FOREIGN KEY (`model_id`) REFERENCES `mar_agent_models` (`id`) ON DELETE CASCADE\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+}

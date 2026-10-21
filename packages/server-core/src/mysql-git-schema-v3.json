@@ -1,0 +1,3 @@
+{
+  "user_git_configurations": "CREATE TABLE `user_git_configurations` (\n  `user_id` bigint unsigned NOT NULL,\n  `configuration` json NOT NULL,\n  `updated_at` bigint NOT NULL,\n  PRIMARY KEY (`user_id`),\n  CONSTRAINT `user_git_configurations_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+}

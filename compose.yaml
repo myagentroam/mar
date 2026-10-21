@@ -1,0 +1,89 @@
+services:
+  searxng:
+    image: searxng/searxng:latest@sha256:5286edb35782454ab8a102c5eff6b54bff745853191b46aeead95f225aa6dfb6
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_SECRET: ${MAR_SEARXNG_SECRET:?MAR_SEARXNG_SECRET is required}
+    volumes:
+      - ./docker/searxng-settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - '127.0.0.1:5192:8080'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  mysql:
+    image: mysql:8.4@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    restart: unless-stopped
+    command:
+      [
+        'mysqld',
+        '--port=13006',
+        '--character-set-server=utf8mb4',
+        '--collation-server=utf8mb4_0900_ai_ci'
+      ]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MAR_MYSQL_ROOT_PASSWORD:?MAR_MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MAR_MYSQL_DATABASE:-myagentroam}
+      MYSQL_USER: ${MAR_MYSQL_USER:-myagentroam}
+      MYSQL_PASSWORD: ${MAR_MYSQL_PASSWORD:?MAR_MYSQL_PASSWORD is required}
+    ports:
+      - '13006:13006'
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mysqladmin ping -h 127.0.0.1 -P 13006 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent'
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  server:
+    build:
+      context: .
+      target: server
+    environment:
+      MAR_DATABASE_URL: mysql://${MAR_MYSQL_USER:-myagentroam}:${MAR_MYSQL_PASSWORD}@mysql:13006/${MAR_MYSQL_DATABASE:-myagentroam}
+      MAR_PUBLIC_ORIGIN: ${MAR_PUBLIC_ORIGIN:?MAR_PUBLIC_ORIGIN is required}
+      MAR_DATA_DIR: /var/lib/myagentroam
+      MAR_SEARXNG_URL: http://searxng:8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    volumes:
+      - ./data:/var/lib/myagentroam
+      - type: bind
+        source: ${MAR_SERVER_SSH_DIR:?MAR_SERVER_SSH_DIR is required}
+        target: /home/node/.ssh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/class/dmi/id/product_uuid
+        target: /license-host/product_uuid
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - '127.0.0.1:5190:5190'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:5190/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"'
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  mysql-data:

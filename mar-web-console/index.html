@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MyAgentRoam" />
+    <link rel="icon" href="/favicon.ico?v=logo-20261011" sizes="32x32" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/app-icon-192.png?v=logo-20261011" />
+    <title>My Agent Roam</title>
+    <script>
+      try {
+        const consolePage = location.pathname !== '/' && location.pathname !== '/index.html';
+        if (consolePage && localStorage.getItem('mar.theme') !== 'daylight') {
+          document.documentElement.setAttribute('data-theme', 'vscode-dark-2026');
+          document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]').content = '#0e1116';
+        }
+      } catch {}
+    </script>
+    <style>
+      .mar-bootstrap {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #f3f6f9;
+        opacity: 1;
+        z-index: 9999;
+        transition: opacity 180ms ease-out;
+      }
+
+      .mar-bootstrap--leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .mar-bootstrap__stage {
+        position: relative;
+        display: grid;
+        width: 64px;
+        height: 64px;
+        place-items: center;
+      }
+
+      .mar-bootstrap__trace {
+        position: absolute;
+        inset: 0;
+        width: 64px;
+        height: 64px;
+        color: #0a6fd8;
+        filter: drop-shadow(0 0 4px rgb(10 111 216 / 20%));
+      }
+
+      .mar-bootstrap__orbit {
+        transform-origin: 32px 32px;
+        animation: mar-bootstrap-orbit 3.6s linear infinite;
+        opacity: 0.52;
+        stroke-dasharray: 26 74;
+        stroke-linecap: round;
+      }
+
+      .mar-bootstrap__orbit--middle {
+        animation-direction: reverse;
+        animation-duration: 1.35s;
+        opacity: 0.92;
+        stroke-dasharray: 34 66;
+      }
+
+      .mar-bootstrap__orbit--inner {
+        animation-duration: 1.05s;
+        opacity: 0.62;
+        stroke-dasharray: 18 32;
+      }
+
+      @keyframes mar-bootstrap-orbit {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      html[data-theme='vscode-dark-2026'] .mar-bootstrap {
+        background: #0e1116;
+      }
+
+      html[data-theme='vscode-dark-2026'] .mar-bootstrap__trace {
+        color: #3093ff;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .mar-bootstrap,
+        .mar-bootstrap__orbit {
+          animation: none;
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mar-bootstrap" class="mar-bootstrap" aria-hidden="true">
+      <div class="mar-bootstrap__stage">
+        <svg
+          class="mar-bootstrap__trace"
+          viewBox="0 0 64 64"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            class="mar-bootstrap__orbit"
+            cx="32"
+            cy="32"
+            r="25"
+            stroke="currentColor"
+            stroke-width="1.5"
+            pathLength="100"
+          />
+          <circle
+            class="mar-bootstrap__orbit mar-bootstrap__orbit--middle"
+            cx="32"
+            cy="32"
+            r="17"
+            stroke="currentColor"
+            stroke-width="2"
+            pathLength="100"
+          />
+          <circle
+            class="mar-bootstrap__orbit mar-bootstrap__orbit--inner"
+            cx="32"
+            cy="32"
+            r="9"
+            stroke="currentColor"
+            stroke-width="1.5"
+            pathLength="100"
+          />
+        </svg>
+      </div>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

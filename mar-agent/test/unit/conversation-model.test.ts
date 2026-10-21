@@ -1,0 +1,243 @@
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  LocalAgentHost,
+  SecretValue,
+  type CoreAgentsApi,
+  type CoreRuntimeExtension,
+  type MarAgent,
+  type MarAgentEvent,
+  type MarAgentModelConfiguration
+} from '../../src/index.js';
+import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
+import { resolveAgentModels } from '../../src/agent-core/sdk/model-runtime.js';
+import type {
+  ModelAdapter,
+  ModelEvent,
+  ModelRequest
+} from '../../src/agent-core/model/contracts.js';
+import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+
+const roots: string[] = [];
+const agents: MarAgent[] = [];
+
+afterEach(async () => {
+  await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe('conversation model eligibility', () => {
+  it('retains enabled auxiliary models while selecting only a conversation model by default', () => {
+    const auxiliary = model('helper', false);
+    const conversation = model('chat');
+
+    const resolved = resolveAgentModels([auxiliary, conversation]);
+
+    expect([...resolved.models.keys()]).toEqual(['helper', 'chat']);
+    expect(resolved.defaultModelId).toBe('chat');
+    expect(() => resolveAgentModels([auxiliary, conversation], 'helper')).toThrow(
+      expect.objectContaining({ code: 'MAR_AGENT_MODEL_CONFIG_INVALID' })
+    );
+  });
+
+  it('preserves the admitted execution and rejects the former model after reconfiguration', async () => {
+    let reportStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => (reportStarted = resolve));
+    const blocked = new Promise<void>((resolve) => (release = resolve));
+    const requests: string[] = [];
+    const f = await fixture([model('chat'), model('replacement')], (configuration) => ({
+      configuration,
+      async *start(): AsyncIterable<ModelEvent> {
+        requests.push(configuration.id);
+        reportStarted();
+        await blocked;
+        yield { type: 'text.completed', itemId: 'final', text: 'Finished safely.' };
+        yield { type: 'completed', reason: 'completed' };
+      }
+    }));
+    const handle = f.session.run({ prompt: 'Finish the admitted execution.', modelId: 'chat' });
+    await started;
+    const next = { models: [model('chat', false), model('replacement')] };
+    try {
+      await expect(f.agent.reconfigureModels(next)).rejects.toMatchObject({
+        code: 'MAR_AGENT_EXECUTION_ACTIVE'
+      });
+    } finally {
+      release();
+    }
+    expect(await handle.result()).toMatchObject({ status: 'completed' });
+    await f.agent.reconfigureModels(next);
+    expect(() => f.session.run({ prompt: 'Do not switch silently.', modelId: 'chat' })).toThrow(
+      expect.objectContaining({ code: 'MAR_AGENT_MODEL_DISABLED' })
+    );
+    expect(requests).toEqual(['chat']);
+  });
+
+  it.each(['run', 'plan'] as const)(
+    'rejects an auxiliary model for a main %s without starting a model request',
+    async (mode) => {
+      const adapters = new Map<string, FakeAdapter>();
+      const f = await fixture([model('chat'), model('helper', false)], (configuration) => {
+        const adapter = new FakeAdapter(configuration);
+        adapters.set(configuration.id, adapter);
+        return adapter;
+      });
+
+      expect(() =>
+        f.session[mode]({ prompt: 'Do not run on an auxiliary model.', modelId: 'helper' })
+      ).toThrow(expect.objectContaining({ code: 'MAR_AGENT_MODEL_DISABLED' }));
+      expect(adapters.size).toBe(0);
+    }
+  );
+
+  it('hides auxiliary choices and reports an unavailable explicit agent_start without running the model', async () => {
+    const configs = [model('chat'), model('helper', false)];
+    const adapters = new Map<string, FakeAdapter>();
+    const f = await fixture(configs, (configuration) => {
+      const adapter = new FakeAdapter(configuration, (_request, call) =>
+        call === 1
+          ? [
+              {
+                type: 'client_tool.call',
+                callId: 'start-helper',
+                name: 'agent_start',
+                arguments: {
+                  description: 'Use the helper model',
+                  prompt: 'Run this bounded task.',
+                  role: 'general-purpose',
+                  modelId: 'helper'
+                }
+              },
+              { type: 'completed', reason: 'tool_use' }
+            ]
+          : [
+              { type: 'text.completed', itemId: 'final', text: 'Rejected safely.' },
+              { type: 'completed', reason: 'completed' }
+            ]
+      );
+      adapters.set(configuration.id, adapter);
+      return adapter;
+    });
+
+    const handle = f.session.run({ prompt: 'Try the helper.' });
+    const events: MarAgentEvent[] = [];
+    for await (const event of handle) events.push(event);
+    expect(await handle.result()).toMatchObject({ status: 'completed' });
+
+    const startDefinition = adapters
+      .get('chat')
+      ?.requests[0]?.tools.find((tool) => tool.name === 'agent_start');
+    expect(startDefinition?.description).toContain('"chat"');
+    expect(startDefinition?.description).not.toContain('"helper"');
+    expect(
+      events.find((event) => event.type === 'tool.completed' && event.toolName === 'agent_start')
+    ).toMatchObject({
+      type: 'tool.completed',
+      data: { status: 'failed', errorCode: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE' }
+    });
+    expect(adapters.has('helper')).toBe(false);
+
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      // Failed model-tool tasks retain their diagnostic child Session without executing it.
+      expect(await store.listSubagentChildren(f.session.id)).toHaveLength(1);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it('rejects an auxiliary model requested by a native Extension Agent without creating a child Session', async () => {
+    let api!: CoreAgentsApi;
+    const extension: CoreRuntimeExtension = {
+      id: 'conversation-model-native-agent',
+      apiVersion: '1.0',
+      attachSession: (context) => {
+        if (context.agents) api = context.agents;
+      }
+    };
+    const f = await fixture([model('chat'), model('helper', false)], undefined, [extension]);
+    expect(
+      await f.session.run({ prompt: 'Initialize the native Agent API.' }).result()
+    ).toMatchObject({
+      status: 'completed'
+    });
+
+    await expect(api.spawn({ prompt: 'Try the helper.', modelId: 'helper' })).rejects.toMatchObject(
+      {
+        code: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
+      }
+    );
+    expect(await api.list()).toHaveLength(0);
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      expect(await store.listSubagentChildren(f.session.id)).toHaveLength(0);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+class FakeAdapter implements ModelAdapter {
+  readonly requests: ModelRequest[] = [];
+
+  constructor(
+    readonly configuration: MarAgentModelConfiguration,
+    private readonly respond: (
+      request: ModelRequest,
+      call: number
+    ) => readonly ModelEvent[] = () => [
+      { type: 'text.completed', itemId: 'answer', text: 'done' },
+      { type: 'completed', reason: 'completed' }
+    ]
+  ) {}
+
+  async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
+    this.requests.push(request);
+    yield* this.respond(request, this.requests.length);
+  }
+}
+
+async function fixture(
+  models: readonly MarAgentModelConfiguration[],
+  adapterFactory?: (configuration: MarAgentModelConfiguration) => ModelAdapter,
+  runtimeExtensions?: readonly CoreRuntimeExtension[]
+) {
+  const root = await mkdtemp(join(tmpdir(), 'mar-agent-conversation-model-'));
+  roots.push(root);
+  const home = join(root, 'home');
+  const workspace = join(root, 'workspace');
+  await Promise.all([mkdir(home), mkdir(workspace)]);
+  const agent = await createMarAgentWithAdapter({
+    mode: 'normal',
+    host: new LocalAgentHost({ homeDirectory: home, workspace }),
+    models,
+    ...(runtimeExtensions === undefined ? {} : { runtimeExtensions }),
+    adapterFactory: adapterFactory ?? ((configuration) => new FakeAdapter(configuration))
+  });
+  agents.push(agent);
+  const session = await agent.createSession({ workspace, title: 'Conversation model tests' });
+  return { agent, session, home, workspace };
+}
+
+function model(id: string, conversationModel?: boolean): MarAgentModelConfiguration {
+  return {
+    id,
+    name: id,
+    protocol: 'ANTHROPIC_MESSAGES',
+    baseUrl: 'https://example.test',
+    apiKey: new SecretValue(`fake-${id}`),
+    modelId: id,
+    contextWindowTokens: 20_000,
+    maxOutputTokens: 2_000,
+    inputCapabilities: ['TEXT'],
+    outputCapabilities: ['TEXT'],
+    reasoningEfforts: [],
+    titleGeneration: false,
+    hostedWebSearch: false,
+    enabled: true,
+    ...(conversationModel === undefined ? {} : { conversationModel })
+  };
+}

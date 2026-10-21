@@ -1,0 +1,1426 @@
+import type { ExecutionResult, MarAgentEvent } from '@myagentroam/agent';
+import { parseToolResultExtensions } from '@myagentroam/agent';
+import type { ModelUsageObservation } from '@myagentroam/agent';
+
+/** SDK usage is already normalized; never parse provider payloads in Node. */
+export function normalizeMarAgentUsage(usage: ModelUsageObservation) {
+  const { executionId: _executionId, ...record } = usage;
+  return { ...record, schemaVersion: 1 as const, coverage: 'request' as const };
+}
+import {
+  boundedConversationItemId,
+  compactRunnerText,
+  compactRunnerValue
+} from '../../util/node-operation-parsers.js';
+import { runnerErrorProjection } from '../../util/runner-error.js';
+import { toolPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
+
+export interface MarAgentNormalizedItem {
+  readonly itemId: string;
+  readonly kind:
+    | 'user_message'
+    | 'assistant_message'
+    | 'command_execution'
+    | 'file_change'
+    | 'tool_call'
+    | 'plan'
+    | 'todo_list'
+    | 'context_compaction'
+    | 'reasoning_summary'
+    | 'error';
+  readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
+  readonly payload: Record<string, unknown>;
+  readonly permissionStop?: NonNullable<ExecutionResult['permissionStop']>;
+  readonly generatedImages?: readonly MarAgentGeneratedImageArtifact[];
+  readonly merge?: boolean;
+}
+
+export interface MarAgentGeneratedImageArtifact {
+  readonly name: string;
+  readonly mime: 'image/png';
+  readonly byteSize: number;
+  readonly fileName: string;
+}
+
+type ToolState = {
+  readonly presentationData?: unknown;
+  readonly sleepStartedAt?: string;
+  readonly toolName: string;
+  readonly input: unknown;
+  readonly itemId: string;
+  readonly structured: boolean;
+  readonly commandOrigin?: string;
+  readonly subagentTitle?: string;
+  readonly subagentDetails?: SubagentDetails;
+};
+
+type SubagentDetails = {
+  readonly modelId?: string;
+  readonly modelName?: string;
+  readonly reasoningEffort?: string;
+  readonly latestMessage?: Record<string, unknown>;
+};
+
+type CommandState = {
+  readonly itemId: string;
+  readonly turnKey: string;
+  readonly command: string;
+  readonly cwd: string | null;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  outputPreview: string;
+  exitCode: number | null;
+  truncated: boolean;
+};
+
+type CodeModeToolResult = {
+  readonly resultExtensions?: unknown;
+  readonly id?: string;
+  readonly source: {
+    readonly callId: string;
+    readonly toolName: string;
+    readonly input: unknown;
+  };
+  readonly outcome: 'completed' | 'failed';
+  readonly result: {
+    readonly content: string;
+    readonly data?: unknown;
+    readonly truncated?: boolean;
+  };
+};
+
+type ApplyPatchObservationData = {
+  files: {
+    path: string;
+    targetPath?: string;
+    operation: 'added' | 'modified' | 'deleted' | 'moved';
+    addedLines: number;
+    deletedLines: number;
+  }[];
+  totals: { files: number; addedLines: number; deletedLines: number };
+};
+
+type SubagentObservationData = Record<string, unknown> & {
+  agentId: string;
+  description: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+};
+
+type EventMetadata = {
+  eventId: string;
+  sequence: number;
+  timestamp: string;
+  sessionId: string;
+  executionId: string;
+  turnId?: string;
+};
+
+export class MarAgentConversationNormalizer {
+  input(entry: Extract<import('@myagentroam/agent').MarAgentHistoryEntry, { kind: 'user' }>) {
+    return {
+      itemId: boundedConversationItemId(
+        'mar-agent-input',
+        entry.recordId ?? String(entry.sequence)
+      ),
+      kind: 'user_message' as const,
+      status: 'COMPLETED' as const,
+      merge: true,
+      payload: {
+        text: entry.text,
+        clientMessageId: entry.clientMessageId ?? null,
+        contexts: [],
+        delivery: 'ACCEPTED',
+        recordId: entry.recordId
+      }
+    };
+  }
+  readonly #tools = new Map<string, ToolState>();
+  readonly #commands = new Map<string, CommandState>();
+  readonly #processOrigins = new Map<string, string>();
+  readonly #subagentTitles = new Map<string, string>();
+  readonly #subagentDetails = new Map<string, SubagentDetails>();
+  readonly #codeModeObservationIds = new Set<string>();
+  readonly #codeModeSourceCallIds = new Set<string>();
+
+  messageItemId(nativeItemId: string): string {
+    return itemId('message', nativeItemId);
+  }
+
+  normalize(
+    event: MarAgentEvent,
+    options: { readonly publicItemIdPrefix?: string } = {}
+  ): readonly MarAgentNormalizedItem[] {
+    if (event.type === 'input.received') return [this.input(event.entry)];
+    if (event.type === 'execution.failed') {
+      const projected = runnerErrorProjection(
+        { code: event.code, message: event.message },
+        'MAR_AGENT_RUN_FAILED'
+      );
+      return [
+        {
+          itemId: itemId('error', event.executionId),
+          kind: 'error',
+          status: 'FAILED',
+          payload: {
+            ...projected,
+            recoverable: true,
+            retryAfterMs: null
+          },
+          merge: true
+        }
+      ];
+    }
+    if (event.type === 'message.completed') {
+      const modelName = record(event)?.modelName;
+      const itemId = this.messageItemId(event.itemId);
+      const payload = {
+        text: event.text,
+        format: 'markdown' as const,
+        model: typeof modelName === 'string' ? modelName : null
+      };
+      return [
+        {
+          itemId,
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload
+        }
+      ];
+    }
+    if (event.type === 'plan.completed')
+      return [
+        {
+          itemId: itemId('message', event.itemId),
+          kind: 'plan',
+          status: 'COMPLETED',
+          payload: { explanation: event.text, steps: [] }
+        }
+      ];
+    if (event.type === 'reasoning.summary')
+      return [
+        {
+          itemId: itemId('reasoning', event.eventId),
+          kind: 'reasoning_summary',
+          status: 'COMPLETED',
+          payload: { sections: [{ index: 0, text: compactRunnerText(event.text, 10_000) }] }
+        }
+      ];
+    if (
+      event.type === 'tool.started' ||
+      event.type === 'tool.completed' ||
+      event.type === 'tool.failed'
+    ) {
+      // Native web calls and generated artifacts stay visible independently of cell observations.
+      if (
+        event.parentCallId !== undefined &&
+        event.toolName !== 'web_search' &&
+        event.toolName !== 'web_fetch' &&
+        !isImageGenerationTool(event.toolName)
+      )
+        return [];
+      if (event.type === 'tool.started') return this.#toolStarted(event);
+      const permissionStop = permissionStopForToolEvent(event);
+      const outerItems =
+        event.type === 'tool.completed' ? this.#toolCompleted(event) : this.#toolFailed(event);
+      return [
+        ...withPermissionStop(outerItems, permissionStop),
+        ...this.#codeModeToolResults(event)
+      ];
+    }
+    if (event.type === 'sleep.started') {
+      const state = this.#tools.get(event.callId);
+      if (state?.toolName !== 'sleep') return [];
+      this.#tools.set(event.callId, { ...state, sleepStartedAt: event.startedAt });
+      return [
+        genericToolItem(
+          state.itemId,
+          'sleep',
+          'IN_PROGRESS',
+          state.input,
+          null,
+          null,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          event.startedAt
+        )
+      ];
+    }
+    if (event.type === 'todo.updated')
+      return [
+        {
+          itemId: itemId('todo-list', event.eventId),
+          kind: 'todo_list',
+          status: 'COMPLETED',
+          payload: {
+            items: event.items.map((entry) => ({
+              id: compactRunnerText(entry.id, 128) || 'unknown',
+              text: entry.step,
+              status: entry.status.toUpperCase()
+            }))
+          }
+        }
+      ];
+    if (
+      event.type === 'context.compacting' ||
+      event.type === 'context.compacted' ||
+      event.type === 'context.compact_failed'
+    ) {
+      const anchorItemId = this.#compactAnchorItemId(event, options.publicItemIdPrefix);
+      return [normalizeContextCompaction(event, anchorItemId)];
+    }
+    if (event.type === 'subagent.started' || event.type === 'subagent.completed')
+      return this.#subagentLifecycle(event);
+    return [];
+  }
+
+  #toolStarted(event: Extract<MarAgentEvent, { type: 'tool.started' }>) {
+    const ownItemId = itemId('tool', event.callId);
+    if (event.toolName === 'exec' || event.toolName === 'exec_wait') {
+      const input = record(event.input) ?? {};
+      const action =
+        input.action ??
+        (event.toolName === 'exec_wait'
+          ? 'poll'
+          : typeof input.command === 'string'
+            ? 'start'
+            : undefined);
+      if (action === 'start' && typeof input.command === 'string') {
+        const command: CommandState = {
+          itemId: ownItemId,
+          turnKey: event.turnId ?? event.executionId,
+          command: compactRunnerText(input.command, 10_000),
+          cwd: typeof input.cwd === 'string' ? compactRunnerText(input.cwd, 4_096) : null,
+          status: 'IN_PROGRESS',
+          outputPreview: '',
+          exitCode: null,
+          truncated: false
+        };
+        this.#commands.set(event.callId, command);
+        this.#tools.set(event.callId, {
+          toolName: event.toolName,
+          input: event.input,
+          itemId: ownItemId,
+          structured: true,
+          commandOrigin: event.callId
+        });
+        return [commandItem(command, 'IN_PROGRESS')];
+      }
+      if (
+        (action === 'poll' || action === 'write' || action === 'cancel') &&
+        typeof input.processId === 'string'
+      ) {
+        const origin = this.#processOrigins.get(input.processId);
+        if (origin !== undefined) {
+          const previous = this.#commands.get(origin);
+          const sameTurn = previous?.turnKey === (event.turnId ?? event.executionId);
+          if (previous !== undefined && !sameTurn) {
+            const command: CommandState = {
+              itemId: ownItemId,
+              turnKey: event.turnId ?? event.executionId,
+              command: previous.command,
+              cwd: previous.cwd,
+              status: 'IN_PROGRESS',
+              outputPreview: '',
+              exitCode: null,
+              truncated: false
+            };
+            this.#commands.set(event.callId, command);
+            this.#tools.set(event.callId, {
+              toolName: event.toolName,
+              input: event.input,
+              itemId: ownItemId,
+              structured: true,
+              commandOrigin: event.callId
+            });
+            return [];
+          }
+          this.#tools.set(event.callId, {
+            toolName: event.toolName,
+            input: event.input,
+            itemId: ownItemId,
+            structured: true,
+            commandOrigin: origin
+          });
+          return [];
+        }
+      }
+    }
+    const agentId = isMarAgentControlTool(event.toolName)
+      ? marAgentAgentId(event.input)
+      : undefined;
+    const subagentTitle = agentId === undefined ? undefined : this.#subagentTitles.get(agentId);
+    const subagentDetails = agentId === undefined ? undefined : this.#subagentDetails.get(agentId);
+    this.#tools.set(event.callId, {
+      toolName: event.toolName,
+      input: event.input,
+      itemId: ownItemId,
+      structured: 'input' in event,
+      ...(event.data === undefined ? {} : { presentationData: event.data }),
+      ...(subagentTitle === undefined ? {} : { subagentTitle }),
+      ...(subagentDetails === undefined ? {} : { subagentDetails })
+    });
+    if (event.toolName === 'apply_patch' && 'input' in event)
+      return [fileChangeItem(ownItemId, 'IN_PROGRESS', [])];
+    return [
+      genericToolItem(
+        ownItemId,
+        event.toolName,
+        'IN_PROGRESS',
+        event.input,
+        null,
+        null,
+        event.truncated === true,
+        event.data,
+        subagentTitle,
+        subagentDetails
+      )
+    ];
+  }
+
+  #compactAnchorItemId(
+    event: MarAgentCompactLifecycleEvent,
+    publicItemIdPrefix: string | undefined
+  ): string | undefined {
+    const anchor = event.anchor;
+    if (anchor === undefined || !validCompactAnchor(anchor.id)) return undefined;
+    const itemId =
+      anchor.kind === 'message'
+        ? this.messageItemId(anchor.id)
+        : this.#tools.get(anchor.id)?.itemId;
+    if (itemId === undefined) return undefined;
+    const publicItemId =
+      publicItemIdPrefix === undefined ? itemId : `${publicItemIdPrefix}:${itemId}`;
+    return publicItemId.length <= 128 ? publicItemId : undefined;
+  }
+
+  #toolCompleted(event: Extract<MarAgentEvent, { type: 'tool.completed' }>) {
+    const state = this.#tools.get(event.callId);
+    if (
+      (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
+      state?.commandOrigin !== undefined
+    ) {
+      const command = this.#commands.get(state.commandOrigin);
+      const result = execResult(event.data, event.summary, event.truncated === true);
+      if (command !== undefined && result !== undefined) {
+        if (result.processId !== undefined)
+          this.#processOrigins.set(result.processId, state.commandOrigin);
+        applyCommandResult(command, result);
+        const status =
+          result.status === 'running'
+            ? 'IN_PROGRESS'
+            : result.status === 'completed' && result.exitCode === 0
+              ? 'COMPLETED'
+              : 'FAILED';
+        command.status = status;
+        return [commandItem(command, status)];
+      }
+    }
+    if (
+      event.toolName === 'apply_patch' &&
+      (state?.structured === true ||
+        Array.isArray(record(event.data)?.files) ||
+        parseToolResultExtensions(event.resultExtensions) !== undefined)
+    )
+      return [
+        fileChangeItem(
+          state?.itemId ?? itemId('tool', event.callId),
+          'COMPLETED',
+          patchChanges(event.data, event.resultExtensions)
+        )
+      ];
+    const generatedImages = imageArtifacts(event);
+    const controlTool = isMarAgentControlTool(event.toolName);
+    const controlOutput = controlTool
+      ? matchingSubagentControlOutput(event.toolName, state?.input, event.data)
+      : undefined;
+    const agentId = controlTool
+      ? (marAgentAgentId(state?.input) ?? marAgentAgentId(controlOutput))
+      : undefined;
+    const cachedDetails =
+      agentId === undefined
+        ? undefined
+        : mergeSubagentDetails(this.#subagentDetails.get(agentId), state?.subagentDetails ?? {});
+    const details = controlTool
+      ? mergeSubagentDetails(cachedDetails, subagentDetails(controlOutput))
+      : {};
+    if (agentId !== undefined) {
+      const output = structuredRecord(controlOutput);
+      if (typeof output?.description === 'string') {
+        const title = compactRunnerText(output.description, 500);
+        if (title.length > 0) this.#subagentTitles.set(agentId, title);
+      }
+      if (Object.keys(details).length > 0)
+        this.#subagentDetails.set(agentId, withoutSubagentLatestMessage(details) ?? {});
+    }
+    const item = genericToolItem(
+      state?.itemId ?? itemId('tool', event.callId),
+      event.toolName,
+      'COMPLETED',
+      state?.input,
+      generatedImages.length === 0
+        ? event.summary
+        : generatedImages.map((image) => image.name).join(', '),
+      null,
+      event.truncated,
+      event.data,
+      agentId === undefined ? state?.subagentTitle : this.#subagentTitles.get(agentId),
+      details,
+      state?.sleepStartedAt
+    );
+    return [
+      {
+        ...item,
+        ...(generatedImages.length === 0 ? {} : { generatedImages })
+      }
+    ];
+  }
+
+  #toolFailed(event: Extract<MarAgentEvent, { type: 'tool.failed' }>) {
+    const state = this.#tools.get(event.callId);
+    if (
+      (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
+      state?.commandOrigin !== undefined
+    ) {
+      const command = this.#commands.get(state.commandOrigin);
+      const input = record(state.input);
+      if (
+        command !== undefined &&
+        command.status === 'IN_PROGRESS' &&
+        (state.itemId !== command.itemId ||
+          input?.action === 'start' ||
+          (input?.action == null && typeof input?.command === 'string'))
+      ) {
+        command.status = 'FAILED';
+        return [commandItem(command, 'FAILED')];
+      }
+    }
+    if (event.toolName === 'apply_patch' && state?.structured === true)
+      return [
+        fileChangeItem(
+          state?.itemId ?? itemId('tool', event.callId),
+          'FAILED',
+          patchChanges(event.data, event.resultExtensions)
+        )
+      ];
+    return [
+      genericToolItem(
+        state?.itemId ?? itemId('tool', event.callId),
+        event.toolName,
+        event.code === 'MAR_AGENT_CANCELLED' || event.code === 'MAR_AGENT_EXECUTION_CANCELLED'
+          ? 'CANCELLED'
+          : 'FAILED',
+        state?.input,
+        event.message ?? event.code,
+        event.code,
+        event.truncated === true,
+        state?.presentationData,
+        state?.subagentTitle,
+        state?.subagentDetails,
+        state?.sleepStartedAt
+      )
+    ];
+  }
+
+  #codeModeToolResults(event: MarAgentEvent): readonly MarAgentNormalizedItem[] {
+    const items: MarAgentNormalizedItem[] = [];
+    for (const observation of codeModeToolResults(event)) {
+      if (
+        (observation.id !== undefined && this.#codeModeObservationIds.has(observation.id)) ||
+        this.#codeModeSourceCallIds.has(observation.source.callId)
+      )
+        continue;
+
+      const { toolName, input } = observation.source;
+      let projected: readonly MarAgentNormalizedItem[] = [];
+      if (toolName === 'apply_patch') {
+        if (
+          (typeof input !== 'string' && record(input) === undefined) ||
+          !isApplyPatchObservationData(observation.result.data)
+        )
+          continue;
+        projected = this.#normalizeObservedToolResult(event, observation, observation.result.data);
+        if (observation.outcome === 'failed')
+          projected = projected.map((item) =>
+            item.kind === 'file_change' ? { ...item, status: 'FAILED' } : item
+          );
+      } else if (marAgentSubagentOperation(toolName) !== undefined) {
+        if (
+          !isSubagentToolInput(toolName, input) ||
+          !isSubagentObservationData(observation.result.data, input)
+        )
+          continue;
+        projected = this.#normalizeObservedToolResult(event, observation, observation.result.data);
+      }
+
+      if (projected.length === 0) continue;
+      if (observation.id !== undefined) this.#codeModeObservationIds.add(observation.id);
+      this.#codeModeSourceCallIds.add(observation.source.callId);
+      items.push(...projected);
+    }
+    return items;
+  }
+
+  #normalizeObservedToolResult(
+    event: MarAgentEvent,
+    observation: CodeModeToolResult,
+    data: ApplyPatchObservationData | SubagentObservationData
+  ): readonly MarAgentNormalizedItem[] {
+    const { callId, toolName, input } = observation.source;
+    const resultId = observation.id ?? 'call-' + callId;
+    this.normalize({
+      ...eventMetadata(event, resultId + ':started'),
+      type: 'tool.started',
+      toolName,
+      callId,
+      input
+    });
+    return this.normalize({
+      ...eventMetadata(event, resultId + ':completed'),
+      type: 'tool.completed',
+      toolName,
+      callId,
+      summary: observation.result.content,
+      ...(parseToolResultExtensions(observation.resultExtensions)
+        ? { resultExtensions: parseToolResultExtensions(observation.resultExtensions)! }
+        : {}),
+      ...(observation.result.truncated === undefined
+        ? {}
+        : { truncated: observation.result.truncated }),
+      data
+    });
+  }
+
+  #subagentLifecycle(
+    event: Extract<MarAgentEvent, { type: 'subagent.started' | 'subagent.completed' }>
+  ): readonly MarAgentNormalizedItem[] {
+    const eventDescription = record(event)?.description;
+    const eventTitle = compactRunnerText(
+      typeof eventDescription === 'string' ? eventDescription : '',
+      500
+    );
+    if (eventTitle.length > 0) this.#subagentTitles.set(event.agentId, eventTitle);
+    const details = mergeSubagentDetails(
+      this.#subagentDetails.get(event.agentId),
+      withoutSubagentLatestMessage(subagentDetails(event)) ?? {}
+    );
+    if (Object.keys(details).length > 0) this.#subagentDetails.set(event.agentId, details);
+    return [];
+  }
+}
+
+function permissionStopForToolEvent(
+  event: Extract<MarAgentEvent, { type: 'tool.completed' | 'tool.failed' }>
+): NonNullable<ExecutionResult['permissionStop']> | undefined {
+  const direct = record(event)?.permissionStop;
+  const cell = record(record(event)?.data)?.permissionStop;
+  return (direct ?? cell) as NonNullable<ExecutionResult['permissionStop']> | undefined;
+}
+
+function withPermissionStop(
+  items: readonly MarAgentNormalizedItem[],
+  permissionStop: MarAgentNormalizedItem['permissionStop']
+): readonly MarAgentNormalizedItem[] {
+  return permissionStop === undefined ? items : items.map((item) => ({ ...item, permissionStop }));
+}
+
+function codeModeToolResults(event: MarAgentEvent): CodeModeToolResult[] {
+  if (
+    (event.type !== 'tool.completed' && event.type !== 'tool.failed') ||
+    (event.toolName !== 'code_exec' && event.toolName !== 'code_exec_wait')
+  )
+    return [];
+  const data = record(record(event)?.data);
+  if (
+    data === undefined ||
+    typeof data.cellId !== 'string' ||
+    data.cellId.trim().length === 0 ||
+    (data.status !== 'running' &&
+      data.status !== 'completed' &&
+      data.status !== 'failed' &&
+      data.status !== 'cancelled') ||
+    ('cached' in data && typeof data.cached !== 'boolean')
+  )
+    return [];
+  if (Object.hasOwn(data, 'calls')) return codeModeCallResults(data.calls);
+  if (!Array.isArray(data.observations)) return [];
+  return codeModeObservationResults(data.observations);
+}
+
+function codeModeCallResults(value: unknown): CodeModeToolResult[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const call = record(entry);
+    const result = record(call?.result);
+    if (
+      call === undefined ||
+      typeof call.callId !== 'string' ||
+      call.callId.trim().length === 0 ||
+      typeof call.toolName !== 'string' ||
+      !isPersonalizedToolName(call.toolName) ||
+      !('input' in call) ||
+      (call.status !== 'completed' && call.status !== 'failed') ||
+      result === undefined ||
+      typeof result.content !== 'string' ||
+      ('truncated' in result && typeof result.truncated !== 'boolean')
+    )
+      return [];
+    return [
+      {
+        source: { callId: call.callId, toolName: call.toolName, input: call.input },
+        outcome: call.status,
+        resultExtensions: call.resultExtensions,
+        result: {
+          content: result.content,
+          ...('data' in result ? { data: result.data } : {}),
+          ...(typeof result.truncated === 'boolean' ? { truncated: result.truncated } : {})
+        }
+      }
+    ];
+  });
+}
+
+function codeModeObservationResults(value: unknown): CodeModeToolResult[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((value) => {
+    const observation = record(value);
+    const source = record(observation?.source);
+    const result = record(observation?.result);
+    if (
+      observation?.type !== 'tool_result' ||
+      typeof observation.id !== 'string' ||
+      observation.id.trim().length === 0 ||
+      source === undefined ||
+      typeof source.callId !== 'string' ||
+      source.callId.trim().length === 0 ||
+      typeof source.toolName !== 'string' ||
+      !isPersonalizedToolName(source.toolName) ||
+      !('input' in source) ||
+      (observation.outcome !== 'completed' && observation.outcome !== 'failed') ||
+      result === undefined ||
+      typeof result.content !== 'string' ||
+      ('truncated' in result && typeof result.truncated !== 'boolean')
+    )
+      return [];
+    return [
+      {
+        id: observation.id,
+        source: { callId: source.callId, toolName: source.toolName, input: source.input },
+        outcome: observation.outcome,
+        result: {
+          content: result.content,
+          ...('data' in result ? { data: result.data } : {}),
+          ...(typeof result.truncated === 'boolean' ? { truncated: result.truncated } : {})
+        }
+      }
+    ];
+  });
+}
+
+function isPersonalizedToolName(toolName: string): boolean {
+  // Todo cards come only from native todo.updated events, never tool result snapshots.
+  return toolName === 'apply_patch' || marAgentSubagentOperation(toolName) !== undefined;
+}
+
+function isApplyPatchObservationData(value: unknown): value is ApplyPatchObservationData {
+  const data = record(value);
+  const totals = record(data?.totals);
+  return (
+    data !== undefined &&
+    Array.isArray(data.files) &&
+    data.files.every((entry) => {
+      const file = record(entry);
+      return (
+        file !== undefined &&
+        typeof file.path === 'string' &&
+        file.path.trim().length > 0 &&
+        (file.targetPath === undefined ||
+          (typeof file.targetPath === 'string' && file.targetPath.trim().length > 0)) &&
+        (file.operation === 'added' ||
+          file.operation === 'modified' ||
+          file.operation === 'deleted' ||
+          file.operation === 'moved') &&
+        (file.operation !== 'moved' ||
+          (typeof file.targetPath === 'string' && file.targetPath.trim().length > 0)) &&
+        Number.isSafeInteger(file.addedLines) &&
+        (file.addedLines as number) >= 0 &&
+        Number.isSafeInteger(file.deletedLines) &&
+        (file.deletedLines as number) >= 0
+      );
+    }) &&
+    totals !== undefined &&
+    Number.isSafeInteger(totals.files) &&
+    (totals.files as number) >= 0 &&
+    Number.isSafeInteger(totals.addedLines) &&
+    (totals.addedLines as number) >= 0 &&
+    Number.isSafeInteger(totals.deletedLines) &&
+    (totals.deletedLines as number) >= 0
+  );
+}
+
+function isSubagentToolInput(toolName: string, value: unknown): boolean {
+  const input = record(value);
+  if (input === undefined) return false;
+  if (toolName === 'agent_start')
+    return typeof input.description === 'string' && input.description.trim().length > 0;
+  if (toolName === 'agent_wait')
+    return (
+      input.agentId === undefined || input.agentId === null || marAgentAgentId(input) !== undefined
+    );
+  if (toolName === 'agent_message')
+    return (
+      marAgentAgentId(input) !== undefined &&
+      typeof input.message === 'string' &&
+      input.message.trim().length > 0
+    );
+  return toolName === 'agent_cancel' && marAgentAgentId(input) !== undefined;
+}
+
+function isSubagentObservationData(
+  value: unknown,
+  input: unknown
+): value is SubagentObservationData {
+  const data = record(value);
+  const inputAgentId = marAgentAgentId(input);
+  return (
+    data !== undefined &&
+    typeof data.agentId === 'string' &&
+    data.agentId.trim().length > 0 &&
+    typeof data.description === 'string' &&
+    data.description.trim().length > 0 &&
+    (data.status === 'queued' ||
+      data.status === 'running' ||
+      data.status === 'completed' ||
+      data.status === 'failed' ||
+      data.status === 'cancelled' ||
+      data.status === 'interrupted') &&
+    (inputAgentId === undefined || data.agentId === inputAgentId)
+  );
+}
+
+function eventMetadata(event: MarAgentEvent, eventId: string): EventMetadata {
+  return {
+    eventId,
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    sessionId: event.sessionId,
+    executionId: event.executionId,
+    ...(event.turnId === undefined ? {} : { turnId: event.turnId })
+  };
+}
+
+function itemId(kind: string, value: string) {
+  return boundedConversationItemId(`mar-agent-${kind}`, value);
+}
+
+type MarAgentCompactLifecycleEvent = Extract<
+  MarAgentEvent,
+  { type: 'context.compacting' | 'context.compacted' | 'context.compact_failed' }
+>;
+
+function normalizeContextCompaction(
+  event: MarAgentCompactLifecycleEvent,
+  anchorItemId: string | undefined
+): MarAgentNormalizedItem {
+  const completed = event.type === 'context.compacted';
+  const failed = event.type === 'context.compact_failed';
+  const cancelled = failed && event.cancelled === true;
+  const code =
+    failed && event.code.trim().length > 0
+      ? compactRunnerText(event.code, 80)
+      : failed
+        ? 'MAR_AGENT_COMPACT_FAILED'
+        : undefined;
+  return {
+    itemId: itemId('compact', event.compactionId),
+    kind: 'context_compaction',
+    status: failed ? (cancelled ? 'CANCELLED' : 'FAILED') : completed ? 'COMPLETED' : 'IN_PROGRESS',
+    payload: {
+      phase: completed ? 'COMPLETED' : 'STARTED',
+      summary: null,
+      ...(event.async === undefined ? {} : { mode: event.async ? 'BACKGROUND' : 'BLOCKING' }),
+      ...(event.type === 'context.compacting' && event.stage !== undefined
+        ? { stage: event.stage }
+        : {}),
+      ...(anchorItemId === undefined ? {} : { anchorItemId }),
+      ...(event.type === 'context.compacted' && event.retainedContext !== undefined
+        ? { retainedContext: event.retainedContext }
+        : {}),
+      ...(code === undefined ? {} : { code })
+    },
+    merge: true
+  };
+}
+
+function validCompactAnchor(value: string | undefined): string | undefined {
+  return value !== undefined && value.length > 0 && value.length <= 128 ? value : undefined;
+}
+
+function genericToolItem(
+  id: string,
+  toolName: string,
+  status: MarAgentNormalizedItem['status'],
+  input: unknown,
+  outputSummary: string | null = null,
+  errorCode: string | null = null,
+  truncated = false,
+  output?: unknown,
+  subagentTitle?: string,
+  knownSubagentDetails?: SubagentDetails,
+  sleepStartedAt?: string
+): MarAgentNormalizedItem {
+  if (toolName === 'code_exec') {
+    const code = typeof input === 'string' ? input : record(input)?.code;
+    const source =
+      typeof code === 'string' ? code : compactRunnerValue(input, 10_000).text || toolName;
+    const output =
+      errorCode === null
+        ? (outputSummary ?? '')
+        : [errorCode, outputSummary].filter(Boolean).join(': ');
+    return commandItem(
+      {
+        itemId: id,
+        command: compactRunnerText(source, 10_000),
+        cwd: null,
+        outputPreview: compactRunnerText(output, 10_000),
+        exitCode: null,
+        truncated: truncated || source.length > 10_000 || output.length > 10_000
+      },
+      status,
+      'Code execution'
+    );
+  }
+  if (toolName === 'code_exec_wait') {
+    const inputRecord = record(input);
+    const action = typeof inputRecord?.action === 'string' ? inputRecord.action : 'poll';
+    const inputSummary = compactRunnerValue(input, 10_000);
+    const result = output === undefined ? null : compactRunnerValue(output, 10_000);
+    const resultSummary = [outputSummary, result?.text]
+      .filter(
+        (value, index, values): value is string =>
+          typeof value === 'string' && value.length > 0 && values.indexOf(value) === index
+      )
+      .join('\n');
+    const details = [
+      `Action: ${compactRunnerText(action, 128)}`,
+      `Input: ${inputSummary.text || '{}'}`,
+      resultSummary.length === 0 ? '' : `Result: ${compactRunnerText(resultSummary, 10_000)}`,
+      errorCode === null ? '' : `Error: ${compactRunnerText(errorCode, 80)}`
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return commandItem(
+      {
+        itemId: id,
+        command: toolName,
+        cwd: null,
+        outputPreview: details,
+        exitCode: null,
+        truncated:
+          truncated ||
+          inputSummary.truncated ||
+          result?.truncated === true ||
+          resultSummary.length > 10_000
+      },
+      status,
+      'Code execution wait'
+    );
+  }
+  const subagent = marAgentSubagentProjection(
+    toolName,
+    input,
+    output,
+    subagentTitle,
+    knownSubagentDetails
+  );
+  const toolCategory = isImageGenerationTool(toolName) ? 'IMAGE_GENERATION' : undefined;
+  const presentation = projectToolPresentation(toolName, input, output, sleepStartedAt);
+  const inputSummary = compactRunnerValue(input, 10_000);
+  return {
+    itemId: id,
+    kind: 'tool_call',
+    status,
+    payload: {
+      namespace: 'mar-agent',
+      toolName: compactRunnerText(toolName, 128) || 'unknown',
+      title: compactRunnerText(toolName, 500) || 'unknown',
+      inputSummary: inputSummary.text || null,
+      outputSummary: outputSummary === null ? null : compactRunnerText(outputSummary, 10_000),
+      progressLabel: status === 'IN_PROGRESS' ? 'Running' : null,
+      errorCode: errorCode === null ? null : compactRunnerText(errorCode, 80),
+      truncated: truncated || inputSummary.truncated || (outputSummary?.length ?? 0) > 10_000,
+      ...(toolCategory === undefined ? {} : { toolCategory }),
+      ...(presentation === undefined ? {} : { toolPresentation: presentation }),
+      ...subagent
+    },
+    merge: true
+  };
+}
+
+function projectToolPresentation(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+  startedAt?: string
+): ToolPresentation | undefined {
+  const category =
+    toolName === 'web_search'
+      ? 'WEB_SEARCH'
+      : toolName === 'web_fetch'
+        ? 'WEB_FETCH'
+        : toolName === 'skill'
+          ? 'SKILL'
+          : toolName === 'sleep'
+            ? 'SLEEP'
+            : undefined;
+  if (category === undefined) return undefined;
+  const args = record(input) ?? {};
+  const data = record(output) ?? {};
+  // A provider-hosted search tool can report a page-read action under its native name.
+  const kind =
+    category === 'WEB_SEARCH' && data.hostedToolKind === 'WEB_FETCH' ? 'WEB_FETCH' : category;
+  const text = (value: unknown, limit: number) =>
+    typeof value === 'string' ? compactRunnerText(value, limit) : undefined;
+  const candidate =
+    kind === 'WEB_SEARCH'
+      ? { ...data, kind, query: text(data.query ?? args.query, 500) }
+      : kind === 'WEB_FETCH'
+        ? {
+            ...data,
+            kind,
+            requestUrl: text(args.url, 8192),
+            url: text(data.url, 8192),
+            mode: data.mode ?? args.mode
+          }
+        : kind === 'SKILL'
+          ? { ...data, kind, name: text(data.name ?? args.name, 128) }
+          : { ...data, kind, durationMs: data.durationMs ?? args.durationMs, startedAt };
+  const parsed = toolPresentationSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : { kind };
+}
+
+function commandItem(
+  command: Pick<
+    CommandState,
+    'itemId' | 'command' | 'cwd' | 'outputPreview' | 'exitCode' | 'truncated'
+  >,
+  status: MarAgentNormalizedItem['status'],
+  title?: string
+): MarAgentNormalizedItem {
+  return {
+    itemId: command.itemId,
+    kind: 'command_execution',
+    status,
+    payload: {
+      ...(title === undefined ? {} : { title }),
+      command: command.command,
+      cwd: command.cwd,
+      outputPreview: command.outputPreview,
+      outputRef: null,
+      exitCode: command.exitCode,
+      durationMs: null,
+      truncated: command.truncated
+    },
+    merge: true
+  };
+}
+
+function applyCommandResult(
+  command: CommandState,
+  result: NonNullable<ReturnType<typeof execResult>>
+) {
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+  if (output.length > 0) {
+    const combined = result.cached
+      ? output
+      : [command.outputPreview, output].filter(Boolean).join('\n');
+    command.truncated ||= combined.length > 10_000;
+    command.outputPreview = compactRunnerText(combined, 10_000);
+  }
+  command.exitCode = result.exitCode ?? command.exitCode;
+  command.truncated ||= result.truncated;
+}
+
+function fileChangeItem(
+  id: string,
+  status: MarAgentNormalizedItem['status'],
+  changes: readonly Record<string, unknown>[]
+): MarAgentNormalizedItem {
+  return { itemId: id, kind: 'file_change', status, payload: { changes }, merge: true };
+}
+
+function patchChanges(value: unknown, extensions?: unknown): Record<string, unknown>[] {
+  const evidence = (parseToolResultExtensions(extensions) ?? []).flatMap(
+    (extension) => extension.entries
+  );
+  if (evidence.length)
+    return evidence.map((entry) => ({
+      path: entry.path,
+      change: entry.change.toUpperCase(),
+      additions: entry.additions,
+      deletions: entry.deletions,
+      changeId: entry.changeId,
+      diffAvailable: entry.diff.status === 'available',
+      diff:
+        entry.diff.status === 'available'
+          ? { ...entry.diff, source: 'TOOL_CHANGE' }
+          : {
+              ...entry.diff,
+              reason: entry.diff.reason === 'unsupported-content' ? 'binary' : entry.diff.reason
+            }
+    }));
+  const files = record(value)?.files;
+  if (!Array.isArray(files)) return [];
+  return files.flatMap((entry) => {
+    const file = record(entry);
+    if (typeof file?.path !== 'string') return [];
+    const path = compactRunnerText(file.path, 4_096);
+    if (path.length === 0) return [];
+    const additions = nonnegativeInteger(file.addedLines);
+    const deletions = nonnegativeInteger(file.deletedLines);
+    if (file.operation === 'moved' && typeof file.targetPath === 'string') {
+      const targetPath = compactRunnerText(file.targetPath, 4_096);
+      if (targetPath.length === 0) return [change(path, 'MODIFIED', additions, deletions)];
+      return [
+        change(path, 'DELETED', additions, deletions),
+        change(targetPath, 'ADDED', additions, deletions)
+      ];
+    }
+    const operation =
+      file.operation === 'added' ? 'ADDED' : file.operation === 'deleted' ? 'DELETED' : 'MODIFIED';
+    return [change(path, operation, additions, deletions)];
+  });
+}
+
+function change(
+  path: string,
+  operation: string,
+  additions: number | null,
+  deletions: number | null
+) {
+  return { path, change: operation, additions, deletions, diffAvailable: false };
+}
+
+function execResult(
+  value: unknown,
+  summary?: string,
+  eventTruncated = false
+):
+  | {
+      status: 'running' | 'completed' | 'cancelled';
+      processId?: string;
+      stdout: string;
+      stderr: string;
+      exitCode?: number | null;
+      truncated: boolean;
+      cached?: boolean;
+    }
+  | undefined {
+  const data = record(value);
+  const summaryData = structuredRecord(summary);
+  const persistedOutputOmitted =
+    typeof data?.stdout !== 'string' && typeof data?.stderr !== 'string';
+  const structuredSummaryIncomplete =
+    persistedOutputOmitted &&
+    typeof summary === 'string' &&
+    summary.trim().startsWith('{') &&
+    summaryData === undefined;
+  const status =
+    data?.status === 'running' || data?.status === 'completed' || data?.status === 'cancelled'
+      ? data.status
+      : summaryData?.status === 'running' ||
+          summaryData?.status === 'completed' ||
+          summaryData?.status === 'cancelled'
+        ? summaryData.status
+        : undefined;
+  if (status === undefined) return undefined;
+  const processId =
+    typeof data?.processId === 'string'
+      ? data.processId
+      : typeof summaryData?.processId === 'string'
+        ? summaryData.processId
+        : undefined;
+  const stdout =
+    typeof data?.stdout === 'string'
+      ? data.stdout
+      : typeof summaryData?.stdout === 'string'
+        ? summaryData.stdout
+        : '';
+  const stderr =
+    typeof data?.stderr === 'string'
+      ? data.stderr
+      : typeof summaryData?.stderr === 'string'
+        ? summaryData.stderr
+        : '';
+  const exitCode =
+    typeof data?.exitCode === 'number' || data?.exitCode === null
+      ? data.exitCode
+      : typeof summaryData?.exitCode === 'number' || summaryData?.exitCode === null
+        ? summaryData.exitCode
+        : undefined;
+  return {
+    status,
+    ...(processId === undefined ? {} : { processId }),
+    stdout,
+    stderr,
+    ...(exitCode === undefined ? {} : { exitCode }),
+    ...(data?.cached === true || summaryData?.cached === true ? { cached: true } : {}),
+    truncated:
+      eventTruncated ||
+      data?.truncated === true ||
+      summaryData?.truncated === true ||
+      structuredSummaryIncomplete
+  };
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function marAgentSubagentProjection(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+  knownTitle?: string,
+  knownDetails?: SubagentDetails
+): Record<string, unknown> | undefined {
+  const operation = marAgentSubagentOperation(toolName);
+  if (operation === undefined) return undefined;
+  const inputData = structuredRecord(input);
+  const controlOutput = matchingSubagentControlOutput(toolName, input, output);
+  const outputData = structuredRecord(controlOutput);
+  const details = mergeSubagentDetails(knownDetails, subagentDetails(controlOutput));
+  const title = compactRunnerText(
+    knownTitle ??
+      (typeof outputData?.description === 'string'
+        ? outputData.description
+        : operation === 'START' && typeof inputData?.description === 'string'
+          ? inputData.description
+          : ''),
+    500
+  );
+  return {
+    subagentOperation: operation,
+    ...(operation === 'STATUS' ? { subagentWait: inputData?.waitMs !== 0 } : {}),
+    subagentId: marAgentAgentId(input) ?? marAgentAgentId(controlOutput) ?? null,
+    ...(title.length === 0 ? {} : { title }),
+    ...subagentPayload(details),
+    ...(typeof details.latestMessage?.text === 'string'
+      ? { outputSummary: boundedToolSummary(details.latestMessage.text) }
+      : typeof outputData?.errorMessage === 'string'
+        ? { outputSummary: compactRunnerText(outputData.errorMessage, 10_000) }
+        : {}),
+    ...(typeof outputData?.errorCode === 'string'
+      ? { errorCode: compactRunnerText(outputData.errorCode, 80) }
+      : {})
+  };
+}
+
+function matchingSubagentControlOutput(toolName: string, input: unknown, output: unknown): unknown {
+  const operation = marAgentSubagentOperation(toolName);
+  if (operation === undefined) return undefined;
+  if (toolName === 'agent_wait') {
+    const targets = structuredRecord(input)?.agentIds;
+    if (Array.isArray(targets) && targets.length !== 1) return undefined;
+    const agents = structuredRecord(output)?.agents;
+    if (Array.isArray(agents)) output = agents.length === 1 ? agents[0] : undefined;
+  }
+  const outputAgentId = marAgentAgentId(output);
+  if (operation === 'START') return outputAgentId === undefined ? undefined : output;
+  const inputAgentId = marAgentAgentId(input);
+  if (inputAgentId === undefined) return outputAgentId === undefined ? undefined : output;
+  return outputAgentId === inputAgentId ? output : undefined;
+}
+
+function isMarAgentControlTool(toolName: string): boolean {
+  return marAgentSubagentOperation(toolName) !== undefined;
+}
+
+function marAgentSubagentOperation(
+  toolName: string
+): 'START' | 'STATUS' | 'MESSAGE' | 'CANCEL' | undefined {
+  if (toolName === 'agent_start') return 'START';
+  if (toolName === 'agent_wait') return 'STATUS';
+  if (toolName === 'agent_message') return 'MESSAGE';
+  if (toolName === 'agent_cancel') return 'CANCEL';
+  return undefined;
+}
+
+function subagentDetails(value: unknown): SubagentDetails {
+  const data = structuredRecord(value);
+  if (data === undefined) return {};
+  const modelId = boundedText(data.modelId, 128);
+  const modelName = boundedText(data.modelName, 128);
+  const reasoningEffort = isReasoningEffort(data.reasoningEffort)
+    ? data.reasoningEffort
+    : undefined;
+  const latestMessage = normalizedSubagentLatestMessage(data.latestMessage);
+  return {
+    ...(modelId === undefined ? {} : { modelId }),
+    ...(modelName === undefined ? {} : { modelName }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(latestMessage === undefined ? {} : { latestMessage })
+  };
+}
+
+function mergeSubagentDetails(
+  current: SubagentDetails | undefined,
+  update: SubagentDetails
+): SubagentDetails {
+  return {
+    ...(current ?? {}),
+    ...update
+  };
+}
+
+function withoutSubagentLatestMessage(
+  details: SubagentDetails | undefined
+): SubagentDetails | undefined {
+  if (details?.latestMessage === undefined) return details;
+  const { latestMessage: _latestMessage, ...withoutLatestMessage } = details;
+  return withoutLatestMessage;
+}
+
+function subagentPayload(details: SubagentDetails): Record<string, unknown> {
+  return {
+    ...(details.modelId === undefined ? {} : { subagentModelId: details.modelId }),
+    ...(details.modelName === undefined ? {} : { subagentModelName: details.modelName }),
+    ...(details.reasoningEffort === undefined
+      ? {}
+      : { subagentReasoningEffort: details.reasoningEffort }),
+    ...(details.latestMessage === undefined ? {} : { subagentLatestMessage: details.latestMessage })
+  };
+}
+
+function normalizedSubagentLatestMessage(value: unknown): Record<string, unknown> | undefined {
+  const data = record(value);
+  if (
+    data === undefined ||
+    typeof data.itemId !== 'string' ||
+    typeof data.turnId !== 'string' ||
+    (data.phase !== 'commentary' && data.phase !== 'final_answer') ||
+    typeof data.text !== 'string' ||
+    typeof data.timestamp !== 'string'
+  )
+    return undefined;
+  const text = truncateCharacters(data.text, 10_000);
+  return {
+    itemId: compactRunnerText(data.itemId, 128),
+    turnId: compactRunnerText(data.turnId, 128),
+    phase: data.phase,
+    text,
+    timestamp: data.timestamp,
+    truncated: data.truncated === true || text !== data.text
+  };
+}
+
+function boundedText(value: unknown, maximumLength: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = compactRunnerText(value.trim(), maximumLength);
+  return text.length === 0 ? undefined : text;
+}
+
+function isReasoningEffort(value: unknown): value is string {
+  return (
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max' ||
+    value === 'ultra'
+  );
+}
+
+function truncateCharacters(value: string, maximumCharacters: number): string {
+  const characters = [...value];
+  return characters.length <= maximumCharacters
+    ? value
+    : characters.slice(0, maximumCharacters).join('');
+}
+
+function boundedToolSummary(value: string): string {
+  const maximumCodeUnits = 10_000;
+  if (value.length <= maximumCodeUnits) return value;
+  let end = maximumCodeUnits - 1;
+  const lastIncluded = value.charCodeAt(end - 1);
+  const firstExcluded = value.charCodeAt(end);
+  if (
+    lastIncluded >= 0xd800 &&
+    lastIncluded <= 0xdbff &&
+    firstExcluded >= 0xdc00 &&
+    firstExcluded <= 0xdfff
+  )
+    end--;
+  return `${value.slice(0, end)}…`;
+}
+
+function marAgentAgentId(value: unknown): string | undefined {
+  const data = structuredRecord(value);
+  if (data === undefined) return undefined;
+  const direct = boundedId(data.agentId);
+  if (direct !== undefined) return direct;
+  if (Array.isArray(data.agentIds))
+    return data.agentIds.length === 1 ? boundedId(data.agentIds[0]) : undefined;
+  for (const key of ['data', 'result', 'output']) {
+    const nested = marAgentAgentId(data[key]);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+}
+
+function structuredRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'string') return record(value);
+  const text = value.trim();
+  if (!text.startsWith('{')) return undefined;
+  try {
+    return record(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+function boundedId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= 128 ? normalized : undefined;
+}
+
+function nonnegativeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function isImageGenerationTool(toolName: string): boolean {
+  return toolName === 'codex_image_gen' || toolName === 'byted_ark_image_gen';
+}
+
+function imageArtifacts(
+  event: Extract<MarAgentEvent, { type: 'tool.completed' }>
+): MarAgentGeneratedImageArtifact[] {
+  if (!isImageGenerationTool(event.toolName) || !Array.isArray(event.artifacts)) return [];
+  return event.artifacts.flatMap((value) => {
+    const artifact = record(value);
+    const fileName = typeof artifact?.fileName === 'string' ? artifact.fileName.trim() : '';
+    const name = typeof artifact?.name === 'string' ? compactRunnerText(artifact.name, 255) : '';
+    const byteSize = nonnegativeInteger(artifact?.byteSize);
+    if (
+      artifact?.kind !== 'image' ||
+      artifact.mimeType !== 'image/png' ||
+      typeof artifact.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/iu.test(artifact.sha256) ||
+      name.length === 0 ||
+      byteSize === null ||
+      byteSize === 0 ||
+      fileName.length === 0 ||
+      fileName.length > 255 ||
+      fileName === '.' ||
+      fileName === '..' ||
+      fileName.includes('/') ||
+      fileName.includes('\\') ||
+      !fileName.toLocaleLowerCase().endsWith('.png')
+    )
+      return [];
+    return [{ name, mime: 'image/png' as const, byteSize, fileName }];
+  });
+}

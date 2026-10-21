@@ -1,0 +1,64 @@
+{
+  "name": "@myagentroam/node",
+  "version": "0.10.69",
+  "description": "MyAgentRoam Node runtime CLI.",
+  "license": "Apache-2.0 AND GPL-2.0-or-later",
+  "type": "module",
+  "files": [
+    "dist/**/*.js",
+    "scripts/install-web-browser.mjs",
+    "vendor/ripgrep/**/*",
+    "vendor/ctags/**/*",
+    "dist/config.d.ts"
+  ],
+  "bin": {
+    "mar-node": "./dist/main.js",
+    "marctl": "./dist/marctl.js",
+    "marnodes": "./dist/marnodes.js",
+    "marssh": "./dist/marssh.js",
+    "marscp": "./dist/marscp.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install-web-browser.mjs",
+    "build": "node ../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
+    "stage:computer-use-runtime": "node ../scripts/stage-computer-use-runtime.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test:unit": "vitest run --config vitest.config.mts && node --test test/unit/*.test.mjs",
+    "test:e2e:real": "vitest run --config vitest.e2e.config.mts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.233",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@myagentroam/agent": "workspace:*",
+    "@myagentroam/code-navigation": "workspace:*",
+    "@myagentroam/marctl": "workspace:*",
+    "@myagentroam/protocol": "workspace:*",
+    "@opencode-ai/sdk": "1.18.20",
+    "minimatch": "^10.2.6",
+    "node-datachannel": "0.33.4",
+    "node-pty": "1.1.0",
+    "npm": "11.12.1",
+    "playwright": "1.62.1",
+    "ws": "^8.21.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  },
+  "exports": {
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./cli": "./dist/main.js",
+    "./package.json": "./package.json"
+  }
+}

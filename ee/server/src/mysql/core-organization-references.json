@@ -1,0 +1,38 @@
+[
+  {
+    "table": "environment_secrets",
+    "column": "organization_id"
+  },
+  {
+    "table": "node_registration_tokens",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "nodes",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "mar_agent_image_models",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "mar_agent_models",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "skill_favorites",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "skill_sources",
+    "column": "owner_organization_id"
+  },
+  {
+    "table": "users",
+    "column": "organization_id"
+  },
+  {
+    "table": "workspaces",
+    "column": "owner_organization_id"
+  }
+]

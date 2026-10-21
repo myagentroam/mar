@@ -1,0 +1,34 @@
+// Domain case modules are registered through one Playwright entry so the
+// Workbench scenarios keep their original same-file serial execution model.
+import './web-workbench-live.cases.js';
+import './web-push-settings.cases.js';
+import './web-run-state.cases.js';
+import './web-run-recovery.cases.js';
+import './web-run-control.cases.js';
+import './web-auth-settings.cases.js';
+import './web-node-management.cases.js';
+import './web-management-credentials.cases.js';
+import './web-codex-credentials.cases.js';
+import './web-model-management-regressions.cases.js';
+import './mar-agent-compact-settings.cases.js';
+import './web-organization-display.cases.js';
+import './web-workspace-files.cases.js';
+import './web-file-window-interaction.cases.js';
+import './web-file-preview-content.cases.js';
+import './web-workspace-git-changes.cases.js';
+import './web-workspace-files-history.cases.js';
+import './web-conversation.cases.js';
+import './web-session-performance.cases.js';
+import './web-hosted-conversation.cases.js';
+import './web-session-pinning.cases.js';
+import './web-session-density.cases.js';
+import './web-session-prompt.cases.js';
+import './web-session-sharing.cases.js';
+import './web-composer.cases.js';
+import './web-goal.cases.js';
+import './web-native-sessions.cases.js';
+import './web-workspace-state.cases.js';
+import './web-resource-tree-order.cases.js';
+import './web-terminal.cases.js';
+import './web-mobile-workbench.cases.js';
+import './web-skills.cases.js';

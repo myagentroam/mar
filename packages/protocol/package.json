@@ -1,0 +1,29 @@
+{
+  "name": "@myagentroam/protocol",
+  "version": "0.10.69",
+  "description": "Shared runtime protocol schemas for MyAgentRoam.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "test:unit": "vitest run --config vitest.config.mts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}

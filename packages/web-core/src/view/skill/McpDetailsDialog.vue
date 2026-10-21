@@ -1,0 +1,110 @@
+<script setup lang="ts">
+import { translate } from '../../service/LocalePreferenceService.js';
+export interface McpDetails {
+  readonly name: string;
+  readonly serverName?: string;
+  readonly description: string;
+  readonly source?: string;
+  readonly scope?: string;
+  readonly version?: string;
+  readonly transport?: string;
+  readonly status?: string;
+  readonly updatedAt?: string;
+  readonly featured?: boolean;
+  readonly tags?: readonly string[];
+}
+
+defineProps<{ modelValue: boolean; details: McpDetails | undefined }>();
+const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
+</script>
+
+<template>
+  <el-dialog
+    :model-value="modelValue"
+    :title="details?.name || translate('generated.mcpDetailsDialog.mCPDetails')"
+    width="min(720px, calc(100vw - 32px))"
+    destroy-on-close
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <div v-if="details" class="mcp-details">
+      <p>
+        {{
+          details.description ||
+          translate('generated.mcpDetailsDialog.noDescriptionIsAvailableForThisMCP')
+        }}
+      </p>
+      <el-descriptions class="mar-detail-descriptions" :column="1" border>
+        <el-descriptions-item
+          v-if="details.serverName"
+          :label="translate('generated.mcpDetailsDialog.serverName')"
+          >{{ details.serverName }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.source"
+          :label="translate('generated.mcpDetailsDialog.source')"
+          >{{ details.source }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.scope"
+          :label="translate('generated.mcpDetailsDialog.availability')"
+          >{{ details.scope }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.version"
+          :label="translate('generated.mcpDetailsDialog.version')"
+          >{{ details.version }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.transport"
+          :label="translate('generated.mcpDetailsDialog.transport')"
+          >{{ details.transport }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.updatedAt"
+          :label="translate('generated.mcpDetailsDialog.updated')"
+          >{{ details.updatedAt }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.status"
+          :label="translate('generated.mcpDetailsDialog.status')"
+          >{{ details.status }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="details.featured || (details.tags?.length ?? 0) > 0"
+          :label="translate('generated.mcpDetailsDialog.tags')"
+        >
+          <div class="mcp-tags">
+            <el-tag v-if="details.featured" type="warning" effect="plain"
+              >★ {{ translate('generated.mcpDetailsDialog.featured') }}</el-tag
+            >
+            <el-tag v-for="tag in details.tags ?? []" :key="tag" effect="plain">{{ tag }}</el-tag>
+          </div>
+        </el-descriptions-item>
+      </el-descriptions>
+    </div>
+    <template #footer
+      ><el-button @click="emit('update:modelValue', false)">{{
+        translate('generated.mcpDetailsDialog.close')
+      }}</el-button></template
+    >
+  </el-dialog>
+</template>
+
+<style scoped>
+.mcp-details {
+  display: grid;
+  gap: 16px;
+}
+.mcp-details > p {
+  margin: 0;
+  color: var(--mar-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.mcp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+</style>

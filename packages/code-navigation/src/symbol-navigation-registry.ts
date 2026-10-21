@@ -1,0 +1,318 @@
+import type { SymbolNavigationLanguageDefinition } from './types.js';
+
+/**
+ * Fixed source maps generated from `Universal Ctags ab95af1 --list-maps`.
+ * This remains pure metadata: Node owns the executable and index lifecycle.
+ */
+const languages: readonly SymbolNavigationLanguageDefinition[] = [
+  { id: 'Abaqus', fileNamePatterns: ['*.inp'] },
+  { id: 'Abc', fileNamePatterns: ['*.abc', '*.abc'] },
+  { id: 'Ada', fileNamePatterns: ['*.adb', '*.ads', '*.Ada', '*.ada'] },
+  { id: 'Ant', fileNamePatterns: ['build.xml', '*.build.xml', '*.ant', '*.xml'] },
+  {
+    id: 'Asciidoc',
+    fileNamePatterns: ['*.asc', '*.adoc', '*.asciidoc', '*.asc', '*.adoc', '*.asciidoc']
+  },
+  {
+    id: 'Asm',
+    fileNamePatterns: [
+      '*.A51',
+      '*.29[kK]',
+      '*.[68][68][kKsSxX]',
+      '*.[xX][68][68]',
+      '*.asm',
+      '*.ASM',
+      '*.s',
+      '*.S'
+    ]
+  },
+  { id: 'Asp', fileNamePatterns: ['*.asp', '*.asa'] },
+  { id: 'Autoconf', fileNamePatterns: ['configure.in', '*.ac'] },
+  { id: 'AutoIt', fileNamePatterns: ['*.au3', '*.AU3', '*.aU3', '*.Au3'] },
+  { id: 'Automake', fileNamePatterns: ['Makefile.am', 'GNUmakefile.am', '*.am'] },
+  { id: 'Awk', fileNamePatterns: ['*.awk', '*.gawk', '*.mawk'] },
+  { id: 'Basic', fileNamePatterns: ['*.bas', '*.bi', '*.bm', '*.bb', '*.pb'] },
+  { id: 'Bats', fileNamePatterns: ['*.bats'] },
+  { id: 'BETA', fileNamePatterns: ['*.bet'] },
+  { id: 'BibTeX', fileNamePatterns: ['*.bib'] },
+  { id: 'Clojure', fileNamePatterns: ['*.clj', '*.cljs', '*.cljc'] },
+  { id: 'CMake', fileNamePatterns: ['CMakeLists.txt', '*.cmake'] },
+  { id: 'C', fileNamePatterns: ['*.c'] },
+  { id: 'Cargo', fileNamePatterns: ['Cargo.toml'] },
+  {
+    id: 'C++',
+    fileNamePatterns: [
+      '*.c++',
+      '*.cc',
+      '*.cp',
+      '*.cpp',
+      '*.cxx',
+      '*.h',
+      '*.h++',
+      '*.hh',
+      '*.hp',
+      '*.hpp',
+      '*.hxx',
+      '*.inl',
+      '*.C',
+      '*.H',
+      '*.CPP',
+      '*.CXX'
+    ]
+  },
+  { id: 'CSS', fileNamePatterns: ['*.css'] },
+  { id: 'C#', fileNamePatterns: ['*.cs'] },
+  { id: 'Ctags', fileNamePatterns: ['*.ctags'] },
+  { id: 'Cobol', fileNamePatterns: ['*.cbl', '*.cob', '*.CBL', '*.COB'] },
+  { id: 'CUDA', fileNamePatterns: ['*.cu', '*.cuh'] },
+  { id: 'D', fileNamePatterns: ['*.d', '*.di'] },
+  { id: 'DBusService', fileNamePatterns: ['*.service'] },
+  { id: 'Diff', fileNamePatterns: ['*.diff', '*.patch'] },
+  { id: 'DTD', fileNamePatterns: ['*.dtd', '*.mod'] },
+  { id: 'DTS', fileNamePatterns: ['*.dts', '*.dtsi'] },
+  { id: 'DosBatch', fileNamePatterns: ['*.bat', '*.cmd'] },
+  { id: 'Eiffel', fileNamePatterns: ['*.e'] },
+  { id: 'Elixir', fileNamePatterns: ['*.ex', '*.exs'] },
+  { id: 'EmacsLisp', fileNamePatterns: ['*.el'] },
+  { id: 'Erlang', fileNamePatterns: ['*.erl', '*.ERL', '*.hrl', '*.HRL'] },
+  { id: 'Falcon', fileNamePatterns: ['*.fal', '*.ftd'] },
+  { id: 'Flex', fileNamePatterns: ['*.as', '*.mxml'] },
+  { id: 'Forth', fileNamePatterns: ['*.fth', '*.forth', '*.fs', '*.4th', '*.f'] },
+  {
+    id: 'Fortran',
+    fileNamePatterns: [
+      '*.f',
+      '*.for',
+      '*.ftn',
+      '*.f77',
+      '*.f90',
+      '*.f95',
+      '*.f03',
+      '*.f08',
+      '*.f15',
+      '*.F',
+      '*.FOR',
+      '*.FTN',
+      '*.F77',
+      '*.F90',
+      '*.F95',
+      '*.F03',
+      '*.F08',
+      '*.F15'
+    ]
+  },
+  { id: 'Fypp', fileNamePatterns: ['*.fy'] },
+  { id: 'Gdbinit', fileNamePatterns: ['.gdbinit', '*.gdb'] },
+  { id: 'GDScript', fileNamePatterns: ['*.gd'] },
+  { id: 'GemSpec', fileNamePatterns: ['*.gemspec'] },
+  { id: 'Go', fileNamePatterns: ['*.go'] },
+  { id: 'GoMod', fileNamePatterns: ['go.mod'] },
+  { id: 'GPerf', fileNamePatterns: ['*.perf', '*.gperf'] },
+  { id: 'Haskell', fileNamePatterns: ['*.hs'] },
+  { id: 'Haxe', fileNamePatterns: ['*.hx'] },
+  { id: 'HTML', fileNamePatterns: ['*.htm', '*.html'] },
+  { id: 'Iniconf', fileNamePatterns: ['*.ini', '*.conf'] },
+  { id: 'Inko', fileNamePatterns: ['*.inko'] },
+  { id: 'ITcl', fileNamePatterns: ['*.itcl'] },
+  { id: 'Java', fileNamePatterns: ['*.java'] },
+  { id: 'JavaProperties', fileNamePatterns: ['*.properties'] },
+  { id: 'JavaScript', fileNamePatterns: ['*.js', '*.jsx', '*.mjs'] },
+  { id: 'JSON', fileNamePatterns: ['*.json'] },
+  { id: 'Julia', fileNamePatterns: ['*.jl'] },
+  { id: 'Kconfig', fileNamePatterns: ['Kconfig*'] },
+  {
+    id: 'LdScript',
+    fileNamePatterns: ['*.lds.S', '*.ld.S', 'ld.script', '*.lds', '*.scr', '*.ld', '*.ldi']
+  },
+  { id: 'LEX', fileNamePatterns: ['*.lex', '*.l'] },
+  { id: 'Lisp', fileNamePatterns: ['*.cl', '*.clisp', '*.l', '*.lisp', '*.lsp'] },
+  { id: 'LiterateHaskell', fileNamePatterns: ['*.lhs'] },
+  { id: 'Lua', fileNamePatterns: ['*.lua'] },
+  { id: 'M4', fileNamePatterns: ['*.m4', '*.spt'] },
+  {
+    id: 'Man',
+    fileNamePatterns: [
+      '*.man',
+      '*.1',
+      '*.2',
+      '*.3',
+      '*.4',
+      '*.5',
+      '*.6',
+      '*.7',
+      '*.8',
+      '*.9',
+      '*.3pm',
+      '*.3stap',
+      '*.7stap'
+    ]
+  },
+  { id: 'Make', fileNamePatterns: ['[Mm]akefile', 'GNUmakefile', '*.mak', '*.mk'] },
+  { id: 'Markdown', fileNamePatterns: ['*.md', '*.markdown'] },
+  { id: 'MatLab', fileNamePatterns: ['*.m'] },
+  { id: 'Meson', fileNamePatterns: ['meson.build'] },
+  { id: 'MesonOptions', fileNamePatterns: ['meson_options.txt'] },
+  { id: 'Myrddin', fileNamePatterns: ['*.myr'] },
+  { id: 'Nftables', fileNamePatterns: ['*.nft'] },
+  { id: 'NSIS', fileNamePatterns: ['*.nsi', '*.nsh'] },
+  { id: 'ObjectiveC', fileNamePatterns: ['*.mm', '*.m', '*.h'] },
+  { id: 'OCaml', fileNamePatterns: ['*.ml', '*.mli', '*.aug'] },
+  { id: 'Odin', fileNamePatterns: ['*.odin'] },
+  { id: 'Org', fileNamePatterns: ['*.org'] },
+  { id: 'Passwd', fileNamePatterns: ['passwd'] },
+  { id: 'Pascal', fileNamePatterns: ['*.p', '*.pas'] },
+  { id: 'Perl', fileNamePatterns: ['*.pl', '*.pm', '*.ph', '*.plx', '*.perl'] },
+  { id: 'Perl6', fileNamePatterns: ['*.p6', '*.pm6', '*.pm', '*.pl6', '*.t6'] },
+  { id: 'PHP', fileNamePatterns: ['*.php', '*.php3', '*.php4', '*.php5', '*.php7', '*.phtml'] },
+  { id: 'PkgConfig', fileNamePatterns: ['*.pc'] },
+  { id: 'Pod', fileNamePatterns: ['*.pod'] },
+  { id: 'PowerShell', fileNamePatterns: ['*.ps1', '*.psm1'] },
+  { id: 'Prolog', fileNamePatterns: ['*.pl', '*.pro'] },
+  { id: 'Protobuf', fileNamePatterns: ['*.proto'] },
+  { id: 'PuppetManifest', fileNamePatterns: ['*.pp'] },
+  {
+    id: 'Python',
+    fileNamePatterns: ['*.py', '*.pyw', '*.pyx', '*.pxd', '*.pxi', '*.scons', '*.wsgi']
+  },
+  { id: 'PythonEntryPoints', fileNamePatterns: ['entry_points.txt'] },
+  { id: 'QemuHX', fileNamePatterns: ['*.hx'] },
+  { id: 'Quarto', fileNamePatterns: ['*.qmd'] },
+  { id: 'RMarkdown', fileNamePatterns: ['*.rmd'] },
+  { id: 'R', fileNamePatterns: ['*.r', '*.R', '*.s', '*.q'] },
+  { id: 'Rake', fileNamePatterns: ['Rakefile', '*.rake'] },
+  { id: 'Raku', fileNamePatterns: ['*.raku', '*.rakumod', '*.rakutest', '*.rakudoc'] },
+  { id: 'REXX', fileNamePatterns: ['*.cmd', '*.rexx', '*.rx'] },
+  { id: 'Robot', fileNamePatterns: ['*.robot'] },
+  {
+    id: 'RpmMacros',
+    fileNamePatterns: ['%(.*/)?macros\\.d/macros\\.([^/]+)$%', '*.rpmmacros']
+  },
+  { id: 'RpmSpec', fileNamePatterns: ['*.spec'] },
+  { id: 'ReStructuredText', fileNamePatterns: ['*.rest', '*.reST', '*.rst'] },
+  { id: 'Ruby', fileNamePatterns: ['*.rb', '*.ruby'] },
+  { id: 'Rust', fileNamePatterns: ['*.rs'] },
+  {
+    id: 'Scheme',
+    fileNamePatterns: ['*.SCM', '*.SM', '*.sch', '*.scheme', '*.scm', '*.sm', '*.rkt']
+  },
+  { id: 'SCSS', fileNamePatterns: ['*.scss'] },
+  { id: 'SELinuxInterface', fileNamePatterns: ['*.if'] },
+  { id: 'SELinuxTypeEnforcement', fileNamePatterns: ['*.te'] },
+  { id: 'SINEX', fileNamePatterns: ['*.snx', '*.sinex'] },
+  { id: 'Sh', fileNamePatterns: ['*.sh', '*.SH', '*.bsh', '*.bash', '*.ksh', '*.ash'] },
+  { id: 'SLang', fileNamePatterns: ['*.sl'] },
+  { id: 'SML', fileNamePatterns: ['*.sml', '*.sig'] },
+  { id: 'Scdoc', fileNamePatterns: ['*.scd'] },
+  { id: 'SQL', fileNamePatterns: ['*.sql'] },
+  {
+    id: 'SystemdUnit',
+    fileNamePatterns: [
+      '*.service',
+      '*.socket',
+      '*.device',
+      '*.mount',
+      '*.automount',
+      '*.swap',
+      '*.target',
+      '*.path',
+      '*.timer',
+      '*.snapshot',
+      '*.slice'
+    ]
+  },
+  { id: 'SystemTap', fileNamePatterns: ['*.stp', '*.stpm'] },
+  { id: 'Tcl', fileNamePatterns: ['*.tcl', '*.tk', '*.wish', '*.exp'] },
+  { id: 'Terraform', fileNamePatterns: ['*.tf'] },
+  { id: 'TerraformVariables', fileNamePatterns: ['*.tfvars'] },
+  { id: 'Tex', fileNamePatterns: ['*.tex'] },
+  { id: 'TTCN', fileNamePatterns: ['*.ttcn', '*.ttcn3'] },
+  { id: 'Txt2tags', fileNamePatterns: ['*.t2t', '*.t2t'] },
+  { id: 'TypeScript', fileNamePatterns: ['*.ts'] },
+  { id: 'TypeSpec', fileNamePatterns: ['*.tsp'] },
+  { id: 'V', fileNamePatterns: ['*.v'] },
+  { id: 'Vera', fileNamePatterns: ['*.vr', '*.vri', '*.vrh'] },
+  { id: 'Verilog', fileNamePatterns: ['*.v', '*.vh'] },
+  { id: 'SystemVerilog', fileNamePatterns: ['*.sv', '*.svh', '*.svi'] },
+  { id: 'VHDL', fileNamePatterns: ['*.vhdl', '*.vhd'] },
+  { id: 'Vim', fileNamePatterns: ['vimrc', '[._]vimrc', 'gvimrc', '[._]gvimrc', '*.vim', '*.vba'] },
+  { id: 'WindRes', fileNamePatterns: ['*.rc'] },
+  { id: 'YACC', fileNamePatterns: ['*.y'] },
+  { id: 'YumRepo', fileNamePatterns: ['*.repo'] },
+  { id: 'Zephir', fileNamePatterns: ['*.zep'] },
+  { id: 'Zsh', fileNamePatterns: ['*.zsh'] },
+  { id: 'DBusIntrospect', fileNamePatterns: ['*.xml'] },
+  { id: 'Glade', fileNamePatterns: ['*.glade'] },
+  { id: 'Maven2', fileNamePatterns: ['pom.xml', '*.pom', '*.xml'] },
+  { id: 'PlistXML', fileNamePatterns: ['*.plist'] },
+  { id: 'RelaxNG', fileNamePatterns: ['*.rng'] },
+  { id: 'SVG', fileNamePatterns: ['*.svg'] },
+  { id: 'XRC', fileNamePatterns: ['*.xrc'] },
+  { id: 'XML', fileNamePatterns: ['*.xml'] },
+  { id: 'XSLT', fileNamePatterns: ['*.xsl', '*.xslt'] },
+  { id: 'Yaml', fileNamePatterns: ['*.yml', '*.yaml'] },
+  { id: 'OpenAPI', fileNamePatterns: ['openapi.yaml'] },
+  { id: 'Varlink', fileNamePatterns: ['*.varlink'] },
+  { id: 'Kotlin', fileNamePatterns: ['*.kt', '*.kts'] },
+  { id: 'Thrift', fileNamePatterns: ['*.thrift'] },
+  { id: 'Elm', fileNamePatterns: ['*.elm'] },
+  { id: 'TOML', fileNamePatterns: ['*.toml'] }
+];
+
+let compiled:
+  | readonly {
+      readonly language: SymbolNavigationLanguageDefinition;
+      readonly patterns: readonly RegExp[];
+    }[]
+  | undefined;
+
+export function symbolNavigationLanguageForPath(
+  path: string
+): SymbolNavigationLanguageDefinition | undefined {
+  const name = path.replaceAll('\\', '/').slice(path.lastIndexOf('/') + 1);
+  return compiledLanguages().find((entry) => entry.patterns.some((pattern) => pattern.test(name)))
+    ?.language;
+}
+
+export function supportsSymbolNavigationPath(path: string): boolean {
+  const name = path.replaceAll('\\', '/').slice(path.lastIndexOf('/') + 1);
+  return compiledLanguages().some((entry) => entry.patterns.some((pattern) => pattern.test(name)));
+}
+
+export function symbolNavigationLanguages(): readonly SymbolNavigationLanguageDefinition[] {
+  return languages;
+}
+
+function compiledLanguages(): readonly {
+  readonly language: SymbolNavigationLanguageDefinition;
+  readonly patterns: readonly RegExp[];
+}[] {
+  return (compiled ??= languages.map((language) => ({
+    language,
+    patterns: language.fileNamePatterns.map((pattern) => globPattern(pattern))
+  })));
+}
+
+function globPattern(value: string): RegExp {
+  let expression = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (character === '*') {
+      expression += '.*';
+      continue;
+    }
+    if (character === '?') {
+      expression += '.';
+      continue;
+    }
+    if (character === '[') {
+      const close = value.indexOf(']', index + 1);
+      if (close >= 0) {
+        expression += value.slice(index, close + 1);
+        index = close;
+        continue;
+      }
+    }
+    expression += character.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&');
+  }
+  return new RegExp(`^${expression}$`, 'iu');
+}

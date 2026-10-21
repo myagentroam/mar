@@ -1,0 +1,24 @@
+---
+title: Git Changes and Diff
+lastUpdated: 2026-10-12
+---
+
+# Git Changes and Diff
+
+The repository title, branch, and Refresh button share the first row; status tags appear on the second row. When commits are not synchronized, a tag shows `↓ incoming count ↑ outgoing count`, with the upstream and an explanation on hover. Counts are independent of uncommitted file changes and compare only the locally known upstream. The page never automatically runs fetch, pull, or push. The tag is hidden when there is no available upstream, HEAD is detached, or both counts are zero. To update remote information, run your normal Git fetch in the terminal, then refresh the page.
+
+Git Changes shows the current root repository, initialized submodules, and every linked worktree as peer groups in one list. Tags identify the root, submodules, worktrees, and the current worktree. Each linked worktree group shows its full physical absolute path on the Node, together with its branch or detached HEAD and any locked, prunable, or unavailable status. Every group lists its modified, added, deleted, renamed, and untracked files.
+
+On mobile, drag anywhere on the minimap to move through the file. The bottom-right action group uses two rows: file and change navigation above, then find, download, and close below.
+
+Select a text file to open its working-tree Diff in the unified file-tab strip. Ctrl-click (Command-click on macOS) the file to open the same Diff tab in a separate window through the standard file preview/editor flow, then use the previous/next controls and minimap to navigate changes. Ctrl/Cmd-click a recognized code symbol or import path in a Working Tree Diff to request controlled navigation; deleted lines are not navigable. Ctrl/Cmd+E opens the corresponding working-tree text tab for editing, while a History Diff opens only that commit's read-only text tab. Diff, fallback preview, and restore actions in a linked worktree operate on that physical worktree rather than a same-named path in the current Workspace. Images, PDF, Office, media, and other non-text files do not use an unreliable code comparison. Select **Open file preview** to view the file from the corresponding worktree. From Git History, the same action opens the version after the selected commit.
+
+You may revert tracked changes or delete untracked files after confirmation. These actions affect the real Workspace and cannot be undone by MyAgentRoam. Stage, commit, branch, and remote operations remain available through your normal Git tools or terminal.
+
+If a branch or status is stale, refresh the view to reread every group. The Files tab continues to browse only the current Workspace; linked worktrees are exposed through Git Changes rather than added to that file tree. Git features are unavailable for ordinary directories.
+
+In the Work view, a new Run completion notification for any session in the current Workspace automatically refreshes the visible Git Changes or Files tab. The completed session need not be selected, and read notifications also trigger refresh. A session becoming idle does not trigger this refresh on its own; if no completion notification arrives, refresh manually or reopen the tab. Other Workspaces and hidden tabs are not refreshed. Existing content remains visible during refresh or after a failed read; use Refresh to retry.
+
+If a submodule or linked worktree cannot be read, changes from other readable repositories remain available. The affected group shows its unavailable status, reason, and error code. For example, a directory tracked as a gitlink without a matching `.gitmodules` configuration shows `GIT_SUBMODULE_MAPPING_MISSING`. Uninitialized submodules and missing directories are also marked individually, without automatic initialization or deletion. A locked marker alone does not prevent a worktree from being read.
+
+An unreadable root repository, a non-Git root, or a missing Git executable still fails the entire read. Ask the repository maintainer to repair the submodule configuration, directories, or permissions, then refresh. The page does not create `.gitmodules`, modify gitlinks, switch branches, or run fetch.

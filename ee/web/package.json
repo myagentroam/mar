@@ -1,0 +1,28 @@
+{
+  "name": "@myagentroam-enterprise/web-implementation",
+  "version": "0.10.69",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@myagentroam/web-core": "workspace:*",
+    "@element-plus/icons-vue": "^2.3.2",
+    "@myagentroam/protocol": "workspace:*",
+    "element-plus": "^2.14.4",
+    "vue": "^3.5.41",
+    "vue-i18n": "^11.4.8"
+  },
+  "devDependencies": {
+    "vue-tsc": "^3.3.9"
+  },
+  "exports": {
+    ".": "./src/bootstrap.ts",
+    "./locale-config": "./src/i18n/locale-config.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "LicenseRef-MAR-ESAL-1.0"
+}

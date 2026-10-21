@@ -1,0 +1,267 @@
+import { expect, test } from '@playwright/test';
+import { mockConsoleApi, json } from './support/web-console-api.js';
+
+for (const language of [
+  {
+    locale: 'zh-CN',
+    open: '进入控制台',
+    settings: '设置',
+    notifications: '系统通知',
+    online: '在线系统通知',
+    push: '离线推送',
+    disable: '关闭系统通知',
+    enabled: '已开启',
+    serverUnavailable: '服务器尚未配置离线推送，请联系管理员。',
+    systemDisabled: '管理员未开启离线推送。'
+  },
+  {
+    locale: 'en-US',
+    open: 'Open console',
+    settings: 'Settings',
+    notifications: 'System notifications',
+    online: 'Online system notifications',
+    push: 'Offline Push',
+    disable: 'Disable system notifications',
+    enabled: 'Enabled',
+    serverUnavailable:
+      'This Server is not configured for offline Push. Contact your administrator.',
+    systemDisabled: 'Offline Push is disabled by the administrator.'
+  }
+]) {
+  test(`System notification channels stay grouped and distinguish Server availability: ${language.locale}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    const capability: { enabled: boolean; available: boolean; publicKey: string | null } = {
+      enabled: false,
+      available: false,
+      publicKey: null
+    };
+    await page.route('**/api/notifications/push', (route) =>
+      json(route, { ...capability, account: 'admin' })
+    );
+    let registrations = 0;
+    await page.route('**/api/notifications/push/clients', (route) => {
+      registrations++;
+      return json(route, {}, 500);
+    });
+    await page.addInitScript(
+      ({ locale }) => {
+        // Headless Chromium has no OS notification permission integration.
+        Object.defineProperty(Notification, 'permission', {
+          configurable: true,
+          get: () => 'granted'
+        });
+        localStorage.setItem('mar.locale.v2', locale);
+        localStorage.setItem('mar.workbench.system-notifications.v1.admin', 'true');
+      },
+      { locale: language.locale }
+    );
+    await page.goto('/console');
+    await page.getByRole('button', { name: language.open, exact: true }).click();
+    await page.getByRole('button', { name: language.settings, exact: true }).click();
+    await page.getByRole('button', { name: language.notifications, exact: true }).click();
+    const panel = page.locator('.system-notification-control');
+    const online = panel.locator('.notification-channel').nth(0);
+    const push = panel.locator('.notification-channel').nth(1);
+    await expect(online.getByRole('heading', { name: language.online, exact: true })).toBeVisible();
+    await expect(online.getByRole('status')).toHaveText(language.enabled);
+    await expect(online.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
+    await expect(push.getByRole('heading', { name: language.push, exact: true })).toBeVisible();
+    await expect(push.getByRole('status')).toHaveText(language.serverUnavailable);
+    const assertLayout = async () => {
+      const first = await online.boundingBox();
+      const second = await push.boundingBox();
+      expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height - 1);
+      const rootFontSize = await page.evaluate(() =>
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      expect(first!.width).toBeLessThanOrEqual(48 * rootFontSize + 1);
+      expect(first!.x).toBeGreaterThanOrEqual(0);
+      expect(first!.x + first!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      const button = await online.getByRole('button').boundingBox();
+      expect(button!.x).toBeGreaterThanOrEqual(first!.x - 1);
+      expect(button!.x + button!.width).toBeLessThanOrEqual(first!.x + first!.width + 1);
+    };
+    await assertLayout();
+    await page.screenshot({
+      path: test.info().outputPath(`notification-channels-${language.locale}-desktop.png`),
+      animations: 'disabled'
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await assertLayout();
+    await expect
+      .poll(() =>
+        online.getByRole('heading').evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return node.contains(
+            document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+          );
+        })
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath(`notification-channels-${language.locale}-mobile.png`),
+      animations: 'disabled'
+    });
+    capability.available = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(push.getByRole('status')).toHaveText(language.systemDisabled);
+    capability.enabled = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(push.getByRole('status')).toHaveText(language.serverUnavailable);
+    expect(registrations).toBe(0);
+  });
+}
+
+test('Web Push settings use real browser storage and a gesture-bound mocked subscription', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const writes: { clientToken: string; enabled: boolean; bindingVersion?: number }[] = [];
+  let resolves = 0;
+  await page.route('**/api/notifications/push', (route) =>
+    json(route, {
+      enabled: true,
+      available: true,
+      account: 'admin',
+      publicKey: 'B' + 'A'.repeat(86)
+    })
+  );
+  await page.route('**/api/notifications/push/clients', (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.expectedAccount).toBe('admin');
+    writes.push(body);
+    return json(route, {
+      subscriptionId: 'c45c8a1f-5d5a-4b55-bb7c-336b7629e5f8',
+      bindingVersion: writes.length,
+      enabled: body.enabled,
+      account: 'admin'
+    });
+  });
+  await page.route('**/api/notifications/push/clients/resolve', (route) => {
+    resolves++;
+    return json(route, { binding: null });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('mar.locale.v2', 'en-US');
+    const state = {
+      permission: 'default' as NotificationPermission,
+      explicitPrompts: 0,
+      gestures: [] as boolean[]
+    };
+    Object.assign(window, { __pushTest: state });
+    Object.defineProperty(Notification, 'permission', {
+      configurable: true,
+      get: () => state.permission
+    });
+    Object.defineProperty(Notification, 'requestPermission', {
+      configurable: true,
+      value: async () => {
+        state.explicitPrompts++;
+        state.permission = 'granted';
+        return 'granted';
+      }
+    });
+    const subscription = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/browser-fixture',
+      toJSON: () => ({
+        endpoint: subscription.endpoint,
+        expirationTime: null,
+        keys: { p256dh: 'B' + 'A'.repeat(86), auth: 'A'.repeat(22) }
+      }),
+      unsubscribe: async () => {
+        localStorage.removeItem('fixture.push');
+        return true;
+      }
+    };
+    PushManager.prototype.getSubscription = async () =>
+      localStorage.getItem('fixture.push') === 'true'
+        ? (subscription as unknown as PushSubscription)
+        : null;
+    PushManager.prototype.subscribe = async () => {
+      state.gestures.push(navigator.userActivation.isActive);
+      state.permission = 'granted';
+      localStorage.setItem('fixture.push', 'true');
+      return subscription as unknown as PushSubscription;
+    };
+    ServiceWorkerRegistration.prototype.showNotification = async () => undefined;
+  });
+  await page.goto('/console');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async () => !!(await navigator.serviceWorker.getRegistration('/console'))?.active
+      )
+    )
+    .toBe(true);
+  await page.getByRole('button', { name: 'Open console', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'System notifications', exact: true }).click();
+  const panel = page.locator('.system-notification-control');
+  await expect(panel.getByRole('status').last()).toHaveText(
+    'Offline Push is disabled for this browser.'
+  );
+  await page.getByRole('button', { name: 'Enable system notifications', exact: true }).click();
+  await expect(panel.getByRole('status').last()).toHaveText(
+    'Offline Push is ready for this browser. Delivery is best effort.'
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.clientToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+  expect(
+    await page.evaluate(() => (window as unknown as { __pushTest: unknown }).__pushTest)
+  ).toMatchObject({
+    explicitPrompts: 0,
+    gestures: [true]
+  });
+  const display = () =>
+    page.evaluate(async () => {
+      const database = await new Promise<IDBDatabase>((resolve) => {
+        const open = indexedDB.open('mar.web-push.v1', 1);
+        open.onsuccess = () => resolve(open.result);
+      });
+      try {
+        return await new Promise<unknown>((resolve) => {
+          const read = database.transaction('bindings').objectStore('bindings').get('display');
+          read.onsuccess = () => resolve(read.result);
+        });
+      } finally {
+        database.close();
+      }
+    });
+  expect(await display()).toMatchObject({ account: 'admin', enabled: true, bindingVersion: 1 });
+  await page.getByRole('button', { name: 'Disable system notifications', exact: true }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1]).toMatchObject({
+    clientToken: writes[0]!.clientToken,
+    enabled: false,
+    bindingVersion: 1
+  });
+  expect(await display()).toBeUndefined();
+  expect(resolves).toBe(0);
+  // A stale enabled preference from another tab must not reopen the durable closed binding.
+  await page.evaluate(() => {
+    const key = 'mar.workbench.system-notifications.v1.admin';
+    localStorage.setItem(key, 'true');
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue: 'true' }));
+  });
+  await expect(panel.getByRole('status').last()).toHaveText(
+    'Enable offline Push for this browser. On iOS, open the app from the Home Screen.'
+  );
+  expect(writes).toHaveLength(2);
+  expect(await display()).toBeUndefined();
+  await panel.getByRole('button', { name: 'Enable / retry offline Push', exact: true }).click();
+  await expect(panel.getByRole('status').last()).toHaveText(
+    'Offline Push is ready for this browser. Delivery is best effort.'
+  );
+  expect(writes).toHaveLength(3);
+  expect(writes[2]).toMatchObject({
+    clientToken: writes[0]!.clientToken,
+    bindingVersion: 2,
+    enabled: true
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+});

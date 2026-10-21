@@ -1,0 +1,334 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { z } from 'zod';
+import { parseComposerTags } from '@myagentroam/protocol';
+import type { NodeRuntimeState } from '../runtime-state.js';
+import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
+import type { GoalRuntime } from './goal-runtime.js';
+
+const identifier = z.string().min(1).max(512);
+const count = z.number().int().nonnegative();
+const attachmentSchema = z
+  .object({
+    name: z.string().min(1).max(512),
+    mime: z.string().min(1).max(128),
+    dataBase64: z.string().min(1).max(7_000_000)
+  })
+  .strict();
+const messageSchema = z
+  .object({
+    id: identifier,
+    clientMessageId: identifier,
+    content: z.string().max(1_000_000),
+    attachments: z.array(attachmentSchema).max(5),
+    initiatedByUserId: z.number().int().positive(),
+    immediate: z.boolean(),
+    suppressNotifications: z.boolean().optional()
+  })
+  .strict();
+const goalSchema = z
+  .object({
+    goal: z
+      .object({
+        id: identifier,
+        sessionId: identifier,
+        objective: z.string().min(1).max(20_000),
+        inputTags: z.string().default(''),
+        startedAt: count,
+        revisionStartedAt: count,
+        revision: z.number().int().positive(),
+        status: z.enum(['active', 'completed', 'blocked']),
+        turns: count,
+        retryRequired: z.boolean(),
+        retryStartedAtTurn: count.nullable(),
+        consecutiveNoProgressTurns: count
+      })
+      .strict(),
+    executionFailures: count
+  })
+  .strict();
+const sessionSchema = z
+  .object({
+    session: z
+      .object({
+        id: identifier,
+        workspaceId: identifier,
+        cwd: z.string().min(1),
+        model: z.string().nullable(),
+        effort: z.string().nullable(),
+        access: z.string().nullable()
+      })
+      .strict(),
+    ownerUserId: z.number().int().positive(),
+    paused: z.boolean(),
+    plan: z.boolean(),
+    awaitingGoal: z.boolean(),
+    suppressNotifications: z.boolean().optional(),
+    goal: goalSchema.optional(),
+    current: messageSchema.optional(),
+    queue: z.array(messageSchema)
+  })
+  .strict();
+export const plannedRestartSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: identifier,
+    nodeId: identifier,
+    serverUrl: z.string().min(1),
+    createdAt: count,
+    sessions: z.array(sessionSchema)
+  })
+  .strict();
+export type RestartMessage = z.infer<typeof messageSchema>;
+export type RestartSession = z.infer<typeof sessionSchema>;
+export type PlannedRestart = z.infer<typeof plannedRestartSchema>;
+export const RESTART_NOTICE =
+  'The previous execution was interrupted by a system restart. Check the session history and current workspace, then continue unfinished work. Verify completed or uncertain actions before proceeding; do not blindly repeat actions with external side effects.';
+
+interface Options {
+  readonly directory: () => string;
+  readonly identity: () => { nodeId: string; serverUrl: string };
+  readonly runtime: NodeRuntimeState;
+  readonly coordinator: Pick<ContinuousRunCoordinator<unknown>, 'pending' | 'isImmediate'>;
+  readonly goals: GoalRuntime;
+  readonly commandActive: (sessionId: string, command: string) => boolean;
+  readonly inputState: (
+    session: RestartSession,
+    message: RestartMessage
+  ) => Promise<'missing' | 'completed' | 'interrupted' | 'paused'>;
+  readonly restore: (session: RestartSession, handoffId: string) => Promise<void>;
+  readonly diagnose: (code: string, sessionId?: string) => void;
+}
+
+/** A one-shot orderly-shutdown handoff, not a crash-recovery journal. */
+export class PlannedRestartHandoff {
+  private pending: PlannedRestart | undefined;
+  private readonly blocked = new Set<string>();
+  private recovery: Promise<void> | undefined;
+  private readonly owners = new Map<string, number>();
+
+  constructor(private readonly options: Options) {}
+
+  private path(processing = false): string {
+    return resolve(
+      this.options.directory(),
+      processing ? 'planned-restart-handoff.processing.json' : 'planned-restart-handoff.json'
+    );
+  }
+
+  blocks(sessionId: string): boolean {
+    return this.blocked.has(sessionId);
+  }
+
+  blocksOperation(operation: string, input: Record<string, unknown>): boolean {
+    const sessionId =
+      typeof input.sessionId === 'string'
+        ? input.sessionId
+        : typeof input.queueItemId === 'string'
+          ? this.options.runtime.getQueueItem(input.queueItemId)?.sessionId
+          : undefined;
+    if (sessionId === undefined || !this.blocks(sessionId)) return false;
+    return (
+      operation === 'session.message' ||
+      operation.startsWith('session.command.') ||
+      (operation.startsWith('workspace.queue.') && operation !== 'workspace.queue.get') ||
+      [
+        'session.remove',
+        'session.rewind',
+        'session.rollback',
+        'session.config.update',
+        'session.metadata.update'
+      ].includes(operation)
+    );
+  }
+
+  rememberUser(sessionId: string, userId: number): void {
+    this.owners.set(sessionId, userId);
+  }
+
+  async load(): Promise<void> {
+    this.recovery = undefined;
+    this.pending = undefined;
+    this.blocked.clear();
+    let text: string;
+    try {
+      text = await readFile(this.path(), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        this.options.diagnose('RESTART_HANDOFF_READ_FAILED');
+      return;
+    }
+    try {
+      const value = plannedRestartSchema.parse(JSON.parse(text));
+      const identity = this.options.identity();
+      if (value.nodeId !== identity.nodeId || value.serverUrl !== identity.serverUrl)
+        throw new Error('RESTART_HANDOFF_IDENTITY_MISMATCH');
+      this.pending = value;
+      for (const entry of value.sessions) this.blocked.add(entry.session.id);
+    } catch {
+      this.options.diagnose('RESTART_HANDOFF_INVALID');
+    }
+  }
+
+  capture(): PlannedRestart {
+    const { runtime, coordinator, goals } = this.options;
+    const sessions: RestartSession[] = [...(this.pending?.sessions ?? [])];
+    for (const session of runtime.listAgentSessions()) {
+      if (session.runner !== 'mar-agent' || this.blocks(session.id)) continue;
+      const queue = runtime.sessionQueue(session.id);
+      const active = runtime.activeSessionRun(session.id);
+      const goalItemId = queue.itemIds.find((id) => coordinator.pending(id)?.goal !== undefined);
+      const notificationSource =
+        active ?? (goalItemId === undefined ? undefined : runtime.getQueueItem(goalItemId));
+      const goal = goals.restartState(session.id);
+      const awaitingGoal = goal === undefined && this.options.commandActive(session.id, 'goal');
+      const currentId = active && (runtime.currentExecutionId(active.id) ?? active.id);
+      const pending = currentId === undefined ? undefined : coordinator.pending(currentId);
+      const toMessage = (
+        id: string,
+        clientMessageId: string,
+        content: string,
+        attachments: RestartMessage['attachments'],
+        owner: number | undefined,
+        suppressNotifications: boolean | undefined
+      ): RestartMessage => ({
+        id,
+        clientMessageId,
+        content: withoutAttachmentTags(content),
+        attachments,
+        initiatedByUserId: owner!,
+        immediate: coordinator.isImmediate(id),
+        ...(suppressNotifications === true ? { suppressNotifications: true } : {})
+      });
+      const items = queue.itemIds.flatMap((id) => {
+        if (coordinator.pending(id)?.goal !== undefined) return [];
+        const item = runtime.getQueueItem(id)!;
+        const original = coordinator.pending(id)?.restartMessage;
+        return [
+          toMessage(
+            id,
+            item.clientMessageId,
+            original?.content ?? item.content,
+            [...(original?.attachments ?? item.attachments)],
+            item.initiatedByUserId,
+            item.suppressNotifications
+          )
+        ];
+      });
+      const current =
+        pending?.restartMessage === undefined || pending.goal !== undefined
+          ? undefined
+          : toMessage(
+              currentId!,
+              pending.clientMessageId ?? active!.clientMessageId,
+              pending.restartMessage.content,
+              [...pending.restartMessage.attachments],
+              pending.restartMessage.initiatedByUserId ?? active?.initiatedByUserId,
+              active?.suppressNotifications
+            );
+      if (current === undefined && items.length === 0 && goal === undefined && !awaitingGoal)
+        continue;
+      if (session.externalSessionId === null) throw new Error('RESTART_SESSION_NOT_READY');
+      const ownerUserId =
+        active?.initiatedByUserId ??
+        items[0]?.initiatedByUserId ??
+        this.owners.get(session.id) ??
+        runtime.listRunsForSession(session.id).find((run) => run.initiatedByUserId !== undefined)
+          ?.initiatedByUserId;
+      sessions.push({
+        session: {
+          id: session.externalSessionId,
+          workspaceId: session.workspaceId,
+          cwd: session.cwd,
+          model: session.model,
+          effort: session.effort,
+          access: session.access
+        },
+        ownerUserId: ownerUserId!,
+        paused: queue.paused,
+        plan: this.options.commandActive(session.id, 'plan'),
+        awaitingGoal,
+        ...(notificationSource?.suppressNotifications === true
+          ? { suppressNotifications: true }
+          : {}),
+        ...(goal === undefined ? {} : { goal: goalSchema.parse(goal) }),
+        ...(current === undefined ? {} : { current }),
+        queue: items
+      });
+    }
+    return plannedRestartSchema.parse({
+      schemaVersion: 1,
+      id: randomUUID(),
+      ...this.options.identity(),
+      createdAt: Date.now(),
+      sessions
+    });
+  }
+
+  async publish(snapshot: PlannedRestart): Promise<void> {
+    for (const entry of snapshot.sessions) {
+      const goal = this.options.goals.restartState(entry.session.id);
+      if (goal !== undefined) entry.goal = goalSchema.parse(goal);
+      if (entry.current !== undefined) {
+        const state = await this.options.inputState(entry, entry.current);
+        if (state === 'completed') delete entry.current;
+        if (state === 'paused') entry.paused = true;
+      }
+    }
+    if (snapshot.sessions.length === 0) return;
+    const temporary = `${this.path()}.${process.pid}.tmp`;
+    await mkdir(this.options.directory(), { recursive: true, mode: 0o700 });
+    try {
+      await writeFile(temporary, JSON.stringify(plannedRestartSchema.parse(snapshot)), {
+        mode: 0o600
+      });
+      await rename(temporary, this.path());
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
+
+  recover(): Promise<void> {
+    if (this.pending === undefined) return this.recovery ?? Promise.resolve();
+    return (this.recovery ??= this.consume());
+  }
+
+  async wait(): Promise<void> {
+    await this.recovery;
+  }
+
+  private async consume(): Promise<void> {
+    const value = this.pending!;
+    this.pending = undefined;
+    let failed = false;
+    try {
+      await rename(this.path(), this.path(true));
+      for (const entry of value.sessions) {
+        try {
+          this.rememberUser(entry.session.id, entry.ownerUserId);
+          await this.options.restore(entry, value.id);
+        } catch {
+          failed = true;
+          this.options.diagnose('RESTART_SESSION_RESTORE_FAILED', entry.session.id);
+        } finally {
+          this.blocked.delete(entry.session.id);
+        }
+      }
+      if (!failed) await rm(this.path(true), { force: true });
+    } catch {
+      this.options.diagnose('RESTART_HANDOFF_CONSUME_FAILED');
+    } finally {
+      this.blocked.clear();
+    }
+  }
+}
+
+function withoutAttachmentTags(content: string): string {
+  return parseComposerTags(content)
+    .map((part) =>
+      part.kind === 'text' ? part.text : part.kind === 'mar_attachments' ? '' : part.raw
+    )
+    .join('')
+    .trim();
+}

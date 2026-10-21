@@ -1,0 +1,30 @@
+{
+  "name": "@myagentroam/marctl",
+  "version": "0.10.12",
+  "description": "MyAgentRoam command-line interface for authorized Node access.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "bin",
+    "src"
+  ],
+  "bin": {
+    "marctl": "./bin/marctl.mjs",
+    "marnodes": "./bin/marnodes.mjs",
+    "marssh": "./bin/marssh.mjs",
+    "marscp": "./bin/marscp.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test:unit": "node --test test/unit/*.test.mjs"
+  },
+  "dependencies": {
+    "node-datachannel": "0.33.4",
+    "ws": "8.21.3"
+  }
+}

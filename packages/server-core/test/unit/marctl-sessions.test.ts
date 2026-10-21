@@ -1,0 +1,1400 @@
+import Fastify from 'fastify';
+import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import type { Pool } from 'mysql2/promise';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { registerMarctlSessionRoutes } from '../../src/marctl-session-routes.js';
+import { MarctlUserCredentials } from '../../src/marctl-user-credentials.js';
+import type { ConversationAuditObserver } from '../../src/conversation-audit.js';
+import type { MarAgentRuntimeModelService } from '../../src/session-run-contracts.js';
+
+const apps: ReturnType<typeof Fastify>[] = [];
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
+});
+async function fixture(
+  scoped = true,
+  scheduled = true,
+  options: {
+    session?: Record<string, unknown>;
+    profiles?: Record<string, unknown>;
+    authorizedNode?: boolean;
+    ownsConnection?: boolean;
+    channel?: boolean;
+    marAgentRuntimeModels?: Pick<MarAgentRuntimeModelService, 'prepare'>;
+    audits?: ConversationAuditObserver;
+  } = {}
+) {
+  const credentials = new MarctlUserCredentials({
+    execute: async () => [[{ id: 7, username: 'owner' }]]
+  } as unknown as Pool);
+  const scope = { nodeId: 'node', workspaceId: 'workspace' };
+  const token = credentials.issue(
+    {
+      userId: 7,
+      ...(scheduled ? {} : { sessionHash: 'a'.repeat(43) }),
+      ...(options.channel === true ? { channel: true } : {})
+    },
+    scoped ? scope : undefined
+  );
+  const requestNode = vi.fn(
+    async (_node: string, operation: string, data: Record<string, unknown>): Promise<unknown> => {
+      if (operation === 'session.cli.context')
+        return { workspace: { id: 'workspace', path: '/fixture' }, session: null, run: null };
+      if (operation === 'session.get')
+        return {
+          ...(data.view === 'marctl'
+            ? { view: 'marctl', workspaceId: options.session?.workspaceId ?? 'workspace' }
+            : {}),
+          session: {
+            id: data.sessionId,
+            workspaceId: 'workspace',
+            runner: 'codex',
+            model: 'test-model',
+            ...options.session
+          }
+        };
+      if (operation === 'runner.profiles.list')
+        return options.profiles ?? { profiles: [], defaults: [] };
+      if (operation === 'session.list') return { view: 'marctl', sessions: [], nextCursor: null };
+      if (operation === 'session.runs') return { runs: [] };
+      if (operation === 'workspace.queue.get') return { queue: { items: [] } };
+      if (operation === 'session.goal.get') return { goal: null };
+      if (operation === 'session.start')
+        return { session: { id: 'native-new' }, run: { id: 'new-run' } };
+      if (operation === 'session.command.execute') return { accepted: true };
+      return { accepted: true };
+    }
+  );
+  const secrets = { resolve: vi.fn(async () => ({ FIXTURE_SECRET: 'not-public' })) };
+  const instructions = { get: vi.fn(async () => ({ common: 'Account rule' })) };
+  const authorizedNode = vi.fn(async () => options.authorizedNode ?? true);
+  const ownsWorkbenchConnection = vi.fn(
+    (_sessionHash: string, connectionId: string) =>
+      options.ownsConnection === true && connectionId === 'connection-owned'
+  );
+  const app = Fastify();
+  apps.push(app);
+  registerMarctlSessionRoutes({
+    app,
+    credentials,
+    publicOrigin: 'https://server.test',
+    authorizedNode,
+    requestNode,
+    secrets,
+    personalInstructions: instructions,
+    ...(options.marAgentRuntimeModels === undefined
+      ? {}
+      : { marAgentRuntimeModels: options.marAgentRuntimeModels }),
+    ...(options.audits === undefined ? {} : { audits: options.audits }),
+    ownsWorkbenchConnection
+  });
+  const headers = { authorization: `Bearer ${token}` };
+  return {
+    app,
+    credentials,
+    headers,
+    scope,
+    requestNode,
+    secrets,
+    instructions,
+    authorizedNode,
+    ownsWorkbenchConnection
+  };
+}
+
+describe('Workspace-bound marctl sessions', () => {
+  it('accepts real CLI subprocess requests over HTTP using the issued Workspace credential', async () => {
+    const { app, headers, requestNode } = await fixture(true, false);
+    const request = requestNode.getMockImplementation()!;
+    requestNode.mockImplementation(async (...args) =>
+      args[1] === 'session.message'
+        ? {
+            session: { id: 'target' },
+            run: { id: 'active-run' },
+            queueItemId: 'input',
+            delivery: 'ACCEPTED'
+          }
+        : request(...args)
+    );
+    const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+    const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
+    try {
+      for (const args of [
+        ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
+        ['rename', '--title', 'reviewer#42 Updated'],
+        ['config', '--effort', 'high'],
+        ['schedule', 'list'],
+        ['schedule', 'get'],
+        ['schedule', 'create', '--cron', '0 9 * * *', '-m', 'Check tests'],
+        ['schedule', 'update', '--expected-revision', '3', '--cron', '0 8 * * *']
+      ]) {
+        const result = await promisify(execFile)(
+          process.execPath,
+          [cli, 'sessions', ...args, '--json'],
+          {
+            timeout: 10_000,
+            env: {
+              ...process.env,
+              MAR_CTL_CONTEXT_REQUIRED: '1',
+              MAR_CTL_SERVER_URL: baseUrl,
+              MAR_CTL_USER_TOKEN: headers.authorization.slice(7),
+              MAR_CTL_SESSION_ID: 'source'
+            }
+          }
+        );
+        expect(result.stderr).toBe('');
+        expect(JSON.parse(result.stdout)).toBeTypeOf('object');
+        if (args[0] === 'send')
+          expect(JSON.parse(result.stdout)).toMatchObject({
+            sessionId: 'target',
+            runId: 'active-run',
+            queueItemId: 'input',
+            clientMessageId: 'input',
+            delivery: 'ACCEPTED'
+          });
+      }
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.metadata.update',
+        { sessionId: 'source', workspaceId: 'workspace', customTitle: 'reviewer#42 Updated' },
+        expect.any(Object)
+      );
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.schedule.agent.save',
+        {
+          sessionId: 'source',
+          workspaceId: 'workspace',
+          mode: 'update',
+          expectedRevision: 3,
+          cron: '0 8 * * *'
+        },
+        expect.any(Object)
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('renames any authorized Session without using parent relationships or execution context', async () => {
+    const { app, headers, requestNode, secrets } = await fixture();
+    const result = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'rename', sessionId: 'other', title: '  reviewer#42 Review  ' }
+    });
+    expect(result.statusCode).toBe(200);
+    expect(requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.metadata.update',
+      { sessionId: 'other', workspaceId: 'workspace', customTitle: 'reviewer#42 Review' },
+      expect.any(Object)
+    );
+    expect(secrets.resolve).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'forwards normal schedule reads and agent edits (scheduled=%s)',
+    async (scheduled) => {
+      const { app, headers, requestNode, secrets } = await fixture(true, scheduled);
+      for (const payload of [
+        { action: 'schedule.list', limit: 2 },
+        { action: 'schedule.get', sessionId: 'other' },
+        { action: 'schedule.create', sessionId: 'other', cron: '0 9 * * *', content: 'Check' },
+        { action: 'schedule.update', sessionId: 'other', expectedRevision: 3, content: 'Review' }
+      ]) {
+        expect(
+          (await app.inject({ method: 'POST', url: '/api/marctl/sessions', headers, payload }))
+            .statusCode
+        ).toBe(200);
+      }
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.schedule.list',
+        { workspaceId: 'workspace', limit: 2 },
+        expect.any(Object)
+      );
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.schedule.agent.save',
+        {
+          workspaceId: 'workspace',
+          sessionId: 'other',
+          mode: 'create',
+          cron: '0 9 * * *',
+          objective: 'Check'
+        },
+        expect.any(Object)
+      );
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.schedule.agent.save',
+        {
+          workspaceId: 'workspace',
+          sessionId: 'other',
+          mode: 'update',
+          expectedRevision: 3,
+          objective: 'Review'
+        },
+        expect.any(Object)
+      );
+      expect(requestNode.mock.calls.some((call) => call[1] === 'session.schedule.save')).toBe(
+        false
+      );
+      expect(secrets.resolve).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'rejects forged schedule fields and foreign targets (scheduled=%s)',
+    async (scheduled) => {
+      const foreground = await fixture(true, scheduled);
+      for (const extra of [{ ownerUserId: 99 }, { enabled: false }, { readonly: false }])
+        expect(
+          (
+            await foreground.app.inject({
+              method: 'POST',
+              url: '/api/marctl/sessions',
+              headers: foreground.headers,
+              payload: {
+                action: 'schedule.update',
+                sessionId: 'other',
+                expectedRevision: 1,
+                content: 'Check',
+                ...extra
+              }
+            })
+          ).statusCode
+        ).toBe(400);
+      const foreign = await fixture(true, scheduled, { session: { workspaceId: 'foreign' } });
+      expect(
+        (
+          await foreign.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: foreign.headers,
+            payload: { action: 'rename', sessionId: 'other', title: 'Changed' }
+          })
+        ).statusCode
+      ).toBe(403);
+      expect(
+        (
+          await foreign.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: foreign.headers,
+            payload: { action: 'schedule.get', sessionId: 'other' }
+          })
+        ).statusCode
+      ).toBe(403);
+    }
+  );
+
+  it.each(['send', 'start'] as const)(
+    'resolves a local source snapshot for %s without trusting CLI names',
+    async (action) => {
+      const { app, headers, requestNode } = await fixture(true, true, {
+        session: { customTitle: 'Coordinator#42 Plan & review', runnerTitle: 'Auto title' }
+      });
+      const payload = {
+        action,
+        content: 'task',
+        clientMessageId: 'source-input',
+        sourceSessionId: 'source',
+        ...(action === 'start'
+          ? { runner: 'codex' }
+          : { sessionId: 'target', deliveryIntent: 'QUEUE' })
+      };
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload
+      });
+      expect(response.statusCode).toBe(200);
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.get',
+        { sessionId: 'source', workspaceId: 'workspace', registeredOnly: true },
+        expect.any(Object)
+      );
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        action === 'start' ? 'session.start' : 'session.message',
+        expect.objectContaining({
+          content: 'task',
+          __marctlOrigin: { sessionId: 'source', name: 'Coordinator#42 Plan & review' }
+        }),
+        expect.any(Object)
+      );
+      const spoofed = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { ...payload, sourceSessionName: 'Fake' }
+      });
+      expect(spoofed.statusCode).toBe(400);
+    }
+  );
+
+  it('marks terminal messages without inventing a Session and leaves Goal inputs unchanged', async () => {
+    const { app, headers, requestNode } = await fixture();
+    for (const payload of [
+      {
+        action: 'send',
+        sessionId: 'target',
+        content: 'task',
+        clientMessageId: 'terminal',
+        deliveryIntent: 'SEND'
+      },
+      { action: 'goal.set', sessionId: 'target', content: 'objective' }
+    ])
+      expect(
+        (await app.inject({ method: 'POST', url: '/api/marctl/sessions', headers, payload }))
+          .statusCode
+      ).toBe(200);
+    expect(requestNode.mock.calls.find(([, op]) => op === 'session.message')?.[2]).toMatchObject({
+      __marctlOrigin: {}
+    });
+    expect(
+      requestNode.mock.calls.find(([, op]) => op === 'session.command.execute')?.[2]
+    ).not.toHaveProperty('__marctlOrigin');
+  });
+
+  it.each([
+    { customTitle: null, runnerTitle: 'Runner title', expected: 'Runner title' },
+    { customTitle: '  Custom title  ', runnerTitle: 'Runner title', expected: 'Custom title' },
+    { customTitle: '', runnerTitle: null, expected: 'source' }
+  ])(
+    'uses the current Session title or ID as its source name ($expected)',
+    async ({ expected, ...session }) => {
+      const { app, headers, requestNode } = await fixture(true, true, { session });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'send',
+          sessionId: 'source',
+          sourceSessionId: 'source',
+          content: 'task',
+          clientMessageId: 'self-message',
+          deliveryIntent: 'QUEUE'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(requestNode.mock.calls.filter(([, op]) => op === 'session.get')).toHaveLength(1);
+      expect(requestNode.mock.calls.find(([, op]) => op === 'session.message')?.[2]).toMatchObject({
+        __marctlOrigin: { sessionId: 'source', name: expected }
+      });
+    }
+  );
+
+  it('rejects a foreign or missing source before sending the message', async () => {
+    const { app, headers, requestNode } = await fixture();
+    requestNode.mockImplementation(async (_node, operation, data) => {
+      if (operation === 'session.cli.context')
+        return { workspace: { id: 'workspace', path: '/fixture' } };
+      if (operation === 'session.get') {
+        if (data.sessionId === 'missing') throw new Error('SESSION_NOT_FOUND');
+        return {
+          session: {
+            id: data.sessionId,
+            workspaceId: data.sessionId === 'foreign' ? 'other' : 'workspace',
+            runner: 'codex'
+          }
+        };
+      }
+      return {};
+    });
+    for (const sourceSessionId of ['foreign', 'missing']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'send',
+          sessionId: 'target',
+          content: 'task',
+          clientMessageId: 'blocked',
+          deliveryIntent: 'QUEUE',
+          sourceSessionId
+        }
+      });
+      expect(response.statusCode).toBe(sourceSessionId === 'foreign' ? 403 : 404);
+    }
+    expect(requestNode.mock.calls.some(([, op]) => op === 'session.message')).toBe(false);
+  });
+
+  it('rejects send without an explicit delivery intent before contacting Node', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const result = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'send', sessionId: 'target', content: 'notice', clientMessageId: 'input' }
+    });
+    expect(result.statusCode).toBe(400);
+    expect(result.json().error.code).toBe('MARCTL_SESSION_INPUT_INVALID');
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+  it.each(['QUEUE', 'REPLACE_CURRENT', 'SEND'] as const)(
+    'forwards explicit transport intents without a default (%s)',
+    async (deliveryIntent) => {
+      const { app, headers, requestNode } = await fixture();
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'send',
+          sessionId: 'target',
+          content: 'notice',
+          clientMessageId: 'input',
+          deliveryIntent
+        }
+      });
+      expect(result.statusCode).toBe(200);
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.message',
+        expect.objectContaining({
+          sessionId: 'target',
+          deliveryIntent
+        }),
+        expect.any(Object)
+      );
+    }
+  );
+  it.each([{ model: 'next-model' }, { effort: 'high' }, { model: 'next-model', effort: '' }])(
+    'forwards partial configuration without changing omitted fields: %j',
+    async (configuration) => {
+      const { app, headers, requestNode, secrets, instructions } = await fixture();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action: 'config', sessionId: 'target', ...configuration }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'session.config.update',
+        { workspaceId: 'workspace', sessionId: 'target', ...configuration },
+        expect.any(Object)
+      );
+      expect(secrets.resolve).not.toHaveBeenCalled();
+      expect(instructions.get).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects empty, oversized and permission-changing configuration and foreign targets', async () => {
+    const local = await fixture();
+    for (const extra of [
+      {},
+      { model: '' },
+      { effort: 'x'.repeat(121) },
+      { model: 'x'.repeat(121) },
+      { model: 'next', access: 'full-access' }
+    ]) {
+      const response = await local.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: local.headers,
+        payload: { action: 'config', sessionId: 'target', ...extra }
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    const foreign = await fixture(true, true, { session: { workspaceId: 'foreign' } });
+    const response = await foreign.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: foreign.headers,
+      payload: { action: 'config', sessionId: 'target', model: 'next' }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(
+      foreign.requestNode.mock.calls.some(([, operation]) => operation === 'session.config.update')
+    ).toBe(false);
+  });
+  it.each(['start', 'send', 'goal.set'] as const)(
+    'marks %s dispatches for automatic notification suppression',
+    async (action) => {
+      const { app, headers, requestNode } = await fixture();
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action,
+          content: 'delegated task',
+          ...(action === 'start' ? { runner: 'codex' } : { sessionId: 'session-1' }),
+          ...(action === 'goal.set' ? {} : { clientMessageId: 'marctl-input' }),
+          ...(action === 'send' ? { deliveryIntent: 'QUEUE' } : {})
+        }
+      });
+      expect(result.statusCode).toBe(200);
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        action === 'start'
+          ? 'session.start'
+          : action === 'send'
+            ? 'session.message'
+            : 'session.command.execute',
+        expect.objectContaining({ __suppressNotifications: true }),
+        expect.any(Object)
+      );
+    }
+  );
+
+  it('relays only the compact response envelope without show fan-out or internal metadata', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const session = {
+      id: 's',
+      title: 'Fixer',
+      runner: 'codex',
+      status: 'IDLE',
+      runId: null,
+      model: null,
+      effort: null,
+      queuedCount: 0,
+      latestMessage: null,
+      recentTools: []
+    };
+    requestNode.mockImplementation(async (_node, operation) => {
+      if (operation === 'session.cli.context')
+        return { workspace: { id: 'workspace', path: '/fixture' } };
+      if (operation === 'session.get')
+        return { view: 'marctl', workspaceId: 'workspace', session, secret: 'DO_NOT_INCLUDE' };
+      if (operation === 'session.list')
+        return { view: 'marctl', sessions: [], nextCursor: null, secret: 'DO_NOT_INCLUDE' };
+      throw new Error('Unexpected fan-out: ' + operation);
+    });
+    for (const action of ['show', 'list']) {
+      requestNode.mockClear();
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action, ...(action === 'show' ? { sessionId: 's' } : {}) }
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual(
+        action === 'show' ? { session } : { sessions: [], nextCursor: null }
+      );
+      expect(requestNode.mock.calls.map((call) => call[1])).toEqual([
+        'session.cli.context',
+        action === 'show' ? 'session.get' : 'session.list'
+      ]);
+      expect(requestNode.mock.calls[1]![2]).toMatchObject({
+        view: 'marctl',
+        workspaceId: 'workspace',
+        registeredOnly: true
+      });
+    }
+  });
+
+  it.each(['show', 'list'])(
+    'rejects an old Node that ignores the compact view for %s',
+    async (action) => {
+      const { app, headers, requestNode } = await fixture();
+      requestNode.mockImplementation(async (_node, operation) =>
+        operation === 'session.cli.context'
+          ? { workspace: { id: 'workspace', path: '/fixture' } }
+          : {
+              session: { id: 's', workspaceId: 'workspace', control: 'DO_NOT_INCLUDE' },
+              sessions: [],
+              secret: 'DO_NOT_INCLUDE'
+            }
+      );
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action, ...(action === 'show' ? { sessionId: 's' } : {}) }
+      });
+      expect(result.statusCode).toBe(409);
+      expect(result.json().error.code).toBe('CAPABILITY_VERSION_UNSUPPORTED');
+      expect(result.body).not.toContain('DO_NOT_INCLUDE');
+    }
+  );
+
+  it.each([undefined, 'other'])(
+    'checks only the compact show envelope workspace (%s)',
+    async (workspaceId) => {
+      const { app, headers, requestNode } = await fixture();
+      requestNode.mockImplementation(async (_node, operation) =>
+        operation === 'session.cli.context'
+          ? { workspace: { id: 'workspace', path: '/fixture' } }
+          : { view: 'marctl', workspaceId, session: { id: 's', workspaceId: 'workspace' } }
+      );
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action: 'show', sessionId: 's' }
+      });
+      expect(result.statusCode).toBe(403);
+      expect(result.json().error.code).toBe('RESOURCE_ACCESS_DENIED');
+    }
+  );
+
+  it('forces Node-local lookup for CLI lists, title searches and Session identity reads', async () => {
+    const { app, headers, requestNode } = await fixture();
+    for (const payload of [
+      { action: 'list', query: 'fixer#42' },
+      { action: 'show', sessionId: 'session-1' },
+      { action: 'current' }
+    ]) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload
+      });
+      expect(result.statusCode).toBe(200);
+    }
+    const reads = requestNode.mock.calls.filter((call) =>
+      ['session.cli.context', 'session.get', 'session.list'].includes(call[1])
+    );
+    expect(reads.length).toBeGreaterThan(3);
+    for (const call of reads)
+      expect(call[2]).toMatchObject({ workspaceId: 'workspace', registeredOnly: true });
+    expect(reads.find((call) => call[1] === 'session.list')?.[2]).toMatchObject({
+      query: 'fixer#42'
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers,
+          payload: { action: 'list', registeredOnly: false }
+        })
+      ).statusCode
+    ).toBe(400);
+  });
+
+  it('forwards creation parents and scoped local graph queries', async () => {
+    const linked = await fixture();
+    const invoke = (payload: object) =>
+      linked.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: linked.headers,
+        payload
+      });
+    expect(
+      (
+        await invoke({
+          action: 'start',
+          runner: 'codex',
+          content: 'task',
+          clientMessageId: 'parent-input',
+          parentSessionId: 'source'
+        })
+      ).statusCode
+    ).toBe(200);
+    expect(linked.requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.start',
+      expect.objectContaining({ workspaceId: 'workspace', parentSessionId: 'source' }),
+      expect.objectContaining({ workspaceId: 'workspace' })
+    );
+    expect((await invoke({ action: 'list', parentSessionId: 'source', limit: 1 })).statusCode).toBe(
+      200
+    );
+    expect(linked.requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.list',
+      expect.objectContaining({
+        workspaceId: 'workspace',
+        registeredOnly: true,
+        parentSessionId: 'source',
+        limit: 1
+      }),
+      expect.any(Object)
+    );
+    expect((await invoke({ action: 'graph', sessionId: 'source' })).statusCode).toBe(200);
+    expect(linked.requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.graph',
+      { workspaceId: 'workspace', registeredOnly: true, sessionId: 'source', limit: 100 },
+      expect.any(Object)
+    );
+    expect((await invoke({ action: 'graph', sessionId: 'source', limit: 101 })).statusCode).toBe(
+      400
+    );
+    const foreign = await fixture(true, true, { session: { workspaceId: 'foreign' } });
+    expect(
+      (
+        await foreign.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: foreign.headers,
+          payload: { action: 'graph', sessionId: 'source' }
+        })
+      ).statusCode
+    ).toBe(403);
+    expect(
+      foreign.requestNode.mock.calls.some(([, operation]) => operation === 'session.graph')
+    ).toBe(false);
+  });
+
+  it('rejects missing context and target overrides before forwarding', async () => {
+    const { app, headers, requestNode } = await fixture(false);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers,
+          payload: { action: 'list' }
+        })
+      ).statusCode
+    ).toBe(403);
+    expect(requestNode).not.toHaveBeenCalled();
+    const deniedNode = await fixture(true, true, { authorizedNode: false });
+    expect(
+      (
+        await deniedNode.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: deniedNode.headers,
+          payload: { action: 'current' }
+        })
+      ).statusCode
+    ).toBe(403);
+    expect(deniedNode.requestNode).not.toHaveBeenCalled();
+    const scoped = await fixture();
+    const invalidOverrides = [
+      { action: 'current', nodeId: 'other' },
+      { action: 'list', workspaceId: 'other' },
+      { action: 'history', sessionId: 'session', cursor: 'opaque-cursor', workspaceId: 'other' },
+      {
+        action: 'send',
+        sessionId: 'session',
+        content: 'message',
+        clientMessageId: 'message-1',
+        deliveryIntent: 'QUEUE',
+        nodeId: 'other'
+      },
+      {
+        action: 'watch',
+        sessionId: 'session',
+        workbenchConnectionId: 'connection-owned',
+        watchId: 'watch-12345678',
+        mode: 'initial',
+        operation: 'session.unwatch'
+      }
+    ];
+    for (const payload of invalidOverrides) {
+      expect(
+        (
+          await scoped.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: scoped.headers,
+            payload
+          })
+        ).statusCode
+      ).toBe(400);
+    }
+    expect(scoped.requestNode).not.toHaveBeenCalled();
+  });
+
+  it('keeps current, list and history cursors inside the authenticated Node/Workspace scope', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const cursorError = Object.assign(new Error('SESSION_CURSOR_INVALID'), {
+      code: 'SESSION_CURSOR_INVALID'
+    });
+    requestNode.mockImplementation(async (_node, operation, data) => {
+      if (operation === 'session.cli.context')
+        return { workspace: { id: 'workspace', path: '/fixture' }, session: null, run: null };
+      if (operation === 'session.get')
+        return {
+          session: {
+            id: data.sessionId,
+            workspaceId: 'workspace',
+            runner: 'codex',
+            model: 'test-model'
+          }
+        };
+      if (
+        (operation === 'session.list' || operation === 'session.turns.list') &&
+        data.cursor === 'foreign-workspace-cursor'
+      )
+        throw cursorError;
+      return { accepted: true };
+    });
+
+    const current = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'current' }
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toMatchObject({
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      workspace: { id: 'workspace' }
+    });
+    const currentCall = requestNode.mock.calls.find((call) => call[1] === 'session.cli.context');
+    expect(currentCall?.[0]).toBe('node');
+    expect(currentCall?.[2]).toMatchObject({ workspaceId: 'workspace' });
+
+    const listing = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'list', cursor: 'foreign-workspace-cursor' }
+    });
+    expect(listing.statusCode).not.toBe(200);
+    const listCall = requestNode.mock.calls.find((call) => call[1] === 'session.list');
+    expect(listCall?.[0]).toBe('node');
+    expect(listCall?.[2]).toEqual({
+      view: 'marctl',
+      cursor: 'foreign-workspace-cursor',
+      limit: 20,
+      workspaceId: 'workspace',
+      registeredOnly: true
+    });
+
+    const history = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'history', sessionId: 'session-1', cursor: 'foreign-workspace-cursor' }
+    });
+    expect(history.statusCode).not.toBe(200);
+    const historyCall = requestNode.mock.calls.find((call) => call[1] === 'session.turns.list');
+    expect(historyCall?.[0]).toBe('node');
+    expect(historyCall?.[2]).toEqual({
+      sessionId: 'session-1',
+      unit: 'SEGMENT',
+      cursor: 'foreign-workspace-cursor',
+      limit: 10,
+      workspaceId: 'workspace',
+      registeredOnly: true
+    });
+  });
+
+  it('creates a new same-Workspace Session with independent credentials and scheduled provenance', async () => {
+    const { app, headers, credentials, requestNode, secrets, instructions } = await fixture(
+      true,
+      true,
+      {
+        profiles: {
+          profiles: [
+            { runner: 'codex', models: [{ id: 'codex-profile-default', isDefault: true }] },
+            { runner: 'claude-code', models: [{ id: 'other-runner-default', isDefault: true }] }
+          ],
+          defaults: [
+            { runner: 'codex', model: 'codex-workspace-default' },
+            { runner: 'claude-code', model: 'claude-workspace-default' }
+          ]
+        }
+      }
+    );
+    const titles = ['fixer#17 Add importer retries', 'reviewer#17 Review importer retries'];
+    const responseBodies: string[] = [];
+    for (const [index, title] of titles.entries()) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'start',
+          runner: 'codex',
+          content: 'Develop fixture',
+          clientMessageId: `message-${index + 1}`,
+          effort: 'high',
+          title
+        }
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toMatchObject({
+        session: { id: 'native-new' },
+        run: { id: 'new-run' }
+      });
+      responseBodies.push(result.body);
+    }
+    const starts = requestNode.mock.calls.filter((call) => call[1] === 'session.start');
+    expect(starts.map((call) => call[2].customTitle)).toEqual(titles);
+    const start = starts[0]!;
+    expect(start[0]).toBe('node');
+    expect(start[2]).toMatchObject({
+      workspaceId: 'workspace',
+      cwd: '/fixture',
+      runner: 'codex',
+      content: 'Develop fixture',
+      model: 'codex-workspace-default',
+      effort: 'high',
+      customTitle: 'fixer#17 Add importer retries',
+      personalInstructions: { common: 'Account rule' }
+    });
+    const environment = start[2].secretEnvironment as Record<string, string>;
+    expect(environment.MAR_CTL_USER_TOKEN).not.toBe(headers.authorization.slice(7));
+    expect(
+      await credentials.authenticateContext('Bearer ' + environment.MAR_CTL_USER_TOKEN)
+    ).toMatchObject({ scheduled: true, scope: { nodeId: 'node', workspaceId: 'workspace' } });
+    expect(secrets.resolve).toHaveBeenCalledWith(7, 'node', 'workspace');
+    expect(instructions.get).toHaveBeenCalledWith(7);
+    expect(responseBodies.join('\n')).not.toContain('not-public');
+    expect(responseBodies.join('\n')).not.toContain(environment.MAR_CTL_USER_TOKEN);
+  });
+
+  it('preserves channel identity when preparing a marctl message credential', async () => {
+    const { app, headers, credentials, requestNode } = await fixture(true, false, {
+      channel: true
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        content: 'channel message',
+        clientMessageId: 'channel-input',
+        deliveryIntent: 'SEND'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const message = requestNode.mock.calls.find(([, operation]) => operation === 'session.message');
+    const environment = message?.[2].secretEnvironment as Record<string, string> | undefined;
+    expect(environment?.MAR_CTL_USER_TOKEN).toBeDefined();
+    expect(
+      await credentials.authenticateContext('Bearer ' + environment?.MAR_CTL_USER_TOKEN)
+    ).toMatchObject({
+      scheduled: false,
+      channel: true,
+      scope: { nodeId: 'node', workspaceId: 'workspace' }
+    });
+  });
+
+  it('prepares MAR Agent models with new or target Session scope for start, send and goal.set', async () => {
+    const prepare = vi.fn(async (input: { readonly selectedModelId: string }) => ({
+      runtimeScopeId: `runtime-${input.selectedModelId}`,
+      models: []
+    }));
+    const { app, headers, requestNode } = await fixture(true, true, {
+      session: { runner: 'mar-agent', model: 'target-session-model' },
+      profiles: {
+        profiles: [{ runner: 'mar-agent', models: [{ id: 'profile-model', isDefault: true }] }],
+        defaults: [{ runner: 'mar-agent', model: 'workspace-default-model' }]
+      },
+      marAgentRuntimeModels: { prepare }
+    });
+
+    const start = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'start',
+        runner: 'mar-agent',
+        content: 'start task',
+        clientMessageId: 'start-input'
+      }
+    });
+    const send = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        content: 'continue task',
+        clientMessageId: 'send-input',
+        deliveryIntent: 'QUEUE'
+      }
+    });
+    const goal = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'goal.set', sessionId: 'target', content: 'new objective' }
+    });
+
+    expect([start.statusCode, send.statusCode, goal.statusCode]).toEqual([200, 200, 200]);
+    expect(prepare).toHaveBeenNthCalledWith(1, {
+      userId: 7,
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      selectedModelId: 'workspace-default-model'
+    });
+    for (const callNumber of [2, 3])
+      expect(prepare).toHaveBeenNthCalledWith(callNumber, {
+        userId: 7,
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        sessionId: 'target',
+        selectedModelId: 'target-session-model'
+      });
+
+    expect(
+      requestNode.mock.calls.find(([, operation]) => operation === 'session.start')?.[2]
+    ).toMatchObject({
+      model: 'workspace-default-model',
+      marAgentRuntimeScopeId: 'runtime-workspace-default-model'
+    });
+    expect(
+      requestNode.mock.calls.find(([, operation]) => operation === 'session.message')?.[2]
+    ).toMatchObject({
+      sessionId: 'target',
+      deliveryIntent: 'QUEUE',
+      marAgentRuntimeScopeId: 'runtime-target-session-model'
+    });
+    expect(
+      requestNode.mock.calls.find(([, operation]) => operation === 'session.command.execute')?.[2]
+    ).toMatchObject({
+      sessionId: 'target',
+      commandId: 'goal',
+      input: '/goal new objective',
+      marAgentRuntimeScopeId: 'runtime-target-session-model'
+    });
+  });
+
+  it('does not prepare a MAR runtime model for a non-MAR Session continuation', async () => {
+    const prepare = vi.fn(async () => ({ runtimeScopeId: 'unexpected-scope', models: [] }));
+    const { app, headers, requestNode } = await fixture(true, true, {
+      session: { runner: 'codex', model: 'codex-session-model' },
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        content: 'continue task',
+        clientMessageId: 'codex-input',
+        deliveryIntent: 'SEND'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(prepare).not.toHaveBeenCalled();
+    const message = requestNode.mock.calls.find(
+      ([, operation]) => operation === 'session.message'
+    )?.[2];
+    expect(message).not.toHaveProperty('marAgentRuntimeScopeId');
+    expect(message).not.toHaveProperty('marAgentModel');
+    expect(message).not.toHaveProperty('marAgentModels');
+  });
+
+  it('forwards Node-issued accepted receipts through the marctl audit observer once', async () => {
+    const recordSharedConversation = vi.fn().mockResolvedValue(undefined);
+    const { app, headers, requestNode } = await fixture(true, true, {
+      audits: { recordSharedConversation }
+    });
+    const originalRequestNode = requestNode.getMockImplementation()!;
+    requestNode.mockImplementation(async (...args) => {
+      const result = await originalRequestNode(...args);
+      const receipt =
+        args[1] === 'session.start'
+          ? { sessionId: 'created-session', inputMode: 'NEW_SESSION' }
+          : args[1] === 'session.message'
+            ? { sessionId: 'target', inputMode: 'QUEUE' }
+            : undefined;
+      return receipt === undefined
+        ? result
+        : {
+            ...(result !== null && typeof result === 'object' ? result : {}),
+            auditReceipt: receipt
+          };
+    });
+
+    const start = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'start',
+        runner: 'codex',
+        content: 'audited start',
+        clientMessageId: 'audited-start'
+      }
+    });
+    expect(start.statusCode).toBe(200);
+    await vi.waitFor(() => expect(recordSharedConversation).toHaveBeenCalledTimes(1));
+    const send = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        content: 'audited send',
+        clientMessageId: 'audited-send',
+        deliveryIntent: 'QUEUE'
+      }
+    });
+    expect(send.statusCode).toBe(200);
+    await vi.waitFor(() => expect(recordSharedConversation).toHaveBeenCalledTimes(2));
+
+    expect(recordSharedConversation.mock.calls.map(([event]) => event)).toMatchObject([
+      {
+        eventType: 'shared_conversation_input_accepted',
+        actorUserId: 7,
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        clientMessageId: 'audited-start',
+        userMessage: 'audited start',
+        receipt: { sessionId: 'created-session', inputMode: 'NEW_SESSION' }
+      },
+      {
+        eventType: 'shared_conversation_input_accepted',
+        actorUserId: 7,
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        clientMessageId: 'audited-send',
+        userMessage: 'audited send',
+        receipt: { sessionId: 'target', inputMode: 'QUEUE' }
+      }
+    ]);
+  });
+
+  it('forwards image-only start and message inputs through existing scoped attachment operations', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const attachments = [
+      {
+        name: 'screenshot.png',
+        mime: 'image/png',
+        dataBase64: Buffer.alloc(1024 * 1024).toString('base64')
+      }
+    ];
+    for (const action of ['start', 'send']) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action,
+          content: '',
+          clientMessageId: 'image-' + action,
+          attachments,
+          ...(action === 'start'
+            ? { runner: 'codex' }
+            : { sessionId: 'target', deliveryIntent: 'QUEUE' })
+        }
+      });
+      expect(result.statusCode).toBe(200);
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        action === 'start' ? 'session.start' : 'session.message',
+        expect.objectContaining({ content: '', attachments, workspaceId: 'workspace' }),
+        expect.anything()
+      );
+    }
+    requestNode.mockClear();
+    for (const input of [
+      { content: '', attachments: [] },
+      { content: ' ', attachments: [] },
+      { content: '', attachments: Array(6).fill(attachments[0]) },
+      { content: '', attachments: [{ ...attachments[0], mime: 'text/plain' }] },
+      { content: '', attachments: [{ ...attachments[0], dataBase64: 42 }] }
+    ]) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'send',
+          sessionId: 'target',
+          clientMessageId: 'invalid',
+          deliveryIntent: 'QUEUE',
+          ...input
+        }
+      });
+      expect(result.statusCode).toBe(400);
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
+  it('never interprets goal.set content as a destructive Goal command', async () => {
+    const { app, headers, requestNode } = await fixture();
+    for (const content of ['--clear', '  --clear  ']) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action: 'goal.set', sessionId: 'target', content }
+      });
+      expect(result.statusCode).toBe(400);
+      expect(result.json().error.code).toBe('MARCTL_SESSION_INPUT_INVALID');
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
+  it('refuses a known other-Workspace identity even if the current user could otherwise access it', async () => {
+    const { app, headers, requestNode } = await fixture();
+    requestNode.mockImplementation(async (_node, operation, data) =>
+      operation === 'session.cli.context'
+        ? { workspace: { id: 'workspace', path: '/fixture' } }
+        : {
+            ...(data.view === 'marctl' ? { view: 'marctl', workspaceId: 'other' } : {}),
+            session: { id: 'foreign', workspaceId: 'other', runner: 'codex' }
+          }
+    );
+    const actions = [
+      { action: 'show' },
+      { action: 'history', cursor: 'foreign-cursor' },
+      {
+        action: 'send',
+        clientMessageId: 'message',
+        content: 'Do not execute',
+        deliveryIntent: 'QUEUE'
+      },
+      { action: 'stop', runId: 'foreign-run' },
+      { action: 'goal.get' },
+      { action: 'goal.set', content: 'Do not set a goal' },
+      { action: 'goal.clear' },
+      {
+        action: 'watch',
+        workbenchConnectionId: 'connection-owned',
+        watchId: 'watch-12345678',
+        mode: 'initial'
+      }
+    ];
+    for (const action of actions) {
+      const payload = { ...action, sessionId: 'foreign' };
+      expect(
+        (await app.inject({ method: 'POST', url: '/api/marctl/sessions', headers, payload }))
+          .statusCode
+      ).toBe(403);
+    }
+    expect(
+      requestNode.mock.calls.every((call) =>
+        ['session.cli.context', 'session.get'].includes(call[1])
+      )
+    ).toBe(true);
+  });
+
+  it('cancels only the requested Run when it belongs to the target Session', async () => {
+    const { app, headers, requestNode } = await fixture();
+    requestNode.mockImplementation(async (_node, operation, data) => {
+      if (operation === 'session.cli.context')
+        return { workspace: { id: 'workspace', path: '/fixture' }, session: null, run: null };
+      if (operation === 'session.get')
+        return {
+          session: {
+            id: data.sessionId,
+            workspaceId: 'workspace',
+            runner: 'codex',
+            model: 'test-model'
+          }
+        };
+      if (operation === 'session.runs')
+        return {
+          runs: [
+            { id: 'foreign-run', sessionId: 'another-session', status: 'RUNNING' },
+            { id: 'target-run', sessionId: 'target-session', status: 'RUNNING' }
+          ]
+        };
+      if (operation === 'run.cancel') return { cancelled: true, runId: data.runId };
+      return { accepted: true };
+    });
+
+    const foreign = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'stop', sessionId: 'target-session', runId: 'foreign-run' }
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.json()).toMatchObject({ error: { code: 'RUN_NOT_FOUND' } });
+    expect(requestNode.mock.calls.some((call) => call[1] === 'run.cancel')).toBe(false);
+
+    const target = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'stop', sessionId: 'target-session', runId: 'target-run' }
+    });
+    expect(target.statusCode).toBe(200);
+    const cancel = requestNode.mock.calls.find((call) => call[1] === 'run.cancel');
+    expect(cancel?.[0]).toBe('node');
+    expect(cancel?.[2]).toEqual({ runId: 'target-run', workspaceId: 'workspace' });
+  });
+
+  it('requires the authenticated user to own the Workbench connection and pins watch calls to its Workspace', async () => {
+    const payload = {
+      action: 'watch',
+      sessionId: 'session-1',
+      workbenchConnectionId: 'connection-owned',
+      watchId: 'watch-12345678',
+      mode: 'initial'
+    };
+    const denied = await fixture(true, false, { ownsConnection: false });
+    const rejected = await denied.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: denied.headers,
+      payload
+    });
+    expect(rejected.statusCode).toBe(403);
+    expect(denied.ownsWorkbenchConnection).toHaveBeenCalledWith('a'.repeat(43), 'connection-owned');
+    expect(
+      denied.requestNode.mock.calls.some((call) =>
+        ['session.watch', 'session.unwatch'].includes(call[1])
+      )
+    ).toBe(false);
+
+    const owned = await fixture(true, false, { ownsConnection: true });
+    for (const mode of ['initial', 'renew', 'stop'] as const) {
+      const response = await owned.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: owned.headers,
+        payload: { ...payload, mode }
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    const watch = owned.requestNode.mock.calls.find((call) => call[1] === 'session.watch');
+    expect(watch?.[0]).toBe('node');
+    expect(watch?.[2]).toEqual({
+      sessionId: 'session-1',
+      workbenchConnectionId: 'connection-owned',
+      watchId: 'watch-12345678',
+      mode: 'initial',
+      unit: 'SEGMENT',
+      workspaceId: 'workspace'
+    });
+    const unwatch = owned.requestNode.mock.calls.find((call) => call[1] === 'session.unwatch');
+    expect(unwatch?.[2]).toEqual({
+      sessionId: 'session-1',
+      workbenchConnectionId: 'connection-owned',
+      watchId: 'watch-12345678',
+      workspaceId: 'workspace'
+    });
+  });
+
+  it('allows goal.clear on a Session without an effective model', async () => {
+    const { app, headers, requestNode } = await fixture(true, true, {
+      session: { id: 'model-less-agent', runner: 'mar-agent', model: null }
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: { action: 'goal.clear', sessionId: 'model-less-agent' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const command = requestNode.mock.calls.find((call) => call[1] === 'session.command.execute');
+    expect(command?.[2]).toMatchObject({
+      sessionId: 'model-less-agent',
+      commandId: 'goal',
+      input: '/goal --clear',
+      workspaceId: 'workspace'
+    });
+  });
+});

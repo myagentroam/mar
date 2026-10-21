@@ -1,0 +1,488 @@
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { z } from 'zod';
+import { runnerNameSchema } from '@myagentroam/protocol';
+import { isAllowedOrigin } from './auth.js';
+import { sendError } from './http-errors.js';
+import { databaseError } from './domain-errors.js';
+import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { UserNodeAuthorization } from './node-request-channel.js';
+import type {
+  PersonalInstructionReader,
+  ProcessSecretResolver,
+  MarAgentModelService,
+  MarAgentRuntimeModelService
+} from './session-run-contracts.js';
+import { SessionInputService, type SessionExecutionOrigin } from './session-input-service.js';
+import type { ConversationAuditObserver } from './conversation-audit.js';
+import { prepareRunnerProfileContext } from './runner-profile-context.js';
+
+const id = z.string().min(1).max(512);
+const page = {
+  cursor: z.string().max(4096).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+};
+const message = {
+  sourceSessionId: id.optional(),
+  content: z.string().max(100_000),
+  attachments: z
+    .array(
+      z
+        .object({
+          name: z.string().min(1).max(255),
+          mime: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+          dataBase64: z
+            .string()
+            .min(1)
+            .max(Math.ceil((5 * 1024 * 1024) / 3) * 4)
+        })
+        .strict()
+    )
+    .max(5)
+    .optional()
+};
+const commandSchema = z
+  .discriminatedUnion('action', [
+    z.object({ action: z.literal('current'), sessionId: id.optional() }).strict(),
+    z
+      .object({
+        action: z.literal('list'),
+        query: z.string().max(160).optional(),
+        parentSessionId: id.optional(),
+        ...page
+      })
+      .strict(),
+    z.object({ action: z.literal('show'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('rename'),
+        sessionId: id,
+        title: z.string().trim().min(1).max(160)
+      })
+      .strict(),
+    z.object({ action: z.literal('schedule.list'), ...page }).strict(),
+    z.object({ action: z.literal('schedule.get'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('schedule.create'),
+        sessionId: id,
+        cron: z.string().min(1).max(512),
+        content: z.string().trim().min(1).max(20_000)
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('schedule.update'),
+        sessionId: id,
+        expectedRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        cron: z.string().min(1).max(512).optional(),
+        content: z.string().trim().min(1).max(20_000).optional()
+      })
+      .strict(),
+    z.object({ action: z.literal('graph'), sessionId: id, limit: page.limit }).strict(),
+    z.object({ action: z.literal('history'), sessionId: id, ...page }).strict(),
+    z
+      .object({
+        action: z.literal('start'),
+        runner: runnerNameSchema,
+        ...message,
+        clientMessageId: id,
+        model: id.optional(),
+        effort: z.string().max(120).optional(),
+        parentSessionId: id.optional(),
+        title: z.string().min(1).max(160).optional()
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('send'),
+        sessionId: id,
+        ...message,
+        clientMessageId: id,
+        deliveryIntent: z.enum(['SEND', 'QUEUE', 'REPLACE_CURRENT'])
+      })
+      .strict(),
+    z.object({ action: z.literal('stop'), sessionId: id, runId: id.optional() }).strict(),
+    z
+      .object({
+        action: z.literal('config'),
+        sessionId: id,
+        model: z
+          .string()
+          .min(1)
+          .max(120)
+          .refine((value) => value.trim().length > 0)
+          .optional(),
+        effort: z.string().max(120).optional()
+      })
+      .strict(),
+    z.object({ action: z.literal('goal.get'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('goal.set'),
+        sessionId: id,
+        content: z
+          .string()
+          .trim()
+          .min(1)
+          .max(20_000)
+          .refine((value) => value !== '--clear')
+      })
+      .strict(),
+    z.object({ action: z.literal('goal.clear'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('watch'),
+        sessionId: id,
+        workbenchConnectionId: id,
+        watchId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/u),
+        mode: z.enum(['initial', 'renew', 'stop'])
+      })
+      .strict()
+  ])
+  .refine(
+    (value) =>
+      (value.action !== 'start' && value.action !== 'send') ||
+      ('content' in value &&
+        (value.content.trim().length > 0 ||
+          ('attachments' in value && (value.attachments?.length ?? 0) > 0)))
+  )
+  .refine(
+    (value) => value.action !== 'config' || value.model !== undefined || value.effort !== undefined
+  )
+  .refine(
+    (value) =>
+      value.action !== 'schedule.update' || value.cron !== undefined || value.content !== undefined
+  );
+
+export interface MarctlSessionDependencies {
+  readonly audits?: ConversationAuditObserver;
+  readonly personalInstructions?: PersonalInstructionReader;
+  readonly marAgentModels?: MarAgentModelService;
+  readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
+  readonly ownsWorkbenchConnection?: (sessionHash: string, connectionId: string) => boolean;
+}
+
+export function registerMarctlSessionRoutes(
+  input: MarctlSessionDependencies & {
+    readonly app: FastifyInstance;
+    readonly credentials: MarctlUserCredentials;
+    readonly publicOrigin: string | undefined;
+    readonly authorizedNode: (user: UserNodeAuthorization, nodeId: string) => Promise<boolean>;
+    readonly requestNode: (
+      nodeId: string,
+      operation: string,
+      data: Record<string, unknown>,
+      user: UserNodeAuthorization
+    ) => Promise<unknown>;
+    readonly secrets: ProcessSecretResolver;
+    readonly onError?: (reply: FastifyReply, error: unknown) => FastifyReply;
+  }
+): void {
+  const sessionInputs = new SessionInputService({
+    ...input,
+    userCredentials: input.credentials,
+    nodeControl: {
+      requestNode: (nodeId, operation, data, user) =>
+        input.requestNode(nodeId, operation, data as Record<string, unknown>, user)
+    }
+  });
+  input.app.post(
+    '/api/marctl/sessions',
+    { bodyLimit: 15 * 1024 * 1024 },
+    async (request, reply) => {
+      reply.header('cache-control', 'private, no-store');
+      if (request.headers.origin !== undefined && !isAllowedOrigin(request, input.publicOrigin))
+        return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+      try {
+        const authenticated = await input.credentials.authenticateContext(
+          request.headers.authorization
+        );
+        if (authenticated === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
+        const command = commandSchema.safeParse(request.body);
+        if (!command.success) return sendError(reply, 400, 'MARCTL_SESSION_INPUT_INVALID');
+        const { user, scope, scheduled, channel } = authenticated;
+        if (scope === undefined) return sendError(reply, 403, 'MARCTL_SESSION_CONTEXT_REQUIRED');
+        if (!(await input.authorizedNode(user, scope.nodeId)))
+          return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+        const call = async (operation: string, data: Record<string, unknown> = {}) =>
+          input.requestNode(
+            scope.nodeId,
+            operation,
+            {
+              ...data,
+              workspaceId: scope.workspaceId,
+              ...([
+                'session.cli.context',
+                'session.get',
+                'session.list',
+                'session.graph',
+                'session.runs',
+                'session.goal.get',
+                'session.turns.list',
+                'workspace.queue.get'
+              ].includes(operation)
+                ? { registeredOnly: true }
+                : {})
+            },
+            { ...user, workspaceId: scope.workspaceId }
+          );
+        const body = command.data;
+        const context = object(
+          await call(
+            'session.cli.context',
+            body.action === 'current' && body.sessionId !== undefined
+              ? { sessionId: body.sessionId }
+              : {}
+          )
+        );
+        if (body.action === 'current')
+          return reply.send({ nodeId: scope.nodeId, workspaceId: scope.workspaceId, ...context });
+        if (body.action === 'list') {
+          const result = object(
+            await call('session.list', {
+              view: 'marctl',
+              cursor: body.cursor,
+              limit: body.limit ?? 20,
+              ...(body.query === undefined ? {} : { query: body.query }),
+              ...(body.parentSessionId === undefined
+                ? {}
+                : { parentSessionId: body.parentSessionId })
+            })
+          );
+          if (result.view !== 'marctl')
+            return sendError(reply, 409, 'CAPABILITY_VERSION_UNSUPPORTED');
+          return reply.send({ sessions: result.sessions, nextCursor: result.nextCursor });
+        }
+
+        if (body.action === 'schedule.list')
+          return reply.send(
+            await call('session.schedule.list', {
+              limit: body.limit ?? 20,
+              ...(body.cursor === undefined ? {} : { cursor: body.cursor })
+            })
+          );
+
+        let session: Record<string, unknown> | undefined;
+        if ('sessionId' in body) {
+          const result = object(
+            await call('session.get', {
+              sessionId: body.sessionId,
+              ...(body.action === 'show' ? { view: 'marctl' } : {})
+            })
+          );
+          if (body.action === 'show') {
+            if (result.view !== 'marctl')
+              return sendError(reply, 409, 'CAPABILITY_VERSION_UNSUPPORTED');
+            if (result.workspaceId !== scope.workspaceId)
+              return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+            return reply.send({ session: object(result.session) });
+          }
+          session = object(result.session);
+          if (session.workspaceId !== scope.workspaceId)
+            return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+        }
+        const sessionId = session?.id;
+        if (body.action === 'rename')
+          return reply.send(
+            await call('session.metadata.update', { sessionId, customTitle: body.title })
+          );
+        if (body.action === 'schedule.get')
+          return reply.send(await call('session.schedule.get', { sessionId }));
+        if (body.action === 'schedule.create' || body.action === 'schedule.update')
+          return reply.send(
+            await call('session.schedule.agent.save', {
+              sessionId,
+              mode: body.action === 'schedule.create' ? 'create' : 'update',
+              ...('expectedRevision' in body ? { expectedRevision: body.expectedRevision } : {}),
+              ...(body.cron === undefined ? {} : { cron: body.cron }),
+              ...(body.content === undefined ? {} : { objective: body.content })
+            })
+          );
+        if (body.action === 'config')
+          return reply.send(
+            await call('session.config.update', {
+              sessionId,
+              ...(body.model === undefined ? {} : { model: body.model }),
+              ...(body.effort === undefined ? {} : { effort: body.effort })
+            })
+          );
+        if (body.action === 'graph')
+          return reply.send(await call('session.graph', { sessionId, limit: body.limit ?? 100 }));
+        if (body.action === 'history')
+          return reply.send(
+            await call('session.turns.list', {
+              sessionId,
+              unit: 'SEGMENT',
+              cursor: body.cursor,
+              limit: body.limit ?? 10
+            })
+          );
+        if (body.action === 'goal.get')
+          return reply.send(await call('session.goal.get', { sessionId }));
+        if (body.action === 'goal.clear')
+          return reply.send(
+            await call('session.command.execute', {
+              sessionId,
+              commandId: 'goal',
+              input: '/goal --clear'
+            })
+          );
+        if (body.action === 'stop') {
+          const runs = object(await call('session.runs', { sessionId })).runs;
+          const run = Array.isArray(runs)
+            ? runs.find(
+                (value) =>
+                  isObject(value) &&
+                  (body.runId === undefined
+                    ? ['STARTING', 'RUNNING', 'CANCELLING'].includes(String(value.status))
+                    : value.id === body.runId)
+              )
+            : undefined;
+          if (!isObject(run) || run.sessionId !== sessionId)
+            return sendError(reply, 404, 'RUN_NOT_FOUND');
+          if (!['STARTING', 'RUNNING', 'CANCELLING'].includes(String(run.status)))
+            return sendError(reply, 409, 'RUN_STATE_CONFLICT', {
+              message: 'The specified Run is no longer active.'
+            });
+          return reply.send(await call('run.cancel', { runId: run.id }));
+        }
+        if (body.action === 'watch') {
+          if (
+            input.ownsWorkbenchConnection?.(user.sessionHash, body.workbenchConnectionId) !== true
+          )
+            return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+          return reply.send(
+            (await call(body.mode === 'stop' ? 'session.unwatch' : 'session.watch', {
+              sessionId,
+              workbenchConnectionId: body.workbenchConnectionId,
+              watchId: body.watchId,
+              ...(body.mode === 'stop' ? {} : { mode: body.mode, unit: 'SEGMENT' })
+            })) ?? { accepted: true }
+          );
+        }
+
+        let runner = session?.runner;
+        let model = session?.model;
+        if (body.action === 'start') {
+          runner = body.runner;
+          const profiles = object(
+            await call('runner.profiles.list', {
+              ...(await prepareRunnerProfileContext({
+                userId: user.userId,
+                nodeId: scope.nodeId,
+                workspaceId: scope.workspaceId,
+                secrets: input.secrets,
+                ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
+              })),
+              waitForRefresh: true
+            })
+          );
+          const defaults = Array.isArray(profiles.defaults)
+            ? profiles.defaults.find((value) => isObject(value) && value.runner === runner)
+            : undefined;
+          const profile = Array.isArray(profiles.profiles)
+            ? profiles.profiles.find((value) => isObject(value) && value.runner === runner)
+            : undefined;
+          const models = isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
+          const preferred = models.find((value) => isObject(value) && value.isDefault === true);
+          model =
+            body.model ??
+            (isObject(defaults) ? defaults.model : undefined) ??
+            (isObject(preferred) ? preferred.id : undefined);
+        }
+        if (runner === 'mar-agent' && typeof model !== 'string')
+          return sendError(reply, 400, 'MODEL_ID_REQUIRED');
+        const sourceSessionId = 'sourceSessionId' in body ? body.sourceSessionId : undefined;
+        const sourceSession =
+          sourceSessionId === undefined
+            ? undefined
+            : sourceSessionId === sessionId
+              ? session
+              : object(object(await call('session.get', { sessionId: sourceSessionId })).session);
+        if (sourceSession !== undefined && sourceSession.workspaceId !== scope.workspaceId)
+          return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+        const origin: SessionExecutionOrigin = {
+          ...(['start', 'send'].includes(body.action)
+            ? {
+                marctlOrigin:
+                  sourceSession === undefined
+                    ? {}
+                    : {
+                        sessionId: sourceSession.id as string,
+                        name:
+                          [sourceSession.customTitle, sourceSession.runnerTitle]
+                            .find(
+                              (title): title is string =>
+                                typeof title === 'string' && title.trim().length > 0
+                            )
+                            ?.trim() ?? (sourceSession.id as string)
+                      }
+              }
+            : {}),
+          suppressNotifications: true
+        };
+        const executionContext = {
+          nodeId: scope.nodeId,
+          workspaceId: scope.workspaceId,
+          user: { ...user, scheduled, ...(channel === undefined ? {} : { channel }) }
+        };
+        const runtimeModel = runner === 'mar-agent' && typeof model === 'string' ? { model } : {};
+        if (body.action === 'start')
+          return reply.send(
+            await sessionInputs.startSession(
+              executionContext,
+              {
+                runner: body.runner,
+                cwd: object(context.workspace).path as string,
+                content: body.content,
+                ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
+                clientMessageId: body.clientMessageId,
+                ...(typeof model === 'string' ? { model } : {}),
+                ...(body.effort === undefined ? {} : { effort: body.effort }),
+                ...(body.title === undefined ? {} : { customTitle: body.title }),
+                ...(body.parentSessionId === undefined
+                  ? {}
+                  : { parentSessionId: body.parentSessionId })
+              },
+              origin
+            )
+          );
+        if (body.action === 'send')
+          return reply.send(
+            await sessionInputs.submitMessage(
+              { ...executionContext, sessionId: sessionId as string },
+              {
+                content: body.content,
+                ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
+                clientMessageId: body.clientMessageId,
+                deliveryIntent: body.deliveryIntent,
+                ...runtimeModel
+              },
+              origin
+            )
+          );
+        return reply.send(
+          await sessionInputs.executeCommand(
+            { ...executionContext, sessionId: sessionId as string },
+            {
+              commandId: 'goal',
+              input: '/goal ' + body.content,
+              ...runtimeModel
+            },
+            origin
+          )
+        );
+      } catch (error) {
+        return (input.onError ?? databaseError)(reply, error);
+      }
+    }
+  );
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function object(value: unknown): Record<string, unknown> {
+  if (!isObject(value)) throw new Error('NODE_RESPONSE_INVALID');
+  return value;
+}

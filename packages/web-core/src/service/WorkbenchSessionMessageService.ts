@@ -1,0 +1,429 @@
+import type { WorkspaceTarget } from '../model/workbench.js';
+import type { ComputedRef, Ref } from 'vue';
+import { ElMessageBox } from 'element-plus';
+import type {
+  AgentRun,
+  ComposerSkillToken,
+  ComposerAttachment,
+  RunnerCommand,
+  Session,
+  Workspace
+} from '../model/workbench.js';
+import { translate } from './LocalePreferenceService.js';
+import { hasUnavailableSkillToken, serializeComposerMessage } from './ComposerSkillTokenService.js';
+import { sessionSubmissionContext } from './WorkbenchSubmissionService.js';
+import { errorCode } from '../util/api-error.js';
+
+type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
+
+interface CommandResult {
+  readonly session?: Session;
+  readonly run?: AgentRun;
+}
+
+export interface WorkbenchSessionMessageOptions {
+  readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
+  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedWorkspace: ComputedRef<Workspace | undefined>;
+  readonly selectedSession: ComputedRef<Session | undefined>;
+  readonly sessions: Ref<Session[]>;
+  readonly runs: Ref<AgentRun[]>;
+  readonly input: Ref<string>;
+  readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
+  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
+  readonly attachments: Ref<ComposerAttachment[]>;
+  readonly attachmentsPending: ComputedRef<boolean>;
+  readonly composerOpen: ComputedRef<boolean>;
+  readonly composerBusy: ComputedRef<boolean>;
+  readonly draftOpen: Ref<boolean>;
+  readonly selectedCommand: Ref<RunnerCommand | undefined>;
+  readonly commandAvailable?: (command: RunnerCommand) => boolean;
+  readonly submissionAvailable?: () => boolean;
+  readonly commandPickerOpen: Ref<boolean>;
+  readonly deferredCommands: Ref<readonly { command: RunnerCommand; input: string }[]>;
+  readonly fastEnabled: Ref<boolean>;
+  readonly notice: Ref<string>;
+  readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
+  readonly stageDraftCommand: (command: RunnerCommand, input: string) => void;
+  readonly createDraftSession: (title: string) => Promise<Session | undefined>;
+  readonly executeCommand: (
+    session: Session,
+    command: RunnerCommand,
+    input: string
+  ) => Promise<CommandResult>;
+  readonly replaceSession: (previousId: string, next: Session) => void;
+  readonly sessionPathId: (sessionId: string) => string;
+  readonly temporaryTitle: (content: string) => string;
+  readonly clearAttachments: (revokeUrls?: boolean) => void;
+  readonly clearSkillTokens: () => void;
+  readonly newestRun: (current: AgentRun | undefined, next: AgentRun) => AgentRun;
+  readonly migrateSessionCache: (
+    nodeId: string,
+    workspaceId: string,
+    previousId: string,
+    nextId: string,
+    session: Session
+  ) => void;
+  readonly openRun: (runId: string) => void;
+  readonly cacheRun: (nodeId: string, workspaceId: string, run: AgentRun) => void;
+  readonly beginSessionWatch: (sessionId: string) => void;
+  readonly scrollToLatest: () => void;
+  readonly scrollToLatestAfterLayout: () => Promise<void>;
+  readonly errorMessage: (error: unknown) => string;
+  readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
+}
+
+/**
+ * During URL session recovery, the Workspace list may still be loading. The session retains its
+ * workspaceId, which is a safe fallback when sending a message to that existing session.
+ */
+export function resolveSessionWorkspaceId(
+  selectedWorkspace: Workspace | undefined,
+  session: Session
+): string {
+  return selectedWorkspace?.id ?? session.workspaceId;
+}
+
+export function resolveDeliveryIntent(
+  override: Extract<DeliveryIntent, 'REPLACE_CURRENT'> | undefined,
+  composerBusy: boolean
+): DeliveryIntent {
+  return override ?? (composerBusy ? 'QUEUE' : 'SEND');
+}
+
+export function createWorkbenchSessionMessageService(options: WorkbenchSessionMessageOptions) {
+  let retryCandidate: { readonly signature: string; readonly clientMessageId: string } | undefined;
+
+  const draftSignature = (
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    content: string,
+    intent: DeliveryIntent,
+    attachments: readonly ComposerAttachment[]
+  ) =>
+    JSON.stringify([
+      nodeId,
+      workspaceId,
+      sessionId,
+      content,
+      intent,
+      attachments.map((attachment) => attachment.id)
+    ]);
+
+  async function send(
+    intentOverride?: Extract<DeliveryIntent, 'REPLACE_CURRENT'>,
+    preserveDraft = false,
+    contentOverride?: string,
+    commandOverride?: { readonly command: RunnerCommand; readonly input: string }
+  ): Promise<void> {
+    if (
+      options.workspaceTarget.value?.nodeId === undefined ||
+      !options.composerOpen.value ||
+      options.submissionAvailable?.() === false
+    )
+      return;
+    const submissionNodeId = options.workspaceTarget.value?.nodeId;
+    const body = options.input.value.trim();
+    const titleBody = body;
+    if (
+      commandOverride === undefined &&
+      contentOverride === undefined &&
+      hasUnavailableSkillToken(options.skillTokens.value)
+    ) {
+      options.notice.value = translate('composer.skillUnavailable');
+      return;
+    }
+    let content: string;
+    try {
+      content =
+        commandOverride?.input ??
+        contentOverride ??
+        serializeComposerMessage(
+          options.skillTokens.value,
+          options.input.value,
+          options.references?.value
+        );
+    } catch (error) {
+      options.notice.value = translate(
+        'generated.workbenchSessionMessageService.unableToSendTheMessage',
+        { value0: options.errorMessage(error) }
+      );
+      return;
+    }
+    const command =
+      commandOverride?.command ??
+      (contentOverride === undefined ? options.selectedCommand.value : undefined);
+    if (command !== undefined && options.commandAvailable?.(command) === false) return;
+    if (command === undefined && content.length === 0 && options.attachments.value.length === 0)
+      return;
+    if (
+      options.attachmentsPending.value &&
+      command === undefined &&
+      contentOverride === undefined
+    ) {
+      options.notice.value = translate(
+        'generated.workbenchSessionMessageService.attachmentsAreStillUploadingOrFailedWait'
+      );
+      return;
+    }
+    const deliveryIntent = resolveDeliveryIntent(intentOverride, options.composerBusy.value);
+    const commandInput =
+      commandOverride?.input ??
+      (preserveDraft && command !== undefined ? `/${command.id}` : content);
+    if (
+      options.draftOpen.value &&
+      command !== undefined &&
+      !(command.id === 'fast' && command.runner === 'codex')
+    ) {
+      if (
+        command.interaction === 'IMMEDIATE_ACTION' ||
+        command.interaction === 'DESTRUCTIVE_ACTION'
+      ) {
+        options.notice.value = translate(
+          'generated.workbenchSessionMessageService.sendARegularMessageToCreateThe'
+        );
+        return;
+      }
+      options.stageDraftCommand(command, commandInput);
+      if (!preserveDraft) options.input.value = '';
+      if (commandOverride === undefined) {
+        options.selectedCommand.value = undefined;
+        options.commandPickerOpen.value = false;
+      }
+      return;
+    }
+    if (command?.interaction === 'DESTRUCTIVE_ACTION') {
+      const confirmedSessionId = options.selectedSessionId.value;
+      try {
+        await ElMessageBox.confirm(
+          translate('generated.workbenchSessionMessageService.clearSessionConfirmation'),
+          translate('generated.workbenchSessionMessageService.clearSession'),
+          {
+            type: 'warning',
+            confirmButtonText: translate(
+              'generated.workbenchSessionMessageService.confirmClearSession'
+            ),
+            cancelButtonText: translate(
+              'generated.workbenchSessionMessageService.cancelClearSession'
+            ),
+            confirmButtonClass: 'el-button--danger'
+          }
+        );
+      } catch {
+        return;
+      }
+      if (
+        confirmedSessionId === undefined ||
+        options.workspaceTarget.value?.nodeId !== submissionNodeId ||
+        options.selectedSessionId.value !== confirmedSessionId ||
+        options.submissionAvailable?.() === false ||
+        options.commandAvailable?.(command) === false
+      )
+        return;
+    }
+    options.notice.value = '';
+    let outgoing: readonly ComposerAttachment[] = [];
+    let startedDraft = false;
+    let submittedSession: Session | undefined;
+    let attemptedRetryCandidate:
+      { readonly signature: string; readonly clientMessageId: string } | undefined;
+    const finishSubmission = options.beginSubmission(
+      sessionSubmissionContext(options.selectedSessionId.value)
+    );
+    if (finishSubmission === undefined) return;
+    let completedInSubmissionWindow = false;
+    try {
+      if (command?.id === 'fast' && command.runner === 'codex') {
+        const result = await options.request<{ enabled: boolean }>('/api/runner-commands', {
+          method: 'POST',
+          body: JSON.stringify({
+            nodeId: submissionNodeId,
+            runner: 'codex',
+            commandId: 'fast',
+            input: `/fast ${options.fastEnabled.value ? 'off' : 'on'}`
+          })
+        });
+        if (finishSubmission() && options.workspaceTarget.value?.nodeId === submissionNodeId) {
+          options.fastEnabled.value = result.enabled;
+          if (!preserveDraft && options.input.value.trim() === content) options.input.value = '';
+          if (commandOverride === undefined) {
+            options.selectedCommand.value = undefined;
+            options.commandPickerOpen.value = false;
+          }
+        }
+        return;
+      }
+      const createdDraft = options.draftOpen.value;
+      startedDraft = createdDraft;
+      const session = createdDraft
+        ? await options.createDraftSession(options.temporaryTitle(titleBody))
+        : options.selectedSession.value;
+      if (session === undefined) throw new Error('SESSION_NOT_FOUND');
+      submittedSession = session;
+      if (command !== undefined) {
+        await options.executeCommand(session, command, commandInput);
+        if (finishSubmission()) {
+          if (!preserveDraft && options.input.value.trim() === content) options.input.value = '';
+          if (commandOverride === undefined) {
+            options.selectedCommand.value = undefined;
+            options.commandPickerOpen.value = false;
+          }
+        }
+        return;
+      }
+      const selectedWorkspace = options.selectedWorkspace.value;
+      if (createdDraft && selectedWorkspace === undefined)
+        throw new Error(
+          translate(
+            'generated.workbenchSessionMessageService.selectAWorkspaceBeforeSendingAMessage'
+          )
+        );
+      const workspaceId = resolveSessionWorkspaceId(selectedWorkspace, session);
+      outgoing = contentOverride === undefined ? [...options.attachments.value] : [];
+      const submittedSkillTokens = options.skillTokens.value;
+      const submittedReferences = options.references?.value;
+      const signature = draftSignature(
+        submissionNodeId,
+        workspaceId,
+        session.id,
+        content,
+        deliveryIntent,
+        outgoing
+      );
+      if (retryCandidate?.signature !== signature) retryCandidate = undefined;
+      const clientMessageId = retryCandidate?.clientMessageId ?? crypto.randomUUID();
+      attemptedRetryCandidate = { signature, clientMessageId };
+      retryCandidate = attemptedRetryCandidate;
+      options.scrollToLatest();
+      const result = await options.request<{
+        session: Session;
+        run: AgentRun;
+        delivery?: string;
+      }>(
+        createdDraft
+          ? '/api/agent-sessions/start'
+          : `/api/agent-sessions/${options.sessionPathId(session.id)}/messages`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            nodeId: options.workspaceTarget.value?.nodeId,
+            ...(createdDraft
+              ? {
+                  workspaceId,
+                  runner: session.runner,
+                  cwd: selectedWorkspace!.path,
+                  model: session.model,
+                  effort: session.effort,
+                  access: session.access,
+                  title: session.runnerTitle,
+                  deferredCommands: options.deferredCommands.value.map((deferred) => ({
+                    commandId: deferred.command.id,
+                    input: deferred.input
+                  }))
+                }
+              : {
+                  workspaceId,
+                  ...(session.runner === 'mar-agent' ? { model: session.model } : {})
+                }),
+            clientMessageId,
+            content,
+            deliveryIntent,
+            computerUse: session.runner === 'mar-agent',
+            attachmentIds: outgoing.map((attachment) => attachment.id)
+          })
+        }
+      );
+      if (createdDraft) options.deferredCommands.value = [];
+      const selectedBeforeDelivery = options.selectedSessionId.value;
+      const nodeStillSelected = options.workspaceTarget.value?.nodeId === submissionNodeId;
+      const submittedWasSelected = nodeStillSelected && selectedBeforeDelivery === session.id;
+      const identityChanged = session.id !== result.session.id;
+      if (identityChanged)
+        options.migrateSessionCache(
+          submissionNodeId,
+          session.workspaceId,
+          session.id,
+          result.session.id,
+          result.session
+        );
+      if (nodeStillSelected) options.replaceSession(session.id, result.session);
+      if (
+        createdDraft &&
+        nodeStillSelected &&
+        options.selectedSessionId.value === result.session.id
+      )
+        options.beginSessionWatch(result.session.id);
+      if (
+        submittedWasSelected ||
+        (nodeStillSelected && selectedBeforeDelivery === result.session.id)
+      ) {
+        const current = options.runs.value.find((candidate) => candidate.id === result.run.id);
+        const latest = options.newestRun(current, {
+          ...result.run,
+          sessionId: result.run.sessionId ?? result.session.id
+        });
+        options.runs.value = [
+          latest,
+          ...options.runs.value.filter((candidate) => candidate.id !== result.run.id)
+        ];
+        if (result.delivery === undefined || result.delivery === 'STARTED')
+          options.openRun(result.run.id);
+      } else {
+        options.cacheRun(submissionNodeId, session.workspaceId, {
+          ...result.run,
+          sessionId: result.run.sessionId ?? result.session.id,
+          workspaceId: result.run.workspaceId ?? session.workspaceId
+        });
+      }
+      if (
+        submittedWasSelected ||
+        (nodeStillSelected &&
+          (selectedBeforeDelivery === result.session.id ||
+            options.selectedSessionId.value === result.session.id))
+      )
+        void options.scrollToLatestAfterLayout();
+      completedInSubmissionWindow = finishSubmission();
+      if (
+        contentOverride === undefined &&
+        options.input.value.trim() === body &&
+        options.skillTokens.value === submittedSkillTokens &&
+        options.references?.value === submittedReferences &&
+        options.attachments.value.map((attachment) => attachment.id).join('\u0000') ===
+          outgoing.map((attachment) => attachment.id).join('\u0000')
+      ) {
+        options.input.value = '';
+        options.clearSkillTokens();
+        if (options.references !== undefined) options.references.value = [];
+        options.clearAttachments(false);
+        retryCandidate = undefined;
+      }
+    } catch (error) {
+      if (retryCandidate === attemptedRetryCandidate && errorCode(error) !== undefined)
+        retryCandidate = undefined;
+      completedInSubmissionWindow = finishSubmission();
+      if (startedDraft && completedInSubmissionWindow) {
+        if (options.workspaceTarget.value?.nodeId === submissionNodeId)
+          options.sessions.value = options.sessions.value.filter(
+            (session) => !session.id.startsWith('draft:')
+          );
+        if (
+          options.workspaceTarget.value?.nodeId === submissionNodeId &&
+          options.selectedSessionId.value === submittedSession?.id
+        ) {
+          options.draftOpen.value = true;
+          options.selectedSessionId.value = undefined;
+        }
+      }
+      if (completedInSubmissionWindow)
+        options.notice.value = translate(
+          'generated.workbenchSessionMessageService.unableToSendTheMessage',
+          { value0: options.errorMessage(error) }
+        );
+    } finally {
+      finishSubmission();
+    }
+  }
+
+  return { send };
+}

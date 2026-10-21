@@ -1,0 +1,48 @@
+export const errorPresentationZhCN = {
+  errors: {
+    SESSION_SHARE_CREDENTIAL_INVALID: '密码错误或保存的分享凭据已失效，请重新输入密码。',
+    SESSION_SHARE_RATE_LIMITED: '密码尝试次数过多，请稍后重试。',
+    SESSION_SHARE_NOT_FOUND: '分享已删除或不存在。',
+    SESSION_SHARE_EXPIRED: '分享已过期。',
+    SESSION_SHARE_ACCESS_INVALID: '分享访问权限已失效。',
+    SESSION_PROMPT_INVALID: '会话提示词须为不超过 20000 个字符的文本；留空可清除。',
+    MAR_AGENT_AUTO_UNSUPPORTED: '此 Node 不支持 MAR Agent Auto。请升级 Node，或明确选择完全访问。',
+    attachmentExpired: '文件已过期',
+    IMAGE_PREVIEW_FAILED: '无法预览此图片，请重试或下载文件。',
+    withDiagnostics: '{summary}\n{diagnostics}',
+    diagnosticCode: '错误码：{value}',
+    diagnosticDetails: '详情：{value}',
+    diagnosticRequestId: '请求 ID：{value}',
+    diagnosticUpstreamRequestId: 'Node 请求 ID：{value}',
+    subscription_sharing_usage_limit_exceeded:
+      'ChatGPT 套餐或本应用的用量已达限制。请打开 https://chatgpt.com/settings/usage 查看用量并调整可用限制。',
+    UNAUTHENTICATED: '登录状态已失效，请重新登录。',
+    INVALID_CREDENTIALS: '账号或密码不正确。',
+    PASSWORD_CHANGE_REQUIRED: '请先修改初始密码。',
+    CSRF_INVALID: '安全令牌已失效，请重试。',
+    ADMIN_REQUIRED: '此操作需要系统管理员权限。',
+    FORBIDDEN: '你没有执行此操作的权限。',
+    GIT_SUBMODULE_MAPPING_MISSING:
+      '父仓库将此目录记录为子模块，但 .gitmodules 中缺少完整的路径与 URL 映射。',
+    GIT_SUBMODULE_MAPPING_INVALID: '.gitmodules 配置无法读取或格式不正确。',
+    GIT_REPOSITORY_UNREADABLE: '此仓库无法读取，请检查目录、Git 元数据和访问权限。',
+    GIT_SUBMODULE_DISCOVERY_FAILED: '部分子模块无法枚举，已保留其他可读取仓库的变更。',
+    GIT_WORKTREE_DISCOVERY_FAILED: '无法枚举 linked worktree，已保留其他可读取仓库的变更。',
+    GIT_SUBMODULE_LIMIT_EXCEEDED: '子模块数量已达到读取上限，部分仓库未展示。',
+    GIT_NOT_FOUND: '节点运行环境中找不到 Git，请检查 Git 安装及 PATH。',
+    NODE_OFFLINE: '节点当前离线，请确认节点服务已启动。',
+    NODE_DISABLED: '节点已被禁用，请联系管理员。',
+    WORKSPACE_BUSY: '工作区正在执行其他操作，请稍后重试。',
+    WORKSPACE_NOT_FOUND: '工作区不存在或已无法访问。',
+    WORKSPACE_CONVERSATION_TEMPLATE_REFERENCE_EXISTS:
+      '该工作区仍被对话模板用作源工作区，无法移除。',
+    SESSION_NOT_FOUND: '会话不存在或已被移除。',
+    RUN_NOT_FOUND: '运行记录不存在或已结束。',
+    WATCH_REQUEST_TIMEOUT: '订阅请求超时，请重新加载。',
+    SESSION_WATCH_SNAPSHOT_TIMEOUT: '等待会话初始快照超时，请重新加载。',
+    SESSION_HISTORY_INITIAL_FAILED: '无法加载会话记录，请重新加载。',
+    UPLOAD_CANCELLED: '上传已取消。',
+    UPLOAD_CLEANUP_UNCONFIRMED: '未能确认临时上传已清理，任务已保留。请重试或联系管理员核查节点。'
+  },
+  common: { unknownError: '未知错误' }
+} as const;
