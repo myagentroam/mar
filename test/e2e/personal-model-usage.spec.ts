@@ -11,9 +11,16 @@ import { ModelUsageGrants } from '../../packages/server-core/src/model-usage-gra
 import { ModelUsageStore } from '../../packages/server-core/src/model-usage-store.js';
 import { ModelUsageQueryService } from '../../packages/server-core/src/model-usage-query.js';
 import { registerModelUsageRoutes } from '../../packages/server-core/src/model-usage-routes.js';
-import { MODEL_USAGE_MIGRATION } from '../../packages/server-core/src/model-usage-schema.js';
+import {
+  MODEL_USAGE_MIGRATION,
+  MODEL_USAGE_QUERY_INDEX_MIGRATION
+} from '../../packages/server-core/src/model-usage-schema.js';
 import { SESSION_COOKIE_NAME } from '../../packages/server-core/src/auth.js';
-import { createEnvelope, type ModelUsageBatch } from '../../packages/protocol/src/index.js';
+import {
+  createEnvelope,
+  type ModelUsageBatch,
+  type ModelUsageRecord
+} from '../../packages/protocol/src/index.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
@@ -23,6 +30,182 @@ import {
 const Fastify = createRequire(new URL('../../packages/server-core/package.json', import.meta.url))(
   'fastify'
 );
+
+test('Personal usage index migration preserves boundary totals and covers metadata and paging counts', async () => {
+  const database = resolvePlaywrightTestDatabase(`usage_query_${randomUUID()}`);
+  await createPlaywrightTestDatabase(database);
+  const pool = mysql.createPool(database.databaseUrl);
+  const now = Date.now();
+  const day = 86_400_000;
+  const calls: { sql: string; values: (string | number)[] }[] = [];
+  const observedPool = {
+    async getConnection() {
+      const connection = await pool.getConnection();
+      return {
+        query: connection.query.bind(connection),
+        beginTransaction: connection.beginTransaction.bind(connection),
+        commit: connection.commit.bind(connection),
+        rollback: connection.rollback.bind(connection),
+        release: connection.release.bind(connection),
+        execute(sql: string, values: (string | number)[]) {
+          calls.push({ sql, values });
+          return connection.execute(sql, values);
+        }
+      };
+    }
+  };
+  const service = new ModelUsageQueryService(observedPool as unknown as mysql.Pool, () => now);
+  const query = { from: now - 7 * day, to: now, timeZone: 'Asia/Shanghai' };
+  const filtered = {
+    ...query,
+    runner: 'codex' as const,
+    model: 'selected',
+    mode: 'conversation' as const
+  };
+  let sequence = 0;
+  async function insert(
+    endedAt: number | undefined,
+    inputTokens: string,
+    options: Partial<ModelUsageRecord> & {
+      userId?: number;
+      receivedAt?: number;
+      modelKey?: string;
+      mode?: 'work' | 'conversation';
+    } = {}
+  ) {
+    const {
+      userId = 1,
+      receivedAt = now - 5,
+      modelKey = 'ordinary',
+      mode = 'work',
+      ...fields
+    } = options;
+    const id = String(++sequence).padStart(64, '0');
+    const record: ModelUsageRecord = {
+      schemaVersion: 1,
+      recordId: id,
+      requestId: id,
+      revision: 1,
+      scopeId: randomUUID(),
+      runner: 'mar-agent',
+      sessionId: 'session',
+      runId: 'run',
+      modelName: 'Fixture model',
+      purpose: 'conversation',
+      agentRole: 'root',
+      startedAt: (endedAt ?? now) - 100,
+      endedAt,
+      state: endedAt === undefined ? 'running' : 'succeeded',
+      inputTokens,
+      outputTokens: '2',
+      cacheReadTokens: '3',
+      cacheWriteTokens: '1',
+      coverage: 'request',
+      ...fields
+    };
+    await pool.execute(
+      `INSERT INTO model_usage_records
+      (source_key,user_id,source_node_id,record_id,revision,payload_hash,identity_hash,runner,mode,purpose,
+       model_key,model_name,started_at,ended_at,received_at,input_tokens,output_tokens,record)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        userId,
+        'fixture-node',
+        id,
+        1,
+        '0'.repeat(64),
+        '0'.repeat(64),
+        record.runner,
+        mode,
+        record.purpose,
+        modelKey,
+        record.modelName,
+        record.startedAt,
+        endedAt ?? null,
+        receivedAt,
+        inputTokens,
+        '2',
+        JSON.stringify(record)
+      ]
+    );
+  }
+  try {
+    const connection = await pool.getConnection();
+    try {
+      await MODEL_USAGE_MIGRATION.up(connection);
+    } finally {
+      connection.release();
+    }
+    await insert(now - 7 * day - 1, '1');
+    await insert(now - 7 * day, '10');
+    await insert(now - day, '20');
+    await insert(now - day - 1, '30');
+    await insert(now - 1, '9007199254740993', {
+      runner: 'codex',
+      modelKey: 'selected',
+      mode: 'conversation'
+    });
+    await insert(now, '40');
+    await insert(now - 3, '50', { receivedAt: now + 1 });
+    await insert(now - 2, '60', { receivedAt: now });
+    await insert(undefined, '0', { startedAt: now - 90 * day });
+    await insert(undefined, '0', { startedAt: now - 90 * day - 1 });
+    await insert(undefined, '0', { startedAt: now });
+    await insert(now - 1, '100', { purpose: 'compact' });
+    await insert(now - 1, '1000', { userId: 2 });
+    const beforeOverview = await service.overview(1, filtered);
+    const beforeRecords = await service.records(1, query);
+    const connectionAfter = await pool.getConnection();
+    try {
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connectionAfter);
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connectionAfter);
+    } finally {
+      connectionAfter.release();
+    }
+    calls.length = 0;
+    const afterOverview = await service.overview(1, filtered);
+    const afterRecords = await service.records(1, query);
+    expect(afterOverview).toEqual(beforeOverview);
+    expect(afterRecords).toEqual(beforeRecords);
+    expect(afterOverview).toMatchObject({
+      firstRecordedAt: now - 90 * day,
+      lastReceivedAt: now,
+      last24Hours: {
+        inputTokens: '9007199254741123',
+        outputTokens: '8',
+        requests: '4',
+        cacheReadTokens: '12',
+        cacheWriteTokens: '4'
+      },
+      last7Days: {
+        inputTokens: '9007199254741163',
+        outputTokens: '12',
+        requests: '6',
+        cacheReadTokens: '18',
+        cacheWriteTokens: '6'
+      },
+      selected: { inputTokens: '9007199254740993', requests: '1' }
+    });
+    expect(afterRecords.total).toBe('6');
+    expect(afterRecords.records).toHaveLength(6);
+    const metadata = calls.find(({ sql }) => sql.includes('MIN(started_at)'))!;
+    const count = calls.find(({ sql }) => sql.includes('CAST(COUNT(*) AS CHAR)'))!;
+    for (const { sql, values } of [metadata, count]) {
+      const [rows] = await pool.execute<mysql.RowDataPacket[]>('EXPLAIN ' + sql, values);
+      expect(rows[0]?.key).toBe('model_usage_user_time');
+      expect(String(rows[0]?.Extra).split('; ')).toContain('Using index');
+    }
+    const empty = await service.overview(3, query);
+    expect(empty.last24Hours.requests).toBe('0');
+    expect(empty.last7Days.requests).toBe('0');
+    expect(empty.firstRecordedAt).toBeNull();
+    expect(empty.lastReceivedAt).toBeNull();
+  } finally {
+    await pool.end();
+    await dropPlaywrightTestDatabase(database);
+  }
+});
 
 test('Personal usage carries SDK facts through durable delivery, MySQL revisions and private HTTP queries', async () => {
   const database = resolvePlaywrightTestDatabase(`usage_${randomUUID()}`);
@@ -64,6 +247,8 @@ test('Personal usage carries SDK facts through durable delivery, MySQL revisions
       await connection.query('INSERT INTO users VALUES (1),(2)');
       await MODEL_USAGE_MIGRATION.up(connection);
       await MODEL_USAGE_MIGRATION.up(connection);
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
     } finally {
       connection.release();
     }
@@ -116,6 +301,7 @@ test('Personal usage carries SDK facts through durable delivery, MySQL revisions
       new AbortController().signal,
       () => now - 100
     )) {
+      void _event;
     }
     expect(node.raw.prepare('SELECT COUNT(*) AS n FROM model_usage_outbox').get()?.n).toBe(1);
     expect(batches).toHaveLength(0);

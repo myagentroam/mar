@@ -189,6 +189,91 @@ describe('ModelUsageStore', () => {
 });
 
 describe('ModelUsageQueryService', () => {
+  it('reads both rolling totals in one scan without applying the selected chart filters', async () => {
+    const fixture = queryFixture();
+    fixture.connection.execute.mockResolvedValueOnce([
+      [
+        {
+          recent: '0',
+          inputTokens: '9007199254740993',
+          outputTokens: '2',
+          cacheReadTokens: '7',
+          cacheWriteTokens: '3',
+          requests: '2',
+          completeRequests: '2'
+        },
+        {
+          recent: 1,
+          inputTokens: '11',
+          outputTokens: '5',
+          cacheReadTokens: '4',
+          cacheWriteTokens: '1',
+          requests: '1',
+          completeRequests: '1'
+        }
+      ],
+      []
+    ]);
+    const service = new ModelUsageQueryService(fixture.pool as never, () => NOW);
+    const overview = await service.overview(
+      USER_ID,
+      query({ runner: 'codex', model: 'selected-model', mode: 'conversation', purpose: 'compact' })
+    );
+    expect(overview.last24Hours).toMatchObject({
+      inputTokens: '11',
+      outputTokens: '5',
+      totalTokens: '16',
+      cacheReadTokens: '4',
+      cacheWriteTokens: '1',
+      requests: '1'
+    });
+    expect(overview.last7Days).toMatchObject({
+      inputTokens: '9007199254741004',
+      outputTokens: '7',
+      totalTokens: '9007199254741011',
+      cacheReadTokens: '11',
+      cacheWriteTokens: '4',
+      requests: '3',
+      completeRequests: '3'
+    });
+    const rollingReads = fixture.connection.execute.mock.calls.filter(
+      ([sql]) => sql.includes('SUM(input_tokens)') && !sql.includes('GROUP BY bucket')
+    );
+    expect(rollingReads).toHaveLength(1);
+    expect(rollingReads[0]?.[1]).toEqual([
+      NOW - 86_400_000,
+      USER_ID,
+      'compact',
+      NOW - 7 * 86_400_000,
+      NOW
+    ]);
+    expect(fixture.connection.beginTransaction).toHaveBeenCalledTimes(1);
+    expect(fixture.connection.commit).toHaveBeenCalledTimes(1);
+    expect(fixture.connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns empty rolling totals when the seven-day scan has no records', async () => {
+    const fixture = queryFixture();
+    fixture.connection.execute.mockResolvedValueOnce([[], []]);
+    const overview = await new ModelUsageQueryService(fixture.pool as never, () => NOW).overview(
+      USER_ID,
+      query()
+    );
+    for (const totals of [overview.last24Hours, overview.last7Days]) {
+      expect(totals).toMatchObject({
+        inputTokens: '0',
+        outputTokens: '0',
+        totalTokens: '0',
+        requests: '0',
+        cacheReadTokens: '0',
+        cacheWriteTokens: '0',
+        completeRequests: '0',
+        partialRequests: '0',
+        unknownRequests: '0'
+      });
+    }
+  });
+
   it.each([undefined, 'compact', 'prompt_completion'] as const)(
     'isolates overview, chart and record queries to purpose %s',
     async (purpose) => {
@@ -607,6 +692,7 @@ class FakeQueryMysql {
       return [
         [
           {
+            recent: 1,
             inputTokens: this.bigInput,
             outputTokens: this.bigOutput,
             cacheReadTokens: this.cacheReadTokens,

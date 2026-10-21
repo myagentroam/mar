@@ -1,4 +1,8 @@
-import { MODEL_USAGE_MIGRATION, MODEL_USAGE_SQL } from './model-usage-schema.js';
+import {
+  MODEL_USAGE_MIGRATION,
+  MODEL_USAGE_CURRENT_SQL,
+  MODEL_USAGE_QUERY_INDEX_MIGRATION
+} from './model-usage-schema.js';
 import schema from './mysql-core-schema-v1.json' with { type: 'json' };
 import hostedSchema from './mysql-hosted-schema-v2.json' with { type: 'json' };
 import gitSchema from './mysql-git-schema-v3.json' with { type: 'json' };
@@ -182,7 +186,7 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
     "  `title_generation` tinyint(1) NOT NULL DEFAULT '0',",
     "  `conversation_model` tinyint(1) NOT NULL DEFAULT '1',\n  `title_generation` tinyint(1) NOT NULL DEFAULT '0',"
   ),
-  model_usage_records: MODEL_USAGE_SQL,
+  model_usage_records: MODEL_USAGE_CURRENT_SQL,
   ...MYSQL_PROMPT_COMPLETION_SCHEMA,
   ...MYSQL_WEB_PUSH_SCHEMA,
   ...MYSQL_SESSION_SHARES_CURRENT_SCHEMA
@@ -544,5 +548,6 @@ export const CORE_MYSQL_MIGRATIONS = [
         );
       await validateMysqlSchema(connection, MYSQL_SESSION_SHARES_CURRENT_SCHEMA);
     }
-  }
+  },
+  MODEL_USAGE_QUERY_INDEX_MIGRATION
 ] as const;

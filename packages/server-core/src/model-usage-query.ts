@@ -156,18 +156,24 @@ export class ModelUsageQueryService {
     try {
       await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
       await connection.beginTransaction();
-      const period = async (duration: number) => {
-        const [rows] = await connection.execute<RowDataPacket[]>(
-          `SELECT ${totalSql} FROM model_usage_records WHERE user_id=? AND purpose=? AND ended_at>=? AND ended_at<?`,
-          [userId, query.purpose ?? 'conversation', asOf - duration, asOf]
-        );
-        return totals(rows[0]);
-      };
-      const last24Hours = await period(86_400_000);
-      const last7Days = await period(7 * 86_400_000);
+      const [periods] = await connection.execute<RowDataPacket[]>(
+        `SELECT ended_at>=? AS recent,${totalSql} FROM model_usage_records
+        WHERE user_id=? AND purpose=? AND ended_at>=? AND ended_at<? GROUP BY recent`,
+        [asOf - 86_400_000, userId, query.purpose ?? 'conversation', asOf - 7 * 86_400_000, asOf]
+      );
+      const last24Hours = emptyUsageTotals();
+      const last7Days = emptyUsageTotals();
+      for (const row of periods) {
+        const value = totals(row);
+        add(last7Days, value);
+        if (Number(row.recent) === 1) add(last24Hours, value);
+      }
       const [metadata] = await connection.execute<RowDataPacket[]>(
-        'SELECT MIN(started_at) AS firstRecordedAt,MAX(received_at) AS lastReceivedAt FROM model_usage_records WHERE user_id=? AND purpose=? AND COALESCE(ended_at,started_at)>=? AND COALESCE(ended_at,started_at)<? AND received_at<=?',
-        [userId, query.purpose ?? 'conversation', minimum, asOf, asOf]
+        `SELECT MIN(started_at) AS firstRecordedAt,MAX(received_at) AS lastReceivedAt
+        FROM model_usage_records WHERE user_id=? AND purpose=? AND
+        ((ended_at>=? AND ended_at<?) OR (ended_at IS NULL AND started_at>=? AND started_at<?))
+        AND received_at<=?`,
+        [userId, query.purpose ?? 'conversation', minimum, asOf, minimum, asOf, asOf]
       );
       const buckets = ranges.map((range) => ({ ...emptyUsageTotals(), ...range }));
       const runners = new Map<string, UsageGroup>();
