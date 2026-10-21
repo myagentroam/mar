@@ -4,12 +4,38 @@ import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceContentSearch } from '@myagentroam/protocol';
 import type { NodeWorkspace } from '../../src/database.js';
+import * as operational from '../../src/operational.js';
 import type { WorkspaceFileEntry } from '../../src/workspace.js';
 import { WorkspaceCodeNavigationService } from '../../src/service/workspace-code-navigation-service.js';
 import { runCtags } from '../../src/service/code-navigation/ctags-index-storage.js';
 import type { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
 
 const temporaryDirectories: string[] = [];
+const fixtureCleanups: Array<() => Promise<void>> = [];
+
+async function settleBackgroundOperations(services: readonly WorkspaceCodeNavigationService[]) {
+  const states = services.map(
+    (service) =>
+      service as unknown as {
+        preparations: Map<string, Promise<void>>;
+        candidateRefreshes: Map<string, Promise<void>>;
+        builds: Map<string, Promise<void>>;
+      }
+  );
+  const errors: unknown[] = [];
+  // Refresh completion can enqueue a build; drain all owners before deleting their files.
+  for (;;) {
+    const pending = states.flatMap((state) => [
+      ...state.preparations.values(),
+      ...state.candidateRefreshes.values(),
+      ...state.builds.values()
+    ]);
+    if (pending.length === 0) break;
+    for (const result of await Promise.allSettled(pending))
+      if (result.status === 'rejected') errors.push(result.reason);
+  }
+  expect(errors).toEqual([]);
+}
 
 it('records ctags failure diagnostics without logging tags output', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mar-ctags-failure-'));
@@ -29,11 +55,16 @@ it('records ctags failure diagnostics without logging tags output', async () => 
 });
 
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true }))
-  );
+  try {
+    for (const cleanup of fixtureCleanups.splice(0)) await cleanup();
+  } finally {
+    await Promise.all(
+      temporaryDirectories
+        .splice(0)
+        .map((directory) => rm(directory, { recursive: true, force: true }))
+    );
+    vi.restoreAllMocks();
+  }
 });
 
 interface Fixture {
@@ -82,11 +113,27 @@ async function fixture(
   ];
   const candidateRequests: boolean[] = [];
   const refreshRequests: boolean[] = [];
+  const services: WorkspaceCodeNavigationService[] = [];
+  const pendingRefreshReleases = new Set<() => void>();
+  const log = vi.spyOn(operational, 'nodeLog');
+  let closing = false;
   let refreshes = 0;
   let releaseRefresh: () => void = () => undefined;
   let releaseCandidates: () => void = () => undefined;
   const candidateBarrier = new Promise<void>((resolvePromise) => {
     releaseCandidates = resolvePromise;
+  });
+  fixtureCleanups.push(async () => {
+    closing = true;
+    releaseCandidates();
+    for (const release of pendingRefreshReleases) release();
+    await settleBackgroundOperations(services);
+    expect(
+      log.mock.calls.filter(
+        ([event]) =>
+          event === 'node.command.failed' || event === 'workspace.code_navigation.index.failed'
+      )
+    ).toEqual([]);
   });
   const createService = (options: { readonly waitForRefresh?: boolean } = {}) => {
     let loaded = false;
@@ -103,20 +150,27 @@ async function fixture(
           refreshRequests.push(requireFresh);
           refreshes += 1;
           loaded = true;
-          if (!options.waitForRefresh) return Promise.resolve();
+          if (!options.waitForRefresh || closing) return Promise.resolve();
           return new Promise<void>((resolvePromise) => {
-            releaseRefresh = resolvePromise;
+            const release = () => {
+              pendingRefreshReleases.delete(release);
+              resolvePromise();
+            };
+            pendingRefreshReleases.add(release);
+            releaseRefresh = release;
           });
         }
       })
     } as unknown as WorkspaceFileService;
-    return new WorkspaceCodeNavigationService({
+    const service = new WorkspaceCodeNavigationService({
       files,
       nodeId: () => 'node_test',
       ctagsExecutable: () => executable,
       indexHome: () => home,
       ...(searchContent === undefined ? {} : { searchContent })
     });
+    services.push(service);
+    return service;
   };
   return {
     root,
@@ -137,12 +191,15 @@ async function eventuallyReady(
   symbol = 'foo'
 ) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
+    await settleBackgroundOperations([service]);
     const result = await service.definition({ id: 'workspace-1', path: root } as never, {
       path: 'src/current.ts',
       symbol
     });
-    if (result.state === 'READY') return result;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    if (result.state === 'READY') {
+      await settleBackgroundOperations([service]);
+      return result;
+    }
   }
   throw new Error('index did not become ready');
 }
