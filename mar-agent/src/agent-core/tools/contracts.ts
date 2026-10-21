@@ -12,6 +12,8 @@ export interface ClientToolDefinition {
   outputSchema?: Record<string, unknown>;
   /** Runtime-only policy. MCP defaults to both callers; other tools default to direct only. */
   allowedCallers?: readonly ToolCaller[];
+  /** Runtime-only exposure override; retains both permitted entry points with Code Mode enabled. */
+  codeModeExposure?: 'both';
   inputMode?: 'json' | 'freeform';
   parallelSafety?: 'safe' | 'serial';
   /** Preserved business-schema eligibility after framework metadata projection. */

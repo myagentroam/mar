@@ -22,6 +22,23 @@ const spec = (value: number): CoreToolSpec => ({
 const call = { name: 'value', arguments: {} };
 
 describe('Extension tool source registry', () => {
+  it('preserves dual exposure in native definitions and inherited wrappers', async () => {
+    const tools = new ExtensionTools();
+    const scope = new ExtensionResourceScope();
+    tools.register(scope, 'owner', { ...spec(1), codeModeExposure: 'both' });
+    scope.activate();
+    const base = tools.capture().get('value')!;
+    expect(base.definition.codeModeExposure).toBe('both');
+    const wrappers = new ExtensionTools();
+    wrappers.register(scope, 'wrapper', {
+      ...spec(0),
+      override: 'wrap',
+      execute: (input, _call, next) => next(input)
+    });
+    expect(wrappers.capture([base]).get('value')!.definition.codeModeExposure).toBe('both');
+    await scope.dispose();
+  });
+
   it('validates inputs and structured output without applying schema defaults', async () => {
     const tools = new ExtensionTools();
     const scope = new ExtensionResourceScope();

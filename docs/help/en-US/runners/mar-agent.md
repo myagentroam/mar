@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 ---
 
 # Configure and Use MAR Agent
@@ -162,7 +162,9 @@ Each Run selects only the first enabled image model available to the current use
 
 The subagent collaboration controls `agent_start`, `agent_wait`, `agent_message`, and `agent_cancel` are always direct-only. Even with Code Mode Only enabled, the model calls them directly, never through `tools.*` inside a cell. Child agents can still use Code Mode according to their selected model configuration.
 
-Code Mode is disabled by default. MAR Agent exposes a restricted JavaScript orchestration cell only when **Code Mode** is enabled for the selected model and the Host supports execution. The main Agent and Subagents use their respective model settings; protocol type does not imply support. A cell can compose permitted tool calls and emit only the results needed, reducing intermediate model round trips. Enabling the switch selects **Code Mode Only**: programmatic tools, including single-tool operations, must run through `code_exec`; only direct-only controls keep their direct entry points. Disabling it restores ordinary direct calls. Only controls tool exposure and model guidance, not additional permissions; dispatch still follows caller permissions, discovery state, and Host policy. Configuration changes apply to the next execution, not one already running.
+Code Mode is disabled by default. MAR Agent exposes a restricted JavaScript orchestration cell only when **Code Mode** is enabled for the selected model and the Host supports execution. The main Agent and Subagents use their respective model settings; protocol type does not imply support. A cell can compose permitted tool calls and emit only the results needed, reducing intermediate model round trips. Enabling the switch defaults to **Code Mode Only**: programmatic tools, including single-tool operations, use `code_exec` by default; direct-only tools and tools explicitly exposed in both places keep their direct entry points. Disabling it restores ordinary direct calls. Only controls tool exposure and model guidance, not additional permissions; dispatch still follows caller permissions, discovery state, and Host policy. Configuration changes apply to the next execution, not one already running.
+
+With Code Mode enabled, `apply_patch` remains available both directly and programmatically. The model chooses either entry point according to the task. Default exposure for other tools and existing caller permissions remain unchanged.
 
 Each cell uses a fresh QuickJS WASM runtime in a Host-managed worker process. Top-level `await` and `Promise.all` are supported; Node globals, module imports, native file/network APIs, and `console.*` are unavailable. Emit text explicitly with `out.text(value)` and returned tool images with `out.image(value)`. Text output recursively replaces the `dataBase64` string of structured `image/*` objects with a compact placeholder, leaving the original object intact. This does not send pixels; use `out.image` separately. Prefer `result.data` or `result.content` for text; explicitly supplied strings are not parsed or screened for Base64. Files, commands, and network access require explicit `programmatic` permission on `tools.NAME(input)`, retaining each tool's own authorization and safety checks. Results use a shared envelope: raw file text is in `result.data.results[0].text`, not the line-numbered `content` display.
 

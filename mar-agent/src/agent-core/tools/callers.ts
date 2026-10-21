@@ -3,6 +3,8 @@ import type { ClientToolDefinition, ToolCaller } from '../model/contracts.js';
 
 /** Normalize trusted Host policy independently of discovery, Agent scope and parallel safety. */
 export function toolCallers(tool: ClientToolDefinition): readonly ToolCaller[] {
+  if (tool.codeModeExposure !== undefined && tool.codeModeExposure !== 'both')
+    throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Code Mode exposure is invalid.');
   const value = tool.allowedCallers;
   if (value === undefined)
     return tool.name.startsWith('mcp__') ? ['direct', 'programmatic'] : ['direct'];
@@ -40,6 +42,8 @@ export function allowsToolCaller(tool: ClientToolDefinition, caller: ToolCaller)
 export function allowsDirectTool(tool: ClientToolDefinition, codeModeEnabled: boolean): boolean {
   return (
     allowsToolCaller(tool, 'direct') &&
-    (!codeModeEnabled || !allowsToolCaller(tool, 'programmatic'))
+    (!codeModeEnabled ||
+      tool.codeModeExposure === 'both' ||
+      !allowsToolCaller(tool, 'programmatic'))
   );
 }

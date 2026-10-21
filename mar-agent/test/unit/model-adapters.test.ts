@@ -170,18 +170,26 @@ describe('model adapters', () => {
           ? new OpenAiResponsesAdapter(config)
           : new AnthropicMessagesAdapter(config);
       try {
-        for (const inputSchema of schemas)
+        for (const [index, inputSchema] of schemas.entries())
           await drain(
             adapter.start(
               {
                 system: 'Stable.',
                 messages: [{ role: 'user', content: 'Stable.' }],
-                tools: [{ name: 'lookup', description: 'Stable.', inputSchema }]
+                tools: [
+                  {
+                    name: 'lookup',
+                    description: 'Stable.',
+                    inputSchema,
+                    ...(index ? { codeModeExposure: 'both' as const } : {})
+                  }
+                ]
               },
               new AbortController().signal
             )
           );
         expect(JSON.stringify(bodies[0]!.tools)).toBe(JSON.stringify(bodies[1]!.tools));
+        expect(bodies[1]!.tools[0]).not.toHaveProperty('codeModeExposure');
         const schema = bodies[0]!.tools[0]![
           protocol === 'OPENAI_RESPONSES' ? 'parameters' : 'input_schema'
         ] as {

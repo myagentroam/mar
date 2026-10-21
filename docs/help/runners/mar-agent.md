@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 ---
 
 # 配置和使用 MAR Agent
@@ -162,7 +162,9 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 
 子 Agent 协作控制工具 `agent_start`、`agent_wait`、`agent_message` 和 `agent_cancel` 固定为 direct-only。即使开启 Code Mode Only，也由模型直接调用，不可在 cell 内通过 `tools.*` 调用；子 Agent 自身仍按所选模型的配置使用 Code Mode。
 
-Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启即 **Code Mode Only**：支持编排的工具（包括单工具操作）统一经 `code_exec` 调用，只有 direct-only 控制工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
+Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启后默认采用 **Code Mode Only**：支持编排的工具（包括单工具操作）默认经 `code_exec` 调用，direct-only 工具及明确支持双边展示的工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
+
+开启 Code Mode 时，`apply_patch` 同时保留直接调用和程序化调用入口，由模型按任务自主选择。其他工具的默认展示策略和原有调用权限不变。
 
 每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。用 `out.text(value)` 显式输出文本，用 `out.image(value)` 输出工具返回的图片。文本输出递归将结构化 `image/*` 对象的 `dataBase64` 字符串替换为简短占位摘要，不修改原对象，也不会自动发送像素；图片仍需单独调用 `out.image`。文本优先输出 `result.data` 或 `result.content`，显式传入的普通字符串不做 Base64 解析或筛选；文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 

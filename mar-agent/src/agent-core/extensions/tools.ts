@@ -219,6 +219,8 @@ export class ExtensionTools {
         : ['direct', 'programmatic'];
       if (entry.spec.override === 'wrap' && lower?.definition.agentScope !== undefined)
         definition.agentScope ??= lower.definition.agentScope;
+      if (entry.spec.override === 'wrap' && lower?.definition.codeModeExposure !== undefined)
+        definition.codeModeExposure ??= lower.definition.codeModeExposure;
       const binding: CoreToolBinding = Object.freeze({
         definition: deepFreeze(definition),
         ...(entry.spec.override === 'wrap' && lower?.mcp ? { mcp: lower.mcp } : {}),
@@ -400,6 +402,7 @@ function copyDefinition(spec: ClientToolDefinition): ClientToolDefinition {
     ...(spec.nativeType ? { nativeType: spec.nativeType } : {}),
     ...(spec.outputSchema ? { outputSchema: structuredClone(spec.outputSchema) } : {}),
     ...(spec.allowedCallers ? { allowedCallers: [...spec.allowedCallers] } : {}),
+    ...(spec.codeModeExposure !== undefined ? { codeModeExposure: spec.codeModeExposure } : {}),
     ...(spec.inputMode ? { inputMode: spec.inputMode } : {}),
     ...(spec.parallelSafety ? { parallelSafety: spec.parallelSafety } : {}),
     ...(spec.agentScope ? { agentScope: spec.agentScope } : {})

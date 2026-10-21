@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   LocalAgentHost,
   MarAgentError,
+  type ClientToolDefinition,
   type ToolExecutionContext,
   type ToolExecutionResult
 } from '../../src/index.js';
@@ -232,6 +233,9 @@ describe('QuickJS Code Mode', () => {
   );
 
   it('describes raw source, helper bindings and MAR envelopes without unsupported Codex helpers', () => {
+    expect(codeModeToolDefinition.description).toContain(
+      'catalog.tools() returns a read-only array'
+    );
     const description = codeModeToolDefinition.description;
     expect(description).toContain('including single-tool operations');
     expect(description).toContain('Run independent calls concurrently with Promise.all');
@@ -482,7 +486,47 @@ describe('QuickJS Code Mode', () => {
     }
   );
 
-  it('projects only direct-only tools and the full bounded programmatic input directory', () => {
+  it.each([
+    { callers: ['direct', 'programmatic'], exposure: undefined, direct: false, programmatic: true },
+    { callers: ['direct', 'programmatic'], exposure: 'both', direct: true, programmatic: true },
+    { callers: ['direct'], exposure: 'both', direct: true, programmatic: false },
+    { callers: ['programmatic'], exposure: 'both', direct: false, programmatic: true }
+  ])('projects exposure without widening caller permissions: $callers / $exposure', (row) => {
+    const tool: ClientToolDefinition = {
+      name: 'fixture_tool',
+      description: 'Fixture tool.',
+      inputSchema: { type: 'object' },
+      allowedCallers: row.callers as NonNullable<ClientToolDefinition['allowedCallers']>,
+      ...(row.exposure ? { codeModeExposure: row.exposure as 'both' } : {})
+    };
+    const definitions = projectCodeModeTools([codeModeToolDefinition, tool]);
+    expect(definitions.some((entry) => entry.name === tool.name)).toBe(row.direct);
+    const outer = definitions.find((entry) => entry.name === 'code_exec')!;
+    const marker = 'Programmatic tools: ';
+    const directory = JSON.parse(
+      outer.description.slice(outer.description.lastIndexOf(marker) + marker.length)
+    );
+    expect(directory.callableNames.includes(tool.name)).toBe(row.programmatic);
+    if (row.direct && row.programmatic) {
+      expect(directory.tools[0].description).toContain('Call directly or as tools.fixture_tool');
+      expect(directory.tools[0]).not.toHaveProperty('codeModeExposure');
+    }
+    expect(projectCodeModeTools([tool]).some((entry) => entry.name === tool.name)).toBe(
+      row.callers.includes('direct')
+    );
+  });
+
+  it('rejects unknown exposure modes rather than granting an entry point', () => {
+    const invalid = {
+      ...readToolDefinition,
+      codeModeExposure: 'all'
+    } as unknown as ClientToolDefinition;
+    expect(() => projectCodeModeTools([codeModeToolDefinition, invalid])).toThrow(
+      expect.objectContaining({ code: 'MAR_AGENT_TOOL_INPUT_INVALID' })
+    );
+  });
+
+  it('projects direct-only and dual-exposure tools with the full bounded programmatic input directory', () => {
     const controls = new Set([
       'code_exec',
       'code_exec_wait',
@@ -531,10 +575,10 @@ describe('QuickJS Code Mode', () => {
     ]);
     const names = definitions.map((tool) => tool.name);
     const description = definitions.find((tool) => tool.name === 'code_exec')!.description;
-    const directoryMarker = 'Programmatic tools (call only inside code_exec): ';
+    const directoryMarker = 'Programmatic tools: ';
     const directory = JSON.parse(
       description.slice(description.lastIndexOf(directoryMarker) + directoryMarker.length)
-    ) as { callableNames: string[]; programmaticOnly: Array<{ name: string }> };
+    ) as { callableNames: string[]; tools: Array<{ name: string }> };
 
     expect(toolCallers(defaultsToDirect)).toEqual(['direct']);
     expect(allowsToolCaller(defaultsToDirect, 'programmatic')).toBe(false);
@@ -551,12 +595,13 @@ describe('QuickJS Code Mode', () => {
     expect(names).not.toContain('programmatic_only');
     expect(names).not.toContain('exec');
     expect(names).not.toContain('read');
-    expect(names).not.toContain('apply_patch');
+    expect(names).toContain('apply_patch');
     expect(names).toEqual([
       'skill',
       'tool_search',
       'code_exec',
       'code_exec_wait',
+      'apply_patch',
       'question',
       'agent_start',
       'agent_wait',
@@ -582,14 +627,14 @@ describe('QuickJS Code Mode', () => {
         )
       ).toBe(false);
     }
-    expect(directory.programmaticOnly.map((tool) => tool.name)).toEqual(
+    expect(directory.tools.map((tool) => tool.name)).toEqual(
       widenedControls
         .filter((tool) => allowsToolCaller(tool, 'programmatic'))
         .map((tool) => tool.name)
         .concat('programmatic_only')
         .sort()
     );
-    expect(directory.programmaticOnly).toContainEqual(
+    expect(directory.tools).toContainEqual(
       expect.objectContaining({ name: 'read', inputSchema: expect.any(Object) })
     );
     expect(description).toContain('including single-tool operations');
@@ -610,18 +655,16 @@ describe('QuickJS Code Mode', () => {
     const original = structuredClone(tools);
     const definitions = projectCodeModeTools(tools);
     const outer = definitions.find((tool) => tool.name === 'code_exec')!;
-    const marker = 'Programmatic tools (call only inside code_exec): ';
+    const marker = 'Programmatic tools: ';
     const directory = JSON.parse(
       outer.description.slice(outer.description.lastIndexOf(marker) + marker.length)
     );
     expect(outer.inputMode).toBe(codeModeToolDefinition.inputMode);
     expect(definitions.find((tool) => tool.name === direct.name)).toEqual(direct);
-    for (const tool of directory.programmaticOnly) expect(tool).not.toHaveProperty('inputMode');
-    const visible = directory.programmaticOnly.find(
-      (tool: { name: string }) => tool.name === raw.name
-    );
+    for (const tool of directory.tools) expect(tool).not.toHaveProperty('inputMode');
+    const visible = directory.tools.find((tool: { name: string }) => tool.name === raw.name);
     expect(visible.inputSchema).toEqual(raw.inputSchema);
-    expect(visible.description).toContain(`Call only as tools.${raw.name} inside code_exec`);
+    expect(visible.description).toContain(`Call directly or as tools.${raw.name} inside code_exec`);
     const message = {
       role: 'tool' as const,
       name: 'tool_search',
@@ -630,10 +673,13 @@ describe('QuickJS Code Mode', () => {
       toolSearchTools: [raw, direct, readToolDefinition]
     };
     const searched = projectCodeModeSearchResult(message, true);
-    expect(searched.toolSearchTools!.find((tool) => tool.name === raw.name)).toEqual(visible);
+    expect(searched.toolSearchTools!.find((tool) => tool.name === raw.name)).toEqual({
+      ...visible,
+      inputMode: raw.inputMode
+    });
     expect(
       JSON.parse(searched.content).tools.find((tool: { name: string }) => tool.name === raw.name)
-    ).toEqual({ ...visible, caller: 'programmatic' });
+    ).toEqual({ ...visible, inputMode: raw.inputMode, caller: 'both' });
     expect(searched.toolSearchTools!.find((tool) => tool.name === direct.name)).toMatchObject({
       name: direct.name,
       description: direct.description,
@@ -676,11 +722,11 @@ describe('QuickJS Code Mode', () => {
       const outer = projectCodeModeTools([codeModeToolDefinition, raw, readToolDefinition]).find(
         (tool) => tool.name === 'code_exec'
       )!;
-      const marker = 'Programmatic tools (call only inside code_exec): ';
+      const marker = 'Programmatic tools: ';
       const directory = JSON.parse(
         outer.description.slice(outer.description.lastIndexOf(marker) + marker.length)
       );
-      expect(catalog).toEqual(directory.programmaticOnly);
+      expect(catalog).toEqual(directory.tools);
       expect(catalog.find((tool: { name: string }) => tool.name === raw.name).inputSchema).toEqual(
         raw.inputSchema
       );

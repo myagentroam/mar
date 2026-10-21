@@ -38,14 +38,14 @@ import { failedToolResultExtensions } from '../result-extensions.js';
 export const codeModeToolDefinition: ClientToolDefinition = {
   name: 'code_exec',
   description: `Run JavaScript to orchestrate or compose tool calls.
-- Code Mode Only: call the programmatic tools listed below through tools.NAME inside this tool, including single-tool operations. They are omitted from the top-level tool list. Direct-only tools remain separate model tools and cannot be called here.
+- Code Mode Only by default: call the programmatic tools listed below through tools.NAME, including single-tool operations. Tools explicitly exposed in both places may also be called directly; follow each tool's calling guidance. Direct-only tools remain separate model tools and cannot be called here.
 - Run independent calls concurrently with Promise.all; await sequentially when data, side effects, or failure handling require ordering.
 - Complete known, bounded steps and deterministic result processing in code when this avoids a model round trip. Return to the model when interpretation or a new decision is needed; do not invent extra work to fill a cell.
 - Observe only evidence needed for the next decision or verification: use observe.result for original results, observe.text for derived values, and observe.image for image values. Preserve source and failure details needed for reasoning; keep other intermediate data in the cell.
 - Single-tool cells are valid. Keep loops and retries bounded, and do not blindly replay operations with side effects.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await and Promise.all. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
 - Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
-- Keep embedded commands, patches and source in JSON-escaped double-quoted strings when they contain backticks or literal \${...}; JavaScript template literals would interpolate them before the tool runs. Do not paste Python literals such as None into JavaScript expressions.
+- Keep embedded commands, patches and source in JSON-escaped double-quoted strings when they contain backticks or literal \${...}; escape newlines as \\n, never put literal line breaks inside single- or double-quoted JS strings. JavaScript template literals would interpolate their contents before the tool runs. Do not paste Python literals such as None into JavaScript expressions.
 - Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; use tools.exec_wait afterward to wait, write stdin or cancel.
 
 Tool calls:
@@ -58,7 +58,7 @@ Built-in namespaces:
 - observe.result(result): void registers an unmodified complete tools.NAME result or caught tool error as a trusted tool_result, using the original text and all images without repeating program data. Non-original, copied or modified values are rejected. This selects evidence for the next model response, not a log and not a new model call. Prefer observe.result for inspecting tool results.
 - observe.text(value): void registers text/JSON values. observe.image(value): void registers one image value when image input is supported. Both accept original tool results for compatibility and use the same complete tool_result observation path; they do not select part of an original result. Extracted single images, copies and computed summaries are value observations, never trusted tool results. Observations are returned in registration order. Only explicitly observed evidence reaches the model; registration does not prove inspection. Sources and types are runtime-assigned. No out or callable observe(value) alias exists.
 - state.get(key), state.has(key), state.set(key, value), state.delete(key) access bounded session JSON state. Mutations commit atomically only when the cell succeeds; failed or cancelled cells discard them.
-- catalog.tools() returns a read-only snapshot of the tools callable in this cell, including name, description and inputSchema. It does not discover or authorize additional tools.
+- catalog.tools() returns a read-only array of the tools callable in this cell, including name, description and inputSchema. It does not discover or authorize additional tools.
 - await cell.sleep(ms) performs a cancellable delay up to ${limits.codeSleepMaxMs} ms.
 - await cell.yield_control() returns accumulated output to the model immediately while this cell continues running.
 - Optionally start source with // @options: {"yieldMs": ${limits.codeDefaultYieldMs}}. yieldMs defaults to ${limits.codeDefaultYieldMs} ms and controls this call's wait window (0..${limits.codeMaxYieldMs}), not nested tool timeouts or wait windows. A running result includes cellId; use direct code_exec_wait for new output, completion or termination.
@@ -129,7 +129,7 @@ function projectProgrammaticTool(
 ): Pick<ClientToolDefinition, 'name' | 'description' | 'inputSchema'> {
   return {
     name: tool.name,
-    description: `Call only as tools.${tool.name} inside code_exec, never as a direct model tool.\nPass a JavaScript value matching inputSchema.\n${tool.description}`,
+    description: `${allowsDirectTool(tool, true) ? `Call directly or as tools.${tool.name} inside code_exec.` : `Call only as tools.${tool.name} inside code_exec, never as a direct model tool.`}\nInside code_exec, pass a JavaScript value matching inputSchema.\n${tool.description}`,
     inputSchema: stableToolSchema(tool.inputSchema)
   };
 }
@@ -151,7 +151,7 @@ export function projectCodeModeTools(
   );
   const directory = JSON.stringify({
     callableNames: programmatic.map((tool) => tool.name),
-    programmaticOnly: programmatic.map(projectProgrammaticTool)
+    tools: programmatic.map(projectProgrammaticTool)
   });
   if (Buffer.byteLength(directory) > 32 * 1024)
     throw new MarAgentError(
@@ -162,7 +162,7 @@ export function projectCodeModeTools(
     tool.name === 'code_exec'
       ? {
           ...tool,
-          description: `${codeModeToolDefinition.description}\nDeferred MCP definitions are returned by direct tool_search and become callable from the next model response, not later in the same response; they are not appended to this description.\nProgrammatic tools (call only inside code_exec): ${directory}`
+          description: `${codeModeToolDefinition.description}\nDeferred MCP definitions are returned by direct tool_search and become callable from the next model response, not later in the same response; they are not appended to this description.\nProgrammatic tools: ${directory}`
         }
       : tool
   );
@@ -183,14 +183,23 @@ export function projectCodeModeSearchResult(
     };
   const tools = message.toolSearchTools.map((tool) => ({
     ...(allowsToolCaller(tool, 'programmatic')
-      ? projectProgrammaticTool(tool)
+      ? {
+          ...projectProgrammaticTool(tool),
+          ...(allowsDirectTool(tool, true)
+            ? { inputMode: tool.inputMode ?? ('json' as const) }
+            : {})
+        }
       : {
           name: tool.name,
           description: tool.description,
           inputSchema: stableToolSchema(tool.inputSchema),
           inputMode: tool.inputMode ?? ('json' as const)
         }),
-    caller: allowsToolCaller(tool, 'programmatic') ? 'programmatic' : 'direct'
+    caller: allowsToolCaller(tool, 'programmatic')
+      ? allowsDirectTool(tool, true)
+        ? 'both'
+        : 'programmatic'
+      : 'direct'
   }));
   return {
     ...message,

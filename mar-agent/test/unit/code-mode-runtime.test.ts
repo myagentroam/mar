@@ -818,10 +818,18 @@ describe('Code Mode SDK and protocol integration', () => {
   );
 
   it.each([{ protocol: 'OPENAI_RESPONSES' as const }, { protocol: 'ANTHROPIC_MESSAGES' as const }])(
-    'projects Code Mode Only without adding caller restrictions for $protocol',
+    'projects dual patch exposure and executes both entry points for $protocol',
     async (overrides) => {
       const { home, workspace } = await fixture();
       const requests: ModelRequest[] = [];
+      const directText =
+        [
+          'const value = `hello ${name}`;',
+          'const path = "C:\\temp\\file";',
+          '"double" and unescaped multiline text'
+        ]
+          .join('\n')
+          .repeat(80) + '\n';
       const configuration = { ...model, ...overrides };
       const adapter: ModelAdapter = {
         configuration,
@@ -832,7 +840,14 @@ describe('Code Mode SDK and protocol integration', () => {
               type: 'client_tool.call',
               name: 'apply_patch',
               callId: 'compatible-direct',
-              arguments: '*** Begin Patch\n*** Add File: direct.txt\n+direct\n*** End Patch'
+              arguments:
+                '*** Begin Patch\n*** Add File: direct.txt\n' +
+                directText
+                  .trimEnd()
+                  .split('\n')
+                  .map((line) => '+' + line)
+                  .join('\n') +
+                '\n*** End Patch'
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else if (requests.length === 2) {
@@ -868,7 +883,7 @@ describe('Code Mode SDK and protocol integration', () => {
           })
         );
         expect(events.filter((event) => event.type === 'tool.failed')).toEqual([]);
-        expect(await readFile(join(workspace, 'direct.txt'), 'utf8')).toBe('direct\n');
+        expect(await readFile(join(workspace, 'direct.txt'), 'utf8')).toBe(directText);
         expect(await readFile(join(workspace, 'output.txt'), 'utf8')).toBe('done\n');
         for (const request of requests) {
           expect(request.tools.map((tool) => tool.name)).toEqual([
@@ -876,14 +891,20 @@ describe('Code Mode SDK and protocol integration', () => {
             'agent_message',
             'agent_start',
             'agent_wait',
+            'apply_patch',
             'code_exec',
             'code_exec_wait',
             'sleep'
           ]);
           expect(effectiveInstructions(request)).toContain(
-            'Available client tools: agent_cancel, agent_message, agent_start, agent_wait, code_exec, code_exec_wait, sleep.'
+            'Available client tools: agent_cancel, agent_message, agent_start, agent_wait, apply_patch, code_exec, code_exec_wait, sleep.'
           );
           expect(effectiveInstructions(request)).toContain('Code Mode Only');
+          const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(
+            effectiveInstructions(request)
+          )?.[1];
+          expect(onlyLine).toBeDefined();
+          expect(onlyLine).not.toContain('apply_patch');
           expect(effectiveInstructions(request)).toContain('Use read to batch');
           expect(effectiveInstructions(request)).toContain('# Subagents');
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;

@@ -20,7 +20,7 @@ export const TOOL_SEARCH_LIMITS = Object.freeze({
 export const toolSearchToolDefinition: ClientToolDefinition = {
   name: 'tool_search',
   description:
-    'Search deferred MCP metadata and return matching tool definitions for the next model call. Use the full callable name for exact selection, or keywords for BM25 search. Never executes the discovered tools. With Code Mode Only, programmatic tools must be called through code_exec, not directly. Already exposed tools need not be searched again. The selected definitions must fit the exposure budget or the search fails atomically.',
+    'Search deferred MCP metadata and return matching tool definitions for the next model call. Use the full callable name for exact selection, or keywords for BM25 search. Never executes the discovered tools. With Code Mode Only, programmatic tools use code_exec unless explicitly exposed for both direct and programmatic calls. Already exposed tools need not be searched again. The selected definitions must fit the exposure budget or the search fails atomically.',
   inputSchema: {
     type: 'object',
     properties: {
