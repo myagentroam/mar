@@ -1895,6 +1895,7 @@ export function createWorkbenchPageController<
     closeWorkspaceTab,
     closeUnpinnedWorkspaceTabs,
     activateWorkspaceTab,
+    openWorkspaceTab,
     orderedWorkspaces,
     toggleNodeExpansion,
     refreshNodeWorkspaces,
@@ -1928,7 +1929,10 @@ export function createWorkbenchPageController<
     request,
     saveCurrent: saveCurrentWorkspaceView,
     discardCache: discardWorkspaceViewCache,
-    activateWorkspace: (target) => selectWorkspace(target),
+    activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
+    workspaceTabSession: workbenchNotificationService.workspaceTabSession,
+    openWorkspaceTabSession: (sessionId) =>
+      workbenchSessionSelectionService.openWorkspaceTabSession(sessionId),
     clearWorkspace: () => workbenchWorkspaceSelectionService.clear(),
     currentSelectionRevision: () => workbenchWorkspaceSelectionService.currentSelectionRevision(),
     cleanupSessionsEnabled: () => cleanupSessionsEnabled,
@@ -2424,7 +2428,12 @@ export function createWorkbenchPageController<
     sessionPathId: agentSessionPathId,
     replaceSession,
     canWatch: canWatchSessionHistory,
-    beginWatch: (sessionId) => Promise.resolve(watchCoordinator.current?.restartSession(sessionId)),
+    beginWatch: async (sessionId) => {
+      const coordinator = watchCoordinator.current;
+      if (coordinator === undefined) return false;
+      await coordinator.restartSession(sessionId);
+      return sessionWatchController.hasInitialSessionSnapshot(sessionId);
+    },
     applySnapshot: applyConversationSnapshot,
     mergeTurns: mergeLatestConversationTurns,
     notice: (value) => (notice.value = value),
@@ -3404,7 +3413,7 @@ export function createWorkbenchPageController<
     workPromptCompletion,
     webVersion: options.webVersion,
     activeGoal,
-    activateWorkspaceTab,
+    activateWorkspaceTab: openWorkspaceTab,
     activeCommandStates,
     activeComposerRun,
     activeFileReferenceIndex,

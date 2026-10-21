@@ -26,7 +26,12 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly request: <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
   readonly saveCurrent: () => void;
   readonly discardCache: (nodeId: string, workspaceId: string) => void;
-  readonly activateWorkspace: (target: WorkspaceTarget) => Promise<boolean>;
+  readonly activateWorkspace: (
+    target: WorkspaceTarget,
+    restoreSession?: boolean
+  ) => Promise<boolean>;
+  readonly workspaceTabSession: (nodeId: string, workspaceId: string) => string | undefined;
+  readonly openWorkspaceTabSession: (sessionId: string) => Promise<void>;
   readonly clearWorkspace: () => void;
   readonly currentSelectionRevision: () => number;
   readonly cleanupSessionsEnabled: (nodeId: string) => boolean;
@@ -145,12 +150,38 @@ export function createWorkbenchWorkspaceTreeController(
     return activateWorkspaceTarget(tab);
   }
 
-  function activateWorkspaceTarget(target: WorkspaceTarget): Promise<boolean> {
+  async function openWorkspaceTab(tab: WorkspaceTab): Promise<void> {
+    const node = options.nodes.value.find((candidate) => candidate.id === tab.nodeId);
+    if (node === undefined) {
+      closeWorkspaceTab(tab, true);
+      return;
+    }
+    const sessionId = options.workspaceTabSession(tab.nodeId, tab.workspaceId);
+    const activation = activateWorkspaceTarget(tab, sessionId === undefined);
+    const revision = options.currentSelectionRevision();
+    if (!(await activation) || revision !== options.currentSelectionRevision()) return;
+    const selected = options.workspaceTarget.value;
+    if (
+      selected?.nodeId !== tab.nodeId ||
+      selected.workspaceId !== tab.workspaceId ||
+      !node.connected ||
+      node.disabled
+    )
+      return;
+    if (sessionId !== undefined) await options.openWorkspaceTabSession(sessionId);
+  }
+
+  function activateWorkspaceTarget(
+    target: WorkspaceTarget,
+    restoreSession = true
+  ): Promise<boolean> {
     const current = options.workspaceTarget.value;
     const activation =
       current?.nodeId === target.nodeId && current.workspaceId === target.workspaceId
         ? Promise.resolve(true)
-        : options.activateWorkspace(target);
+        : restoreSession
+          ? options.activateWorkspace(target)
+          : options.activateWorkspace(target, false);
     options.closeMobileSidebar();
     options.showWorkbench();
     return activation;
@@ -417,6 +448,7 @@ export function createWorkbenchWorkspaceTreeController(
     closeWorkspaceTab,
     closeUnpinnedWorkspaceTabs,
     activateWorkspaceTab,
+    openWorkspaceTab,
     cacheNodeWorkspaces,
     workspacesForNode,
     orderedWorkspaces,

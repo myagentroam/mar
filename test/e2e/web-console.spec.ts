@@ -28,6 +28,7 @@ import './web-composer.cases.js';
 import './web-goal.cases.js';
 import './web-native-sessions.cases.js';
 import './web-workspace-state.cases.js';
+import './web-workspace-tab-navigation.cases.js';
 import './web-resource-tree-order.cases.js';
 import './web-terminal.cases.js';
 import './web-mobile-workbench.cases.js';
