@@ -71,7 +71,7 @@ function fixture() {
     selectedSessionId.value = undefined as never;
     selectedRunId.value = undefined as never;
   });
-  const activateWorkspace = vi.fn(async (target: WorkspaceTarget) => {
+  const activateWorkspace = vi.fn(async (target: WorkspaceTarget, _restoreSession?: boolean) => {
     selectedNodeId.value = target.nodeId;
     selectedWorkspaceId.value = target.workspaceId;
     return true;
@@ -80,6 +80,8 @@ function fixture() {
   const refreshNodes = vi.fn(async () => undefined);
   const closeMobileSidebar = vi.fn();
   const closeMobileWorkspaceSurface = vi.fn();
+  const workspaceTabSession = vi.fn<() => string | undefined>(() => undefined);
+  const openWorkspaceTabSession = vi.fn(async (_sessionId: string) => undefined);
   const controller = createWorkbenchWorkspaceTreeController({
     nodes,
     workspaces,
@@ -99,9 +101,13 @@ function fixture() {
     request: request as WorkbenchWorkspaceTreeControllerOptions['request'],
     saveCurrent,
     discardCache,
-    activateWorkspace: (target) => {
+    workspaceTabSession,
+    openWorkspaceTabSession,
+    activateWorkspace: (target, restoreSession) => {
       selectionRevision += 1;
-      return activateWorkspace(target);
+      return restoreSession === false
+        ? activateWorkspace(target, false)
+        : activateWorkspace(target);
     },
     clearWorkspace,
     currentSelectionRevision: () => selectionRevision,
@@ -138,7 +144,9 @@ function fixture() {
     closeMobileSidebar,
     closeMobileWorkspaceSurface,
     tree,
-    controller
+    controller,
+    workspaceTabSession,
+    openWorkspaceTabSession
   };
 }
 
@@ -152,6 +160,72 @@ afterEach(() => {
 });
 
 describe('Public Workspace tree controller', () => {
+  it('opens each chosen session on repeated Tab clicks without reactivating the Workspace', async () => {
+    const f = fixture();
+    const tab = {
+      id: 'node-1:workspace-1',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      label: 'one',
+      lastActiveAt: 1
+    };
+    f.workspaceTabSession
+      .mockReturnValueOnce('unread-1')
+      .mockReturnValueOnce('unread-2')
+      .mockReturnValueOnce('active-session');
+    await f.controller.openWorkspaceTab(tab);
+    await f.controller.openWorkspaceTab(tab);
+    await f.controller.openWorkspaceTab(tab);
+    expect(f.openWorkspaceTabSession.mock.calls).toEqual([
+      ['unread-1'],
+      ['unread-2'],
+      ['active-session']
+    ]);
+    expect(f.activateWorkspace).not.toHaveBeenCalled();
+    expect(f.showWorkbench).toHaveBeenCalledTimes(3);
+  });
+
+  it('skips cached restoration for a priority target, but not ordinary activation', async () => {
+    const f = fixture();
+    const tab = {
+      id: 'node-2:workspace-2',
+      nodeId: 'node-2',
+      workspaceId: 'workspace-2',
+      label: 'two',
+      lastActiveAt: 1
+    };
+    f.workspaceTabSession.mockReturnValue('unloaded');
+    await f.controller.openWorkspaceTab(tab);
+    expect(f.activateWorkspace).toHaveBeenCalledWith(tab, false);
+    expect(f.openWorkspaceTabSession).toHaveBeenCalledWith('unloaded');
+    f.selectedWorkspaceId.value = 'workspace-1';
+    f.workspaceTabSession.mockReturnValue(undefined);
+    await f.controller.openWorkspaceTab(tab);
+    expect(f.activateWorkspace).toHaveBeenLastCalledWith(tab);
+    expect(f.openWorkspaceTabSession).toHaveBeenCalledTimes(1);
+    await f.controller.activateWorkspaceTab(tab);
+    expect(f.workspaceTabSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not open after failed, superseded, or offline activation', async () => {
+    for (const result of ['failed', 'superseded', 'offline'] as const) {
+      const f = fixture();
+      const tab = {
+        id: 'node-2:workspace-2',
+        nodeId: 'node-2',
+        workspaceId: 'workspace-2',
+        label: 'two',
+        lastActiveAt: 1
+      };
+      f.workspaceTabSession.mockReturnValue('unread');
+      if (result === 'failed') f.activateWorkspace.mockResolvedValue(false);
+      if (result === 'superseded') f.activateWorkspace.mockImplementation(async () => true);
+      if (result === 'offline') f.nodes.value[1] = { ...f.nodes.value[1]!, connected: false };
+      await f.controller.openWorkspaceTab(tab);
+      expect(f.openWorkspaceTabSession).not.toHaveBeenCalled();
+    }
+  });
+
   it('does not reactivate the selected Workspace from tabs or the tree', async () => {
     const f = fixture();
     f.tabs.remember('node-1', f.nodes.value[0], workspace('workspace-1'));

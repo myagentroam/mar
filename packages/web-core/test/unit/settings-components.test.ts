@@ -4,6 +4,7 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
+import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { SettingsSection } from '../../src/model/settings.js';
@@ -36,6 +37,7 @@ async function render(section: SettingsSection, slots = {}) {
           webVersion: 'test-version',
           sessions: [],
           newPassword: '',
+          changePassword: async () => false,
           passwordValidationError: '',
           registrationToken: undefined,
           loading: false,
@@ -56,6 +58,26 @@ async function render(section: SettingsSection, slots = {}) {
 }
 
 describe('Shared personal settings components', () => {
+  it.each([false, true])(
+    'keeps loading panel content and caller attributes when busy=%s',
+    async (loading) => {
+      const app = createSSRApp({
+        render: () =>
+          h(
+            LoadingPanel,
+            { loading, 'aria-label': 'Page content', 'element-loading-text': 'Loading content' },
+            () => h('p', 'Retained page content')
+          )
+      });
+      app.use(ElementPlus);
+      const html = await renderToString(app);
+      expect(html).toContain(`aria-busy="${loading}"`);
+      expect(html).toContain('aria-label="Page content"');
+      expect(html).toContain('element-loading-text="Loading content"');
+      expect(html).toContain('Retained page content');
+    }
+  );
+
   it.each(['en-US', 'zh-CN'] as const)(
     'preserves loaded quick prompts and disables their actions during refresh: %s',
     async (locale) => {
@@ -141,6 +163,22 @@ describe('Shared personal settings components', () => {
       expect(account.html).toContain('utility-control');
       expect(account.html).toContain('account-actions');
       expect(account.request).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders the custom theme editor with localized controls: %s',
+    async (locale) => {
+      localePreferenceService().setLocale(locale);
+      const result = await render('custom-themes');
+      expect(result.html).toContain(commonMessages[locale].customThemes.title);
+      expect(result.html).toContain(commonMessages[locale].customThemes.view);
+      expect(result.html).toContain(commonMessages[locale].customThemes.apply);
+      expect(result.html).toContain(commonMessages[locale].customThemes.copyJson);
+      expect(result.html).toContain(commonMessages[locale].customThemes.expandPreview);
+      expect(result.html).toContain(commonMessages[locale].customThemes.preview);
+      expect(result.html).not.toContain('customThemes.');
+      expect(result.request).not.toHaveBeenCalled();
     }
   );
 

@@ -10,7 +10,7 @@ export interface PushDisplayBinding extends WebPushBinding {
 }
 export interface WebPushClientStore {
   read(): Promise<BrowserPushClient | undefined>;
-  write(client: BrowserPushClient): Promise<void>;
+  write(client: BrowserPushClient | undefined): Promise<void>;
   display(binding: PushDisplayBinding | undefined): Promise<void>;
   locked<T>(action: () => Promise<T>): Promise<T>;
 }

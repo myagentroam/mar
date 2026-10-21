@@ -533,7 +533,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
             type: 'function',
             name: 'mcp__records__read',
             description: only
-              ? 'Call only as tools.mcp__records__read inside code_exec, never as a direct model tool.\nPass a JavaScript value matching inputSchema.\nRead a record.'
+              ? 'Call only as tools.mcp__records__read inside code_exec, never as a direct model tool.\nInside code_exec, pass a JavaScript value matching inputSchema.\nRead a record.'
               : 'Read a record.',
             strict: true
           })

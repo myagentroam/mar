@@ -3,10 +3,9 @@ import { ref } from 'vue';
 import { runInNewContext } from 'node:vm';
 import { MessageChannel } from 'node:worker_threads';
 import { directDownloadServiceWorkerPlugin } from '../../scripts/direct-download-service-worker.js';
-import {
-  createWorkbenchNotificationService,
-  type WorkbenchNotification
-} from '../../src/service/WorkbenchNotificationService.js';
+import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+
+import type { ServerNotification as WorkbenchNotification } from '@myagentroam/protocol';
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -92,7 +91,7 @@ async function fixture(
     close: ReturnType<typeof vi.fn>;
   }[] = [];
   const registration = {
-    active: {},
+    active: { postMessage: (_value: unknown, _ports: unknown[]) => {} },
     showNotification: vi.fn(
       async (_title: string, _options: NotificationOptions): Promise<void> => undefined
     ),
@@ -101,6 +100,47 @@ async function fixture(
     )
   };
   const getRegistration = vi.fn(async () => registration);
+  let workerSource = '';
+  (directDownloadServiceWorkerPlugin().generateBundle as (...args: unknown[]) => void).call({
+    emitFile: (asset: { source: string }) => {
+      workerSource = asset.source;
+    }
+  });
+  const listeners = new Map<string, (event: unknown) => void>();
+  const client = {
+    id: 'page-1',
+    url: location.href,
+    postMessage: (data: unknown, ports: unknown[]) => {
+      const event = new Event('message');
+      Object.assign(event, { data, ports });
+      workerEvents.dispatchEvent(event);
+    }
+  };
+  const windows = [client];
+  const reloadWorker = () =>
+    runInNewContext(workerSource, {
+      self: {
+        addEventListener: (name: string, callback: (event: unknown) => void) =>
+          listeners.set(name, callback),
+        location: { origin: location.origin },
+        registration,
+        clients: { get: async () => client, matchAll: async () => windows }
+      },
+      URL,
+      MessageChannel,
+      setTimeout,
+      clearTimeout
+    });
+  reloadWorker();
+  registration.active.postMessage = (data, ports) =>
+    listeners.get('message')!({
+      data,
+      ports,
+      source: client,
+      waitUntil: (pending: Promise<void>) => {
+        void pending;
+      }
+    });
   vi.stubGlobal('navigator', {
     userAgent: options.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
     platform: options.platform ?? 'Win32',
@@ -122,7 +162,7 @@ async function fixture(
     }
     throw new Error(`Unexpected request: ${path}`);
   });
-  const openNotification = vi.fn(async (_value: WorkbenchNotification) => {
+  const openNotification = vi.fn(async (_value: unknown) => {
     // Selection callbacks must not turn a system click into a target-wide read.
     state.markSessionRead('node-1', 'workspace-1', 'session-1');
     state.markConversationRead('node-1', 'conversation-1');
@@ -147,6 +187,8 @@ async function fixture(
     windowEvents,
     location,
     workerEvents,
+    reloadWorker,
+    windows,
     displayed,
     registration,
     getRegistration,
@@ -159,6 +201,32 @@ async function fixture(
 }
 
 describe('Workbench system notifications', () => {
+  it('deduplicates simultaneous PC system requests in the existing Worker', async () => {
+    const f = await fixture({ enabled: true });
+    f.browser.focused = false;
+    await Promise.all([f.system.show(notification()), f.system.show(notification())]);
+    expect(f.registration.showNotification).toHaveBeenCalledOnce();
+    await f.system.show(notification());
+    expect(f.registration.showNotification).toHaveBeenCalledOnce();
+  });
+
+  it('suppresses a background PC system request when another same-account workbench is foreground', async () => {
+    const f = await fixture({ enabled: true });
+    f.browser.focused = false;
+    f.windows.push({
+      id: 'page-2',
+      url: f.location.href,
+      postMessage: (_data, ports) => {
+        const port = ports[0] as { postMessage(value: unknown): void; close(): void };
+        port.postMessage({ valid: true, foreground: true });
+        port.close();
+      }
+    });
+    await f.system.show(notification());
+    expect(f.registration.showNotification).not.toHaveBeenCalled();
+    expect(f.state.notificationRevision.value).toBe(0);
+  });
+
   it('requests permission only on explicit opt-in and shares the account preference across pages', async () => {
     const f = await fixture();
     expect(f.system.status.value).toBe('disabled');
@@ -447,6 +515,8 @@ describe('Workbench system notifications', () => {
     await vi.waitFor(() => expect(completeOldDisplay).toBeDefined());
     f.state.dispose();
     await f.state.start();
+    // A restarted Worker may attempt the same ID; old cleanup must not close its projection.
+    f.reloadWorker();
     await f.system.show(notification());
     const options = f.registration.showNotification.mock.calls[1]![1];
     const current = {

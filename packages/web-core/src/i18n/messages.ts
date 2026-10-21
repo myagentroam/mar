@@ -37,6 +37,7 @@ export const commonMessages = {
     personalGit: personalGitEnUS,
     promptCompletion: promptCompletionEnUS,
     modelUsage: personalSettingsEnUS.modelUsage,
+    customThemes: personalSettingsEnUS.customThemes,
     ...hostingManagementEnUS,
     ...authenticationEnUS,
     navigation: {
@@ -155,6 +156,7 @@ export const commonMessages = {
     personalGit: personalGitZhCN,
     promptCompletion: promptCompletionZhCN,
     modelUsage: personalSettingsZhCN.modelUsage,
+    customThemes: personalSettingsZhCN.customThemes,
     ...hostingManagementZhCN,
     ...authenticationZhCN,
     navigation: {

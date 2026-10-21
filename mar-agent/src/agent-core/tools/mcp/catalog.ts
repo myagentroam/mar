@@ -160,6 +160,7 @@ export function assertMcpToolDefinition(
       (!Array.isArray(value.allowedCallers) ||
         !value.allowedCallers.length ||
         value.allowedCallers.some((caller) => caller !== 'direct' && caller !== 'programmatic'))) ||
+    (value.codeModeExposure !== undefined && value.codeModeExposure !== 'both') ||
     (value.inputMode !== undefined && value.inputMode !== 'json')
   )
     invalid();

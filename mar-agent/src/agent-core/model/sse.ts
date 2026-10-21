@@ -117,7 +117,10 @@ export async function* parseSse(
         nextChunk = 0;
       }
       const { value, observedAt } = chunk;
-      buffer += decoder.decode(value, { stream: true }).replaceAll('\r\n', '\n');
+      const text = decoder.decode(value, { stream: true });
+      // Normalize CRLF across transport chunks as well as within each chunk.
+      if (buffer.endsWith('\r') && text.startsWith('\n')) buffer = buffer.slice(0, -1);
+      buffer += text.replaceAll('\r\n', '\n');
       let boundary: number;
       while ((boundary = buffer.indexOf('\n\n')) >= 0) {
         const frame = buffer.slice(0, boundary);

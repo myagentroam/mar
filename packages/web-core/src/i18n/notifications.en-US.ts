@@ -14,20 +14,21 @@ export const notificationsEnUS = {
       disabled: 'Offline Push is disabled for this browser.',
       unavailable:
         'Offline Push could not be synchronized. Retry while signed in; disabling still hides account content locally.',
-      enable: 'Enable / retry offline Push'
+      enable: 'Enable / retry offline Push',
+      disable: 'Disable offline Push'
     },
     webPushConfiguration: {
       title: 'Web Push notifications',
       description:
-        'Let users enable offline Push for each browser. Any online workbench connection suppresses Push for that account, without affecting in-app notifications, online system notifications, or email. Delivery depends on the browser, operating system, and network.'
+        'Let users enable offline Push on mobile devices. Any online workbench connection suppresses Push for that account, without affecting in-app notifications, online system notifications, or email. Delivery depends on the browser, operating system, and network.'
     },
     systemNotifications: {
       title: 'System notifications',
-      onlineTitle: 'Online system notifications',
+      onlineTitle: 'PC focus-loss notifications',
       enable: 'Enable system notifications',
       disable: 'Disable system notifications',
       summary:
-        'System notifications appear when this window loses focus. Offline Push also depends on the system switch and subscription status.',
+        'PC system notifications appear while the workbench is connected but loses focus. PC does not receive offline Push.',
       enabled: 'Enabled',
       disabled: 'Disabled',
       denied: 'Notifications are blocked. Allow this site in your browser notification settings.',

@@ -52,6 +52,16 @@ function invalidCode(action: () => void): unknown {
 }
 
 describe('MCP catalog validation boundary', () => {
+  it('accepts only the supported trusted Code Mode exposure override', () => {
+    expect(() =>
+      assertMcpToolDefinition({ ...definition, codeModeExposure: 'both' })
+    ).not.toThrow();
+    for (const codeModeExposure of ['only', false, null])
+      expect(
+        invalidCode(() => assertMcpToolDefinition({ ...definition, codeModeExposure }))
+      ).toMatchObject({ code: 'MAR_AGENT_MCP_CATALOG_INVALID' });
+  });
+
   it('rejects malformed, deeply nested, oversized-definition, and oversized-catalog input', () => {
     const base = catalog();
     const malformed = {

@@ -1016,6 +1016,8 @@ defineExpose({
 }
 .unified-history-diff code {
   display: block;
+  width: max-content;
+  min-width: 100%;
 }
 .unified-history-diff code > span {
   display: block;

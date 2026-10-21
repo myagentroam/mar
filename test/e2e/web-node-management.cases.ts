@@ -1279,6 +1279,24 @@ test('Node environment secrets use default controls, compact layout, and plain-t
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
   await mockPersonalResources(page);
+  await page.route('**/api/resources?*', (route) =>
+    json(route, {
+      nodes: [
+        {
+          id: 'node-1',
+          displayName: '研发节点',
+          connected: true,
+          disabled: false,
+          ownership: { ownerType: 'PERSONAL', ownerUserId: 1 }
+        }
+      ],
+      workspaces: [],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      hasMore: false
+    })
+  );
   await page.route('**/api/runner-usage/status?nodeId=node-1', (route) =>
     json(route, { statuses: [] })
   );

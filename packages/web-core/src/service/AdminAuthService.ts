@@ -223,46 +223,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     }
   }
 
-  async function changePassword(input: {
-    readonly currentPassword: string;
-    readonly password: string;
-    readonly confirmation: string;
-  }): Promise<void> {
-    if (input.password.length < MIN_PASSWORD_LENGTH) {
-      options.passwordError.value = translate(
-        'generated.adminAuthService.theNewPasswordMustContainAtLeast',
-        { value0: MIN_PASSWORD_LENGTH }
-      );
-      return;
-    }
-    if (input.password !== input.confirmation) {
-      options.passwordError.value = translate(
-        'generated.adminAuthService.theNewPasswordsDoNotMatch'
-      );
-      return;
-    }
-    const generation = replaceIdentity();
-    options.passwordError.value = '';
-    options.loading.value = true;
-    options.notice('');
+  async function recoverPasswordChange(generation: number): Promise<void> {
     try {
-      const result = await options.request<AdminState & { csrfToken: string }>(
-        '/api/auth/change-password',
-        {
-          method: 'POST',
-          body: JSON.stringify({ currentPassword: input.currentPassword, password: input.password })
-        }
-      );
-      if (generation !== identityGeneration) return;
-      options.invalidateRequests();
-      refreshGeneration += 1;
-      options.csrfToken.value = result.csrfToken;
-      window.sessionStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken);
-      options.admin.value = result;
-      options.password.value = '';
-      options.notice(
-        translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
-      );
       await restoreAuthenticatedWorkbench(generation);
       if (generation !== identityGeneration) return;
       await refreshSessions();
@@ -275,6 +237,63 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       );
     } finally {
       if (generation === identityGeneration) options.loading.value = false;
+    }
+  }
+
+  async function changePassword(input: {
+    readonly currentPassword: string;
+    readonly password: string;
+    readonly confirmation: string;
+  }): Promise<boolean> {
+    if (input.password.length < MIN_PASSWORD_LENGTH) {
+      options.passwordError.value = translate(
+        'generated.adminAuthService.theNewPasswordMustContainAtLeast',
+        { value0: MIN_PASSWORD_LENGTH }
+      );
+      return false;
+    }
+    if (input.password !== input.confirmation) {
+      options.passwordError.value = translate(
+        'generated.adminAuthService.theNewPasswordsDoNotMatch'
+      );
+      return false;
+    }
+    const generation = replaceIdentity();
+    let recoveryStarted = false;
+    options.passwordError.value = '';
+    options.loading.value = true;
+    options.notice('');
+    try {
+      const result = await options.request<AdminState & { csrfToken: string }>(
+        '/api/auth/change-password',
+        {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword: input.currentPassword, password: input.password })
+        }
+      );
+      if (generation !== identityGeneration) return false;
+      options.invalidateRequests();
+      refreshGeneration += 1;
+      options.csrfToken.value = result.csrfToken;
+      window.sessionStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken);
+      options.admin.value = result;
+      options.password.value = '';
+      options.notice(
+        translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+      );
+      recoveryStarted = true;
+      void recoverPasswordChange(generation);
+      return true;
+    } catch (error) {
+      if (generation !== identityGeneration) return false;
+      options.notice(
+        translate('generated.adminAuthService.unableToUpdateThePassword', {
+          value0: options.errorMessage(error)
+        })
+      );
+      return false;
+    } finally {
+      if (!recoveryStarted && generation === identityGeneration) options.loading.value = false;
     }
   }
 

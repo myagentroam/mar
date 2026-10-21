@@ -67,11 +67,11 @@ describe('Web theme preference', () => {
     expect(daylight['--mar-bg-panel']).toBe('#ffffff');
     expect(daylight['--mar-bg-tab-inactive']).toBe('#f1f4f7');
     expect(daylight['--mar-border-default']).toBe('#dce3ea');
-    expect(daylight['--el-color-primary']).toBe('#0a6fd8');
+    expect(daylight['--mar-color-brand']).toBe('#0a6fd8');
     expect(daylight['--mar-color-brand-text']).toBe('#135fa8');
     expect(daylight['--mar-color-brand-selected']).toBe('#e4effb');
     expect(daylight['--mar-color-accent']).toBe('#14778a');
-    expect(daylight['--el-color-success']).toBe('#17803d');
+    expect(daylight['--mar-control-color-success']).toBe('#17803d');
     expect(daylight['--mar-text-primary']).toBe('#1c2733');
     expect(daylight['--mar-text-secondary']).toBe('#47586a');
     expect(daylight['--mar-text-tertiary']).toBe('#5f7082');
@@ -117,13 +117,13 @@ describe('Web theme preference', () => {
     expect(dark['--mar-bg-panel']).toBe('#131922');
     expect(dark['--mar-bg-tab-inactive']).toBe('#1a2230');
     expect(dark['--mar-border-default']).toBe('#273142');
-    expect(dark['--el-color-primary']).toBe('#3093ff');
+    expect(dark['--mar-color-brand']).toBe('#3093ff');
     expect(dark['--mar-color-brand-hover']).toBe('#4aa3ff');
     expect(dark['--mar-color-brand-selected']).toBe(
       'color-mix(in srgb, var(--mar-color-brand) 8%, transparent)'
     );
     expect(dark['--mar-color-accent']).toBe('#37c8ff');
-    expect(dark['--el-color-success']).toBe('#22c55e');
+    expect(dark['--mar-control-color-success']).toBe('#22c55e');
     expect(dark['--mar-text-primary']).toBe('#e8eef8');
     expect(dark['--mar-text-secondary']).toBe('#9fb0c7');
     expect(dark['--mar-text-muted']).toBe('#6d7c92');

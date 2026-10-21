@@ -14,6 +14,7 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/personal-usage-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
+import LoadingPanel from '../common/LoadingPanel.vue';
 import { createManagementPaginationService } from '../../service/ManagementPaginationService.js';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
@@ -203,413 +204,297 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section
-    v-loading="busy"
+  <LoadingPanel
+    :loading="busy"
     :element-loading-text="t('common.loading')"
     class="usage settings-panel"
     data-testid="personal-usage"
-    :aria-busy="busy"
   >
-    <header>
-      <h2>{{ t('modelUsage.title') }}</h2>
-      <div class="refresh-actions">
-        <span class="metadata" :class="{ 'loading-status': busy }" role="status">
-          {{
-            busy
-              ? t('common.loading')
-              : state.refreshFailed
-                ? t('modelUsage.refreshDelayed')
-                : state.lastRefreshedAt
-                  ? t('modelUsage.refreshed', { time: time(state.lastRefreshedAt) })
-                  : ''
-          }}
-        </span>
-        <el-button :icon="Refresh" :loading="state.loading" @click="refresh()">{{
-          t('modelUsage.refresh')
-        }}</el-button>
-      </div>
-    </header>
-    <nav class="usage-purposes" :aria-label="t('modelUsage.purpose')">
-      <button
-        v-for="purpose in purposes"
-        :key="purpose"
-        type="button"
-        :aria-pressed="draft.purpose === purpose"
-        @click="selectPurpose(purpose)"
-      >
-        {{ t(`modelUsage.purposes.${purpose}`) }}
-      </button>
-    </nav>
-    <p v-if="state.overview" class="metadata">{{ t('modelUsage.overviewScope') }}</p>
-    <div v-if="state.overview" class="overview">
-      <section v-for="card in overviewCards" :key="card.label" class="overview-cell">
-        <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
-        <p>
-          {{ t('modelUsage.input') }}
-          <el-tooltip :content="number(card.value.inputTokens)" :trigger="['hover', 'focus']">
-            <span class="usage-count" tabindex="0">{{ number(card.value.inputTokens, true) }}</span>
-          </el-tooltip>
-          · {{ t('modelUsage.cache') }}
-          <el-tooltip
-            :content="cacheTooltip(card.value)"
-            :disabled="!hasCacheDetails(card.value)"
-            :trigger="['hover', 'focus']"
-          >
-            <span
-              :class="{ 'usage-count': hasCacheDetails(card.value) }"
-              :tabindex="hasCacheDetails(card.value) ? 0 : undefined"
-              >{{ cacheLabel(card.value, true) }}</span
-            >
-          </el-tooltip>
-          · {{ t('modelUsage.output') }}
-          <el-tooltip :content="number(card.value.outputTokens)" :trigger="['hover', 'focus']">
-            <span class="usage-count" tabindex="0">{{
-              number(card.value.outputTokens, true)
-            }}</span>
-          </el-tooltip>
-        </p>
-        <el-tooltip :content="number(card.value.totalTokens)" :trigger="['hover', 'focus']">
-          <strong class="usage-count" tabindex="0">{{
-            number(card.value.totalTokens, true)
-          }}</strong> </el-tooltip
-        ><span>{{ t('modelUsage.totalTokens') }}</span>
-        <span class="metadata">
-          · {{ t('modelUsage.requests') }} {{ number(card.value.requests) }}</span
-        >
-      </section>
-    </div>
-    <el-form
-      ref="form"
-      :model="draft"
-      :rules="rules"
-      class="filters"
-      label-position="top"
-      @submit.prevent="refresh()"
-    >
-      <el-form-item :label="t('modelUsage.range')"
-        ><el-select v-model="draft.period" :aria-label="t('modelUsage.range')" @change="change">
-          <el-option :label="t('modelUsage.last24Hours')" value="24h" /><el-option
-            :label="t('modelUsage.last7Days')"
-            value="7d"
-          /><el-option :label="t('modelUsage.custom')" value="custom" /> </el-select
-      ></el-form-item>
-      <el-form-item :label="t('modelUsage.runner')"
-        ><el-select
-          v-model="draft.runner"
-          clearable
-          :placeholder="t('modelUsage.all')"
-          :aria-label="t('modelUsage.runner')"
-          @change="
-            draft.model = '';
-            change();
-          "
-          ><el-option
-            v-for="runner in runners"
-            :key="runner"
-            :label="runnerName(runner)"
-            :value="runner" /></el-select
-      ></el-form-item>
-      <el-form-item :label="t('modelUsage.model')"
-        ><el-select
-          v-model="draft.model"
-          clearable
-          :placeholder="t('modelUsage.all')"
-          :aria-label="t('modelUsage.model')"
-          @change="change"
-          ><el-option
-            v-for="model in modelOptions"
-            :key="model.key"
-            :label="model.label || t('modelUsage.unknown')"
-            :value="model.key" /></el-select
-      ></el-form-item>
-      <el-form-item :label="t('modelUsage.mode')"
-        ><el-select
-          v-model="draft.mode"
-          clearable
-          :placeholder="t('modelUsage.all')"
-          :aria-label="t('modelUsage.mode')"
-          @change="change"
-          ><el-option
-            v-for="mode in ['work', 'conversation']"
-            :key="mode"
-            :label="t(`modelUsage.modes.${mode}`)"
-            :value="mode" /></el-select
-      ></el-form-item>
-      <el-form-item
-        v-if="draft.period === 'custom'"
-        prop="range"
-        :label="t('modelUsage.custom')"
-        class="custom-range"
-        ><el-date-picker
-          v-model="draft.range"
-          type="datetimerange"
-          single-panel
-          :validate-event="false"
-          :start-placeholder="t('modelUsage.from')"
-          :end-placeholder="t('modelUsage.to')"
-          @change="change"
-      /></el-form-item>
-    </el-form>
-    <template v-if="state.overview">
-      <div class="section-heading">
-        <h3>{{ t('modelUsage.trend') }}</h3>
-        <el-tooltip
-          :content="
-            t('modelUsage.selected', {
-              tokens: number(state.overview.selected.totalTokens),
-              input: number(state.overview.selected.inputTokens),
-              cache: cacheLabel(state.overview.selected),
-              output: number(state.overview.selected.outputTokens),
-              requests: number(state.overview.selected.requests)
-            })
-          "
-          :trigger="['hover', 'focus']"
-        >
-          <span class="usage-count" tabindex="0">{{
-            t('modelUsage.selected', {
-              tokens: number(state.overview.selected.totalTokens, true),
-              input: number(state.overview.selected.inputTokens, true),
-              cache: cacheLabel(state.overview.selected, true),
-              output: number(state.overview.selected.outputTokens, true),
-              requests: number(state.overview.selected.requests)
-            })
-          }}</span>
-        </el-tooltip>
-      </div>
-      <p class="metadata">
-        {{ t('modelUsage.timeZone', { zone: timeZone }) }}
-      </p>
-      <p v-if="state.overview.selected.requests === '0'" class="empty">
-        {{ t('modelUsage.empty') }}
-      </p>
-      <div v-else class="trend">
-        <div class="legend">
-          <span class="input-key" />{{ t('modelUsage.input') }}
-          <span class="cache-key" />
-          <el-tooltip
-            :content="cacheTooltip(state.overview.selected)"
-            :disabled="!hasCacheDetails(state.overview.selected)"
-            :trigger="['hover', 'focus']"
-          >
-            <span
-              :class="{ 'usage-count': hasCacheDetails(state.overview.selected) }"
-              :tabindex="hasCacheDetails(state.overview.selected) ? 0 : undefined"
-              >{{ t('modelUsage.cache') }}</span
-            >
-          </el-tooltip>
-          <span class="output-key" />{{ t('modelUsage.output') }}
+    <div class="usage-content">
+      <header>
+        <h2>{{ t('modelUsage.title') }}</h2>
+        <div class="refresh-actions">
+          <span class="metadata" :class="{ 'loading-status': busy }" role="status">
+            {{
+              busy
+                ? t('common.loading')
+                : state.refreshFailed
+                  ? t('modelUsage.refreshDelayed')
+                  : state.lastRefreshedAt
+                    ? t('modelUsage.refreshed', { time: time(state.lastRefreshedAt) })
+                    : ''
+            }}
+          </span>
+          <el-button :icon="Refresh" :loading="state.loading" @click="refresh()">{{
+            t('modelUsage.refresh')
+          }}</el-button>
         </div>
-        <svg
-          viewBox="0 0 800 170"
-          role="img"
-          :aria-label="t('modelUsage.trend')"
-          preserveAspectRatio="none"
+      </header>
+      <nav class="usage-purposes" :aria-label="t('modelUsage.purpose')">
+        <button
+          v-for="purpose in purposes"
+          :key="purpose"
+          type="button"
+          :aria-pressed="draft.purpose === purpose"
+          @click="selectPurpose(purpose)"
         >
-          <line x1="0" y1="155" x2="800" y2="155" class="axis" />
-          <g
-            v-for="(bucket, index) in state.overview.buckets"
-            :key="bucket.from"
-            class="trend-bucket"
-            tabindex="0"
-            :aria-label="`${time(bucket.from)} – ${time(bucket.to)} · ${t('modelUsage.inputTokens')}: ${countDetail(bucket.inputTokens)} · ${t('modelUsage.cache')}: ${cacheLabel(bucket, true)} · ${t('modelUsage.outputTokens')}: ${countDetail(bucket.outputTokens)} · ${t('modelUsage.totalTokens')}: ${countDetail(bucket.totalTokens)}`"
-            :transform="`translate(${(index * 800) / state.overview.buckets.length},0)`"
-            @mouseenter="showBucket(bucket, $event)"
-            @mouseleave="activeBucket = undefined"
-            @focus="showBucket(bucket, $event)"
-            @blur="activeBucket = undefined"
-          >
-            <rect
-              class="input-bar"
-              :x="2"
-              :y="155 - fraction(bucket.inputTokens, chartMax) * 140"
-              :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
-              :height="fraction(bucket.inputTokens, chartMax) * 140"
-            />
-            <rect
-              class="cache-bar"
-              :x="2"
-              :y="155 - fraction(bucket.inputTokens, chartMax) * 140"
-              :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
-              :height="
-                Math.min(
-                  fraction(bucket.cacheReadTokens ?? '0', chartMax),
-                  fraction(bucket.inputTokens, chartMax)
-                ) * 140
-              "
-            />
-            <rect
-              class="output-bar"
-              :x="2"
-              :y="155 - fraction(bucket.totalTokens, chartMax) * 140"
-              :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
-              :height="fraction(bucket.outputTokens, chartMax) * 140"
-            />
-            <rect
-              class="bucket-hit-area"
-              :width="800 / state.overview.buckets.length"
-              y="15"
-              height="140"
-            />
-          </g>
-        </svg>
-        <el-tooltip
-          virtual-triggering
-          :virtual-ref="bucketAnchor"
-          :visible="!!activeBucket"
-          :enterable="false"
-        >
-          <template v-if="activeBucket" #content>
-            <div>{{ time(activeBucket.from) }} – {{ time(activeBucket.to) }}</div>
-            <div>
-              {{ t('modelUsage.inputTokens') }}: {{ countDetail(activeBucket.inputTokens) }}
-            </div>
-            <div>{{ t('modelUsage.cache') }}: {{ cacheLabel(activeBucket, true) }}</div>
-            <div>{{ cacheTooltip(activeBucket) }}</div>
-            <div>
-              {{ t('modelUsage.outputTokens') }}: {{ countDetail(activeBucket.outputTokens) }}
-            </div>
-            <div>
-              {{ t('modelUsage.totalTokens') }}: {{ countDetail(activeBucket.totalTokens) }}
-            </div>
-          </template>
-        </el-tooltip>
-        <div class="axis-labels">
-          <span>{{ time(state.overview.buckets[0]?.from) }}</span
-          ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
-        </div>
-        <details>
-          <summary>{{ t('modelUsage.chartData') }}</summary>
-          <el-table :data="state.overview.buckets" :empty-text="t('modelUsage.empty')"
-            ><el-table-column :label="t('modelUsage.time')"
-              ><template #default="{ row }"
-                >{{ time(row.from) }} – {{ time(row.to) }}</template
-              ></el-table-column
-            ><el-table-column
-              v-for="key in tokenColumns"
-              :key="key"
-              :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
-              :min-width="key === 'cacheReadTokens' ? 170 : 110"
+          {{ t(`modelUsage.purposes.${purpose}`) }}
+        </button>
+      </nav>
+      <p v-if="state.overview" class="metadata">{{ t('modelUsage.overviewScope') }}</p>
+      <div v-if="state.overview" class="overview">
+        <section v-for="card in overviewCards" :key="card.label" class="overview-cell">
+          <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
+          <p>
+            {{ t('modelUsage.input') }}
+            <el-tooltip :content="number(card.value.inputTokens)" :trigger="['hover', 'focus']">
+              <span class="usage-count" tabindex="0">{{
+                number(card.value.inputTokens, true)
+              }}</span>
+            </el-tooltip>
+            · {{ t('modelUsage.cache') }}
+            <el-tooltip
+              :content="cacheTooltip(card.value)"
+              :disabled="!hasCacheDetails(card.value)"
+              :trigger="['hover', 'focus']"
             >
-              <template #default="{ row }">
-                <el-tooltip
-                  :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
-                  :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
-                  :trigger="['hover', 'focus']"
-                >
-                  <span
-                    :class="{
-                      'usage-count':
-                        key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                    }"
-                    :tabindex="
-                      (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                        ? 0
-                        : undefined
-                    "
-                    >{{
-                      key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                    }}</span
-                  >
-                </el-tooltip>
-              </template>
-            </el-table-column></el-table
+              <span
+                :class="{ 'usage-count': hasCacheDetails(card.value) }"
+                :tabindex="hasCacheDetails(card.value) ? 0 : undefined"
+                >{{ cacheLabel(card.value, true) }}</span
+              >
+            </el-tooltip>
+            · {{ t('modelUsage.output') }}
+            <el-tooltip :content="number(card.value.outputTokens)" :trigger="['hover', 'focus']">
+              <span class="usage-count" tabindex="0">{{
+                number(card.value.outputTokens, true)
+              }}</span>
+            </el-tooltip>
+          </p>
+          <el-tooltip :content="number(card.value.totalTokens)" :trigger="['hover', 'focus']">
+            <strong class="usage-count" tabindex="0">{{
+              number(card.value.totalTokens, true)
+            }}</strong> </el-tooltip
+          ><span>{{ t('modelUsage.totalTokens') }}</span>
+          <span class="metadata">
+            · {{ t('modelUsage.requests') }} {{ number(card.value.requests) }}</span
           >
-        </details>
-      </div>
-      <div class="section-heading">
-        <h3>{{ t('modelUsage.distribution') }}</h3>
-        <el-radio-group v-model="metric" :aria-label="t('modelUsage.metric')"
-          ><el-radio-button value="totalTokens">{{ t('modelUsage.tokens') }}</el-radio-button
-          ><el-radio-button value="requests">{{
-            t('modelUsage.requests')
-          }}</el-radio-button></el-radio-group
-        >
-      </div>
-      <div class="distributions">
-        <section v-for="distribution in distributions" :key="distribution.kind">
-          <h4>{{ t(`modelUsage.${distribution.kind}`) }}</h4>
-          <p v-if="!distribution.groups.length" class="empty">{{ t('modelUsage.empty') }}</p>
-          <ol v-else>
-            <li v-for="group in distribution.groups" :key="group.key">
-              <div>
-                <span>{{
-                  distribution.kind === 'runners'
-                    ? runnerName(group.key)
-                    : group.label || t('modelUsage.unknown')
-                }}</span>
-              </div>
-              <div class="distribution-cache metadata">
-                {{ t('modelUsage.cache') }}
-                <el-tooltip
-                  :content="cacheTooltip(group)"
-                  :disabled="!hasCacheDetails(group)"
-                  :trigger="['hover', 'focus']"
-                >
-                  <span
-                    :class="{ 'usage-count': hasCacheDetails(group) }"
-                    :tabindex="hasCacheDetails(group) ? 0 : undefined"
-                    >{{ cacheLabel(group, true) }}</span
-                  >
-                </el-tooltip>
-                ·
-                {{ t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests') }}
-                <el-tooltip :content="number(group[metric])" :trigger="['hover', 'focus']">
-                  <strong class="usage-count" tabindex="0">{{
-                    number(group[metric], true)
-                  }}</strong>
-                </el-tooltip>
-              </div>
-              <div class="bar-track" aria-hidden="true">
-                <span
-                  :style="{
-                    width: `${fraction(group[metric], distribution.groups[0]![metric]) * 100}%`
-                  }"
-                />
-              </div>
-            </li>
-          </ol>
         </section>
       </div>
-      <div class="section-heading">
-        <h3>{{ t('modelUsage.records') }}</h3>
-        <span>{{ t('modelUsage.recordsHint') }}</span>
-      </div>
-      <div v-if="state.recordsStale" class="records-update">
-        <span class="metadata">{{ t('modelUsage.recordsSnapshot') }}</span>
-        <el-button link :disabled="state.loading" @click="refresh()">{{
-          t('modelUsage.updateRecords')
-        }}</el-button>
-      </div>
-      <el-table
-        :data="state.records"
-        :row-key="recordKey"
-        :expand-row-keys="expandedRecords"
-        :empty-text="t('modelUsage.empty')"
-        class="records"
-        :aria-busy="state.loadingPage"
-        @sort-change="sortChanged"
-        @expand-change="expandChanged"
+      <el-form
+        ref="form"
+        :model="draft"
+        :rules="rules"
+        class="filters"
+        label-position="top"
+        @submit.prevent="refresh()"
       >
-        <el-table-column type="expand"
-          ><template #default="{ row }"
-            ><dl class="record-detail">
-              <template
-                v-for="key in [
-                  'requestedModel',
-                  'actualModel',
-                  'sessionId',
-                  'runId',
-                  'requestId',
-                  'responseId',
-                  'cacheReadTokens',
-                  'cacheWriteTokens',
-                  'reasoningTokens'
-                ]"
+        <el-form-item :label="t('modelUsage.range')"
+          ><el-select v-model="draft.period" :aria-label="t('modelUsage.range')" @change="change">
+            <el-option :label="t('modelUsage.last24Hours')" value="24h" /><el-option
+              :label="t('modelUsage.last7Days')"
+              value="7d"
+            /><el-option :label="t('modelUsage.custom')" value="custom" /> </el-select
+        ></el-form-item>
+        <el-form-item :label="t('modelUsage.runner')"
+          ><el-select
+            v-model="draft.runner"
+            clearable
+            :placeholder="t('modelUsage.all')"
+            :aria-label="t('modelUsage.runner')"
+            @change="
+              draft.model = '';
+              change();
+            "
+            ><el-option
+              v-for="runner in runners"
+              :key="runner"
+              :label="runnerName(runner)"
+              :value="runner" /></el-select
+        ></el-form-item>
+        <el-form-item :label="t('modelUsage.model')"
+          ><el-select
+            v-model="draft.model"
+            clearable
+            :placeholder="t('modelUsage.all')"
+            :aria-label="t('modelUsage.model')"
+            @change="change"
+            ><el-option
+              v-for="model in modelOptions"
+              :key="model.key"
+              :label="model.label || t('modelUsage.unknown')"
+              :value="model.key" /></el-select
+        ></el-form-item>
+        <el-form-item :label="t('modelUsage.mode')"
+          ><el-select
+            v-model="draft.mode"
+            clearable
+            :placeholder="t('modelUsage.all')"
+            :aria-label="t('modelUsage.mode')"
+            @change="change"
+            ><el-option
+              v-for="mode in ['work', 'conversation']"
+              :key="mode"
+              :label="t(`modelUsage.modes.${mode}`)"
+              :value="mode" /></el-select
+        ></el-form-item>
+        <el-form-item
+          v-if="draft.period === 'custom'"
+          prop="range"
+          :label="t('modelUsage.custom')"
+          class="custom-range"
+          ><el-date-picker
+            v-model="draft.range"
+            type="datetimerange"
+            single-panel
+            :validate-event="false"
+            :start-placeholder="t('modelUsage.from')"
+            :end-placeholder="t('modelUsage.to')"
+            @change="change"
+        /></el-form-item>
+      </el-form>
+      <template v-if="state.overview">
+        <div class="section-heading">
+          <h3>{{ t('modelUsage.trend') }}</h3>
+          <el-tooltip
+            :content="
+              t('modelUsage.selected', {
+                tokens: number(state.overview.selected.totalTokens),
+                input: number(state.overview.selected.inputTokens),
+                cache: cacheLabel(state.overview.selected),
+                output: number(state.overview.selected.outputTokens),
+                requests: number(state.overview.selected.requests)
+              })
+            "
+            :trigger="['hover', 'focus']"
+          >
+            <span class="usage-count" tabindex="0">{{
+              t('modelUsage.selected', {
+                tokens: number(state.overview.selected.totalTokens, true),
+                input: number(state.overview.selected.inputTokens, true),
+                cache: cacheLabel(state.overview.selected, true),
+                output: number(state.overview.selected.outputTokens, true),
+                requests: number(state.overview.selected.requests)
+              })
+            }}</span>
+          </el-tooltip>
+        </div>
+        <p class="metadata">
+          {{ t('modelUsage.timeZone', { zone: timeZone }) }}
+        </p>
+        <p v-if="state.overview.selected.requests === '0'" class="empty">
+          {{ t('modelUsage.empty') }}
+        </p>
+        <div v-else class="trend">
+          <div class="legend">
+            <span class="input-key" />{{ t('modelUsage.input') }}
+            <span class="cache-key" />
+            <el-tooltip
+              :content="cacheTooltip(state.overview.selected)"
+              :disabled="!hasCacheDetails(state.overview.selected)"
+              :trigger="['hover', 'focus']"
+            >
+              <span
+                :class="{ 'usage-count': hasCacheDetails(state.overview.selected) }"
+                :tabindex="hasCacheDetails(state.overview.selected) ? 0 : undefined"
+                >{{ t('modelUsage.cache') }}</span
+              >
+            </el-tooltip>
+            <span class="output-key" />{{ t('modelUsage.output') }}
+          </div>
+          <svg
+            viewBox="0 0 800 170"
+            role="img"
+            :aria-label="t('modelUsage.trend')"
+            preserveAspectRatio="none"
+          >
+            <line x1="0" y1="155" x2="800" y2="155" class="axis" />
+            <g
+              v-for="(bucket, index) in state.overview.buckets"
+              :key="bucket.from"
+              class="trend-bucket"
+              tabindex="0"
+              :aria-label="`${time(bucket.from)} – ${time(bucket.to)} · ${t('modelUsage.inputTokens')}: ${countDetail(bucket.inputTokens)} · ${t('modelUsage.cache')}: ${cacheLabel(bucket, true)} · ${t('modelUsage.outputTokens')}: ${countDetail(bucket.outputTokens)} · ${t('modelUsage.totalTokens')}: ${countDetail(bucket.totalTokens)}`"
+              :transform="`translate(${(index * 800) / state.overview.buckets.length},0)`"
+              @mouseenter="showBucket(bucket, $event)"
+              @mouseleave="activeBucket = undefined"
+              @focus="showBucket(bucket, $event)"
+              @blur="activeBucket = undefined"
+            >
+              <rect
+                class="input-bar"
+                :x="2"
+                :y="155 - fraction(bucket.inputTokens, chartMax) * 140"
+                :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
+                :height="fraction(bucket.inputTokens, chartMax) * 140"
+              />
+              <rect
+                class="cache-bar"
+                :x="2"
+                :y="155 - fraction(bucket.inputTokens, chartMax) * 140"
+                :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
+                :height="
+                  Math.min(
+                    fraction(bucket.cacheReadTokens ?? '0', chartMax),
+                    fraction(bucket.inputTokens, chartMax)
+                  ) * 140
+                "
+              />
+              <rect
+                class="output-bar"
+                :x="2"
+                :y="155 - fraction(bucket.totalTokens, chartMax) * 140"
+                :width="Math.max(1, 800 / state.overview.buckets.length - 4)"
+                :height="fraction(bucket.outputTokens, chartMax) * 140"
+              />
+              <rect
+                class="bucket-hit-area"
+                :width="800 / state.overview.buckets.length"
+                y="15"
+                height="140"
+              />
+            </g>
+          </svg>
+          <el-tooltip
+            virtual-triggering
+            :virtual-ref="bucketAnchor"
+            :visible="!!activeBucket"
+            :enterable="false"
+          >
+            <template v-if="activeBucket" #content>
+              <div>{{ time(activeBucket.from) }} – {{ time(activeBucket.to) }}</div>
+              <div>
+                {{ t('modelUsage.inputTokens') }}: {{ countDetail(activeBucket.inputTokens) }}
+              </div>
+              <div>{{ t('modelUsage.cache') }}: {{ cacheLabel(activeBucket, true) }}</div>
+              <div>{{ cacheTooltip(activeBucket) }}</div>
+              <div>
+                {{ t('modelUsage.outputTokens') }}: {{ countDetail(activeBucket.outputTokens) }}
+              </div>
+              <div>
+                {{ t('modelUsage.totalTokens') }}: {{ countDetail(activeBucket.totalTokens) }}
+              </div>
+            </template>
+          </el-tooltip>
+          <div class="axis-labels">
+            <span>{{ time(state.overview.buckets[0]?.from) }}</span
+            ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
+          </div>
+          <details>
+            <summary>{{ t('modelUsage.chartData') }}</summary>
+            <el-table :data="state.overview.buckets" :empty-text="t('modelUsage.empty')"
+              ><el-table-column :label="t('modelUsage.time')"
+                ><template #default="{ row }"
+                  >{{ time(row.from) }} – {{ time(row.to) }}</template
+                ></el-table-column
+              ><el-table-column
+                v-for="key in tokenColumns"
                 :key="key"
-                ><dt>{{ t(`modelUsage.${key}`) }}</dt>
-                <dd>
+                :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
+                :min-width="key === 'cacheReadTokens' ? 170 : 110"
+              >
+                <template #default="{ row }">
                   <el-tooltip
-                    v-if="key.endsWith('Tokens')"
                     :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                     :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
                     :trigger="['hover', 'focus']"
@@ -629,92 +514,216 @@ onUnmounted(() => {
                       }}</span
                     >
                   </el-tooltip>
-                  <template v-else>{{ row[key] ?? t('modelUsage.unknown') }}</template>
-                </dd></template
-              >
-              <dt>{{ t('modelUsage.coverageLabel') }}</dt>
-              <dd>
-                {{ t(`modelUsage.coverages.${row.coverage}`) }} ·
-                {{ t(`modelUsage.roles.${row.agentRole}`) }}
-              </dd>
-            </dl></template
-          ></el-table-column
-        >
-        <el-table-column prop="endedAt" :label="t('modelUsage.time')" sortable min-width="180"
-          ><template #default="{ row }">{{ time(row.endedAt) }}</template></el-table-column
-        >
-        <el-table-column prop="runner" :label="t('modelUsage.runner')" sortable min-width="110"
-          ><template #default="{ row }">{{ runnerName(row.runner) }}</template></el-table-column
-        >
-        <el-table-column :label="t('modelUsage.model')" min-width="160"
-          ><template #default="{ row }">{{
-            row.actualModel ?? row.requestedModel ?? t('modelUsage.unknown')
-          }}</template></el-table-column
-        >
-        <el-table-column :label="t('modelUsage.purpose')" min-width="100"
-          ><template #default="{ row }">{{
-            t(`modelUsage.purposes.${row.purpose}`)
-          }}</template></el-table-column
-        >
-        <el-table-column
-          v-for="key in tokenColumns"
-          :key="key"
-          :prop="key"
-          :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
-          sortable
-          :sort-method="
-            (a: Record<string, unknown>, b: Record<string, unknown>) => compareCount(a, b, key)
-          "
-          :min-width="key === 'cacheReadTokens' ? 170 : 110"
-        >
-          <template #default="{ row }">
-            <el-tooltip
-              :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
-              :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
-              :trigger="['hover', 'focus']"
+                </template>
+              </el-table-column></el-table
             >
-              <span
-                :class="{
-                  'usage-count': key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                }"
-                :tabindex="
-                  (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                    ? 0
-                    : undefined
-                "
-                >{{
-                  key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                }}</span
-              >
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('modelUsage.state')" min-width="105"
-          ><template #default="{ row }"
-            ><el-tag
-              effect="plain"
-              role="status"
-              :aria-label="t(`modelUsage.states.${row.state}`)"
-              >{{ t(`modelUsage.states.${row.state}`) }}</el-tag
-            ></template
-          ></el-table-column
+          </details>
+        </div>
+        <div class="section-heading">
+          <h3>{{ t('modelUsage.distribution') }}</h3>
+          <el-radio-group v-model="metric" :aria-label="t('modelUsage.metric')"
+            ><el-radio-button value="totalTokens">{{ t('modelUsage.tokens') }}</el-radio-button
+            ><el-radio-button value="requests">{{
+              t('modelUsage.requests')
+            }}</el-radio-button></el-radio-group
+          >
+        </div>
+        <div class="distributions">
+          <section v-for="distribution in distributions" :key="distribution.kind">
+            <h4>{{ t(`modelUsage.${distribution.kind}`) }}</h4>
+            <p v-if="!distribution.groups.length" class="empty">{{ t('modelUsage.empty') }}</p>
+            <ol v-else>
+              <li v-for="group in distribution.groups" :key="group.key">
+                <div>
+                  <span>{{
+                    distribution.kind === 'runners'
+                      ? runnerName(group.key)
+                      : group.label || t('modelUsage.unknown')
+                  }}</span>
+                </div>
+                <div class="distribution-cache metadata">
+                  {{ t('modelUsage.cache') }}
+                  <el-tooltip
+                    :content="cacheTooltip(group)"
+                    :disabled="!hasCacheDetails(group)"
+                    :trigger="['hover', 'focus']"
+                  >
+                    <span
+                      :class="{ 'usage-count': hasCacheDetails(group) }"
+                      :tabindex="hasCacheDetails(group) ? 0 : undefined"
+                      >{{ cacheLabel(group, true) }}</span
+                    >
+                  </el-tooltip>
+                  ·
+                  {{
+                    t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
+                  }}
+                  <el-tooltip :content="number(group[metric])" :trigger="['hover', 'focus']">
+                    <strong class="usage-count" tabindex="0">{{
+                      number(group[metric], true)
+                    }}</strong>
+                  </el-tooltip>
+                </div>
+                <div class="bar-track" aria-hidden="true">
+                  <span
+                    :style="{
+                      width: `${fraction(group[metric], distribution.groups[0]![metric]) * 100}%`
+                    }"
+                  />
+                </div>
+              </li>
+            </ol>
+          </section>
+        </div>
+        <div class="section-heading">
+          <h3>{{ t('modelUsage.records') }}</h3>
+          <span>{{ t('modelUsage.recordsHint') }}</span>
+        </div>
+        <div v-if="state.recordsStale" class="records-update">
+          <span class="metadata">{{ t('modelUsage.recordsSnapshot') }}</span>
+          <el-button link :disabled="state.loading" @click="refresh()">{{
+            t('modelUsage.updateRecords')
+          }}</el-button>
+        </div>
+        <el-table
+          :data="state.records"
+          :row-key="recordKey"
+          :expand-row-keys="expandedRecords"
+          :empty-text="t('modelUsage.empty')"
+          class="records"
+          :aria-busy="state.loadingPage"
+          @sort-change="sortChanged"
+          @expand-change="expandChanged"
         >
-      </el-table>
-      <ManagementPagination
-        :page="state.page"
-        :page-size="20"
-        :total="Number(state.total)"
-        :mobile="pagination.mobileViewport.value"
-        :mobile-visible-count="state.records.length"
-        :has-more="state.page < Math.ceil(Number(state.total) / 20)"
-        :loading="state.loading || state.loadingPage"
-        :aria-label="t('modelUsage.pagination')"
-        @page="service.goToPage($event)"
-        @load-more="service.loadMore($event)"
-      />
-    </template>
-    <p v-else-if="state.failed">{{ t('modelUsage.retry') }}</p>
-  </section>
+          <el-table-column type="expand"
+            ><template #default="{ row }"
+              ><dl class="record-detail">
+                <template
+                  v-for="key in [
+                    'requestedModel',
+                    'actualModel',
+                    'sessionId',
+                    'runId',
+                    'requestId',
+                    'responseId',
+                    'cacheReadTokens',
+                    'cacheWriteTokens',
+                    'reasoningTokens'
+                  ]"
+                  :key="key"
+                  ><dt>{{ t(`modelUsage.${key}`) }}</dt>
+                  <dd>
+                    <el-tooltip
+                      v-if="key.endsWith('Tokens')"
+                      :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
+                      :disabled="
+                        key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
+                      "
+                      :trigger="['hover', 'focus']"
+                    >
+                      <span
+                        :class="{
+                          'usage-count':
+                            key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
+                        }"
+                        :tabindex="
+                          (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
+                            ? 0
+                            : undefined
+                        "
+                        >{{
+                          key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
+                        }}</span
+                      >
+                    </el-tooltip>
+                    <template v-else>{{ row[key] ?? t('modelUsage.unknown') }}</template>
+                  </dd></template
+                >
+                <dt>{{ t('modelUsage.coverageLabel') }}</dt>
+                <dd>
+                  {{ t(`modelUsage.coverages.${row.coverage}`) }} ·
+                  {{ t(`modelUsage.roles.${row.agentRole}`) }}
+                </dd>
+              </dl></template
+            ></el-table-column
+          >
+          <el-table-column prop="endedAt" :label="t('modelUsage.time')" sortable min-width="180"
+            ><template #default="{ row }">{{ time(row.endedAt) }}</template></el-table-column
+          >
+          <el-table-column prop="runner" :label="t('modelUsage.runner')" sortable min-width="110"
+            ><template #default="{ row }">{{ runnerName(row.runner) }}</template></el-table-column
+          >
+          <el-table-column :label="t('modelUsage.model')" min-width="160"
+            ><template #default="{ row }">{{
+              row.actualModel ?? row.requestedModel ?? t('modelUsage.unknown')
+            }}</template></el-table-column
+          >
+          <el-table-column :label="t('modelUsage.purpose')" min-width="100"
+            ><template #default="{ row }">{{
+              t(`modelUsage.purposes.${row.purpose}`)
+            }}</template></el-table-column
+          >
+          <el-table-column
+            v-for="key in tokenColumns"
+            :key="key"
+            :prop="key"
+            :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
+            sortable
+            :sort-method="
+              (a: Record<string, unknown>, b: Record<string, unknown>) => compareCount(a, b, key)
+            "
+            :min-width="key === 'cacheReadTokens' ? 170 : 110"
+          >
+            <template #default="{ row }">
+              <el-tooltip
+                :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
+                :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
+                :trigger="['hover', 'focus']"
+              >
+                <span
+                  :class="{
+                    'usage-count':
+                      key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
+                  }"
+                  :tabindex="
+                    (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
+                      ? 0
+                      : undefined
+                  "
+                  >{{
+                    key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
+                  }}</span
+                >
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('modelUsage.state')" min-width="105"
+            ><template #default="{ row }"
+              ><el-tag
+                effect="plain"
+                role="status"
+                :aria-label="t(`modelUsage.states.${row.state}`)"
+                >{{ t(`modelUsage.states.${row.state}`) }}</el-tag
+              ></template
+            ></el-table-column
+          >
+        </el-table>
+        <ManagementPagination
+          :page="state.page"
+          :page-size="20"
+          :total="Number(state.total)"
+          :mobile="pagination.mobileViewport.value"
+          :mobile-visible-count="state.records.length"
+          :has-more="state.page < Math.ceil(Number(state.total) / 20)"
+          :loading="state.loading || state.loadingPage"
+          :aria-label="t('modelUsage.pagination')"
+          @page="service.goToPage($event)"
+          @load-more="service.loadMore($event)"
+        />
+      </template>
+      <p v-else-if="state.failed">{{ t('modelUsage.retry') }}</p>
+    </div>
+  </LoadingPanel>
 </template>
 
 <style scoped>
@@ -746,9 +755,11 @@ onUnmounted(() => {
 
 .usage {
   width: 100%;
-  padding: 1rem;
   box-sizing: border-box;
   color: var(--mar-text-primary);
+}
+.usage-content {
+  padding: 1rem;
 }
 header,
 .section-heading {
@@ -983,7 +994,7 @@ dd {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .usage {
+  .usage-content {
     padding: 0.75rem;
   }
   .overview,

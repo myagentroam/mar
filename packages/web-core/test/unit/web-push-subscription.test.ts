@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { createWebPushSubscriptionService } from '../../src/service/WebPushSubscriptionService.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type {
@@ -37,7 +37,10 @@ function fixture() {
   const subscription = {
     endpoint: material.endpoint,
     toJSON: () => material,
-    unsubscribe: vi.fn(async () => true)
+    unsubscribe: vi.fn(async () => {
+      actual = null;
+      return true;
+    })
   } as unknown as PushSubscription;
   let actual: PushSubscription | null = null;
   const subscribe = vi.fn(() => {
@@ -55,6 +58,7 @@ function fixture() {
   vi.stubGlobal('indexedDB', {});
   vi.stubGlobal('isSecureContext', true);
   vi.stubGlobal('navigator', {
+    userAgent: 'Mozilla/5.0 iPhone',
     locks: {},
     serviceWorker: { getRegistration: async () => registration }
   });
@@ -129,6 +133,101 @@ function fixture() {
 }
 
 describe('browser Push subscription lifecycle', () => {
+  it('keeps subscription readiness reactive while preparation is refreshed', async () => {
+    const f = fixture();
+    await f.service.refresh(false);
+    const ready = computed(() => f.service.canSubscribe());
+    expect(ready.value).toBe(true);
+    const capability = await f.request('/api/notifications/push');
+    let complete!: (value: typeof capability) => void;
+    f.request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        })
+    );
+    const refreshing = f.service.refresh(true);
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    const readyDuringRefresh = ready.value;
+    complete(capability);
+    await refreshing;
+    expect(readyDuringRefresh).toBe(false);
+    expect(ready.value).toBe(true);
+  });
+
+  it('retries a failed disable even when the administrator has disabled Push', async () => {
+    const f = fixture();
+    await f.service.refresh(true);
+    await f.service.enable();
+    f.request.mockRejectedValueOnce(new Error('Network unavailable'));
+    await f.service.disable();
+    expect(f.server()?.enabled).toBe(true);
+    expect(f.display()).toBeUndefined();
+    f.capability.enabled = false;
+    await f.service.refresh(false);
+    expect(f.server()?.enabled).toBe(false);
+    expect(f.client()?.binding?.enabled).toBe(false);
+    expect(f.display()).toBeUndefined();
+  });
+
+  it('reconciles a disabled preference without leaving an enabled Server binding', async () => {
+    const f = fixture();
+    await f.service.refresh(false);
+    await f.service.enable();
+    expect(f.server()?.enabled).toBe(true);
+    await f.service.refresh(false);
+    expect(f.server()?.enabled).toBe(false);
+    expect(f.display()).toBeUndefined();
+    expect(f.service.status.value).toBe('disabled');
+    expect(f.service.canSubscribe()).toBe(true);
+  });
+
+  it('retires legacy bindings without replay and requires an explicit mobile registration', async () => {
+    const f = fixture();
+    await f.service.refresh(false);
+    await f.service.enable();
+    const legacy = structuredClone(f.client()!);
+    Reflect.deleteProperty(legacy.request, 'clientKind');
+    await f.store.write(legacy);
+    f.request.mockClear();
+    await f.service.refresh(true);
+    expect(f.subscription.unsubscribe).toHaveBeenCalledOnce();
+    expect(f.client()).toBeUndefined();
+    expect(f.display()).toBeUndefined();
+    expect(f.service.status.value).toBe('actionRequired');
+    expect(f.request.mock.calls.every(([path]) => path === '/api/notifications/push')).toBe(true);
+    await f.service.enable();
+    expect(f.client()?.request.clientKind).toBe('mobile');
+    expect(f.client()?.request.clientToken).not.toBe(legacy.request.clientToken);
+    expect(f.service.status.value).toBe('ready');
+    await f.service.refresh(true);
+    expect(f.subscription.unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('does not enable a new subscription while legacy retirement is failing', async () => {
+    const f = fixture();
+    f.existing();
+    vi.mocked(f.subscription.unsubscribe).mockResolvedValue(false);
+    await f.service.refresh(true);
+    expect(f.service.status.value).toBe('unavailable');
+    expect(f.service.canSubscribe()).toBe(false);
+    await f.service.enable();
+    expect(f.subscribe).not.toHaveBeenCalled();
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
+  it('never registers or subscribes on PC, including refresh and explicit enable', async () => {
+    const f = fixture();
+    Object.assign(navigator, { userAgent: 'Windows NT 10.0', platform: 'Win32' });
+    f.existing();
+    await f.service.refresh(true);
+    await f.service.enable();
+    expect(f.subscription.unsubscribe).toHaveBeenCalledOnce();
+    expect(f.subscribe).not.toHaveBeenCalled();
+    expect(f.request).not.toHaveBeenCalled();
+    expect(f.service.status.value).toBe('unsupported');
+  });
+
   it.each([
     { enabled: false, available: true, publicKey: null, expected: 'systemDisabled' },
     { enabled: false, available: false, publicKey: null, expected: 'serverUnavailable' },
@@ -234,6 +333,38 @@ describe('browser Push subscription lifecycle', () => {
     expect(new Set(sent).size).toBe(1);
     expect(f.client()?.binding?.subscriptionId).toBe('record-1');
   });
+
+  it.each([false, true])(
+    'invalidates a display restored by another tab before disable completes (response lost: %s)',
+    async (loseResponse) => {
+      const f = fixture();
+      await f.service.refresh(true);
+      await f.service.enable();
+      const other = f.other();
+      await other.refresh(true);
+      const request = f.request.getMockImplementation()!;
+      let resume!: () => void;
+      f.request.mockImplementationOnce(async (path, init) => {
+        const binding = await request(path, init);
+        await new Promise<void>((resolve) => {
+          resume = resolve;
+        });
+        return binding;
+      });
+      const registering = other.enable();
+      await vi.waitFor(() => expect(resume).toBeDefined());
+      vi.mocked(f.store.display).mockClear();
+      const disabling = f.service.disable();
+      await vi.waitFor(() => expect(f.store.display).toHaveBeenCalledWith(undefined));
+      if (loseResponse) f.loseResponse();
+      resume();
+      await Promise.all([registering, disabling]);
+      expect(f.server()?.enabled).toBe(false);
+      expect(f.client()?.request.enabled).toBe(false);
+      expect(f.service.status.value).toBe(loseResponse ? 'unavailable' : 'disabled');
+      expect(f.display()).toBeUndefined();
+    }
+  );
 
   it('recovers a cleaned-up record only after a new explicit gesture and never auto-resets its version', async () => {
     const f = fixture();

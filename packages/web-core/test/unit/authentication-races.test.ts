@@ -64,13 +64,61 @@ describe('authentication generation boundaries', () => {
         mustChangePassword: false,
         csrfToken: 'revoked-csrf'
       });
-      await pending;
+      const result = await pending;
+      if (operation === 'password') expect(result).toBe(false);
       expect(f.restore).not.toHaveBeenCalled();
       expect(f.state.admin.value.authenticated).toBe(false);
       expect(f.state.csrfToken.value).toBe('');
       expect(f.storage.size).toBe(0);
     }
   );
+
+  it('keeps a newer login loading and drops errors from an older password recovery', async () => {
+    const f = authFixture();
+    const recovery = deferred<void>();
+    const nextResponse = deferred<unknown>();
+    f.request
+      .mockResolvedValueOnce({
+        authenticated: true,
+        mustChangePassword: false,
+        csrfToken: 'password-csrf'
+      })
+      .mockReturnValueOnce(nextResponse.promise);
+    f.restore.mockImplementationOnce(async () => {
+      await recovery.promise;
+      throw new Error('OLD_RECOVERY_FAILED');
+    });
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'old-password',
+        password: 'updated-password',
+        confirmation: 'updated-password'
+      })
+    ).resolves.toBe(true);
+    f.service.returnToLogin();
+    const login = f.service.login({ username: 'admin', password: 'new-login-password' });
+    try {
+      recovery.resolve(undefined);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(f.loading.value).toBe(true);
+      expect(f.state.admin.value.authenticated).toBe(false);
+      expect(f.state.csrfToken.value).toBe('');
+      expect(f.storage.size).toBe(0);
+      expect(f.request).toHaveBeenCalledTimes(2);
+      expect(f.notice).not.toHaveBeenCalledWith(expect.stringContaining('OLD_RECOVERY_FAILED'));
+    } finally {
+      recovery.resolve(undefined);
+      nextResponse.resolve({
+        authenticated: true,
+        mustChangePassword: false,
+        csrfToken: 'new-login-csrf',
+        locale: 'zh-CN'
+      });
+      await login;
+    }
+    expect(f.state.csrfToken.value).toBe('new-login-csrf');
+    expect(f.loading.value).toBe(false);
+  });
 
   it('does not repopulate the session list after signing out', async () => {
     const f = authFixture();

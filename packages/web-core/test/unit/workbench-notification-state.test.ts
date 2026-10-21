@@ -1,3 +1,4 @@
+import type { ServerNotification } from '@myagentroam/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -21,7 +22,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function notification(id: string, sessionId = 'session-1'): WorkbenchNotification {
+function notification(
+  id: string,
+  sessionId = 'session-1'
+): ServerNotification & {
+  readonly target: Extract<NotificationTarget, { targetType: 'WORKSPACE_SESSION' }>;
+} {
   const now = Date.now();
   return {
     id,
@@ -42,7 +48,7 @@ function notification(id: string, sessionId = 'session-1'): WorkbenchNotificatio
   };
 }
 
-function hostedNotification(id: string, conversationId = 'conversation-1'): WorkbenchNotification {
+function hostedNotification(id: string, conversationId = 'conversation-1'): ServerNotification {
   const now = Date.now();
   return {
     id,
@@ -81,17 +87,19 @@ function workspaceRun(status: RecentRun['status'] = 'RUNNING'): RecentRun {
 }
 
 function recoveryFixture(
-  entries: WorkbenchNotification[],
+  entries: ServerNotification[],
   onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>
 ) {
   const active = { target: notification('active').target as NotificationTarget | undefined };
   const server = {
     entries,
+    recentRuns: [] as RecentRun[],
     readError: undefined as Error | undefined,
     readGate: undefined as (() => Promise<void>) | undefined
   };
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
-    if (path === '/api/notifications') return { notifications: server.entries };
+    if (path === '/api/notifications')
+      return { notifications: server.entries, recentRuns: server.recentRuns };
     if (path.endsWith('/read') && init?.method === 'POST') {
       await server.readGate?.();
       if (server.readError !== undefined) throw server.readError;
@@ -239,7 +247,7 @@ describe('Web Workbench notification state', () => {
       f.active.target = clicked.target as NotificationTarget;
       try {
         await f.state.load();
-        await f.state.openNotification(clicked);
+        await f.state.openNotification({ ...clicked, source: 'server' });
         await f.state.load();
         expect(f.reads().map(([path]) => path)).toEqual(['/api/notifications/clicked/read']);
         expect(f.state.notifications.value.find((item) => item.id === 'same-target')?.read).toBe(
@@ -259,9 +267,10 @@ describe('Web Workbench notification state', () => {
     const f = recoveryFixture(entries, () => new Promise<void>((resolve) => finish.push(resolve)));
     try {
       await f.state.load();
-      const first = f.state.openNotification(entries[0]!);
-      const second = f.state.openNotification(entries[1]!);
-      expect(finish).toHaveLength(2);
+      const first = f.state.openNotification({ ...entries[0]!, source: 'server' });
+      await vi.waitFor(() => expect(finish).toHaveLength(1));
+      const second = f.state.openNotification({ ...entries[1]!, source: 'server' });
+      await vi.waitFor(() => expect(finish).toHaveLength(2));
       finish[0]!();
       await first;
       await f.state.recover();
@@ -287,7 +296,9 @@ describe('Web Workbench notification state', () => {
     });
     try {
       await f.state.load();
-      await expect(f.state.openNotification(clicked)).rejects.toThrow('Navigation failed');
+      await expect(f.state.openNotification({ ...clicked, source: 'server' })).rejects.toThrow(
+        'Navigation failed'
+      );
       await f.state.recover();
       expect(f.state.unreadCount.value).toBe(0);
     } finally {
@@ -626,7 +637,17 @@ describe('Web Workbench notification state', () => {
     state.notifications.value = [
       { ...notification('read'), source: 'server', read: true },
       { ...notification('expired'), source: 'server', expiresAt: Date.now() },
-      notification('local'),
+      {
+        id: 'local',
+        kind: 'web-update',
+        source: 'local',
+        title: 'Local',
+        message: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        expiresAt: Date.now() + 60000,
+        read: false
+      },
       { ...hostedNotification('hosted'), source: 'server' },
       { ...notification('other-node'), source: 'server', target: { ...target, nodeId: 'node-2' } },
       {
@@ -644,10 +665,68 @@ describe('Web Workbench notification state', () => {
       source: 'server'
     });
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('unloaded-session');
     state.notifications.value = state.notifications.value.map((entry) =>
       entry.id === 'tail' ? { ...entry, read: true } : entry
     );
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
+  });
+
+  it('chooses unread sessions once each before active tasks in the existing order', async () => {
+    const f = recoveryFixture([
+      { ...notification('expired'), expiresAt: Date.now() },
+      { ...notification('already-read'), read: true },
+      hostedNotification('hosted'),
+      { ...notification('other-node'), target: { ...notification('n').target!, nodeId: 'node-2' } },
+      notification('first', 'unloaded'),
+      notification('duplicate', 'unloaded'),
+      notification('second', 'second')
+    ]);
+    f.server.recentRuns = [workspaceRun()];
+    await f.state.load();
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('unloaded');
+    await f.state.markSessionRead('node-1', 'workspace-1', 'unloaded');
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('second');
+    expect(f.state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+    await f.state.markSessionRead('node-1', 'workspace-1', 'second');
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('session-1');
+  });
+
+  it('chooses same-identity active Run sessions and follows authoritative terminal changes', async () => {
+    let recentRuns = [
+      { ...workspaceRun('SUCCEEDED'), runId: 'terminal', sortAt: 500 },
+      { ...workspaceRun(), nodeId: 'node-2', runId: 'other-node', sortAt: 400 },
+      { ...workspaceRun(), workspaceId: 'workspace-2', runId: 'other-workspace', sortAt: 300 },
+      {
+        ...workspaceRun('STARTING'),
+        runId: 'first',
+        sessionId: 'first-session',
+        startedAt: 200,
+        sortAt: 200
+      },
+      {
+        ...workspaceRun(),
+        runId: 'duplicate',
+        sessionId: 'first-session',
+        startedAt: 190,
+        sortAt: 190
+      },
+      { ...workspaceRun('CANCELLING'), runId: 'second', sessionId: 'second-session', sortAt: 100 }
+    ];
+    const request = vi.fn(async () => ({ notifications: [], recentRuns }));
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
+      request: request as never
+    });
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('first-session');
+    recentRuns = recentRuns.map((run) =>
+      run.sessionId === 'first-session' ? { ...run, status: 'SUCCEEDED' as const } : run
+    );
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('second-session');
+    recentRuns = [];
+    await state.load();
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
   it('keeps Workspace activity independent of remaining unread sessions through authoritative refreshes', async () => {
@@ -916,10 +995,31 @@ describe('Web Workbench notification state', () => {
     const now = Date.now();
     const stored = [
       { ...notification('run-1'), createdAt: now - 1_000, expiresAt: now + 1_000 },
-      { ...notification('upload:1'), kind: 'upload' as const, expiresAt: now + 1_000 },
-      { ...notification('web-update:0.9.5'), kind: 'web-update' as const, expiresAt: now + 1_000 }
+      { ...notification('invalid-upload'), kind: 'upload', expiresAt: now + 1_000 },
+      {
+        ...notification('invalid-update'),
+        kind: 'web-update',
+        target: undefined,
+        action: 'UNKNOWN',
+        expiresAt: now + 1_000
+      },
+      {
+        ...notification('upload:1'),
+        kind: 'upload' as const,
+        target: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+        expiresAt: now + 1_000
+      },
+      {
+        ...notification('web-update:0.9.5'),
+        kind: 'web-update' as const,
+        target: undefined,
+        expiresAt: now + 1_000
+      }
     ];
-    expect(parseStoredWorkbenchNotifications(stored, now)).toHaveLength(3);
+    expect(parseStoredWorkbenchNotifications(stored, now).map((item) => item.id)).toEqual([
+      'upload:1',
+      'web-update:0.9.5'
+    ]);
     vi.stubGlobal('localStorage', {
       getItem: () => JSON.stringify(stored),
       setItem: vi.fn(),
@@ -958,7 +1058,12 @@ describe('Web Workbench notification state', () => {
     const initialClears = clearAppBadge.mock.calls.length;
     expect(initialClears).toBeGreaterThan(0);
 
-    state.notify(notification('badge-notification'));
+    state.notify({
+      id: 'badge-notification',
+      kind: 'web-update',
+      title: 'Badge',
+      message: 'Unread'
+    });
     await vi.waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
 
     state.markRead('badge-notification');
@@ -1027,7 +1132,12 @@ describe('Web Workbench notification state', () => {
 
     await state.start();
     const initialClears = clearAppBadge.mock.calls.length;
-    state.notify(notification('badge-notification'));
+    state.notify({
+      id: 'badge-notification',
+      kind: 'web-update',
+      title: 'Badge',
+      message: 'Unread'
+    });
     await vi.waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
 
     state.markRead('badge-notification');
@@ -1132,10 +1242,10 @@ describe('Web Workbench notification state', () => {
     const now = 1_800_000_000_000;
     vi.setSystemTime(now);
     const created = { ...notification('late-create'), expiresAt: now + 100 };
-    let resolveSnapshot!: (value: { notifications: WorkbenchNotification[] }) => void;
+    let resolveSnapshot!: (value: { notifications: ServerNotification[] }) => void;
     const request = vi.fn(
       () =>
-        new Promise<{ notifications: WorkbenchNotification[] }>((resolve) => {
+        new Promise<{ notifications: ServerNotification[] }>((resolve) => {
           resolveSnapshot = resolve;
         })
     );
@@ -1222,12 +1332,12 @@ describe('Web Workbench notification state', () => {
   it('does not reinstall the sweep timer when start resolves after disposal', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('localStorage', { getItem: () => '[]', setItem: vi.fn(), removeItem: vi.fn() });
-    let resolveFirstRequest!: (value: { notifications: WorkbenchNotification[] }) => void;
+    let resolveFirstRequest!: (value: { notifications: ServerNotification[] }) => void;
     const request = vi
       .fn()
       .mockImplementationOnce(
         () =>
-          new Promise<{ notifications: WorkbenchNotification[] }>((resolve) => {
+          new Promise<{ notifications: ServerNotification[] }>((resolve) => {
             resolveFirstRequest = resolve;
           })
       )
@@ -1288,14 +1398,14 @@ describe('Web Workbench notification state', () => {
   });
 
   it('does not overwrite realtime notifications received during a reconnect list request', async () => {
-    let resolveRequest!: (value: { notifications: WorkbenchNotification[] }) => void;
+    let resolveRequest!: (value: { notifications: ServerNotification[] }) => void;
     const live = notification('live');
     const offline = notification('offline', 'session-offline');
     const request = vi
       .fn()
       .mockImplementationOnce(
         () =>
-          new Promise<{ notifications: WorkbenchNotification[] }>((resolve) => {
+          new Promise<{ notifications: ServerNotification[] }>((resolve) => {
             resolveRequest = resolve;
           })
       )
@@ -1354,7 +1464,7 @@ describe('Web Workbench notification state', () => {
   it('toasts realtime notifications once per stable ID and marks the active session read before refresh', async () => {
     const current = notification('current', 'session-current');
     const background = notification('background', 'session-background');
-    let serverNotifications: WorkbenchNotification[] = [];
+    let serverNotifications: ServerNotification[] = [];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/notifications/current/read' && init?.method === 'POST') {
         serverNotifications = [{ ...current, read: true }];
@@ -1395,7 +1505,7 @@ describe('Web Workbench notification state', () => {
 
   it('retries a transient active-session notification read and refreshes the authoritative unread badge', async () => {
     const current = notification('transient-read');
-    let serverNotifications: WorkbenchNotification[] = [current];
+    let serverNotifications: ServerNotification[] = [current];
     let writes = 0;
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/notifications/transient-read/read' && init?.method === 'POST') {
@@ -1508,7 +1618,7 @@ describe('Web Workbench notification state', () => {
   it('silently marks the active hosted conversation read and converges conversation-wide reads from snapshots', async () => {
     const current = hostedNotification('hosted-current', 'conversation-current');
     const background = hostedNotification('hosted-background', 'conversation-background');
-    let serverNotifications: WorkbenchNotification[] = [];
+    let serverNotifications: ServerNotification[] = [];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/notifications/hosted-current/read' && init?.method === 'POST') {
         serverNotifications = [{ ...current, read: true }];
@@ -1637,7 +1747,7 @@ describe('Web Workbench notification state', () => {
   it('converges individual read and delete writes through Server snapshots', async () => {
     const one = notification('one');
     const two = notification('two', 'session-2');
-    let serverNotifications: WorkbenchNotification[] = [one, two];
+    let serverNotifications: ServerNotification[] = [one, two];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/notifications/one/read' && init?.method === 'POST') {
         serverNotifications = serverNotifications.map((item) =>
@@ -1673,7 +1783,7 @@ describe('Web Workbench notification state', () => {
 
   it('always writes mark-all and session-read to Server without optimistic Server-notification updates', async () => {
     const server = notification('server');
-    let serverNotifications: WorkbenchNotification[] = [];
+    let serverNotifications: ServerNotification[] = [];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/notifications/read-all' && init?.method === 'POST') {
         serverNotifications = serverNotifications.map((item) => ({ ...item, read: true }));
@@ -1688,7 +1798,9 @@ describe('Web Workbench notification state', () => {
       request: request as never
     });
     state.notify({
-      ...notification('local'),
+      id: 'local',
+      title: 'Local',
+      message: '',
       kind: 'web-update',
       source: 'local',
       action: 'RELOAD_PAGE'

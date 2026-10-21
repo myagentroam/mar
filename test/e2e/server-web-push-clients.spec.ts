@@ -130,6 +130,7 @@ function registration(
   enabled = true
 ) {
   return {
+    clientKind: 'mobile',
     clientToken: token,
     subscription: {
       endpoint: subscriptionEndpoint,
@@ -400,6 +401,125 @@ test('Core v27 initializes web-push storage idempotently and isolates MySQL clie
       )
     ).rejects.toThrow('NOTIFICATION_CALL_CONFLICT');
     expect(emailAttempts).toBe(1);
+  } finally {
+    await pool?.end();
+    await dropPlaywrightTestDatabase(database);
+  }
+});
+
+test('Core v32 clears legacy Push bindings once while preserving notifications and users', async () => {
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+
+  const database = resolvePlaywrightTestDatabase(`${runId}-web-push-migration-${randomUUID()}`);
+  await createPlaywrightTestDatabase(database);
+  let pool: Awaited<ReturnType<typeof openMysqlDatabase>> | undefined;
+  try {
+    pool = await openMysqlDatabase({ url: database.databaseUrl });
+    const now = Date.now();
+    const username = `push-migration-${randomUUID()}`;
+    const [userResult] = await pool.execute<ResultSetHeader>(
+      `INSERT INTO users
+       (username,must_change_password,enabled,is_fixed_admin,created_at,updated_at)
+       VALUES (?,FALSE,TRUE,FALSE,?,?)`,
+      [username, now, now]
+    );
+    const userId = Number(userResult.insertId);
+    const sessionHash = hash(`migration-session-${randomUUID()}`);
+    await pool.execute(
+      `INSERT INTO user_sessions
+       (session_hash,public_id,user_id,csrf_token_hash,created_at,last_accessed_at,expires_at,revoked_at,ip_address,user_agent)
+       VALUES (?,?,?,?,?,?,?,NULL,'127.0.0.1','web-push-migration-test')`,
+      [sessionHash, randomUUID(), userId, hash(`csrf-${randomUUID()}`), now, now, now + 60_000]
+    );
+
+    const clients = new WebPushClients({ raw: pool }, () => now);
+    const legacyEndpoint = endpoint();
+    await clients.register({ userId, sessionHash }, registration(clientToken(), legacyEndpoint));
+
+    const notificationId = randomUUID();
+    const notificationMessage = 'Preserve this business notification';
+    await pool.execute(
+      `INSERT INTO workbench_notifications
+       (id,user_id,source_id,source_key,kind,title,message,node_id,workspace_id,session_id,session_title,run_id,created_at,expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        notificationId,
+        userId,
+        notificationId,
+        hash(`notification-${notificationId}`),
+        'run',
+        'Migration fixture',
+        notificationMessage,
+        'migration-node',
+        'migration-workspace',
+        'migration-session',
+        'Migration session',
+        'migration-run',
+        now,
+        now + 86_400_000
+      ]
+    );
+
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 32);
+    expect(migration).toMatchObject({ name: 'mobile_only_web_push_clients' });
+    await pool.execute('DELETE FROM schema_migrations WHERE namespace=? AND version=?', [
+      'core',
+      32
+    ]);
+    await pool.end();
+    pool = undefined;
+
+    pool = await openMysqlDatabase({ url: database.databaseUrl });
+    const [cleanedClients] = await pool.execute<RowDataPacket[]>(
+      'SELECT id FROM web_push_clients WHERE user_id=?',
+      [userId]
+    );
+    expect(cleanedClients).toEqual([]);
+    const [retainedUsers] = await pool.execute<RowDataPacket[]>(
+      'SELECT id,username FROM users WHERE id=?',
+      [userId]
+    );
+    expect(retainedUsers.map((row) => ({ ...row }))).toEqual([{ id: userId, username }]);
+    const [retainedNotifications] = await pool.execute<RowDataPacket[]>(
+      'SELECT id,message FROM workbench_notifications WHERE id=? AND user_id=?',
+      [notificationId, userId]
+    );
+    expect(retainedNotifications.map((row) => ({ ...row }))).toEqual([
+      { id: notificationId, message: notificationMessage }
+    ]);
+    const [completedMigration] = await pool.execute<RowDataPacket[]>(
+      'SELECT name,status FROM schema_migrations WHERE namespace=? AND version=?',
+      ['core', 32]
+    );
+    expect(completedMigration.map((row) => ({ ...row }))).toEqual([
+      { name: 'mobile_only_web_push_clients', status: 'COMPLETED' }
+    ]);
+
+    const mobileEndpoint = endpoint();
+    const mobileToken = clientToken();
+    const mobileBinding = await new WebPushClients({ raw: pool }, () => now).register(
+      { userId, sessionHash },
+      registration(mobileToken, mobileEndpoint)
+    );
+    await pool.end();
+    pool = undefined;
+
+    pool = await openMysqlDatabase({ url: database.databaseUrl });
+    const [afterRestart] = await pool.execute<RowDataPacket[]>(
+      'SELECT id,endpoint FROM web_push_clients WHERE id=?',
+      [mobileBinding.subscriptionId]
+    );
+    expect(afterRestart.map((row) => ({ ...row }))).toEqual([
+      { id: mobileBinding.subscriptionId, endpoint: mobileEndpoint }
+    ]);
+    const [stillRetained] = await pool.execute<RowDataPacket[]>(
+      'SELECT id,message FROM workbench_notifications WHERE id=? AND user_id=?',
+      [notificationId, userId]
+    );
+    expect(stillRetained.map((row) => ({ ...row }))).toEqual([
+      { id: notificationId, message: notificationMessage }
+    ]);
   } finally {
     await pool?.end();
     await dropPlaywrightTestDatabase(database);

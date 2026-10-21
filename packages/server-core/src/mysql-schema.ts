@@ -1,4 +1,8 @@
-import { MODEL_USAGE_MIGRATION, MODEL_USAGE_SQL } from './model-usage-schema.js';
+import {
+  MODEL_USAGE_MIGRATION,
+  MODEL_USAGE_CURRENT_SQL,
+  MODEL_USAGE_QUERY_INDEX_MIGRATION
+} from './model-usage-schema.js';
 import schema from './mysql-core-schema-v1.json' with { type: 'json' };
 import hostedSchema from './mysql-hosted-schema-v2.json' with { type: 'json' };
 import gitSchema from './mysql-git-schema-v3.json' with { type: 'json' };
@@ -182,7 +186,7 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
     "  `title_generation` tinyint(1) NOT NULL DEFAULT '0',",
     "  `conversation_model` tinyint(1) NOT NULL DEFAULT '1',\n  `title_generation` tinyint(1) NOT NULL DEFAULT '0',"
   ),
-  model_usage_records: MODEL_USAGE_SQL,
+  model_usage_records: MODEL_USAGE_CURRENT_SQL,
   ...MYSQL_PROMPT_COMPLETION_SCHEMA,
   ...MYSQL_WEB_PUSH_SCHEMA,
   ...MYSQL_SESSION_SHARES_CURRENT_SCHEMA
@@ -543,6 +547,22 @@ export const CORE_MYSQL_MIGRATIONS = [
           'ALTER TABLE session_shares ADD COLUMN encrypted_password varchar(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL AFTER password_hash'
         );
       await validateMysqlSchema(connection, MYSQL_SESSION_SHARES_CURRENT_SCHEMA);
+    }
+  },
+  MODEL_USAGE_QUERY_INDEX_MIGRATION,
+  {
+    version: 32,
+    name: 'mobile_only_web_push_clients',
+    checksum: createHash('sha256').update('DELETE FROM web_push_clients').digest('hex'),
+    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+      await connection.query('START TRANSACTION');
+      try {
+        await connection.execute('DELETE FROM web_push_clients');
+        await connection.query('COMMIT');
+      } catch (error) {
+        await connection.query('ROLLBACK');
+        throw error;
+      }
     }
   }
 ] as const;

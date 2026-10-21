@@ -15,7 +15,7 @@ export function toolUsagePrompt(
     const direct = new Set(directTools);
     const programmatic = tools.filter((name) => !direct.has(name));
     clauses.push(
-      `Code Mode Only: ${programmatic.join(', ')} are callable only as tools.NAME inside code_exec, not as direct model tools. References to these tool names in the following instructions mean their Code Mode functions. Use code_exec even for one programmatic tool; direct-only controls remain direct.`
+      `Code Mode Only: ${programmatic.join(', ')} are callable only as tools.NAME inside code_exec, not as direct model tools. References to these tool names in the following instructions mean their Code Mode functions. Use code_exec even for one of these tools. Tools also exposed directly may use either permitted entry point; direct-only controls remain direct.`
     );
   }
 

@@ -8,7 +8,7 @@ const props = withDefaults(
   defineProps<{ readonly name: string; readonly kind?: 'FILE' | 'DIRECTORY' }>(),
   { kind: 'FILE' }
 );
-const theme = themePreferenceService().theme;
+const theme = themePreferenceService().baseTheme;
 const iconTheme = iconThemePreferenceService().theme;
 const icon = computed(() => {
   const light = theme.value !== 'vscode-dark-2026';

@@ -15,6 +15,7 @@ import {
   CORE_MYSQL_SCHEMA_V17
 } from '../../src/mysql-schema.js';
 import { MYSQL_MIGRATION_DEMO } from '../../src/mysql-migration-demo.js';
+import { MODEL_USAGE_MIGRATION, MODEL_USAGE_SQL } from '../../src/model-usage-schema.js';
 import {
   MYSQL_SESSION_SHARES_SCHEMA,
   MYSQL_SESSION_SHARES_CURRENT_SCHEMA
@@ -43,6 +44,106 @@ function schemaConnection() {
 }
 
 describe('Core MySQL schema', () => {
+  it('upgrades the usage query index once without changing the released usage migration', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 31)!;
+    let definition = MODEL_USAGE_SQL;
+    const query = vi.fn(async (sql: string) => {
+      if (sql.startsWith('SHOW CREATE TABLE')) return [[{ 'Create Table': definition }], []];
+      expect(sql).toContain('ALTER TABLE');
+      definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+      return [[], []];
+    });
+    await migration.up({ query } as never);
+    await migration.up({ query } as never);
+    expect(query.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toHaveLength(1);
+    expect(definition).toContain(
+      'KEY `model_usage_user_time` (`user_id`,`purpose`,`ended_at`,`source_key`,`started_at`,`received_at`)'
+    );
+    expect(MODEL_USAGE_MIGRATION.checksum).toBe(
+      '570dbac3ec8f2b2f167ef8a044a63464ae717f0b224e373b8c29562f0f87a115'
+    );
+  });
+
+  it.each(['before', 'after'] as const)(
+    'retries the usage index migration when a DDL failure is reported %s commit',
+    async (failure) => {
+      const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 31)!;
+      let definition = MODEL_USAGE_SQL;
+      let fail = true;
+      const query = vi.fn(async (sql: string) => {
+        if (sql.startsWith('SHOW CREATE TABLE')) return [[{ 'Create Table': definition }], []];
+        if (fail) {
+          fail = false;
+          if (failure === 'after') definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+          throw new Error('DDL_CONNECTION_LOST');
+        }
+        definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+        return [[], []];
+      });
+      await expect(migration.up({ query } as never)).rejects.toThrow('DDL_CONNECTION_LOST');
+      await migration.up({ query } as never);
+      expect(definition).toBe(CORE_MYSQL_SCHEMA.model_usage_records);
+      expect(query.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toHaveLength(
+        failure === 'after' ? 1 : 2
+      );
+    }
+  );
+
+  it('rejects an unexpected usage schema before changing its index', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 31)!;
+    const query = vi.fn(async () => [
+      [{ 'Create Table': MODEL_USAGE_SQL.replace('varchar(32)', 'varchar(64)') }],
+      []
+    ]);
+    await expect(migration.up({ query } as never)).rejects.toThrow(
+      'SERVER_DATABASE_SCHEMA_MISMATCH'
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans only Push clients transactionally and rolls back a failed attempt for retry', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 32)!;
+    const pushClients = new Set(['legacy-client-a', 'legacy-client-b']);
+    const businessRows = new Set(['notification-1', 'user-1']);
+    let snapshot: Set<string> | undefined;
+    let failAfterDelete = true;
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'START TRANSACTION') snapshot = new Set(pushClients);
+      else if (sql === 'ROLLBACK') {
+        pushClients.clear();
+        snapshot?.forEach((client) => pushClients.add(client));
+        snapshot = undefined;
+      } else if (sql === 'COMMIT') snapshot = undefined;
+      else throw new Error(`Unexpected migration query: ${sql}`);
+      return [[], []];
+    });
+    const execute = vi.fn(async (sql: string) => {
+      expect(sql).toBe('DELETE FROM web_push_clients');
+      pushClients.clear();
+      if (failAfterDelete) {
+        failAfterDelete = false;
+        throw new Error('PUSH_CLIENT_DELETE_FAILED');
+      }
+      return [{ affectedRows: 2 }, []];
+    });
+    const connection = { query, execute };
+
+    await expect(migration.up(connection as never)).rejects.toThrow('PUSH_CLIENT_DELETE_FAILED');
+    expect(pushClients).toEqual(new Set(['legacy-client-a', 'legacy-client-b']));
+    expect(businessRows).toEqual(new Set(['notification-1', 'user-1']));
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual(['START TRANSACTION', 'ROLLBACK']);
+
+    await migration.up(connection as never);
+    expect(pushClients.size).toBe(0);
+    expect(businessRows).toEqual(new Set(['notification-1', 'user-1']));
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'START TRANSACTION',
+      'ROLLBACK',
+      'START TRANSACTION',
+      'COMMIT'
+    ]);
+  });
+
   it('adds recoverable share passwords once and validates retries without rewriting the prior migration', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 30)!;
     let added = false;
@@ -445,7 +546,7 @@ describe('Core MySQL schema', () => {
       "enum('run','approval','plan','user-input','schedule','agent')"
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');

@@ -1573,6 +1573,85 @@ describe('OpenCode Runner', () => {
     await runner.stop();
   });
 
+  it.each(['CANCEL', 'INTERRUPT'] as const)(
+    'does not submit a prompt after %s finishes during attachment persistence',
+    async (intent) => {
+      const attachment = {
+        name: 'screen.png',
+        mime: 'image/png' as const,
+        dataBase64: 'aW1hZ2U='
+      };
+      const gate = Promise.withResolvers<readonly string[]>();
+      const persistAttachments = vi.fn(() => gate.promise);
+      const emit = vi.fn();
+      const adopt = vi.fn();
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: vi.fn(
+          async (
+            _cwd: string,
+            signal: AbortSignal,
+            _event: (value: unknown) => void,
+            ready: () => void
+          ) => {
+            ready();
+            await new Promise<void>((resolve) =>
+              signal.addEventListener('abort', () => resolve(), { once: true })
+            );
+          }
+        ),
+        prompt: vi.fn(async () => undefined),
+        abort: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(
+        { stop: vi.fn(async () => undefined) } as unknown as OpenCodeServerClient,
+        () => fakeClient
+      );
+      const release = vi.spyOn(runner, 'releaseManagedClient');
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, {
+        ...host(active, []),
+        parseAttachments: () => [attachment],
+        persistAttachments,
+        emit,
+        adopt
+      });
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(persistAttachments).toHaveBeenCalledOnce());
+        expect(adopt).toHaveBeenCalledOnce();
+        expect(persistAttachments).toHaveBeenCalledWith('/workspace', 'run-1', [attachment]);
+        expect(fakeClient.prompt).not.toHaveBeenCalled();
+        const subscription = vi.mocked(fakeClient.subscribe).mock.calls[0]!;
+        expect(controller.cancel('run-1', intent)).toBe(true);
+        await vi.waitFor(() => expect(active).not.toContain('run-1'));
+        const status = intent === 'CANCEL' ? 'CANCELLED' : 'INTERRUPTED';
+        expect(emit).toHaveBeenLastCalledWith('run-1', 'run.completed', { status }, status);
+        expect(subscription[1].aborted).toBe(true);
+        expect(runner.execution.has('run-1')).toBe(false);
+        expect(release).toHaveBeenCalledExactlyOnceWith(fakeClient);
+        expect(fakeClient.stop).toHaveBeenCalledOnce();
+
+        gate.resolve(['.mar/temp-files/run-1/screen.png']);
+        // Drain the attachment continuation, not an arbitrary delay before a negative assertion.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        subscription[2]({ type: 'session.idle', properties: { sessionID: 'native-1' } });
+        expect(fakeClient.prompt).not.toHaveBeenCalled();
+        expect(emit.mock.calls.filter(([, type]) => type === 'run.completed')).toHaveLength(1);
+        expect(emit.mock.calls.some(([, type]) => type === 'run.failed')).toBe(false);
+        expect(release).toHaveBeenCalledOnce();
+        expect(fakeClient.stop).toHaveBeenCalledOnce();
+        expect(controller.cancel('run-1', intent)).toBe(false);
+      } finally {
+        gate.resolve([]);
+        await runner.stop();
+      }
+    }
+  );
+
   it('sends one terminal Run state when the cancellation response races the SSE terminal state', async () => {
     const events: string[] = [];
     let listener: ((value: unknown) => void) | undefined;

@@ -13,6 +13,7 @@ import {
 import { PersonalGitService } from '../../service/PersonalGitService.js';
 import { translate as t } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
+import LoadingPanel from '../common/LoadingPanel.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -231,75 +232,78 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 </script>
 
 <template>
-  <section class="management-page personal-git-settings" v-loading="loading">
-    <header>
-      <div>
-        <h2>{{ t('personalGit.title') }}</h2>
-      </div>
-    </header>
-    <el-button v-if="failed" @click="load">{{ t('personalGit.reload') }}</el-button>
-    <template v-else>
-      <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
-      <div class="table-actions">
-        <el-button
-          type="primary"
-          :icon="Plus"
-          :disabled="loading || saving"
-          @click="openCredential()"
-          >{{ t('personalGit.add') }}</el-button
+  <LoadingPanel class="personal-git-settings" :loading="loading">
+    <div class="management-page">
+      <header>
+        <div>
+          <h2>{{ t('personalGit.title') }}</h2>
+        </div>
+      </header>
+      <el-button v-if="failed" @click="load">{{ t('personalGit.reload') }}</el-button>
+      <template v-else>
+        <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
+        <div class="table-actions">
+          <el-button
+            type="primary"
+            :icon="Plus"
+            :disabled="loading || saving"
+            @click="openCredential()"
+            >{{ t('personalGit.add') }}</el-button
+          >
+        </div>
+        <!-- Personal Git identity and redacted credentials are returned as one complete document. -->
+        <el-table
+          class="clickable-rows"
+          :data="summary.credentials"
+          :empty-text="t('personalGit.empty')"
+          table-layout="auto"
+          @row-click="openCredentialDetail"
         >
-      </div>
-      <!-- Personal Git identity and redacted credentials are returned as one complete document. -->
-      <el-table
-        class="clickable-rows"
-        :data="summary.credentials"
-        :empty-text="t('personalGit.empty')"
-        table-layout="auto"
-        @row-click="openCredentialDetail"
-      >
-        <el-table-column prop="name" :label="t('personalGit.name')" min-width="140" />
-        <el-table-column :label="t('personalGit.remote')" min-width="260"
-          ><template #default="{ row }"
-            ><code class="git-scope">{{ formatGitRemoteUrl(row) }}</code></template
-          ></el-table-column
-        >
-        <el-table-column prop="username" :label="t('personalGit.username')" min-width="140" />
-        <el-table-column :label="t('personalGit.identity')" min-width="220"
-          ><template #default="{ row }"
-            ><template v-if="row.commitName"
-              >{{ row.commitName }} &lt;{{ row.commitEmail }}&gt;</template
-            ><span v-else>{{ t('personalGit.identityEmpty') }}</span></template
-          ></el-table-column
-        >
-        <el-table-column :label="t('personalGit.actions')" width="180"
-          ><template #default="{ row }"
-            ><div class="row-actions">
-              <el-button
-                link
-                type="primary"
-                :icon="Edit"
-                :disabled="saving"
-                @click.stop="openCredential(row)"
-                >{{ t('personalGit.edit') }}</el-button
-              >
-              <el-button
-                link
-                type="danger"
-                :icon="Delete"
-                :disabled="saving"
-                @click.stop="removeCredential(row)"
-                >{{ t('personalGit.remove') }}</el-button
-              >
-            </div></template
-          ></el-table-column
-        >
-      </el-table>
-    </template>
+          <el-table-column prop="name" :label="t('personalGit.name')" min-width="140" />
+          <el-table-column :label="t('personalGit.remote')" min-width="260"
+            ><template #default="{ row }"
+              ><code class="git-scope">{{ formatGitRemoteUrl(row) }}</code></template
+            ></el-table-column
+          >
+          <el-table-column prop="username" :label="t('personalGit.username')" min-width="140" />
+          <el-table-column :label="t('personalGit.identity')" min-width="220"
+            ><template #default="{ row }"
+              ><template v-if="row.commitName"
+                >{{ row.commitName }} &lt;{{ row.commitEmail }}&gt;</template
+              ><span v-else>{{ t('personalGit.identityEmpty') }}</span></template
+            ></el-table-column
+          >
+          <el-table-column :label="t('personalGit.actions')" width="180"
+            ><template #default="{ row }"
+              ><div class="row-actions">
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Edit"
+                  :disabled="saving"
+                  @click.stop="openCredential(row)"
+                  >{{ t('personalGit.edit') }}</el-button
+                >
+                <el-button
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  :disabled="saving"
+                  @click.stop="removeCredential(row)"
+                  >{{ t('personalGit.remove') }}</el-button
+                >
+              </div></template
+            ></el-table-column
+          >
+        </el-table>
+      </template>
+    </div>
     <el-dialog
       v-if="detailOpen && detail"
       v-model="detailOpen"
       :title="t('personalGit.detail')"
       width="min(720px, calc(100vw - 32px))"
+      append-to-body
       @closed="closeCredentialDetail"
     >
       <el-descriptions :column="1" border>
@@ -348,6 +352,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       v-model="dialogOpen"
       :title="t(editing ? 'personalGit.editCredential' : 'personalGit.add')"
       width="min(620px, calc(100vw - 32px))"
+      append-to-body
       :close-on-click-modal="!saving"
       :close-on-press-escape="!saving"
       :show-close="!saving"
@@ -452,13 +457,10 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         }}</el-button></template
       >
     </el-dialog>
-  </section>
+  </LoadingPanel>
 </template>
 
 <style scoped>
-.personal-git-settings {
-  gap: 12px;
-}
 .git-hint {
   color: var(--el-text-color-secondary);
   line-height: 1.6;

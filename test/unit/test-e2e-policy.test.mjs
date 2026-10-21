@@ -130,12 +130,15 @@ test('listing pure integration tests does not require database credentials or ge
         'scripts/test-e2e.mjs',
         '--integration',
         '--list',
-        'test/e2e/server-service-tier-migration.spec.ts'
+        'test/e2e/server-service-tier-migration.spec.ts',
+        '--grep',
+        'Conversation model migration backfills legacy models and preserves auxiliary use on retry$'
       ],
       { cwd: root, env, encoding: 'utf8', timeout: 30_000 }
     );
     assert.match(output, /\[integration\]/);
     assert.match(output, /Total: 1 test in 1 file/);
+    assert.doesNotMatch(output, /\[chromium\]/);
     assert.doesNotMatch(output, /\[firefox\]/);
     assert.equal(existsSync(resolve(root, `test/runs/playwright-license-${runId}.json`)), false);
     assert.equal(

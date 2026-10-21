@@ -21,6 +21,7 @@ export * from './terminal-direct.js';
 export * from './mail-notification.js';
 export * from './notification-channels.js';
 export * from './web-push.js';
+export * from './workbench-notification.js';
 export * from './model-usage.js';
 export * from './management-pagination.js';
 

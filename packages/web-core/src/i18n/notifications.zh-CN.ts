@@ -11,19 +11,20 @@ export const notificationsZhCN = {
       ready: '当前浏览器离线推送已就绪，不保证送达。',
       disabled: '当前浏览器离线推送已关闭。',
       unavailable: '离线推送同步失败，请登录后重试；关闭后本地仍会隐藏账号内容。',
-      enable: '启用 / 重试离线推送'
+      enable: '启用 / 重试离线推送',
+      disable: '关闭离线推送'
     },
     webPushConfiguration: {
       title: 'Web Push 离线推送',
       description:
-        '允许用户为当前浏览器开启离线推送。同一账号任意工作台连接在线时不发送 Push；不影响站内通知、在线系统通知或邮件。实际送达受浏览器、系统和网络限制。'
+        '允许用户为移动端开启离线推送。同一账号任意工作台连接在线时不发送 Push；不影响站内通知、在线系统通知或邮件。实际送达受浏览器、系统和网络限制。'
     },
     systemNotifications: {
       title: '系统通知',
-      onlineTitle: '在线系统通知',
+      onlineTitle: 'PC 失焦系统通知',
       enable: '开启系统通知',
       disable: '关闭系统通知',
-      summary: '窗口失焦时接收系统通知；离线推送另受系统开关与订阅状态控制。',
+      summary: 'PC 工作台保持连接但失焦时接收系统通知；PC 不接收离线推送。',
       enabled: '已开启',
       disabled: '未开启',
       denied: '通知权限已被拒绝，请在浏览器通知设置中允许当前网站。',

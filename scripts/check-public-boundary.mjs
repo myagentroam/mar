@@ -24,8 +24,7 @@ const privateIdentifier =
   /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|\bharness\/|docs\/design\/|\.plan\/|\.tasks\/)/u;
 const privateIdentifierCheckers = new Set([
   'scripts/check-public-boundary.mjs',
-  'scripts/check-release-artifacts.mjs',
-  'scripts/release-artifacts.mjs'
+  'scripts/check-release-artifacts.mjs'
 ]);
 
 function allowsLocalizedText(path) {

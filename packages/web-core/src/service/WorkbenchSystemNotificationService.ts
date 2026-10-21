@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue';
-import type { WorkbenchNotification } from './WorkbenchNotificationService.js';
+import { isMobileNotificationClient } from '../util/notification-capability.js';
+import type { ServerNotification } from '@myagentroam/protocol';
 import { createWebPushSubscriptionService } from './WebPushSubscriptionService.js';
 
 export function isWorkbenchForeground(): boolean {
@@ -15,6 +16,8 @@ export function createWorkbenchSystemNotificationService(
   request?: <T>(path: string, init?: RequestInit) => Promise<T>
 ) {
   const push = createWebPushSubscriptionService(username, request);
+  const mode = isMobileNotificationClient() ? 'mobile-push' : 'desktop-system';
+  const pendingDisplays = new Map<string, () => boolean>();
   const enabled = ref(false);
   const permission = ref<NotificationPermission>('default');
   const unavailable = ref(false);
@@ -50,7 +53,7 @@ export function createWorkbenchSystemNotificationService(
 
   function onFocus(): void {
     refreshPermission();
-    void push.refresh(enabled.value);
+    if (mode === 'mobile-push') void push.refresh(enabled.value);
   }
 
   function save(account: string): void {
@@ -90,7 +93,7 @@ export function createWorkbenchSystemNotificationService(
       enabled.value = false;
       requesting.value = false;
       save(account);
-      await push.disable();
+      if (mode === 'mobile-push') await push.disable();
       await closeNotifications(account);
       return;
     }
@@ -98,7 +101,11 @@ export function createWorkbenchSystemNotificationService(
     unavailable.value = false;
     try {
       // subscribe() owns the permission prompt when Push is available. Never start two prompts.
-      const preparedPush = push.canSubscribe();
+      const preparedPush = mode === 'mobile-push';
+      if (preparedPush && !push.canSubscribe()) {
+        await push.refresh(enabled.value);
+        return;
+      }
       const result = preparedPush
         ? await push.enable().then(() => Notification.permission)
         : await Notification.requestPermission();
@@ -113,7 +120,6 @@ export function createWorkbenchSystemNotificationService(
       }
       enabled.value = true;
       save(account);
-      if (!preparedPush) await push.refresh(true);
     } catch {
       if (current()) unavailable.value = true;
     } finally {
@@ -122,7 +128,7 @@ export function createWorkbenchSystemNotificationService(
   }
 
   async function show(
-    notification: WorkbenchNotification,
+    notification: ServerNotification,
     isCurrent: () => boolean = () => true
   ): Promise<void> {
     refreshPermission();
@@ -134,10 +140,7 @@ export function createWorkbenchSystemNotificationService(
       account !== undefined &&
       activeAccount === account &&
       status.value === 'enabled' &&
-      !(
-        /Android|iPhone|iPad|iPod/iu.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-      ) &&
+      mode === 'desktop-system' &&
       !isWorkbenchForeground() &&
       !notification.read &&
       notification.expiresAt > Date.now() &&
@@ -146,25 +149,33 @@ export function createWorkbenchSystemNotificationService(
     try {
       const registration = await navigator.serviceWorker.getRegistration('/console');
       if (!canShow() || registration?.active == null) return;
-      const tag = `mar.workbench:${account}:${notification.id}`;
       const projectionId = `${projectionOwner}:${++projectionSequence}`;
-      await registration.showNotification(notification.title, {
-        body: notification.message,
-        icon: '/icons/app-icon-192.png',
-        tag,
-        data: {
-          type: 'mar.workbench.notification',
-          account,
-          id: notification.id,
-          projectionId,
-          clientUrl: `${window.location.origin}${window.location.pathname}`
-        }
-      });
-      if (!canShow()) {
-        // A stable tag may now belong to a newer page or login; close only this projection.
-        for (const entry of await registration.getNotifications({ tag })) {
-          if (entry.data?.projectionId === projectionId) entry.close();
-        }
+      pendingDisplays.set(projectionId, canShow);
+      try {
+        await new Promise<void>((resolve) => {
+          const channel = new MessageChannel();
+          const finish = () => {
+            clearTimeout(timeout);
+            channel.port1.close();
+            resolve();
+          };
+          const timeout = setTimeout(finish, 2500);
+          channel.port1.onmessage = finish;
+          registration.active!.postMessage(
+            {
+              type: 'mar.workbench.notification.show',
+              account,
+              id: notification.id,
+              title: notification.title,
+              body: notification.message,
+              expiresAt: notification.expiresAt,
+              projectionId
+            },
+            [channel.port2]
+          );
+        });
+      } finally {
+        pendingDisplays.delete(projectionId);
       }
     } catch {
       // Notifications are an optional projection; the Server list remains authoritative.
@@ -173,6 +184,15 @@ export function createWorkbenchSystemNotificationService(
 
   function onMessage(event: MessageEvent): void {
     const data = event.data;
+    if (data?.type === 'mar.workbench.notification.state') {
+      const accepted = data.account === activeAccount && data.account === username.value;
+      const valid =
+        accepted &&
+        (data.projectionId === undefined || pendingDisplays.get(data.projectionId)?.() === true);
+      event.ports?.[0]?.postMessage({ valid, foreground: accepted && isWorkbenchForeground() });
+      event.ports?.[0]?.close();
+      return;
+    }
     if (data?.type !== 'mar.workbench.notification.click') return;
     const accepted =
       typeof data.account === 'string' &&
@@ -195,9 +215,9 @@ export function createWorkbenchSystemNotificationService(
     enabled.value = next;
     refreshPermission();
     if (!enabled.value) {
-      void push.disable();
+      if (mode === 'mobile-push') void push.disable();
       void closeNotifications(activeAccount);
-    } else void push.refresh(true);
+    } else if (mode === 'mobile-push') void push.refresh(true);
   }
 
   async function openPending(): Promise<boolean> {
@@ -246,6 +266,7 @@ export function createWorkbenchSystemNotificationService(
 
   function dispose(): void {
     generation += 1;
+    pendingDisplays.clear();
     enabled.value = false;
     requesting.value = false;
     if (supported()) navigator.serviceWorker.removeEventListener('message', onMessage);
@@ -261,6 +282,8 @@ export function createWorkbenchSystemNotificationService(
 
   return {
     enabled,
+    mode,
+    pushReady: push.canSubscribe,
     status,
     requesting,
     pushStatus: push.status,

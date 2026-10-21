@@ -52,10 +52,7 @@ function revealApplication(): void {
 function preventBrowserContextMenu(event: MouseEvent): void {
   if (standaloneFilePreview && renderedFilePreview) return;
   const pointerType = (event as PointerEvent).pointerType;
-  if (
-    pointerType === 'touch' ||
-    (pointerType !== 'mouse' && window.matchMedia('(hover: none) and (pointer: coarse)').matches)
-  )
+  if (pointerType === 'touch' || window.matchMedia('(hover: none) and (pointer: coarse)').matches)
     return;
   const target = event.target;
   if (

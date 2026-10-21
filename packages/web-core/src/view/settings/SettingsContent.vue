@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Delete, Key, Link, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import { iconThemes } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
@@ -11,7 +11,12 @@ import {
   fileEditorPreferenceService,
   type FileEditorDefaultMode
 } from '../../service/FileEditorPreferenceService.js';
-import { themePreferenceService } from '../../service/ThemePreferenceService.js';
+import {
+  themePreferenceService,
+  type ThemePreference
+} from '../../service/ThemePreferenceService.js';
+import { analyzeCustomTheme } from '../../util/custom-theme.js';
+import ThemeSettings from './ThemeSettings.vue';
 import {
   localizedDocsPath,
   localePreferenceService,
@@ -40,6 +45,11 @@ const props = defineProps<{
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
   readonly loading: boolean;
+  readonly changePassword: (input: {
+    readonly currentPassword: string;
+    readonly password: string;
+    readonly confirmation: string;
+  }) => Promise<boolean>;
   readonly formatSessionTime: (value: number) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly quickPrompts: readonly QuickPrompt[];
@@ -53,13 +63,6 @@ const emit = defineEmits<{
   clearPasswordError: [];
   refreshSessions: [];
   logoutSession: [session: UserSessionSummary];
-  changePassword: [
-    input: {
-      readonly currentPassword: string;
-      readonly password: string;
-      readonly confirmation: string;
-    }
-  ];
   logout: [];
   createRegistrationToken: [];
 }>();
@@ -73,11 +76,44 @@ const fileEditorMode = fileEditorService.mode;
 const localeService = localePreferenceService();
 const locale = localeService.locale;
 const { t } = useI18n();
+const customThemes = computed(() =>
+  themeService.customThemes.value.map((item) => ({
+    id: item.id,
+    name: analyzeCustomTheme(item.source).name ?? t('customThemes.untitled')
+  }))
+);
+function setTheme(value: ThemePreference): void {
+  try {
+    themeService.setTheme(value);
+  } catch {
+    ElMessage.error(t('customThemes.storageFailed'));
+  }
+}
 const webVersion = props.webVersion;
 const thirdPartyGroups = ['web', 'server', 'execution', 'tools', 'icons', 'computerUse'] as const;
 const currentPassword = ref('');
 const password = ref('');
 const confirmation = ref('');
+const passwordSubmitting = ref(false);
+let passwordDialogGeneration = 0;
+watch(
+  passwordDialogOpen,
+  () => {
+    passwordDialogGeneration += 1;
+    currentPassword.value = '';
+    password.value = '';
+    confirmation.value = '';
+    passwordSubmitting.value = false;
+    emit('clearPasswordError');
+  },
+  { flush: 'sync' }
+);
+watch(
+  () => props.section,
+  (section) => {
+    if (section !== 'account') closePasswordDialog();
+  }
+);
 
 async function updateLocale(value: AppLocale): Promise<void> {
   const previous = locale.value;
@@ -92,19 +128,23 @@ async function updateLocale(value: AppLocale): Promise<void> {
     ElMessage.error(translate('common.localeUpdateFailed'));
   }
 }
-function submitPasswordChange(): void {
-  emit('changePassword', {
-    currentPassword: currentPassword.value,
-    password: password.value,
-    confirmation: confirmation.value
-  });
+async function submitPasswordChange(): Promise<void> {
+  if (props.loading || passwordSubmitting.value) return;
+  const generation = passwordDialogGeneration;
+  passwordSubmitting.value = true;
+  try {
+    const changed = await props.changePassword({
+      currentPassword: currentPassword.value,
+      password: password.value,
+      confirmation: confirmation.value
+    });
+    if (changed && generation === passwordDialogGeneration) closePasswordDialog();
+  } finally {
+    if (generation === passwordDialogGeneration) passwordSubmitting.value = false;
+  }
 }
 function closePasswordDialog(): void {
   passwordDialogOpen.value = false;
-  currentPassword.value = '';
-  password.value = '';
-  confirmation.value = '';
-  emit('clearPasswordError');
 }
 async function confirmLogoutSession(session: UserSessionSummary): Promise<void> {
   try {
@@ -135,7 +175,11 @@ async function confirmLogout(): Promise<void> {
 <template>
   <section
     class="settings-content"
-    :class="{ 'personal-instructions-content': section === 'personal-instructions' }"
+    :class="{
+      'personal-instructions-content': section === 'personal-instructions',
+      'page-settings-content':
+        section === 'usage' || section === 'git' || section === 'quick-prompts'
+    }"
   >
     <PersonalUsageSettings v-if="section === 'usage'" :request="request" />
     <PersonalGitSettings v-else-if="section === 'git'" :request="request" />
@@ -200,7 +244,6 @@ async function confirmLogout(): Promise<void> {
         v-model="passwordDialogOpen"
         :title="translate('generated.settingsContent.changePassword2')"
         width="min(420px, calc(100vw - 32px))"
-        @closed="closePasswordDialog"
       >
         <el-form label-position="top" @submit.prevent="submitPasswordChange">
           <el-form-item :label="translate('generated.settingsContent.currentPassword')" required
@@ -238,9 +281,12 @@ async function confirmLogout(): Promise<void> {
           ><el-button @click="closePasswordDialog">{{
             translate('generated.settingsContent.cancel')
           }}</el-button
-          ><el-button :loading="loading" type="primary" @click="submitPasswordChange">{{
-            translate('generated.settingsContent.confirmChange')
-          }}</el-button></template
+          ><el-button
+            :loading="loading || passwordSubmitting"
+            type="primary"
+            @click="submitPasswordChange"
+            >{{ translate('generated.settingsContent.confirmChange') }}</el-button
+          ></template
         >
       </el-dialog>
     </section>
@@ -270,6 +316,7 @@ async function confirmLogout(): Promise<void> {
         <code>{{ registrationToken }}</code>
       </p>
     </section>
+    <ThemeSettings v-else-if="section === 'custom-themes'" class="full" />
     <section v-else-if="section === 'appearance'" class="full settings-panel">
       <h2>{{ t('settings.appearance') }}</h2>
       <p class="account-summary">{{ t('settings.appearanceSummary') }}</p>
@@ -280,10 +327,16 @@ async function confirmLogout(): Promise<void> {
           :model-value="theme"
           class="theme-select"
           :aria-label="t('settings.theme')"
-          @update:model-value="themeService.setTheme($event as 'daylight' | 'vscode-dark-2026')"
+          @update:model-value="setTheme($event as ThemePreference)"
         >
           <el-option :label="t('settings.light')" value="daylight" />
           <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
+          <el-option
+            v-for="item in customThemes"
+            :key="item.id"
+            :label="item.name"
+            :value="item.id"
+          />
         </el-select>
       </div>
       <div class="theme-row">
@@ -721,6 +774,17 @@ async function confirmLogout(): Promise<void> {
 .settings-content .full {
   max-width: 960px;
   padding: 14px 16px;
+}
+
+.settings-content.page-settings-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.settings-content .full.page-loading-panel {
+  max-width: none;
+  padding: 0;
 }
 
 .settings-content.personal-instructions-content {

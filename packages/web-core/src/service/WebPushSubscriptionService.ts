@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue';
+import { isMobileNotificationClient } from '../util/notification-capability.js';
 import { ApiError } from '../util/api-error.js';
 import type { WebPushBinding, WebPushSubscription } from '@myagentroam/protocol';
 import {
@@ -35,6 +36,7 @@ export function createWebPushSubscriptionService(
   let registration: ServiceWorkerRegistration | undefined;
   let subscription: PushSubscription | null = null;
   let generation = 0;
+  const prepared = ref(false);
 
   function supported(): boolean {
     return (
@@ -134,6 +136,7 @@ export function createWebPushSubscriptionService(
       let client: BrowserPushClient = {
         account: owner,
         request: {
+          clientKind: 'mobile',
           clientToken: token,
           subscription: actual,
           enabled,
@@ -198,24 +201,41 @@ export function createWebPushSubscriptionService(
 
   async function refresh(enabled: boolean): Promise<void> {
     const owner = account.value;
-    const epoch = generation;
+    prepared.value = false;
     if (!supported() || owner === undefined) {
       status.value = 'unsupported';
       return;
     }
+    // A personal disable must converge even while Server delivery is unavailable or switched off.
+    const disabling = !enabled && isMobileNotificationClient() ? disable() : undefined;
+    const epoch = generation;
     try {
-      const [next, worker] = await Promise.all([
-        request!<PushCapability>('/api/notifications/push'),
-        navigator.serviceWorker.getRegistration('/console')
-      ]);
+      await disabling;
+      if (!current(epoch, owner) || (disabling !== undefined && status.value === 'unavailable'))
+        return;
+      const worker = await navigator.serviceWorker.getRegistration('/console');
+      if (!current(epoch, owner)) return;
+      await store.locked(async () => {
+        if (!current(epoch, owner)) return;
+        const saved = await store.read();
+        if (!current(epoch, owner)) return;
+        if (saved !== undefined && saved.request.clientKind === 'mobile') return;
+        await store.display(undefined);
+        const old = await worker?.pushManager?.getSubscription();
+        if (!current(epoch, owner)) return;
+        if (old != null && !(await old.unsubscribe())) throw new Error('WEB_PUSH_RETIRE_FAILED');
+        if (current(epoch, owner)) await store.write(undefined);
+      });
+      if (!current(epoch, owner)) return;
+      if (!isMobileNotificationClient()) {
+        status.value = 'unsupported';
+        return;
+      }
+      const next = await request!<PushCapability>('/api/notifications/push');
       if (!current(epoch, owner)) return;
       capability = next;
       registration = worker;
       if (next.account !== owner) throw new Error('WEB_PUSH_ACCOUNT_CHANGED');
-      if (!enabled) {
-        await disable();
-        return;
-      }
       if (!next.available || (next.enabled && next.publicKey === null)) {
         status.value = 'serverUnavailable';
         return;
@@ -235,8 +255,13 @@ export function createWebPushSubscriptionService(
       if (saved?.account !== owner) await store.display(undefined);
       if (subscription !== null && saved === undefined) {
         // Lost management credentials must not adopt an existing account's endpoint.
-        await subscription.unsubscribe();
+        if (!(await subscription.unsubscribe())) throw new Error('WEB_PUSH_RETIRE_FAILED');
         subscription = null;
+      }
+      prepared.value = true;
+      if (!enabled) {
+        status.value = 'disabled';
+        return;
       }
       if (
         subscription === null ||
@@ -255,7 +280,13 @@ export function createWebPushSubscriptionService(
 
   // Must be called directly from the click handler: do not await HTTP/IDB before subscribe().
   function canSubscribe(): boolean {
-    return registration !== undefined && capability?.enabled === true && capability.available;
+    return (
+      isMobileNotificationClient() &&
+      prepared.value &&
+      registration !== undefined &&
+      capability?.enabled === true &&
+      capability.available
+    );
   }
 
   function enable(): Promise<void> {
@@ -263,6 +294,8 @@ export function createWebPushSubscriptionService(
     const epoch = generation;
     if (
       !supported() ||
+      !isMobileNotificationClient() ||
+      !prepared.value ||
       owner === undefined ||
       registration?.active == null ||
       capability?.account !== owner ||
@@ -270,8 +303,8 @@ export function createWebPushSubscriptionService(
       !capability.available ||
       capability.publicKey === null
     ) {
-      if (supported() && owner !== undefined) return refresh(true);
-      status.value = 'unsupported';
+      if (supported() && isMobileNotificationClient() && owner !== undefined) return refresh(true);
+      else status.value = 'unsupported';
       return Promise.resolve();
     }
     const pending =
@@ -304,6 +337,9 @@ export function createWebPushSubscriptionService(
         if (!current(epoch, owner)) return;
         const saved = await store.read();
         if (saved === undefined || saved.account !== owner) return;
+        if (saved.request.clientKind !== 'mobile') return;
+        // Another tab may have restored display while this disable waited for the lock.
+        await store.display(undefined);
         await retire(saved, owner);
       });
     } catch {
@@ -313,6 +349,7 @@ export function createWebPushSubscriptionService(
 
   function dispose(): void {
     generation++;
+    prepared.value = false;
     capability = undefined;
     registration = undefined;
     subscription = null;

@@ -45,6 +45,15 @@ export function createWorkbenchSessionWatchController(options: {
   let watchedWorkspaceId: string | undefined;
   let watchedConnectionId: string | undefined;
   let nodeGeneration: string | undefined;
+  let appliedInitialSnapshot:
+    | {
+        readonly watchId: string;
+        readonly nodeId: string;
+        readonly workspaceId: string;
+        readonly sessionId: string;
+        readonly connectionId: string;
+      }
+    | undefined;
   let failureRetryTimer: ReturnType<typeof setTimeout> | undefined;
   let failureRetries = 0;
   let pendingInitial:
@@ -125,6 +134,7 @@ export function createWorkbenchSessionWatchController(options: {
     )
       return;
     if (mode === 'initial') {
+      appliedInitialSnapshot = undefined;
       watchId = crypto.randomUUID().replace(/-/g, '');
       nodeGeneration = undefined;
       watchedSessionId = sessionId;
@@ -212,6 +222,7 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function stop(): void {
+    appliedInitialSnapshot = undefined;
     cancelPendingInitial();
     const sessionId = watchedSessionId;
     const currentWatchId = watchId;
@@ -249,6 +260,7 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function restart(sessionId: string, resetFailures = true): Promise<void> | undefined {
+    appliedInitialSnapshot = undefined;
     if (failureRetryTimer !== undefined) clearTimeout(failureRetryTimer);
     failureRetryTimer = undefined;
     cancelPendingInitial();
@@ -372,6 +384,13 @@ export function createWorkbenchSessionWatchController(options: {
       pendingInitial = undefined;
       pending.removeAbortListener();
       options.applySnapshot(sessionId, page);
+      appliedInitialSnapshot = {
+        watchId: pending.watchId,
+        nodeId: event.nodeId as string,
+        workspaceId: event.workspaceId as string,
+        sessionId,
+        connectionId: event.workbenchConnectionId as string
+      };
       const snapshotSequence =
         typeof runtimeSnapshot?.sequence === 'number'
           ? runtimeSnapshot.sequence
@@ -456,6 +475,14 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   return {
+    hasInitialSessionSnapshot: (sessionId: string): boolean =>
+      appliedInitialSnapshot !== undefined &&
+      appliedInitialSnapshot.watchId === watchId &&
+      appliedInitialSnapshot.nodeId === options.workspaceTarget.value?.nodeId &&
+      appliedInitialSnapshot.workspaceId === options.workspaceTarget.value?.workspaceId &&
+      appliedInitialSnapshot.sessionId === sessionId &&
+      options.selectedSessionId.value === sessionId &&
+      appliedInitialSnapshot.connectionId === connectionId(),
     canWatchSessionHistory: (session: Session) =>
       options.enabled?.() !== false && canWatch(session),
     initializeSelectedSessionWatch: initialize,

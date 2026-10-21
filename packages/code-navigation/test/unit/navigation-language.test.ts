@@ -53,6 +53,53 @@ describe('shared code-navigation language registry', () => {
     expect(supportsSymbolNavigationPath('src/main.cts')).toBe(false);
   });
 
+  it.each([
+    ["import foo from 'foo';", 'foo', 'ecmascript.static-module'],
+    ['export { foo } from "foo";', 'foo', 'ecmascript.static-module'],
+    ['import bar from "foo";', 'foo', 'ecmascript.static-module'],
+    ["export { bar } from 'foo';", 'foo', 'ecmascript.static-module'],
+    ["import foo from './foo';", './foo', 'ecmascript.static-module'],
+    ['import { foo } from "foo";', 'foo', 'ecmascript.static-module'],
+    ['import * as foo from "foo";', 'foo', 'ecmascript.static-module'],
+    ['export * as foo from "foo";', 'foo', 'ecmascript.static-module'],
+    ['export * from "foo";', 'foo', 'ecmascript.static-module'],
+    ['  \timport foo from "foo";', 'foo', 'ecmascript.static-module'],
+    ['const foo = 1;\n  export { foo } from "foo";', 'foo', 'ecmascript.static-module'],
+    ['import {\n  foo,\n  bar\n} from "foo";', 'foo', 'ecmascript.static-module'],
+    [' \r\nexport {\r\n  foo\r\n} from "foo";', 'foo', 'ecmascript.static-module'],
+    ['import "import";', 'import', 'ecmascript.static-module'],
+    ['import "./setup.js";', './setup.js', 'ecmascript.static-module'],
+    ['const foo = import("foo");', 'foo', 'ecmascript.dynamic-module'],
+    ["import('import');", 'import', 'ecmascript.dynamic-module'],
+    ['require("require");', 'require', 'ecmascript.require'],
+    ["require('./module.js');", './module.js', 'ecmascript.require'],
+    ['/// <reference path="reference" />', 'reference', 'typescript.reference-path'],
+    ["/// <reference path='./types.d.ts' />", './types.d.ts', 'typescript.reference-path'],
+    ['new URL("./asset.svg", import.meta.url);', './asset.svg', 'ecmascript.import-meta-url']
+  ] as const)('limits references in %s to the quoted specifier', (source, value, extractorId) => {
+    const parser = fileSpecifierParser('src/main.ts');
+    expect(parser).toBeDefined();
+    const quote = source.includes('"' + value + '"') ? '"' : "'";
+    const from = source.indexOf(quote + value + quote) + 1;
+    const to = from + value.length;
+    expect(from).toBeGreaterThan(0);
+    for (let column = 0; column <= source.length; column += 1) {
+      const reference = parser?.find(source, column);
+      if (column >= from && column < to) {
+        expect(reference, 'column ' + column).toEqual({
+          value,
+          from,
+          to,
+          languageId: 'ecmascript',
+          extractorId,
+          kind: value.startsWith('.') ? 'relative-file' : 'module'
+        });
+      } else {
+        expect(reference, 'column ' + column).toBeUndefined();
+      }
+    }
+  });
+
   it('extracts existing file-reference forms without selecting plain symbols', () => {
     expect(
       fileSpecifierParser('src/main.ts')?.find('import { x } from "./module.js";', 22)

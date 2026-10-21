@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { EditPen, Plus, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
+import LoadingPanel from '../common/LoadingPanel.vue';
 
 const props = defineProps<{
   readonly prompts: readonly QuickPrompt[];
@@ -16,6 +17,7 @@ const props = defineProps<{
 const form = ref<FormInstance>();
 const editing = ref<QuickPrompt>();
 const dialogOpen = ref(false);
+const editorGeneration = ref(0);
 const saving = ref(false);
 const draft = ref({ phrase: '', prompt: '' });
 const isNew = computed(() => editing.value === undefined);
@@ -36,25 +38,33 @@ const rules: FormRules = {
 };
 
 onMounted(() => void props.refresh());
+onBeforeUnmount(close);
 
 function openCreate(): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   editing.value = undefined;
   draft.value = { phrase: '', prompt: '' };
   dialogOpen.value = true;
 }
 function openEdit(prompt: QuickPrompt): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   editing.value = prompt;
   draft.value = { phrase: prompt.phrase, prompt: prompt.prompt };
   dialogOpen.value = true;
 }
 function close(): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   dialogOpen.value = false;
   editing.value = undefined;
 }
 async function save(): Promise<void> {
-  if (saving.value) return;
+  if (!dialogOpen.value || saving.value) return;
+  const generation = editorGeneration.value;
   const valid = await form.value?.validate().catch(() => false);
-  if (!valid || saving.value) return;
+  if (!valid || generation !== editorGeneration.value || saving.value) return;
   saving.value = true;
   try {
     const body = JSON.stringify(draft.value);
@@ -65,13 +75,16 @@ async function save(): Promise<void> {
         method: 'PATCH',
         body
       });
+    if (generation !== editorGeneration.value) return;
     await props.refresh();
+    if (generation !== editorGeneration.value) return;
     ElMessage.success(translate('quickPrompts.saved'));
     close();
   } catch (error) {
-    ElMessage.error(translate('quickPrompts.saveFailed', { value0: errorMessage(error) }));
+    if (generation === editorGeneration.value)
+      ElMessage.error(translate('quickPrompts.saveFailed', { value0: errorMessage(error) }));
   } finally {
-    saving.value = false;
+    if (generation === editorGeneration.value) saving.value = false;
   }
 }
 async function remove(prompt: QuickPrompt): Promise<void> {
@@ -94,54 +107,59 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 </script>
 
 <template>
-  <section
-    v-loading="loading"
+  <LoadingPanel
+    :loading="loading"
     :element-loading-text="translate('common.loading')"
     class="quick-prompts settings-panel"
-    :aria-busy="loading"
   >
-    <header>
-      <div>
-        <h2>{{ translate('quickPrompts.title') }}</h2>
-        <p>{{ translate('quickPrompts.summary') }}</p>
+    <div class="quick-prompts-content">
+      <header>
+        <div>
+          <h2>{{ translate('quickPrompts.title') }}</h2>
+          <p>{{ translate('quickPrompts.summary') }}</p>
+        </div>
+      </header>
+      <div class="prompt-list-toolbar">
+        <el-button :icon="Plus" type="primary" :disabled="loading" @click="openCreate">
+          {{ translate('quickPrompts.add') }}
+        </el-button>
       </div>
-    </header>
-    <div class="prompt-list-toolbar">
-      <el-button :icon="Plus" type="primary" :disabled="loading" @click="openCreate">
-        {{ translate('quickPrompts.add') }}
-      </el-button>
-    </div>
-    <p v-if="!loading && failed" class="prompt-state">{{ translate('quickPrompts.loadFailed') }}</p>
-    <div v-else-if="!loading && prompts.length === 0" class="prompt-empty">
-      <p>{{ translate('quickPrompts.empty') }}</p>
-    </div>
-    <div v-else-if="prompts.length > 0" class="prompt-list">
-      <article v-for="prompt in prompts" :key="prompt.id" class="prompt-item">
-        <div class="prompt-heading">
-          <code>#{{ prompt.phrase }}</code>
-        </div>
-        <p>{{ prompt.prompt }}</p>
-        <div class="prompt-actions">
-          <el-button :icon="EditPen" text :disabled="loading" @click="openEdit(prompt)">{{
-            translate('quickPrompts.edit')
-          }}</el-button>
-          <el-button
-            :icon="Delete"
-            text
-            type="danger"
-            :disabled="loading"
-            @click="remove(prompt)"
-            >{{ translate('quickPrompts.remove') }}</el-button
-          >
-        </div>
-      </article>
+      <p v-if="!loading && failed" class="prompt-state">
+        {{ translate('quickPrompts.loadFailed') }}
+      </p>
+      <div v-else-if="!loading && prompts.length === 0" class="prompt-empty">
+        <p>{{ translate('quickPrompts.empty') }}</p>
+      </div>
+      <div v-else-if="prompts.length > 0" class="prompt-list">
+        <article v-for="prompt in prompts" :key="prompt.id" class="prompt-item">
+          <div class="prompt-heading">
+            <code>#{{ prompt.phrase }}</code>
+          </div>
+          <p>{{ prompt.prompt }}</p>
+          <div class="prompt-actions">
+            <el-button :icon="EditPen" text :disabled="loading" @click="openEdit(prompt)">{{
+              translate('quickPrompts.edit')
+            }}</el-button>
+            <el-button
+              :icon="Delete"
+              text
+              type="danger"
+              :disabled="loading"
+              @click="remove(prompt)"
+              >{{ translate('quickPrompts.remove') }}</el-button
+            >
+          </div>
+        </article>
+      </div>
     </div>
     <el-dialog
       v-if="dialogOpen"
-      v-model="dialogOpen"
+      :key="editorGeneration"
+      :model-value="dialogOpen"
       :title="translate(isNew ? 'quickPrompts.add' : 'quickPrompts.edit')"
       width="min(560px, calc(100vw - 32px))"
-      @closed="close"
+      append-to-body
+      :before-close="close"
     >
       <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <el-form-item :label="translate('quickPrompts.phrase')" prop="phrase">
@@ -170,11 +188,17 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         }}</el-button>
       </template>
     </el-dialog>
-  </section>
+  </LoadingPanel>
 </template>
 
 <style scoped>
-.quick-prompts > header {
+.quick-prompts-content {
+  box-sizing: border-box;
+  max-width: 960px;
+  padding: 14px 16px;
+}
+
+.quick-prompts-content > header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -266,11 +290,11 @@ async function remove(prompt: QuickPrompt): Promise<void> {
   justify-content: flex-end;
 }
 @media (max-width: 767px) {
-  .quick-prompts > header {
+  .quick-prompts-content > header {
     align-items: stretch;
     flex-direction: column;
   }
-  .quick-prompts > header :deep(.el-button) {
+  .quick-prompts-content > header :deep(.el-button) {
     align-self: flex-start;
     min-height: 36px;
   }

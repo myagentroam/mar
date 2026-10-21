@@ -49,7 +49,12 @@ describe('Shared notification center', () => {
                 updatedAt: Date.now(),
                 expiresAt: Date.now() + 60000,
                 read: false,
-                source: 'server'
+                target: {
+                  targetType: 'WORKSPACE_SESSION',
+                  nodeId: 'node',
+                  workspaceId: 'workspace',
+                  sessionId: 'session'
+                }
               }
             ]
           }) as T

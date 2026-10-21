@@ -10,7 +10,10 @@ const props = defineProps<{
 const blocked = computed(
   () =>
     !props.service.enabled.value &&
-    ['unsupported', 'insecure', 'denied'].includes(props.service.status.value)
+    (['unsupported', 'insecure', 'denied'].includes(props.service.status.value) ||
+      (props.service.mode === 'mobile-push' &&
+        !props.service.pushReady() &&
+        props.service.pushStatus.value !== 'unavailable'))
 );
 </script>
 
@@ -18,9 +21,20 @@ const blocked = computed(
   <div class="system-notification-control">
     <div class="notification-channel">
       <div class="notification-channel-info">
-        <h3>{{ translate('workbenchNotificationCenter.systemNotifications.onlineTitle') }}</h3>
+        <h3>
+          {{
+            translate(
+              service.mode === 'mobile-push'
+                ? 'workbenchNotificationCenter.webPush.title'
+                : 'workbenchNotificationCenter.systemNotifications.onlineTitle'
+            )
+          }}
+        </h3>
         <p role="status">
           {{ translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`) }}
+        </p>
+        <p v-if="service.mode === 'mobile-push'" role="status">
+          {{ translate(`workbenchNotificationCenter.webPush.${service.pushStatus.value}`) }}
         </p>
       </div>
       <div class="notification-channel-actions">
@@ -33,31 +47,27 @@ const blocked = computed(
         >
           {{
             translate(
-              service.enabled.value
-                ? 'workbenchNotificationCenter.systemNotifications.disable'
-                : 'workbenchNotificationCenter.systemNotifications.enable'
+              service.mode === 'mobile-push'
+                ? service.enabled.value
+                  ? 'workbenchNotificationCenter.webPush.disable'
+                  : 'workbenchNotificationCenter.webPush.enable'
+                : service.enabled.value
+                  ? 'workbenchNotificationCenter.systemNotifications.disable'
+                  : 'workbenchNotificationCenter.systemNotifications.enable'
             )
           }}
         </el-button>
-      </div>
-    </div>
-    <div class="notification-channel">
-      <div class="notification-channel-info">
-        <h3>{{ translate('workbenchNotificationCenter.webPush.title') }}</h3>
-        <p role="status">
-          {{ translate(`workbenchNotificationCenter.webPush.${service.pushStatus.value}`) }}
-        </p>
-      </div>
-      <div
-        v-if="
-          service.enabled.value &&
-          ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
-        "
-        class="notification-channel-actions"
-      >
-        <el-button link :icon="Bell" @click="service.enablePush()">
-          {{ translate('workbenchNotificationCenter.webPush.enable') }}
-        </el-button>
+        <el-button
+          v-if="
+            service.mode === 'mobile-push' &&
+            service.enabled.value &&
+            ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
+          "
+          link
+          :icon="Bell"
+          @click="service.enablePush()"
+          >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button
+        >
       </div>
     </div>
   </div>

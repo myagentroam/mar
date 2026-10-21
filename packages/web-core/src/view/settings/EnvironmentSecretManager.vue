@@ -22,6 +22,7 @@ import { translate } from '../../service/LocalePreferenceService';
 import { errorMessage } from '../../util/workbench-presentation';
 import { createManagementPageService } from '../../service/ManagementPageService';
 import ManagementPagination from './ManagementPagination.vue';
+import LoadingPanel from '../common/LoadingPanel.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -292,8 +293,8 @@ function message(error: unknown): string {
 </script>
 
 <template>
-  <section
-    v-loading="loading"
+  <LoadingPanel
+    :loading="loading"
     class="secret-manager"
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
@@ -497,7 +498,7 @@ function message(error: unknown): string {
         ></template
       >
     </el-dialog>
-  </section>
+  </LoadingPanel>
 </template>
 
 <style scoped>
