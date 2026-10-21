@@ -21,10 +21,15 @@ import {
 } from '../../src/agent-core/runtime/context/gc-runtime.js';
 import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { captureExecutionContext } from './support/checkpoint-context.js';
+import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
+import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
+import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
 
 const homes: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
 
@@ -135,6 +140,111 @@ class ContextGcAdapter implements ModelAdapter {
 }
 
 describe('context GC runtime integration', () => {
+  it.each(['included', 'late'] as const)(
+    'adopts GC in the same live context and retains an %s immediate append exactly once',
+    async (timing) => {
+      const captured = captureExecutionContext();
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-adoption-'));
+      homes.push(home);
+      await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+      const adapter = new ContextGcAdapter();
+      let sessionContext!: CoreSessionExtensionContext;
+      let paused = false,
+        committed = false;
+      let notifyPaused!: () => void, release!: () => void;
+      const atPause = new Promise<void>((resolve) => {
+        notifyPaused = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let latestWorld: worldState.ContextualWorldState | undefined;
+      const persist = worldState.persistContextualWorldState;
+      vi.spyOn(worldState, 'persistContextualWorldState').mockImplementation(async (...args) => {
+        latestWorld = args[2];
+        return persist(...args);
+      });
+      const runGc = ContextGcRuntime.prototype.run;
+      vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+        this: ContextGcRuntime,
+        input
+      ) {
+        if (!paused && timing === 'included' && adapter.requests.length === 4) {
+          paused = true;
+          notifyPaused();
+          await released;
+        }
+        const result = await runGc.call(this, input);
+        if (result) {
+          committed = true;
+          if (!paused && timing === 'late') {
+            paused = true;
+            notifyPaused();
+            await released;
+          }
+        }
+        return result;
+      });
+      const agent = await createMarAgent({
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model],
+        adapterFactory: () => adapter,
+        runtimeExtensions: [
+          {
+            id: 'gc-append',
+            apiVersion: '1.0',
+            attachSession(context) {
+              sessionContext = context;
+            }
+          }
+        ]
+      });
+      const session = await agent.createSession({ workspace: home });
+      const result = session.run({ prompt: 'Update the file.' }).result();
+      try {
+        await atPause;
+        const messages = captured.messages();
+        expect(
+          await sessionContext.session.append({
+            content: 'GC_ADOPTION_APPEND',
+            delivery: 'immediate'
+          })
+        ).toMatchObject({ status: 'committed' });
+        expect(messages.filter((message) => message.content === 'GC_ADOPTION_APPEND')).toHaveLength(
+          1
+        );
+        release();
+        expect(await result).toMatchObject({ status: 'completed' });
+        expect(committed).toBe(true);
+        expect(adapter.resetCount).toBe(1);
+        expect(captured.messages()).toBe(messages);
+        expect(captured.runtime(session.id).contextualWorldState).toBe(latestWorld);
+        const next = adapter.requests[4]!.messages;
+        expect(next.filter((message) => message.content === 'GC_ADOPTION_APPEND')).toHaveLength(1);
+        expect(
+          next.some((message) => message.content.includes('# Retained Session resources'))
+        ).toBe(false);
+      } finally {
+        release();
+        await result;
+        await agent.dispose();
+      }
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const state = await store.readExecutionState(session.id);
+        const restored = await restoreMessages(store, session.id, state.contextRecords, {
+          includeImages: false
+        });
+        expect(
+          restored.messages.filter((message) => message.content === 'GC_ADOPTION_APPEND')
+        ).toHaveLength(1);
+      } finally {
+        await store.close();
+      }
+    }
+  );
+
   it.each([0, 4_999, 9_000, 10_000, NaN])(
     'does not read history or acquire resources outside the GC window: %s',
     async (contextInputTokens) => {
