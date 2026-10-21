@@ -423,13 +423,12 @@ export class OpenCodeManagedRunController {
             ? existingImagePaths
             : await this.host.persistAttachments(input.cwd, input.runId, input.attachments);
       const execution = this.runner.execution.get(input.runId);
-      if (execution !== undefined) {
-        execution.responseLatency = new ResponseLatencyTracker();
-        execution.responsePartKinds = new Map();
-        execution.responseStartedAt = Date.now();
-        execution.responseMessages = new Set();
-        execution.generationTiming = new GenerationTimingTracker();
-      }
+      if (execution?.abort !== abort || abort.signal.aborted) return;
+      execution.responseLatency = new ResponseLatencyTracker();
+      execution.responsePartKinds = new Map();
+      execution.responseStartedAt = Date.now();
+      execution.responseMessages = new Set();
+      execution.generationTiming = new GenerationTimingTracker();
       await client.prompt({
         directory: input.cwd,
         sessionID: nativeSessionId,
