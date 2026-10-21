@@ -9,7 +9,7 @@ import {
   marctlSessionProgress,
   marctlSessionSummary
 } from '../../src/service/session-recent-activity.js';
-import type { NodeRunEventBridge } from '../../src/service/node-run-event-bridge.js';
+import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
 import type { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 
 function fixture() {
@@ -344,10 +344,19 @@ describe('bounded marctl Session views', () => {
     const connector = new NodeConnector({ reconnect: false, database });
     const internals = connector as unknown as {
       runtime: NodeRuntimeState;
-      runEventBridge: NodeRunEventBridge;
       conversationHistoryService: ConversationHistoryService;
       executeNodeOperation(operation: string, data: unknown): Promise<Record<string, unknown>>;
     };
+    const project = (category: 'conversation', payload: unknown) =>
+      projectWorkbenchPayload(
+        {
+          getRun: (id) => internals.runtime.getRun(id),
+          conversationTurnForRun: (id) => internals.runtime.conversationTurnForRun(id),
+          progress: (id) => marctlSessionProgress(internals.runtime, id)
+        },
+        category,
+        payload
+      );
     const history = vi.spyOn(internals.conversationHistoryService, 'read');
     const session = internals.runtime.createAgentSession({
       workspaceId: workspace.id,
@@ -417,7 +426,7 @@ describe('bounded marctl Session views', () => {
       });
       expect(generic.session).toHaveProperty('activity', 'MANAGED_ACTIVE');
       expect(generic.session).not.toHaveProperty('recentActivity');
-      const watch = internals.runEventBridge.projectWorkbenchPayload('conversation', { event });
+      const watch = project('conversation', { event });
       expect(watch).toMatchObject({
         progress: {
           status: 'SLEEPING',
@@ -431,9 +440,7 @@ describe('bounded marctl Session views', () => {
         eventType: 'text.delta',
         payload: { itemId: 'note', text: 'Still waiting' }
       });
-      expect(
-        internals.runEventBridge.projectWorkbenchPayload('conversation', { event: delta })
-      ).not.toHaveProperty('progress');
+      expect(project('conversation', { event: delta })).not.toHaveProperty('progress');
       const chunk = internals.runtime.appendRunEvent({
         runId: run.id,
         sequence: 3,
@@ -447,9 +454,7 @@ describe('bounded marctl Session views', () => {
           append: 'outputPreview'
         }
       });
-      expect(
-        internals.runEventBridge.projectWorkbenchPayload('conversation', { event: chunk })
-      ).not.toHaveProperty('progress');
+      expect(project('conversation', { event: chunk })).not.toHaveProperty('progress');
       const completed = internals.runtime.appendRunEvent({
         runId: run.id,
         sequence: 4,
@@ -463,9 +468,7 @@ describe('bounded marctl Session views', () => {
           append: 'outputPreview'
         }
       });
-      expect(
-        internals.runEventBridge.projectWorkbenchPayload('conversation', { event: completed })
-      ).toMatchObject({
+      expect(project('conversation', { event: completed })).toMatchObject({
         progress: {
           recentTools: [
             expect.objectContaining({
