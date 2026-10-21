@@ -43,17 +43,30 @@ export function bundle(character = 'a'): ResolvedSkillBundle {
   };
 }
 
-export function gate() {
+export function gate(timeoutMs = 15_000) {
   let enter!: () => void;
   let release!: () => void;
   const entered = new Promise<void>((resolve) => (enter = resolve));
   const released = new Promise<void>((resolve) => (release = resolve));
+  const bounded = (signal: Promise<void>, phase: string) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`SKILL_CACHE_GATE_${phase}_TIMEOUT`)),
+        timeoutMs
+      );
+      void signal.then(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   return {
-    entered,
+    get entered() {
+      return bounded(entered, 'ENTRY');
+    },
     release,
     wait: async () => {
       enter();
-      await released;
+      await bounded(released, 'RELEASE');
     }
   };
 }

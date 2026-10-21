@@ -10,6 +10,7 @@ import type { SkillSourceService } from '../../ee/server/src/skill/skill-source-
 import type { GithubSkillProvider } from '../../ee/server/src/skill/github-skill-provider.js';
 import { deferMysqlAudit } from '../../packages/server-core/src/audit.js';
 import { withSkillCacheTransaction } from '../../packages/server-core/src/skill-cache-transaction.js';
+import { gate as mysqlGate } from '../e2e/support/skill-cache-fixture.js';
 import { favoriteInput, gate, SkillCacheFake, skillBundle } from './support/skill-cache-fake.js';
 
 const roots: string[] = [];
@@ -57,17 +58,21 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
         }
       };
       const cleanup = service().cleanupCache();
+      // Attach a handler while the other operation is gated; the assertions still await failures.
+      void cleanup.catch(() => {});
       const committed = gate();
+      let writer: ReturnType<SkillFavoriteService['create']> | undefined;
       try {
         await selected.entered;
         fake.beforeCommit = async () => {
           fake.beforeCommit = async () => {};
           await committed.wait();
         };
-        const writer =
+        writer =
           operation === 'create'
             ? service().create(7, favoriteInput)
             : service().upgrade(7, favoriteId);
+        void writer.catch(() => {});
         await committed.entered;
         expect(fake.favorites.size).toBe(operation === 'create' ? 0 : 1);
         committed.release();
@@ -84,7 +89,7 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
       } finally {
         selected.release();
         committed.release();
-        await cleanup;
+        await Promise.allSettled([cleanup, writer]);
       }
       expect(fake.destroyed).toBe(0);
     });
@@ -109,6 +114,7 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
       };
       let reachedDelete = false;
       const cleanup = service().cleanupCache();
+      void cleanup.catch(() => {});
       let writer: ReturnType<SkillFavoriteService['create']> | undefined;
       try {
         await deleted.entered;
@@ -117,6 +123,7 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
           operation === 'create'
             ? service().create(7, favoriteInput)
             : service().upgrade(7, favoriteId);
+        void writer.catch(() => {});
         await waiting.entered;
         await expect(readFile(path.join(cache, `${'a'.repeat(64)}.json`))).rejects.toMatchObject({
           code: 'ENOENT'
@@ -134,8 +141,7 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
       } finally {
         deleted.release();
         waiting.release();
-        await cleanup;
-        await writer;
+        await Promise.allSettled([cleanup, writer]);
       }
     });
   }
@@ -155,6 +161,36 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
       'SKILL.md'
     );
   });
+});
+
+describe('Skill cache scheduling gates', () => {
+  for (const [name, createGate] of [
+    ['SQL fake', gate],
+    ['MySQL fixture', mysqlGate]
+  ] as const) {
+    it(`Bounds missing entry for the ${name} gate`, async () => {
+      await expect(createGate(10).entered).rejects.toThrow('SKILL_CACHE_GATE_ENTRY_TIMEOUT');
+    });
+
+    it(`Bounds a missing release for the ${name} gate`, async () => {
+      const pending = createGate(10);
+      await expect(pending.wait()).rejects.toThrow('SKILL_CACHE_GATE_RELEASE_TIMEOUT');
+    });
+
+    it(`Completes and clears deadlines for a released ${name} gate`, async () => {
+      vi.useFakeTimers();
+      try {
+        const pending = createGate(10);
+        const held = pending.wait();
+        await pending.entered;
+        pending.release();
+        await held;
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
 });
 
 describe('Skill cache connection and audit lifecycle', () => {

@@ -33,10 +33,13 @@ for (const operation of ['create', 'upgrade'] as const) {
         })
       );
       const cleanup = collector.cleanupCache();
+      // Observe failures while another operation is gated; assertions below still await them.
+      void cleanup.catch(() => {});
       let writing: ReturnType<typeof writer.create> | undefined;
       try {
         await selected.entered;
         writing = operation === 'create' ? writer.create(7, input) : writer.upgrade(7, original.id);
+        void writing.catch(() => {});
         await commit.entered;
         commit.release();
         const current = await writing;
@@ -53,8 +56,7 @@ for (const operation of ['create', 'upgrade'] as const) {
       } finally {
         selected.release();
         commit.release();
-        await cleanup;
-        await writing;
+        await Promise.allSettled([cleanup, writing]);
       }
     });
   });
@@ -91,10 +93,12 @@ for (const operation of ['create', 'upgrade'] as const) {
         })
       );
       const cleanup = collector.cleanupCache();
+      void cleanup.catch(() => {});
       let writing: ReturnType<typeof writer.create> | undefined;
       try {
         await deleted.entered;
         writing = operation === 'create' ? writer.create(7, input) : writer.upgrade(7, original.id);
+        void writing.catch(() => {});
         await attempting.entered;
         // Observe an actual waiting MySQL session while the collector still owns the key.
         await expect
@@ -135,8 +139,7 @@ for (const operation of ['create', 'upgrade'] as const) {
       } finally {
         deleted.release();
         attempting.release();
-        await cleanup;
-        await writing;
+        await Promise.allSettled([cleanup, writing]);
       }
     });
   });
