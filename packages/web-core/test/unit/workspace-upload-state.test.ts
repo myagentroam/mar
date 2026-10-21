@@ -16,6 +16,209 @@ afterEach(() => {
 });
 
 describe('Web Workspace Upload State', () => {
+  function gate<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((release) => (resolve = release));
+    return { promise, resolve };
+  }
+
+  function lifecycleFixture(
+    request: ReturnType<typeof vi.fn>,
+    renewCsrfToken = async () => 'token'
+  ) {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('window', {
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key)
+      }
+    });
+    const workspaceTarget = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+    const onFilesChanged = vi.fn();
+    const onTaskChanged = vi.fn();
+    const options = {
+      workspaceTarget,
+      csrfToken: ref('token'),
+      request: request as Parameters<typeof createWorkspaceUploadService>[0]['request'],
+      renewCsrfToken,
+      onFilesChanged,
+      onTaskChanged
+    };
+    const service = createWorkspaceUploadService(options);
+    return { service, options, storage, workspaceTarget, onFilesChanged, onTaskChanged };
+  }
+
+  const emptyUpload = (name = 'empty.txt') => ({
+    file: new File([], name),
+    directory: '.',
+    overwrite: false
+  });
+
+  it('closes create gates and the queue on disposal without publishing or overwriting a new owner', async () => {
+    const create = gate<void>();
+    let created = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith('/uploads')) {
+        const uploadId = `upload-${++created}`;
+        await create.promise;
+        return { upload: { uploadId, receivedBytes: 0, size: 0 } };
+      }
+      return { upload: { receivedBytes: 0 } };
+    });
+    const { service, options, storage, onFilesChanged, onTaskChanged } = lifecycleFixture(request);
+    service.queue([emptyUpload('one'), emptyUpload('two'), emptyUpload('queued')]);
+    expect(created).toBe(2);
+    service.dispose();
+    const snapshot = JSON.parse(storage.get('mar.workspace-upload-tasks')!);
+    expect(snapshot).toHaveLength(3);
+    onTaskChanged.mockClear();
+    const restored = createWorkspaceUploadService(options);
+    restored.restore();
+    restored.remove(restored.tasks.value[0]!);
+    await nextTick();
+    const newSnapshot = storage.get('mar.workspace-upload-tasks');
+    onTaskChanged.mockClear();
+    create.resolve();
+    await vi.waitFor(() =>
+      expect(request.mock.calls.filter(([path]) => path.endsWith('/cancel'))).toHaveLength(2)
+    );
+    await nextTick();
+    expect(created).toBe(2);
+    expect(request.mock.calls.some(([path]) => path.endsWith('/complete'))).toBe(false);
+    expect(onFilesChanged).not.toHaveBeenCalled();
+    expect(onTaskChanged).not.toHaveBeenCalled();
+    expect(storage.get('mar.workspace-upload-tasks')).toBe(newSnapshot);
+    const count = service.tasks.value.length;
+    service.queue([emptyUpload('rejected')]);
+    service.restore();
+    await service.retry(service.tasks.value[0]!);
+    service.dispose();
+    await nextTick();
+    expect(service.tasks.value).toHaveLength(count);
+    expect(storage.get('mar.workspace-upload-tasks')).toBe(newSnapshot);
+    restored.dispose();
+  });
+
+  it.each(['cancel', 'remove'] as const)(
+    'cleans a late create exactly once after %s without reviving its record',
+    async (action) => {
+      const create = gate<void>();
+      const cleanup = gate<void>();
+      const request = vi.fn(async (path: string) => {
+        if (path.endsWith('/uploads')) {
+          await create.promise;
+          return { upload: { uploadId: 'late-id', receivedBytes: 0, size: 0 } };
+        }
+        if (path.endsWith('/cancel')) await cleanup.promise;
+        return {};
+      });
+      const { service, storage, onFilesChanged } = lifecycleFixture(request);
+      service.queue([emptyUpload()]);
+      const task = service.tasks.value[0]!;
+      if (action === 'cancel') expect(await service.cancel(task)).toBe(true);
+      else service.remove(task);
+      create.resolve();
+      await vi.waitFor(() =>
+        expect(request.mock.calls.filter(([path]) => path.endsWith('/cancel'))).toHaveLength(1)
+      );
+      const repeated = service.cancel(task);
+      cleanup.resolve();
+      expect(await repeated).toBe(true);
+      await nextTick();
+      expect(request.mock.calls.map(([path]) => path)).toEqual([
+        '/api/workspaces/workspace-1/uploads',
+        '/api/workspaces/workspace-1/uploads/late-id/cancel'
+      ]);
+      expect(task.status).toBe('CANCELLED');
+      expect(onFilesChanged).not.toHaveBeenCalled();
+      expect(service.tasks.value).toHaveLength(action === 'remove' ? 0 : 1);
+      expect(storage.has('mar.workspace-upload-tasks')).toBe(false);
+      service.dispose();
+    }
+  );
+
+  it('retains a late upload identity and the existing warning if cleanup fails', async () => {
+    const create = gate<void>();
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith('/cancel')) throw new Error('UPLOAD_NETWORK_FAILED');
+      await create.promise;
+      return { upload: { uploadId: 'late-id', receivedBytes: 0, size: 0 } };
+    });
+    const { service, storage } = lifecycleFixture(request);
+    service.queue([emptyUpload()]);
+    const task = service.tasks.value[0]!;
+    expect(await service.cancel(task)).toBe(true);
+    create.resolve();
+    await vi.waitFor(() => expect(task.cleanupUnconfirmed).toBe(true));
+    await nextTick();
+    expect(task).toMatchObject({
+      status: 'FAILED',
+      uploadId: 'late-id',
+      error: 'UPLOAD_NETWORK_FAILED'
+    });
+    expect(JSON.parse(storage.get('mar.workspace-upload-tasks')!)[0]).toMatchObject({
+      uploadId: 'late-id',
+      cleanupUnconfirmed: true
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    service.dispose();
+  });
+
+  it('does not roll back or publish completion already submitted before disposal', async () => {
+    const complete = gate<void>();
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith('/complete')) await complete.promise;
+      return { upload: { uploadId: 'committing', receivedBytes: 0, size: 0 } };
+    });
+    const { service, storage, onFilesChanged, onTaskChanged } = lifecycleFixture(request);
+    service.queue([emptyUpload()]);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    const task = service.tasks.value[0]!;
+    service.dispose();
+    const snapshot = storage.get('mar.workspace-upload-tasks');
+    onTaskChanged.mockClear();
+    complete.resolve();
+    await vi.waitFor(() => expect(task.status).toBe('COMPLETED'));
+    await nextTick();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(onFilesChanged).not.toHaveBeenCalled();
+    expect(onTaskChanged).not.toHaveBeenCalled();
+    expect(storage.get('mar.workspace-upload-tasks')).toBe(snapshot);
+  });
+
+  it('keeps the original Workspace and concurrency limit across ordinary selection changes', async () => {
+    const create = gate<void>();
+    let started = 0;
+    const request = vi.fn(async (path: string, _init?: RequestInit) => {
+      if (path.endsWith('/uploads')) {
+        const uploadId = `upload-${++started}`;
+        await create.promise;
+        return { upload: { uploadId, receivedBytes: 0, size: 0 } };
+      }
+      return { upload: { receivedBytes: 0 } };
+    });
+    const { service, workspaceTarget, onFilesChanged } = lifecycleFixture(request);
+    service.queue([emptyUpload('one'), emptyUpload('two'), emptyUpload('three')]);
+    expect(started).toBe(2);
+    workspaceTarget.value = { nodeId: 'node-2', workspaceId: 'workspace-2' };
+    create.resolve();
+    await vi.waitFor(() =>
+      expect(service.tasks.value.every((task) => task.status === 'COMPLETED')).toBe(true)
+    );
+    expect(started).toBe(3);
+    expect(onFilesChanged).toHaveBeenCalledTimes(3);
+    expect(
+      request.mock.calls.every(([path]) => path.startsWith('/api/workspaces/workspace-1/'))
+    ).toBe(true);
+    expect(
+      request.mock.calls
+        .filter(([path]) => path.endsWith('/complete'))
+        .every(([, init]) => JSON.parse(init!.body as string).nodeId === 'node-1')
+    ).toBe(true);
+    service.dispose();
+  });
+
   it('keeps a failed direct task and a stable cleanup warning when cancellation cannot confirm cleanup', async () => {
     const directUpload = vi.fn(async () => {
       throw new Error('DIRECT_CHANNEL_CLOSED');
@@ -280,32 +483,90 @@ describe('Web Workspace Upload State', () => {
     expect(service.tasks.value[0]?.transport).toBe('SERVER');
   });
 
-  it('does not start a direct upload when cancelled while hashing the file', async () => {
-    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32));
-    let finishHash!: (value: ArrayBuffer) => void;
-    const file = new File(['original'], 'same.txt');
-    vi.spyOn(file, 'arrayBuffer').mockImplementation(
-      () => new Promise((resolve) => (finishHash = resolve))
-    );
-    const directUpload = vi.fn(async () => undefined);
-    const request = vi.fn(async () => ({}));
-    const service = createWorkspaceUploadService({
-      workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' } as never),
-      csrfToken: ref('token'),
-      request: request as never,
-      renewCsrfToken: async () => 'token',
-      onFilesChanged: vi.fn(),
-      direct: { generation: () => 'generation-1', upload: directUpload }
-    });
-    service.queue([{ file, directory: '.', overwrite: true }]);
-    await service.cancel(service.tasks.value[0]!);
-    finishHash(new TextEncoder().encode('original').buffer);
-    await vi.waitFor(() => expect(service.tasks.value[0]?.status).not.toBe('UPLOADING'));
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(service.tasks.value[0]?.status).toBe('CANCELLED');
-    expect(directUpload).not.toHaveBeenCalled();
-    expect(request).not.toHaveBeenCalled();
-  });
+  it.each(['cancel', 'dispose'] as const)(
+    'does not start a direct upload after %s while hashing the file',
+    async (action) => {
+      vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32));
+      let finishHash!: (value: ArrayBuffer) => void;
+      const file = new File(['original'], 'same.txt');
+      vi.spyOn(file, 'arrayBuffer').mockImplementation(
+        () => new Promise((resolve) => (finishHash = resolve))
+      );
+      const directUpload = vi.fn(async () => undefined);
+      const request = vi.fn(async () => ({}));
+      const service = createWorkspaceUploadService({
+        workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' } as never),
+        csrfToken: ref('token'),
+        request: request as never,
+        renewCsrfToken: async () => 'token',
+        onFilesChanged: vi.fn(),
+        direct: { generation: () => 'generation-1', upload: directUpload }
+      });
+      service.queue([{ file, directory: '.', overwrite: true }]);
+      if (action === 'cancel') await service.cancel(service.tasks.value[0]!);
+      else service.dispose();
+      finishHash(new TextEncoder().encode('original').buffer);
+      await vi.waitFor(() => expect(service.tasks.value[0]?.status).not.toBe('UPLOADING'));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(service.tasks.value[0]?.status).toBe('CANCELLED');
+      expect(directUpload).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+      service.dispose();
+    }
+  );
+
+  it.each(['cancel', 'dispose'] as const)(
+    'does not retry a chunk after %s during CSRF renewal',
+    async (action) => {
+      const renewal = gate<void>();
+      const renewCsrfToken = vi.fn(async () => {
+        await renewal.promise;
+        return 'renewed';
+      });
+      const sends = vi.fn();
+      class RejectedChunk {
+        upload = {};
+        status = 403;
+        responseText = JSON.stringify({ error: { code: 'CSRF_INVALID' } });
+        onload?: () => void;
+        onabort?: () => void;
+        open() {}
+        setRequestHeader() {}
+        send() {
+          sends();
+          this.onload?.();
+        }
+        abort() {
+          this.onabort?.();
+        }
+      }
+      vi.stubGlobal('XMLHttpRequest', RejectedChunk);
+      const request = vi.fn(async (path: string) =>
+        path.endsWith('/uploads')
+          ? { upload: { uploadId: 'chunk-id', receivedBytes: 0, size: 1 } }
+          : { cancelled: true }
+      );
+      const { service } = lifecycleFixture(request, renewCsrfToken);
+      try {
+        service.queue([{ file: new File(['x'], 'chunk.txt'), directory: '.', overwrite: false }]);
+        await vi.waitFor(() => expect(renewCsrfToken).toHaveBeenCalledOnce());
+        if (action === 'cancel') await service.cancel(service.tasks.value[0]!);
+        else service.dispose();
+        renewal.resolve();
+        await vi.waitFor(() => expect(service.tasks.value[0]!.status).toBe('CANCELLED'));
+        await nextTick();
+        expect(sends).toHaveBeenCalledOnce();
+        expect(request.mock.calls.map(([path]) => path)).toEqual([
+          '/api/workspaces/workspace-1/uploads',
+          '/api/workspaces/workspace-1/uploads/chunk-id/cancel'
+        ]);
+      } finally {
+        renewal.resolve();
+        service.dispose();
+        vi.unstubAllGlobals();
+      }
+    }
+  );
 
   it('describes the active Server transport without repeating direct unavailability', () => {
     expect(notificationsEnUS.generated.workspaceUploadService.uploadingServerFallback).toBe(
