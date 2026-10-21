@@ -496,8 +496,7 @@ export class ConversationTemplateService {
         createdAt,
         updatedAt: this.now()
       });
-      await this.storePublishJob(failed);
-      return failed;
+      return this.applyPublishResult(actorUserId, requestedByUserId, draft, failed, undefined);
     }
   }
 
@@ -618,16 +617,11 @@ export class ConversationTemplateService {
     job: ConversationTemplatePublishJob,
     version: ConversationTemplateVersion | undefined
   ): Promise<ConversationTemplatePublishJob> {
-    if (job.status !== 'SUCCEEDED' || version === undefined) {
-      await this.storePublishJob(job);
-      return job;
-    }
-    if (version.publishedByUserId !== expectedPublisherUserId)
+    if (version !== undefined && version.publishedByUserId !== expectedPublisherUserId)
       throw new Error('CONVERSATION_TEMPLATE_PUBLISH_RESULT_INVALID');
-    const connection = await this.database.raw.getConnection();
-    try {
-      await connection.beginTransaction();
-      await lockMysqlUsers(connection, [version.publishedByUserId]);
+    return withMysqlTransaction(this.database.raw, async (connection) => {
+      await lockMysqlUsers(connection, [expectedPublisherUserId]);
+      // Take the exclusive parent lock before the job lock; never upgrade a shared lock.
       const [templateRows] = await connection.execute<RowDataPacket[]>(
         `SELECT template.current_version_id,template.draft_revision,template.status,template.name,
                 node.owner_type,node.owner_organization_id,node.display_name AS nodeName,
@@ -645,6 +639,21 @@ export class ConversationTemplateService {
         Number(template['draft_revision']) < context.revision
       )
         throw new Error('CONVERSATION_TEMPLATE_NOT_FOUND');
+      const stored = await this.publishJobRow(job.id, connection, true);
+      if (stored === undefined) throw new Error('CONVERSATION_TEMPLATE_PUBLISH_JOB_NOT_FOUND');
+      requireMatchingPublishJob(stored, context.templateId, context.revision);
+      const current = publishJob(stored);
+      if (
+        current.status === 'SUCCEEDED' ||
+        current.status === 'FAILED' ||
+        (current.status === 'RUNNING' && job.status === 'QUEUED')
+      )
+        return current;
+      job = { ...job, createdAt: current.createdAt };
+      if (job.status !== 'SUCCEEDED' || version === undefined) {
+        await storePublishJobWithConnection(connection, job);
+        return job;
+      }
       const currentVersionId =
         template['current_version_id'] === null || template['current_version_id'] === undefined
           ? null
@@ -705,30 +714,19 @@ export class ConversationTemplateService {
         },
         { revision: context.revision, jobId: job.id, versionId: version.id }
       );
-      await connection.commit();
-      commitMysqlAudits(connection);
       return job;
-    } catch (error) {
-      discardMysqlAudits(connection);
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-  }
-
-  private async storePublishJob(job: ConversationTemplatePublishJob): Promise<void> {
-    await withMysqlTransaction(this.database.raw, async (connection) => {
-      await lockMysqlTemplate(connection, job.templateId);
-      await storePublishJobWithConnection(connection, job);
     });
   }
 
-  private async publishJobRow(jobId: string): Promise<RowDataPacket | undefined> {
-    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
+  private async publishJobRow(
+    jobId: string,
+    connection: Pick<PoolConnection, 'execute'> = this.database.raw,
+    forUpdate = false
+  ): Promise<RowDataPacket | undefined> {
+    const [rows] = await connection.execute<RowDataPacket[]>(
       `SELECT id,template_id,draft_revision,stage,status,version_id,error_code,error_summary,
               source_node_id,source_workspace_id,requested_by_user_id,created_at,updated_at
-       FROM conversation_template_publish_jobs WHERE id=?`,
+       FROM conversation_template_publish_jobs WHERE id=?${forUpdate ? ' FOR UPDATE' : ''}`,
       [jobId]
     );
     return rows[0];
