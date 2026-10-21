@@ -127,6 +127,7 @@ interface SessionWriterLease extends SessionCurrentState {
   owner: object | undefined;
   executing: boolean;
   retained: number;
+  appendFailure?: { error: unknown };
   release: () => Promise<void>;
 }
 
@@ -1108,6 +1109,8 @@ export class JsonlSessionStore {
   }
   async #appendRecord(sessionId: string, input: SessionRecordInput) {
     this.#assertOpen();
+    const writer = this.#shared.writerLeases.get(sessionId);
+    if (writer?.appendFailure) throw writer.appendFailure.error;
     const before =
       this.#shared.index.sessions.find((item) => item.id === sessionId) ??
       this.#shared.pendingSessions.get(sessionId);
@@ -1145,7 +1148,9 @@ export class JsonlSessionStore {
       // The first append creates the first segment.
     }
     try {
-      await appendRecordBytes(path, serialized);
+      await appendRecordBytes(path, serialized, (error) => {
+        if (writer) writer.appendFailure = { error };
+      });
     } catch (error) {
       // A failed write/sync/close can leave a complete record on disk.
       const current = this.#shared.index.sessions.find((item) => item.id === sessionId) ?? before;
@@ -1560,6 +1565,7 @@ export class JsonlSessionStore {
       if (lease) {
         if (lease.executing || owner === undefined || lease.owner !== owner)
           throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
+        if (lease.appendFailure) throw lease.appendFailure.error;
         lease.executing = true;
       } else {
         const release = await this.#acquireSessionLease(sessionId);
@@ -1588,6 +1594,7 @@ export class JsonlSessionStore {
       let lease = this.#shared.writerLeases.get(sessionId);
       if (lease && lease.owner !== owner)
         throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
+      if (lease?.appendFailure) throw lease.appendFailure.error;
       if (!lease) {
         const release = await this.#acquireSessionLease(sessionId);
         lease = { owner, executing: false, retained: 0, release };

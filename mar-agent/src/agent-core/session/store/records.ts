@@ -250,10 +250,15 @@ export function segmentNumberFromPath(path: string): number | undefined {
   return match === null ? undefined : Number(match[1]);
 }
 
-export async function appendRecordBytes(path: string, serialized: string): Promise<void> {
+export async function appendRecordBytes(
+  path: string,
+  serialized: string,
+  onWriteFailure: (error: unknown) => void
+): Promise<void> {
+  const bytes = Buffer.from(serialized);
   const handle = await open(path, 'a', 0o600);
+  let failure: { error: unknown } | undefined;
   try {
-    const bytes = Buffer.from(serialized);
     let offset = 0;
     while (offset < bytes.length) {
       const { bytesWritten } = await handle.write(bytes, offset, bytes.length - offset);
@@ -262,7 +267,17 @@ export async function appendRecordBytes(path: string, serialized: string): Promi
       offset += bytesWritten;
     }
     await handle.sync();
-  } finally {
+  } catch (error) {
+    failure = { error };
+  }
+  try {
     await handle.close();
+  } catch (error) {
+    failure ??= { error };
+  }
+  if (failure) {
+    // Opening/encoding failures cannot have appended bytes; write/sync/close failures can.
+    onWriteFailure(failure.error);
+    throw failure.error;
   }
 }

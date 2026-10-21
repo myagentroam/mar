@@ -556,6 +556,7 @@ export function createSessionOpener(services: SessionServices) {
       let sequence = 0;
       let emitTail = Promise.resolve();
       let releaseSession: (() => Promise<void>) | undefined;
+      let failedExecution = false;
       let exhaustedModelAttempt: ExhaustedModelAttemptSummary | undefined;
       // Serialize durable events before either the local stream or Host observes them.
       let persistedTerminal = false;
@@ -2636,6 +2637,7 @@ export function createSessionOpener(services: SessionServices) {
             finalAnswer: mode === 'compact' || permissionPolicy.stop ? '' : finalAnswer
           };
         } catch (error) {
+          failedExecution = true;
           finalAnswer = executionLoop?.finalAnswer ?? finalAnswer;
           acceptsMailbox = false;
           acceptsSteer = false;
@@ -2647,7 +2649,8 @@ export function createSessionOpener(services: SessionServices) {
             delete executionContext.compactRequests;
           if (controller.signal.aborted) {
             subagents?.endParentExecution(executionId);
-            await emit({ type: 'execution.cancelled' });
+            // A faulted Store must not prevent result settlement or lease release.
+            await emit({ type: 'execution.cancelled' }).catch(() => undefined);
             return {
               executionId,
               status: 'cancelled',
@@ -2659,7 +2662,8 @@ export function createSessionOpener(services: SessionServices) {
             exhaustedModelAttempt
           );
           subagents?.endParentExecution(executionId);
-          await emit({ type: 'execution.failed', ...diagnostic });
+          // Keep the original diagnostic if persisting the failure terminal also fails.
+          await emit({ type: 'execution.failed', ...diagnostic }).catch(() => undefined);
           return {
             executionId,
             status: 'failed',
@@ -2691,11 +2695,17 @@ export function createSessionOpener(services: SessionServices) {
             for (const adapter of executionScopedAdapters) activeExecutionAdapters.delete(adapter);
           }
           subagents?.endParentExecution(executionId);
-          await releaseSession?.();
-          if (sessionRuntime.execution === executionContext) delete sessionRuntime.execution;
-          active.delete(`${sessionId}:${executionId}`);
-          sessionRuntime.sessionBackend?.kick();
-          queue.close();
+          try {
+            await releaseSession?.();
+          } catch (error) {
+            // Preserve the first failure/cancellation; successful executions still report release errors.
+            if (!failedExecution) throw error;
+          } finally {
+            if (sessionRuntime.execution === executionContext) delete sessionRuntime.execution;
+            active.delete(`${sessionId}:${executionId}`);
+            sessionRuntime.sessionBackend?.kick();
+            queue.close();
+          }
         }
       });
       const executionKey = `${sessionId}:${executionId}`;
