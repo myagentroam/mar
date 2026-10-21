@@ -39,6 +39,7 @@ export function createWorkbenchViewWatchService(options: {
     hasSelectedExtensionTarget: () => options.selectedHostedConversationId() !== undefined
   });
   return {
+    requestSessionWatch: service.requestSessionWatch,
     transition: (previous: WorkbenchView, next: WorkbenchView) =>
       service.transition(surface(previous), surface(next))
   };

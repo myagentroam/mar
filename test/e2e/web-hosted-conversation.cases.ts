@@ -7,11 +7,125 @@ import { verifyConversationThemes } from './support/conversation-visual.js';
 import {
   emitMockHostedConversationEvent,
   fulfillMockHostedConversationWatch,
+  fulfillMockSessionWatch,
   json,
   mockConsoleApi,
   write
 } from './support/web-console-api.js';
 import { replaceActiveHostedConversationMessage } from './support/hosted-conversation-composer.js';
+
+for (const destination of ['conversations', 'settings'] as const) {
+  test(`Late draft creation respects ${destination} navigation and resumes one ordinary Watch`, async ({
+    page
+  }) => {
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    const created = {
+      id: 'session-created-late',
+      workspaceId: 'workspace-1',
+      runner: 'codex',
+      externalSessionId: 'native-created-late',
+      activity: 'IDLE',
+      control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+    };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    let published = false;
+    const ordinaryWatches: Record<string, unknown>[] = [];
+    const hostedWatches: string[] = [];
+    await page.route('**/api/agent-sessions/start', async (route) => {
+      started = true;
+      await gate;
+      published = true;
+      await json(route, {
+        session: created,
+        run: { id: 'run-created-late', sessionId: created.id, status: 'SUCCEEDED' }
+      });
+    });
+    await page.route('**/api/agent-sessions?nodeId=node-1*', (route) =>
+      json(route, { sessions: published ? [created] : [], nextCursor: null })
+    );
+    await page.route('**/api/agent-sessions/session-created-late?nodeId=node-1', (route) =>
+      json(route, { session: created })
+    );
+    await page.route('**/api/agent-sessions/session-created-late/watch', async (route) => {
+      if (route.request().method() === 'POST') {
+        ordinaryWatches.push(route.request().postDataJSON() as Record<string, unknown>);
+        await fulfillMockSessionWatch(page, route, created, {
+          kind: 'session-watch-snapshot',
+          sequence: 1,
+          session: created,
+          runs: [],
+          queue: { version: 0, paused: false, items: [] },
+          context: null,
+          conversation: { unit: 'SEGMENT', segments: [], nextCursor: null }
+        });
+      } else await json(route, {});
+    });
+    await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+      json(route, { items: [conversation], nextCursor: null })
+    );
+    await page.route('**/api/conversation-templates', (route) =>
+      json(route, { templates: [snapshot.template] })
+    );
+    await page.route(
+      '**/api/nodes/node-1/hosted-conversations/conversation-1/watch',
+      async (route) => {
+        hostedWatches.push(route.request().method());
+        if (route.request().method() === 'POST')
+          await fulfillMockHostedConversationWatch(page, route, conversation.id, snapshot);
+        else await json(route, {});
+      }
+    );
+
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await page
+      .getByRole('textbox', { name: '输入消息', exact: true })
+      .fill('Late draft Watch admission');
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    await expect.poll(() => started).toBe(true);
+    await page
+      .getByRole('button', {
+        name: destination === 'conversations' ? '对话' : '设置',
+        exact: true
+      })
+      .click();
+    if (destination === 'conversations') {
+      await expect(page.locator('.hosted-timeline-scroll')).toBeVisible();
+      await expect.poll(() => hostedWatches.filter((method) => method === 'POST').length).toBe(1);
+    }
+    const hostedBefore = [...hostedWatches];
+    release();
+    // Persistence is a completion barrier for the real page's response handling, not a timer.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}').sessionId
+        )
+      )
+      .toBe(created.id);
+    expect(ordinaryWatches).toHaveLength(0);
+    expect(hostedWatches).toEqual(hostedBefore);
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: `复制会话 ID：${created.id}`, exact: true })
+    ).toBeVisible();
+    await expect
+      .poll(() => ordinaryWatches.filter((watch) => watch['mode'] === 'initial').length)
+      .toBe(1);
+    await expect(page.getByRole('textbox', { name: '输入消息', exact: true })).toHaveValue('');
+    expect(ordinaryWatches.filter((watch) => watch['mode'] === 'initial')).toHaveLength(1);
+  });
+}
 
 const longHostedMessage = Array.from(
   { length: 40 },
