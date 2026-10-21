@@ -239,7 +239,7 @@ export async function createMarAgentWithAdapter(
     activeAdaptersExcept,
     assertCanStart: (sessionId) => {
       if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
-      if (sessionLifecycles.has(sessionId))
+      if (sessionId !== undefined && sessionLifecycles.has(sessionId))
         throw new MarAgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
       if (reconfiguring)
         throw new MarAgentError(

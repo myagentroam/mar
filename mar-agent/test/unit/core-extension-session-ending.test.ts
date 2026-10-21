@@ -23,6 +23,7 @@ describe('Core explicit Session ending boundary', () => {
                 'sessionId',
                 context.sessionId
               );
+              expect(await context.agents!.list()).toEqual([]);
               order.push('ending');
             });
             context.resources.effect(() => () => {

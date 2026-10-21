@@ -255,7 +255,7 @@ interface SessionServices {
     models: ReadonlyMap<string, ResolvedModelConfiguration>
   ) => ModelAdapter;
   readonly activeAdaptersExcept: (sessionId: string) => ReadonlySet<ModelAdapter>;
-  readonly assertCanStart: (sessionId: string) => void;
+  readonly assertCanStart: (sessionId?: string) => void;
 }
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
@@ -2978,7 +2978,8 @@ export function createSessionOpener(services: SessionServices) {
       sessionRuntime.agentsBackend ??= createExtensionAgentsBackend({
         existingController: () => sessionRuntime.subagents,
         controller: async () => {
-          services.assertCanStart(sessionId);
+          // Access to managed children is not a new Execution admission for their parent.
+          services.assertCanStart();
           if (sessionRuntime.subagents === undefined) await openSession(sessionId);
           if (!sessionRuntime.subagents)
             throw new MarAgentError(
