@@ -31,6 +31,7 @@ export interface WorkspaceUploadTask extends Omit<WorkspaceUploadRequest, 'file'
 }
 
 interface StoredWorkspaceUploadTask {
+  readonly recoveryOwner?: string;
   readonly id: string;
   readonly nodeId: string;
   readonly workspaceId: string;
@@ -123,6 +124,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   const directRequests = new Map<string, AbortController>();
   const cancellations = new Map<string, Promise<boolean>>();
   const committing = new Set<string>();
+  const disposedRecoveryEntries = new Map<string, string>();
+  const recoveryOwner = crypto.randomUUID();
   let closed = false;
 
   const activeCount = computed(
@@ -142,11 +145,12 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     );
   });
 
-  function persist(): void {
+  function persist(): StoredWorkspaceUploadTask[] {
     const stored: StoredWorkspaceUploadTask[] = tasks.value.flatMap((task) => {
       if (!['QUEUED', 'UPLOADING', 'FAILED', 'INTERRUPTED'].includes(task.status)) return [];
       return [
         {
+          recoveryOwner,
           id: task.id,
           nodeId: task.nodeId,
           workspaceId: task.workspaceId,
@@ -169,6 +173,31 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     } catch {
       // sessionStorage supports refresh recovery only; Node timeouts still clean temporary files.
     }
+    return stored;
+  }
+
+  function retainDisposedCleanupFailure(task: WorkspaceUploadTask): void {
+    const expected = disposedRecoveryEntries.get(task.id);
+    if (!closed || expected === undefined) return;
+    disposedRecoveryEntries.delete(task.id);
+    try {
+      const current: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]');
+      if (!Array.isArray(current)) return;
+      // Patch only the unchanged recovery entry, never an old owner's entire snapshot.
+      const index = current.findIndex((entry) => JSON.stringify(entry) === expected);
+      if (index === -1) return;
+      current[index] = {
+        ...current[index],
+        uploadId: task.uploadId,
+        receivedBytes: task.receivedBytes,
+        status: 'FAILED',
+        cleanupUnconfirmed: true,
+        error: task.error
+      };
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    } catch {
+      // Unavailable recovery storage cannot guarantee remote cleanup; Node TTL remains the fallback.
+    }
   }
 
   function restore(): void {
@@ -177,6 +206,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       tasks.value = parseStoredWorkspaceUploads(
         JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]') as unknown
       );
+      // Claim recovery before yielding: a resumed task may otherwise recreate an identical row.
+      persist();
     } catch {
       window.sessionStorage.removeItem(STORAGE_KEY);
     }
@@ -484,6 +515,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
           task.cleanupUnconfirmed = true;
           task.error = errorMessage(error);
           task.status = 'FAILED';
+          retainDisposedCleanupFailure(task);
           changed(task);
           return false;
         }
@@ -555,7 +587,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     if (closed) return;
     closed = true;
     stopPersisting();
-    persist();
+    for (const stored of persist()) disposedRecoveryEntries.set(stored.id, JSON.stringify(stored));
     // Keep the recovery snapshot, but never let this old owner overwrite a new page.
     // A submitted complete is authoritative; cancelling it cannot promise rollback.
     for (const task of tasks.value) {

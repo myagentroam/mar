@@ -94,6 +94,110 @@ test('Workspace upload page teardown cleans late creates without draining or ove
   }
 });
 
+test('Workspace upload late cleanup failure survives teardown and reload for an explicit cleanup retry', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
+  await mockEmptyWorkspaceFiles(page, ['workspace-1']);
+  const creates: string[] = [];
+  const cancels: string[] = [];
+  const forbidden: string[] = [];
+  let failCleanup = true;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(/\/api\/workspaces\/workspace-1\/uploads(?:\/.*)?(?:\?.*)?$/, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/preflight'))
+      return json(route, { uploads: [{ status: 'READY', path: 'late-recovery.txt' }] });
+    if (path.endsWith('/uploads')) {
+      creates.push(path);
+      await gate;
+      return json(route, { upload: { uploadId: 'late-recovery-id', receivedBytes: 0, size: 1 } });
+    }
+    if (path.endsWith('/cancel')) {
+      cancels.push(path);
+      if (failCleanup)
+        return route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 'UPLOAD_NETWORK_FAILED',
+            message: 'Cleanup could not be confirmed'
+          })
+        });
+      return json(route, { cancelled: true });
+    }
+    forbidden.push(path);
+    return json(route, {});
+  });
+  try {
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: 'project', exact: true })
+      .click();
+    await page.getByRole('tab', { name: '文件', exact: true }).click();
+    await page.locator('.workspace-upload-input[multiple]').setInputFiles({
+      name: 'late-recovery.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('x')
+    });
+    await page.getByRole('button', { name: '开始上传', exact: true }).click();
+    await expect.poll(() => creates.length).toBe(1);
+    await page.evaluate(() => {
+      const root = document.querySelector('#app') as HTMLElement & {
+        __vue_app__: { unmount(): void };
+      };
+      root.__vue_app__.unmount();
+    });
+    release();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          JSON.parse(sessionStorage.getItem('mar.workspace-upload-tasks') ?? '[]')
+        )
+      )
+      .toEqual([
+        expect.objectContaining({
+          name: 'late-recovery.txt',
+          uploadId: 'late-recovery-id',
+          cleanupUnconfirmed: true
+        })
+      ]);
+    await page.reload();
+    await page.getByRole('button', { name: '打开通知中心' }).click();
+    const transfer = page.getByRole('complementary', { name: '通知中心' });
+    const task = transfer.locator('.workbench-notification-upload');
+    await expect(task).toHaveCount(1);
+    await expect(task).toContainText('late-recovery.txt');
+    await expect(task).toContainText(
+      '未能确认临时上传已清理，任务已保留。请重试或联系管理员核查节点。'
+    );
+    await expect(task.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
+    failCleanup = false;
+    await task.getByRole('button', { name: '删除 late-recovery.txt', exact: true }).click();
+    await expect.poll(() => cancels.length).toBe(2);
+    expect(cancels).toEqual(
+      Array(2).fill('/api/workspaces/workspace-1/uploads/late-recovery-id/cancel')
+    );
+    await expect(task).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => sessionStorage.getItem('mar.workspace-upload-tasks')))
+      .toBeNull();
+    expect(creates).toHaveLength(1);
+    expect(forbidden).toEqual([]);
+  } finally {
+    release();
+  }
+});
+
 test('Workspace upload selection changes preserve the original target and normal transfer', async ({
   page
 }) => {
