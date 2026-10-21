@@ -159,7 +159,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       :title="translate(isNew ? 'quickPrompts.add' : 'quickPrompts.edit')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
-      @update:model-value="close"
+      :before-close="close"
     >
       <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <el-form-item :label="translate('quickPrompts.phrase')" prop="phrase">

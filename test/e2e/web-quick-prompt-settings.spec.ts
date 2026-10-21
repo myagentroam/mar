@@ -85,6 +85,64 @@ test('Quick prompt settings create, edit, and retain failed drafts for retry', a
   });
 });
 
+test('Quick prompt settings invalidate saving before the close animation finishes', async ({
+  page
+}) => {
+  await prepare(page);
+  const pending = gate();
+  const started = gate();
+  const prompts = [
+    { id: 'first', phrase: 'first', prompt: 'First body', updatedAt: 1 },
+    { id: 'second', phrase: 'second', prompt: 'Second body', updatedAt: 2 }
+  ];
+  let reads = 0;
+  await page.route('**/api/quick-prompts**', async (route) => {
+    if (route.request().method() === 'GET') {
+      reads += 1;
+      return json(route, { prompts });
+    }
+    started.release();
+    await pending.promise;
+    return json(route, { prompt: prompts[0] });
+  });
+  try {
+    await openSettings(page);
+    const initialReads = reads;
+    await page.addStyleTag({
+      content:
+        '.dialog-fade-leave-active { animation-duration: 60s !important; transition-duration: 60s !important; }'
+    });
+    let dialog = await edit(page, 'first');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await started.promise;
+    await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
+    // Closing must destroy the editor now, not defer invalidation to afterLeave.
+    await expect(page.locator('.el-dialog')).toHaveCount(0, { timeout: 1500 });
+    dialog = await edit(page, 'second');
+    const response = page.waitForResponse((value) =>
+      value.url().endsWith('/api/quick-prompts/first')
+    );
+    pending.release();
+    await (await response).finished();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    );
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
+    await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveClass(
+      /is-loading/
+    );
+    await expect(page.locator('.el-message')).toHaveCount(0);
+    expect(reads).toBe(initialReads);
+  } finally {
+    pending.release();
+  }
+});
+
 for (const outcome of ['success', 'failure'] as const) {
   test(
     'Quick prompt settings ignore late save ' + outcome + ' while a new editor saves',
