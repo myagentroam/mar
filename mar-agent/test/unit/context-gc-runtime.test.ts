@@ -21,10 +21,16 @@ import {
 } from '../../src/agent-core/runtime/context/gc-runtime.js';
 import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { captureExecutionContext } from './support/checkpoint-context.js';
+import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
+import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
+import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
+import { MarAgentError } from '../../src/agent-core/error.js';
 
 const homes: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
 
@@ -135,6 +141,199 @@ class ContextGcAdapter implements ModelAdapter {
 }
 
 describe('context GC runtime integration', () => {
+  it.each(['included', 'late'] as const)(
+    'adopts GC in the same live context and retains an %s immediate append exactly once',
+    async (timing) => {
+      const captured = captureExecutionContext();
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-adoption-'));
+      homes.push(home);
+      await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+      const adapter = new ContextGcAdapter();
+      let sessionContext!: CoreSessionExtensionContext;
+      let paused = false,
+        committed = false;
+      let notifyPaused!: () => void, release!: () => void;
+      const atPause = new Promise<void>((resolve) => {
+        notifyPaused = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let latestWorld: worldState.ContextualWorldState | undefined;
+      const persist = worldState.persistContextualWorldState;
+      vi.spyOn(worldState, 'persistContextualWorldState').mockImplementation(async (...args) => {
+        latestWorld = args[2];
+        return persist(...args);
+      });
+      const runGc = ContextGcRuntime.prototype.run;
+      vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+        this: ContextGcRuntime,
+        input
+      ) {
+        if (!paused && timing === 'included' && adapter.requests.length === 4) {
+          paused = true;
+          notifyPaused();
+          await released;
+        }
+        const result = await runGc.call(this, input);
+        if (result) {
+          committed = true;
+          if (!paused && timing === 'late') {
+            paused = true;
+            notifyPaused();
+            await released;
+          }
+        }
+        return result;
+      });
+      const agent = await createMarAgent({
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model],
+        adapterFactory: () => adapter,
+        runtimeExtensions: [
+          {
+            id: 'gc-append',
+            apiVersion: '1.0',
+            attachSession(context) {
+              sessionContext = context;
+            }
+          }
+        ]
+      });
+      const session = await agent.createSession({ workspace: home });
+      const result = session.run({ prompt: 'Update the file.' }).result();
+      try {
+        await atPause;
+        const messages = captured.messages();
+        expect(
+          await sessionContext.session.append({
+            content: 'GC_ADOPTION_APPEND',
+            delivery: 'immediate'
+          })
+        ).toMatchObject({ status: 'committed' });
+        expect(messages.filter((message) => message.content === 'GC_ADOPTION_APPEND')).toHaveLength(
+          1
+        );
+        release();
+        expect(await result).toMatchObject({ status: 'completed' });
+        expect(committed).toBe(true);
+        expect(adapter.resetCount).toBe(1);
+        expect(captured.messages()).toBe(messages);
+        expect(captured.runtime(session.id).contextualWorldState).toBe(latestWorld);
+        const next = adapter.requests[4]!.messages;
+        expect(next.filter((message) => message.content === 'GC_ADOPTION_APPEND')).toHaveLength(1);
+        expect(
+          next.some((message) => message.content.includes('# Retained Session resources'))
+        ).toBe(false);
+      } finally {
+        release();
+        await result;
+        await agent.dispose();
+      }
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const state = await store.readExecutionState(session.id);
+        const restored = await restoreMessages(store, session.id, state.contextRecords, {
+          includeImages: false
+        });
+        expect(
+          restored.messages.filter((message) => message.content === 'GC_ADOPTION_APPEND')
+        ).toHaveLength(1);
+      } finally {
+        await store.close();
+      }
+    }
+  );
+
+  it('propagates a GC sidecar write failure without publishing warm state and cold-restores the durable checkpoint', async () => {
+    const captured = captureExecutionContext();
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-sidecar-failure-'));
+    homes.push(home);
+    await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+    let committedGeneration: string | undefined;
+    let worldBeforeFailure: worldState.ContextualWorldState | undefined;
+    const runGc = ContextGcRuntime.prototype.run;
+    vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+      this: ContextGcRuntime,
+      input
+    ) {
+      const result = await runGc.call(this, input);
+      if (result)
+        committedGeneration = worldState.latestContextualWorldStateGeneration(result.records);
+      return result;
+    });
+    const write = JsonlSessionStore.prototype.writeContextualWorldState;
+    const sidecar = vi
+      .spyOn(JsonlSessionStore.prototype, 'writeContextualWorldState')
+      .mockImplementation(async function (this: JsonlSessionStore, ...args) {
+        if (
+          committedGeneration &&
+          (args[1] as { generation?: string }).generation === committedGeneration
+        ) {
+          worldBeforeFailure = captured.runtime(args[0]).contextualWorldState;
+          throw new MarAgentError('MAR_AGENT_HOST_IO_ERROR', 'Injected GC sidecar write failure.');
+        }
+        return write.apply(this, args);
+      });
+    const adapter = new ContextGcAdapter();
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+      models: [model],
+      adapterFactory: () => adapter
+    });
+    const session = await agent.createSession({ workspace: home });
+    try {
+      expect(await session.run({ prompt: 'Update the file.' }).result()).toMatchObject({
+        status: 'failed',
+        errorCode: 'MAR_AGENT_HOST_IO_ERROR'
+      });
+      expect(committedGeneration).toBeDefined();
+      expect(worldBeforeFailure).toBeDefined();
+      expect(captured.runtime(session.id).contextualWorldState).toBe(worldBeforeFailure);
+      expect(worldBeforeFailure!.generation).not.toBe(committedGeneration);
+      expect(adapter.requests).toHaveLength(4);
+      expect(
+        agent
+          .extensionDiagnostics()
+          .some((diagnostic) => diagnostic.code === 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED')
+      ).toBe(false);
+    } finally {
+      await agent.dispose();
+      sidecar.mockRestore();
+    }
+    const store = await JsonlSessionStore.open(home);
+    try {
+      const records = await store.read(session.id);
+      expect(records.filter((record) => record.type === 'context.gc.completed')).toHaveLength(1);
+      expect(records.some((record) => record.type === 'compact.completed')).toBe(false);
+    } finally {
+      await store.close();
+    }
+    const resumedAdapter = new ContextGcAdapter(model, 4);
+    const resumed = await createMarAgent({
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+      models: [model],
+      adapterFactory: () => resumedAdapter
+    });
+    try {
+      const restored = await resumed.openSession(session.id);
+      expect(
+        await restored.run({ prompt: 'Continue after the persisted GC.' }).result()
+      ).toMatchObject({ status: 'completed' });
+      const messages = resumedAdapter.requests[0]!.messages;
+      expect(messages.some((message) => message.content.includes('kind="stale_read"'))).toBe(true);
+      expect(JSON.stringify(messages)).not.toContain('old context old context');
+      expect(
+        messages.some((message) => message.content.includes('# Retained Session resources'))
+      ).toBe(false);
+    } finally {
+      await resumed.dispose();
+    }
+  });
+
   it.each([0, 4_999, 9_000, 10_000, NaN])(
     'does not read history or acquire resources outside the GC window: %s',
     async (contextInputTokens) => {
@@ -311,6 +510,140 @@ describe('context GC runtime integration', () => {
       expect(JSON.stringify(adapter.requests[4]?.messages)).toContain('old context old context');
     } finally {
       await reopenedStore.close();
+    }
+  });
+
+  it('anchors Compact to the latest completed message restored by GC in the same execution', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-compact-message-anchor-'));
+    homes.push(home);
+    await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
+    const initial = new ContextGcAdapter();
+    let context!: CoreSessionExtensionContext;
+    let normalCalls = 0;
+    let gcCommitted = false;
+    let compactRequested = false;
+    const runGc = ContextGcRuntime.prototype.run;
+    vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+      this: ContextGcRuntime,
+      input
+    ) {
+      const result = await runGc.call(this, input);
+      gcCommitted ||= Boolean(result);
+      return result;
+    });
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start(request) {
+        const call = ++normalCalls;
+        if (call < 4) {
+          for await (const event of initial.start(request))
+            yield event.type === 'usage'
+              ? {
+                  ...event,
+                  usage: { ...event.usage, inputTokens: 4_000, contextInputTokens: 4_000 }
+                }
+              : event;
+          return;
+        }
+        await request.onAttemptDiagnostic?.({
+          protocol: 'ANTHROPIC_MESSAGES',
+          transport: 'HTTP',
+          state: 'STARTED',
+          attempt: 1,
+          maxAttempts: 5,
+          continuation: false,
+          credentialReason: 'REQUEST'
+        });
+        yield {
+          type: 'text.completed',
+          itemId: call === 4 ? 'latest-message-before-gc' : 'finished-after-compact',
+          text: call === 4 ? 'The file change is verified.' : 'Finished after Compact.'
+        };
+        if (call === 4)
+          await context.session.append({ content: 'Continue after GC.', delivery: 'boundary' });
+        yield {
+          type: 'usage',
+          usage: {
+            inputTokens: call === 4 ? 6_400 : 100,
+            contextInputTokens: call === 4 ? 6_400 : 100,
+            outputTokens: 10
+          }
+        };
+        yield { type: 'completed', reason: 'completed' };
+        await request.onAttemptDiagnostic?.({
+          protocol: 'ANTHROPIC_MESSAGES',
+          transport: 'HTTP',
+          state: 'SUCCEEDED',
+          attempt: 1,
+          maxAttempts: 5,
+          continuation: false,
+          credentialReason: 'REQUEST',
+          semanticEventObserved: true
+        });
+      }
+    };
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host,
+      models: [model],
+      adapterFactory: () => adapter,
+      runtimeExtensions: [
+        {
+          id: 'gc-then-compact',
+          apiVersion: '1.0',
+          attachSession(value) {
+            context = value;
+            value.hooks.intercept('compact.generate', async () => ({
+              summary: 'Continue from the verified change.'
+            }));
+            value.hooks.intercept('model.request', async (request, _call, next) => {
+              if (gcCommitted && !compactRequested) {
+                compactRequested = true;
+                await value.session.compact({ async: false });
+              }
+              return next(request);
+            });
+          }
+        }
+      ]
+    });
+    let sessionId: string;
+    try {
+      const session = await agent.createSession({ workspace: home });
+      sessionId = session.id;
+      expect(await session.run({ prompt: 'Update the file and continue.' }).result()).toMatchObject(
+        { status: 'completed' }
+      );
+      expect(gcCommitted).toBe(true);
+      expect(compactRequested).toBe(true);
+      expect(normalCalls).toBe(5);
+    } finally {
+      await agent.dispose();
+    }
+    const store = await JsonlSessionStore.open(home);
+    try {
+      const records = await store.read(sessionId!);
+      const checkpoint = records.find((record) => record.type === 'context.gc.completed')!;
+      const compact = records.find((record) => record.type === 'compact.completed')!;
+      expect(checkpoint).toBeDefined();
+      expect(compact.sequence).toBeGreaterThan(checkpoint.sequence);
+      const latestMessage = records.findLast(
+        (record) => record.type === 'message.completed' && record.sequence < checkpoint.sequence
+      )!;
+      expect(latestMessage.payload).toMatchObject({ itemId: 'latest-message-before-gc' });
+      expect(compact.executionId).toBe(latestMessage.executionId);
+      const compacting = host.events.filter(
+        (event) => event.type === 'context.compacting' && event.stage === 'GENERATING'
+      );
+      expect(compacting).toHaveLength(1);
+      for (const event of compacting)
+        expect(event).toMatchObject({
+          executionId: latestMessage.executionId,
+          anchor: { kind: 'message', id: (latestMessage.payload as { itemId: string }).itemId }
+        });
+    } finally {
+      await store.close();
     }
   });
 

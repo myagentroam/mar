@@ -1,12 +1,9 @@
-import { isProviderContextOverflow, recoverModelStream } from '../model/recovery.js';
-import { estimatedRequestTokens } from '../runtime/context/request-budget.js';
 import { restoreMessages } from '../runtime/context/restore.js';
 import { createNativeSteer } from './native-steer.js';
 import {
   lastConfigurationEffort,
   latestModelUsage,
-  reasoningEffortBaseline,
-  shouldUseNativeCompaction
+  reasoningEffortBaseline
 } from '../runtime/context/usage.js';
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
 import type { ContextualWorldState } from '../runtime/context/world-state.js';
@@ -82,7 +79,6 @@ import type {
   ModelAttemptDiagnostic,
   ModelMessage,
   ModelRequest,
-  ModelRetryState,
   ModelTurnSession,
   ModelUsage
 } from '../model/contracts.js';
@@ -98,15 +94,14 @@ import { childSubagentInstruction } from '../prompts/subagent.js';
 import { renderSubagentUpdate } from '../subagent/model-update.js';
 import { AsyncQueue } from '../runtime/async-queue.js';
 import { CompactionOperation } from '../runtime/compaction/operation.js';
+import { generateCompactionCandidate } from '../runtime/compaction/generate.js';
 import { CompactCoordinator, type CompactFlight } from '../runtime/compaction/coordinator.js';
 import { CompactRequests } from '../runtime/compaction/requests.js';
 import { compactSnapshotAnchor } from '../runtime/compaction/retained-context.js';
 import {
   DEFAULT_COMPACTION_FOCUS,
   buildCompactedHistory,
-  buildCompactionInput,
   buildCompactionMessages,
-  buildNativeCompactionMessages,
   compactedHistoryMessages
 } from '../runtime/compaction/history.js';
 import {
@@ -114,7 +109,7 @@ import {
   environmentContextUpdate,
   restoreEnvironmentState
 } from '../runtime/context/environment.js';
-import { ContextGcRuntime } from '../runtime/context/gc-runtime.js';
+import { ContextGcRuntime, type ContextGcCommitResult } from '../runtime/context/gc-runtime.js';
 import { AGENT_EXECUTION_POLICY } from '../runtime/execution-policy.js';
 import { loadAgentInstructions, renderAgentInstructions } from '../runtime/context/instructions.js';
 import { normalizeMessagesForModel } from '../runtime/context/normalize.js';
@@ -127,7 +122,8 @@ import {
 import {
   JsonlSessionStore,
   compactSummaryFromCheckpoint,
-  inputMetadataFromRecord
+  inputMetadataFromRecord,
+  type CompactUserInput
 } from '../session/store/index.js';
 import {
   SubagentSessionController,
@@ -686,28 +682,21 @@ export function createSessionOpener(services: SessionServices) {
           const persistedContextualWorldState = parsePersistedContextualWorldState(
             await store.readContextualWorldState(sessionId)
           );
-          let contextualWorldState: NonNullable<SessionRuntime['contextualWorldState']>;
-          if (
+          const initialContextualWorldState: ContextualWorldState =
             restoredContextualWorldState !== undefined &&
             restoredContextualWorldState.generation === contextualWorldStateGeneration
-          )
-            contextualWorldState = restoredContextualWorldState;
-          else if (
-            persistedContextualWorldState !== undefined &&
-            persistedContextualWorldState.generation === contextualWorldStateGeneration
-          ) {
-            contextualWorldState = persistedContextualWorldState;
-            sessionRuntime.contextualWorldState = contextualWorldState;
-          } else {
-            contextualWorldState = {
-              generation: contextualWorldStateGeneration,
-              initialized: false,
-              instructionSnapshot: undefined,
-              resourceSnapshot: undefined,
-              entries: []
-            };
-            sessionRuntime.contextualWorldState = contextualWorldState;
-          }
+              ? restoredContextualWorldState
+              : persistedContextualWorldState !== undefined &&
+                  persistedContextualWorldState.generation === contextualWorldStateGeneration
+                ? persistedContextualWorldState
+                : {
+                    generation: contextualWorldStateGeneration,
+                    initialized: false,
+                    instructionSnapshot: undefined,
+                    resourceSnapshot: undefined,
+                    entries: []
+                  };
+          sessionRuntime.contextualWorldState = initialContextualWorldState;
           const compactMayContainAgentInstructions = contextRecords.some(
             (record) => compactSummaryFromCheckpoint(record) !== undefined
           );
@@ -715,7 +704,205 @@ export function createSessionOpener(services: SessionServices) {
             messageSources,
             includeImages: mode !== 'compact'
           });
-          const messages = restored.messages;
+          // This execution owns checkpoint adoption, not another copy of the live context.
+          const modelContext = (() => {
+            const messages = restored.messages;
+            let userMessages = [...restored.userMessages];
+            let recordedEnvironment = restored.environmentState;
+            let instructionInsertIndex = 0;
+            let worldState = initialContextualWorldState;
+            const commitWorldState = async (next: ContextualWorldState) => {
+              await persistContextualWorldState(store, sessionId, next);
+              worldState = next;
+              sessionRuntime.contextualWorldState = next;
+            };
+            const resetCompactWorldState = async (
+              generation: string,
+              committed?: { readonly resources: string | undefined }
+            ) => {
+              instructionInsertIndex = contextualInstructionInsertIndex(messages);
+              const next = resetContextualWorldState(generation, instructionInsertIndex, {
+                instructionSnapshot: currentInstructionSnapshot,
+                instructionContent: renderAgentInstructions(instructionEntries, true),
+                resourceSnapshot: committed
+                  ? committed.resources
+                  : retainedSessionResourcesSnapshot(await loadRetainedSessionResources())
+              });
+              if (!committed) await commitWorldState(next);
+              else {
+                // The checkpoint is authoritative; its sidecar is recoverable on restart.
+                worldState = next;
+                sessionRuntime.contextualWorldState = next;
+                try {
+                  await persistContextualWorldState(store, sessionId, next);
+                } catch {
+                  coreExtensions.diagnose({
+                    code: 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED',
+                    sessionId
+                  });
+                }
+              }
+            };
+            const recordEnvironment = async () => {
+              const message = environmentContextUpdate(executionEnvironment, recordedEnvironment);
+              if (!message) return;
+              await store.append(sessionId, {
+                type: 'context.environment',
+                payload: { version: 1, state: executionEnvironment },
+                executionId,
+                turnId
+              });
+              messages.push(message);
+              recordedEnvironment = executionEnvironment;
+            };
+            const syncMcpWorldState = async (index = instructionInsertIndex) => {
+              const snapshot = mcpRegistry.navigation();
+              if (worldState.mcpSnapshot === snapshot) return;
+              const next: ContextualWorldState = {
+                ...worldState,
+                mcpSnapshot: snapshot,
+                entries: [
+                  ...worldState.entries,
+                  {
+                    index,
+                    kind: 'mcp',
+                    content: snapshot ?? '<mcp_catalog>No deferred MCP tools remain.</mcp_catalog>'
+                  }
+                ]
+              };
+              await commitWorldState(next);
+            };
+            return {
+              messages,
+              get worldState(): ContextualWorldState {
+                return worldState;
+              },
+              commitWorldState,
+              recordEnvironment,
+              syncMcpWorldState,
+              rememberInput(input: CompactUserInput) {
+                userMessages.push(input);
+              },
+              compactInputs(prefix: readonly ModelMessage[]) {
+                return userMessages.filter((entry) =>
+                  prefix.some(
+                    (message) =>
+                      message.role === 'user' &&
+                      message.contextKind === undefined &&
+                      (entry.metadata?.recordId
+                        ? message.metadata?.recordId === entry.metadata.recordId
+                        : message.content === entry.content)
+                  )
+                );
+              },
+              async initializeWorldState() {
+                instructionInsertIndex =
+                  mode === 'compact' ? contextualInstructionInsertIndex(messages) : messages.length;
+                // Only the latest Compact may rebuild missing sidecar resources, never a GC boundary.
+                if (
+                  !worldState.initialized &&
+                  contextRecords.some(
+                    (record) =>
+                      record.recordId === contextualWorldStateGeneration &&
+                      compactSummaryFromCheckpoint(record) !== undefined
+                  )
+                )
+                  await resetCompactWorldState(contextualWorldStateGeneration!);
+                const nextInstructionWorldState = updateContextualWorldState(
+                  worldState,
+                  instructionInsertIndex,
+                  {
+                    instructionSnapshot: currentInstructionSnapshot,
+                    instructionContent: renderAgentInstructions(
+                      instructionEntries,
+                      compactMayContainAgentInstructions ||
+                        worldState.instructionSnapshot !== undefined
+                    )
+                  }
+                );
+                if (!isDeepStrictEqual(worldState, nextInstructionWorldState))
+                  await commitWorldState(nextInstructionWorldState);
+              },
+              // Must run inside the existing writer/projection commit window.
+              replaceCompactMessages(
+                replacementHistory: ReturnType<typeof buildCompactedHistory>,
+                retainedModelContext: readonly ModelMessage[]
+              ) {
+                messages.splice(
+                  0,
+                  messages.length,
+                  environmentContextUpdate(executionEnvironment)!,
+                  ...compactedHistoryMessages(replacementHistory),
+                  ...retainedModelContext
+                );
+                pendingAppends.length = 0;
+                selected.resetContinuation?.();
+              },
+              // Derived state follows the committed splice, never delays it past the writer window.
+              async adoptCompactCheckpoint(
+                recordId: string,
+                replacementHistory: ReturnType<typeof buildCompactedHistory>,
+                retainedModelContext: readonly ModelMessage[],
+                resources: string | undefined
+              ) {
+                contextGc.reset();
+                restoreMcpDiscovery();
+                recordedEnvironment = executionEnvironment;
+                userMessages = replacementHistory
+                  .filter((message) => message.kind !== 'summary')
+                  .map((message) => ({
+                    content: message.content,
+                    ...(message.metadata ? { metadata: { ...message.metadata } } : {})
+                  }));
+                userMessages.push(
+                  ...retainedModelContext
+                    .filter(
+                      (message) => message.role === 'user' && message.contextKind === undefined
+                    )
+                    .map((message) => ({
+                      content: message.content,
+                      ...(message.metadata ? { metadata: message.metadata } : {})
+                    }))
+                );
+                await resetCompactWorldState(recordId, { resources });
+              },
+              async adoptGcCheckpoint(committed: ContextGcCommitResult, appendBoundary: number) {
+                smartContextTokens = undefined;
+                selected.resetContinuation?.();
+                const refreshed = await restoreMessages(store, sessionId, committed.records, {
+                  includeImages: true,
+                  currentTurnId: turnId,
+                  messageSources,
+                  projection: committed.projection
+                });
+                const restoredIds = new Set(committed.records.map((record) => record.recordId));
+                const lateMessages = pendingAppends
+                  .slice(appendBoundary)
+                  .filter((entry) => !restoredIds.has(entry.recordId))
+                  .map((entry) => entry.message);
+                messages.splice(0, messages.length, ...refreshed.messages, ...lateMessages);
+                restoreMcpDiscovery();
+                recordedEnvironment = refreshed.environmentState;
+                userMessages = [...refreshed.userMessages];
+                instructionInsertIndex = contextualInstructionInsertIndex(messages);
+                const next = resetContextualWorldState(
+                  latestContextualWorldStateGeneration(committed.records),
+                  instructionInsertIndex,
+                  {
+                    instructionSnapshot: currentInstructionSnapshot,
+                    instructionContent: renderAgentInstructions(
+                      instructionEntries,
+                      committed.records.some(
+                        (record) => compactSummaryFromCheckpoint(record) !== undefined
+                      )
+                    )
+                  }
+                );
+                await commitWorldState(next);
+              }
+            };
+          })();
+          const messages = modelContext.messages;
           const pendingInputs = restored.pendingInputs;
           const waitInterrupt = createToolWaitInterrupt(() => pendingInputs.size > 0);
           liveModelMessages = messages;
@@ -724,7 +911,6 @@ export function createSessionOpener(services: SessionServices) {
             if (!restoredRecordIds.has(pending.recordId)) messages.push(pending.message);
           pendingAppends.length = 0;
           immediateTarget = messages;
-          let recordedEnvironment = restored.environmentState;
           let smartInput: SmartCompactionInput | undefined;
           let compactContext!: (input?: {
             readonly focus?: string;
@@ -799,7 +985,7 @@ export function createSessionOpener(services: SessionServices) {
                 eligible: smartCompaction,
                 requested: false
               };
-              compactionUserMessages.push({
+              modelContext.rememberInput({
                 content: content.modelText ?? content.text,
                 metadata: inputMetadata
               });
@@ -882,7 +1068,7 @@ export function createSessionOpener(services: SessionServices) {
                     };
                     messages.push(message);
                     messageSources.set(message, applied);
-                    compactionUserMessages.push({ content, metadata });
+                    modelContext.rememberInput({ content, metadata });
                     smartInput = { recordId: received.recordId, eligible, requested: false };
                     for (const text of (payload.modelContext ?? payload.context ?? []) as string[])
                       messages.push({ role: 'user', content: text, contextKind: 'contextual' });
@@ -950,19 +1136,6 @@ export function createSessionOpener(services: SessionServices) {
               },
               inputs.boundarySize
             );
-          const recordEnvironment = async () => {
-            const message = environmentContextUpdate(executionEnvironment, recordedEnvironment);
-            if (!message) return;
-            await store.append(sessionId, {
-              type: 'context.environment',
-              payload: { version: 1, state: executionEnvironment },
-              executionId,
-              turnId
-            });
-            messages.push(message);
-            recordedEnvironment = executionEnvironment;
-          };
-          let compactionUserMessages = [...restored.userMessages];
           const hasRestoredUserImages = messages.some(
             (message) => message.role === 'user' && Boolean(message.images?.length)
           );
@@ -1295,8 +1468,6 @@ export function createSessionOpener(services: SessionServices) {
           });
           const instructionEntries = instructionContext?.entries ?? [];
           const currentInstructionSnapshot = renderAgentInstructions(instructionEntries, false);
-          let agentInstructionInsertIndex =
-            mode === 'compact' ? contextualInstructionInsertIndex(messages) : messages.length;
           const baseTools = () =>
             [...captureTools().values()]
               .filter((binding) => binding.mcp === undefined)
@@ -1326,62 +1497,7 @@ export function createSessionOpener(services: SessionServices) {
               subagents: subagents?.listSessionResources() ?? []
             };
           };
-          const commitWorldState = async (next: ContextualWorldState) => {
-            await persistContextualWorldState(store, sessionId, next);
-            contextualWorldState = next;
-            sessionRuntime.contextualWorldState = next;
-          };
-          const resetCompactWorldState = async (
-            generation: string,
-            committed?: { readonly resources: string | undefined }
-          ) => {
-            agentInstructionInsertIndex = contextualInstructionInsertIndex(messages);
-            const next = resetContextualWorldState(generation, agentInstructionInsertIndex, {
-              instructionSnapshot: currentInstructionSnapshot,
-              instructionContent: renderAgentInstructions(instructionEntries, true),
-              resourceSnapshot: committed
-                ? committed.resources
-                : retainedSessionResourcesSnapshot(await loadRetainedSessionResources())
-            });
-            if (!committed) await commitWorldState(next);
-            else {
-              // The checkpoint is authoritative; its sidecar is recoverable on restart.
-              contextualWorldState = next;
-              sessionRuntime.contextualWorldState = next;
-              try {
-                await persistContextualWorldState(store, sessionId, next);
-              } catch {
-                coreExtensions.diagnose({
-                  code: 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED',
-                  sessionId
-                });
-              }
-            }
-          };
-          // A missing sidecar is rebuilt only for the latest Compact, never for a GC boundary.
-          if (
-            !contextualWorldState.initialized &&
-            contextRecords.some(
-              (record) =>
-                record.recordId === contextualWorldStateGeneration &&
-                compactSummaryFromCheckpoint(record) !== undefined
-            )
-          )
-            await resetCompactWorldState(contextualWorldStateGeneration!);
-          const nextInstructionWorldState = updateContextualWorldState(
-            contextualWorldState,
-            agentInstructionInsertIndex,
-            {
-              instructionSnapshot: currentInstructionSnapshot,
-              instructionContent: renderAgentInstructions(
-                instructionEntries,
-                compactMayContainAgentInstructions ||
-                  contextualWorldState.instructionSnapshot !== undefined
-              )
-            }
-          );
-          if (!isDeepStrictEqual(contextualWorldState, nextInstructionWorldState))
-            await commitWorldState(nextInstructionWorldState);
+          await modelContext.initializeWorldState();
           const buildExecutionPromptSections = (
             availableTools: readonly ClientToolDefinition[] = executionTools,
             promptMode: ExecutionMode = mode
@@ -1408,24 +1524,7 @@ export function createSessionOpener(services: SessionServices) {
               tools: availableTools.map((tool) => tool.name)
             }
           });
-          const syncMcpWorldState = async (index: number) => {
-            const snapshot = mcpRegistry.navigation();
-            if (contextualWorldState.mcpSnapshot === snapshot) return;
-            const next: ContextualWorldState = {
-              ...contextualWorldState,
-              mcpSnapshot: snapshot,
-              entries: [
-                ...contextualWorldState.entries,
-                {
-                  index,
-                  kind: 'mcp',
-                  content: snapshot ?? '<mcp_catalog>No deferred MCP tools remain.</mcp_catalog>'
-                }
-              ]
-            };
-            await commitWorldState(next);
-          };
-          if (mode !== 'compact') await syncMcpWorldState(agentInstructionInsertIndex);
+          if (mode !== 'compact') await modelContext.syncMcpWorldState();
           const writeCompactionRecord = async (
             summary: string,
             _automatic: boolean,
@@ -1683,7 +1782,7 @@ export function createSessionOpener(services: SessionServices) {
                         ? { ...message, images: modelInputImages }
                         : message
                     ),
-                    mode === 'compact' ? [] : contextualWorldState.entries,
+                    mode === 'compact' ? [] : modelContext.worldState.entries,
                     mode !== 'compact' && selectedModel.inputCapabilities.includes('IMAGE'),
                     baseTools().some((tool) => tool.name === 'code_exec'),
                     permissionPolicy.mode === 'auto'
@@ -1710,7 +1809,7 @@ export function createSessionOpener(services: SessionServices) {
                 );
                 return {};
               }
-              await recordEnvironment();
+              await modelContext.recordEnvironment();
               call.signal.throwIfAborted();
               await writeInputRecord(
                 content,
@@ -1922,6 +2021,13 @@ export function createSessionOpener(services: SessionServices) {
             });
             let lastServerContextTokens = lastServerUsage?.contextInputTokens;
             let compactBoundary = messages.length;
+            const invalidateCompactUsage = () => {
+              lastServerContextTokens = undefined;
+              lastServerUsage = undefined;
+              smartContextTokens = undefined;
+              requestReasoningEffort = reasoningEffort;
+              effectiveReasoningEffort = reasoningEffort;
+            };
             const compactLeaf = async (
               input: { readonly focus?: string; readonly async?: boolean },
               signal: AbortSignal,
@@ -1929,7 +2035,6 @@ export function createSessionOpener(services: SessionServices) {
               compactionId: string
             ) => {
               if (messages.length < 2) return false;
-              let compactSummary = '';
               const cutoff = Math.min(compactBoundary, messages.length);
               const current = messages[cutoff - 1]!;
               const retainCurrent =
@@ -1945,18 +2050,9 @@ export function createSessionOpener(services: SessionServices) {
               )
                 return false;
               const compactHistory = structuredClone(prefix);
-              const prefixInputs = compactionUserMessages.filter((entry) =>
-                prefix.some(
-                  (message) =>
-                    message.role === 'user' &&
-                    message.contextKind === undefined &&
-                    (entry.metadata?.recordId
-                      ? message.metadata?.recordId === entry.metadata.recordId
-                      : message.content === entry.content)
-                )
-              );
+              const prefixInputs = modelContext.compactInputs(prefix);
               const snapshotTools = structuredClone(projectTools(executionTools));
-              const generation = contextualWorldState.generation;
+              const generation = modelContext.worldState.generation;
               const snapshotUsage = lastServerUsage;
               const snapshotEffort = requestReasoningEffort ?? reasoningEffort;
               const anchorRecordId = prefix
@@ -1974,43 +2070,6 @@ export function createSessionOpener(services: SessionServices) {
                   coreExtensions.composeModelSystem(promptComposition(snapshotTools, 'run'), call)
                 )
               );
-              const compactSystemPrompt = compactComposition.system;
-              const projectedHistory = normalizeMessagesForModel(compactHistory, {
-                supportsImages: false
-              }).map(projectSmartCompactionMessage);
-              const nativeCompactMessages = buildNativeCompactionMessages(projectedHistory, {
-                ...(input.focus === undefined ? {} : { focus: input.focus })
-              });
-              const compactOverheadTokens = estimatedRequestTokens(
-                compactSystemPrompt,
-                buildCompactionMessages(''),
-                snapshotTools
-              );
-              const compactInputTokens = Math.max(
-                0,
-                selectedModel.contextWindowTokens - compactOverheadTokens
-              );
-              let usingNativeMessages = shouldUseNativeCompaction({
-                estimatedRequestTokens: estimatedRequestTokens(
-                  compactSystemPrompt,
-                  nativeCompactMessages,
-                  snapshotTools
-                ),
-                contextWindowTokens: selectedModel.contextWindowTokens,
-                latestUsage: snapshotUsage,
-                historyMessages: compactHistory,
-                appendedMessages: nativeCompactMessages.slice(projectedHistory.length)
-              });
-              const fallbackMessages = () =>
-                buildCompactionMessages(
-                  buildCompactionInput(compactHistory, {
-                    ...(input.focus === undefined ? {} : { focus: input.focus }),
-                    maxTokens: Math.max(1, compactInputTokens)
-                  })
-                );
-              let compactMessages = usingNativeMessages
-                ? nativeCompactMessages
-                : fallbackMessages();
               await emit({
                 type: 'context.compacting',
                 compactionId,
@@ -2019,105 +2078,47 @@ export function createSessionOpener(services: SessionServices) {
                 ...anchor
               });
               let latestUsage: ModelUsage | undefined;
-              const compactionRetryState: ModelRetryState = { attempts: 0 };
+              let compactSummary: string;
               const compaction = createCompactionOperation(compactionId, signal);
               const compactTurn = createModelTurnSession(selectedAdapter!);
               try {
-                const extensionResult = await generateCompactExtension(
-                  compactHistory,
-                  mode === 'compact' ? 'manual' : 'automatic',
-                  input.focus,
-                  compaction
-                );
-                if (extensionResult) {
-                  compactSummary = extensionResult.summary;
-                  latestUsage = extensionResult.usage;
-                  if (latestUsage)
-                    await emit({
-                      type: 'usage.updated',
-                      purpose: 'compact',
-                      ...publicModelUsage(latestUsage)
-                    });
-                }
-                while (extensionResult === undefined) {
-                  if (compactInputTokens === 0)
-                    throw new MarAgentError(
-                      'MAR_AGENT_CONTEXT_LIMIT',
-                      'Compaction prompt exceeds the selected model context window.'
-                    );
-                  compactSummary = '';
-                  latestUsage = undefined;
-                  try {
-                    const request = await transformModelRequest(
-                      {
-                        retryState: compactionRetryState,
-                        system: compactSystemPrompt,
-                        ...(compactComposition.systemBlocks === undefined
-                          ? {}
-                          : { systemBlocks: compactComposition.systemBlocks }),
-                        messages: compactMessages,
-                        tools: snapshotTools,
-                        toolChoice: 'none',
-                        promptCacheKey: sessionId,
-                        reasoningEffort: snapshotEffort,
-                        onAttemptDiagnostic: recordModelAttempt('COMPACTION')
-                      },
-                      undefined,
-                      selectedModel.id,
-                      'compact'
-                    );
-                    for await (const event of streamModel(
-                      (signal) =>
-                        compaction.start(
-                          { start: (request) => compactTurn.start(request, signal) },
-                          request
-                        ),
-                      compaction.signal
-                    )) {
-                      if (
-                        event.type === 'text.completed' &&
-                        (event.phase ?? 'final_answer') === 'final_answer'
-                      )
-                        compactSummary = event.text.trim();
-                      else if (event.type === 'usage') {
-                        latestUsage = event.usage;
-                        await emit({
-                          type: 'usage.updated',
-                          purpose: 'compact',
-                          ...publicModelUsage(event.usage)
-                        });
-                      } else if (event.type === 'client_tool.call')
-                        throw new MarAgentError(
-                          'MAR_AGENT_MODEL_PROTOCOL_ERROR',
-                          'Compaction returned a tool call while tools were disabled.'
-                        );
-                    }
-                    break;
-                  } catch (error) {
-                    if (await recoverModelStream(error, compactionRetryState, compaction.signal)) {
-                      continue;
-                    }
-                    if (isProviderContextOverflow(error) && usingNativeMessages) {
-                      usingNativeMessages = false;
-                      compactMessages = fallbackMessages();
-                      compactionRetryState.attempts = 0;
-                      continue;
-                    }
-                    if (isProviderContextOverflow(error))
-                      throw new MarAgentError(
-                        'MAR_AGENT_CONTEXT_LIMIT',
-                        'The compaction request exceeds the model context window.',
-                        { cause: error }
-                      );
-                    throw error;
+                const candidate = await generateCompactionCandidate(
+                  {
+                    history: compactHistory,
+                    system: compactComposition.system,
+                    ...(compactComposition.systemBlocks === undefined
+                      ? {}
+                      : { systemBlocks: compactComposition.systemBlocks }),
+                    tools: snapshotTools,
+                    contextWindowTokens: selectedModel.contextWindowTokens,
+                    latestUsage: snapshotUsage,
+                    reasoningEffort: snapshotEffort,
+                    ...(input.focus === undefined ? {} : { focus: input.focus }),
+                    reason: mode === 'compact' ? 'manual' : 'automatic',
+                    promptCacheKey: sessionId
+                  },
+                  {
+                    operation: compaction,
+                    turn: compactTurn,
+                    generateExtension: generateCompactExtension,
+                    transformRequest: (request) =>
+                      transformModelRequest(request, undefined, selectedModel.id, 'compact'),
+                    stream: streamModel,
+                    observeUsage: (usage) =>
+                      emit({
+                        type: 'usage.updated',
+                        purpose: 'compact',
+                        ...publicModelUsage(usage)
+                      }),
+                    onAttemptDiagnostic: recordModelAttempt('COMPACTION')
                   }
-                }
+                );
+                compactSummary = candidate.summary;
+                latestUsage = candidate.usage;
               } finally {
                 await compaction.dispose();
                 await compactTurn.close();
               }
-              if (!compactSummary)
-                throw new MarAgentError('MAR_AGENT_COMPACT_FAILED', 'Automatic compact failed.');
               await emit({
                 type: 'context.compacting',
                 compactionId,
@@ -2142,7 +2143,7 @@ export function createSessionOpener(services: SessionServices) {
                 signal,
                 async (actual, options) => {
                   if (
-                    contextualWorldState.generation !== generation ||
+                    modelContext.worldState.generation !== generation ||
                     prefix.some((message, index) => messages[index] !== message)
                   )
                     throw new MarAgentError(
@@ -2194,41 +2195,17 @@ export function createSessionOpener(services: SessionServices) {
                     },
                     options
                   );
-                  messages.splice(
-                    0,
-                    messages.length,
-                    environmentContextUpdate(executionEnvironment)!,
-                    ...compactedHistoryMessages(replacementHistory),
-                    ...retainedModelContext
-                  );
-                  pendingAppends.length = 0;
-                  selected.resetContinuation?.();
+                  modelContext.replaceCompactMessages(replacementHistory, retainedModelContext);
                   return record;
                 }
               );
-              contextGc.reset();
-              restoreMcpDiscovery();
-              recordedEnvironment = executionEnvironment;
-              compactionUserMessages = replacementHistory
-                .filter((message) => message.kind !== 'summary')
-                .map((message) => ({
-                  content: message.content,
-                  ...(message.metadata ? { metadata: { ...message.metadata } } : {})
-                }));
-              compactionUserMessages.push(
-                ...retainedModelContext
-                  .filter((message) => message.role === 'user' && message.contextKind === undefined)
-                  .map((message) => ({
-                    content: message.content,
-                    ...(message.metadata ? { metadata: message.metadata } : {})
-                  }))
+              await modelContext.adoptCompactCheckpoint(
+                compactRecord.recordId,
+                replacementHistory,
+                retainedModelContext,
+                compactResources
               );
-              await resetCompactWorldState(compactRecord.recordId, { resources: compactResources });
-              lastServerContextTokens = undefined;
-              lastServerUsage = undefined;
-              smartContextTokens = undefined;
-              requestReasoningEffort = reasoningEffort;
-              effectiveReasoningEffort = reasoningEffort;
+              invalidateCompactUsage();
               await emit({
                 type: 'context.compacted',
                 compactionId,
@@ -2397,7 +2374,7 @@ export function createSessionOpener(services: SessionServices) {
                   });
                 updateMcpRegistry();
                 executionTools = mcpRegistry.project(baseTools());
-                await syncMcpWorldState(messages.length);
+                await modelContext.syncMcpWorldState(messages.length);
                 compactBoundary = messages.length;
                 const blocking = compactRequests.drain((input) =>
                   startCompact({
@@ -2407,9 +2384,9 @@ export function createSessionOpener(services: SessionServices) {
                 );
                 if (blocking) await compactCoordinator.checkpoint(true);
                 await ensureContextBudget();
-                await syncMcpWorldState(messages.length);
+                await modelContext.syncMcpWorldState(messages.length);
                 executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
-                await recordEnvironment();
+                await modelContext.recordEnvironment();
                 const { roundTools, roundBindings, toolScope, composeSystemPrompt } =
                   captureRoundToolScope();
                 const codeModeEnabled = roundTools.some((tool) => tool.name === 'code_exec');
@@ -2430,7 +2407,7 @@ export function createSessionOpener(services: SessionServices) {
                 sources.bind(toolScope);
                 const composedSystem = splitContextualPrompt(await composeSystemPrompt());
                 const candidateWorld = updatePromptWorldState(
-                  contextualWorldState,
+                  modelContext.worldState,
                   messages.length,
                   composedSystem.parts
                 );
@@ -2464,9 +2441,9 @@ export function createSessionOpener(services: SessionServices) {
                   preparingRequestMessages = undefined;
                 }
                 controller.signal.throwIfAborted();
-                if (candidateWorld !== contextualWorldState) {
+                if (candidateWorld !== modelContext.worldState) {
                   // Commit only after request middleware accepts the entire candidate.
-                  await commitWorldState(candidateWorld);
+                  await modelContext.commitWorldState(candidateWorld);
                 }
                 const lateCoreChange =
                   inputs.hasBoundaryCompactPending && (await appendMailboxMessages());
@@ -2563,37 +2540,7 @@ export function createSessionOpener(services: SessionServices) {
                     }
                   });
                   if (committed) {
-                    smartContextTokens = undefined;
-                    selected.resetContinuation?.();
-                    const refreshed = await restoreMessages(store, sessionId, committed.records, {
-                      includeImages: true,
-                      currentTurnId: turnId,
-                      projection: committed.projection
-                    });
-                    const restoredIds = new Set(committed.records.map((record) => record.recordId));
-                    const lateMessages = pendingAppends
-                      .slice(appendBoundary)
-                      .filter((entry) => !restoredIds.has(entry.recordId))
-                      .map((entry) => entry.message);
-                    messages.splice(0, messages.length, ...refreshed.messages, ...lateMessages);
-                    restoreMcpDiscovery();
-                    recordedEnvironment = refreshed.environmentState;
-                    compactionUserMessages = [...refreshed.userMessages];
-                    agentInstructionInsertIndex = contextualInstructionInsertIndex(messages);
-                    const next = resetContextualWorldState(
-                      latestContextualWorldStateGeneration(committed.records),
-                      agentInstructionInsertIndex,
-                      {
-                        instructionSnapshot: currentInstructionSnapshot,
-                        instructionContent: renderAgentInstructions(
-                          instructionEntries,
-                          committed.records.some(
-                            (record) => compactSummaryFromCheckpoint(record) !== undefined
-                          )
-                        )
-                      }
-                    );
-                    await commitWorldState(next);
+                    await modelContext.adoptGcCheckpoint(committed, appendBoundary);
                   }
                 }
               },
