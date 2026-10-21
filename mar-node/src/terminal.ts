@@ -507,14 +507,19 @@ export class TerminalManager {
     return summary;
   }
 
-  async shutdown(): Promise<void> {
-    if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
-    this.idleTimer = undefined;
+  /** Ends current terminals without disposing the manager's idle collection. */
+  async closeAll(): Promise<void> {
     await Promise.all(
       [...this.terminals.values()]
         .filter((terminal) => terminal.state === 'RUNNING')
         .map((terminal) => this.close(terminal.id))
     );
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
+    this.idleTimer = undefined;
+    await this.closeAll();
   }
 
   onFrame(listener: (frame: TerminalDataFrame) => void): () => void {

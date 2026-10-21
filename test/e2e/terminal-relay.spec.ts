@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createSocket } from 'node:dgram';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -7,6 +8,231 @@ import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
 import { createEnvelope, type NodeEnvelope } from '../../packages/protocol/src/index.js';
 import { createServerApp } from '../../ee/server/src/app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { randomUUID } from 'node:crypto';
+import { NodeConnector } from '../../mar-node/src/connector.js';
+import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
+import { TerminalManager } from '../../mar-node/src/terminal.js';
+import {
+  createPlaywrightTestDatabase,
+  dropPlaywrightTestDatabase,
+  resolvePlaywrightTestDatabase
+} from './support/playwright-test-database.js';
+
+test('A real Terminal process survives Server restart and reattaches without replaying input', async () => {
+  test.skip(process.platform !== 'linux', 'This regression exercises the Linux PTY lifecycle.');
+  test.setTimeout(60_000);
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const target = resolvePlaywrightTestDatabase(`${runId}-terminal-restart-${randomUUID()}`);
+  await createPlaywrightTestDatabase(target);
+  const directory = await mkdtemp(join(tmpdir(), 'mar-terminal-server-restart-'));
+  const statusPath = join(directory, 'status.json');
+  const startsPath = join(directory, 'starts.txt');
+  let app: ReturnType<typeof createServerApp> | undefined;
+  let connector: NodeConnector | undefined;
+  const sockets: TestSocket[] = [];
+  const manager = new TerminalManager({
+    platform: 'linux',
+    cwd: directory,
+    profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
+  });
+  const status = async (): Promise<{ pid: number; tick: number }> =>
+    JSON.parse(await readFile(statusPath, 'utf8'));
+  try {
+    const udp = createSocket('udp4');
+    await new Promise<void>((resolve, reject) => {
+      udp.once('error', reject);
+      udp.bind(0, '127.0.0.1', resolve);
+    });
+    const udpPort = udp.address().port;
+    await new Promise<void>((resolve) => udp.close(() => resolve()));
+    const serverOptions = {
+      databaseUrl: target.databaseUrl,
+      dataDirectory: join(directory, 'server'),
+      secureCookies: false
+    };
+    app = createServerApp(serverOptions);
+    const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+    const admin = await adminHeaders(app);
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/api/node-registration-tokens',
+      headers: admin,
+      payload: { displayName: 'Terminal restart Node' }
+    });
+    expect(registration.statusCode, registration.body).toBe(200);
+    connector = new NodeConnector({
+      configPath: join(directory, 'node.json'),
+      config: {
+        serverUrl: baseUrl,
+        dataDirectory: join(directory, 'node'),
+        directTransfer: { udpPortRangeBegin: udpPort, udpPortRangeEnd: udpPort },
+        allowedRoots: [directory],
+        registrationToken: registration.json<{ token: string }>().token
+      },
+      terminalManager: manager,
+      capabilities: unavailableCapabilities()
+    });
+    await connector.start();
+    const nodes = async () => {
+      const response = await app!.inject({ method: 'GET', url: '/api/nodes', headers: admin });
+      expect(response.statusCode).toBe(200);
+      return response.json<{ nodes: { id: string; connected: boolean }[] }>().nodes;
+    };
+    await expect.poll(nodes).toEqual([expect.objectContaining({ connected: true })]);
+    const nodeId = (await nodes())[0]!.id;
+    const openedTerminal = await app.inject({
+      method: 'POST',
+      url: '/api/terminals',
+      headers: admin,
+      payload: { nodeId }
+    });
+    expect(openedTerminal.statusCode, openedTerminal.body).toBe(201);
+    const terminalId = openedTerminal.json<{ terminal: { id: string } }>().terminal.id;
+    const attach = async (afterSequence: number) => {
+      const response = await app!.inject({
+        method: 'POST',
+        url: `/api/terminals/${terminalId}/attach-ticket`,
+        headers: admin,
+        payload: { nodeId, afterSequence }
+      });
+      expect(response.statusCode).toBe(201);
+      const ticket = response.json<{ ticket: string }>().ticket;
+      const socket = new WsClient(
+        `${baseUrl.replace('http', 'ws')}/api/terminals/${terminalId}/connect?ticket=${encodeURIComponent(ticket)}`,
+        { headers: { cookie: admin.cookie, origin: baseUrl } }
+      );
+      sockets.push(socket);
+      const frames: { type: string; sequence?: number; data?: string }[] = [];
+      socket.on('message', (raw: { toString(): string }) =>
+        frames.push(JSON.parse(raw.toString()))
+      );
+      await opened(socket as unknown as TestSocket);
+      await expect.poll(() => frames.some((frame) => frame.type === 'attach')).toBe(true);
+      return { socket, frames };
+    };
+    const first = await attach(0);
+    const command = `const fs=require("node:fs");let tick=0;fs.appendFileSync(${JSON.stringify(startsPath)},"start\\n");setInterval(()=>{fs.writeFileSync(${JSON.stringify(statusPath + '.tmp')},JSON.stringify({pid:process.pid,tick:++tick}));fs.renameSync(${JSON.stringify(statusPath + '.tmp')},${JSON.stringify(statusPath)});console.log("MAR_TICK "+process.pid+" "+tick)},100)`;
+    // This is the only input frame: reconnect must never rerun the command.
+    // Replace the shell so PID assertions track the PTY process itself.
+    first.socket.send(
+      JSON.stringify({
+        type: 'input',
+        terminalId,
+        data: `exec ${JSON.stringify(process.execPath)} -e '${command}'\n`
+      })
+    );
+    await expect
+      .poll(() =>
+        first.frames
+          .filter((frame) => frame.type === 'output')
+          .map((frame) => frame.data)
+          .join('')
+      )
+      .toMatch(/MAR_TICK \d+ \d+/u);
+    const before = await status();
+    await expect
+      .poll(() =>
+        first.frames
+          .filter((frame) => frame.type === 'output')
+          .map((frame) => frame.data)
+          .join('')
+      )
+      .toContain(`MAR_TICK ${before.pid} `);
+    const afterSequence = Math.max(...first.frames.map((frame) => frame.sequence ?? 0));
+    const disconnected = closed(first.socket as unknown as TestSocket);
+    await app.shutdown();
+    app = undefined;
+    await disconnected;
+    await expect.poll(async () => (await status()).tick).toBeGreaterThan(before.tick);
+    expect((await status()).pid).toBe(before.pid);
+    expect(manager.get(terminalId).state).toBe('RUNNING');
+
+    app = createServerApp(serverOptions);
+    await app.listen({ host: '127.0.0.1', port: Number(new URL(baseUrl).port) });
+    await expect
+      .poll(nodes, { timeout: 15_000 })
+      .toEqual([expect.objectContaining({ id: nodeId, connected: true })]);
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/terminals?nodeId=${nodeId}`,
+      headers: admin
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject({ terminals: [{ id: terminalId, state: 'RUNNING' }] });
+    const resumed = await attach(afterSequence);
+    const resumedAt = (await status()).tick;
+    await expect
+      .poll(() => {
+        const output = resumed.frames
+          .filter((frame) => frame.type === 'output')
+          .map((frame) => frame.data)
+          .join('');
+        return [...output.matchAll(/(?:^|[\r\n])MAR_TICK (\d+) (\d+)/gu)].some(
+          (match) => Number(match[1]) === before.pid && Number(match[2]) > resumedAt
+        );
+      })
+      .toBe(true);
+    expect(await readFile(startsPath, 'utf8')).toBe('start\n');
+    const closedTerminal = await app.inject({
+      method: 'DELETE',
+      url: `/api/terminals/${terminalId}`,
+      headers: admin,
+      payload: { nodeId }
+    });
+    expect(closedTerminal.statusCode).toBe(200);
+    expect(manager.get(terminalId).state).toBe('CLOSED');
+    await expect
+      .poll(() => {
+        try {
+          process.kill(before.pid, 0);
+          return false;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+          return true;
+        }
+      })
+      .toBe(true);
+    await test.info().attach('terminal-restart-evidence', {
+      body: JSON.stringify({
+        runId,
+        database: target.databaseName,
+        baseUrl,
+        udpPort,
+        directory,
+        nodeId,
+        terminalId,
+        pid: before.pid,
+        beforeTick: before.tick,
+        afterReconnectTick: resumedAt,
+        afterSequence,
+        inputFrames: 1,
+        starts: 1,
+        processReleased: true
+      }),
+      contentType: 'application/json'
+    });
+  } finally {
+    for (const socket of sockets) socket.close();
+    try {
+      try {
+        await connector?.stop();
+      } finally {
+        await manager.shutdown();
+      }
+    } finally {
+      try {
+        await app?.shutdown();
+      } finally {
+        try {
+          await dropPlaywrightTestDatabase(target);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    }
+  }
+});
 
 test('Admin Terminal uses one-use tickets and a dual-WebSocket relay with replay and closure restrictions', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-terminal-relay-'));

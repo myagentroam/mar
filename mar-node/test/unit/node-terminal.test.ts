@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { createSocket } from 'node:dgram';
 import WebSocket, { WebSocketServer } from 'ws';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
@@ -15,6 +16,7 @@ import {
   type TerminalPtyFactory
 } from '../../src/terminal.js';
 import { NodeTerminalChannel } from '../../src/service/node-terminal-channel.js';
+import { createEnvelope } from '@myagentroam/protocol';
 
 class FakePty implements TerminalPty {
   paused = false;
@@ -82,6 +84,146 @@ function fakeFactory(output: {
 }
 
 describe('Node Admin Terminal', () => {
+  it.each([1001, 1006, 4003])(
+    'preserves Terminal lifecycle and idle collection after control close %s',
+    async (code) => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      let timestamp = 0;
+      const ptys: FakePty[] = [];
+      const terminate = vi.fn(async () => undefined);
+      const manager = new TerminalManager({
+        platform: 'linux',
+        now: () => timestamp,
+        ptyFactory: () => {
+          const pty = new FakePty();
+          ptys.push(pty);
+          return pty;
+        },
+        terminate
+      });
+      const directory = await mkdtemp(join(tmpdir(), 'mar-terminal-reconnect-'));
+      const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+      let connector: NodeConnector | undefined;
+      const controls: WebSocket[] = [];
+      const relays: WebSocket[] = [];
+      const exits: string[] = [];
+      manager.onFrame((frame) => {
+        if (frame.type === 'exit') exits.push(frame.terminalId);
+      });
+      try {
+        await once(server, 'listening');
+        const udp = createSocket('udp4');
+        await new Promise<void>((resolve, reject) => {
+          udp.once('error', reject);
+          udp.bind(0, '127.0.0.1', resolve);
+        });
+        const udpPort = udp.address().port;
+        await new Promise<void>((resolve) => udp.close(() => resolve()));
+        const address = server.address();
+        if (address === null || typeof address === 'string') throw new Error('ADDRESS_INVALID');
+        server.on('connection', (socket, request) => {
+          socket.on('message', (raw) => {
+            const message = JSON.parse(raw.toString());
+            if (message.type !== 'authenticate') return;
+            if (request.url === '/api/node/connect') {
+              controls.push(socket);
+              socket.send(JSON.stringify(createEnvelope('authenticated', {})));
+            } else {
+              relays.push(socket);
+              socket.send(JSON.stringify({ type: 'authenticated', nodeId: 'terminal-node' }));
+            }
+          });
+        });
+        connector = new NodeConnector({
+          configPath: join(directory, 'node.json'),
+          config: {
+            serverUrl: `http://127.0.0.1:${address.port}`,
+            nodeId: 'terminal-node',
+            credential: 'fixture-credential',
+            directTransfer: { udpPortRangeBegin: udpPort, udpPortRangeEnd: udpPort },
+            allowedRoots: [directory]
+          },
+          database: new NodeDatabase(':memory:', 'terminal-node'),
+          terminalManager: manager,
+          capabilities: {
+            platform: 'linux',
+            architecture: 'x64',
+            nodeVersion: process.version,
+            codex: { available: false },
+            claudeCode: { available: false }
+          }
+        });
+        await connector.start();
+        await vi.waitFor(() => expect(relays).toHaveLength(1));
+        const original = manager.open();
+        const attachment = manager.authorizeAttach({ terminalId: original.id });
+        relays[0]!.send(
+          JSON.stringify({
+            type: 'attach',
+            ticket: 'original-ticket',
+            terminalId: original.id,
+            attachmentId: attachment.attachmentId,
+            latestSequence: attachment.latestSequence
+          })
+        );
+        await once(relays[0]!, 'message');
+        await manager.acceptFrame(attachment.attachmentId, {
+          type: 'input',
+          terminalId: original.id,
+          data: 'long-running-command\n'
+        });
+        if (code === 1006) controls[0]!.terminate();
+        else controls[0]!.close(code, code === 1001 ? 'SERVER_SHUTDOWN' : 'NODE_REVOKED');
+        await vi.waitFor(() => expect(controls).toHaveLength(2), { timeout: 5_000 });
+        await vi.waitFor(() => expect(relays).toHaveLength(2));
+        expect(manager.get(original.id).state).toBe(code === 4003 ? 'CLOSED' : 'RUNNING');
+        await expect(
+          manager.acceptFrame(attachment.attachmentId, {
+            type: 'input',
+            terminalId: original.id,
+            data: 'stale-input'
+          })
+        ).rejects.toThrow('TERMINAL_ATTACH_INVALID');
+        expect(ptys).toHaveLength(1);
+        expect(ptys[0]!.writes).toEqual(['long-running-command\n']);
+        if (code !== 4003) {
+          ptys[0]!.emitData('continued output');
+          expect(manager.authorizeAttach({ terminalId: original.id }).frames).toEqual([
+            expect.objectContaining({ type: 'output', data: 'continued output' })
+          ]);
+        }
+        const detached = manager.open();
+        const active = manager.open();
+        const writer = manager.authorizeAttach({ terminalId: active.id });
+        timestamp += 2 * 60 * 60_000;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(manager.get(detached.id).state).toBe('CLOSED');
+        expect(manager.get(active.id).state).toBe('RUNNING');
+        manager.detach(writer.attachmentId);
+        timestamp += 60 * 60_000;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(manager.get(active.id).state).toBe('CLOSED');
+        const final = manager.open();
+        manager.authorizeAttach({ terminalId: final.id });
+        await connector.stop();
+        await connector.stop();
+        expect(manager.list().every((terminal) => terminal.state === 'CLOSED')).toBe(true);
+        expect(terminate).toHaveBeenCalledTimes(ptys.length);
+        expect(new Set(exits).size).toBe(ptys.length);
+        expect(exits).toHaveLength(ptys.length);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        await connector?.stop();
+        await manager.shutdown();
+        for (const socket of server.clients) socket.terminate();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await rm(directory, { recursive: true, force: true });
+        vi.useRealTimers();
+      }
+    },
+    15_000
+  );
+
   it.each(['close', 'shutdown'] as const)(
     'releases a Windows PTY through %s exactly once',
     async (operation) => {
