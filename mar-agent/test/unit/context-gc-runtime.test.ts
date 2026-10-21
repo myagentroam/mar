@@ -25,6 +25,7 @@ import { captureExecutionContext } from './support/checkpoint-context.js';
 import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
 import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
 import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
+import { MarAgentError } from '../../src/agent-core/error.js';
 
 const homes: string[] = [];
 
@@ -244,6 +245,94 @@ describe('context GC runtime integration', () => {
       }
     }
   );
+
+  it('propagates a GC sidecar write failure without publishing warm state and cold-restores the durable checkpoint', async () => {
+    const captured = captureExecutionContext();
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-sidecar-failure-'));
+    homes.push(home);
+    await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+    let committedGeneration: string | undefined;
+    let worldBeforeFailure: worldState.ContextualWorldState | undefined;
+    const runGc = ContextGcRuntime.prototype.run;
+    vi.spyOn(ContextGcRuntime.prototype, 'run').mockImplementation(async function (
+      this: ContextGcRuntime,
+      input
+    ) {
+      const result = await runGc.call(this, input);
+      if (result)
+        committedGeneration = worldState.latestContextualWorldStateGeneration(result.records);
+      return result;
+    });
+    const write = JsonlSessionStore.prototype.writeContextualWorldState;
+    const sidecar = vi
+      .spyOn(JsonlSessionStore.prototype, 'writeContextualWorldState')
+      .mockImplementation(async function (this: JsonlSessionStore, ...args) {
+        if (
+          committedGeneration &&
+          (args[1] as { generation?: string }).generation === committedGeneration
+        ) {
+          worldBeforeFailure = captured.runtime(args[0]).contextualWorldState;
+          throw new MarAgentError('MAR_AGENT_HOST_IO_ERROR', 'Injected GC sidecar write failure.');
+        }
+        return write.apply(this, args);
+      });
+    const adapter = new ContextGcAdapter();
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+      models: [model],
+      adapterFactory: () => adapter
+    });
+    const session = await agent.createSession({ workspace: home });
+    try {
+      expect(await session.run({ prompt: 'Update the file.' }).result()).toMatchObject({
+        status: 'failed',
+        errorCode: 'MAR_AGENT_HOST_IO_ERROR'
+      });
+      expect(committedGeneration).toBeDefined();
+      expect(worldBeforeFailure).toBeDefined();
+      expect(captured.runtime(session.id).contextualWorldState).toBe(worldBeforeFailure);
+      expect(worldBeforeFailure!.generation).not.toBe(committedGeneration);
+      expect(adapter.requests).toHaveLength(4);
+      expect(
+        agent
+          .extensionDiagnostics()
+          .some((diagnostic) => diagnostic.code === 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED')
+      ).toBe(false);
+    } finally {
+      await agent.dispose();
+      sidecar.mockRestore();
+    }
+    const store = await JsonlSessionStore.open(home);
+    try {
+      const records = await store.read(session.id);
+      expect(records.filter((record) => record.type === 'context.gc.completed')).toHaveLength(1);
+      expect(records.some((record) => record.type === 'compact.completed')).toBe(false);
+    } finally {
+      await store.close();
+    }
+    const resumedAdapter = new ContextGcAdapter(model, 4);
+    const resumed = await createMarAgent({
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+      models: [model],
+      adapterFactory: () => resumedAdapter
+    });
+    try {
+      const restored = await resumed.openSession(session.id);
+      expect(
+        await restored.run({ prompt: 'Continue after the persisted GC.' }).result()
+      ).toMatchObject({ status: 'completed' });
+      const messages = resumedAdapter.requests[0]!.messages;
+      expect(messages.some((message) => message.content.includes('kind="stale_read"'))).toBe(true);
+      expect(JSON.stringify(messages)).not.toContain('old context old context');
+      expect(
+        messages.some((message) => message.content.includes('# Retained Session resources'))
+      ).toBe(false);
+    } finally {
+      await resumed.dispose();
+    }
+  });
 
   it.each([0, 4_999, 9_000, 10_000, NaN])(
     'does not read history or acquire resources outside the GC window: %s',
