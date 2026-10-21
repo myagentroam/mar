@@ -18,7 +18,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function fixture() {
+async function fixture(now: () => number = Date.now) {
   const cache = await mkdtemp(path.join(tmpdir(), 'mar-skill-cache-'));
   roots.push(cache);
   const fake = new SkillCacheFake();
@@ -33,13 +33,91 @@ async function fixture() {
       } as unknown as SkillSourceService,
       { resolve } as unknown as GithubSkillProvider,
       cache,
-      Date.now
+      now
     );
   return { fake, audit, resolve, cache, service };
 }
 
 describe('Skill cache reference coordination with gated SQL fake', () => {
   for (const operation of ['create', 'upgrade'] as const) {
+    for (const release of ['remove', 'upgrade'] as const) {
+      it(`Restarts a continuous 24-hour grace after ${operation} reuses an expired orphan key and ${release} releases it`, async () => {
+        const day = 86_400_000;
+        let now = Date.now();
+        const { fake, cache, service, resolve } = await fixture(() => now);
+        const original = await service().create(7, favoriteInput);
+        resolve.mockResolvedValue(skillBundle('b'));
+        await service().upgrade(7, original.id);
+        fake.versions.get(original.currentVersionId)!['unreferenced_at'] = now - 2 * day;
+        const file = path.join(cache, `${'a'.repeat(64)}.json`);
+        await utimes(file, new Date(now - 2 * day), new Date(now - 2 * day));
+        let borrowed;
+        if (operation === 'create') {
+          resolve.mockResolvedValue(skillBundle());
+          borrowed = await service().create(8, favoriteInput);
+        } else {
+          borrowed = await service().create(8, favoriteInput);
+          resolve.mockResolvedValue(skillBundle());
+          borrowed = await service().upgrade(8, borrowed.id);
+        }
+        expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBeNull();
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        now += 2 * day;
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBeNull();
+        if (release === 'remove') await service().remove(8, borrowed.id);
+        else {
+          resolve.mockResolvedValue(skillBundle('b'));
+          await service().upgrade(8, borrowed.id);
+        }
+        expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBe(now);
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        await expect(readFile(file, 'utf8')).resolves.toContain('SKILL.md');
+        now += day - 1;
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        now += 2;
+        await expect(service().cleanupCache()).resolves.toBe(1);
+        await expect(readFile(file)).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(fake.versions.get(original.currentVersionId)?.['cache_state']).toBe('TRASHED');
+      });
+    }
+
+    it(`Rolls back ${operation} grace resets when reference commit fails`, async () => {
+      const now = Date.now();
+      const { fake, cache, service, resolve, audit } = await fixture(() => now);
+      const original = await service().create(7, favoriteInput);
+      resolve.mockResolvedValue(skillBundle('b'));
+      await service().upgrade(7, original.id);
+      const previous =
+        operation === 'upgrade' ? await service().create(8, favoriteInput) : undefined;
+      const past = now - 2 * 86_400_000;
+      fake.versions.get(original.currentVersionId)!['unreferenced_at'] = past;
+      const file = path.join(cache, `${'a'.repeat(64)}.json`);
+      await utimes(file, new Date(past), new Date(past));
+      resolve.mockResolvedValue(skillBundle());
+      audit.mockClear();
+      fake.beforeCommit = async () => {
+        throw new Error('COMMIT_FAILED');
+      };
+      const attempt = () =>
+        previous ? service().upgrade(8, previous.id) : service().create(8, favoriteInput);
+      await expect(attempt()).rejects.toThrow('COMMIT_FAILED');
+      fake.beforeCommit = async () => {};
+      expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBe(past);
+      expect(fake.favorites.size).toBe(previous ? 2 : 1);
+      if (previous)
+        expect(fake.favorites.get(previous.id)?.['current_version_id']).toBe(
+          previous.currentVersionId
+        );
+      expect(audit).not.toHaveBeenCalled();
+      await expect(readFile(file, 'utf8')).resolves.toContain('SKILL.md');
+      await expect(service().cleanupCache()).resolves.toBe(1);
+      await expect(readFile(file)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(attempt()).resolves.toMatchObject({ contentHash: 'a'.repeat(64) });
+      expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBe(past);
+      await expect(readFile(file, 'utf8')).resolves.toContain('SKILL.md');
+    });
+
     it(`Rechecks selected cache after ${operation} commits a same-hash reference`, async () => {
       const { fake, cache, service, resolve } = await fixture();
       let favoriteId = '';
@@ -145,6 +223,24 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
       }
     });
   }
+
+  it('Starts an unobserved orphan grace period only after the protected reference check', async () => {
+    let now = Date.now();
+    const { fake, cache, service, resolve } = await fixture(() => now);
+    const original = await service().create(7, favoriteInput);
+    resolve.mockResolvedValue(skillBundle('b'));
+    await service().upgrade(7, original.id);
+    fake.versions.get(original.currentVersionId)!['unreferenced_at'] = null;
+    const file = path.join(cache, `${'a'.repeat(64)}.json`);
+    const past = new Date(now - 2 * 86_400_000);
+    await utimes(file, past, past);
+    await expect(service().cleanupCache()).resolves.toBe(0);
+    expect(fake.versions.get(original.currentVersionId)?.['unreferenced_at']).toBe(now);
+    await expect(readFile(file, 'utf8')).resolves.toContain('SKILL.md');
+    now += 86_400_001;
+    await expect(service().cleanupCache()).resolves.toBe(1);
+    await expect(readFile(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 
   it('Rolls back failed upgrades without publishing audit or dropping the old current version', async () => {
     const { fake, service, resolve, audit, cache } = await fixture();

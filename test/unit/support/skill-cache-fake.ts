@@ -70,7 +70,21 @@ export class SkillCacheFake {
       if (sql.includes('COUNT(*)')) return [[{ total: this.favorites.size }], []];
       if (sql.includes('SELECT * FROM skill_favorites'))
         return [[this.favorites.get(String(values[0]))].filter(Boolean), []];
-      if (sql.includes('UPDATE skill_versions version')) return [{ affectedRows: 0 }, []];
+      if (sql.includes('SELECT DISTINCT cache_key'))
+        return [
+          [...this.versions.values()].filter((version) => version['favorite_id'] === values[0]),
+          []
+        ];
+      if (sql.includes('UPDATE skill_versions version')) {
+        for (const version of this.versions.values()) {
+          const referenced = [...this.favorites.values()].some(
+            (favorite) => favorite['current_version_id'] === version['id']
+          );
+          if (!referenced && version['cache_state'] === 'READY')
+            version['unreferenced_at'] ??= values[0];
+        }
+        return [{ affectedRows: 1 }, []];
+      }
       throw new Error(`UNEXPECTED_POOL_SQL: ${sql}`);
     },
     getConnection: async () => {
@@ -97,6 +111,11 @@ export class SkillCacheFake {
           if (sql.includes('SELECT id FROM users')) return [[{ id: values[0] }], []];
           if (sql.includes('SELECT id,enabled FROM skill_sources'))
             return [[{ id: values[0], enabled: 1 }], []];
+          if (sql.includes('SELECT DISTINCT cache_key'))
+            return [
+              [...this.versions.values()].filter((version) => version['favorite_id'] === values[0]),
+              []
+            ];
           if (sql.includes('SELECT version.cache_key'))
             return [
               [...this.favorites.values()]
@@ -109,15 +128,37 @@ export class SkillCacheFake {
               []
             ];
           if (sql.includes('MIN(unreferenced_at)')) {
-            const times = [...this.versions.values()]
-              .filter(
-                (v) =>
-                  v['cache_key'] === values[0] &&
-                  v['cache_state'] === 'READY' &&
-                  v['unreferenced_at'] != null
-              )
+            const versions = [...this.versions.values()].filter(
+              (version) => version['cache_key'] === values[0] && version['cache_state'] === 'READY'
+            );
+            const times = versions
+              .filter((v) => v['unreferenced_at'] != null)
               .map((v) => Number(v['unreferenced_at']));
-            return [[{ unreferenced_at: times.length ? Math.min(...times) : null }], []];
+            return [
+              [
+                {
+                  versions: versions.length,
+                  unreferenced_at: times.length ? Math.min(...times) : null
+                }
+              ],
+              []
+            ];
+          }
+          if (sql.includes('SELECT favorite.id,version.cache_key')) {
+            const favorite = this.favorites.get(String(values[0]));
+            return [
+              favorite
+                ? [
+                    {
+                      id: favorite['id'],
+                      cache_key: this.versions.get(String(favorite['current_version_id']))?.[
+                        'cache_key'
+                      ]
+                    }
+                  ]
+                : [],
+              []
+            ];
           }
           if (sql.includes('INSERT INTO skill_favorites')) {
             pending.push(() =>
@@ -148,7 +189,34 @@ export class SkillCacheFake {
               this.favorites.get(String(values.at(-1)))!['current_version_id'] = values[0];
             });
           } else if (sql.includes('SELECT id FROM skill_favorites')) {
-            return [this.favorites.has(String(values[0])) ? [{ id: values[0] }] : [], []];
+            return [[this.favorites.get(String(values[0]))].filter(Boolean), []];
+          } else if (sql.includes('DELETE FROM skill_versions')) {
+            pending.push(() => {
+              for (const [id, version] of this.versions)
+                if (version['favorite_id'] === values[0]) this.versions.delete(id);
+            });
+          } else if (sql.includes('DELETE FROM skill_favorites')) {
+            pending.push(() => this.favorites.delete(String(values[0])));
+          } else if (sql.includes('UPDATE skill_versions version')) {
+            pending.push(() => {
+              for (const version of this.versions.values()) {
+                const referenced = [...this.favorites.values()].some(
+                  (favorite) => favorite['current_version_id'] === version['id']
+                );
+                if (
+                  !referenced &&
+                  version['cache_key'] === values[1] &&
+                  version['cache_state'] === 'READY'
+                )
+                  version['unreferenced_at'] = values[0];
+              }
+            });
+          } else if (sql.includes('SET unreferenced_at=NULL WHERE content_hash=')) {
+            pending.push(() => {
+              for (const version of this.versions.values())
+                if (version['cache_key'] === values[0] && version['cache_state'] === 'READY')
+                  version['unreferenced_at'] = null;
+            });
           } else if (sql.includes('SELECT id FROM skill_versions')) {
             return [
               [...this.versions.values()].filter(

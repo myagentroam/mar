@@ -6,6 +6,97 @@ import { withSkillCacheTransaction } from '../../packages/server-core/src/skill-
 import { gate, gatedPool, input, withSkillCacheFixture } from './support/skill-cache-fixture.js';
 
 for (const operation of ['create', 'upgrade'] as const) {
+  for (const release of ['remove', 'upgrade'] as const) {
+    test(`Skill cache restarts continuous grace after same-hash ${operation} and final ${release}`, async () => {
+      await withSkillCacheFixture(async ({ pool, service, file, expire, advance, now }) => {
+        const day = 86_400_000;
+        const original = await service().create(7, input);
+        await service(pool, 'b').upgrade(7, original.id);
+        await expire();
+        let borrowed;
+        if (operation === 'create') borrowed = await service().create(8, input);
+        else {
+          borrowed = await service(pool, 'b').create(8, input);
+          borrowed = await service().upgrade(8, borrowed.id);
+        }
+        const orphanTimestamp = async () => {
+          const [rows] = await pool.execute<RowDataPacket[]>(
+            'SELECT cache_state,unreferenced_at FROM skill_versions WHERE id=?',
+            [original.currentVersionId]
+          );
+          return rows;
+        };
+        expect(await orphanTimestamp()).toMatchObject([
+          { cache_state: 'READY', unreferenced_at: null }
+        ]);
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        advance(2 * day);
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        expect(await orphanTimestamp()).toMatchObject([
+          { cache_state: 'READY', unreferenced_at: null }
+        ]);
+        if (release === 'remove') await service().remove(8, borrowed.id);
+        else await service(pool, 'b').upgrade(8, borrowed.id);
+        expect(await orphanTimestamp()).toMatchObject([
+          { cache_state: 'READY', unreferenced_at: now() }
+        ]);
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        await expect(readFile(file(), 'utf8')).resolves.toContain('SKILL.md');
+        advance(day - 1);
+        await expect(service().cleanupCache()).resolves.toBe(0);
+        advance(2);
+        await expect(service().cleanupCache()).resolves.toBe(1);
+        await expect(readFile(file())).rejects.toMatchObject({ code: 'ENOENT' });
+        const [trashed] = await pool.execute<RowDataPacket[]>(
+          'SELECT cache_state FROM skill_versions WHERE id=?',
+          [original.currentVersionId]
+        );
+        expect(trashed).toMatchObject([{ cache_state: 'TRASHED' }]);
+      });
+    });
+  }
+
+  test(`Skill cache rolls back a failed ${operation} grace reset without extending an expired orphan`, async () => {
+    await withSkillCacheFixture(async ({ pool, service, file, expire, audits, now }) => {
+      const original = await service().create(7, input);
+      await service(pool, 'b').upgrade(7, original.id);
+      const previous =
+        operation === 'upgrade' ? await service(pool, 'b').create(8, input) : undefined;
+      await expire();
+      await pool.query(`ALTER TABLE skill_versions ADD CONSTRAINT fixture_keep_grace
+        CHECK (id <> '${original.currentVersionId}' OR unreferenced_at IS NOT NULL)`);
+      const attempt = () =>
+        previous ? service().upgrade(8, previous.id) : service().create(8, input);
+      audits.length = 0;
+      await expect(attempt()).rejects.toMatchObject({ code: 'ER_CHECK_CONSTRAINT_VIOLATED' });
+      expect(audits).toEqual([]);
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        'SELECT cache_state,unreferenced_at FROM skill_versions WHERE id=?',
+        [original.currentVersionId]
+      );
+      expect(rows).toMatchObject([
+        { cache_state: 'READY', unreferenced_at: now() - 2 * 86_400_000 }
+      ]);
+      const [favorites] = await pool.query<RowDataPacket[]>(
+        'SELECT id,current_version_id FROM skill_favorites'
+      );
+      expect(favorites).toHaveLength(previous ? 2 : 1);
+      if (previous)
+        expect(favorites.find((row) => row['id'] === previous.id)?.['current_version_id']).toBe(
+          previous.currentVersionId
+        );
+      await expect(readFile(file(), 'utf8')).resolves.toContain('SKILL.md');
+      await pool.query('ALTER TABLE skill_versions DROP CHECK fixture_keep_grace');
+      await expect(service().cleanupCache()).resolves.toBe(1);
+      await expect(readFile(file())).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(attempt()).resolves.toMatchObject({ contentHash: 'a'.repeat(64) });
+      await expect(readFile(file(), 'utf8')).resolves.toContain('SKILL.md');
+      expect(audits).toEqual([
+        operation === 'create' ? 'skill.catalog.created' : 'skill.catalog.upgraded'
+      ]);
+    });
+  });
+
   test(`Skill cache rechecks a selected key after same-hash ${operation} commits`, async () => {
     await withSkillCacheFixture(async ({ pool, otherPool, service, file, expire }) => {
       const original = await service().create(7, input);
@@ -144,6 +235,97 @@ for (const operation of ['create', 'upgrade'] as const) {
     });
   });
 }
+
+for (const release of ['remove', 'upgrade'] as const) {
+  test(`Skill cache rolls back a failed ${release} grace timestamp with its current reference`, async () => {
+    await withSkillCacheFixture(async ({ pool, service, file, expire, audits, advance }) => {
+      const original = await service().create(7, input);
+      await service(pool, 'b').upgrade(7, original.id);
+      await expire();
+      const borrowed = await service().create(8, input);
+      const attempt = () =>
+        release === 'remove'
+          ? service().remove(8, borrowed.id)
+          : service(pool, 'b').upgrade(8, borrowed.id);
+      await pool.query(`ALTER TABLE skill_versions ADD CONSTRAINT fixture_keep_reference
+        CHECK (id <> '${original.currentVersionId}' OR unreferenced_at IS NULL)`);
+      audits.length = 0;
+      await expect(attempt()).rejects.toMatchObject({ code: 'ER_CHECK_CONSTRAINT_VIOLATED' });
+      expect(audits).toEqual([]);
+      const [favorites] = await pool.execute<RowDataPacket[]>(
+        'SELECT current_version_id FROM skill_favorites WHERE id=?',
+        [borrowed.id]
+      );
+      expect(favorites).toMatchObject([{ current_version_id: borrowed.currentVersionId }]);
+      const [versions] = await pool.execute<RowDataPacket[]>(
+        'SELECT id,cache_state,unreferenced_at FROM skill_versions WHERE cache_key=?',
+        ['a'.repeat(64)]
+      );
+      expect(versions).toHaveLength(2);
+      for (const version of versions)
+        expect(version).toMatchObject({ cache_state: 'READY', unreferenced_at: null });
+      await expect(readFile(file(), 'utf8')).resolves.toContain('SKILL.md');
+      await expect(service().cleanupCache()).resolves.toBe(0);
+      await pool.query('ALTER TABLE skill_versions DROP CHECK fixture_keep_reference');
+      await attempt();
+      expect(audits).toEqual([
+        release === 'remove' ? 'skill.catalog.deleted' : 'skill.catalog.upgraded'
+      ]);
+      await expect(service().cleanupCache()).resolves.toBe(0);
+      advance(86_400_001);
+      await expect(service().cleanupCache()).resolves.toBe(1);
+      await expect(readFile(file())).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+}
+
+test('Skill cache grace writes let different keys commit independently', async () => {
+  await withSkillCacheFixture(async ({ pool, otherPool, inspector, service, file }) => {
+    const first = await service().create(7, input);
+    const second = await service(otherPool, 'b').create(8, input);
+    const held = gate();
+    const committed = gate(2_000);
+    let lockName = '';
+    const firstPool = gatedPool(pool, {
+      before: async (sql, values) => {
+        if (sql.includes('GET_LOCK')) lockName = String(values[0]);
+        if (sql === 'COMMIT') await held.wait();
+      }
+    });
+    const secondPool = gatedPool(otherPool, {
+      after: async (sql) => {
+        if (sql === 'COMMIT') await committed.wait();
+      }
+    });
+    const pendingFirst = service(firstPool).upgrade(7, first.id);
+    void pendingFirst.catch(() => {});
+    let pendingSecond: ReturnType<ReturnType<typeof service>['upgrade']> | undefined;
+    try {
+      await held.entered;
+      pendingSecond = service(secondPool, 'b').upgrade(8, second.id);
+      void pendingSecond.catch(() => {});
+      await committed.entered;
+      const [owners] = await inspector.query<RowDataPacket[]>('SELECT IS_USED_LOCK(?) AS owner', [
+        lockName
+      ]);
+      expect(owners[0]?.['owner']).toBeGreaterThan(0);
+      committed.release();
+      await expect(pendingSecond).resolves.toMatchObject({
+        currentVersionId: second.currentVersionId
+      });
+      await expect(readFile(file(), 'utf8')).resolves.toContain('SKILL.md');
+      await expect(readFile(file('b'), 'utf8')).resolves.toContain('SKILL.md');
+      held.release();
+      await expect(pendingFirst).resolves.toMatchObject({
+        currentVersionId: first.currentVersionId
+      });
+    } finally {
+      held.release();
+      committed.release();
+      await Promise.allSettled([pendingFirst, pendingSecond]);
+    }
+  });
+});
 
 test('Skill cache uses independent keys, bounded MySQL waits, and reusable single-connection pools', async () => {
   await withSkillCacheFixture(async ({ pool, otherPool, service, file }) => {

@@ -176,6 +176,10 @@ export abstract class SkillFavoriteService {
           versionId,
           favoriteId
         ]);
+        await connection.execute(
+          "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
+          [bundle.contentHash, bundle.contentHash]
+        );
       }
     );
     const summary = summaryFromBundle({
@@ -277,7 +281,9 @@ export abstract class SkillFavoriteService {
       async (connection, assertConnected) => {
         await this.storeBundle(bundle, connection, assertConnected);
         const [parents] = await connection.execute<RowDataPacket[]>(
-          'SELECT id FROM skill_favorites WHERE id=? FOR UPDATE',
+          `SELECT favorite.id,version.cache_key FROM skill_favorites favorite
+           LEFT JOIN skill_versions version ON version.id=favorite.current_version_id
+           WHERE favorite.id=? FOR UPDATE`,
           [favoriteId]
         );
         if (parents.length !== 1) throw new Error('SKILL_FAVORITE_NOT_FOUND');
@@ -316,6 +322,13 @@ export abstract class SkillFavoriteService {
           'UPDATE skill_favorites SET current_version_id=?,updated_at=? WHERE id=?',
           [effectiveVersionId, timestamp, favoriteId]
         );
+        const previousKey = parents[0]?.['cache_key'];
+        if (typeof previousKey === 'string' && previousKey !== bundle.contentHash)
+          await this.markCacheUnreferenced(connection, previousKey);
+        await connection.execute(
+          "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
+          [bundle.contentHash, bundle.contentHash]
+        );
         emitAuditAfterCommit(
           this.database,
           connection,
@@ -349,30 +362,35 @@ export abstract class SkillFavoriteService {
 
   async remove(actorUserId: number, favoriteId: string): Promise<void> {
     const row = await this.requireFavorite(actorUserId, favoriteId, true);
-    const [versions] = await this.database.raw.execute<RowDataPacket[]>(
-      'SELECT DISTINCT cache_key FROM skill_versions WHERE favorite_id=?',
-      [favoriteId]
-    );
-    const timestamp = new Date(this.now());
-    for (const version of versions) {
-      try {
-        await utimes(
-          path.join(this.cacheDirectory, `${String(version['cache_key'])}.json`),
-          timestamp,
-          timestamp
-        );
-      } catch (error) {
-        if (!isMissing(error)) throw error;
-      }
-    }
     await withMysqlTransaction(this.database.raw, async (connection) => {
       const [parents] = await connection.execute<RowDataPacket[]>(
-        'SELECT id FROM skill_favorites WHERE id=? FOR UPDATE',
+        `SELECT favorite.id,version.cache_key FROM skill_favorites favorite
+         LEFT JOIN skill_versions version ON version.id=favorite.current_version_id
+         WHERE favorite.id=? FOR UPDATE`,
         [favoriteId]
       );
       if (parents.length !== 1) throw new Error('SKILL_FAVORITE_NOT_FOUND');
+      const [versions] = await connection.execute<RowDataPacket[]>(
+        'SELECT DISTINCT cache_key FROM skill_versions WHERE favorite_id=?',
+        [favoriteId]
+      );
+      const timestamp = new Date(this.now());
+      for (const version of versions) {
+        try {
+          await utimes(
+            path.join(this.cacheDirectory, `${String(version['cache_key'])}.json`),
+            timestamp,
+            timestamp
+          );
+        } catch (error) {
+          if (!isMissing(error)) throw error;
+        }
+      }
       await connection.execute('DELETE FROM skill_versions WHERE favorite_id=?', [favoriteId]);
       await connection.execute('DELETE FROM skill_favorites WHERE id=?', [favoriteId]);
+      const previousKey = parents[0]?.['cache_key'];
+      if (typeof previousKey === 'string')
+        await this.markCacheUnreferenced(connection, previousKey);
     });
     emitAudit(
       this.database,
@@ -390,13 +408,6 @@ export abstract class SkillFavoriteService {
   }
 
   async cleanupCache(graceMs = 24 * 60 * 60 * 1000): Promise<number> {
-    await this.database.raw.execute(
-      `UPDATE skill_versions version
-       LEFT JOIN skill_favorites favorite ON favorite.current_version_id=version.id
-       SET version.unreferenced_at=COALESCE(version.unreferenced_at,?)
-       WHERE favorite.id IS NULL AND version.cache_state='READY'`,
-      [this.now()]
-    );
     let entries: string[];
     try {
       entries = await readdir(this.cacheDirectory);
@@ -421,8 +432,8 @@ export abstract class SkillFavoriteService {
           );
           if (references.length > 0) return false;
           const [eligible] = await connection.execute<RowDataPacket[]>(
-            `SELECT MIN(unreferenced_at) AS unreferenced_at FROM skill_versions
-             WHERE cache_key=? AND cache_state='READY' AND unreferenced_at IS NOT NULL`,
+            `SELECT COUNT(*) AS versions,MIN(unreferenced_at) AS unreferenced_at FROM skill_versions
+             WHERE cache_key=? AND cache_state='READY'`,
             [cacheKey]
           );
           const file = path.join(this.cacheDirectory, entry);
@@ -434,14 +445,19 @@ export abstract class SkillFavoriteService {
             throw error;
           }
           const eligibleAt = eligible[0]?.['unreferenced_at'];
-          const unreferencedAt = eligibleAt == null ? modifiedAt : Number(eligibleAt);
+          let unreferencedAt = eligibleAt == null ? modifiedAt : Number(eligibleAt);
+          if (eligibleAt == null && Number(eligible[0]?.['versions']) > 0) {
+            // Start previously unobserved orphan periods only after the fresh key reference check.
+            unreferencedAt = this.now();
+            await this.markCacheUnreferenced(connection, cacheKey, unreferencedAt);
+          }
           if (this.now() - unreferencedAt < graceMs) return false;
           assertConnected();
           await unlink(file);
           await connection.execute(
             `UPDATE skill_versions SET cache_state='TRASHED',unreferenced_at=COALESCE(unreferenced_at,?)
-             WHERE cache_key=?`,
-            [this.now(), cacheKey]
+             WHERE content_hash=? AND cache_key=?`,
+            [this.now(), cacheKey, cacheKey]
           );
           return true;
         }
@@ -449,6 +465,23 @@ export abstract class SkillFavoriteService {
       if (reclaimed) removed += 1;
     }
     return removed;
+  }
+
+  private async markCacheUnreferenced(
+    connection: PoolConnection,
+    cacheKey: string,
+    timestamp = this.now()
+  ): Promise<void> {
+    // Every reference release renews the key's remaining orphan rows in the same transaction.
+    // Rows still selected by another favorite are not orphaned and keep their NULL timestamp.
+    // The indexed content identity prevents grace writes from locking unrelated cache keys.
+    await connection.execute(
+      `UPDATE skill_versions version
+       LEFT JOIN skill_favorites favorite ON favorite.current_version_id=version.id
+       SET version.unreferenced_at=?
+       WHERE version.content_hash=? AND version.cache_key=? AND favorite.id IS NULL AND version.cache_state='READY'`,
+      [timestamp, cacheKey, cacheKey]
+    );
   }
 
   private async requireFavorite(

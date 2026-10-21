@@ -120,6 +120,8 @@ export async function withSkillCacheFixture(
     audits: string[];
     service: (pool?: Pool, character?: string) => SkillFavoriteService;
     expire: (character?: string) => Promise<void>;
+    advance: (milliseconds: number) => void;
+    now: () => number;
   }) => Promise<void>
 ) {
   const runId = process.env['MAR_TEST_RUN_ID'];
@@ -139,6 +141,8 @@ export async function withSkillCacheFixture(
       (id,kind,scope,owner_user_id,name,locator,enabled,built_in,status,created_by_user_id,created_at,updated_at,owner_key)
       VALUES ('repo-1','REPOSITORY','PERSONAL',7,'Repo','https://github.com/acme/skills',TRUE,FALSE,'READY',7,1,1,'PERSONAL::7')`);
     const audits: string[] = [];
+    let currentTime = Date.now();
+    const now = () => currentTime;
     const file = (character = 'a') => path.join(cache, `${character.repeat(64)}.json`);
     const service = (raw = pool, character = 'a') =>
       new SkillFavoriteService(
@@ -156,7 +160,8 @@ export async function withSkillCacheFixture(
           })
         } as unknown as SkillSourceService,
         { resolve: async () => bundle(character) } as unknown as GithubSkillProvider,
-        cache
+        cache,
+        now
       );
     await run({
       pool,
@@ -166,8 +171,12 @@ export async function withSkillCacheFixture(
       file,
       audits,
       service,
+      now,
+      advance: (milliseconds) => {
+        currentTime += milliseconds;
+      },
       expire: async (character = 'a') => {
-        const past = Date.now() - 2 * 86_400_000;
+        const past = now() - 2 * 86_400_000;
         await pool.execute('UPDATE skill_versions SET unreferenced_at=? WHERE cache_key=?', [
           past,
           character.repeat(64)
