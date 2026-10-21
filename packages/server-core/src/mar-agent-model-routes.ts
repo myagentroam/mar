@@ -145,6 +145,20 @@ export function registerMarAgentModelRoutes(input: {
       return databaseError(reply, error);
     }
   });
+  app.post<{ Params: { modelId: string }; Body: unknown }>(
+    '/api/admin/mar-agent/models/:modelId/duplicate',
+    async (request, reply) => {
+      const actor = writable(database, request, reply, publicOrigin);
+      if (!actor) return;
+      try {
+        return reply.code(201).send({
+          model: await models.duplicate(actor.userId, request.params.modelId, request.body)
+        });
+      } catch (error) {
+        return databaseError(reply, error);
+      }
+    }
+  );
   app.put<{ Body: unknown }>('/api/mar-agent/models/order', async (request, reply) => {
     const actor = personalWritable(database, request, reply, publicOrigin);
     if (!actor) return;

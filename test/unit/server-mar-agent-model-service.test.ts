@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MarAgentModelService as CoreMarAgentModelService } from '../../packages/server-core/src/mar-agent-model-service.js';
 import {
   codexModelCatalogSchema,
+  marAgentStoredModelConfigurationSchema,
   type CodexModelCatalog
 } from '../../packages/protocol/src/index.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
@@ -114,6 +115,235 @@ function managementAccess() {
 }
 
 describe('MAR Agent model service', () => {
+  it.each([false, true])(
+    'duplicates a model with a server-side key (replacement=%s)',
+    async (replace) => {
+      const db = database([
+        [{ affectedRows: 1 }, []],
+        [
+          [
+            {
+              id: 'copy-id',
+              name: 'Coding copy',
+              protocol: 'ANTHROPIC_MESSAGES',
+              base_url: input.baseUrl,
+              model_id: input.modelId,
+              credential: JSON.stringify({
+                type: 'INLINE_API_KEY',
+                value: replace ? 'replacement' : 'secret'
+              }),
+              context_window_tokens: input.contextWindowTokens,
+              max_output_tokens: input.maxOutputTokens,
+              input_capabilities: '["TEXT","IMAGE"]',
+              output_capabilities: '["TEXT"]',
+              reasoning_efforts: '[]',
+              default_reasoning_effort: 'medium',
+              title_generation: 1,
+              code_mode: 1,
+              hosted_web_search: 0,
+              enabled: 1,
+              sort_order: 8,
+              last_tested_at: null,
+              last_test_status: 'UNVERIFIED',
+              last_test_code: null,
+              public_access: 0
+            }
+          ],
+          []
+        ]
+      ]);
+      const access = managementAccess();
+      const service = new MarAgentModelService(
+        db,
+        () => 10,
+        () => 'copy-id',
+        access
+      );
+      const { apiKey: _sourceKey, sortOrder: _sourceOrder, ...sourceConfiguration } = input;
+      const source = marAgentStoredModelConfigurationSchema.parse({
+        ...sourceConfiguration,
+        id: 'source-id',
+        credential: { type: 'INLINE_API_KEY', value: 'secret' }
+      });
+      vi.spyOn(service, 'stored').mockResolvedValue(source);
+      const { apiKey: _apiKey, ...configuration } = input;
+      const result = await service.duplicate(7, 'source-id', {
+        ...configuration,
+        name: 'Coding copy',
+        titleGeneration: true,
+        codeMode: true,
+        sortOrder: 8,
+        ...(replace ? { credential: { type: 'INLINE_API_KEY', value: 'replacement' } } : {})
+      });
+      expect(access.canManageModel).toHaveBeenCalledWith(7, 'source-id');
+      expect(result).toMatchObject({
+        id: 'copy-id',
+        name: 'Coding copy',
+        lastTestStatus: 'UNVERIFIED',
+        lastTestedAt: null,
+        access: 'RESTRICTED',
+        ownership: { ownerType: 'PERSONAL', ownerUserId: 7 },
+        titleGeneration: true,
+        codeMode: true,
+        sortOrder: 8
+      });
+      const writes = db.raw.execute.mock.calls.filter(([sql]) => String(sql).startsWith('INSERT'));
+      expect(writes).toHaveLength(1);
+      expect(String(writes[0]?.[0])).toContain('INSERT INTO mar_agent_models');
+      expect(writes[0]?.[1]).toContain(
+        JSON.stringify({
+          type: 'INLINE_API_KEY',
+          value: replace ? 'replacement' : 'secret'
+        })
+      );
+      expect(JSON.stringify(result)).not.toContain('secret');
+      expect(JSON.stringify(result)).not.toContain('replacement');
+      expect(source.credential).toEqual({ type: 'INLINE_API_KEY', value: 'secret' });
+    }
+  );
+
+  it('requires source management permission before reading or copying secrets', async () => {
+    const db = database();
+    const access = managementAccess();
+    access.canManageModel.mockResolvedValue(false);
+    const service = new MarAgentModelService(db, undefined, undefined, access);
+    const stored = vi.spyOn(service, 'stored');
+    await expect(service.duplicate(7, 'source-id', input)).rejects.toThrow(
+      'MODEL_RESOURCE_ADMIN_REQUIRED'
+    );
+    expect(stored).not.toHaveBeenCalled();
+    expect(db.raw.execute).not.toHaveBeenCalled();
+  });
+
+  it('fails without writing when the source has disappeared', async () => {
+    const db = database([[[], []]]);
+    const service = new MarAgentModelService(db, undefined, undefined, managementAccess());
+    await expect(service.duplicate(7, 'missing-id', input)).rejects.toThrow(
+      'MAR_AGENT_MODEL_NOT_FOUND'
+    );
+    expect(db.connection.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('revalidates an inherited OAuth reference against the new model ownership', async () => {
+    const db = database();
+    const scopes = {
+      assertModelCredentialBinding: vi.fn(async () => {
+        throw new Error('CODEX_CREDENTIAL_SCOPE_CONFLICT');
+      })
+    };
+    const service = new MarAgentModelService(db, undefined, undefined, managementAccess(), scopes);
+    const credential = { type: 'CREDENTIAL_REF' as const, credentialId: 'team-credential' };
+    const { apiKey: _sourceKey, sortOrder: _sourceOrder, ...sourceConfiguration } = input;
+    vi.spyOn(service, 'stored').mockResolvedValue(
+      marAgentStoredModelConfigurationSchema.parse({
+        ...sourceConfiguration,
+        id: 'source-id',
+        protocol: 'OPENAI_RESPONSES',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        credential
+      })
+    );
+    const { apiKey: _apiKey, ...configuration } = input;
+    const ownership = { ownerType: 'ORGANIZATION', ownerOrganizationId: 2 };
+    await expect(
+      service.duplicate(7, 'source-id', {
+        ...configuration,
+        protocol: 'OPENAI_RESPONSES',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        ownership
+      })
+    ).rejects.toThrow('CODEX_CREDENTIAL_SCOPE_CONFLICT');
+    expect(scopes.assertModelCredentialBinding).toHaveBeenCalledWith(
+      7,
+      'team-credential',
+      undefined,
+      ownership
+    );
+    expect(db.connection.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('copies an OAuth reference through the existing creation checks, not its token', async () => {
+    const db = database([
+      [{ affectedRows: 1 }, []],
+      [
+        [
+          {
+            id: 'copy-id',
+            name: 'OAuth copy',
+            protocol: 'OPENAI_RESPONSES',
+            base_url: 'https://chatgpt.com/backend-api/codex',
+            model_id: 'coding',
+            credential: JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'team-credential' }),
+            context_window_tokens: 200000,
+            max_output_tokens: 16384,
+            input_capabilities: '["TEXT"]',
+            output_capabilities: '["TEXT"]',
+            reasoning_efforts: '[]',
+            default_reasoning_effort: 'medium',
+            enabled: 1,
+            sort_order: 1,
+            last_test_status: 'UNVERIFIED',
+            public_access: 0
+          }
+        ],
+        []
+      ]
+    ]);
+    const scopes = {
+      assertModelCredentialBinding: vi.fn(async () => undefined),
+      assertCredentialTarget: vi.fn(async () => undefined)
+    };
+    const service = new MarAgentModelService(
+      db,
+      () => 10,
+      () => 'copy-id',
+      managementAccess(),
+      scopes
+    );
+    const { apiKey: _key, sortOrder: _sortOrder, ...configuration } = input;
+    const credential = { type: 'CREDENTIAL_REF' as const, credentialId: 'team-credential' };
+    const source = marAgentStoredModelConfigurationSchema.parse({
+      ...configuration,
+      id: 'source-id',
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      credential
+    });
+    vi.spyOn(service, 'stored').mockResolvedValue(source);
+    const result = await service.duplicate(7, source.id, {
+      ...source,
+      name: 'OAuth copy',
+      credential: undefined,
+      sortOrder: 1
+    });
+    expect(result).toMatchObject({
+      id: 'copy-id',
+      credentialType: 'CREDENTIAL_REF',
+      lastTestStatus: 'UNVERIFIED'
+    });
+    expect(result).not.toHaveProperty('credential');
+    expect(scopes.assertModelCredentialBinding).toHaveBeenCalledWith(
+      7,
+      'team-credential',
+      undefined,
+      {
+        ownerType: 'PERSONAL',
+        ownerUserId: 7
+      }
+    );
+    expect(scopes.assertCredentialTarget).toHaveBeenCalledWith(
+      7,
+      'team-credential',
+      source.baseUrl,
+      false
+    );
+    expect(db.raw.execute.mock.calls[0]?.[1]).toContain(JSON.stringify(credential));
+    await expect(service.duplicate(7, source.id, { ...configuration })).rejects.toThrow(
+      'MAR_AGENT_MODEL_CONFIG_INVALID'
+    );
+    expect(db.raw.execute).toHaveBeenCalledTimes(2);
+  });
+
   it.each(
     [true, false].flatMap((hostedWebSearch) => [
       ...[true, false].map((responsesPreviousResponseId) => ({

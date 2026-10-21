@@ -79,6 +79,11 @@ export const modelManagementEnUS = {
     personalOrderLoadFailed: 'Unable to load your model order.',
     refresh: 'Refresh',
     edit: 'Edit',
+    duplicate: 'Duplicate',
+    copyName: '{name} (copy)',
+    duplicated: 'Model duplicated. Credentials were reused unless replaced.',
+    duplicateHint:
+      'Save creates a new model using the source credentials unless you replace them. Access grants and test results are not copied.',
     remove: 'Remove',
     test: 'Test',
     save: 'Save',

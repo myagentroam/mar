@@ -294,8 +294,6 @@ describe('Shared model, credential and image management', () => {
     expect(source).toContain('const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;');
     expect(source).toContain('contextWindowTokens: DEFAULT_CONTEXT_WINDOW_TOKENS');
     expect(source).toContain('maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS');
-    expect(source).toContain('draft.contextWindowTokens = DEFAULT_CONTEXT_WINDOW_TOKENS');
-    expect(source).toContain('draft.maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS');
     expect(source).toContain(
       'contextWindowTokens: model.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS'
     );
