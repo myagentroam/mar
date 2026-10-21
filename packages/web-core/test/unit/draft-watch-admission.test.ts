@@ -20,12 +20,20 @@ function fixture() {
   const workspaceTarget = ref<WorkspaceTarget>({ nodeId: 'node-1', workspaceId: workspace.id });
   const selectedSessionId = ref<string>(draft.id);
   const sessions = ref<Session[]>([draft]);
+  const draftOpen = ref(true);
+  const notice = ref('');
+  const input = ref('Create a session');
   const view = ref<WorkbenchView>('nodes');
   const connectionId = ref<string | undefined>('connection-1');
   const migrateSessionCache = vi.fn();
+  const cacheRun = vi.fn();
   const writes: { path: string; method: string; body: Record<string, unknown> }[] = [];
   let release!: (result: unknown) => void;
-  const creation = new Promise((resolve) => (release = resolve));
+  let reject!: (error: Error) => void;
+  const creation = new Promise((resolve, rejectRequest) => {
+    release = resolve;
+    reject = rejectRequest;
+  });
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     writes.push({ path, method: init?.method ?? 'GET', body });
@@ -153,21 +161,24 @@ function fixture() {
       selectedSession: computed(() => sessions.value.find((s) => s.id === selectedSessionId.value)),
       sessions,
       runs: ref<AgentRun[]>([]),
-      input: ref('Create a session'),
+      input,
       skillTokens: ref([]),
       attachments: ref([]),
       attachmentsPending: computed(() => false),
       composerOpen: computed(() => true),
       composerBusy: computed(() => false),
-      draftOpen: ref(true),
+      draftOpen,
       selectedCommand: ref(),
       commandPickerOpen: ref(false),
       deferredCommands: ref([]),
       fastEnabled: ref(false),
-      notice: ref(''),
+      notice,
       request,
       stageDraftCommand: vi.fn(),
-      createDraftSession: async () => draft,
+      createDraftSession: async () => {
+        draftOpen.value = false;
+        return draft;
+      },
       executeCommand: async () => ({}),
       replaceSession: (previousId, next) => {
         sessions.value = sessions.value.filter((s) => s.id !== previousId).concat(next);
@@ -180,7 +191,7 @@ function fixture() {
       newestRun: (_current, next) => next,
       migrateSessionCache,
       openRun: vi.fn(),
-      cacheRun: vi.fn(),
+      cacheRun,
       beginSessionWatch: navigation.requestSessionWatch,
       scrollToLatest: vi.fn(),
       scrollToLatestAfterLayout: async () => {},
@@ -197,7 +208,11 @@ function fixture() {
     connectionId,
     selectedSessionId,
     sessions,
+    draftOpen,
+    notice,
+    input,
     migrateSessionCache,
+    cacheRun,
     writes,
     async send() {
       const pending = service.send();
@@ -208,6 +223,10 @@ function fixture() {
             session: created,
             run: { id: 'run-created', sessionId: created.id, status: 'SUCCEEDED' }
           });
+          await pending;
+        },
+        fail: async () => {
+          reject(new Error('The draft creation request failed.'));
           await pending;
         }
       };
@@ -325,5 +344,32 @@ describe('Draft creation Watch admission through the page services', () => {
     expect(f.selectedSessionId.value).toBe('draft:one');
     expect(f.migrateSessionCache).not.toHaveBeenCalled();
     expect(f.writes).toHaveLength(before);
+  });
+
+  it('ignores a late creation rejection after its page scope is permanently disposed', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const sending = await f.send();
+    expect(f.draftOpen.value).toBe(false);
+    f.dispose();
+    const before = {
+      notice: f.notice.value,
+      input: f.input.value,
+      sessions: f.sessions.value,
+      selectedSessionId: f.selectedSessionId.value,
+      writes: [...f.writes]
+    };
+
+    await expect(sending.fail()).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(f.notice.value).toBe(before.notice);
+    expect(f.input.value).toBe(before.input);
+    expect(f.draftOpen.value).toBe(false);
+    expect(f.sessions.value).toBe(before.sessions);
+    expect(f.selectedSessionId.value).toBe(before.selectedSessionId);
+    expect(f.migrateSessionCache).not.toHaveBeenCalled();
+    expect(f.cacheRun).not.toHaveBeenCalled();
+    expect(f.writes).toEqual(before.writes);
   });
 });
