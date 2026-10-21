@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { EditPen, Plus, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -17,6 +17,7 @@ const props = defineProps<{
 const form = ref<FormInstance>();
 const editing = ref<QuickPrompt>();
 const dialogOpen = ref(false);
+const editorGeneration = ref(0);
 const saving = ref(false);
 const draft = ref({ phrase: '', prompt: '' });
 const isNew = computed(() => editing.value === undefined);
@@ -37,25 +38,33 @@ const rules: FormRules = {
 };
 
 onMounted(() => void props.refresh());
+onBeforeUnmount(close);
 
 function openCreate(): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   editing.value = undefined;
   draft.value = { phrase: '', prompt: '' };
   dialogOpen.value = true;
 }
 function openEdit(prompt: QuickPrompt): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   editing.value = prompt;
   draft.value = { phrase: prompt.phrase, prompt: prompt.prompt };
   dialogOpen.value = true;
 }
 function close(): void {
+  editorGeneration.value += 1;
+  saving.value = false;
   dialogOpen.value = false;
   editing.value = undefined;
 }
 async function save(): Promise<void> {
-  if (saving.value) return;
+  if (!dialogOpen.value || saving.value) return;
+  const generation = editorGeneration.value;
   const valid = await form.value?.validate().catch(() => false);
-  if (!valid || saving.value) return;
+  if (!valid || generation !== editorGeneration.value || saving.value) return;
   saving.value = true;
   try {
     const body = JSON.stringify(draft.value);
@@ -66,13 +75,16 @@ async function save(): Promise<void> {
         method: 'PATCH',
         body
       });
+    if (generation !== editorGeneration.value) return;
     await props.refresh();
+    if (generation !== editorGeneration.value) return;
     ElMessage.success(translate('quickPrompts.saved'));
     close();
   } catch (error) {
-    ElMessage.error(translate('quickPrompts.saveFailed', { value0: errorMessage(error) }));
+    if (generation === editorGeneration.value)
+      ElMessage.error(translate('quickPrompts.saveFailed', { value0: errorMessage(error) }));
   } finally {
-    saving.value = false;
+    if (generation === editorGeneration.value) saving.value = false;
   }
 }
 async function remove(prompt: QuickPrompt): Promise<void> {
@@ -142,11 +154,12 @@ async function remove(prompt: QuickPrompt): Promise<void> {
     </div>
     <el-dialog
       v-if="dialogOpen"
-      v-model="dialogOpen"
+      :key="editorGeneration"
+      :model-value="dialogOpen"
       :title="translate(isNew ? 'quickPrompts.add' : 'quickPrompts.edit')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
-      @closed="close"
+      @update:model-value="close"
     >
       <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <el-form-item :label="translate('quickPrompts.phrase')" prop="phrase">
