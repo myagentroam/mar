@@ -666,3 +666,52 @@ for (const scheme of ['Light', 'Dark']) {
     }
   );
 }
+
+for (const scheme of ['Light', 'Dark']) {
+  test(
+    'responsive layout tokens remain independent of the ' + scheme + ' color mapping',
+    async ({ page }) => {
+      if (scheme === 'Light')
+        await page
+          .locator('.theme-option')
+          .filter({
+            has: page.getByRole('button', { name: 'Inspect Light', exact: true })
+          })
+          .getByRole('button', { name: 'Apply theme', exact: true })
+          .click();
+      const { LEGACY_THEME_TOKENS } =
+        await import('../../packages/web-core/src/model/custom-theme.js');
+      // Include both breakpoint edges and resize back to mobile to catch stale overrides.
+      for (const width of [390, 767, 768, 860, 861, 1440, 420]) {
+        await page.setViewportSize({ width, height: 900 });
+        const mobile = width < 768;
+        const expected = {
+          '--sidebar-header-height': mobile ? '46px' : '68px',
+          '--mar-brand-logo-size': mobile ? '32px' : '35px',
+          '--mar-font-size-body': mobile ? '13px' : '14px',
+          '--el-component-size-small': mobile ? '24px' : '26px',
+          '--mar-utility-control-size': mobile ? '28px' : '31px',
+          '--mar-session-row-min-height': mobile ? '40px' : '34px',
+          '--mar-workbench-sidebar-width': mobile ? '222px' : width <= 860 ? '220px' : '244px'
+        };
+        const actual = await page.locator('html').evaluate((element, names) => {
+          const style = getComputedStyle(element);
+          return Object.fromEntries(
+            names.map((name) => [name, style.getPropertyValue(name).trim()])
+          );
+        }, Object.keys(expected));
+        expect(actual, scheme + ' at ' + width).toEqual(expected);
+        const aliases = await page.locator('html').evaluate((element, mapping) => {
+          const style = getComputedStyle(element);
+          return Object.entries(mapping).map(([alias, token]) => ({
+            alias,
+            actual: style.getPropertyValue(alias).trim(),
+            expected: style.getPropertyValue(token).trim()
+          }));
+        }, LEGACY_THEME_TOKENS);
+        for (const alias of aliases)
+          expect(alias.actual, alias.alias + ' at ' + width).toBe(alias.expected);
+      }
+    }
+  );
+}

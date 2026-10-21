@@ -1,12 +1,7 @@
-/* Match html.dark so the component-library palette cannot override MAR aliases. */
+/* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,
 .theme-preview {
-  font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color-scheme: light;
-  color: var(--mar-text-primary);
-  background: var(--mar-bg-page);
-  font-synthesis: none;
   --el-color-primary: var(--mar-color-brand);
   --el-color-primary-light-3: var(--mar-control-color-primary-light-3);
   --el-color-primary-light-5: var(--mar-control-color-primary-light-5);
@@ -35,6 +30,15 @@ html.console-ui,
   --el-border-color-extra-light: var(--mar-control-border-color-extra-light);
   --el-border-color-dark: var(--mar-control-border-color-dark);
   --el-border-color-darker: var(--mar-control-border-color-darker);
+}
+
+:root,
+.theme-preview {
+  font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color-scheme: light;
+  color: var(--mar-text-primary);
+  background: var(--mar-bg-page);
+  font-synthesis: none;
   --mar-bg-page: #f3f6f9;
   --mar-bg-panel: #ffffff;
   --mar-bg-subtle: #f7f9fb;
