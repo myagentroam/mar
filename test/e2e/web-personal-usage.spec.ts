@@ -148,7 +148,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         );
       if (url.pathname.endsWith('/records')) {
         const number = Number(url.searchParams.get('page') ?? 1);
-        if (number === 4 && locale === 'en-US') await pendingPageRead;
+        if (number === 4) await pendingPageRead;
         return json(route, {
           records: Array.from({ length: number === 4 ? 1 : 20 }, (_, index) =>
             record(`page-${number}-${index}`)
@@ -182,6 +182,19 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel).toHaveAttribute('aria-busy', 'true');
     const loadingMask = panel.locator(':scope > .el-loading-mask');
+    const expectLoadingInViewport = async () => {
+      const area = await page.locator('.settings-content').boundingBox();
+      const mask = await loadingMask.boundingBox();
+      const spinner = await loadingMask.locator('.circular').boundingBox();
+      expect(area).not.toBeNull();
+      expect(mask).not.toBeNull();
+      expect(spinner).not.toBeNull();
+      for (const key of ['x', 'y', 'width', 'height'] as const)
+        expect(Math.abs(mask![key] - area![key])).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(spinner!.y + spinner!.height / 2 - (area!.y + area!.height / 2))
+      ).toBeLessThanOrEqual(2);
+    };
     await expect(loadingMask).toBeVisible();
     await expect(loadingMask).toContainText(locale === 'en-US' ? 'Loading' : '正在加载');
     await expect(panel.locator('header').getByRole('status')).toHaveText(
@@ -189,7 +202,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     await expect(panel.getByText('Loading usage…', { exact: true })).toHaveCount(0);
     await page.clock.runFor(250);
-    await panel.screenshot({ path: testInfo.outputPath('usage-initial-loading.png') });
+    await expectLoadingInViewport();
+    await page.screenshot({
+      animations: 'disabled',
+      path: testInfo.outputPath('usage-initial-loading.png')
+    });
     finishInitialRead();
     await expect(panel).toHaveAttribute('aria-busy', 'false');
     // The paused refresh clock also controls Element Plus loading transitions.
@@ -352,10 +369,16 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(detail).toContainText(labels.unknown);
     if (mobile) {
       await expect(pager.locator('.el-pagination')).toHaveCount(0);
-      for (const expected of [40, 60, 61]) {
+      for (const expected of [40, 60]) {
         await pager.scrollIntoViewIfNeeded();
         await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(expected);
+        await page.clock.runFor(500);
       }
+      await pager.scrollIntoViewIfNeeded();
+      await expect(loadingMask).toBeVisible();
+      await expectLoadingInViewport();
+      finishPageRead();
+      await page.clock.runFor(500);
       await expect(rows).toHaveCount(61);
       await expect(panel.locator('.record-detail')).toHaveCount(1);
       expect(
@@ -373,6 +396,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await pager.locator('.el-pager li.number').filter({ hasText: /^4$/u }).click();
       await expect(panel).toHaveAttribute('aria-busy', 'true');
       await expect(loadingMask).toBeVisible();
+      await expectLoadingInViewport();
       await expect(panel.locator('header').getByRole('status')).toHaveText('Loading');
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
       await expect(rows).toHaveCount(20);

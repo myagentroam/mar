@@ -21,7 +21,8 @@ test('Personal secret validation and CRUD reuse authoritative lists without subm
   let failedCreates = 0;
   await page.route('**/api/environment-secrets**', (route) => {
     const method = route.request().method();
-    if (method === 'GET') return json(route, { secrets });
+    if (method === 'GET')
+      return json(route, { secrets, page: 1, pageSize: 20, total: secrets.length, hasMore: false });
     const body = method === 'DELETE' ? null : route.request().postDataJSON();
     if (method === 'POST' && failedCreates === 0) {
       failedCreates += 1;
@@ -161,7 +162,11 @@ test('Secret and OAuth management show read-only row details and organization se
           createdAt: 1_700_000_000_000,
           updatedAt: 1_700_000_100_000
         }
-      ]
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      hasMore: false
     });
   });
   let providerEnabled = true;

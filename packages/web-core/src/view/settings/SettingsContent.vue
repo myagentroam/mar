@@ -175,7 +175,11 @@ async function confirmLogout(): Promise<void> {
 <template>
   <section
     class="settings-content"
-    :class="{ 'personal-instructions-content': section === 'personal-instructions' }"
+    :class="{
+      'personal-instructions-content': section === 'personal-instructions',
+      'page-settings-content':
+        section === 'usage' || section === 'git' || section === 'quick-prompts'
+    }"
   >
     <PersonalUsageSettings v-if="section === 'usage'" :request="request" />
     <PersonalGitSettings v-else-if="section === 'git'" :request="request" />
@@ -770,6 +774,17 @@ async function confirmLogout(): Promise<void> {
 .settings-content .full {
   max-width: 960px;
   padding: 14px 16px;
+}
+
+.settings-content.page-settings-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.settings-content .full.page-loading-panel {
+  max-width: none;
+  padding: 0;
 }
 
 .settings-content.personal-instructions-content {
