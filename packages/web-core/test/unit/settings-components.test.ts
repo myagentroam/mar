@@ -145,6 +145,22 @@ describe('Shared personal settings components', () => {
     }
   );
 
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders the custom theme editor with localized controls: %s',
+    async (locale) => {
+      localePreferenceService().setLocale(locale);
+      const result = await render('custom-themes');
+      expect(result.html).toContain(commonMessages[locale].customThemes.title);
+      expect(result.html).toContain(commonMessages[locale].customThemes.view);
+      expect(result.html).toContain(commonMessages[locale].customThemes.apply);
+      expect(result.html).toContain(commonMessages[locale].customThemes.copyJson);
+      expect(result.html).toContain(commonMessages[locale].customThemes.expandPreview);
+      expect(result.html).toContain(commonMessages[locale].customThemes.preview);
+      expect(result.html).not.toContain('customThemes.');
+      expect(result.request).not.toHaveBeenCalled();
+    }
+  );
+
   it('renders host identity and registration ownership only in their corresponding slots', async () => {
     const slots = {
       'account-identity': () => h('aside', 'identity-extension'),

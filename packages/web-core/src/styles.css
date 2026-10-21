@@ -1,7 +1,9 @@
-:root {
+:root,
+.theme-preview {
   font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #1c2733;
-  background: #f3f6f9;
+  color-scheme: light;
+  color: var(--mar-text-primary);
+  background: var(--mar-bg-page);
   font-synthesis: none;
   --mar-bg-page: #f3f6f9;
   --mar-bg-panel: #ffffff;
@@ -119,7 +121,8 @@
   --mar-text-neutral-control: var(--mar-text-faint);
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] {
+html.console-ui[data-theme='vscode-dark-2026'],
+.theme-preview[data-theme='vscode-dark-2026'] {
   color-scheme: dark;
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
@@ -157,7 +160,7 @@ html.console-ui[data-theme='vscode-dark-2026'] {
   --el-color-primary-light-9: rgb(48 147 255 / 0.14);
   --el-color-primary-dark-2: #2478d6;
   --mar-color-brand-text: #3093ff;
-  --mar-color-on-accent: #e8eef8;
+  --mar-color-on-accent: #0e1116;
   --mar-color-brand-hover: #4aa3ff;
   --mar-color-brand-active: color-mix(in srgb, var(--mar-color-brand) 82%, #fff);
   --mar-color-brand-subtle: color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
@@ -205,6 +208,12 @@ html.console-ui[data-theme='vscode-dark-2026'] {
 
 html.console-ui[data-theme='vscode-dark-2026'] body {
   background: var(--mar-bg-page);
+}
+
+html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
+  --el-button-text-color: var(--mar-color-on-accent);
+  --el-button-hover-text-color: var(--mar-color-on-accent);
+  --el-button-active-text-color: var(--mar-color-on-accent);
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] .el-table {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Delete, Key, Link, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import { iconThemes } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
@@ -11,7 +11,12 @@ import {
   fileEditorPreferenceService,
   type FileEditorDefaultMode
 } from '../../service/FileEditorPreferenceService.js';
-import { themePreferenceService } from '../../service/ThemePreferenceService.js';
+import {
+  themePreferenceService,
+  type ThemePreference
+} from '../../service/ThemePreferenceService.js';
+import { analyzeCustomTheme } from '../../util/custom-theme.js';
+import ThemeSettings from './ThemeSettings.vue';
 import {
   localizedDocsPath,
   localePreferenceService,
@@ -71,6 +76,19 @@ const fileEditorMode = fileEditorService.mode;
 const localeService = localePreferenceService();
 const locale = localeService.locale;
 const { t } = useI18n();
+const customThemes = computed(() =>
+  themeService.customThemes.value.map((item) => ({
+    id: item.id,
+    name: analyzeCustomTheme(item.source).name ?? t('customThemes.untitled')
+  }))
+);
+function setTheme(value: ThemePreference): void {
+  try {
+    themeService.setTheme(value);
+  } catch {
+    ElMessage.error(t('customThemes.storageFailed'));
+  }
+}
 const webVersion = props.webVersion;
 const thirdPartyGroups = ['web', 'server', 'execution', 'tools', 'icons', 'computerUse'] as const;
 const currentPassword = ref('');
@@ -294,6 +312,7 @@ async function confirmLogout(): Promise<void> {
         <code>{{ registrationToken }}</code>
       </p>
     </section>
+    <ThemeSettings v-else-if="section === 'custom-themes'" class="full" />
     <section v-else-if="section === 'appearance'" class="full settings-panel">
       <h2>{{ t('settings.appearance') }}</h2>
       <p class="account-summary">{{ t('settings.appearanceSummary') }}</p>
@@ -304,10 +323,16 @@ async function confirmLogout(): Promise<void> {
           :model-value="theme"
           class="theme-select"
           :aria-label="t('settings.theme')"
-          @update:model-value="themeService.setTheme($event as 'daylight' | 'vscode-dark-2026')"
+          @update:model-value="setTheme($event as ThemePreference)"
         >
           <el-option :label="t('settings.light')" value="daylight" />
           <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
+          <el-option
+            v-for="item in customThemes"
+            :key="item.id"
+            :label="item.name"
+            :value="item.id"
+          />
         </el-select>
       </div>
       <div class="theme-row">

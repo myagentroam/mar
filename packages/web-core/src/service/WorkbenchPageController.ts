@@ -625,6 +625,7 @@ export function createWorkbenchPageController<
     { id: 'account', label: translate('navigation.account') },
     { id: 'usage', label: translate('modelUsage.title') },
     { id: 'appearance', label: translate('settings.appearance') },
+    { id: 'custom-themes', label: translate('customThemes.title') },
     {
       id: 'notifications',
       label: translate('workbenchNotificationCenter.systemNotifications.title')
