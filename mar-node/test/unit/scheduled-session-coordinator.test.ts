@@ -3,7 +3,7 @@ import { NodeDatabase } from '../../src/database.js';
 import { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 
-function fixture(now: () => number) {
+function fixture(now: () => number, notifyOnTerminal = false) {
   const database = new NodeDatabase(':memory:', 'node-a', now);
   const workspace = database.saveWorkspace({
     path: '/schedule-coordinator-test',
@@ -22,6 +22,7 @@ function fixture(now: () => number) {
     workspaceId: workspace.id,
     runner: 'codex',
     ownerUserId: 1,
+    notifyOnTerminal,
     objective: 'Check status',
     cron: '0 * * * *',
     timezone: 'UTC'
@@ -108,20 +109,22 @@ describe('scheduled session coordinator', () => {
           'FAILED'
         );
         expect(store.recent(task.id)[0]).toMatchObject({ status: 'FAILED', run_id: 'run-1' });
-        expect(emit).toHaveBeenCalledOnce();
-        expect(emit).toHaveBeenCalledWith(
-          expect.objectContaining({
-            event: expect.objectContaining({
-              eventType: 'notification',
-              payload: expect.objectContaining({
-                userId: 7,
-                sessionTitle: 'Current title',
-                notificationId: `${notifyOnTerminal ? 'schedule-terminal' : 'schedule'}:${task.id}:${occurrenceId}`,
-                kind: notifyOnTerminal ? 'SCHEDULE_TERMINAL' : 'SCHEDULE_FAILED'
+        if (notifyOnTerminal) {
+          expect(emit).toHaveBeenCalledOnce();
+          expect(emit).toHaveBeenCalledWith(
+            expect.objectContaining({
+              event: expect.objectContaining({
+                eventType: 'notification',
+                payload: expect.objectContaining({
+                  userId: 7,
+                  sessionTitle: 'Current title',
+                  notificationId: `schedule-terminal:${task.id}:${occurrenceId}`,
+                  kind: 'SCHEDULE_TERMINAL'
+                })
               })
             })
-          })
-        );
+          );
+        } else expect(emit).not.toHaveBeenCalled();
         store.finish(occurrenceId, 'SUBMITTED', undefined, 'late-submit-result');
         expect(store.recent(task.id)[0]).toMatchObject({ status: 'FAILED', run_id: 'run-1' });
         emit.mockClear();
@@ -136,11 +139,40 @@ describe('scheduled session coordinator', () => {
     }
   );
 
+  it('notifies task change proposals even when task outcome notifications are disabled', () => {
+    const { database, store, task } = fixture(Date.now);
+    try {
+      const notify = vi.fn();
+      const coordinator = new ScheduledSessionCoordinator({
+        store: () => store,
+        busy: () => false,
+        authorize: async () => ({ secretEnvironment: {} }),
+        submit: async () => ({ runId: 'unused' }),
+        sessionTitle: () => 'Session',
+        emitNotification: notify
+      });
+      expect(task.notifyOnTerminal).toBe(false);
+      coordinator.proposalCreated(task.sessionId, 'proposal-1');
+      expect(notify).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          event: expect.objectContaining({
+            payload: expect.objectContaining({
+              kind: 'SCHEDULE_PROPOSAL',
+              userId: task.ownerUserId
+            })
+          })
+        })
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   it('does not replay an overdue occurrence after restart', async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
-      const { database, store, task } = fixture(Date.now);
+      const { database, store, task } = fixture(Date.now, true);
       vi.setSystemTime(Date.parse('2025-01-01T03:20:00Z'));
       const submit = vi.fn(async () => ({ runId: 'run-1' }));
       const notify = vi.fn();
@@ -168,30 +200,106 @@ describe('scheduled session coordinator', () => {
     }
   });
 
-  it('skips a busy session without requesting credentials', async () => {
+  it.each([false, true])(
+    'skips a busy session without credentials (notifications: %s)',
+    async (enabled) => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+        const { database, store, task } = fixture(Date.now, enabled);
+        const authorize = vi.fn(async () => ({ secretEnvironment: {} }));
+        const notify = vi.fn();
+        const coordinator = new ScheduledSessionCoordinator({
+          store: () => store,
+          busy: () => true,
+          authorize,
+          submit: async () => ({ runId: 'run-1' }),
+          emitNotification: notify,
+          sessionTitle: (id) => id
+        });
+        coordinator.start();
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+        expect(store.recent(task.id)[0]).toMatchObject({
+          status: 'SKIPPED',
+          code: 'SCHEDULE_SESSION_BUSY'
+        });
+        expect(authorize).not.toHaveBeenCalled();
+        expect(notify).toHaveBeenCalledTimes(enabled ? 1 : 0);
+        coordinator.stop();
+        database.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each([false, true])('records submission failures (notifications: %s)', async (enabled) => {
     vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+    const { database, store, task } = fixture(Date.now, enabled);
+    const notify = vi.fn();
+    const coordinator = new ScheduledSessionCoordinator({
+      store: () => store,
+      busy: () => false,
+      authorize: async () => ({ secretEnvironment: {} }),
+      submit: async () => {
+        throw new Error('SCHEDULE_EXECUTION_FAILED');
+      },
+      emitNotification: notify,
+      sessionTitle: (id) => id
+    });
     try {
-      vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
-      const { database, store, task } = fixture(Date.now);
-      const authorize = vi.fn(async () => ({ secretEnvironment: {} }));
-      const coordinator = new ScheduledSessionCoordinator({
-        store: () => store,
-        busy: () => true,
-        authorize,
-        submit: async () => ({ runId: 'run-1' }),
-        emitNotification: vi.fn(),
-        sessionTitle: (id) => id
+      coordinator.start();
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+      expect(store.recent(task.id)[0]).toMatchObject({
+        status: 'FAILED',
+        code: 'SCHEDULE_EXECUTION_FAILED'
       });
+      expect(notify).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    } finally {
+      await coordinator.stop();
+      database.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the latest notification setting after authorization changes the task', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+    const { database, store, task } = fixture(Date.now, true);
+    const notify = vi.fn();
+    const submit = vi.fn(async () => ({ runId: 'run-1' }));
+    const coordinator = new ScheduledSessionCoordinator({
+      store: () => store,
+      busy: () => false,
+      authorize: async () => {
+        store.update(task.sessionId, task.revision, { notifyOnTerminal: false });
+        return { secretEnvironment: {} };
+      },
+      submit,
+      emitNotification: notify,
+      sessionTitle: (id) => id
+    });
+    try {
       coordinator.start();
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
       expect(store.recent(task.id)[0]).toMatchObject({
         status: 'SKIPPED',
-        code: 'SCHEDULE_SESSION_BUSY'
+        code: 'SCHEDULE_TASK_CHANGED'
       });
-      expect(authorize).not.toHaveBeenCalled();
-      coordinator.stop();
-      database.close();
+      expect(submit).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+      coordinator.proposalCreated(task.sessionId, 'proposal-1');
+      expect(notify).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          event: expect.objectContaining({
+            payload: expect.objectContaining({ kind: 'SCHEDULE_PROPOSAL' })
+          })
+        })
+      );
     } finally {
+      await coordinator.stop();
+      database.close();
       vi.useRealTimers();
     }
   });

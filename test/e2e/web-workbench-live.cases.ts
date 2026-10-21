@@ -11,7 +11,7 @@ for (const language of [
     disable: '关闭系统通知',
     enabled: '已开启',
     disabled: '未开启',
-    summary: 'PC 工作台保持连接但失焦时接收系统通知；PC 不接收离线推送。',
+    summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',
     work: '工作',
     center: '打开通知中心'
   },
@@ -25,7 +25,7 @@ for (const language of [
     enabled: 'Enabled',
     disabled: 'Disabled',
     summary:
-      'PC system notifications appear while the workbench is connected but loses focus. PC does not receive offline Push.',
+      'Receive notifications when you switch to another page or app. Notifications stop when you close the workbench.',
     work: 'Work',
     center: 'Open notification center'
   }
@@ -115,7 +115,9 @@ for (const language of [
     await page.getByRole('button', { name: language.login, exact: true }).click();
     await page.getByRole('button', { name: language.settings, exact: true }).click();
     await page.getByRole('button', { name: language.title, exact: true }).click();
-    await expect(page.getByRole('heading', { name: language.title, exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: language.title, level: 2, exact: true })
+    ).toBeVisible();
     await expect
       .poll(() =>
         page.evaluate(

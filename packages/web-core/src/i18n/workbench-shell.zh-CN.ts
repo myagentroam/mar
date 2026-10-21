@@ -122,8 +122,9 @@ export const workbenchShellZhCN = {
       paused: '已暂停',
       notifyUser: '通知人',
       userUnavailable: '用户已不存在',
-      notifyUserHint: '保存后由当前用户执行任务并接收通知。关闭终态通知时仍会收到跳过和失败告警。',
-      terminalNotifications: '运行终态通知',
+      notifyUserHint:
+        '保存后由当前用户执行任务并接收通知。开启任务通知后，会收到运行完成、跳过和失败提醒；关闭后仅保留最近记录。',
+      terminalNotifications: '任务通知',
       nextRun: '下次执行',
       history: '最近记录',
       occurrenceClaimed: '准备执行',

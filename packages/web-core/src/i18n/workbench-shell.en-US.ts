@@ -127,8 +127,8 @@ export const workbenchShellEnUS = {
       notifyUser: 'Notify user',
       userUnavailable: 'User unavailable',
       notifyUserHint:
-        'Saving makes you the task executor and notification recipient. Skips and failures are reported even when completion notifications are off.',
-      terminalNotifications: 'Run completion notifications',
+        'Saving makes you the task executor and notification recipient. Enable task notifications for run completion, skips, and failures. When disabled, results remain in recent runs only.',
+      terminalNotifications: 'Task notifications',
       nextRun: 'Next run',
       history: 'Recent runs',
       occurrenceClaimed: 'Preparing',

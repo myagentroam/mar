@@ -57,24 +57,15 @@ export class ScheduledSessionCoordinator {
       run.id
     );
     const task = store.getById(run.clientMessageId.split(':', 1)[0]!);
-    if (task !== undefined) {
-      if (task.notifyOnTerminal)
-        this.publishTaskNotification(task, run.clientMessageId, {
-          kind: 'SCHEDULE_TERMINAL',
-          outcome: status,
-          runId: run.id
-        });
-      else if (status !== 'SUCCEEDED')
-        this.notify(task, run.clientMessageId, `SCHEDULE_RUN_${status}`, 'FAILED');
-    }
+    if (task !== undefined)
+      this.publishTaskNotification(task, run.clientMessageId, {
+        kind: 'SCHEDULE_TERMINAL',
+        outcome: status,
+        runId: run.id
+      });
   }
   private readonly notify = (
-    task: {
-      readonly id: string;
-      readonly ownerUserId: number;
-      readonly workspaceId: string;
-      readonly sessionId: string;
-    },
+    task: ScheduledSessionTask,
     occurrenceId: string,
     code: string,
     status: 'SKIPPED' | 'FAILED'
@@ -84,12 +75,7 @@ export class ScheduledSessionCoordinator {
       code
     });
   private readonly publishTaskNotification = (
-    task: {
-      readonly id: string;
-      readonly ownerUserId: number;
-      readonly workspaceId: string;
-      readonly sessionId: string;
-    },
+    task: ScheduledSessionTask,
     occurrenceId: string,
     event:
       | { readonly kind: 'SCHEDULE_FAILED' | 'SCHEDULE_SKIPPED'; readonly code: string }
@@ -99,8 +85,9 @@ export class ScheduledSessionCoordinator {
           readonly runId: string;
         }
   ): void => {
+    const currentTask = this.options.store().getById(task.id) ?? task;
+    if (!currentTask.notifyOnTerminal) return;
     const occurredAt = Date.now();
-    const recipient = this.options.store().getById(task.id)?.ownerUserId ?? task.ownerUserId;
     this.options.emitNotification({
       event: {
         runId: event.kind === 'SCHEDULE_TERMINAL' ? event.runId : occurrenceId,
@@ -108,7 +95,7 @@ export class ScheduledSessionCoordinator {
         eventType: 'notification',
         payload: {
           targetType: 'WORKSPACE_SESSION',
-          userId: recipient,
+          userId: currentTask.ownerUserId,
           workspaceId: task.workspaceId,
           sessionId: task.sessionId,
           sessionTitle: this.options.sessionTitle(task.sessionId),

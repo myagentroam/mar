@@ -590,6 +590,54 @@ describe('Server Workbench notification service', () => {
     });
   });
 
+  it('preserves notification timestamps when stored notifications are read and restored', async () => {
+    const createdAt = 1_000;
+    let now = 10_000;
+    const row = {
+      id: 'notification-1',
+      kind: 'run',
+      title: 'Workspace: Session',
+      message: 'Scheduled task skipped, open the session for details.',
+      node_id: 'node-1',
+      workspace_id: 'workspace-1',
+      session_id: 'session-1',
+      session_title: 'Session',
+      created_at: createdAt,
+      expires_at: createdAt + 24 * 60 * 60_000,
+      read_at: null as number | null
+    };
+    const execute = vi.fn(async (sql: string) => {
+      if (sql.includes('DELETE FROM')) return [{ affectedRows: 0 }, []];
+      if (sql.includes('SELECT * FROM')) return [[row], []];
+      if (sql.includes('UPDATE workbench_notifications SET read_at=')) {
+        row.read_at = now;
+        return [{ affectedRows: 1 }, []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const database = { raw: { execute } };
+    const push = vi.fn();
+    const service = new WorkbenchNotificationService(database as never, push, () => now);
+    expect(await service.list(7)).toEqual([
+      expect.objectContaining({ createdAt, updatedAt: createdAt, read: false })
+    ]);
+
+    now = 20_000;
+    await service.markSessionRead(7, 'node-1', 'workspace-1', 'session-1');
+    expect(push).toHaveBeenCalledWith(7, {
+      type: 'notification.session-read',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'session-1',
+      readAt: now
+    });
+
+    const restored = new WorkbenchNotificationService(database as never, vi.fn(), () => now);
+    expect(await restored.list(7)).toEqual([
+      expect.objectContaining({ createdAt, updatedAt: createdAt, read: true })
+    ]);
+  });
+
   it('synchronizes other browsers only when read state actually changes', async () => {
     const execute = vi
       .fn()

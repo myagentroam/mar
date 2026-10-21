@@ -8,7 +8,9 @@ for (const device of ['desktop', 'mobile'] as const) {
       open: '进入控制台',
       settings: '设置',
       notifications: '系统通知',
-      online: 'PC 失焦系统通知',
+      online: '系统通知',
+      summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',
+      pushSummary: '所有设备上的工作台都离线时，向当前设备发送通知。实际送达受浏览器和系统限制。',
       push: '离线推送',
       disable: '关闭系统通知',
       enabled: '已开启',
@@ -20,7 +22,11 @@ for (const device of ['desktop', 'mobile'] as const) {
       open: 'Open console',
       settings: 'Settings',
       notifications: 'System notifications',
-      online: 'PC focus-loss notifications',
+      online: 'System notifications',
+      summary:
+        'Receive notifications when you switch to another page or app. Notifications stop when you close the workbench.',
+      pushSummary:
+        'Receive notifications on this device when all your workbenches are offline. Delivery depends on your browser and system.',
       push: 'Offline Push',
       disable: 'Disable system notifications',
       enabled: 'Enabled',
@@ -68,6 +74,11 @@ for (const device of ['desktop', 'mobile'] as const) {
       await page.getByRole('button', { name: language.open, exact: true }).click();
       await page.getByRole('button', { name: language.settings, exact: true }).click();
       await page.getByRole('button', { name: language.notifications, exact: true }).click();
+      await expect(
+        page.getByText(device === 'desktop' ? language.summary : language.pushSummary, {
+          exact: true
+        })
+      ).toBeVisible();
       const panel = page.locator('.system-notification-control');
       const online = panel.locator('.notification-channel').first();
       const push = online;

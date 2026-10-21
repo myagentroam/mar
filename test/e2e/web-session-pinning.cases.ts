@@ -280,7 +280,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
         (await content.evaluate((element) => element.getBoundingClientRect().left)) - contentLeft
       )
     ).toBeLessThan(2);
-  for (const text of ['重复', '状态', '通知人', '运行终态通知']) {
+  for (const text of ['重复', '状态', '通知人', '任务通知']) {
     const alignment = await dialog.getByText(text, { exact: true }).evaluate((label) => {
       const range = document.createRange();
       range.selectNodeContents(label);
@@ -297,14 +297,14 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     expect(Math.abs(alignment.left), `${text} label left edge`).toBeLessThan(2);
     expect(Math.abs(alignment.vertical), `${text} row vertical alignment`).toBeLessThan(3);
   }
-  await expect(dialog.getByRole('switch', { name: '运行终态通知' })).toHaveAttribute(
+  await expect(dialog.getByRole('switch', { name: '任务通知' })).toHaveAttribute(
     'aria-checked',
     'false'
   );
   await expect(dialog.locator('.el-date-editor')).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: '时区' })).toHaveCount(0);
   await dialog.locator('textarea').fill('Review project');
-  await dialog.getByRole('switch', { name: '运行终态通知' }).locator('..').click();
+  await dialog.getByRole('switch', { name: '任务通知' }).locator('..').click();
   await dialog.getByRole('button', { name: '保存' }).click();
   await expect
     .poll(() =>
@@ -387,6 +387,91 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   expect(historyPages.at(-1)).toBe(1);
   await expect(dialog.getByText('当前用户', { exact: true })).toHaveCount(0);
 });
+
+for (const language of [
+  {
+    locale: 'zh-CN',
+    login: '进入控制台',
+    work: '工作',
+    more: /更多会话操作/,
+    title: '定时任务',
+    notifications: '任务通知',
+    hint: '保存后由当前用户执行任务并接收通知。开启任务通知后，会收到运行完成、跳过和失败提醒；关闭后仅保留最近记录。'
+  },
+  {
+    locale: 'en-US',
+    login: 'Open console',
+    work: 'Work',
+    more: /More session actions/,
+    title: 'Scheduled task',
+    notifications: 'Task notifications',
+    hint: 'Saving makes you the task executor and notification recipient. Enable task notifications for run completion, skips, and failures. When disabled, results remain in recent runs only.'
+  }
+]) {
+  test(`Scheduled task notifications explain all outcomes: ${language.locale}`, async ({
+    page
+  }) => {
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start', 'session.schedule'], []);
+    await page.addInitScript(
+      (locale) => localStorage.setItem('mar.locale.v2', locale),
+      language.locale
+    );
+    await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+      json(route, {
+        sessions: [
+          {
+            ...session('notification-task', 'Notification task', null),
+            runtime: {
+              level: 'MANAGED',
+              capabilities: ['history.read', 'turn.start', 'session.schedule']
+            }
+          }
+        ],
+        nextCursor: null
+      })
+    );
+    await page.route('**/api/agent-sessions/notification-task/schedule*', (route) =>
+      json(route, {
+        task: null,
+        currentUserName: 'User',
+        notifyUserName: 'User',
+        nodeTimezone: 'UTC',
+        occurrences: [],
+        occurrencePage: 1,
+        occurrenceTotal: 0,
+        proposals: [],
+        canResolveProposals: true
+      })
+    );
+    await page.goto('/console');
+    await page.getByRole('button', { name: language.login, exact: true }).click();
+    await page.getByRole('button', { name: language.work, exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    const row = page.locator('.session-row').filter({ hasText: 'Notification task' });
+    await row.hover();
+    await row.getByRole('button', { name: language.more }).click();
+    await page
+      .locator('.el-dropdown__popper:visible')
+      .getByRole('menuitem', { name: language.title, exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: language.title });
+    const hint = dialog.getByText(language.hint, { exact: true });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(
+        dialog.getByRole('switch', { name: language.notifications, exact: true })
+      ).toHaveAttribute('aria-checked', 'false');
+      await expect(hint).toBeVisible();
+      expect(await hint.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true
+      );
+    }
+  });
+}
 
 function session(id: string, runnerTitle: string, pinOrder: number | null) {
   return {
