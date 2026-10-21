@@ -2646,7 +2646,8 @@ export function createSessionOpener(services: SessionServices) {
             delete executionContext.compactRequests;
           if (controller.signal.aborted) {
             subagents?.endParentExecution(executionId);
-            await emit({ type: 'execution.cancelled' });
+            // A faulted Store must not prevent result settlement or lease release.
+            await emit({ type: 'execution.cancelled' }).catch(() => undefined);
             return {
               executionId,
               status: 'cancelled',
@@ -2658,7 +2659,8 @@ export function createSessionOpener(services: SessionServices) {
             exhaustedModelAttempt
           );
           subagents?.endParentExecution(executionId);
-          await emit({ type: 'execution.failed', ...diagnostic });
+          // Keep the original diagnostic if persisting the failure terminal also fails.
+          await emit({ type: 'execution.failed', ...diagnostic }).catch(() => undefined);
           return {
             executionId,
             status: 'failed',
