@@ -4,8 +4,187 @@ import { NodeConnector } from '../../src/connector.js';
 import { composeConversationRuntimePage } from '../../src/service/conversation-history-service.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
+import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
+import type { NodeRuntimeState } from '../../src/runtime-state.js';
+import type { NodeEnvelope, WorkbenchEventCategory } from '@myagentroam/protocol';
+import type { ConversationHostingLifecycleService } from '../../src/service/conversation-hosting-lifecycle-service.js';
 
 describe('Node Workbench external session observation', () => {
+  it('wires ordinary delivery, bootstrap filtering, invalidation, and hosted numbering exactly once', async () => {
+    const database = new NodeDatabase(':memory:', 'node-delivery-wiring');
+    const workspace = database.saveWorkspace({
+      path: '/workspace/delivery',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ reconnect: false, database });
+    const internals = connector as unknown as {
+      runtime: NodeRuntimeState;
+      sessionIdentityService: { bootstrapIds: Set<string> };
+      nativeSessionWatchService: NativeSessionWatchService;
+      workspaceSessionService: { markCacheStale(workspaceId: string): void };
+      workspaceWorkbenchService: {
+        invalidateTopic(workspaceId: string, topic: string): Promise<void>;
+      };
+      conversationHosting: {
+        options: ConstructorParameters<typeof ConversationHostingLifecycleService>[0];
+      };
+      workbenchEventService: WorkbenchEventService;
+      sendEnvelope(envelope: NodeEnvelope): void;
+      publishWorkbenchEvent(category: WorkbenchEventCategory, payload: unknown): void;
+    };
+    const send = vi.spyOn(internals, 'sendEnvelope').mockImplementation(() => {});
+    const watch = vi
+      .spyOn(internals.nativeSessionWatchService, 'emitRealtime')
+      .mockReturnValue(true);
+    const stale = vi.spyOn(internals.workspaceSessionService, 'markCacheStale');
+    const invalidate = vi
+      .spyOn(internals.workspaceWorkbenchService, 'invalidateTopic')
+      .mockResolvedValue();
+    const session = internals.runtime.createAgentSession({
+      workspaceId: workspace.id,
+      runner: 'codex',
+      cwd: workspace.path
+    });
+    const { run } = internals.runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'wiring',
+      content: 'test'
+    });
+    try {
+      internals.sessionIdentityService.bootstrapIds.add(session.id);
+      internals.publishWorkbenchEvent('run', { run });
+      const notification = {
+        event: { runId: run.id, eventType: 'notification', payload: { kind: 'APPROVAL_REQUIRED' } }
+      };
+      internals.publishWorkbenchEvent('conversation', notification);
+      expect(internals.workbenchEventService.snapshotSequence()).toBe(0);
+      expect(watch).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      internals.sessionIdentityService.bootstrapIds.delete(session.id);
+
+      internals.publishWorkbenchEvent('session', { session });
+      expect(stale).toHaveBeenCalledExactlyOnceWith(workspace.id);
+      expect(invalidate).toHaveBeenCalledExactlyOnceWith(workspace.id, 'sessions');
+      expect(watch).toHaveBeenCalledExactlyOnceWith(session.id, {
+        sequence: 1,
+        category: 'session',
+        payload: { session }
+      });
+      expect(send).not.toHaveBeenCalled();
+      watch.mockClear();
+      internals.publishWorkbenchEvent('conversation', notification);
+      expect(watch).not.toHaveBeenCalled();
+      expect(send).toHaveBeenCalledOnce();
+      expect(send.mock.calls[0]?.[0]).toMatchObject({
+        type: 'workbench.event',
+        payload: { sequence: 2, category: 'conversation', payload: notification }
+      });
+
+      const host = internals.conversationHosting.options.host;
+      const hosted = host.nextWorkbenchEvent!({
+        conversationId: 'hosted-wiring',
+        kind: 'metadata'
+      })!;
+      host.emitWorkbenchEvent!(hosted);
+      expect(hosted).toEqual({
+        sequence: 3,
+        category: 'hosted-conversation',
+        payload: { conversationId: 'hosted-wiring', kind: 'metadata' }
+      });
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]?.[0]).toMatchObject({ type: 'workbench.event', payload: hosted });
+      expect(internals.workbenchEventService.snapshotSequence()).toBe(3);
+      expect(watch).not.toHaveBeenCalled();
+      expect(stale).toHaveBeenCalledOnce();
+      expect(invalidate).toHaveBeenCalledOnce();
+    } finally {
+      await connector.stop();
+    }
+  });
+
+  it('lets a pending Watch own buffering and performance drops without global fallback', async () => {
+    const session = {
+      id: 'pending-session',
+      workspaceId: 'pending-workspace',
+      runner: 'codex'
+    } as NodeAgentSession;
+    const page = Promise.withResolvers<{ turns: []; snapshotSequence: number }>();
+    const frames: unknown[] = [];
+    const readPage = vi.fn(() => page.promise);
+    const watch = createTestSessionWatch({
+      resolve: async () => session,
+      managedActive: () => true,
+      refreshActivity: async () => undefined,
+      present: () => session,
+      readPage,
+      emitSession: vi.fn(),
+      emitPage: vi.fn(),
+      emitWatchEvent: (frame) => frames.push(frame)
+    });
+    const send = vi.fn<(envelope: NodeEnvelope) => void>();
+    const service = new WorkbenchEventService({
+      send,
+      accepts: () => true,
+      projection: {
+        getRun: () => undefined,
+        conversationTurnForRun: () => undefined,
+        progress: () => {
+          throw new Error('unexpected progress read');
+        }
+      },
+      emitRealtime: (id, event) => watch.emitRealtime(id, event)
+    });
+    try {
+      await watch.operations()['session.watch']!({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        watchId: 'pending-watch',
+        workbenchConnectionId: 'pending-connection',
+        mode: 'initial'
+      });
+      await vi.waitFor(() => expect(readPage).toHaveBeenCalledOnce());
+      const queue = { sessionId: session.id, queue: [] };
+      service.dispatch('queue', queue);
+      service.dispatch('conversation', {
+        sessionId: session.id,
+        performance: { runId: 'run', latencyMs: 42 }
+      });
+      expect(frames).toEqual([]);
+      expect(send).not.toHaveBeenCalled();
+      const notification = {
+        sessionId: session.id,
+        event: { eventType: 'notification', payload: { kind: 'RUN_TERMINAL' } }
+      };
+      service.dispatch('conversation', notification);
+      expect(send).toHaveBeenCalledOnce();
+      expect(send.mock.calls[0]?.[0]).toMatchObject({
+        type: 'workbench.event',
+        payload: { sequence: 3, category: 'conversation', payload: notification }
+      });
+      page.resolve({ turns: [], snapshotSequence: 0 });
+      await vi.waitFor(() => expect(frames).toHaveLength(2));
+      expect(frames).toEqual([
+        expect.objectContaining({
+          type: 'watch.session.snapshot',
+          watchId: 'pending-watch',
+          workbenchConnectionId: 'pending-connection'
+        }),
+        expect.objectContaining({
+          type: 'watch.session.event',
+          watchId: 'pending-watch',
+          workbenchConnectionId: 'pending-connection',
+          event: { sequence: 1, category: 'queue', payload: queue }
+        })
+      ]);
+      expect(send).toHaveBeenCalledOnce();
+      expect(service.snapshotSequence()).toBe(3);
+    } finally {
+      page.resolve({ turns: [], snapshotSequence: 0 });
+      watch.clear();
+    }
+  });
+
   it('publishes the complete authoritative next queued Turn before execution and emits Agent text only as deltas', () => {
     const database = new NodeDatabase(':memory:', 'node-queued-turn-first-text');
     const workspace = database.saveWorkspace({

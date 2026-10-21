@@ -4,8 +4,11 @@ import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { RunDomainState } from '../../src/service/run-domain-state.js';
 import { RunEventService } from '../../src/service/run-event-service.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
-import { NodeRunEventBridge } from '../../src/service/node-run-event-bridge.js';
+import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
+import { marctlSessionProgress } from '../../src/service/session-recent-activity.js';
 import { conversationSegments } from '../../src/service/conversation-segment-service.js';
+import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
+import type { NodeEnvelope, WorkbenchEvent } from '@myagentroam/protocol';
 
 function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
   let now = 100;
@@ -588,13 +591,22 @@ describe('Node Run notification attachment events', () => {
 describe('Run callback Segment projection', () => {
   it('normalizes terminal and late Execution Turns at the same public boundary', () => {
     const h = fixture(() => true);
-    const bridge = new NodeRunEventBridge({ runtime: h.runtime } as never);
+    const project = (category: 'conversation', payload: unknown) =>
+      projectWorkbenchPayload(
+        {
+          getRun: (id) => h.runtime.getRun(id),
+          conversationTurnForRun: (id) => h.runtime.conversationTurnForRun(id),
+          progress: (id) => marctlSessionProgress(h.runtime, id)
+        },
+        category,
+        payload
+      );
     const run = h.createRun('first-message');
     const first = h.startExecution(run.id);
     h.service.emit(first.id, 'run.running', {}, 'RUNNING');
     const initial = h.runtime.conversationTurnForRun(run.id)!;
     const started = h.events.find((event) => event.category === 'conversation')!;
-    expect(bridge.projectWorkbenchPayload('conversation', started.payload)).toMatchObject({
+    expect(project('conversation', started.payload)).toMatchObject({
       segments: conversationSegments(initial)
     });
     h.service.emit(first.id, 'run.completed', {}, 'SUCCEEDED');
@@ -602,7 +614,7 @@ describe('Run callback Segment projection', () => {
       .filter((event) => event.category === 'conversation' && 'turn' in (event.payload as object))
       .at(-1)!;
     const completed = h.runtime.conversationTurnForRun(run.id)!;
-    expect(bridge.projectWorkbenchPayload('conversation', terminal.payload)).toMatchObject({
+    expect(project('conversation', terminal.payload)).toMatchObject({
       segments: conversationSegments(completed)
     });
     h.runtime.createQueueItem({
@@ -621,7 +633,7 @@ describe('Run callback Segment projection', () => {
     });
     const late = h.events.filter((event) => event.category === 'conversation').at(-1)!;
     const oldTurn = h.runtime.conversationTurnForExecution(first.id)!;
-    expect(bridge.projectWorkbenchPayload('conversation', late.payload)).toMatchObject({
+    expect(project('conversation', late.payload)).toMatchObject({
       turn: { id: initial.id },
       segments: conversationSegments(oldTurn)
     });
@@ -632,9 +644,121 @@ describe('Run callback Segment projection', () => {
     const h = fixture();
     const run = h.createRun('message');
     const turn = h.runtime.conversationTurnForRun(run.id)!;
-    const bridge = new NodeRunEventBridge({ runtime: h.runtime } as never);
-    expect(bridge.projectWorkbenchPayload('conversation', { turn, segments: [] })).toMatchObject({
+    const project = (category: 'conversation', payload: unknown) =>
+      projectWorkbenchPayload(
+        {
+          getRun: (id) => h.runtime.getRun(id),
+          conversationTurnForRun: (id) => h.runtime.conversationTurnForRun(id),
+          progress: (id) => marctlSessionProgress(h.runtime, id)
+        },
+        category,
+        payload
+      );
+    expect(project('conversation', { turn, segments: [] })).toMatchObject({
       segments: conversationSegments(turn)
+    });
+  });
+});
+
+describe('Workbench event delivery decisions', () => {
+  it('projects before admission, numbers once, and keeps notifications out of Session Watch', () => {
+    const h = fixture();
+    const run = h.createRun('delivery');
+    const turn = h.runtime.conversationTurnForRun(run.id)!;
+    const progress = {
+      status: 'RUNNING' as const,
+      runId: run.id,
+      recentTools: [],
+      latestMessage: null,
+      observedAt: 123
+    };
+    const projection = {
+      getRun: vi.fn((id: string) => (id === run.id ? run : undefined)),
+      conversationTurnForRun: vi.fn((id: string) => (id === run.id ? turn : undefined)),
+      progress: vi.fn(() => progress)
+    };
+    const send = vi.fn<(envelope: NodeEnvelope) => void>();
+    const accepts = vi.fn(
+      (_category: string, payload: unknown) => !(payload as { blocked?: boolean }).blocked
+    );
+    const emitRealtime = vi.fn((_sessionId: string, _event: WorkbenchEvent) => true);
+    const service = new WorkbenchEventService({ send, accepts, projection, emitRealtime });
+
+    service.dispatch('conversation', { event: { runId: 'missing', eventType: 'text.delta' } });
+    expect(accepts).not.toHaveBeenCalled();
+    service.dispatch('session', { sessionId: run.sessionId, blocked: true });
+    const notification = {
+      event: {
+        runId: run.id,
+        sequence: 1,
+        eventType: 'notification',
+        createdAt: 123,
+        payload: {
+          notificationId: `run:workspace-1:${run.id}`,
+          targetType: 'WORKSPACE_SESSION',
+          userId: 7,
+          kind: 'RUN_TERMINAL',
+          workspaceId: 'workspace-1',
+          sessionId: run.sessionId,
+          sessionTitle: 'notification test',
+          runId: run.id,
+          outcome: 'SUCCEEDED',
+          occurredAt: 123
+        }
+      }
+    };
+    service.dispatch('conversation', { ...notification, blocked: true });
+    expect(service.snapshotSequence()).toBe(0);
+    expect(emitRealtime).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+
+    service.dispatch('run', { run });
+    const ordinary = { sequence: 1, category: 'run', payload: { run, progress } };
+    expect(accepts).toHaveBeenLastCalledWith('run', ordinary.payload);
+    expect(projection.progress).toHaveBeenCalledExactlyOnceWith(run.sessionId);
+    expect(emitRealtime).toHaveBeenCalledExactlyOnceWith(run.sessionId, ordinary);
+    expect(send).not.toHaveBeenCalled();
+
+    emitRealtime.mockClear();
+    service.dispatch('conversation', notification);
+    expect(emitRealtime).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      type: 'workbench.event',
+      payload: { sequence: 2, category: 'conversation', payload: notification }
+    });
+
+    const hosted = service.next('hosted-conversation', { conversationId: 'hosted' })!;
+    service.publish(hosted);
+    expect(hosted).toEqual({
+      sequence: 3,
+      category: 'hosted-conversation',
+      payload: { conversationId: 'hosted' }
+    });
+    expect(service.snapshotSequence()).toBe(3);
+    expect(send.mock.calls[1]?.[0]).toMatchObject({ payload: hosted });
+    expect(emitRealtime).not.toHaveBeenCalled();
+
+    emitRealtime.mockReturnValue(false);
+    service.dispatch('queue', { sessionId: run.sessionId, queue: [] });
+    expect(emitRealtime).toHaveBeenLastCalledWith(run.sessionId, {
+      sequence: 4,
+      category: 'queue',
+      payload: { sessionId: run.sessionId, queue: [] }
+    });
+    service.dispatch('workspace', { workspaceId: 'workspace-1' });
+    expect(send.mock.calls.slice(2).map(([envelope]) => envelope.payload)).toEqual([
+      { sequence: 4, category: 'queue', payload: { sessionId: run.sessionId, queue: [] } },
+      { sequence: 5, category: 'workspace', payload: { workspaceId: 'workspace-1' } }
+    ]);
+    expect(emitRealtime).toHaveBeenCalledOnce();
+    emitRealtime.mockClear();
+    service.dispatch('conversation', notification);
+    expect(emitRealtime).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(5);
+    expect(send.mock.calls[4]?.[0]).toMatchObject({
+      type: 'workbench.event',
+      payload: { sequence: 6, category: 'conversation', payload: notification }
     });
   });
 });

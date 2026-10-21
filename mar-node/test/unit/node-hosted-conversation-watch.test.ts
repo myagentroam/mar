@@ -16,6 +16,7 @@ import {
   type HostedConversationRuntime
 } from '../../src/service/hosted-conversation-node-service.js';
 import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
 
 const directories: string[] = [];
 
@@ -29,6 +30,53 @@ afterEach(async () => {
 });
 
 describe('Node hosted conversation watch', () => {
+  it('uses the shared ordinary sequence without redispatching hosted Watch events', async () => {
+    const f = await watchFixture();
+    try {
+      const conversationId = await createConversation(f);
+      await f.service.operations()['conversation.hosted.watch']!({
+        conversationId,
+        mode: 'initial',
+        workbenchConnectionId: 'shared-sequence-connection',
+        watchId: 'shared-sequence-watch',
+        __workspaceWatchSessionHash: 'session-hash',
+        __requestUserId: 7,
+        __marAgentModels: [model]
+      });
+      await vi.waitFor(() => expect(f.frames).toHaveLength(1));
+      const sequence = f.workbench.snapshotSequence();
+      f.workbench.dispatch('session', { sessionId: 'ordinary-session' });
+      expect(f.ordinaryDelivery).toHaveBeenCalledExactlyOnceWith('ordinary-session', {
+        sequence: sequence + 1,
+        category: 'session',
+        payload: { sessionId: 'ordinary-session' }
+      });
+      f.service.publishRuntimeEvent(conversationId, {
+        kind: 'DELTA',
+        executionId: 'shared-execution',
+        sequence: 1,
+        createdAt: 123,
+        payload: { text: 'hosted-only' }
+      });
+      expect(f.frames).toHaveLength(2);
+      expect(f.frames[1]).toMatchObject({
+        type: 'watch.hosted-conversation.event',
+        watchId: 'shared-sequence-watch',
+        workbenchConnectionId: 'shared-sequence-connection',
+        event: {
+          sequence: sequence + 2,
+          category: 'hosted-conversation',
+          payload: { conversationId }
+        }
+      });
+      expect(f.workbench.snapshotSequence()).toBe(sequence + 2);
+      expect(f.ordinaryDelivery).toHaveBeenCalledOnce();
+      expect(f.events).toEqual([]);
+    } finally {
+      await f.service.dispose();
+    }
+  });
+
   it('rejects an old renewal without releasing the replacement lease', async () => {
     const fixture = await watchFixture();
     const conversationId = await createConversation(fixture);
@@ -1361,7 +1409,19 @@ async function watchFixture() {
   const frames: Array<Record<string, unknown>> = [];
   const events: WorkbenchEvent[] = [];
   const slots = new SessionWatchSlotCoordinator();
-  let sequence = 0;
+  const ordinaryDelivery = vi.fn(() => true);
+  const workbench = new WorkbenchEventService({
+    send: (envelope) => events.push(envelope.payload as WorkbenchEvent),
+    accepts: () => true,
+    projection: {
+      getRun: () => undefined,
+      conversationTurnForRun: () => undefined,
+      progress: () => {
+        throw new Error('unexpected ordinary progress query');
+      }
+    },
+    emitRealtime: ordinaryDelivery
+  });
   let id = 0;
   const service = new HostedConversationNodeService({
     database,
@@ -1371,17 +1431,24 @@ async function watchFixture() {
     nodeGeneration: () => 'generation-hosted',
     sessionWatchSlots: slots,
     emitWatchEvent: (frame) => frames.push(frame as Record<string, unknown>),
-    nextWorkbenchEvent: (payload): WorkbenchEvent => ({
-      sequence: ++sequence,
-      category: 'hosted-conversation',
-      payload
-    }),
-    emitWorkbenchEvent: (event) => events.push(event),
+    nextWorkbenchEvent: (payload) => workbench.next('hosted-conversation', payload),
+    emitWorkbenchEvent: (event) => workbench.publish(event),
     processExecutorFactory: vi.fn(() => ({ spawn: vi.fn() }) as never),
     id: () => `conversation-${++id}`,
     readImage: vi.fn(async () => undefined)
   });
-  return { database, store, runtime, frames, events, slots, service, completeRun };
+  return {
+    database,
+    store,
+    runtime,
+    frames,
+    events,
+    slots,
+    service,
+    completeRun,
+    workbench,
+    ordinaryDelivery
+  };
 }
 
 function rollbackTurn(id: string, text: string, before: string | null) {
