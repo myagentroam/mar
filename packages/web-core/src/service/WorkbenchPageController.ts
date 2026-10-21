@@ -1019,6 +1019,7 @@ export function createWorkbenchPageController<
   ): Promise<void> {
     await openWorkbenchNotification({
       id: `recent-run:${run.nodeId}:${run.runId}`,
+      source: 'server',
       kind: 'run',
       title: run.sessionTitle,
       message: '',

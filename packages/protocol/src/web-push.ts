@@ -15,6 +15,7 @@ export const webPushSubscriptionSchema = z
 
 export const webPushRegistrationSchema = z
   .object({
+    clientKind: z.literal('mobile'),
     clientToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
     subscription: webPushSubscriptionSchema,
     bindingVersion: z.number().int().positive().safe().optional(),

@@ -1,119 +1,137 @@
 import { expect, test } from '@playwright/test';
 import { mockConsoleApi, json } from './support/web-console-api.js';
 
-for (const language of [
-  {
-    locale: 'zh-CN',
-    open: '进入控制台',
-    settings: '设置',
-    notifications: '系统通知',
-    online: '在线系统通知',
-    push: '离线推送',
-    disable: '关闭系统通知',
-    enabled: '已开启',
-    serverUnavailable: '服务器尚未配置离线推送，请联系管理员。',
-    systemDisabled: '管理员未开启离线推送。'
-  },
-  {
-    locale: 'en-US',
-    open: 'Open console',
-    settings: 'Settings',
-    notifications: 'System notifications',
-    online: 'Online system notifications',
-    push: 'Offline Push',
-    disable: 'Disable system notifications',
-    enabled: 'Enabled',
-    serverUnavailable:
-      'This Server is not configured for offline Push. Contact your administrator.',
-    systemDisabled: 'Offline Push is disabled by the administrator.'
-  }
-]) {
-  test(`System notification channels stay grouped and distinguish Server availability: ${language.locale}`, async ({
-    page
-  }) => {
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-    const capability: { enabled: boolean; available: boolean; publicKey: string | null } = {
-      enabled: false,
-      available: false,
-      publicKey: null
-    };
-    await page.route('**/api/notifications/push', (route) =>
-      json(route, { ...capability, account: 'admin' })
-    );
-    let registrations = 0;
-    await page.route('**/api/notifications/push/clients', (route) => {
-      registrations++;
-      return json(route, {}, 500);
-    });
-    await page.addInitScript(
-      ({ locale }) => {
-        // Headless Chromium has no OS notification permission integration.
-        Object.defineProperty(Notification, 'permission', {
-          configurable: true,
-          get: () => 'granted'
-        });
-        localStorage.setItem('mar.locale.v2', locale);
-        localStorage.setItem('mar.workbench.system-notifications.v1.admin', 'true');
-      },
-      { locale: language.locale }
-    );
-    await page.goto('/console');
-    await page.getByRole('button', { name: language.open, exact: true }).click();
-    await page.getByRole('button', { name: language.settings, exact: true }).click();
-    await page.getByRole('button', { name: language.notifications, exact: true }).click();
-    const panel = page.locator('.system-notification-control');
-    const online = panel.locator('.notification-channel').nth(0);
-    const push = panel.locator('.notification-channel').nth(1);
-    await expect(online.getByRole('heading', { name: language.online, exact: true })).toBeVisible();
-    await expect(online.getByRole('status')).toHaveText(language.enabled);
-    await expect(online.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
-    await expect(push.getByRole('heading', { name: language.push, exact: true })).toBeVisible();
-    await expect(push.getByRole('status')).toHaveText(language.serverUnavailable);
-    const assertLayout = async () => {
-      const first = await online.boundingBox();
-      const second = await push.boundingBox();
-      expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height - 1);
-      const rootFontSize = await page.evaluate(() =>
-        Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+for (const device of ['desktop', 'mobile'] as const) {
+  for (const language of [
+    {
+      locale: 'zh-CN',
+      open: '进入控制台',
+      settings: '设置',
+      notifications: '系统通知',
+      online: 'PC 失焦系统通知',
+      push: '离线推送',
+      disable: '关闭系统通知',
+      enabled: '已开启',
+      serverUnavailable: '服务器尚未配置离线推送，请联系管理员。',
+      systemDisabled: '管理员未开启离线推送。'
+    },
+    {
+      locale: 'en-US',
+      open: 'Open console',
+      settings: 'Settings',
+      notifications: 'System notifications',
+      online: 'PC focus-loss notifications',
+      push: 'Offline Push',
+      disable: 'Disable system notifications',
+      enabled: 'Enabled',
+      serverUnavailable:
+        'This Server is not configured for offline Push. Contact your administrator.',
+      systemDisabled: 'Offline Push is disabled by the administrator.'
+    }
+  ]) {
+    test(`System notification channels match device capability: ${device} ${language.locale}`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      const capability: { enabled: boolean; available: boolean; publicKey: string | null } = {
+        enabled: false,
+        available: false,
+        publicKey: null
+      };
+      await page.route('**/api/notifications/push', (route) =>
+        json(route, { ...capability, account: 'admin' })
       );
-      expect(first!.width).toBeLessThanOrEqual(48 * rootFontSize + 1);
-      expect(first!.x).toBeGreaterThanOrEqual(0);
-      expect(first!.x + first!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-      expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
-      const button = await online.getByRole('button').boundingBox();
-      expect(button!.x).toBeGreaterThanOrEqual(first!.x - 1);
-      expect(button!.x + button!.width).toBeLessThanOrEqual(first!.x + first!.width + 1);
-    };
-    await assertLayout();
-    await page.screenshot({
-      path: test.info().outputPath(`notification-channels-${language.locale}-desktop.png`),
-      animations: 'disabled'
-    });
-    await page.setViewportSize({ width: 390, height: 844 });
-    await assertLayout();
-    await expect
-      .poll(() =>
-        online.getByRole('heading').evaluate((node) => {
-          const bounds = node.getBoundingClientRect();
-          return node.contains(
-            document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-          );
+      let registrations = 0;
+      await page.route('**/api/notifications/push/clients', (route) => {
+        registrations++;
+        return json(route, {}, 500);
+      });
+      await page.addInitScript(
+        ({ locale, device }) => {
+          if (device === 'mobile')
+            Object.defineProperty(navigator, 'userAgent', {
+              configurable: true,
+              get: () => 'Mozilla/5.0 iPhone'
+            });
+          // Headless Chromium has no OS notification permission integration.
+          Object.defineProperty(Notification, 'permission', {
+            configurable: true,
+            get: () => 'granted'
+          });
+          localStorage.setItem('mar.locale.v2', locale);
+          localStorage.setItem('mar.workbench.system-notifications.v1.admin', 'true');
+        },
+        { locale: language.locale, device }
+      );
+      await page.goto('/console');
+      await page.getByRole('button', { name: language.open, exact: true }).click();
+      await page.getByRole('button', { name: language.settings, exact: true }).click();
+      await page.getByRole('button', { name: language.notifications, exact: true }).click();
+      const panel = page.locator('.system-notification-control');
+      const online = panel.locator('.notification-channel').first();
+      const push = online;
+      await expect(panel.locator('.notification-channel')).toHaveCount(1);
+      await expect(
+        online.getByRole('heading', {
+          name: device === 'desktop' ? language.online : language.push,
+          exact: true
         })
-      )
-      .toBe(true);
-    await page.screenshot({
-      path: test.info().outputPath(`notification-channels-${language.locale}-mobile.png`),
-      animations: 'disabled'
+      ).toBeVisible();
+      await expect(online.getByRole('status').first()).toHaveText(language.enabled);
+      if (device === 'desktop') {
+        await expect(
+          online.getByRole('button', { name: language.disable, exact: true })
+        ).toBeVisible();
+        await expect(panel.getByRole('heading', { name: language.push, exact: true })).toHaveCount(
+          0
+        );
+      } else await expect(push.getByRole('status').last()).toHaveText(language.serverUnavailable);
+      const assertLayout = async () => {
+        const first = await online.boundingBox();
+        const rootFontSize = await page.evaluate(() =>
+          Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+        );
+        expect(first!.width).toBeLessThanOrEqual(48 * rootFontSize + 1);
+        expect(first!.x).toBeGreaterThanOrEqual(0);
+        expect(first!.x + first!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+        expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+        const button = await online.getByRole('button').boundingBox();
+        expect(button!.x).toBeGreaterThanOrEqual(first!.x - 1);
+        expect(button!.x + button!.width).toBeLessThanOrEqual(first!.x + first!.width + 1);
+      };
+      await assertLayout();
+      await page.screenshot({
+        path: test.info().outputPath(`notification-channels-${language.locale}-desktop.png`),
+        animations: 'disabled'
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await assertLayout();
+      await expect
+        .poll(() =>
+          online.getByRole('heading').evaluate((node) => {
+            const bounds = node.getBoundingClientRect();
+            return node.contains(
+              document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+            );
+          })
+        )
+        .toBe(true);
+      await page.screenshot({
+        path: test.info().outputPath(`notification-channels-${language.locale}-mobile.png`),
+        animations: 'disabled'
+      });
+      if (device === 'mobile') {
+        capability.available = true;
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(push.getByRole('status').last()).toHaveText(language.systemDisabled);
+        capability.enabled = true;
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(push.getByRole('status').last()).toHaveText(language.serverUnavailable);
+      }
+      expect(registrations).toBe(0);
     });
-    capability.available = true;
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(push.getByRole('status')).toHaveText(language.systemDisabled);
-    capability.enabled = true;
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(push.getByRole('status')).toHaveText(language.serverUnavailable);
-    expect(registrations).toBe(0);
-  });
+  }
 }
 
 test('Web Push settings use real browser storage and a gesture-bound mocked subscription', async ({
@@ -133,6 +151,7 @@ test('Web Push settings use real browser storage and a gesture-bound mocked subs
   await page.route('**/api/notifications/push/clients', (route) => {
     const body = route.request().postDataJSON();
     expect(body.expectedAccount).toBe('admin');
+    expect(body.clientKind).toBe('mobile');
     writes.push(body);
     return json(route, {
       subscriptionId: 'c45c8a1f-5d5a-4b55-bb7c-336b7629e5f8',
@@ -146,6 +165,10 @@ test('Web Push settings use real browser storage and a gesture-bound mocked subs
     return json(route, { binding: null });
   });
   await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      get: () => 'Mozilla/5.0 iPhone'
+    });
     localStorage.setItem('mar.locale.v2', 'en-US');
     const state = {
       permission: 'default' as NotificationPermission,
@@ -204,7 +227,7 @@ test('Web Push settings use real browser storage and a gesture-bound mocked subs
   await expect(panel.getByRole('status').last()).toHaveText(
     'Offline Push is disabled for this browser.'
   );
-  await page.getByRole('button', { name: 'Enable system notifications', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable / retry offline Push', exact: true }).click();
   await expect(panel.getByRole('status').last()).toHaveText(
     'Offline Push is ready for this browser. Delivery is best effort.'
   );
@@ -232,7 +255,7 @@ test('Web Push settings use real browser storage and a gesture-bound mocked subs
       }
     });
   expect(await display()).toMatchObject({ account: 'admin', enabled: true, bindingVersion: 1 });
-  await page.getByRole('button', { name: 'Disable system notifications', exact: true }).click();
+  await page.getByRole('button', { name: 'Disable offline Push', exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toMatchObject({
     clientToken: writes[0]!.clientToken,

@@ -39,6 +39,7 @@ function fixture() {
   };
   const body = {
     expectedAccount: 'alice',
+    clientKind: 'mobile',
     clientToken: Buffer.alloc(32, 3).toString('base64url'),
     subscription: {
       endpoint: 'https://fcm.googleapis.com/fcm/send/client',
@@ -63,6 +64,24 @@ function fixture() {
 }
 
 describe('authenticated Web Push subscription routes', () => {
+  it('rejects an old registration without client kind before calling the client store', async () => {
+    const f = fixture();
+    try {
+      const { clientKind: _clientKind, ...legacyRegistration } = f.body;
+      const response = await f.app.inject({
+        method: 'POST',
+        url: '/api/notifications/push/clients',
+        headers: f.headers,
+        payload: legacyRegistration
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: { code: 'WEB_PUSH_INPUT_INVALID' } });
+      expect(f.clients.register).not.toHaveBeenCalled();
+    } finally {
+      await f.app.close();
+    }
+  });
+
   it('rejects a stale page when the current Cookie account changed before registration or lookup', async () => {
     const f = fixture();
     try {

@@ -101,6 +101,49 @@ describe('Core MySQL schema', () => {
     expect(query).toHaveBeenCalledTimes(1);
   });
 
+  it('cleans only Push clients transactionally and rolls back a failed attempt for retry', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 32)!;
+    const pushClients = new Set(['legacy-client-a', 'legacy-client-b']);
+    const businessRows = new Set(['notification-1', 'user-1']);
+    let snapshot: Set<string> | undefined;
+    let failAfterDelete = true;
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'START TRANSACTION') snapshot = new Set(pushClients);
+      else if (sql === 'ROLLBACK') {
+        pushClients.clear();
+        snapshot?.forEach((client) => pushClients.add(client));
+        snapshot = undefined;
+      } else if (sql === 'COMMIT') snapshot = undefined;
+      else throw new Error(`Unexpected migration query: ${sql}`);
+      return [[], []];
+    });
+    const execute = vi.fn(async (sql: string) => {
+      expect(sql).toBe('DELETE FROM web_push_clients');
+      pushClients.clear();
+      if (failAfterDelete) {
+        failAfterDelete = false;
+        throw new Error('PUSH_CLIENT_DELETE_FAILED');
+      }
+      return [{ affectedRows: 2 }, []];
+    });
+    const connection = { query, execute };
+
+    await expect(migration.up(connection as never)).rejects.toThrow('PUSH_CLIENT_DELETE_FAILED');
+    expect(pushClients).toEqual(new Set(['legacy-client-a', 'legacy-client-b']));
+    expect(businessRows).toEqual(new Set(['notification-1', 'user-1']));
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual(['START TRANSACTION', 'ROLLBACK']);
+
+    await migration.up(connection as never);
+    expect(pushClients.size).toBe(0);
+    expect(businessRows).toEqual(new Set(['notification-1', 'user-1']));
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'START TRANSACTION',
+      'ROLLBACK',
+      'START TRANSACTION',
+      'COMMIT'
+    ]);
+  });
+
   it('adds recoverable share passwords once and validates retries without rewriting the prior migration', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 30)!;
     let added = false;
@@ -503,7 +546,7 @@ describe('Core MySQL schema', () => {
       "enum('run','approval','plan','user-input','schedule','agent')"
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');

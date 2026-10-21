@@ -120,6 +120,7 @@ function fixture() {
     () => now
   );
   const input = (n: number) => ({
+    clientKind: 'mobile' as const,
     clientToken: createHash('sha256').update(`test-client-token-${n}`).digest('base64url'),
     subscription: {
       endpoint: `https://fcm.googleapis.com/fcm/send/client-${n}`,
@@ -219,6 +220,16 @@ describe('Web Push client ownership and lifecycle', () => {
     await expect(
       service.register(actor, { ...input(1), subscription: input(2).subscription })
     ).rejects.toThrow('WEB_PUSH_CLIENT_CONFLICT');
+  });
+
+  it('rejects a legacy registration without client kind before opening a transaction', async () => {
+    const { service, input, connection, rows } = fixture();
+    const { clientKind: _clientKind, ...legacyRegistration } = input(1);
+    await expect(service.register(actor, legacyRegistration)).rejects.toThrow(
+      'WEB_PUSH_INPUT_INVALID'
+    );
+    expect(rows.size).toBe(0);
+    expect(connection.beginTransaction).not.toHaveBeenCalled();
   });
 
   it('rebinds to a new login only explicitly and rejects old-session cleanup', async () => {

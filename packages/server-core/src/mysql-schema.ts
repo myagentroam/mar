@@ -549,5 +549,20 @@ export const CORE_MYSQL_MIGRATIONS = [
       await validateMysqlSchema(connection, MYSQL_SESSION_SHARES_CURRENT_SCHEMA);
     }
   },
-  MODEL_USAGE_QUERY_INDEX_MIGRATION
+  MODEL_USAGE_QUERY_INDEX_MIGRATION,
+  {
+    version: 32,
+    name: 'mobile_only_web_push_clients',
+    checksum: createHash('sha256').update('DELETE FROM web_push_clients').digest('hex'),
+    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+      await connection.query('START TRANSACTION');
+      try {
+        await connection.execute('DELETE FROM web_push_clients');
+        await connection.query('COMMIT');
+      } catch (error) {
+        await connection.query('ROLLBACK');
+        throw error;
+      }
+    }
+  }
 ] as const;

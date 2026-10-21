@@ -1,3 +1,9 @@
+import {
+  notificationCreatedSchema,
+  serverNotificationSchema,
+  type ServerNotification,
+  type NotificationTarget
+} from '@myagentroam/protocol';
 import { computed, ref, watch, type Ref, type WatchStopHandle } from 'vue';
 import type { WorkbenchLiveEvent } from '../service/WorkbenchLiveService.js';
 import type { WorkspaceUploadTask } from '../service/WorkspaceUploadService.js';
@@ -12,37 +18,30 @@ import {
   isWorkbenchForeground
 } from './WorkbenchSystemNotificationService.js';
 
-export type WorkbenchNotificationKind =
-  'upload' | 'run' | 'approval' | 'plan' | 'user-input' | 'schedule' | 'agent' | 'web-update';
+export type { NotificationTarget } from '@myagentroam/protocol';
 
-export interface WorkbenchNotification {
+interface LocalNotificationRecord {
   readonly id: string;
-  readonly kind: WorkbenchNotificationKind;
   readonly title: string;
   readonly message: string;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly expiresAt: number;
   readonly read: boolean;
-  readonly source?: 'server' | 'local';
-  readonly target?: WorkbenchNotificationTarget;
-  readonly action?: 'RELOAD_PAGE';
+  readonly source: 'local';
 }
-
-export type NotificationTarget =
-  | {
-      readonly targetType: 'WORKSPACE_SESSION';
-      readonly nodeId: string;
-      readonly workspaceId: string;
-      readonly sessionId: string;
-      readonly sessionName?: string;
-    }
-  | {
-      readonly targetType: 'HOSTED_CONVERSATION';
-      readonly nodeId: string;
-      readonly conversationId: string;
-      readonly conversationName: string;
-    };
+export type LocalNotification = LocalNotificationRecord &
+  (
+    | {
+        readonly kind: 'upload';
+        readonly target?: LocalWorkspaceNotificationTarget;
+        readonly action?: never;
+      }
+    | { readonly kind: 'web-update'; readonly action?: 'RELOAD_PAGE'; readonly target?: never }
+  );
+export type WorkbenchNotification =
+  (ServerNotification & { readonly source: 'server'; readonly action?: never }) | LocalNotification;
+export type WorkbenchNotificationKind = WorkbenchNotification['kind'];
 
 export interface LocalWorkspaceNotificationTarget {
   readonly targetType?: undefined;
@@ -83,19 +82,26 @@ export interface RecentRun {
   readonly version: number;
 }
 
-export interface WorkbenchNotificationInput extends Omit<
-  WorkbenchNotification,
-  'createdAt' | 'updatedAt' | 'expiresAt' | 'read'
-> {
+export type WorkbenchNotificationInput = (
+  | Omit<
+      Extract<LocalNotification, { kind: 'upload' }>,
+      'createdAt' | 'updatedAt' | 'expiresAt' | 'read' | 'source'
+    >
+  | Omit<
+      Extract<LocalNotification, { kind: 'web-update' }>,
+      'createdAt' | 'updatedAt' | 'expiresAt' | 'read' | 'source'
+    >
+) & {
+  readonly source?: 'local';
   readonly createdAt?: number;
   readonly expiresAt?: number;
-  /** Current-session events remain listed but do not count as unread or open the panel. */
   readonly read?: boolean;
-}
+};
 
 export interface WorkbenchNotificationService {
   readonly notifications: Ref<WorkbenchNotification[]>;
   readonly unreadCount: Readonly<Ref<number>>;
+  readonly previewNotificationId: Readonly<Ref<string | undefined>>;
   readonly notificationRevision: Readonly<Ref<number>>;
   readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
@@ -169,6 +175,13 @@ export function createWorkbenchNotificationService(
   const pendingCreatedNotificationIds = new Map<string, number>();
   const handledCreatedNotificationIds = new Map<string, number>();
   const notificationRevision = ref(0);
+  const previewNotificationId = ref<string>();
+  const pendingScenes = new Map<string, boolean>();
+
+  function preview(id: string): void {
+    previewNotificationId.value = id;
+    notificationRevision.value += 1;
+  }
   const recentRuns = ref<RecentRun[]>([]);
   const unreadCount = computed(
     () =>
@@ -213,6 +226,9 @@ export function createWorkbenchNotificationService(
   function removeExpired(now = Date.now()): void {
     sweepExpiredNotificationIds(pendingCreatedNotificationIds, now);
     sweepExpiredNotificationIds(handledCreatedNotificationIds, now);
+    for (const id of pendingScenes.keys()) {
+      if (!pendingCreatedNotificationIds.has(id)) pendingScenes.delete(id);
+    }
     const next = notifications.value.filter((notification) => notification.expiresAt > now);
     if (next.length !== notifications.value.length) {
       notifications.value = next;
@@ -249,6 +265,7 @@ export function createWorkbenchNotificationService(
     const existing = notifications.value.find((notification) => notification.id === input.id);
     const notification: WorkbenchNotification = {
       ...input,
+      source: 'local',
       createdAt: existing?.createdAt ?? input.createdAt ?? now,
       updatedAt: now,
       expiresAt: input.expiresAt ?? existing?.expiresAt ?? now + TTL_MS,
@@ -262,8 +279,12 @@ export function createWorkbenchNotificationService(
       )
     ];
     persist();
-    if (existing === undefined && (input.kind === 'upload' || !notification.read))
-      notificationRevision.value += 1;
+    if (
+      existing === undefined &&
+      isWorkbenchForeground() &&
+      (input.kind === 'upload' || !notification.read)
+    )
+      preview(notification.id);
   }
 
   function recordUpload(task: WorkspaceUploadTask): void {
@@ -293,15 +314,13 @@ export function createWorkbenchNotificationService(
     return false;
   }
 
-  function applyServerSnapshot(result: {
-    notifications: WorkbenchNotification[];
-    recentRuns?: unknown[];
-  }): void {
+  function applyServerSnapshot(result: { notifications: unknown[]; recentRuns?: unknown[] }): void {
     const local = notifications.value.filter((notification) => notification.source !== 'server');
     notifications.value = [
-      ...result.notifications
-        .filter(isNotification)
-        .map((notification) => ({ ...notification, source: 'server' as const })),
+      ...result.notifications.flatMap((value) => {
+        const parsed = serverNotificationSchema.safeParse(value);
+        return parsed.success ? [{ ...parsed.data, source: 'server' as const }] : [];
+      }),
       ...local
     ].sort((left, right) => right.createdAt - left.createdAt);
     recentRuns.value = (result.recentRuns ?? []).filter(isRecentRun).sort(compareRecentRuns);
@@ -310,9 +329,11 @@ export function createWorkbenchNotificationService(
   function confirmPendingCreatedNotifications(): void {
     if (pendingCreatedNotificationIds.size === 0) return;
     const now = Date.now();
-    let confirmedUnread = 0;
+
     for (const [id, expiresAt] of pendingCreatedNotificationIds) {
       pendingCreatedNotificationIds.delete(id);
+      const foreground = pendingScenes.get(id);
+      pendingScenes.delete(id);
       if (expiresAt <= now) {
         handledCreatedNotificationIds.delete(id);
         continue;
@@ -324,33 +345,34 @@ export function createWorkbenchNotificationService(
         handledCreatedNotificationIds.delete(id);
         continue;
       }
-      if (notification !== undefined && !notification.read) {
-        confirmedUnread += 1;
-        void systemNotifications.show(notification, () =>
-          notifications.value.some(
-            (item) =>
-              item.source === 'server' &&
-              item.id === notification.id &&
-              !item.read &&
-              item.expiresAt > Date.now()
-          )
-        );
+      if (notification?.source === 'server' && !notification.read) {
+        if (foreground === true && isWorkbenchForeground() && !isActiveTarget(notification.target))
+          preview(id);
+        if (foreground === false && !isWorkbenchForeground())
+          void systemNotifications.show(notification, () =>
+            notifications.value.some(
+              (item) =>
+                item.source === 'server' &&
+                item.id === notification.id &&
+                !item.read &&
+                item.expiresAt > Date.now()
+            )
+          );
       }
       handledCreatedNotificationIds.set(id, expiresAt);
     }
-    notificationRevision.value += confirmedUnread;
   }
 
   async function drainRefreshes(generation: number): Promise<void> {
     while (generation === loadGeneration && refreshRequested) {
       refreshRequested = false;
       let result: {
-        notifications: WorkbenchNotification[];
+        notifications: unknown[];
         recentRuns?: unknown[];
       };
       try {
         result = await options.request!<{
-          notifications: WorkbenchNotification[];
+          notifications: unknown[];
           recentRuns?: unknown[];
         }>('/api/notifications');
       } catch (error) {
@@ -496,8 +518,12 @@ export function createWorkbenchNotificationService(
       !value.type.startsWith('notification.')
     )
       return false;
-    if (value.type === 'notification.created' && isNotification(value.notification)) {
-      const notification = value.notification;
+    const parsed =
+      value.type === 'notification.created'
+        ? notificationCreatedSchema.safeParse(value)
+        : undefined;
+    if (parsed?.success) {
+      const notification = parsed.data.notification;
       const now = Date.now();
       if (notification.expiresAt <= now) {
         refreshQuietly();
@@ -510,15 +536,12 @@ export function createWorkbenchNotificationService(
         refreshQuietly();
         return true;
       }
-      if (notification.kind === 'run' && notification.target?.targetType === 'WORKSPACE_SESSION')
+      if (notification.kind === 'run' && notification.target.targetType === 'WORKSPACE_SESSION')
         options.onWorkspaceRunCompleted?.(
           notification.target.nodeId,
           notification.target.workspaceId
         );
-      const active =
-        isWorkbenchForeground() &&
-        notification.target !== undefined &&
-        isActiveTarget(notification.target);
+      const active = isWorkbenchForeground() && isActiveTarget(notification.target);
       if (active && !notification.read) {
         handledCreatedNotificationIds.set(notification.id, notification.expiresAt);
         requestAndRefresh(
@@ -533,7 +556,6 @@ export function createWorkbenchNotificationService(
             !systemNotifications.hasPending() &&
             isWorkbenchForeground() &&
             notification.expiresAt > Date.now() &&
-            notification.target !== undefined &&
             isActiveTarget(notification.target)
         );
         return true;
@@ -543,6 +565,7 @@ export function createWorkbenchNotificationService(
         refreshQuietly();
         return true;
       }
+      pendingScenes.set(notification.id, isWorkbenchForeground());
       pendingCreatedNotificationIds.set(notification.id, notification.expiresAt);
       void load().catch(() => undefined);
       return true;
@@ -735,6 +758,8 @@ export function createWorkbenchNotificationService(
     recoveryPromise = undefined;
     pendingRecovery = undefined;
     pendingCreatedNotificationIds.clear();
+    pendingScenes.clear();
+    previewNotificationId.value = undefined;
     handledCreatedNotificationIds.clear();
     notifications.value = notifications.value.filter(
       (notification) => notification.source !== 'server'
@@ -749,6 +774,7 @@ export function createWorkbenchNotificationService(
     recentRuns,
     unreadCount,
     notificationRevision,
+    previewNotificationId,
     systemNotifications,
     hasActiveWorkspaceRun,
     hasUnreadWorkspace,
@@ -868,50 +894,36 @@ export function parseStoredWorkbenchNotifications(
   now = Date.now()
 ): WorkbenchNotification[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isNotification).filter((item) => item.expiresAt > now);
+  return value
+    .filter(isNotification)
+    .filter((item) => item.expiresAt > now)
+    .map((item) => ({ ...item, source: 'local' }));
 }
 
-function isNotification(value: unknown): value is WorkbenchNotification {
-  if (typeof value !== 'object' || value === null) return false;
-  const item = value as Partial<WorkbenchNotification>;
+function isNotification(value: unknown): value is LocalNotification {
+  if (!isRecord(value)) return false;
   return (
-    typeof item.id === 'string' &&
-    (item.kind === 'upload' ||
-      item.kind === 'run' ||
-      item.kind === 'approval' ||
-      item.kind === 'plan' ||
-      item.kind === 'user-input' ||
-      item.kind === 'agent' ||
-      item.kind === 'web-update') &&
-    typeof item.title === 'string' &&
-    typeof item.message === 'string' &&
-    typeof item.createdAt === 'number' &&
-    typeof item.updatedAt === 'number' &&
-    typeof item.expiresAt === 'number' &&
-    typeof item.read === 'boolean' &&
-    (item.action === undefined || item.action === 'RELOAD_PAGE') &&
-    (item.target === undefined || isNotificationTarget(item.target))
+    (value.kind === 'upload' || value.kind === 'web-update') &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.message === 'string' &&
+    typeof value.createdAt === 'number' &&
+    typeof value.updatedAt === 'number' &&
+    typeof value.expiresAt === 'number' &&
+    typeof value.read === 'boolean' &&
+    (value.kind === 'upload'
+      ? value.action === undefined &&
+        (value.target === undefined || isNotificationTarget(value.target))
+      : value.target === undefined &&
+        (value.action === undefined || value.action === 'RELOAD_PAGE'))
   );
 }
 
-function isNotificationTarget(value: unknown): value is WorkbenchNotificationTarget {
+function isNotificationTarget(value: unknown): value is LocalWorkspaceNotificationTarget {
   if (!isRecord(value) || typeof value.nodeId !== 'string') return false;
-  if (value.targetType === 'HOSTED_CONVERSATION')
-    return (
-      typeof value.conversationId === 'string' &&
-      typeof value.conversationName === 'string' &&
-      value.workspaceId === undefined &&
-      value.sessionId === undefined
-    );
-  if (value.targetType === 'WORKSPACE_SESSION')
-    return (
-      typeof value.workspaceId === 'string' &&
-      typeof value.sessionId === 'string' &&
-      (value.sessionName === undefined || typeof value.sessionName === 'string') &&
-      value.conversationId === undefined
-    );
   return (
     value.targetType === undefined &&
+    value.conversationId === undefined &&
     (value.workspaceId === undefined || typeof value.workspaceId === 'string') &&
     (value.sessionId === undefined || typeof value.sessionId === 'string') &&
     (value.sessionName === undefined || typeof value.sessionName === 'string')

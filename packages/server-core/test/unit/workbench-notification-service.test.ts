@@ -237,6 +237,7 @@ describe('Server Workbench notification service', () => {
       if (sql.includes('INSERT INTO workbench_notifications')) {
         inserted = {
           id: parameters[0],
+          kind: parameters[4],
           title: parameters[5],
           message: parameters[6],
           node_id: parameters[7],

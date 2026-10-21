@@ -20,13 +20,43 @@ async function fixture() {
   const showNotification = vi.fn(async () => undefined);
   const openWindow = vi.fn(async () => undefined);
   const close = vi.fn();
+  const windows: Array<{
+    id: string;
+    url: string;
+    account: string;
+    foreground: boolean;
+    valid: boolean;
+    postMessage: (message: { account: string }, ports: MessagePort[]) => void;
+  }> = [];
+  function addWindow(id: string, account = 'alice', foreground = false) {
+    const client = {
+      id,
+      account,
+      foreground,
+      valid: true,
+      url: 'https://console.example.test/console',
+      postMessage(message: { account: string }, ports: MessagePort[]) {
+        ports[0]!.postMessage({
+          valid: client.valid && message.account === client.account,
+          foreground: client.foreground
+        });
+        ports[0]!.close();
+      }
+    };
+    windows.push(client);
+    return client;
+  }
   runInNewContext(source, {
     self: {
       addEventListener: (name: string, listener: (event: unknown) => void) =>
         listeners.set(name, listener),
       location: { origin: 'https://console.example.test' },
       registration: { showNotification, getNotifications: async () => [] },
-      clients: { matchAll: async () => [], openWindow }
+      clients: {
+        matchAll: async () => windows,
+        get: async (id: string) => windows.find((entry) => entry.id === id),
+        openWindow
+      }
     },
     indexedDB: {
       open: () => {
@@ -53,6 +83,7 @@ async function fixture() {
       }
     },
     URL,
+    MessageChannel,
     setTimeout,
     clearTimeout
   });
@@ -94,8 +125,90 @@ async function fixture() {
     });
     await done;
   }
-  return { listeners, state, message, push, click, showNotification, openWindow };
+  async function desktop(client: ReturnType<typeof addWindow>, id = 'notice-1') {
+    let done: Promise<void> | undefined;
+    const port = { postMessage: vi.fn(), close: vi.fn() };
+    listeners.get('message')!({
+      source: client,
+      ports: [port],
+      data: {
+        type: 'mar.workbench.notification.show',
+        account: 'alice',
+        id,
+        projectionId: `projection:${client.id}`,
+        title: message.title,
+        body: message.body,
+        expiresAt: message.expiresAt
+      },
+      waitUntil: (value: Promise<void>) => {
+        done = value;
+      }
+    });
+    await done;
+    return port;
+  }
+  return {
+    listeners,
+    state,
+    message,
+    push,
+    click,
+    desktop,
+    addWindow,
+    showNotification,
+    openWindow
+  };
 }
+
+describe('shared Worker desktop notification projection', () => {
+  it('deduplicates concurrent requests across background tabs and preserves the click target', async () => {
+    const f = await fixture();
+    await Promise.all([f.desktop(f.addWindow('one')), f.desktop(f.addWindow('two'))]);
+    expect(f.showNotification).toHaveBeenCalledOnce();
+    const [title, options] = f.showNotification.mock.calls[0] as unknown as [
+      string,
+      { tag: string; data: unknown }
+    ];
+    expect(title).toBe(f.message.title);
+    expect(options.tag).toBe('mar.workbench:alice:notice-1');
+    await f.click(options.data);
+    expect(f.openWindow).toHaveBeenCalledWith(
+      'https://console.example.test/console?notification=notice-1&notificationAccount=alice'
+    );
+  });
+
+  it('suppresses background notifications only for a foreground Workbench of the same account', async () => {
+    const f = await fixture();
+    const background = f.addWindow('background');
+    const foreground = f.addWindow('foreground', 'alice', true);
+    await f.desktop(background);
+    expect(f.showNotification).not.toHaveBeenCalled();
+    foreground.account = 'bob';
+    await f.desktop(background, 'other-notice');
+    expect(f.showNotification).toHaveBeenCalledOnce();
+  });
+
+  it('does not show a notification after its source projection becomes invalid', async () => {
+    const f = await fixture();
+    const background = f.addWindow('background');
+    background.valid = false;
+    await f.desktop(background);
+    expect(f.showNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not show an expired request or an unanswered source projection', async () => {
+    const f = await fixture();
+    const background = f.addWindow('background');
+    f.message.expiresAt = Date.now() - 1;
+    await f.desktop(background);
+    expect(f.showNotification).not.toHaveBeenCalled();
+    f.message.expiresAt = Date.now() + 60_000;
+    background.postMessage = () => {};
+    const pending = f.desktop(background);
+    await pending;
+    expect(f.showNotification).not.toHaveBeenCalled();
+  });
+});
 
 describe('shared Worker Web Push projection', () => {
   it('uses the existing notification tag and ignores cross-origin payload navigation', async () => {

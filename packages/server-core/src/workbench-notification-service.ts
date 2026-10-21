@@ -5,38 +5,20 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { NotificationStore } from './notification-contracts.js';
 import { workbenchNotificationMessages } from './i18n/workbench-notifications.js';
+import {
+  serverNotificationSchema,
+  type NotificationTarget as StoredWorkbenchNotificationTarget,
+  type ServerNotification as StoredWorkbenchNotification
+} from '@myagentroam/protocol';
+
+export type { UserLocale } from './auth-contracts.js';
+export type {
+  NotificationTarget as StoredWorkbenchNotificationTarget,
+  ServerNotification as StoredWorkbenchNotification
+} from '@myagentroam/protocol';
 
 const TTL_MS = 24 * 60 * 60_000;
 const CLEANUP_INTERVAL_MS = 5 * 60_000;
-
-export type { UserLocale } from './auth-contracts.js';
-
-export type StoredWorkbenchNotificationTarget =
-  | {
-      readonly targetType: 'WORKSPACE_SESSION';
-      readonly nodeId: string;
-      readonly workspaceId: string;
-      readonly sessionId: string;
-      readonly sessionName: string;
-    }
-  | {
-      readonly targetType: 'HOSTED_CONVERSATION';
-      readonly nodeId: string;
-      readonly conversationId: string;
-      readonly conversationName: string;
-    };
-
-export interface StoredWorkbenchNotification {
-  readonly id: string;
-  readonly kind: 'run' | 'approval' | 'plan' | 'user-input' | 'schedule' | 'agent';
-  readonly title: string;
-  readonly message: string;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly expiresAt: number;
-  readonly read: boolean;
-  readonly target: StoredWorkbenchNotificationTarget;
-}
 
 export class WorkbenchNotificationService {
   private lastCleanupAt = Number.NEGATIVE_INFINITY;
@@ -340,9 +322,9 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
           sessionId: String(row['session_id']),
           sessionName: String(row['session_title'])
         };
-  return {
+  return serverNotificationSchema.parse({
     id: String(row['id']),
-    kind: row['kind'] as StoredWorkbenchNotification['kind'],
+    kind: row['kind'],
     title: String(row['title']),
     message: String(row['message']),
     createdAt: Number(row['created_at']),
@@ -350,7 +332,7 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
     expiresAt: Number(row['expires_at']),
     read: row['read_at'] !== null,
     target
-  };
+  });
 }
 
 function parsePayload(value: unknown) {

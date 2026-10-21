@@ -4,6 +4,71 @@ import { notificationsZhCN } from '../src/i18n/notifications.zh-CN.ts';
 
 const serviceWorkerSource = String.raw`
 const directDownloads = new Map();
+const desktopNotificationAttempts = new Map();
+
+function notificationClientState(client, account, projectionId) {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timeout = setTimeout(() => { channel.port1.close(); resolve({ valid: false }); }, 500);
+    channel.port1.onmessage = (reply) => {
+      clearTimeout(timeout);
+      channel.port1.close();
+      resolve({ valid: reply.data?.valid === true, foreground: reply.data?.foreground === true });
+    };
+    try { client.postMessage({ type: 'mar.workbench.notification.state', account, projectionId }, [channel.port2]); }
+    catch { clearTimeout(timeout); channel.port1.close(); resolve({ valid: false }); }
+  });
+}
+
+function showDesktopNotification(event) {
+  const value = event.data;
+  if (value?.type !== 'mar.workbench.notification.show') return;
+  const source = event.source;
+  if (!source || !event.ports[0] ||
+      typeof value.account !== 'string' || value.account.length > 128 ||
+      typeof value.id !== 'string' || value.id.length > 256 ||
+      typeof value.projectionId !== 'string' || value.projectionId.length > 128 ||
+      typeof value.title !== 'string' || value.title.length > 4000 ||
+      typeof value.body !== 'string' || value.body.length > 4000 ||
+      !Number.isSafeInteger(value.expiresAt) || value.expiresAt <= Date.now()) return;
+  if (typeof source.url !== 'string') return;
+  const sourceUrl = new URL(source.url);
+  if (sourceUrl.origin !== self.location.origin || sourceUrl.pathname !== '/console') return;
+  const key = JSON.stringify([value.account, value.id]);
+  for (const [id, expiresAt] of desktopNotificationAttempts) {
+    if (expiresAt <= Date.now()) desktopNotificationAttempts.delete(id);
+  }
+  if (desktopNotificationAttempts.has(key) || desktopNotificationAttempts.size >= 2048) {
+    event.ports[0].postMessage({ done: true }); event.ports[0].close(); return;
+  }
+  desktopNotificationAttempts.set(key, value.expiresAt);
+  event.waitUntil((async () => {
+    try {
+      const client = await self.clients.get(source.id);
+      if (!client) return;
+      const url = new URL(client.url);
+      if (url.origin !== self.location.origin || url.pathname !== '/console') return;
+      const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+        .filter((entry) => { const candidate = new URL(entry.url); return candidate.origin === self.location.origin && candidate.pathname === '/console'; });
+      if (windows.length > 32) return;
+      const states = await Promise.all(windows.map((entry) => notificationClientState(entry, value.account, entry.id === client.id ? value.projectionId : undefined)));
+      if (!states.some((state, index) => windows[index].id === client.id && state.valid) ||
+          states.some((state) => state.valid && state.foreground) || value.expiresAt <= Date.now()) return;
+      const tag = 'mar.workbench:' + value.account + ':' + value.id;
+      await self.registration.showNotification(value.title, {
+        body: value.body, icon: '/icons/app-icon-192.png', tag,
+        data: { type: 'mar.workbench.notification', account: value.account, id: value.id,
+          projectionId: value.projectionId, expiresAt: value.expiresAt, clientUrl: client.url }
+      });
+      if (!(await notificationClientState(client, value.account, value.projectionId)).valid) {
+        for (const entry of await self.registration.getNotifications({ tag })) {
+          if (entry.data?.projectionId === value.projectionId) entry.close();
+        }
+      }
+    } catch { /* Optional projection: never bypass the in-page notification center. */ }
+    finally { event.ports[0].postMessage({ done: true }); event.ports[0].close(); }
+  })());
+}
 const genericPushMessages = ${JSON.stringify({ 'en-US': notificationsEnUS.workbenchNotificationCenter.webPush.generic, 'zh-CN': notificationsZhCN.workbenchNotificationCenter.webPush.generic })};
 
 async function pushDisplayBinding() {
@@ -103,6 +168,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'mar.workbench.notification.show') { showDesktopNotification(event); return; }
   const value = event.data;
   const port = event.ports[0];
   if (

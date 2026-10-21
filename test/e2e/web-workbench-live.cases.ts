@@ -11,7 +11,7 @@ for (const language of [
     disable: '关闭系统通知',
     enabled: '已开启',
     disabled: '未开启',
-    summary: '窗口失焦时接收系统通知；离线推送另受系统开关与订阅状态控制。',
+    summary: 'PC 工作台保持连接但失焦时接收系统通知；PC 不接收离线推送。',
     work: '工作',
     center: '打开通知中心'
   },
@@ -25,7 +25,7 @@ for (const language of [
     enabled: 'Enabled',
     disabled: 'Disabled',
     summary:
-      'System notifications appear when this window loses focus. Offline Push also depends on the system switch and subscription status.',
+      'PC system notifications appear while the workbench is connected but loses focus. PC does not receive offline Push.',
     work: 'Work',
     center: 'Open notification center'
   }
@@ -34,11 +34,22 @@ for (const language of [
     page
   }) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-    await page.addInitScript((locale) => {
+    await page.context().route('**/service-worker.js*', async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        body:
+          "self.registration.showNotification = async (title, options = {}) => {\n  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });\n  for (const client of windows) client.postMessage({ type: 'test.system-notification.shown', record: { title, options } });\n};\nself.registration.getNotifications = async () => [];\n" +
+          (await response.text())
+      });
+    });
+    const initializeNotifications = (locale: string) => {
       localStorage.setItem('mar.locale.v2', locale);
       const state = {
         focused: true,
-        permission: 'default' as NotificationPermission,
+        permission: (localStorage.getItem('mar.workbench.system-notifications.v1.admin') === 'true'
+          ? 'granted'
+          : 'default') as NotificationPermission,
         permissionRequests: 0,
         records: [] as { title: string; options: NotificationOptions }[]
       };
@@ -60,11 +71,12 @@ for (const language of [
           return Promise.resolve(state.permission);
         }
       });
-      // Observe the browser boundary; headless tests cannot assert an OS toast.
-      ServiceWorkerRegistration.prototype.showNotification = async (title, options = {}) => {
-        state.records.push({ title, options });
-      };
-    }, language.locale);
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'test.system-notification.shown')
+          state.records.push(event.data.record);
+      });
+    };
+    await page.addInitScript(initializeNotifications, language.locale);
     const now = Date.now();
     const entry = (id: string) => ({
       id,
@@ -175,6 +187,46 @@ for (const language of [
     await expect.poll(async () => (await testState()).records.length).toBe(1);
     expect(await page.evaluate(() => document.visibilityState)).toBe('visible');
     expect((await testState()).records[0]?.title).toBe('Completed unfocused');
+    const sibling = await page.context().newPage();
+    await mockConsoleApi(sibling, 'MANAGED', ['history.read', 'turn.start'], []);
+    await sibling.addInitScript(initializeNotifications, language.locale);
+    await sibling.route('**/api/notifications', (route) => json(route, { notifications }));
+    await sibling.goto('/console');
+    await sibling.getByRole('button', { name: language.login, exact: true }).click();
+    await sibling.getByRole('button', { name: language.settings, exact: true }).click();
+    await sibling.getByRole('button', { name: language.title, exact: true }).click();
+    await expect(
+      sibling.getByRole('button', { name: language.disable, exact: true })
+    ).toBeVisible();
+    const duplicate = entry('two-background-tabs');
+    notifications = [duplicate, ...notifications];
+    await Promise.all(
+      [page, sibling].map((target) =>
+        target.evaluate((value) => {
+          const w = window as unknown as {
+            __systemNotificationTest: { focused: boolean };
+            __consoleMockWorkbenchWebSocket: {
+              instances: { url: string; readyState: number; dispatchEvent(event: Event): void }[];
+            };
+          };
+          w.__systemNotificationTest.focused = false;
+          const socket = w.__consoleMockWorkbenchWebSocket.instances.find(
+            (item) => item.url.includes('/api/workbench/live') && item.readyState === 1
+          );
+          if (socket === undefined) throw new Error('Mock workbench connection is not ready');
+          socket.dispatchEvent(
+            new MessageEvent('message', {
+              data: JSON.stringify({ type: 'notification.created', notification: value })
+            })
+          );
+        }, duplicate)
+      )
+    );
+    await expect.poll(async () => (await testState()).records.length).toBe(2);
+    expect(
+      (await testState()).records.filter((record) => record.title === duplicate.title)
+    ).toHaveLength(1);
+    await sibling.close();
     const readsBeforeClick = reads.length;
     await page.evaluate(() => {
       const w = window as unknown as {

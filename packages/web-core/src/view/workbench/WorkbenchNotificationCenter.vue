@@ -60,14 +60,18 @@ const RUN_STATUS_KEYS = {
 } as const satisfies Record<RecentRun['status'], string>;
 const previewTransferTasks = computed(() => {
   if (!autoPreview.value) return transferTasks.value;
-  const newest = props.service.notifications.value[0];
+  const newest = props.service.notifications.value.find(
+    (item) => item.id === props.service.previewNotificationId.value
+  );
   if (newest === undefined || !newest.id.startsWith('upload:')) return [];
   const task = transferTasks.value.find((item) => `upload:${item.id}` === newest.id);
   return task === undefined ? [] : [task];
 });
 const previewNotifications = computed(() => {
   if (!autoPreview.value) return visibleNotifications.value;
-  const newest = props.service.notifications.value[0];
+  const newest = props.service.notifications.value.find(
+    (item) => item.id === props.service.previewNotificationId.value
+  );
   return newest === undefined || activeUploadIds.value.has(newest.id) ? [] : [newest];
 });
 const visibleRecentRuns = computed(() => props.service.recentRuns.value);
