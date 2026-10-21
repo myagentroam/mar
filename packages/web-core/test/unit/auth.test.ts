@@ -77,6 +77,7 @@ describe('shared browser authentication lifecycle', () => {
     expect(f.state.newPassword.value).toBe('');
     expect(f.state.csrfToken.value).toBe('new-csrf');
     expect(f.restore).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(f.loading.value).toBe(false));
     expect(f.request.mock.calls[1]![0]).toBe('/api/auth/sessions');
   });
 
@@ -120,7 +121,79 @@ describe('shared browser authentication lifecycle', () => {
     expect(f.notice).toHaveBeenCalledWith(
       f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
     );
+    await vi.waitFor(() => expect(f.loading.value).toBe(false));
+    expect(f.notice).toHaveBeenCalledWith(
+      f.i18n.global.t('generated.adminAuthService.workbenchRecoveryFailed', {
+        value0: 'NODE_UNAVAILABLE'
+      })
+    );
+    expect(f.notice).toHaveBeenCalledWith(
+      f.i18n.global.t('generated.adminAuthService.unableToLoadSignInSessions', {
+        value0: 'SESSIONS_UNAVAILABLE'
+      })
+    );
   });
+
+  it.each(['workbench recovery', 'session refresh'] as const)(
+    'returns confirmed password success while %s is still pending',
+    async (delayedStep) => {
+      const f = authFixture();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let stepStarted = false;
+      f.request.mockImplementation(async (path: string) => {
+        if (path === '/api/auth/change-password')
+          return {
+            authenticated: true,
+            mustChangePassword: false,
+            csrfToken: 'confirmed-csrf'
+          };
+        if (path === '/api/auth/sessions') {
+          if (delayedStep === 'session refresh') {
+            stepStarted = true;
+            await gate;
+          }
+          return { sessions: [] };
+        }
+        throw new Error('UNEXPECTED_REQUEST');
+      });
+      if (delayedStep === 'workbench recovery')
+        f.restore.mockImplementationOnce(async () => {
+          stepStarted = true;
+          await gate;
+        });
+      f.state.newPassword.value = 'updated-password';
+      let completion: boolean | undefined;
+      const pending = f.service
+        .changePassword({
+          currentPassword: 'old-password',
+          password: 'updated-password',
+          confirmation: 'updated-password'
+        })
+        .then((changed) => {
+          completion = changed;
+          return changed;
+        });
+      try {
+        await vi.waitFor(() => expect(stepStarted).toBe(true));
+        expect(f.state.csrfToken.value).toBe('confirmed-csrf');
+        expect(f.storage.get('mar.user.csrf-token')).toBe('confirmed-csrf');
+        expect(f.state.newPassword.value).toBe('');
+        await vi.waitFor(() => expect(completion).toBe(true));
+        expect(f.loading.value).toBe(true);
+        expect(f.notice).toHaveBeenCalledWith(
+          f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+        );
+        if (delayedStep === 'workbench recovery') expect(f.request).toHaveBeenCalledTimes(1);
+      } finally {
+        release();
+        await pending;
+        await vi.waitFor(() => expect(f.loading.value).toBe(false));
+      }
+    }
+  );
 
   it('reveals authenticated state before host recovery and does not discard it on a Node failure', async () => {
     const f = authFixture();

@@ -559,6 +559,67 @@ test('Personal password dialog ignores a previous opening completing after it is
   await expect(current).toHaveValue('new-draft-password');
 });
 
+for (const delayedStep of ['workbench recovery', 'session refresh'] as const) {
+  test('Personal password dialog closes while ' + delayedStep + ' is pending', async ({ page }) => {
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    let confirmed = false;
+    let blocked = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const recoveryPath =
+      delayedStep === 'workbench recovery' ? '**/api/nodes' : '**/api/auth/sessions';
+    await page.route(recoveryPath, async (route) => {
+      if (!confirmed) return route.fallback();
+      blocked = true;
+      await gate;
+      await route.fallback();
+    });
+    await page.route('**/api/auth/change-password', (route) => {
+      expect(route.request().headers()['x-csrf-token']).toBe('csrf-1');
+      confirmed = true;
+      return json(route, {
+        authenticated: true,
+        mustChangePassword: false,
+        csrfToken: 'confirmed-csrf'
+      });
+    });
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '登录会话（0/5）' })).toBeVisible();
+    const open = page.getByRole('button', { name: '修改密码', exact: true });
+    const dialog = page.getByRole('dialog', { name: '修改密码', exact: true });
+    const submit = dialog.getByRole('button', { name: '确认修改' });
+    await open.click();
+    await dialog.getByRole('textbox', { name: '当前密码', exact: true }).fill('old-password');
+    await dialog.getByRole('textbox', { name: '新密码', exact: true }).fill('updated-password');
+    await dialog
+      .getByRole('textbox', { name: '再次输入新密码', exact: true })
+      .fill('updated-password');
+    try {
+      await submit.click();
+      await expect.poll(() => blocked).toBe(true);
+      await expect(dialog).toHaveCount(0);
+      await expect(page.locator('.el-message').filter({ hasText: '密码已更新' })).toBeVisible();
+      expect(await page.evaluate(() => sessionStorage.getItem('mar.user.csrf-token'))).toBe(
+        'confirmed-csrf'
+      );
+      await open.click();
+      for (const name of ['当前密码', '新密码', '再次输入新密码']) {
+        await expect(dialog.getByRole('textbox', { name, exact: true })).toHaveValue('');
+      }
+      await expect(dialog.getByRole('alert')).toHaveCount(0);
+      await expect(submit).toHaveClass(/is-loading/);
+    } finally {
+      release();
+      await expect(submit).not.toHaveClass(/is-loading/);
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    }
+  });
+}
+
 test('Quick prompts save on Enter without reloading the page', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   const prompts: {

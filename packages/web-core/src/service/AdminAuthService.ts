@@ -223,6 +223,23 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     }
   }
 
+  async function recoverPasswordChange(generation: number): Promise<void> {
+    try {
+      await restoreAuthenticatedWorkbench(generation);
+      if (generation !== identityGeneration) return;
+      await refreshSessions();
+    } catch (error) {
+      if (generation !== identityGeneration) return;
+      options.notice(
+        translate('generated.adminAuthService.unableToUpdateThePassword', {
+          value0: options.errorMessage(error)
+        })
+      );
+    } finally {
+      if (generation === identityGeneration) options.loading.value = false;
+    }
+  }
+
   async function changePassword(input: {
     readonly currentPassword: string;
     readonly password: string;
@@ -242,6 +259,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       return false;
     }
     const generation = replaceIdentity();
+    let recoveryStarted = false;
     options.passwordError.value = '';
     options.loading.value = true;
     options.notice('');
@@ -263,10 +281,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
       );
-      await restoreAuthenticatedWorkbench(generation);
-      if (generation !== identityGeneration) return false;
-      await refreshSessions();
-      return generation === identityGeneration;
+      recoveryStarted = true;
+      void recoverPasswordChange(generation);
+      return true;
     } catch (error) {
       if (generation !== identityGeneration) return false;
       options.notice(
@@ -276,7 +293,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       );
       return false;
     } finally {
-      if (generation === identityGeneration) options.loading.value = false;
+      if (!recoveryStarted && generation === identityGeneration) options.loading.value = false;
     }
   }
 
