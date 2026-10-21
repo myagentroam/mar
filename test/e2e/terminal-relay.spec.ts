@@ -18,8 +18,11 @@ import {
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
 
-test('A real Terminal process survives Server restart and reattaches without replaying input', async () => {
-  test.skip(process.platform !== 'linux', 'This regression exercises the Linux PTY lifecycle.');
+test('A real Terminal shell and foreground job survive Server restart and reattach without replaying input', async () => {
+  test.skip(
+    process.platform !== 'linux' && process.platform !== 'darwin',
+    'This regression exercises the POSIX PTY lifecycle.'
+  );
   test.setTimeout(60_000);
   const runId = process.env['MAR_TEST_RUN_ID'];
   if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
@@ -31,13 +34,21 @@ test('A real Terminal process survives Server restart and reattaches without rep
   let app: ReturnType<typeof createServerApp> | undefined;
   let connector: NodeConnector | undefined;
   const sockets: TestSocket[] = [];
+  let processIds: number[] = [];
   const manager = new TerminalManager({
-    platform: 'linux',
+    platform: process.platform === 'darwin' ? 'darwin' : 'linux',
     cwd: directory,
     profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
   });
-  const status = async (): Promise<{ pid: number; tick: number }> =>
+  const status = async (): Promise<{ pid: number; shellPid: number; tick: number }> =>
     JSON.parse(await readFile(statusPath, 'utf8'));
+  const terminateFixtureProcess = (pid: number): void => {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+    }
+  };
   try {
     const udp = createSocket('udp4');
     await new Promise<void>((resolve, reject) => {
@@ -112,14 +123,14 @@ test('A real Terminal process survives Server restart and reattaches without rep
       return { socket, frames };
     };
     const first = await attach(0);
-    const command = `const fs=require("node:fs");let tick=0;fs.appendFileSync(${JSON.stringify(startsPath)},"start\\n");setInterval(()=>{fs.writeFileSync(${JSON.stringify(statusPath + '.tmp')},JSON.stringify({pid:process.pid,tick:++tick}));fs.renameSync(${JSON.stringify(statusPath + '.tmp')},${JSON.stringify(statusPath)});console.log("MAR_TICK "+process.pid+" "+tick)},100)`;
+    const command = `const fs=require("node:fs");let tick=0;fs.appendFileSync(${JSON.stringify(startsPath)},"start\\n");setInterval(()=>{fs.writeFileSync(${JSON.stringify(statusPath + '.tmp')},JSON.stringify({pid:process.pid,shellPid:process.ppid,tick:++tick}));fs.renameSync(${JSON.stringify(statusPath + '.tmp')},${JSON.stringify(statusPath)});console.log("MAR_TICK "+process.pid+" "+tick)},100)`;
     // This is the only input frame: reconnect must never rerun the command.
-    // Replace the shell so PID assertions track the PTY process itself.
+    // Keep the interactive shell and its distinct foreground job alive across restart.
     first.socket.send(
       JSON.stringify({
         type: 'input',
         terminalId,
-        data: `exec ${JSON.stringify(process.execPath)} -e '${command}'\n`
+        data: `${JSON.stringify(process.execPath)} -e '${command}'\n`
       })
     );
     await expect
@@ -131,6 +142,9 @@ test('A real Terminal process survives Server restart and reattaches without rep
       )
       .toMatch(/MAR_TICK \d+ \d+/u);
     const before = await status();
+    processIds = [before.pid, before.shellPid];
+    expect(before.shellPid).not.toBe(before.pid);
+    expect(process.kill(before.shellPid, 0)).toBe(true);
     await expect
       .poll(() =>
         first.frames
@@ -146,6 +160,7 @@ test('A real Terminal process survives Server restart and reattaches without rep
     await disconnected;
     await expect.poll(async () => (await status()).tick).toBeGreaterThan(before.tick);
     expect((await status()).pid).toBe(before.pid);
+    expect((await status()).shellPid).toBe(before.shellPid);
     expect(manager.get(terminalId).state).toBe('RUNNING');
 
     app = createServerApp(serverOptions);
@@ -162,6 +177,7 @@ test('A real Terminal process survives Server restart and reattaches without rep
     expect(listed.json()).toMatchObject({ terminals: [{ id: terminalId, state: 'RUNNING' }] });
     const resumed = await attach(afterSequence);
     const resumedAt = (await status()).tick;
+    expect((await status()).shellPid).toBe(before.shellPid);
     await expect
       .poll(() => {
         const output = resumed.frames
@@ -183,16 +199,18 @@ test('A real Terminal process survives Server restart and reattaches without rep
     expect(closedTerminal.statusCode).toBe(200);
     expect(manager.get(terminalId).state).toBe('CLOSED');
     await expect
-      .poll(() => {
-        try {
-          process.kill(before.pid, 0);
-          return false;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-          return true;
-        }
-      })
-      .toBe(true);
+      .poll(() =>
+        processIds.map((pid) => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+            return false;
+          }
+        })
+      )
+      .toEqual([false, false]);
     await test.info().attach('terminal-restart-evidence', {
       body: JSON.stringify({
         runId,
@@ -203,12 +221,15 @@ test('A real Terminal process survives Server restart and reattaches without rep
         nodeId,
         terminalId,
         pid: before.pid,
+        shellPid: before.shellPid,
         beforeTick: before.tick,
         afterReconnectTick: resumedAt,
         afterSequence,
         inputFrames: 1,
         starts: 1,
-        processReleased: true
+        processReleased: true,
+        processesReleased: { shell: true, foregroundJob: true },
+        platform: process.platform
       }),
       contentType: 'application/json'
     });
@@ -218,6 +239,11 @@ test('A real Terminal process survives Server restart and reattaches without rep
       try {
         await connector?.stop();
       } finally {
+        // Baseline failures must not leak this fixture's own foreground job or shell.
+        for (const pid of processIds) {
+          terminateFixtureProcess(pid);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
         await manager.shutdown();
       }
     } finally {

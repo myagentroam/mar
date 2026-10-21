@@ -20,6 +20,7 @@ import { createEnvelope } from '@myagentroam/protocol';
 
 class FakePty implements TerminalPty {
   paused = false;
+  kills = 0;
   readonly writes: string[] = [];
   readonly resizes: { readonly cols: number; readonly rows: number }[] = [];
   readonly pid = 4242;
@@ -45,6 +46,7 @@ class FakePty implements TerminalPty {
   }
 
   kill(): boolean {
+    this.kills++;
     return true;
   }
 
@@ -208,7 +210,8 @@ describe('Node Admin Terminal', () => {
         await connector.stop();
         await connector.stop();
         expect(manager.list().every((terminal) => terminal.state === 'CLOSED')).toBe(true);
-        expect(terminate).toHaveBeenCalledTimes(ptys.length);
+        expect(terminate).not.toHaveBeenCalled();
+        expect(ptys.map((pty) => pty.kills)).toEqual(ptys.map(() => 1));
         expect(new Set(exits).size).toBe(ptys.length);
         expect(exits).toHaveLength(ptys.length);
         expect(vi.getTimerCount()).toBe(0);
@@ -224,41 +227,45 @@ describe('Node Admin Terminal', () => {
     15_000
   );
 
-  it.each(['close', 'shutdown'] as const)(
-    'releases a Windows PTY through %s exactly once',
-    async (operation) => {
-      const pty = new FakePty();
-      const kill = vi.spyOn(pty, 'kill').mockImplementation(() => {
-        pty.emitExit(0);
-        return true;
-      });
-      const terminate = vi.fn(async () => undefined);
-      const manager = new TerminalManager({ platform: 'win32', ptyFactory: () => pty, terminate });
-      const frames: { type: string }[] = [];
-      manager.onFrame((frame) => frames.push(frame));
-      const terminal = manager.open();
-      if (operation === 'shutdown') await manager.shutdown();
-      expect((await manager.close(terminal.id)).state).toBe('CLOSED');
-      await manager.close(terminal.id);
-      await manager.shutdown();
-      expect(kill).toHaveBeenCalledExactlyOnceWith();
-      expect(terminate).not.toHaveBeenCalled();
-      expect(frames.filter((frame) => frame.type === 'exit')).toHaveLength(1);
-    }
-  );
-
-  it('falls back to process-tree termination when Windows native PTY kill throws', async () => {
+  it.each(
+    (['win32', 'linux', 'darwin'] as const).flatMap((platform) =>
+      (['close', 'shutdown'] as const).map((operation) => [platform, operation] as const)
+    )
+  )('releases a %s PTY through %s exactly once', async (platform, operation) => {
     const pty = new FakePty();
-    vi.spyOn(pty, 'kill').mockImplementation(() => {
-      throw new Error('Native console cleanup failed.');
+    const kill = vi.spyOn(pty, 'kill').mockImplementation(() => {
+      pty.emitExit(0);
+      return true;
     });
     const terminate = vi.fn(async () => undefined);
-    const manager = new TerminalManager({ platform: 'win32', ptyFactory: () => pty, terminate });
+    const manager = new TerminalManager({ platform, ptyFactory: () => pty, terminate });
+    const frames: { type: string }[] = [];
+    manager.onFrame((frame) => frames.push(frame));
     const terminal = manager.open();
+    if (operation === 'shutdown') await manager.shutdown();
+    expect((await manager.close(terminal.id)).state).toBe('CLOSED');
     await manager.close(terminal.id);
-    expect(terminate).toHaveBeenCalledExactlyOnceWith(pty, 'win32');
     await manager.shutdown();
+    expect(kill).toHaveBeenCalledExactlyOnceWith();
+    expect(terminate).not.toHaveBeenCalled();
+    expect(frames.filter((frame) => frame.type === 'exit')).toHaveLength(1);
   });
+
+  it.each(['win32', 'linux', 'darwin'] as const)(
+    'falls back to process-tree termination when %s native PTY kill throws',
+    async (platform) => {
+      const pty = new FakePty();
+      vi.spyOn(pty, 'kill').mockImplementation(() => {
+        throw new Error('Native console cleanup failed.');
+      });
+      const terminate = vi.fn(async () => undefined);
+      const manager = new TerminalManager({ platform, ptyFactory: () => pty, terminate });
+      const terminal = manager.open();
+      await manager.close(terminal.id);
+      expect(terminate).toHaveBeenCalledExactlyOnceWith(pty, platform);
+      await manager.shutdown();
+    }
+  );
 
   it('serializes relay writes, pauses producers and delivers exit after output', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'clearImmediate'] });
@@ -1269,7 +1276,8 @@ describe('Node Admin Terminal', () => {
     expect(largeOutputFrames[0]).toHaveLength(65_535);
     expect(largeOutputFrames[1]).toBe('😀');
     await manager.close(terminal.id);
-    expect(terminated).toEqual([4242]);
+    expect(pty.kills).toBe(1);
+    expect(terminated).toEqual([]);
     await manager.shutdown();
 
     {
@@ -1440,9 +1448,9 @@ describe('Node Admin Terminal', () => {
           state: action === 'exit' ? 'EXITED' : 'CLOSED'
         });
         expect(manager.get(unrelated.id).workspaceId).toBe(other.id);
-        expect(terminate).toHaveBeenCalledTimes(
-          action === 'exit' ? 0 : action === 'shutdown' ? 2 : 1
-        );
+        expect(terminate).not.toHaveBeenCalled();
+        expect(pty.kills).toBe(action === 'exit' ? 0 : 1);
+        expect(holder.value!.kills).toBe(action === 'shutdown' ? 1 : 0);
       } finally {
         await manager.shutdown();
         database.close();
