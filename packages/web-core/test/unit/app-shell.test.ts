@@ -19,10 +19,15 @@ describe('shared product application shell', () => {
     ['?standaloneFile=1&source=hosted', true],
     ['?markdownPreview=1', true],
     ['?htmlPreview=1', true],
-    ['', true]
+    ['', true],
+    ['', false, 'mouse', true],
+    ['', false, 'touch', true],
+    ['', false, '', true],
+    ['', false, 'touch', false],
+    ['', true, '', false]
   ] as const)(
-    'preserves native context menus only for standalone rendered previews (%s)',
-    (search, prevented) => {
+    'applies native context menu policy (search=%s, prevented=%s, pointerType=%s, touchDevice=%s)',
+    (search, prevented, pointerType = 'mouse', touchDevice = false) => {
       const documentTarget = Object.assign(new EventTarget(), {
         documentElement: {
           lang: '',
@@ -36,7 +41,7 @@ describe('shared product application shell', () => {
       vi.stubGlobal('document', documentTarget);
       vi.stubGlobal('HTMLElement', class {});
       vi.stubGlobal('localStorage', { getItem: () => null });
-      vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
+      vi.stubGlobal('window', { matchMedia: () => ({ matches: touchDevice }) });
       const renderer = createRenderer<object, object>({
         patchProp() {},
         insert() {},
@@ -64,7 +69,7 @@ describe('shared product application shell', () => {
       app.mount({});
       try {
         const event = Object.assign(new Event('contextmenu', { cancelable: true }), {
-          pointerType: 'mouse'
+          pointerType
         });
         documentTarget.dispatchEvent(event);
         expect(event.defaultPrevented).toBe(prevented);
@@ -81,7 +86,6 @@ describe('shared product application shell', () => {
     const source = readFileSync(new URL('../../src/App.vue', import.meta.url), 'utf8');
     expect(source).toContain("document.addEventListener('contextmenu', preventBrowserContextMenu)");
     expect(source).toContain("pointerType === 'touch'");
-    expect(source).toContain("pointerType !== 'mouse'");
     expect(source).toContain("window.matchMedia('(hover: none) and (pointer: coarse)').matches");
     expect(source).toContain("target.matches('input, textarea, select')");
     expect(source).toContain("target.closest('img, video, audio') !== null");
