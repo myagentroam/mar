@@ -4,6 +4,9 @@ import { ref } from 'vue';
 import { createWorkbenchSessionSelectionService } from '../../src/service/WorkbenchSessionSelectionService.js';
 import type { WorkbenchSessionSelectionOptions } from '../../src/service/WorkbenchSessionSelectionService.js';
 import type { Session } from '../../src/model/workbench.js';
+import { createWorkbenchSessionWatchController } from '../../src/service/WorkbenchSessionWatchController.js';
+import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { createWorkbenchWatchCoordinator } from '../../src/service/WorkbenchWatchCoordinator.js';
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -16,9 +19,10 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
 }
 function tabSessionFixture() {
   const session: Session = { id: 'outside-page', workspaceId: 'workspace-1', runner: 'mar-agent' };
+  const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
   let revision = 0;
   const options: WorkbenchSessionSelectionOptions = {
-    workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+    workspaceTarget: target,
     selectedSessionId: ref(),
     selectedRunId: ref(),
     sessions: ref([]),
@@ -54,23 +58,227 @@ function tabSessionFixture() {
     sessionPathId: (id) => id,
     replaceSession: vi.fn(),
     canWatch: () => true,
-    beginWatch: vi.fn(async () => undefined),
+    beginWatch: vi.fn(async () => true),
     applySnapshot: vi.fn(() => false),
     mergeTurns: vi.fn(() => false),
     notice: vi.fn(),
     errorMessage: String
   };
-  return { session, options, service: createWorkbenchSessionSelectionService(options) };
+  return { session, target, options, service: createWorkbenchSessionSelectionService(options) };
+}
+
+async function watchedTabFixture() {
+  const f = tabSessionFixture();
+  const connection = ref<string>();
+  let read = false;
+  const readPosts: string[] = [];
+  const now = Date.now();
+  const entry = {
+    id: 'unread',
+    kind: 'run',
+    title: 'Completed',
+    message: 'Done',
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + 60_000,
+    target: {
+      targetType: 'WORKSPACE_SESSION',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: f.session.id
+    }
+  };
+  const notifications = createWorkbenchNotificationService(ref('test'), {
+    request: (async (path: string) => {
+      if (path === '/api/notifications/session/read') {
+        readPosts.push(f.session.id);
+        read = true;
+        return {};
+      }
+      if (path === '/api/notifications')
+        return { notifications: [{ ...entry, read }], recentRuns: [] };
+      throw new Error('Unexpected notification path: ' + path);
+    }) as WorkbenchSessionSelectionOptions['request']
+  });
+  await notifications.load();
+  const snapshot = vi.fn(() => true);
+  const watchRequest = vi.fn(async (_path: string, _init?: RequestInit) => ({
+    nodeGeneration: 'generation'
+  }));
+  const controller = createWorkbenchSessionWatchController({
+    workspaceTarget: f.target,
+    selectedSessionId: f.options.selectedSessionId,
+    sessions: f.options.sessions,
+    followConversation: ref(false),
+    heartbeatMs: 15_000,
+    workbenchConnectionId: () => connection.value,
+    requestTimeoutMs: 10_000,
+    confirmationTimeoutMs: 45_000,
+    request: watchRequest as WorkbenchSessionSelectionOptions['request'],
+    sessionPathId: (id) => id,
+    mergeSessions: vi.fn(),
+    applySnapshot: snapshot,
+    scrollAfterLayout: vi.fn(),
+    refreshSnapshot: vi.fn(),
+    openSession: vi.fn()
+  });
+  const coordinator = createWorkbenchWatchCoordinator({
+    workspace: {
+      start: vi.fn(async () => undefined),
+      restart: vi.fn(async () => undefined),
+      pause: vi.fn(),
+      stop: vi.fn(),
+      handleEvent: () => false
+    },
+    session: controller
+  });
+  Object.assign(f.options, {
+    markSessionRead: notifications.markSessionRead,
+    replaceSession: (_id: string, next: Session) => {
+      f.options.sessions.value = [next];
+    },
+    canWatch: controller.canWatchSessionHistory,
+    beginWatch: async (id: string) => {
+      await coordinator.restartSession(id);
+      return controller.hasInitialSessionSnapshot(id);
+    }
+  } satisfies Partial<WorkbenchSessionSelectionOptions>);
+  function frame(override: Record<string, unknown> = {}) {
+    const initial = watchRequest.mock.calls.filter(([, init]) => init?.method === 'POST').at(-1)!;
+    const request = JSON.parse(String(initial[1]?.body)) as { watchId: string };
+    return {
+      type: 'watch.session.snapshot',
+      workbenchConnectionId: connection.value,
+      nodeGeneration: 'generation',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      watchId: request.watchId,
+      sessionId: f.session.id,
+      payload: { unit: 'SEGMENT', segments: [], nextCursor: null, source: 'native' },
+      ...override
+    };
+  }
+  return {
+    ...f,
+    controller,
+    connection,
+    watchRequest,
+    snapshot,
+    notifications,
+    readPosts,
+    frame,
+    watchPosts: () => watchRequest.mock.calls.filter(([, init]) => init?.method === 'POST'),
+    dispose: () => {
+      coordinator.dispose();
+      notifications.dispose();
+    }
+  };
 }
 
 describe('Shared session selection', () => {
+  it('retains unread across missing-connection and same-session retries, then reads after a real snapshot', async () => {
+    const f = await watchedTabFixture();
+    try {
+      await f.service.openWorkspaceTabSession(f.session.id);
+      await f.service.openWorkspaceTabSession(f.session.id);
+      expect(f.watchPosts()).toHaveLength(0);
+      expect(f.snapshot).not.toHaveBeenCalled();
+      expect(f.readPosts).toEqual([]);
+      expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+      expect(f.options.initialLoadFailed.value).toBe(true);
+      f.connection.value = 'connection-1';
+      const retry = f.service.openWorkspaceTabSession(f.session.id);
+      await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
+      expect(f.readPosts).toEqual([]);
+      for (const mismatch of [
+        { watchId: 'stale' },
+        { nodeId: 'node-2' },
+        { workspaceId: 'workspace-2' },
+        { sessionId: 'other' },
+        { workbenchConnectionId: 'stale' }
+      ])
+        expect(f.controller.handleEvent(f.frame(mismatch))).toBe(false);
+      expect(f.controller.hasInitialSessionSnapshot(f.session.id)).toBe(false);
+      expect(f.controller.handleEvent(f.frame())).toBe(true);
+      await retry;
+      expect(f.controller.hasInitialSessionSnapshot(f.session.id)).toBe(true);
+      expect(f.readPosts).toEqual([f.session.id]);
+      expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
+      expect(f.options.initialLoadFailed.value).toBe(false);
+      const scrolls = vi.mocked(f.options.scrollLatest).mock.calls.length;
+      await f.service.openWorkspaceTabSession(f.session.id);
+      expect(f.watchPosts()).toHaveLength(1);
+      expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it.each(['cancel', 'node', 'session', 'generation'] as const)(
+    'does not read an unconfirmed snapshot after %s replacement',
+    async (replacement) => {
+      const f = await watchedTabFixture();
+      try {
+        f.connection.value = 'connection-1';
+        const opening = f.service.openWorkspaceTabSession(f.session.id);
+        await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
+        const stale = f.frame();
+        if (replacement === 'node')
+          f.target.value = { nodeId: 'node-2', workspaceId: 'workspace-1' };
+        if (replacement === 'session') f.options.selectedSessionId.value = 'another-session';
+        if (replacement === 'generation') f.options.nextRequest();
+        f.controller.stopSelectedSessionWatch();
+        await opening;
+        expect(f.controller.handleEvent(stale)).toBe(false);
+        expect(f.controller.hasInitialSessionSnapshot(f.session.id)).toBe(false);
+        expect(f.readPosts).toEqual([]);
+        expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
+        if (replacement === 'cancel') {
+          expect(f.options.initialLoadFailed.value).toBe(true);
+          const retry = f.service.openWorkspaceTabSession(f.session.id);
+          await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(2));
+          expect(f.controller.handleEvent(stale)).toBe(false);
+          f.controller.handleEvent(f.frame());
+          await retry;
+          expect(f.readPosts).toEqual([f.session.id]);
+        }
+      } finally {
+        f.dispose();
+      }
+    }
+  );
+
+  it('waits for render completion after the initial snapshot before reading', async () => {
+    const f = await watchedTabFixture();
+    try {
+      f.connection.value = 'connection-1';
+      let render!: () => void;
+      vi.mocked(f.options.beginInitialRender).mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            render = resolve;
+          })
+      );
+      const opening = f.service.openWorkspaceTabSession(f.session.id);
+      await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
+      f.controller.handleEvent(f.frame());
+      expect(f.snapshot).toHaveBeenCalledOnce();
+      expect(f.readPosts).toEqual([]);
+      render();
+      await opening;
+      expect(f.readPosts).toEqual([f.session.id]);
+    } finally {
+      f.dispose();
+    }
+  });
+
   it('opens a pagination-external Tab target by identity and reads only after history succeeds', async () => {
     const f = tabSessionFixture();
     let finish!: () => void;
     vi.mocked(f.options.beginWatch).mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+        new Promise<boolean>((resolve) => {
+          finish = () => resolve(true);
         })
     );
     const pending = f.service.openWorkspaceTabSession(f.session.id);
@@ -91,7 +299,7 @@ describe('Shared session selection', () => {
     expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
   });
 
-  it.each(['identity', 'history', 'mismatch', 'superseded'] as const)(
+  it.each(['identity', 'history', 'unconfirmed', 'mismatch', 'superseded'] as const)(
     'does not read a Tab target after %s failure or replacement',
     async (failure) => {
       const f = tabSessionFixture();
@@ -102,6 +310,7 @@ describe('Shared session selection', () => {
         vi.mocked(f.options.beginWatch).mockRejectedValue(
           new Error('SESSION_HISTORY_INITIAL_FAILED')
         );
+      if (failure === 'unconfirmed') vi.mocked(f.options.beginWatch).mockResolvedValue(false);
       if (failure === 'mismatch')
         vi.mocked(f.options.request).mockResolvedValue({
           session: { ...f.session, workspaceId: 'other-workspace' }
@@ -109,6 +318,7 @@ describe('Shared session selection', () => {
       if (failure === 'superseded')
         vi.mocked(f.options.beginWatch).mockImplementation(async () => {
           f.options.nextRequest();
+          return true;
         });
       await f.service.openWorkspaceTabSession(f.session.id);
       expect(f.options.markSessionRead).not.toHaveBeenCalled();
@@ -157,7 +367,7 @@ describe('Shared session selection', () => {
       sessionPathId: (id) => id,
       replaceSession: vi.fn(),
       canWatch: () => true,
-      beginWatch: vi.fn(async () => undefined),
+      beginWatch: vi.fn(async () => true),
       applySnapshot: vi.fn(() => false),
       mergeTurns: vi.fn(() => false),
       notice: vi.fn(),
@@ -295,7 +505,7 @@ describe('Shared session selection', () => {
         sessions.value = [next];
       },
       canWatch: () => false,
-      beginWatch: async () => undefined,
+      beginWatch: async () => true,
       applySnapshot,
       mergeTurns,
       notice: vi.fn(),
@@ -386,6 +596,7 @@ describe('Shared session selection', () => {
       beginWatch: async () => {
         order.push('snapshot');
         applySnapshot('session-1', initialPage);
+        return true;
       },
       applySnapshot,
       mergeTurns: () => false,
@@ -451,7 +662,7 @@ describe('Shared session selection', () => {
       sessionPathId: (value: string) => value,
       replaceSession: vi.fn(),
       canWatch: () => false,
-      beginWatch: async () => undefined,
+      beginWatch: async () => true,
       applySnapshot: vi.fn(),
       mergeTurns: vi.fn(() => false),
       notice: vi.fn(),

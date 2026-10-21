@@ -2428,7 +2428,12 @@ export function createWorkbenchPageController<
     sessionPathId: agentSessionPathId,
     replaceSession,
     canWatch: canWatchSessionHistory,
-    beginWatch: (sessionId) => Promise.resolve(watchCoordinator.current?.restartSession(sessionId)),
+    beginWatch: async (sessionId) => {
+      const coordinator = watchCoordinator.current;
+      if (coordinator === undefined) return false;
+      await coordinator.restartSession(sessionId);
+      return sessionWatchController.hasInitialSessionSnapshot(sessionId);
+    },
     applySnapshot: applyConversationSnapshot,
     mergeTurns: mergeLatestConversationTurns,
     notice: (value) => (notice.value = value),

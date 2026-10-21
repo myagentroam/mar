@@ -70,7 +70,7 @@ export interface WorkbenchSessionSelectionOptions {
   readonly sessionPathId: (sessionId: string) => string;
   readonly replaceSession: (previousId: string, next: Session) => void;
   readonly canWatch: (session: Session) => boolean;
-  readonly beginWatch: (sessionId: string) => Promise<void> | undefined;
+  readonly beginWatch: (sessionId: string) => Promise<boolean>;
   readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
   readonly mergeTurns: (page: ConversationTurnPage) => boolean;
   readonly notice: (value: string) => void;
@@ -188,8 +188,14 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       const watchable = options.canWatch(sessionResult.session);
       let page: ConversationTurnPage | undefined;
       const initialRender = options.beginInitialRender();
-      if (watchable) await options.beginWatch(sessionId);
-      else {
+      if (watchable) {
+        const loaded = await options.beginWatch(sessionId);
+        if (!loaded)
+          throw new ApiError(
+            'SESSION_HISTORY_INITIAL_FAILED',
+            'The initial session snapshot has not been applied.'
+          );
+      } else {
         const segmentPage = await options.request<ConversationSegmentPage | ConversationTurnPage>(
           `/api/agent-sessions/${encodedId}/turns?nodeId=${encodeURIComponent(nodeId)}&limit=${CONVERSATION_INITIAL_SEGMENT_LIMIT}&unit=SEGMENT`
         );
