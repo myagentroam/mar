@@ -9,6 +9,7 @@ import { createServerApp } from '../../ee/server/src/app.js';
 import { WebPushClients } from '../../packages/server-core/src/web-push-clients.js';
 import { CORE_MYSQL_MIGRATIONS } from '../../packages/server-core/src/mysql-schema.js';
 import { NotificationChannelService } from '../../packages/server-core/src/notification-channel-service.js';
+import { WorkbenchNotificationService } from '../../packages/server-core/src/workbench-notification-service.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
@@ -20,6 +21,67 @@ import {
   getPlaywrightTestLicensePublicKey
 } from './support/playwright-test-license.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+
+test('Server notifications persist without browser clients and retain occurrence times after reads', async () => {
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const database = resolvePlaywrightTestDatabase(`${runId}-notifications-${randomUUID()}`);
+  await createPlaywrightTestDatabase(database);
+  let pool: Awaited<ReturnType<typeof openMysqlDatabase>> | undefined;
+  try {
+    pool = await openMysqlDatabase({ url: database.databaseUrl });
+    const now = Date.now();
+    const occurredAt = now - 4 * 60 * 60 * 1000;
+    const [user] = await pool.execute<ResultSetHeader>(
+      `INSERT INTO users
+       (username,must_change_password,enabled,is_fixed_admin,created_at,updated_at)
+       VALUES (?,FALSE,TRUE,FALSE,?,?)`,
+      [`notification-${randomUUID()}`, occurredAt, occurredAt]
+    );
+    const userId = Number(user.insertId);
+    const store = { raw: pool, userCanRequestNode: async () => true };
+    const notifications = new WorkbenchNotificationService(
+      store,
+      () => undefined,
+      () => now
+    );
+    expect(
+      await notifications.consume('node-1', {
+        notificationId: `schedule:${randomUUID()}`,
+        userId,
+        kind: 'SCHEDULE_SKIPPED',
+        code: 'SCHEDULE_SESSION_BUSY',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1',
+        sessionTitle: 'Scheduled session',
+        runId: 'scheduled-occurrence-1',
+        occurredAt
+      })
+    ).toBe(true);
+
+    const restored = new WorkbenchNotificationService(
+      store,
+      () => undefined,
+      () => now
+    );
+    const unread = await restored.list(userId);
+    expect(unread).toEqual([
+      expect.objectContaining({ createdAt: occurredAt, updatedAt: occurredAt, read: false })
+    ]);
+    await restored.markSessionRead(userId, 'node-1', 'workspace-1', 'session-1');
+    expect(await restored.list(userId)).toEqual([
+      expect.objectContaining({ createdAt: occurredAt, updatedAt: occurredAt, read: true })
+    ]);
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT created_at,read_at FROM workbench_notifications WHERE id=? AND user_id=?',
+      [unread[0]!.id, userId]
+    );
+    expect(rows.map((row) => ({ ...row }))).toEqual([{ created_at: occurredAt, read_at: now }]);
+  } finally {
+    await pool?.end();
+    await dropPlaywrightTestDatabase(database);
+  }
+});
 
 test('Product Web Push enables with the default transport and retains its VAPID key after restart', async () => {
   const runId = process.env['MAR_TEST_RUN_ID'];

@@ -328,7 +328,7 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
     title: String(row['title']),
     message: String(row['message']),
     createdAt: Number(row['created_at']),
-    updatedAt: Number(row['read_at'] ?? row['created_at']),
+    updatedAt: Number(row['created_at']),
     expiresAt: Number(row['expires_at']),
     read: row['read_at'] !== null,
     target

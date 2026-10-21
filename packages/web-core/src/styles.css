@@ -1,4 +1,6 @@
+/* Match html.dark so the component-library palette cannot override MAR aliases. */
 :root,
+html.console-ui,
 .theme-preview {
   font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color-scheme: light;
@@ -42,6 +44,8 @@
   --mar-fill-row-hover: #edf2f7;
   --mar-fill-soft: #edf1f5;
   --mar-fill-hover: #e8eef5;
+  --mar-table-header-bg: var(--mar-bg-page);
+  --mar-table-row-hover-bg: var(--mar-fill-row-hover);
   --mar-border-default: #dce3ea;
   --mar-border-subtle: #e7ecf2;
   --mar-border-medium: #ccd6e0;
@@ -70,7 +74,11 @@
   --mar-control-color-primary-dark-2: #085bb4;
   --mar-color-brand-text: #135fa8;
   --mar-color-on-accent: #fff;
+  --mar-control-disabled-on-accent: var(--mar-color-on-accent);
   --mar-color-brand-hover: #0966c8;
+  --mar-color-brand-disabled: var(--mar-control-color-primary-light-5);
+  --mar-control-link-text: var(--mar-color-brand);
+  --mar-control-link-hover: var(--mar-control-color-primary-light-3);
   --mar-color-brand-active: #085bb4;
   --mar-color-brand-subtle: #f1f6fc;
   --mar-color-brand-selected: #e4effb;
@@ -156,6 +164,8 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-fill-row-hover: #202b3a;
   --mar-fill-soft: #18202c;
   --mar-fill-hover: #222d3d;
+  --mar-table-header-bg: #161d28;
+  --mar-table-row-hover-bg: #202b3a;
   --mar-border-default: #273142;
   --mar-border-subtle: #202a39;
   --mar-border-medium: #313d50;
@@ -181,8 +191,12 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-control-color-primary-light-9: rgb(48 147 255 / 0.14);
   --mar-control-color-primary-dark-2: #2478d6;
   --mar-color-brand-text: #3093ff;
-  --mar-color-on-accent: #0e1116;
+  --mar-color-on-accent: #fff;
+  --mar-control-disabled-on-accent: color-mix(in srgb, var(--mar-color-on-accent) 50%, transparent);
   --mar-color-brand-hover: #4aa3ff;
+  --mar-color-brand-disabled: rgb(55 148 255 / 0.45);
+  --mar-control-link-text: var(--mar-color-brand-text);
+  --mar-control-link-hover: var(--mar-color-brand-hover);
   --mar-color-brand-active: color-mix(in srgb, var(--mar-color-brand) 82%, #fff);
   --mar-color-brand-subtle: color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
   --mar-color-brand-selected: color-mix(in srgb, var(--mar-color-brand) 8%, transparent);
@@ -228,11 +242,7 @@ html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-text-color: var(--mar-color-on-accent);
   --el-button-hover-text-color: var(--mar-color-on-accent);
   --el-button-active-text-color: var(--mar-color-on-accent);
-}
-
-html.console-ui[data-theme='vscode-dark-2026'] .el-table {
-  --el-table-header-bg-color: #161d28;
-  --el-table-row-hover-bg-color: #202b3a;
+  --el-button-disabled-text-color: var(--mar-control-disabled-on-accent);
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] .el-message--info {
@@ -242,21 +252,27 @@ html.console-ui[data-theme='vscode-dark-2026'] .el-message--info {
   background-color: var(--el-message-bg-color);
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] .el-button--primary.is-link,
-html.console-ui[data-theme='vscode-dark-2026'] .el-button--primary.is-text,
-html.console-ui[data-theme='vscode-dark-2026'] .el-link--primary {
-  --el-button-text-color: var(--mar-color-brand-text);
-  --el-button-hover-text-color: #4aa3ff;
-  --el-button-disabled-text-color: rgb(55 148 255 / 0.45);
-  --el-link-text-color: var(--mar-color-brand-text);
-  --el-link-hover-text-color: #4aa3ff;
-  --el-link-disabled-text-color: rgb(55 148 255 / 0.45);
+html.console-ui .el-button--primary.is-link,
+html.console-ui .el-button--primary.is-text,
+html.console-ui .el-link--primary {
+  --el-button-text-color: var(--mar-control-link-text);
+  --el-button-hover-text-color: var(--mar-control-link-hover);
+  --el-button-hover-link-text-color: var(--mar-control-link-hover);
+  --el-button-disabled-text-color: var(--mar-color-brand-disabled);
+  --el-link-text-color: var(--mar-control-link-text);
+  --el-link-hover-text-color: var(--mar-control-link-hover);
+  --el-link-disabled-text-color: var(--mar-color-brand-disabled);
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] .el-button--primary.is-plain,
-html.console-ui[data-theme='vscode-dark-2026'] .el-tag--primary:not(.el-tag--dark) {
-  --el-button-text-color: var(--mar-color-brand-text);
-  --el-tag-text-color: var(--mar-color-brand-text);
+html.console-ui .el-button--primary.is-plain,
+html.console-ui .el-tag--primary:not(.el-tag--dark) {
+  --el-button-text-color: var(--mar-control-link-text);
+  --el-tag-text-color: var(--mar-control-link-text);
+}
+
+/* Element Plus otherwise assigns a fixed shade directly to disabled text actions. */
+html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
+  color: var(--mar-color-brand-disabled);
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] .runner-brand-icon[data-runner='codex'] {
@@ -455,9 +471,10 @@ html.console-ui .el-empty__image {
   width: 64px;
 }
 
-html.console-ui .el-table {
-  --el-table-header-bg-color: var(--mar-bg-page);
-  --el-table-row-hover-bg-color: var(--mar-fill-row-hover);
+html.console-ui .el-table,
+.theme-preview .el-table {
+  --el-table-header-bg-color: var(--mar-table-header-bg);
+  --el-table-row-hover-bg-color: var(--mar-table-row-hover-bg);
 }
 
 html.console-ui .el-message--info {

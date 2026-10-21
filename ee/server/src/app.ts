@@ -955,7 +955,6 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
       ...(publicOrigin === undefined ? {} : { publicOrigin })
     });
   let auditCleanupTimer: NodeJS.Timeout | undefined;
-  let skillCacheCleanupTimer: NodeJS.Timeout | undefined;
   let codexCredentialMaintenanceTimer: NodeJS.Timeout | undefined;
   if (codexCredentials !== undefined) {
     const observeMaintenance = (
@@ -1004,12 +1003,32 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
       auditCleanupTimer.unref();
     });
   }
+  let skillCacheCleanupTimer: NodeJS.Timeout | undefined;
+  let skillCleanupStopped = false;
+  let skillCleanupInFlight: Promise<number> | undefined;
+  function startSkillCleanup(): Promise<number> | undefined {
+    if (skillCleanupStopped || skillCleanupInFlight !== undefined || skillFavorites === undefined)
+      return undefined;
+    const operation = skillFavorites.cleanupCache().finally(() => {
+      if (skillCleanupInFlight === operation) skillCleanupInFlight = undefined;
+    });
+    skillCleanupInFlight = operation;
+    return operation;
+  }
+  function stopSkillCleanup(): void {
+    skillCleanupStopped = true;
+    if (skillCacheCleanupTimer !== undefined) {
+      clearInterval(skillCacheCleanupTimer);
+      skillCacheCleanupTimer = undefined;
+    }
+  }
   if (skillFavorites !== undefined) {
     app.addHook('onReady', async () => {
-      await skillFavorites.cleanupCache();
+      await startSkillCleanup();
+      if (skillCleanupStopped) return;
       skillCacheCleanupTimer = setInterval(
         () => {
-          void skillFavorites.cleanupCache().catch(() => {
+          void startSkillCleanup()?.catch(() => {
             app.log.error(
               { errorCode: 'SKILL_CACHE_CLEANUP_FAILED' },
               'skill_cache_cleanup_failed'
@@ -1038,15 +1057,18 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
   // hook. Close Node sockets in `preClose` so SIGTERM cannot deadlock behind
   // a still-connected Node, then release the database only after the listener ends.
   app.addHook('preClose', async () => {
+    stopSkillCleanup();
     nodeControl.close();
   });
   app.addHook('onClose', async () => {
+    stopSkillCleanup();
     traffic.close();
     recentRuns?.dispose();
     if (auditCleanupTimer !== undefined) clearInterval(auditCleanupTimer);
-    if (skillCacheCleanupTimer !== undefined) clearInterval(skillCacheCleanupTimer);
     if (codexCredentialMaintenanceTimer !== undefined)
       clearInterval(codexCredentialMaintenanceTimer);
+    // Startup or the interval owns failure reporting; draining only preserves dependency order.
+    await skillCleanupInFlight?.catch(() => undefined);
     await database.close();
   });
   return app;

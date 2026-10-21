@@ -4,14 +4,20 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { MarAgent } from '../../src/agent-core/sdk/types.js';
+import type { ExecutionHandle, MarAgent } from '../../src/agent-core/sdk/types.js';
 import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
+import type {
+  ModelAdapter,
+  ModelEvent,
+  ModelRequest
+} from '../../src/agent-core/model/contracts.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
 import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
 import { CompactRequests } from '../../src/agent-core/runtime/compaction/requests.js';
 import { compactSnapshotAnchor } from '../../src/agent-core/runtime/compaction/retained-context.js';
 import { effectiveInstructions } from './support/model-context.js';
+import { captureExecutionContext } from './support/checkpoint-context.js';
+import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
 
 const configuration: MarAgentModelConfiguration = {
   id: 'test',
@@ -35,6 +41,7 @@ const homes: string[] = [];
 const agents: MarAgent[] = [];
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
+  vi.restoreAllMocks();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
 function barrier() {
@@ -94,18 +101,19 @@ async function fixture(
     }
   };
   const host = new LocalAgentHost({ homeDirectory: home, workspace });
+  const adapter: ModelAdapter = {
+    configuration,
+    async *start(request) {
+      const index = requests.push(request);
+      yield* script(request, index);
+    }
+  };
   const agent = await createMarAgentWithAdapter({
     mode: 'normal',
     host,
     models: [configuration],
     runtimeExtensions: [extension],
-    adapterFactory: () => ({
-      configuration,
-      async *start(request) {
-        const index = requests.push(request);
-        yield* script(request, index);
-      }
-    })
+    adapterFactory: () => adapter
   });
   agents.push(agent);
   const session = await agent.createSession({ workspace, title: 'Async compact' });
@@ -114,6 +122,7 @@ async function fixture(
     host,
     agent,
     session,
+    adapter,
     requests,
     generations: () => generations,
     context: () => context
@@ -121,6 +130,200 @@ async function fixture(
 }
 
 describe('asynchronous Compact', () => {
+  it.each(['generation', 'prefix'] as const)(
+    'keeps generation candidate-only and rejects a stale %s before committing',
+    async (cause) => {
+      const captured = captureExecutionContext();
+      const generated = barrier(),
+        release = barrier();
+      const f = await fixture(
+        () => response('original answer', 8500),
+        async () => {
+          generated.release();
+          await release.promise;
+          return { summary: 'UNCOMMITTED_CANDIDATE' };
+        }
+      );
+      const result = f.session.run({ prompt: 'Original input' }).result();
+      try {
+        await generated.promise;
+        const messages = captured.messages();
+        expect(messages.some((message) => message.content.includes('original answer'))).toBe(true);
+        expect(messages.some((message) => message.content.includes('UNCOMMITTED_CANDIDATE'))).toBe(
+          false
+        );
+        const store = await JsonlSessionStore.open(f.home);
+        try {
+          expect(
+            (await store.read(f.session.id)).some((record) => record.type === 'compact.completed')
+          ).toBe(false);
+        } finally {
+          await store.close();
+        }
+        if (cause === 'generation')
+          Object.assign(captured.runtime(f.session.id).contextualWorldState!, {
+            generation: 'superseded'
+          });
+        else {
+          const index = messages.findIndex((message) => message.content === 'Original input');
+          expect(index).toBeGreaterThanOrEqual(0);
+          messages[index] = { ...messages[index]!, content: 'Superseded input' };
+        }
+        release.release();
+        await result;
+        expect(captured.messages()).toBe(messages);
+        expect(f.host.events.filter((event) => event.type === 'context.compacted')).toHaveLength(0);
+        expect(
+          f.host.events.filter((event) => event.type === 'context.compact_failed')
+        ).toMatchObject([{ code: 'MAR_AGENT_COMPACT_STALE' }]);
+        const reopened = await JsonlSessionStore.open(f.home);
+        try {
+          expect(
+            (await reopened.read(f.session.id)).some(
+              (record) => record.type === 'compact.completed'
+            )
+          ).toBe(false);
+        } finally {
+          await reopened.close();
+        }
+      } finally {
+        release.release();
+        await result;
+      }
+    }
+  );
+
+  it('splices inside the Compact commit window and retains an append during sidecar refresh exactly once', async () => {
+    const captured = captureExecutionContext();
+    const sidecarStarted = barrier(),
+      releaseSidecar = barrier();
+    let compactId: string | undefined;
+    let compactWorld: worldState.ContextualWorldState | undefined;
+    let latestWorld: worldState.ContextualWorldState | undefined;
+    const persist = worldState.persistContextualWorldState;
+    vi.spyOn(worldState, 'persistContextualWorldState').mockImplementation(async (...args) => {
+      latestWorld = args[2];
+      if (compactId && args[2].generation === compactId) compactWorld = args[2];
+      return persist(...args);
+    });
+    const compact = JsonlSessionStore.prototype.compact;
+    vi.spyOn(JsonlSessionStore.prototype, 'compact').mockImplementation(async function (
+      this: JsonlSessionStore,
+      ...args
+    ) {
+      const record = await compact.apply(this, args);
+      compactId = record.recordId;
+      return record;
+    });
+    const write = JsonlSessionStore.prototype.writeContextualWorldState;
+    vi.spyOn(JsonlSessionStore.prototype, 'writeContextualWorldState').mockImplementation(
+      async function (this: JsonlSessionStore, ...args) {
+        if (compactId && (args[1] as { generation?: string }).generation === compactId) {
+          sidecarStarted.release();
+          await releaseSidecar.promise;
+        }
+        return write.apply(this, args);
+      }
+    );
+    const f = await fixture(
+      (_request, index) =>
+        index === 1 ? readCall('read-before-compact', 9500) : response('finished', 100),
+      async () => ({ summary: 'ADOPTED_HANDOFF' })
+    );
+    const result = f.session.run({ prompt: 'Read and continue' }).result();
+    try {
+      await sidecarStarted.promise;
+      const messages = captured.messages();
+      expect(messages.some((message) => message.content.includes('ADOPTED_HANDOFF'))).toBe(true);
+      expect(captured.runtime(f.session.id).contextualWorldState).toBe(compactWorld);
+      compactWorld!.entries.push({
+        index: 0,
+        kind: 'instructions',
+        content: 'SHARED_WORLD_REFERENCE'
+      });
+      expect(
+        await f.context().session.append({ content: 'AFTER_COMPACT_APPEND', delivery: 'immediate' })
+      ).toMatchObject({ status: 'committed' });
+      expect(captured.messages()).toBe(messages);
+      expect(messages.filter((message) => message.content === 'AFTER_COMPACT_APPEND')).toHaveLength(
+        1
+      );
+      releaseSidecar.release();
+      expect(await result).toMatchObject({ status: 'completed' });
+      const continuation = f.requests.at(-1)!;
+      expect(
+        continuation.messages.filter((message) => message.content === 'AFTER_COMPACT_APPEND')
+      ).toHaveLength(1);
+      expect(
+        continuation.messages.some((message) => message.content.includes('ADOPTED_HANDOFF'))
+      ).toBe(true);
+      expect(
+        continuation.messages.filter((message) => message.content === 'SHARED_WORLD_REFERENCE')
+      ).toHaveLength(1);
+      expect(captured.messages()).toBe(messages);
+      expect(captured.runtime(f.session.id).contextualWorldState).toBe(latestWorld);
+      const store = await JsonlSessionStore.open(f.home);
+      try {
+        const state = await store.readExecutionState(f.session.id);
+        const restored = await restoreMessages(store, f.session.id, state.contextRecords, {
+          includeImages: false
+        });
+        expect(
+          restored.messages.filter((message) => message.content === 'AFTER_COMPACT_APPEND')
+        ).toHaveLength(1);
+        expect(
+          restored.messages.some((message) => message.content.includes('ADOPTED_HANDOFF'))
+        ).toBe(true);
+      } finally {
+        await store.close();
+      }
+    } finally {
+      releaseSidecar.release();
+      await result;
+    }
+  });
+
+  it.each(['success', 'failure', 'cancel'] as const)(
+    'closes the SDK-owned compact turn exactly once after %s',
+    async (outcome) => {
+      const extensionStarted = barrier();
+      const close = vi.fn(async () => undefined);
+      const start = vi.fn(async function* () {
+        yield await Promise.reject<ModelEvent>(new Error('Injected model failure.'));
+      });
+      const f = await fixture(
+        () => {
+          f.adapter.createTurnSession = () => ({ start, close });
+          return response('finished', 8500);
+        },
+        async (signal) => {
+          extensionStarted.release();
+          if (outcome === 'success') return { summary: 'RESOURCE_HANDOFF' };
+          if (outcome === 'failure') return undefined;
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+          return undefined;
+        }
+      );
+      const handle = f.session.run({ prompt: 'Finish' });
+      await Promise.race([
+        extensionStarted.promise,
+        handle.result().then((result) => {
+          throw new Error(`Execution ended before Compact started: ${result.status}`);
+        })
+      ]);
+      if (outcome === 'cancel') await handle.cancel();
+      await handle.result();
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(start).toHaveBeenCalledTimes(outcome === 'failure' ? 1 : 0);
+      expect(f.host.events.filter((event) => event.type === 'context.compacted')).toHaveLength(
+        outcome === 'success' ? 1 : 0
+      );
+      expect(f.generations()).toBe(1);
+    }
+  );
+
   it('retains an applied native user input across a background Compact cut and warm restoration exactly once', async () => {
     const generated = barrier(),
       releaseCompact = barrier(),
@@ -509,6 +712,9 @@ describe('asynchronous Compact', () => {
       expect(f.host.events.filter((event) => event.type === 'context.compact_failed')).toHaveLength(
         0
       );
+      expect(f.agent.extensionDiagnostics()).toContainEqual(
+        expect.objectContaining({ code: 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED' })
+      );
     } finally {
       compactSpy.mockRestore();
       writeSpy.mockRestore();
@@ -600,6 +806,122 @@ describe('asynchronous Compact', () => {
     expect((await blocking.result()).status).toBe('completed');
     expect((await result).status).toBe('completed');
     expect(f.requests).toHaveLength(1);
+  });
+
+  it('joins active subagent Compact while model reconfiguration drains an idle parent Adapter', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-compact-reconfiguration-'));
+    homes.push(home);
+    await writeFile(join(home, 'evidence.txt'), 'CHILD_EVIDENCE');
+    const resumeChild = barrier();
+    const finishChild = barrier();
+    const releaseCompact = barrier();
+    const releaseReconfiguration = barrier();
+    let childStarted = false;
+    let closingParent = false;
+    let generations = 0;
+    let childRounds = 0;
+    let parentContext!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
+    const agent = await createMarAgentWithAdapter({
+      mode: 'normal',
+      host,
+      models: [configuration],
+      runtimeExtensions: [
+        {
+          id: 'reconfiguration-compact',
+          apiVersion: '1.0',
+          attachSession(context) {
+            if (context.agents) parentContext = context;
+            context.hooks.intercept('compact.generate', async () => {
+              generations++;
+              await releaseCompact.promise;
+              return { summary: 'CHILD_HANDOFF' };
+            });
+          }
+        }
+      ],
+      adapterFactory: (selected) => {
+        const adapter: ModelAdapter = {
+          configuration: selected,
+          async *start(request) {
+            if (effectiveInstructions(request).includes('non-recursive subagent')) {
+              if (++childRounds === 1) {
+                childStarted = true;
+                await resumeChild.promise;
+                yield* readCall('child-read', 100);
+              } else {
+                await finishChild.promise;
+                yield* response('child done', 100);
+              }
+            } else yield* response('parent done', 100);
+          },
+          createTurnSession: () => ({ start: adapter.start.bind(adapter), close: async () => {} }),
+          async close() {
+            closingParent = true;
+            await releaseReconfiguration.promise;
+          }
+        };
+        return adapter;
+      }
+    });
+    agents.push(agent);
+    const parent = await agent.createSession({ workspace: home });
+    const compacts: ExecutionHandle[] = [];
+    let reconfiguration: Promise<void> | undefined;
+    try {
+      expect(await parent.run({ prompt: 'initialize parent' }).result()).toHaveProperty(
+        'status',
+        'completed'
+      );
+      const task = await parentContext.agents!.spawn({
+        prompt: 'read evidence and finish',
+        background: true
+      });
+      await vi.waitFor(() => expect(childStarted).toBe(true));
+      expect(await agent.getSession(task.agentId)).toHaveProperty('source.type', 'subagent');
+      const child = await agent.openSession(task.agentId);
+      const background = child.compact({ async: true });
+      compacts.push(background);
+      resumeChild.release();
+      await vi.waitFor(() => expect(generations).toBe(1));
+      reconfiguration = agent.reconfigureModels({
+        models: [{ ...configuration, name: 'Reconfigured' }]
+      });
+      void reconfiguration.catch(() => undefined);
+      await vi.waitFor(() => expect(closingParent).toBe(true));
+      expect(() => parent.run({ prompt: 'new execution during reconfiguration' })).toThrowError(
+        expect.objectContaining({ code: 'MAR_AGENT_EXECUTION_ACTIVE' })
+      );
+      const joined = child.compact({ async: false });
+      compacts.push(joined);
+      expect(joined.executionId).toBe(background.executionId);
+      expect(generations).toBe(1);
+      releaseCompact.release();
+      finishChild.release();
+      expect(await background.result()).toMatchObject({ status: 'completed' });
+      expect(await joined.result()).toMatchObject({ status: 'completed' });
+      releaseReconfiguration.release();
+      await reconfiguration;
+      expect(
+        await parentContext.agents!.wait({ agentId: task.agentId, waitMs: 1000 })
+      ).toHaveProperty('status', 'completed');
+      const store = await JsonlSessionStore.open(home);
+      try {
+        expect(
+          (await store.read(task.agentId)).filter((record) => record.type === 'compact.completed')
+        ).toHaveLength(1);
+      } finally {
+        await store.close();
+      }
+      expect(generations).toBe(1);
+    } finally {
+      resumeChild.release();
+      finishChild.release();
+      releaseCompact.release();
+      releaseReconfiguration.release();
+      await reconfiguration;
+      await Promise.all(compacts.map((handle) => handle.result()));
+    }
   });
 
   it.each(['sdk', 'core'] as const)(

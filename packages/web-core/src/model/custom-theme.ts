@@ -9,6 +9,12 @@ export interface CustomTheme {
 // Only color tokens are editable. Layout, typography and terminal tokens stay fixed.
 export const CUSTOM_THEME_TOKENS = [
   '--mar-bg-page',
+  '--mar-table-header-bg',
+  '--mar-table-row-hover-bg',
+  '--mar-color-brand-disabled',
+  '--mar-control-link-text',
+  '--mar-control-link-hover',
+
   '--mar-bg-panel',
   '--mar-bg-subtle',
   '--mar-bg-tab-inactive',

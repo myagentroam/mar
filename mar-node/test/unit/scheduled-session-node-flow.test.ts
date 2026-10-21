@@ -1,5 +1,8 @@
 import { serializeComposerTag } from '@myagentroam/protocol';
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
@@ -11,6 +14,18 @@ import type { NodeRunEventBridge } from '../../src/service/node-run-event-bridge
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { RunnerInteractionService } from '../../src/service/runner-interaction-service.js';
 import type { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true }))
+  );
+});
 
 describe('scheduled Node session flow', () => {
   it.each([false, true])(
@@ -441,11 +456,13 @@ describe('scheduled Node session flow', () => {
   });
 
   it('starts the saved objective in the existing Claude Code session and permits schedule edits', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'schedule-success-'));
+    temporaryDirectories.push(directory);
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
     const database = new NodeDatabase(':memory:', 'node-schedule-success', Date.now);
     const workspace = database.saveWorkspace({
-      path: '/workspace/schedule-success',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -491,6 +508,7 @@ describe('scheduled Node session flow', () => {
         getRun(runId: string): import('../../src/runtime-model.js').NodeAgentRun | undefined;
       };
       claudeClient: { execution: { managedNativeIds: Set<string> } };
+      runners: RunnerRegistry;
       runEventService: {
         options: {
           onTerminalRun(
@@ -508,6 +526,7 @@ describe('scheduled Node session flow', () => {
     const preparedSchedule = vi.spyOn(internals.scheduleMcpBridge, 'prepare');
     let scheduleTools: MarAgentMcpClientPool | undefined;
     try {
+      vi.spyOn(internals.runners.require('claude-code'), 'discoverSessions').mockResolvedValue([]);
       const session = internals.runtime.createAgentSession({
         workspaceId: workspace.id,
         runner: 'claude-code',
@@ -602,20 +621,24 @@ describe('scheduled Node session flow', () => {
       internals.scheduledSessions.stop();
       await scheduleTools?.close();
       await connector.stop();
-      vi.useRealTimers();
     }
   });
 
   it.each([false, true])(
     'pins a session and records a scheduled message and Runner start failure (terminal notifications: %s)',
     async (notifyOnTerminal) => {
+      const directory = await mkdtemp(join(tmpdir(), 'schedule-failure-'));
+      temporaryDirectories.push(directory);
       vi.useFakeTimers();
       vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
       const database = new NodeDatabase(':memory:', 'node-schedule-flow', Date.now);
       const workspace = database.saveWorkspace({
-        path: '/workspace/schedule-flow',
+        path: directory,
         kind: 'DIRECTORY',
         gitSummary: null
+      });
+      const startChannel = vi.fn(() => {
+        throw new Error('CLAUDE_RUN_START_FAILED');
       });
       const connector = new NodeConnector({
         reconnect: false,
@@ -625,8 +648,9 @@ describe('scheduled Node session flow', () => {
           architecture: 'x64',
           nodeVersion: process.version,
           codex: { available: false },
-          claudeCode: { available: false }
-        }
+          claudeCode: { available: true }
+        },
+        claudeClient: { startChannel } as never
       });
       const internals = connector as unknown as {
         runtime: {
@@ -636,8 +660,12 @@ describe('scheduled Node session flow', () => {
           ): { items: readonly { kind: string; payload: Record<string, unknown> }[] } | undefined;
           getRun(runId: string): { source?: string; initiatedByUserId?: number } | undefined;
         };
+        claudeClient: { execution: { managedNativeIds: Set<string> } };
         runners: {
-          require(name: string): { prepareMessageInput(input: string, mode: string): string };
+          require(name: string): {
+            prepareMessageInput(input: string, mode: string): string;
+            discoverSessions(): Promise<readonly unknown[]>;
+          };
         };
         runEventBridge: { emitRun: (...args: unknown[]) => unknown };
         emitWorkbenchEvent: (category: string, payload: unknown) => void;
@@ -646,6 +674,9 @@ describe('scheduled Node session flow', () => {
         executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
       };
       try {
+        vi.spyOn(internals.runners.require('claude-code'), 'discoverSessions').mockResolvedValue(
+          []
+        );
         const emitted = vi.spyOn(internals.runEventBridge, 'emitRun');
         const workbench = vi.spyOn(internals, 'emitWorkbenchEvent');
         const prepared = vi.spyOn(internals.runners.require('claude-code'), 'prepareMessageInput');
@@ -658,6 +689,7 @@ describe('scheduled Node session flow', () => {
           model: 'claude-sonnet',
           access: 'full'
         });
+        internals.claudeClient.execution.managedNativeIds.add(session.id);
         const saved = (await internals.executeNodeOperation('session.schedule.save', {
           sessionId: session.id,
           workspaceId: workspace.id,
@@ -689,6 +721,13 @@ describe('scheduled Node session flow', () => {
         internals.scheduledSessions.start();
         await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
         const task = new ScheduledSessionStore(database.raw).get(session.id)!;
+        await vi.waitFor(
+          () =>
+            expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]).toMatchObject({
+              status: 'SUBMITTED'
+            }),
+          { interval: 1 }
+        );
         const occurrence = new ScheduledSessionStore(database.raw).recent(task.id)[0]!;
         expect(occurrence).toMatchObject({ status: 'SUBMITTED' });
         const runId = occurrence['run_id'] as string;
@@ -706,8 +745,16 @@ describe('scheduled Node session flow', () => {
           serializeComposerTag('mar_schedule', { objective: 'Inspect the repository' }),
           'default'
         );
-        await vi.advanceTimersByTimeAsync(100);
-        expect(emitted.mock.calls.some((call) => call[1] === 'run.rejected')).toBe(true);
+        await vi.waitFor(
+          () => expect(emitted.mock.calls.some((call) => call[1] === 'run.failed')).toBe(true),
+          { interval: 1 }
+        );
+        expect(startChannel).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ cwd: directory, resumeSessionId: session.id })
+        );
+        expect(emitted.mock.calls.find((call) => call[1] === 'run.failed')?.[2]).toMatchObject({
+          code: 'CLAUDE_RUN_START_FAILED'
+        });
         expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]).toMatchObject({
           status: 'FAILED'
         });
@@ -722,17 +769,14 @@ describe('scheduled Node session flow', () => {
             ([, payload]) =>
               (payload as { event: { payload: Record<string, unknown> } }).event.payload
           );
-        expect(notifications).toMatchObject([
-          {
-            userId: notifyOnTerminal ? 8 : 7,
-            kind: notifyOnTerminal ? 'SCHEDULE_TERMINAL' : 'SCHEDULE_FAILED'
-          }
-        ]);
-        expect(notifications).toHaveLength(1);
+        expect(notifications).toEqual(
+          notifyOnTerminal
+            ? [expect.objectContaining({ userId: 8, kind: 'SCHEDULE_TERMINAL' })]
+            : []
+        );
       } finally {
         internals.scheduledSessions.stop();
         await connector.stop();
-        vi.useRealTimers();
       }
     }
   );

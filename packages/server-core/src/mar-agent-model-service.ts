@@ -242,6 +242,22 @@ export class MarAgentModelService {
     return created;
   }
 
+  async duplicate(userId: number, sourceId: string, raw: unknown): Promise<MarAgentModelSummary> {
+    await this.#assertManage(userId, sourceId);
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
+      throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+    const source = await this.stored(sourceId);
+    const record = raw as Record<string, unknown>;
+    return this.create(userId, {
+      ...record,
+      credential:
+        record.credential ??
+        (typeof record.apiKey === 'string' && record.apiKey.length > 0
+          ? { type: 'INLINE_API_KEY', value: record.apiKey }
+          : source.credential)
+    });
+  }
+
   async update(actorUserId: number, modelId: string, raw: unknown): Promise<MarAgentModelSummary> {
     await this.#assertManage(actorUserId, modelId);
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw))

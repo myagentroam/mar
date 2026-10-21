@@ -11,6 +11,12 @@ export const THEME_TOKEN_GROUPS = [
   'overlays'
 ] as const;
 export const THEME_TOKEN_HELP = {
+  '--mar-table-header-bg': { group: 'surfaces', description: 'table-header-bg' },
+  '--mar-table-row-hover-bg': { group: 'surfaces', description: 'table-row-hover-bg' },
+  '--mar-color-brand-disabled': { group: 'interaction', description: 'color-brand-disabled' },
+  '--mar-control-link-text': { group: 'controls', description: 'control-link-text' },
+  '--mar-control-link-hover': { group: 'controls', description: 'control-link-hover' },
+
   '--mar-bg-page': { group: 'surfaces', description: 'bg-page' },
   '--mar-bg-panel': { group: 'surfaces', description: 'bg-panel' },
   '--mar-bg-subtle': { group: 'surfaces', description: 'bg-subtle' },

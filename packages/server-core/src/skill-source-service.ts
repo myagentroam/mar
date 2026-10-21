@@ -31,7 +31,8 @@ export abstract class SkillSourceService {
   protected abstract sourceRows(actorUserId: number): Promise<RowDataPacket[]>;
   protected abstract lockOrganization(
     connection: PoolConnection,
-    organizationId: number | null
+    organizationId: number | null,
+    exclusive?: boolean
   ): Promise<void>;
   constructor(
     protected readonly database: CatalogDatabase,
@@ -72,8 +73,16 @@ export abstract class SkillSourceService {
     const connection = await this.database.raw.getConnection();
     try {
       await connection.beginTransaction();
-      await lockMysqlUsers(connection, [actorUserId, ownerUserId]);
-      await this.lockOrganization(connection, organizationId);
+      // Match organization deletion: organization, users, then dependent resources.
+      await this.lockOrganization(connection, organizationId, true);
+      await lockMysqlUsers(connection, [actorUserId, ownerUserId], ownerUserId !== null);
+      // No snapshot reads precede the owner lock, including after waiting for another writer.
+      const [countRows] = await connection.execute<RowDataPacket[]>(
+        'SELECT COUNT(*) AS total FROM skill_sources WHERE owner_key=?',
+        [key]
+      );
+      if (Number(countRows[0]?.['total'] ?? 0) >= 20)
+        throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
       await connection.execute(
         `INSERT INTO skill_sources
          (id,kind,scope,owner_organization_id,owner_user_id,name,locator,enabled,built_in,status,

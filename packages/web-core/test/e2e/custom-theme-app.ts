@@ -1,8 +1,10 @@
 import { createApp, h, ref } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
+import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
+import ThemeControlsFixture from './theme-controls-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 
@@ -48,7 +50,8 @@ const app = createApp({
           quickPromptsLoading: false,
           quickPromptsFailed: false,
           refreshQuickPrompts: async () => undefined
-        })
+        }),
+        h(ThemeControlsFixture)
       ]);
   }
 });

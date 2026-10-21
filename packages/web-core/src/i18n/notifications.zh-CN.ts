@@ -2,6 +2,7 @@ export const notificationsZhCN = {
   workbenchNotificationCenter: {
     webPush: {
       title: '离线推送',
+      summary: '所有设备上的工作台都离线时，向当前设备发送通知。实际送达受浏览器和系统限制。',
       generic: { title: 'MyAgentRoam', body: '打开工作台查看通知。' },
       loading: '正在检查离线推送…',
       unsupported: '当前浏览器环境不支持离线推送。',
@@ -21,10 +22,10 @@ export const notificationsZhCN = {
     },
     systemNotifications: {
       title: '系统通知',
-      onlineTitle: 'PC 失焦系统通知',
+      onlineTitle: '系统通知',
       enable: '开启系统通知',
       disable: '关闭系统通知',
-      summary: 'PC 工作台保持连接但失焦时接收系统通知；PC 不接收离线推送。',
+      summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',
       enabled: '已开启',
       disabled: '未开启',
       denied: '通知权限已被拒绝，请在浏览器通知设置中允许当前网站。',

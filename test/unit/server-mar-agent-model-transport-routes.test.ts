@@ -14,6 +14,62 @@ const headers = {
 };
 
 describe('Server MAR Agent model transport test route', () => {
+  it.each([true, false])(
+    'duplicates a manageable model for an authenticated user (admin=%s)',
+    async (isAdmin) => {
+      const fixture = routeFixture();
+      fixture.database.findCurrentUserSession.mockReturnValue({
+        userId: 7,
+        username: 'owner',
+        isAdmin,
+        sessionHash: 'owner-session',
+        mustChangePassword: false,
+        csrfTokenHash: hashOpaque(csrfToken)
+      });
+      const app = Fastify();
+      registerMarAgentModelRoutes({ app, ...fixture });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/mar-agent/models/model-1/duplicate',
+        headers,
+        payload: { name: 'Model copy' }
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toEqual({ model: { id: 'model-copy' } });
+      expect(fixture.models.duplicate).toHaveBeenCalledWith(7, 'model-1', { name: 'Model copy' });
+      await app.close();
+    }
+  );
+
+  it.each(['csrf', 'origin', 'permission', 'session'])(
+    'rejects an invalid duplicate request: %s',
+    async (failure) => {
+      const fixture = routeFixture();
+      if (failure === 'permission')
+        fixture.models.duplicate.mockRejectedValue(new Error('MODEL_RESOURCE_ADMIN_REQUIRED'));
+      if (failure === 'session') fixture.database.findCurrentUserSession.mockReturnValue(undefined);
+      const app = Fastify();
+      registerMarAgentModelRoutes({
+        app,
+        ...fixture,
+        publicOrigin: 'https://console.example.test'
+      });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/mar-agent/models/model-1/duplicate',
+        headers: {
+          ...headers,
+          ...(failure === 'csrf' ? { 'x-csrf-token': 'invalid' } : {}),
+          ...(failure === 'origin' ? { origin: 'https://untrusted.example.test' } : {})
+        },
+        payload: { name: 'Model copy' }
+      });
+      expect(response.statusCode).toBe(failure === 'session' ? 401 : 403);
+      if (failure !== 'permission') expect(fixture.models.duplicate).not.toHaveBeenCalled();
+      await app.close();
+    }
+  );
+
   it('lets a non-admin read and save only their personal model order', async () => {
     const fixture = routeFixture();
     fixture.database.findCurrentUserSession.mockReturnValue({
@@ -291,11 +347,13 @@ function routeFixture(
     findCurrentUserSession: ReturnType<typeof vi.fn>;
   };
   const models = {
+    duplicate: vi.fn(async () => ({ id: 'model-copy' })),
     assertCanManage: vi.fn(async () => undefined),
     recordTestResult: vi.fn(async () => undefined),
     listForUser: vi.fn(async () => [{ id: 'model-1' }]),
     reorderForUser: vi.fn(async () => undefined)
   } as unknown as MarAgentModelService & {
+    duplicate: ReturnType<typeof vi.fn>;
     assertCanManage: ReturnType<typeof vi.fn>;
     recordTestResult: ReturnType<typeof vi.fn>;
     listForUser: ReturnType<typeof vi.fn>;

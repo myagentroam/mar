@@ -396,7 +396,13 @@ async function confirmLogout(): Promise<void> {
     >
       <h2>{{ t('workbenchNotificationCenter.systemNotifications.title') }}</h2>
       <p class="account-summary">
-        {{ t('workbenchNotificationCenter.systemNotifications.summary') }}
+        {{
+          t(
+            systemNotifications.mode === 'mobile-push'
+              ? 'workbenchNotificationCenter.webPush.summary'
+              : 'workbenchNotificationCenter.systemNotifications.summary'
+          )
+        }}
       </p>
       <SystemNotificationControl :service="systemNotifications" />
     </section>

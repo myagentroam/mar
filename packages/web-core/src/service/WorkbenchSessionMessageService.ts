@@ -1,5 +1,5 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { ComputedRef, Ref } from 'vue';
+import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import type {
   AgentRun,
@@ -92,6 +92,8 @@ export function resolveDeliveryIntent(
 }
 
 export function createWorkbenchSessionMessageService(options: WorkbenchSessionMessageOptions) {
+  const scope = getCurrentScope();
+  const active = () => scope?.active !== false;
   let retryCandidate: { readonly signature: string; readonly clientMessageId: string } | undefined;
 
   const draftSignature = (
@@ -118,6 +120,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     commandOverride?: { readonly command: RunnerCommand; readonly input: string }
   ): Promise<void> {
     if (
+      !active() ||
       options.workspaceTarget.value?.nodeId === undefined ||
       !options.composerOpen.value ||
       options.submissionAvailable?.() === false
@@ -259,6 +262,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       const session = createdDraft
         ? await options.createDraftSession(options.temporaryTitle(titleBody))
         : options.selectedSession.value;
+      if (!active()) return;
       if (session === undefined) throw new Error('SESSION_NOT_FOUND');
       submittedSession = session;
       if (command !== undefined) {
@@ -334,6 +338,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           })
         }
       );
+      if (!active()) return;
       if (createdDraft) options.deferredCommands.value = [];
       const selectedBeforeDelivery = options.selectedSessionId.value;
       const nodeStillSelected = options.workspaceTarget.value?.nodeId === submissionNodeId;
@@ -399,6 +404,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         retryCandidate = undefined;
       }
     } catch (error) {
+      if (!active()) return;
       if (retryCandidate === attemptedRetryCandidate && errorCode(error) !== undefined)
         retryCandidate = undefined;
       completedInSubmissionWindow = finishSubmission();

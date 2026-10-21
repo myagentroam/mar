@@ -2,6 +2,8 @@ export const notificationsEnUS = {
   workbenchNotificationCenter: {
     webPush: {
       title: 'Offline Push',
+      summary:
+        'Receive notifications on this device when all your workbenches are offline. Delivery depends on your browser and system.',
       generic: { title: 'MyAgentRoam', body: 'Open Console to check your notifications.' },
       loading: 'Checking offline Push availability…',
       unsupported: 'Offline Push is not supported in this browser environment.',
@@ -24,11 +26,11 @@ export const notificationsEnUS = {
     },
     systemNotifications: {
       title: 'System notifications',
-      onlineTitle: 'PC focus-loss notifications',
+      onlineTitle: 'System notifications',
       enable: 'Enable system notifications',
       disable: 'Disable system notifications',
       summary:
-        'PC system notifications appear while the workbench is connected but loses focus. PC does not receive offline Push.',
+        'Receive notifications when you switch to another page or app. Notifications stop when you close the workbench.',
       enabled: 'Enabled',
       disabled: 'Disabled',
       denied: 'Notifications are blocked. Allow this site in your browser notification settings.',

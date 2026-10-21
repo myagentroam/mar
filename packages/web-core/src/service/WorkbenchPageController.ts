@@ -2905,7 +2905,7 @@ export function createWorkbenchPageController<
       workspaceViewCacheService.migrateSession(nodeId, workspaceId, previousId, nextId, session),
     openRun,
     cacheRun: cacheRunSnapshotFor,
-    beginSessionWatch: (sessionId) => sessionWatchController.beginSelectedSessionWatch(sessionId),
+    beginSessionWatch: navigationWatchService.requestSessionWatch,
     scrollToLatest: conversationScrollService.scrollToLatest,
     scrollToLatestAfterLayout: conversationScrollService.scrollToLatestAfterLayout,
     errorMessage: message,

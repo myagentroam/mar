@@ -7,6 +7,7 @@ import {
   Check,
   Close,
   Connection,
+  CopyDocument,
   DataAnalysis,
   Delete,
   Edit,
@@ -190,7 +191,15 @@ const {
 const testingIds = ref(new Set<string>());
 const dialog = ref(false);
 const editingId = ref<string>();
+const duplicatingId = ref<string>();
+const savedCredentialProtocol = ref<ProtocolChoice>();
 const editingCredentialType = ref<ModelSummary['credentialType']>();
+const canKeepCredential = computed(() =>
+  editingCredentialType.value === 'INLINE_API_KEY'
+    ? !isOAuthProtocol(draft.protocol)
+    : editingCredentialType.value === 'CREDENTIAL_REF' &&
+      draft.protocol === savedCredentialProtocol.value
+);
 const formRef = ref<FormInstance>();
 const draft = reactive<ModelDraft>(emptyDraft());
 const modelFormModel = computed(() => ({ ...draft, ...props.modelContext }));
@@ -342,11 +351,7 @@ const rules = computed<FormRules>(() => ({
     {
       validator: (_rule, value, callback) => {
         if (isOAuthProtocol(draft.protocol)) return callback();
-        if (
-          String(value ?? '').trim() ||
-          (editingId.value !== undefined && editingCredentialType.value === 'INLINE_API_KEY')
-        )
-          return callback();
+        if (String(value ?? '').trim() || canKeepCredential.value) return callback();
         callback(new Error(translate('marAgentModels.keyRequired')));
       }
     }
@@ -355,11 +360,7 @@ const rules = computed<FormRules>(() => ({
     {
       validator: (_rule, value, callback) => {
         if (!isOAuthProtocol(draft.protocol)) return callback();
-        if (
-          String(value ?? '').trim() ||
-          (editingId.value !== undefined && editingCredentialType.value === 'CREDENTIAL_REF')
-        )
-          return callback();
+        if (String(value ?? '').trim() || canKeepCredential.value) return callback();
         callback(new Error(translate('marAgentModels.credentialRequired')));
       }
     }
@@ -583,38 +584,56 @@ async function openCreate() {
   Object.assign(draft, emptyDraft());
   draft.sortOrder = Math.max(-1, ...models.value.map((model) => model.sortOrder)) + 1;
   editingId.value = undefined;
+  duplicatingId.value = undefined;
+  savedCredentialProtocol.value = undefined;
   editingCredentialType.value = undefined;
   dialog.value = true;
 }
 
 function changeProtocol(protocol: ProtocolChoice): void {
-  draft.credentialId = '';
-  draft.apiKey = '';
-  draft.modelId = '';
-  draft.contextWindowTokens = DEFAULT_CONTEXT_WINDOW_TOKENS;
-  draft.maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS;
-  draft.inputCapabilities = ['TEXT'];
-  draft.reasoningEfforts = [];
-  draft.defaultReasoningEffort = 'medium';
-  draft.titleGeneration = false;
-  draft.codeMode = false;
-  draft.serviceTier = 'default';
-  draft.hostedWebSearch = protocol === 'GROK';
+  const previous = draft.protocol;
+  draft.protocol = protocol;
+  const oauth = isOAuthProtocol(protocol);
+  if (
+    !oauth &&
+    [
+      'https://api.anthropic.com',
+      oauthBaseUrl('OPENAI_RESPONSES'),
+      oauthBaseUrl('CODEX'),
+      oauthBaseUrl('GROK'),
+      ''
+    ].includes(draft.baseUrl)
+  ) {
+    draft.baseUrl =
+      protocol === 'ANTHROPIC_MESSAGES' ? 'https://api.anthropic.com' : oauthBaseUrl(protocol);
+  }
+  if (
+    oauth &&
+    draft.credentialId &&
+    !availableModelCredentials.value.some((credential) => credential.id === draft.credentialId)
+  )
+    draft.credentialId = '';
+  if (!oauth || protocol === 'GROK') draft.serviceTier = 'default';
   if (protocol === 'ANTHROPIC_MESSAGES') {
-    draft.baseUrl = 'https://api.anthropic.com';
+    draft.hostedWebSearch = false;
     draft.responsesTransport = undefined;
     draft.responsesPreviousResponseId = false;
-    return;
+  } else {
+    if (previous === 'ANTHROPIC_MESSAGES') {
+      draft.responsesPreviousResponseId = oauth && protocol !== 'GROK';
+      draft.hostedWebSearch = protocol === 'GROK';
+    }
+    if (
+      protocol === 'GROK' &&
+      draft.responsesTransport?.transport === 'HTTP' &&
+      draft.responsesTransport.httpVersion === '2'
+    )
+      draft.responsesTransport = grokTransport();
+    draft.responsesTransport ??=
+      protocol === 'GROK' ? grokTransport() : oauth ? { transport: 'WEBSOCKET' } : undefined;
   }
-  draft.baseUrl = oauthBaseUrl(protocol);
-  draft.responsesTransport =
-    protocol === 'GROK'
-      ? grokTransport()
-      : isOAuthProtocol(protocol)
-        ? { transport: 'WEBSOCKET' }
-        : undefined;
-  draft.responsesPreviousResponseId = isOAuthProtocol(protocol) && protocol !== 'GROK';
-  if (isOAuthProtocol(protocol)) void ensureCredentials();
+  formRef.value?.clearValidate();
+  if (oauth) void ensureCredentials();
 }
 
 async function saveOrder() {
@@ -657,9 +676,9 @@ async function savePersonalOrder() {
   }
 }
 
-async function openEdit(model: ModelSummary) {
+async function openEdit(model: ModelSummary, duplicate = false) {
   try {
-    await props.prepareModel?.(model);
+    await props.prepareModel?.(duplicate ? undefined : model);
   } catch (error) {
     ElMessage.error(errorMessage(error));
     return;
@@ -696,8 +715,15 @@ async function openEdit(model: ModelSummary) {
     enabled: model.enabled,
     sortOrder: model.sortOrder
   });
-  editingId.value = model.id;
+  editingId.value = duplicate ? undefined : model.id;
+  duplicatingId.value = duplicate ? model.id : undefined;
+  savedCredentialProtocol.value = protocol;
   editingCredentialType.value = credentialType;
+  if (duplicate) {
+    draft.id = '';
+    draft.name = translate('marAgentModels.copyName', { name: model.name });
+    draft.sortOrder = Math.max(-1, ...models.value.map((value) => value.sortOrder)) + 1;
+  }
   dialog.value = true;
 }
 
@@ -705,15 +731,19 @@ async function save() {
   if (!(await formRef.value?.validate().catch(() => false))) return;
   saving.value = true;
   try {
-    const path = editingId.value
-      ? `/api/admin/mar-agent/models/${editingId.value}`
-      : '/api/admin/mar-agent/models';
+    const path = duplicatingId.value
+      ? `/api/admin/mar-agent/models/${duplicatingId.value}/duplicate`
+      : editingId.value
+        ? `/api/admin/mar-agent/models/${editingId.value}`
+        : '/api/admin/mar-agent/models';
     await props.request(path, {
       method: editingId.value ? 'PUT' : 'POST',
       body: JSON.stringify(modelSaveBody())
     });
     dialog.value = false;
-    ElMessage.success(translate('marAgentModels.saved'));
+    ElMessage.success(
+      translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved')
+    );
     await load(false);
   } catch (error) {
     ElMessage.error(
@@ -1494,7 +1524,7 @@ onBeforeUnmount(() => {
               >
             </template>
           </el-table-column>
-          <el-table-column v-if="!sorting" :label="translate('marAgentModels.actions')" width="350">
+          <el-table-column v-if="!sorting" :label="translate('marAgentModels.actions')" width="450">
             <template #default="{ row }">
               <div class="row-actions" @click.stop>
                 <el-button
@@ -1504,6 +1534,14 @@ onBeforeUnmount(() => {
                   :icon="Edit"
                   @click="openEdit(row)"
                   >{{ translate('marAgentModels.edit') }}</el-button
+                >
+                <el-button
+                  v-if="writable"
+                  link
+                  type="primary"
+                  :icon="CopyDocument"
+                  @click="openEdit(row, true)"
+                  >{{ translate('marAgentModels.duplicate') }}</el-button
                 >
                 <slot name="model-actions" :model="row" />
                 <el-button
@@ -1709,7 +1747,13 @@ onBeforeUnmount(() => {
     <el-dialog
       v-if="dialog"
       v-model="dialog"
-      :title="editingId ? translate('marAgentModels.edit') : translate('marAgentModels.add')"
+      :title="
+        duplicatingId
+          ? translate('marAgentModels.duplicate')
+          : editingId
+            ? translate('marAgentModels.edit')
+            : translate('marAgentModels.add')
+      "
       width="min(720px, calc(100vw - 32px))"
     >
       <el-form
@@ -1719,12 +1763,15 @@ onBeforeUnmount(() => {
         label-position="top"
       >
         <slot name="model-ownership" :editing="editingId !== undefined" />
+        <p v-if="duplicatingId" class="form-hint">
+          {{ translate('marAgentModels.duplicateHint') }}
+        </p>
         <div class="model-grid">
           <el-form-item :label="translate('marAgentModels.name')" prop="name">
             <el-input v-model="draft.name" />
           </el-form-item>
           <el-form-item :label="translate('marAgentModels.protocol')" prop="protocol">
-            <el-select v-model="draft.protocol" @change="changeProtocol">
+            <el-select :model-value="draft.protocol" @change="changeProtocol">
               <el-option :label="translate('marAgentModels.protocolCodex')" value="CODEX" />
               <el-option :label="translate('marAgentModels.chatgptCredential')" value="CHATGPT" />
               <el-option :label="translate('marAgentModels.grokProtocol')" value="GROK" />
@@ -1755,7 +1802,7 @@ onBeforeUnmount(() => {
             v-model="draft.credentialId"
             filterable
             :placeholder="
-              editingCredentialType === 'CREDENTIAL_REF'
+              canKeepCredential
                 ? translate('marAgentModels.credentialKeepHint')
                 : translate('marAgentModels.credentialSelect')
             "
@@ -1773,7 +1820,7 @@ onBeforeUnmount(() => {
             v-model="draft.apiKey"
             type="password"
             show-password
-            :placeholder="editingId ? translate('marAgentModels.keyHint') : ''"
+            :placeholder="canKeepCredential ? translate('marAgentModels.keyHint') : ''"
           />
         </el-form-item>
         <el-form-item :label="translate('marAgentModels.model')" prop="modelId">

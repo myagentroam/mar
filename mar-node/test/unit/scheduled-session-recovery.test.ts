@@ -44,6 +44,7 @@ async function fixture() {
       workspaceId: workspace.id,
       runner: 'codex',
       ownerUserId: 7,
+      notifyOnTerminal: true,
       objective: 'Check status',
       cron: '0 * * * *',
       timezone: 'UTC'
@@ -62,6 +63,35 @@ async function fixture() {
 }
 
 describe('scheduled session restart recovery', () => {
+  it('keeps recovered failures recorded but silent when notifications are disabled before reconnect', async () => {
+    const f = await fixture();
+    const task = f.tasks[0]!;
+    const occurrenceId = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+    const notify = vi.fn();
+    const coordinator = new ScheduledSessionCoordinator({
+      store: () => f.store,
+      busy: () => false,
+      authorize: async () => ({ secretEnvironment: {} }),
+      submit: async () => ({ runId: 'run-1' }),
+      emitNotification: notify,
+      sessionTitle: (id) => id
+    });
+    try {
+      coordinator.recoverInterrupted();
+      f.store.update(task.sessionId, task.revision, { notifyOnTerminal: false });
+      coordinator.connected();
+      coordinator.connected();
+      expect(f.store.recent(task.id)[0]).toMatchObject({
+        id: occurrenceId,
+        status: 'FAILED',
+        code: 'SCHEDULE_RESTART_OUTCOME_UNKNOWN'
+      });
+      expect(notify).not.toHaveBeenCalled();
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('recovers the entire startup set before new claims and does not recover on control reconnect', async () => {
     vi.useFakeTimers();
     const f = await fixture();

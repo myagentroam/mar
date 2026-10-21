@@ -190,11 +190,22 @@ async function selectOrganization(page: Page, form: Locator, strings: Locale): P
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
 }
 
+async function selectModelProtocol(
+  page: Page,
+  form: Locator,
+  strings: Locale,
+  label: string
+): Promise<void> {
+  const protocol = form.locator('.el-form-item').filter({ hasText: strings.protocol });
+  await protocol.locator('.el-select__wrapper').click();
+  await page.getByRole('option', { name: label, exact: true }).click();
+}
+
 for (const english of [false, true]) {
   const strings = locale(english);
   const language = english ? 'en-US' : 'zh-CN';
 
-  test(`Model management preserves second-page actions and falls back after deleting the last page ${language}`, async ({
+  test(`Model management preserves all models and actions without pagination ${language}`, async ({
     page
   }) => {
     test.setTimeout(60_000);
@@ -205,7 +216,7 @@ for (const english of [false, true]) {
       })
     );
 
-    let models = Array.from({ length: 12 }, (_, index) =>
+    let models = Array.from({ length: 21 }, (_, index) =>
       model(`model-${index + 1}`, `Model ${index + 1}`, { sortOrder: index })
     );
     let modelReads = 0;
@@ -257,45 +268,54 @@ for (const english of [false, true]) {
 
     await openModels(page, strings);
     const modelPanel = page.getByRole('tabpanel', { name: strings.modelTab });
-    await modelPanel.locator('.el-pager li.number').filter({ hasText: /^2$/u }).click();
-    const pager = modelPanel.locator('.el-pager li.is-active');
-    await expect(pager).toHaveText('2');
+    const modelRows = modelPanel.locator('.el-table__row');
+    await expect(modelRows).toHaveCount(21);
+    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+    await expect(modelRows.last()).toContainText('Model 21');
 
-    const secondPageModel = page.locator('.el-table__row').filter({ hasText: 'Model 11' });
-    await secondPageModel.getByRole('button', { name: strings.edit, exact: true }).click();
+    const lastModel = page.locator('.el-table__row').filter({ hasText: 'Model 21' });
+    await lastModel.getByRole('button', { name: strings.edit, exact: true }).click();
     const editDialog = page.getByRole('dialog', { name: strings.edit, exact: true });
-    await editDialog.getByRole('textbox', { name: strings.modelName }).fill('Edited Model 11');
+    await editDialog.getByRole('textbox', { name: strings.modelName }).fill('Edited Model 21');
     await editDialog.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.locator('.el-table__row').filter({ hasText: 'Edited Model 11' })
+      page.locator('.el-table__row').filter({ hasText: 'Edited Model 21' })
     ).toBeVisible();
-    await expect(pager).toHaveText('2');
+    await expect(modelRows).toHaveCount(21);
+    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
 
-    const editedRow = page.locator('.el-table__row').filter({ hasText: 'Edited Model 11' });
+    const editedRow = page.locator('.el-table__row').filter({ hasText: 'Edited Model 21' });
     await editedRow.getByRole('button', { name: strings.test, exact: true }).click();
     const testDialog = page.getByRole('dialog', { name: strings.testTitle, exact: true });
     await testDialog.getByRole('combobox').click();
     await page.getByRole('option', { name: 'Runtime Node', exact: true }).click();
     await testDialog.getByRole('button', { name: strings.test, exact: true }).click();
+    await expect(testDialog.locator('.model-test-result .el-tag')).toHaveText(
+      english ? 'Success' : '成功'
+    );
+    await testDialog.getByRole('button', { name: strings.cancel, exact: true }).click();
     await expect(testDialog).toHaveCount(0);
-    await expect(pager).toHaveText('2');
+    await expect(modelRows).toHaveCount(21);
+    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
 
     const readsBeforeRefresh = modelReads;
     await page.getByRole('button', { name: strings.refresh, exact: true }).click();
     await expect.poll(() => modelReads).toBe(readsBeforeRefresh + 1);
-    await expect(pager).toHaveText('2');
+    await expect(modelRows).toHaveCount(21);
+    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
     expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({ name: 'Edited Model 11' });
+    expect(updates[0]).toMatchObject({ name: 'Edited Model 21' });
     expect(modelTests).toHaveLength(1);
 
-    for (const name of ['Model 12', 'Edited Model 11']) {
+    for (const [index, name] of ['Edited Model 21', 'Model 20'].entries()) {
       const row = page.locator('.el-table__row').filter({ hasText: name });
       await row.getByRole('button', { name: strings.remove, exact: true }).click();
       const confirmation = page.locator('.el-message-box');
       await confirmation.getByRole('button', { name: strings.remove, exact: true }).click();
       await expect(row).toHaveCount(0);
+      await expect(modelRows).toHaveCount(index === 0 ? 20 : 19);
+      await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
     }
-    await expect(pager).toHaveText('1');
     await expect(
       page.locator('.el-table__row').filter({ has: page.getByText('Model 1', { exact: true }) })
     ).toBeVisible();
@@ -715,5 +735,407 @@ for (const english of [false, true]) {
       'priority',
       'ultrafast'
     ]);
+  });
+
+  test(`Model duplication preserves configuration without changing its source ${language}`, async ({
+    page
+  }) => {
+    test.setTimeout(60_000);
+    await mockEnterpriseConsole(page, english);
+    await page.route('**/api/organizations', (route) =>
+      json(route, {
+        organizations: [
+          { id: 1, name: 'Root', parentOrganizationId: null },
+          { id: 7, name: 'Platform', parentOrganizationId: 1 }
+        ]
+      })
+    );
+    const source = model('source-inline-model', 'Shared source model', {
+      baseUrl: 'https://gateway.example/v1',
+      modelId: 'source-model-id',
+      contextWindowTokens: 262_144,
+      maxOutputTokens: 32_768,
+      inputCapabilities: ['TEXT', 'IMAGE'],
+      reasoningEfforts: ['low', 'high'],
+      defaultReasoningEffort: 'high',
+      conversationModel: true,
+      titleGeneration: true,
+      codeMode: true,
+      responsesTransport: { transport: 'HTTP', httpVersion: '2' },
+      responsesPreviousResponseId: true,
+      sortOrder: 12,
+      ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 7 },
+      lastTestStatus: 'SUCCEEDED',
+      lastTestedAt: 1_900_000_000_000
+    });
+    let models = [model('earlier-model', 'Earlier model', { sortOrder: 4 }), source];
+    const duplicateBodies: Record<string, unknown>[] = [];
+    const sourceWrites: string[] = [];
+    await page.route(/\/api\/admin\/mar-agent\/models$/u, (route) => json(route, { models }));
+    await page.route(/\/api\/admin\/mar-agent\/models\/source-inline-model$/u, (route) => {
+      sourceWrites.push(route.request().method());
+      return json(route, {}, 405);
+    });
+    await page.route(
+      /\/api\/admin\/mar-agent\/models\/source-inline-model\/duplicate$/u,
+      (route) => {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        duplicateBodies.push(body);
+        const created = model('source-inline-copy', String(body.name), {
+          ...body,
+          id: 'source-inline-copy',
+          credentialType: 'INLINE_API_KEY',
+          credentialConfigured: true,
+          apiKeyConfigured: true,
+          lastTestStatus: 'UNVERIFIED',
+          lastTestedAt: null
+        });
+        models = [...models, created];
+        return json(route, { model: created }, 201);
+      }
+    );
+    await page.route(/\/api\/admin\/mar-agent\/codex-credentials$/u, (route) =>
+      json(route, { credentials: [] })
+    );
+    await page.route('**/api/resource-grants**', (route) => json(route, { grants: [] }));
+
+    await openModels(page, strings);
+    const duplicateLabel = english ? 'Duplicate' : '复制';
+    const copyName = english ? 'Shared source model (copy)' : 'Shared source model（副本）';
+    const openCopy = async (): Promise<Locator> => {
+      await page
+        .locator('.el-table__row')
+        .filter({ hasText: 'Shared source model' })
+        .first()
+        .getByRole('button', { name: duplicateLabel, exact: true })
+        .click();
+      return page.getByRole('dialog', { name: duplicateLabel, exact: true });
+    };
+    const firstCopy = await openCopy();
+    await expect(firstCopy.getByRole('textbox', { name: strings.modelName })).toHaveValue(copyName);
+    await expect(firstCopy.getByRole('textbox', { name: strings.modelId })).toHaveValue(
+      'source-model-id'
+    );
+    const contextField = firstCopy
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Context tokens' : '上下文 Token' });
+    const outputField = firstCopy
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Maximum output tokens' : '最大输出 Token' });
+    await expect(contextField.getByRole('spinbutton')).toHaveValue('262144');
+    await expect(outputField.getByRole('spinbutton')).toHaveValue('32768');
+    await expect(
+      firstCopy.getByRole('checkbox', { name: english ? 'Image input' : '图片输入', exact: true })
+    ).toBeChecked();
+    await expect(
+      firstCopy
+        .locator('.el-form-item')
+        .filter({ hasText: english ? 'Supported reasoning efforts' : '支持的思考强度' })
+        .getByRole('checkbox', { name: 'high', exact: true })
+    ).toBeChecked();
+    const keyField = firstCopy
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'API key' : 'API Key' })
+      .getByRole('textbox');
+    await expect(keyField).toHaveValue('');
+    await expect(keyField).toHaveAttribute(
+      'placeholder',
+      english ? 'Leave blank while editing to keep the current key.' : '编辑时留空可保留当前 Key。'
+    );
+    const ownership = firstCopy
+      .locator('.el-form-item')
+      .filter({ hasText: strings.modelOwnership });
+    await expect(ownership.locator('.el-select__wrapper')).toContainText(
+      english ? 'Personal' : '个人'
+    );
+    await expect(duplicateBodies).toHaveLength(0);
+    await firstCopy.getByRole('textbox', { name: strings.modelId }).fill('cancelled-copy-draft');
+    await firstCopy.getByRole('button', { name: strings.cancel, exact: true }).click();
+    await expect(page.getByRole('dialog', { name: duplicateLabel, exact: true })).toHaveCount(0);
+    expect(duplicateBodies).toHaveLength(0);
+
+    const reopenedCopy = await openCopy();
+    await expect(reopenedCopy.getByRole('textbox', { name: strings.modelName })).toHaveValue(
+      copyName
+    );
+    await expect(reopenedCopy.getByRole('textbox', { name: strings.modelId })).toHaveValue(
+      'source-model-id'
+    );
+    await expect(
+      reopenedCopy
+        .locator('.el-form-item')
+        .filter({ hasText: strings.modelOwnership })
+        .locator('.el-select__wrapper')
+    ).toContainText(english ? 'Personal' : '个人');
+    await selectOrganization(page, reopenedCopy, strings);
+    await reopenedCopy.getByRole('button', { name: strings.save, exact: true }).click();
+
+    await expect(
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+    ).toContainText(copyName);
+    expect(duplicateBodies).toHaveLength(1);
+    expect(duplicateBodies[0]).toMatchObject({
+      name: copyName,
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://gateway.example/v1',
+      modelId: 'source-model-id',
+      contextWindowTokens: 262_144,
+      maxOutputTokens: 32_768,
+      inputCapabilities: ['TEXT', 'IMAGE'],
+      reasoningEfforts: ['low', 'high'],
+      defaultReasoningEffort: 'high',
+      titleGeneration: true,
+      codeMode: true,
+      sortOrder: 13,
+      ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 7 }
+    });
+    expect(duplicateBodies[0]).not.toHaveProperty('credential');
+    expect(duplicateBodies[0]).not.toHaveProperty('lastTestStatus');
+    expect(duplicateBodies[0]).not.toHaveProperty('access');
+    expect(sourceWrites).toEqual([]);
+    expect(models.find((entry) => entry.id === source.id)).toEqual(source);
+  });
+
+  test(`Model protocol switching retains inline draft settings across OAuth ${language}`, async ({
+    page
+  }) => {
+    test.setTimeout(60_000);
+    await mockEnterpriseConsole(page, english);
+    await page.route('**/api/organizations', (route) => json(route, { organizations: [] }));
+    const createBodies: Record<string, unknown>[] = [];
+    let models: Record<string, unknown>[] = [];
+    await page.route(/\/api\/admin\/mar-agent\/models$/u, (route) => {
+      if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        createBodies.push(body);
+        const created = model('protocol-switch-model', String(body.name), {
+          ...body,
+          id: 'protocol-switch-model',
+          credentialType: 'INLINE_API_KEY',
+          credentialConfigured: true,
+          apiKeyConfigured: true
+        });
+        models = [created];
+        return json(route, { model: created }, 201);
+      }
+      return json(route, { models });
+    });
+    await page.route(/\/api\/admin\/mar-agent\/codex-credentials$/u, (route) =>
+      json(route, { credentials: [] })
+    );
+
+    await openModels(page, strings);
+    await page.getByRole('button', { name: strings.add, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: strings.add, exact: true });
+    const urlLabel = english ? 'Base URL' : '基础 URL';
+    const urlField = dialog
+      .locator('.el-form-item')
+      .filter({ hasText: urlLabel })
+      .getByRole('textbox');
+    await expect(urlField).toHaveValue('https://api.anthropic.com');
+    await selectModelProtocol(page, dialog, strings, 'OpenAI Responses');
+    await expect(urlField).toHaveValue('https://api.openai.com/v1');
+    await selectModelProtocol(page, dialog, strings, 'Anthropic Messages');
+    await expect(urlField).toHaveValue('https://api.anthropic.com');
+    await selectModelProtocol(page, dialog, strings, 'OpenAI Responses');
+    await expect(urlField).toHaveValue('https://api.openai.com/v1');
+
+    const customUrl = 'https://gateway.example/custom';
+    const apiKey = 'inline-test-key';
+    await urlField.fill(customUrl);
+    await dialog.getByRole('textbox', { name: strings.modelName }).fill('Protocol switch model');
+    await dialog.getByRole('textbox', { name: strings.modelId }).fill('switch-model-id');
+    const keyField = dialog
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'API key' : 'API Key' })
+      .getByRole('textbox');
+    await keyField.fill(apiKey);
+    await dialog
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Context tokens' : '上下文 Token' })
+      .getByRole('spinbutton')
+      .fill('262144');
+    await dialog
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Maximum output tokens' : '最大输出 Token' })
+      .getByRole('spinbutton')
+      .fill('32768');
+    await dialog.getByText(english ? 'Image input' : '图片输入', { exact: true }).click();
+    await dialog
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Supported reasoning efforts' : '支持的思考强度' })
+      .getByText('high', { exact: true })
+      .click();
+    const defaultReasoning = dialog
+      .locator('.el-form-item')
+      .filter({ hasText: english ? 'Default reasoning effort' : '默认思考强度' });
+    await defaultReasoning.locator('.el-select__wrapper').click();
+    await page.getByRole('option', { name: 'high', exact: true }).click();
+    await dialog
+      .getByText(english ? 'Session title generation' : '会话标题命名', { exact: true })
+      .click();
+    await dialog.getByText('Code Mode', { exact: true }).click();
+
+    await selectModelProtocol(page, dialog, strings, 'Anthropic Messages');
+    await expect(urlField).toHaveValue(customUrl);
+    await selectModelProtocol(page, dialog, strings, 'ChatGPT');
+    await expect(urlField).toHaveCount(0);
+    await selectModelProtocol(page, dialog, strings, 'OpenAI Responses');
+    await expect(urlField).toHaveValue(customUrl);
+    await expect(keyField).toHaveValue(apiKey);
+    await selectModelProtocol(page, dialog, strings, 'Anthropic Messages');
+    await expect(urlField).toHaveValue(customUrl);
+    await expect(dialog.getByRole('textbox', { name: strings.modelId })).toHaveValue(
+      'switch-model-id'
+    );
+    await expect(
+      dialog.getByRole('checkbox', { name: english ? 'Image input' : '图片输入', exact: true })
+    ).toBeChecked();
+
+    await dialog.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect(
+      page.locator('.el-table__row').filter({ hasText: 'Protocol switch model' })
+    ).toBeVisible();
+    expect(createBodies).toHaveLength(1);
+    expect(createBodies[0]).toMatchObject({
+      protocol: 'ANTHROPIC_MESSAGES',
+      baseUrl: customUrl,
+      modelId: 'switch-model-id',
+      contextWindowTokens: 262_144,
+      maxOutputTokens: 32_768,
+      inputCapabilities: ['TEXT', 'IMAGE'],
+      defaultReasoningEffort: 'high',
+      reasoningEfforts: ['high'],
+      titleGeneration: true,
+      codeMode: true,
+      credential: { type: 'INLINE_API_KEY', value: apiKey }
+    });
+    expect(createBodies[0]).not.toHaveProperty('responsesTransport');
+    expect(createBodies[0]).not.toHaveProperty('serviceTier');
+  });
+
+  test(`Model duplication keeps or replaces OAuth references only for a matching protocol ${language}`, async ({
+    page
+  }) => {
+    test.setTimeout(60_000);
+    await mockEnterpriseConsole(page, english);
+    await page.route('**/api/organizations', (route) => json(route, { organizations: [] }));
+    const source = model('source-codex-model', 'Source Codex model', {
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      credentialType: 'CREDENTIAL_REF',
+      credentialConfigured: true,
+      apiKeyConfigured: false,
+      credentialId: 'source-codex-credential',
+      sortOrder: 5
+    });
+    let models: Record<string, unknown>[] = [source];
+    const duplicateBodies: Record<string, unknown>[] = [];
+    await page.route(/\/api\/admin\/mar-agent\/models$/u, (route) => json(route, { models }));
+    await page.route(
+      /\/api\/admin\/mar-agent\/models\/source-codex-model\/duplicate$/u,
+      (route) => {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        duplicateBodies.push(body);
+        const created = model(`codex-copy-${duplicateBodies.length}`, String(body.name), {
+          ...body,
+          id: `codex-copy-${duplicateBodies.length}`,
+          credentialType: 'CREDENTIAL_REF',
+          credentialConfigured: true,
+          apiKeyConfigured: false
+        });
+        models = [...models, created];
+        return json(route, { model: created }, 201);
+      }
+    );
+    await page.route(/\/api\/admin\/mar-agent\/codex-credentials$/u, (route) =>
+      json(route, {
+        credentials: [
+          {
+            id: 'compatible-chatgpt-credential',
+            name: 'Compatible ChatGPT credential',
+            type: 'CHATGPT_OAUTH',
+            ownership: { ownerType: 'PERSONAL', ownerUserId: 1 },
+            status: 'ACTIVE',
+            accessTokenExpiresAt: null,
+            lastRefreshAt: null,
+            lastCheckedAt: null,
+            proxy: { configured: false },
+            accountId: 'chatgpt-account',
+            revision: 1
+          },
+          {
+            id: 'source-codex-credential',
+            name: 'Source Codex credential',
+            type: 'CODEX_OAUTH',
+            ownership: { ownerType: 'PERSONAL', ownerUserId: 1 },
+            status: 'ACTIVE',
+            accessTokenExpiresAt: null,
+            lastRefreshAt: null,
+            lastCheckedAt: null,
+            proxy: { configured: false },
+            accountId: 'codex-account',
+            revision: 1
+          }
+        ]
+      })
+    );
+
+    await openModels(page, strings);
+    const duplicateLabel = english ? 'Duplicate' : '复制';
+    const openCopy = async (): Promise<Locator> => {
+      await page
+        .locator('.el-table__row')
+        .filter({ hasText: 'Source Codex model' })
+        .first()
+        .getByRole('button', { name: duplicateLabel, exact: true })
+        .click();
+      return page.getByRole('dialog', { name: duplicateLabel, exact: true });
+    };
+    const sameProtocolCopy = await openCopy();
+    const credentialField = sameProtocolCopy
+      .locator('.el-form-item')
+      .filter({ hasText: strings.codexCredential });
+    await expect(credentialField.locator('.el-select__wrapper')).toContainText(
+      english ? 'leave blank to keep the current reference' : '留空可保留当前引用'
+    );
+    await sameProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect(
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+    ).toContainText(english ? 'Source Codex model (copy)' : 'Source Codex model（副本）');
+    expect(duplicateBodies).toHaveLength(1);
+    expect(duplicateBodies[0]).toMatchObject({
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://chatgpt.com/backend-api/codex'
+    });
+    expect(duplicateBodies[0]).not.toHaveProperty('credential');
+
+    const changedProtocolCopy = await openCopy();
+    await selectModelProtocol(page, changedProtocolCopy, strings, 'ChatGPT');
+    const changedCredentialField = changedProtocolCopy
+      .locator('.el-form-item')
+      .filter({ hasText: strings.codexCredential });
+    await changedProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect(changedCredentialField.locator('.el-form-item__error')).toHaveText(
+      english ? 'Select an OAuth credential.' : '请选择 OAuth 凭据。'
+    );
+    expect(duplicateBodies).toHaveLength(1);
+    await changedCredentialField.locator('.el-select__wrapper').click();
+    await expect(
+      page.getByRole('option', { name: 'Compatible ChatGPT credential', exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('option', { name: 'Source Codex credential', exact: true })
+    ).toHaveCount(0);
+    await page.getByRole('option', { name: 'Compatible ChatGPT credential', exact: true }).click();
+    await changedProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect(
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+    ).toContainText(english ? 'Source Codex model (copy)' : 'Source Codex model（副本）');
+    expect(duplicateBodies).toHaveLength(2);
+    expect(duplicateBodies[1]).toMatchObject({
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://api.openai.com/v1',
+      credential: { type: 'CREDENTIAL_REF', credentialId: 'compatible-chatgpt-credential' }
+    });
   });
 }

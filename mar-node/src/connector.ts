@@ -121,7 +121,8 @@ import { NodeControlChannel } from './service/node-control-channel.js';
 import { NodeControlMessageService } from './service/node-control-message-service.js';
 import { NodeRequestService } from './service/node-request-service.js';
 import { WorkbenchManifestService } from './service/workbench-manifest-service.js';
-import { NodeRunEventBridge, workbenchPayloadSessionId } from './service/node-run-event-bridge.js';
+import { NodeRunEventBridge } from './service/node-run-event-bridge.js';
+import { workbenchPayloadSessionId } from './service/workbench-event-projection.js';
 import { NodeWorkspaceCoordinator } from './service/node-workspace-coordinator.js';
 import { FakeManagedRunService } from './service/fake-managed-run-service.js';
 import { RunnerChannelMessageService } from './service/runner-channel-message-service.js';
@@ -252,13 +253,24 @@ export class NodeConnector {
   private readonly configPath: string | undefined;
   private readonly reconnect: boolean;
   private readonly claudeApprovalTimeoutMs: number;
-  private readonly workbenchEventService = new WorkbenchEventService(
-    (envelope) => this.sendEnvelope(envelope),
-    (category, payload) => {
-      const sessionId = workbenchPayloadSessionId(this.runtime, category, payload);
+  private readonly workbenchEventService: WorkbenchEventService = new WorkbenchEventService({
+    send: (envelope) => this.sendEnvelope(envelope),
+    accepts: (category, payload) => {
+      const sessionId = workbenchPayloadSessionId(
+        (id) => this.runtime.getRun(id),
+        category,
+        payload
+      );
       return sessionId === undefined || !this.sessionIdentityService.bootstrapIds.has(sessionId);
-    }
-  );
+    },
+    projection: {
+      getRun: (id) => this.runtime.getRun(id),
+      conversationTurnForRun: (id) => this.runtime.conversationTurnForRun(id),
+      progress: (sessionId) => marctlSessionProgress(this.runtime, sessionId)
+    },
+    emitRealtime: (sessionId, event) =>
+      this.nativeSessionWatchService.emitRealtime(sessionId, event)
+  });
   private readonly fakeRunner: FakeTestRunner | undefined;
   private readonly fakeScript: NodeConnectorOptions['fakeScript'];
   private readonly runState = new RunDomainState();
@@ -1357,7 +1369,9 @@ export class NodeConnector {
             message:
               'This Node connection was replaced by a newer instance with the same identity. Check for duplicate processes.'
           });
-        if (code === 4003 || code === 1001) void this.terminalManager.shutdown();
+        // Credential revocation ends terminals, but the control channel can still reconnect.
+        // Only final Node disposal shuts down the manager and its idle collector.
+        if (code === 4003) void this.terminalManager.closeAll();
       }
     });
     this.controlMessages = new NodeControlMessageService({
@@ -1989,25 +2003,7 @@ export class NodeConnector {
   private readonly emitWorkbenchEvent = (
     category: WorkbenchEventCategory,
     payload: unknown
-  ): void => {
-    payload = this.runEventBridge.projectWorkbenchPayload(category, payload);
-    if (payload === undefined) return;
-    const event = this.workbenchEventService.next(category, payload);
-    if (event === undefined) return;
-    const notification =
-      category === 'conversation' &&
-      isPlainRecord(payload) &&
-      isPlainRecord(payload.event) &&
-      payload.event.eventType === 'notification';
-    const sessionId = workbenchPayloadSessionId(this.runtime, category, payload);
-    if (
-      !notification &&
-      sessionId !== undefined &&
-      this.nativeSessionWatchService.emitRealtime(sessionId, event)
-    )
-      return;
-    this.workbenchEventService.publish(event);
-  };
+  ): void => this.workbenchEventService.dispatch(category, payload);
   private readonly discoverWorkspaceSessions = (
     workspaceId: string,
     onRunnerDiscovered?: (

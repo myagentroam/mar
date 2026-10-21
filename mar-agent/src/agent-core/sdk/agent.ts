@@ -56,13 +56,37 @@ export async function createMarAgentWithAdapter(
   const sessionWriterOwner = {};
   let disposed = false;
   let disposal: Promise<void> | undefined;
-  const sessionLifecycles = new Set<Promise<void>>();
-  const trackSessionLifecycle = (operation: () => Promise<void>): Promise<void> => {
+  const sessionLifecycles = new Map<
+    string,
+    { readonly kind: 'clear' | 'delete'; readonly pending: Promise<void> }
+  >();
+  const assertSessionAdmission = (sessionId?: string): void => {
+    if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
+    if (sessionId !== undefined && sessionLifecycles.has(sessionId))
+      throw new MarAgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
+  };
+  const trackSessionLifecycle = (
+    sessionId: string,
+    kind: 'clear' | 'delete',
+    operation: () => Promise<void>
+  ): Promise<void> => {
     if (disposed)
       return Promise.reject(new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.'));
-    const pending = operation();
-    sessionLifecycles.add(pending);
-    void pending.finally(() => sessionLifecycles.delete(pending)).catch(() => undefined);
+    const current = sessionLifecycles.get(sessionId);
+    if (current)
+      return current.kind === kind
+        ? current.pending
+        : Promise.reject(new MarAgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.'));
+    const completion = Promise.withResolvers<void>();
+    const pending = completion.promise.finally(() => sessionLifecycles.delete(sessionId));
+    // Register before any lifecycle callback can yield or re-enter the SDK.
+    sessionLifecycles.set(sessionId, { kind, pending });
+    void pending.catch(() => undefined);
+    try {
+      completion.resolve(operation());
+    } catch (error) {
+      completion.reject(error);
+    }
     return pending;
   };
   let reconfiguring = false;
@@ -218,8 +242,9 @@ export async function createMarAgentWithAdapter(
     modelState: () => ({ models, defaultModelId, generation: modelGeneration }),
     createAdapter,
     activeAdaptersExcept,
-    assertCanStart: () => {
-      if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
+    assertSessionAdmission,
+    assertCanStart: (sessionId) => {
+      assertSessionAdmission(sessionId);
       if (reconfiguring)
         throw new MarAgentError(
           'MAR_AGENT_EXECUTION_ACTIVE',
@@ -242,7 +267,7 @@ export async function createMarAgentWithAdapter(
         sessionWriterOwner
       ),
     clearSession: (id) =>
-      trackSessionLifecycle(async () => {
+      trackSessionLifecycle(id, 'clear', async () => {
         const runtime = sessionRuntimes.get(id);
         if ([...active.keys()].some((key) => key.startsWith(`${id}:`)))
           throw new MarAgentError(
@@ -351,7 +376,7 @@ export async function createMarAgentWithAdapter(
       }
     },
     deleteSession: (id) =>
-      trackSessionLifecycle(async () => {
+      trackSessionLifecycle(id, 'delete', async () => {
         const sessionIds = await store.sessionTree(id);
         const sessionIdSet = new Set(sessionIds);
         const executionKeys = [...active.keys()].filter((key) =>
@@ -393,7 +418,9 @@ export async function createMarAgentWithAdapter(
       const runtimes = [...sessionRuntimes.values()];
       disposal = completeAgentCleanup([
         async () => {
-          const results = await Promise.allSettled([...sessionLifecycles]);
+          const results = await Promise.allSettled(
+            [...sessionLifecycles.values()].map(({ pending }) => pending)
+          );
           const failure = results.find((result) => result.status === 'rejected');
           if (failure?.status === 'rejected') throw failure.reason;
         },
