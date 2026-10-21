@@ -227,19 +227,19 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     readonly currentPassword: string;
     readonly password: string;
     readonly confirmation: string;
-  }): Promise<void> {
+  }): Promise<boolean> {
     if (input.password.length < MIN_PASSWORD_LENGTH) {
       options.passwordError.value = translate(
         'generated.adminAuthService.theNewPasswordMustContainAtLeast',
         { value0: MIN_PASSWORD_LENGTH }
       );
-      return;
+      return false;
     }
     if (input.password !== input.confirmation) {
       options.passwordError.value = translate(
         'generated.adminAuthService.theNewPasswordsDoNotMatch'
       );
-      return;
+      return false;
     }
     const generation = replaceIdentity();
     options.passwordError.value = '';
@@ -253,7 +253,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
           body: JSON.stringify({ currentPassword: input.currentPassword, password: input.password })
         }
       );
-      if (generation !== identityGeneration) return;
+      if (generation !== identityGeneration) return false;
       options.invalidateRequests();
       refreshGeneration += 1;
       options.csrfToken.value = result.csrfToken;
@@ -264,15 +264,17 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
       );
       await restoreAuthenticatedWorkbench(generation);
-      if (generation !== identityGeneration) return;
+      if (generation !== identityGeneration) return false;
       await refreshSessions();
+      return generation === identityGeneration;
     } catch (error) {
-      if (generation !== identityGeneration) return;
+      if (generation !== identityGeneration) return false;
       options.notice(
         translate('generated.adminAuthService.unableToUpdateThePassword', {
           value0: options.errorMessage(error)
         })
       );
+      return false;
     } finally {
       if (generation === identityGeneration) options.loading.value = false;
     }

@@ -36,6 +36,7 @@ async function render(section: SettingsSection, slots = {}) {
           webVersion: 'test-version',
           sessions: [],
           newPassword: '',
+          changePassword: async () => false,
           passwordValidationError: '',
           registrationToken: undefined,
           loading: false,

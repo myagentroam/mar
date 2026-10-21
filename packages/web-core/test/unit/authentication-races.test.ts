@@ -64,7 +64,8 @@ describe('authentication generation boundaries', () => {
         mustChangePassword: false,
         csrfToken: 'revoked-csrf'
       });
-      await pending;
+      const result = await pending;
+      if (operation === 'password') expect(result).toBe(false);
       expect(f.restore).not.toHaveBeenCalled();
       expect(f.state.admin.value.authenticated).toBe(false);
       expect(f.state.csrfToken.value).toBe('');

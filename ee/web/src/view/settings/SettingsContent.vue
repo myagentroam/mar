@@ -15,6 +15,11 @@ const props = defineProps<{
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
   readonly loading: boolean;
+  readonly changePassword: (input: {
+    readonly currentPassword: string;
+    readonly password: string;
+    readonly confirmation: string;
+  }) => Promise<boolean>;
   readonly formatSessionTime: (value: number) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly edition?: 'COMMUNITY' | 'ENTERPRISE';
@@ -37,6 +42,7 @@ const sharedProps = computed(() => ({
   passwordValidationError: props.passwordValidationError,
   registrationToken: props.registrationToken,
   loading: props.loading,
+  changePassword: props.changePassword,
   formatSessionTime: props.formatSessionTime,
   request: props.request,
   quickPrompts: props.quickPrompts,

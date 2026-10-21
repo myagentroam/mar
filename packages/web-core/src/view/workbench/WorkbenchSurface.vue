@@ -717,7 +717,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
           @clear-password-error="page.passwordValidationError = ''"
           @refresh-sessions="page.refreshAdminSessions"
           @logout-session="page.logoutAdminSession"
-          @change-password="page.changePassword"
+          :change-password="page.changePassword"
           @logout="page.logout"
           @create-registration-token="page.createRegistrationToken"
         />

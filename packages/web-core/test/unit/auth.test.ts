@@ -40,17 +40,21 @@ describe('shared browser authentication lifecycle', () => {
     await f.service.login({ username: 'admin', password: 'initial-password' });
     expect(f.restore).not.toHaveBeenCalled();
     f.request.mockClear();
-    await f.service.changePassword({
-      currentPassword: 'initial-password',
-      password: 'short',
-      confirmation: 'short'
-    });
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'initial-password',
+        password: 'short',
+        confirmation: 'short'
+      })
+    ).resolves.toBe(false);
     expect(f.state.passwordValidationError.value).toContain('8');
-    await f.service.changePassword({
-      currentPassword: 'initial-password',
-      password: 'long-password',
-      confirmation: 'different'
-    });
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'initial-password',
+        password: 'long-password',
+        confirmation: 'different'
+      })
+    ).resolves.toBe(false);
     expect(f.state.passwordValidationError.value).toBe(
       f.i18n.global.t('generated.adminAuthService.theNewPasswordsDoNotMatch')
     );
@@ -63,15 +67,59 @@ describe('shared browser authentication lifecycle', () => {
       })
       .mockResolvedValueOnce({ sessions: [] });
     f.state.newPassword.value = 'long-password';
-    await f.service.changePassword({
-      currentPassword: 'initial-password',
-      password: 'long-password',
-      confirmation: 'long-password'
-    });
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'initial-password',
+        password: 'long-password',
+        confirmation: 'long-password'
+      })
+    ).resolves.toBe(true);
     expect(f.state.newPassword.value).toBe('');
     expect(f.state.csrfToken.value).toBe('new-csrf');
     expect(f.restore).toHaveBeenCalledOnce();
     expect(f.request.mock.calls[1]![0]).toBe('/api/auth/sessions');
+  });
+
+  it('does not report password success on request failure or replace the current CSRF', async () => {
+    const f = authFixture();
+    f.state.csrfToken.value = 'current-csrf';
+    f.state.newPassword.value = 'updated-password';
+    f.request.mockRejectedValueOnce(new Error('PASSWORD_MISMATCH'));
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'wrong-password',
+        password: 'updated-password',
+        confirmation: 'updated-password'
+      })
+    ).resolves.toBe(false);
+    expect(f.state.csrfToken.value).toBe('current-csrf');
+    expect(f.state.newPassword.value).toBe('updated-password');
+    expect(f.restore).not.toHaveBeenCalled();
+    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('PASSWORD_MISMATCH'));
+    expect(f.loading.value).toBe(false);
+  });
+
+  it('reports a confirmed password change even if workbench or session recovery fails', async () => {
+    const f = authFixture();
+    f.request
+      .mockResolvedValueOnce({
+        authenticated: true,
+        mustChangePassword: false,
+        csrfToken: 'updated-csrf'
+      })
+      .mockRejectedValueOnce(new Error('SESSIONS_UNAVAILABLE'));
+    f.restore.mockRejectedValueOnce(new Error('NODE_UNAVAILABLE'));
+    await expect(
+      f.service.changePassword({
+        currentPassword: 'old-password',
+        password: 'updated-password',
+        confirmation: 'updated-password'
+      })
+    ).resolves.toBe(true);
+    expect(f.state.csrfToken.value).toBe('updated-csrf');
+    expect(f.notice).toHaveBeenCalledWith(
+      f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+    );
   });
 
   it('reveals authenticated state before host recovery and does not discard it on a Node failure', async () => {
