@@ -96,6 +96,16 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   }
   for (const width of [1365, 390]) {
     await page.setViewportSize({ width, height: 844 });
+    const titleFits = await preview
+      .locator('.workspace-file-page-frame-title')
+      .evaluate((element) => {
+        const header = element.parentElement!.getBoundingClientRect();
+        return [element, ...element.children].every((child) => {
+          const bounds = child.getBoundingClientRect();
+          return bounds.top >= header.top && bounds.bottom <= header.bottom;
+        });
+      });
+    expect(titleFits).toBe(true);
     if (width >= 768) {
       await expect(preview.locator('.workspace-file-page-frame-header')).toHaveCSS(
         'height',

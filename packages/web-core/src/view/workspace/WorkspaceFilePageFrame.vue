@@ -163,6 +163,28 @@ defineExpose({ root });
 }
 
 @media (min-width: 768px) {
+  .workspace-file-page-frame-title {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px;
+    align-items: center;
+  }
+
+  .workspace-file-page-frame-title > h2 {
+    grid-area: 1 / 1;
+  }
+
+  .workspace-file-page-frame-title > small {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  .workspace-file-page-frame-title :deep(.file-preview-eyebrow) {
+    grid-area: 1 / 2;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
   .workspace-file-page-frame-header {
     box-sizing: border-box;
     min-height: var(--mar-workbench-header-height);
