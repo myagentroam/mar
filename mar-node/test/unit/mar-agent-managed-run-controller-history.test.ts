@@ -1211,7 +1211,13 @@ describe('MAR Agent managed run projection', () => {
         { id: 'three', step: 'Verify', status: 'pending' }
       ]
     });
-    project({ ...base, type: 'reasoning.summary', text: 'Checked the change.' });
+    project({
+      ...base,
+      type: 'reasoning.completed',
+      itemId: 'reasoning-one',
+      representation: 'summary',
+      text: 'Checked the change.'
+    });
     project({
       ...base,
       eventId: 'output-usage-updated',
@@ -1269,7 +1275,7 @@ describe('MAR Agent managed run projection', () => {
     });
     expect(emitItem.mock.calls.map((call) => call[1].kind)).toEqual([
       'todo_list',
-      'reasoning_summary',
+      'reasoning',
       'tool_call',
       'context_compaction',
       'context_compaction',

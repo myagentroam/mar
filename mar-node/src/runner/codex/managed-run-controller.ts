@@ -20,6 +20,7 @@ import {
   boundedConversationItemId,
   codexImageAttachments,
   codexLiveConversationItem,
+  codexSourceItemId,
   CodexUsageNormalizer,
   codexUserInputQuestions,
   compactRunnerText,
@@ -119,8 +120,9 @@ export interface CodexManagedRunHost<TAttachment> {
     runId: string,
     item: {
       readonly itemId: string;
+      readonly sourceItemId?: string;
       readonly kind:
-        | 'reasoning_summary'
+        | 'reasoning'
         | 'tool_call'
         | 'command_execution'
         | 'user_input_request'
@@ -158,6 +160,22 @@ export class CodexManagedRunController<TAttachment> {
     private readonly runner: CodexRunner,
     private readonly host: CodexManagedRunHost<TAttachment>
   ) {}
+
+  private emitItem(
+    runId: string,
+    item: Parameters<CodexManagedRunHost<TAttachment>['emitItem']>[1]
+  ): void {
+    const nativeTurnId = this.runner.execution.runs.get(runId)?.turnId;
+    this.host.emitItem(
+      runId,
+      nativeTurnId === undefined
+        ? item
+        : {
+            ...item,
+            sourceItemId: codexSourceItemId(nativeTurnId, item.itemId)
+          }
+    );
+  }
 
   async executeCommand(
     session: NodeAgentSession,
@@ -382,6 +400,9 @@ export class CodexManagedRunController<TAttachment> {
           : undefined;
       this.host.emit(runId, 'text.delta', {
         text: params.delta,
+        ...(itemId === undefined || turnId === undefined
+          ? {}
+          : { sourceItemId: codexSourceItemId(turnId, itemId) }),
         ...(itemId === undefined ? {} : { itemId })
       });
       if (params.delta.length > 0) this.beginGeneration(runId, receiptAt);
@@ -410,11 +431,14 @@ export class CodexManagedRunController<TAttachment> {
         typeof params.summaryIndex === 'number' && Number.isInteger(params.summaryIndex)
           ? params.summaryIndex
           : 0;
-      this.host.emitItem(runId, {
+      this.emitItem(runId, {
         itemId: boundedConversationItemId('codex', params.itemId),
-        kind: 'reasoning_summary',
+        kind: 'reasoning',
         status: 'IN_PROGRESS',
-        payload: { sections: [{ index, text: compactRunnerText(params.delta, 10_000) }] },
+        payload: {
+          representation: 'summary',
+          sections: [{ index, text: compactRunnerText(params.delta, 10_000) }]
+        },
         merge: true,
         append: 'sections'
       });
@@ -429,7 +453,7 @@ export class CodexManagedRunController<TAttachment> {
       typeof params.itemId === 'string' &&
       typeof params.delta === 'string'
     ) {
-      this.host.emitItem(runId, {
+      this.emitItem(runId, {
         itemId: boundedConversationItemId('codex', params.itemId),
         kind: 'command_execution',
         status: 'IN_PROGRESS',
@@ -444,7 +468,7 @@ export class CodexManagedRunController<TAttachment> {
       typeof params.itemId === 'string' &&
       typeof params.message === 'string'
     ) {
-      this.host.emitItem(runId, {
+      this.emitItem(runId, {
         itemId: boundedConversationItemId('codex', params.itemId),
         kind: 'tool_call',
         status: 'IN_PROGRESS',
@@ -464,7 +488,7 @@ export class CodexManagedRunController<TAttachment> {
         attachments
       );
       if (item !== undefined) {
-        this.host.emitItem(runId, item);
+        this.emitItem(runId, item);
         if (item.kind === 'context_compaction') {
           activeRun.generationCompacting = notification.method === 'item/started';
           if (activeRun.generationCompacting) {
@@ -487,7 +511,7 @@ export class CodexManagedRunController<TAttachment> {
             const latencyMs = tracker?.toolStarted(item.itemId);
             if (latencyMs !== undefined) this.host.emit(runId, 'run.performance', { latencyMs });
           }
-        } else if (['assistant_message', 'reasoning_summary', 'plan'].includes(item.kind)) {
+        } else if (['assistant_message', 'reasoning', 'plan'].includes(item.kind)) {
           // A started reasoning item is itself a semantic response, even before its summary.
           if (notification.method === 'item/started') this.beginGeneration(runId, receiptAt);
           this.observeResponse(runId, item.itemId);
@@ -731,7 +755,7 @@ export class CodexManagedRunController<TAttachment> {
         allowOther: question.allowOther
       }))
     });
-    this.host.emitItem(runId, {
+    this.emitItem(runId, {
       itemId: boundedConversationItemId('codex-input', requestId),
       kind: 'user_input_request',
       status: 'PENDING',
@@ -1002,7 +1026,7 @@ export class CodexManagedRunController<TAttachment> {
 
   private emitError(runId: string, error: unknown, fallbackCode: string): void {
     const projected = runnerErrorProjection(error, fallbackCode);
-    this.host.emitItem(runId, {
+    this.emitItem(runId, {
       itemId: boundedConversationItemId('runner-error', runId),
       kind: 'error',
       status: 'FAILED',

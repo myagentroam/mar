@@ -78,7 +78,9 @@ describe('public Workbench page controller', () => {
     expect(source).not.toMatch(/onReconnect: \(\) => \{\s*void refreshNodes\(\);/u);
     expect(source).toContain('onNodeConnected: (nodeId) => handleNodeConnected(nodeId, false)');
     expect(source).toContain('if (!restartWatch) return;');
-    expect(source).toContain('if (!resumed && selectedWorkspaceId.value !== undefined)');
+    expect(source).toMatch(
+      /if \(!resumed && activeWorkspaceId\.value !== undefined\)\s*void watchCoordinator\.current\?\.startWorkspace\(activeWorkspaceId\.value\)/u
+    );
   });
   it('serializes reusable standalone file intents and exposes a recoverable failure state', () => {
     const source = readFileSync(

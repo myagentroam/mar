@@ -1,5 +1,5 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { nextTick, watch, type Ref } from 'vue';
+import { nextTick, ref, watch, type Ref } from 'vue';
 import type {
   ConversationSegmentPage,
   ConversationTurn,
@@ -32,13 +32,15 @@ export function createWorkbenchConversationPagingService(options: {
   let refreshingRecent = false;
   let refreshQueued = false;
   let windowRevision = 0;
+  const olderHistoryError = ref('');
   watch(
-    options.workspaceTarget,
+    [options.workspaceTarget, options.selectedSessionId],
     () => {
       windowRevision += 1;
       refreshingRecent = false;
       refreshQueued = false;
       options.loadingOlder.value = false;
+      olderHistoryError.value = '';
     },
     { flush: 'sync' }
   );
@@ -62,6 +64,7 @@ export function createWorkbenchConversationPagingService(options: {
     const element = options.scrollElement.value;
     let previousHeight = element?.scrollHeight ?? 0;
     options.loadingOlder.value = true;
+    olderHistoryError.value = '';
     let requestCursor = cursor;
     try {
       let page: ConversationTurnPage;
@@ -114,12 +117,12 @@ export function createWorkbenchConversationPagingService(options: {
         windowRevision === revision &&
         options.nextCursor.value === requestCursor
       )
-        options.notice.value = translate(
+        olderHistoryError.value = translate(
           'generated.workbenchConversationPagingService.unableToLoadEarlierConversationHistory',
           { value0: options.errorMessage(error) }
         );
     } finally {
-      options.loadingOlder.value = false;
+      if (windowRevision === revision) options.loadingOlder.value = false;
     }
   }
 
@@ -168,15 +171,19 @@ export function createWorkbenchConversationPagingService(options: {
       return;
     }
     refreshingRecent = true;
+    let revision = windowRevision;
     try {
       do {
         refreshQueued = false;
-        windowRevision += 1;
+        revision = ++windowRevision;
+        options.loadingOlder.value = false;
+        olderHistoryError.value = '';
         const response = await options.request<ConversationTurnPage | ConversationSegmentPage>(
           `/api/agent-sessions/${options.sessionPathId(sessionId)}/turns?nodeId=${encodeURIComponent(nodeId)}&limit=${options.recentSegmentWindowSize}&unit=SEGMENT`
         );
         const page = segmentPageAsTurnPage(response);
         if (
+          windowRevision !== revision ||
           options.workspaceTarget.value?.nodeId !== nodeId ||
           options.selectedSessionId.value !== sessionId
         )
@@ -186,11 +193,12 @@ export function createWorkbenchConversationPagingService(options: {
     } catch {
       // Keep the expanded window and its cursor intact; retry on a later new Turn or session open.
     } finally {
-      refreshingRecent = false;
+      if (windowRevision === revision) refreshingRecent = false;
     }
   }
 
   return {
+    olderHistoryError,
     loadOlderConversationTurns,
     refreshRecentConversationTurns
   };

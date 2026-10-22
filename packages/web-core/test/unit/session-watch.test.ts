@@ -851,11 +851,13 @@ describe('Web Session Watch Lifecycle', () => {
 
     const firstInitial = controller.beginSelectedSessionWatch('session-1');
     await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(false);
     const firstWatchId = JSON.parse(String(requests[0]?.body)).watchId as string;
 
     workbenchConnectionId.value = 'connection-2';
     const replacementInitial = controller.beginSelectedSessionWatch('session-1');
     await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(false);
     const secondWatchId = JSON.parse(String(requests[1]?.body)).watchId as string;
 
     expect(
@@ -870,6 +872,10 @@ describe('Web Session Watch Lifecycle', () => {
         payload: { unit: 'SEGMENT', segments: [], nextCursor: null, source: 'native' }
       })
     ).toBe(false);
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(false);
+    resolveRequests[1]?.({ nodeGeneration: 'test-generation' });
+    await Promise.resolve();
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(false);
     controller.handleEvent({
       type: 'watch.session.snapshot',
       workbenchConnectionId: 'connection-2',
@@ -880,11 +886,12 @@ describe('Web Session Watch Lifecycle', () => {
       sessionId: 'session-1',
       payload: { unit: 'SEGMENT', segments: [], nextCursor: null, source: 'native' }
     });
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(true);
     resolveRequests[0]?.({ nodeGeneration: 'test-generation' });
-    resolveRequests[1]?.({ nodeGeneration: 'test-generation' });
 
     await Promise.all([firstInitial, replacementInitial]);
     expect(applySnapshot).toHaveBeenCalledOnce();
+    expect(controller.hasInitialSessionSnapshot('session-1')).toBe(true);
     controller.stopSelectedSessionWatch();
     vi.unstubAllGlobals();
   });

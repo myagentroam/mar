@@ -228,14 +228,15 @@ test('Composer send and stop share submission state without speculative business
   await input.press('Enter');
   await expect(input).toHaveValue('无需等待回显');
   await expect(page.getByLabel('待执行工作').getByText('无需等待回显')).toHaveCount(0);
-  await expect(page.locator('.composer-working')).toContainText('发送中...');
+  await expect(page.locator('.composer-submitting')).toContainText('发送中...');
+  await expect(page.locator('.composer-working')).not.toContainText('发送中');
   releaseMessageRequest?.();
   await expect(input).toHaveValue('无需等待回显');
   await expect(page.getByLabel('待执行工作').getByText('无需等待回显')).toHaveCount(0);
 
   await expect(page.locator('.composer-working')).toBeVisible();
   await page.getByRole('button', { name: '停止运行' }).click();
-  await expect(page.locator('.composer-working')).toContainText('发送中...');
+  await expect(page.locator('.composer-submitting')).toContainText('发送中...');
   await expect(page.getByRole('button', { name: '停止运行' })).toBeDisabled();
   releaseStopRequest?.();
   await expect(page.locator('.composer-working')).toBeVisible();
@@ -845,7 +846,7 @@ test('Ordinary sends show only submission state until Node returns STARTED', asy
 
   await expect(page.getByText('立即进入 Working', { exact: true })).toHaveCount(0);
   await expect(input).toHaveValue('立即进入 Working');
-  await expect(page.locator('.composer-working')).toContainText('发送中...');
+  await expect(page.locator('.composer-submitting')).toContainText('发送中...');
   await expect(input).toHaveValue('');
   await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
   await expect.poll(() => writes.some((entry) => entry.url.endsWith('/messages'))).toBe(true);

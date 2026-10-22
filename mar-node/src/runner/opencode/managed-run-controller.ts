@@ -1,4 +1,4 @@
-import { OpenCodeUsageNormalizer } from './conversation-parser.js';
+import { OpenCodeUsageNormalizer, openCodeSourceItemId } from './conversation-parser.js';
 import { parseComposerTags } from '@myagentroam/protocol';
 import type {
   NodeEnvelope,
@@ -63,10 +63,11 @@ interface OpenCodeManagedRunHost {
 
 type OpenCodePublicItem = {
   readonly itemId: string;
+  readonly sourceItemId?: string;
   readonly kind:
     | 'assistant_message'
     | 'plan'
-    | 'reasoning_summary'
+    | 'reasoning'
     | 'command_execution'
     | 'tool_call'
     | 'user_input_request'
@@ -601,7 +602,11 @@ export class OpenCodeManagedRunController {
         return;
       }
       const item = openCodePart(part, this.runner.execution.get(runId)?.agent === 'plan');
-      if (item !== undefined) this.host.emitItem(runId, item);
+      if (item !== undefined)
+        this.host.emitItem(runId, {
+          ...item,
+          sourceItemId: openCodeSourceItemId(part.messageID, part.id as string)
+        });
       if (typeof part.id === 'string') {
         const itemId = boundedConversationItemId('opencode', part.id);
         const responseLatency = this.currentResponseMessage(runId, part.messageID)
@@ -856,6 +861,8 @@ function openCodePart(
 ): OpenCodePublicItem | undefined {
   const id = typeof part?.id === 'string' ? part.id : undefined;
   if (id === undefined || typeof part?.type !== 'string') return undefined;
+  if (part.type === 'reasoning' && (typeof part.text !== 'string' || !part.text.trim()))
+    return undefined;
   const itemId = boundedConversationItemId('opencode', id);
   if (part.type === 'text' && typeof part.text === 'string')
     return {
@@ -870,9 +877,9 @@ function openCodePart(
   if (part.type === 'reasoning' && typeof part.text === 'string')
     return {
       itemId,
-      kind: 'reasoning_summary',
+      kind: 'reasoning',
       status: record(part.time)?.end === undefined ? 'IN_PROGRESS' : 'COMPLETED',
-      payload: { sections: [{ index: 0, text: part.text }] },
+      payload: { representation: 'unspecified', sections: [{ index: 0, text: part.text }] },
       merge: true
     };
   if (part.type === 'tool' && typeof part.tool === 'string') {

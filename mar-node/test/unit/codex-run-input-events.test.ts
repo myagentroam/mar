@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { CodexAppServerClient, CodexAppServerRpcError } from '../../src/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
@@ -18,6 +18,13 @@ import {
   codexProfileClientFactory,
   eventually
 } from './support/codex-connector.js';
+
+async function createTestWorkspacePath(): Promise<string> {
+  const workspacePath = await mkdtemp(join(tmpdir(), 'mar-codex-run-input-events-'));
+  onTestFinished(() => rm(workspacePath, { recursive: true, force: true }));
+  return workspacePath;
+}
+
 async function primeCodexProfile(connector: NodeConnector): Promise<void> {
   await (
     connector as unknown as {
@@ -301,7 +308,10 @@ describe('Codex input, commands, and event projection', () => {
       () => undefined
     );
     expect(page?.turns[0]?.items).toEqual([
-      expect.objectContaining({ kind: 'reasoning_summary', payload: { sections: [] } }),
+      expect.objectContaining({
+        kind: 'reasoning',
+        payload: { representation: 'summary', sections: [] }
+      }),
       expect.objectContaining({
         kind: 'command_execution',
         payload: expect.objectContaining({ command: 'pwd', exitCode: 0 })
@@ -591,9 +601,10 @@ describe('Codex input, commands, and event projection', () => {
     const startThread = vi.fn(async () => ({ thread: { id: 'thread-native-start' } }));
     const configureEnvironment = vi.fn<CodexAppServerClient['configureEnvironment']>();
     const database = new NodeDatabase(':memory:', 'node-native-session-start');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-native-start',
-      path: '/workspace/native-start',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -671,9 +682,10 @@ describe('Codex input, commands, and event projection', () => {
   it('does not publish a transient queue item for Ctrl+Enter replacement from an idle session', async () => {
     const startTurn = vi.fn(async () => ({ turn: { id: 'turn-idle-replace-queue' } }));
     const database = new NodeDatabase(':memory:', 'node-idle-replace-queue');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-idle-replace-queue',
-      path: '/workspace/idle-replace-queue',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -739,9 +751,10 @@ describe('Codex input, commands, and event projection', () => {
     const restart = vi.fn(async () => undefined);
     const stop = vi.fn();
     const database = new NodeDatabase(':memory:', 'node-native-session-rollout-retry');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-native-rollout-retry',
-      path: '/workspace/native-rollout-retry',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -809,9 +822,10 @@ describe('Codex input, commands, and event projection', () => {
     const restart = vi.fn(async () => undefined);
     const stop = vi.fn();
     const database = new NodeDatabase(':memory:', 'node-existing-session-rollout-retry');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-existing-rollout-retry',
-      path: '/workspace/existing-rollout-retry',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -892,12 +906,13 @@ describe('Codex input, commands, and event projection', () => {
       .fn()
       .mockResolvedValueOnce({ turn: { id: 'turn-title-echo' } })
       .mockResolvedValueOnce({ turn: { id: 'turn-title-second' } });
+    const workspacePath = await createTestWorkspacePath();
     const listThreads = vi.fn(async () => ({
       data: [
         {
           id: 'thread-title-echo',
           source: 'vscode',
-          cwd: '/workspace/title-echo',
+          cwd: workspacePath,
           name: 'first temporary title'
         }
       ]
@@ -906,7 +921,7 @@ describe('Codex input, commands, and event projection', () => {
     const database = new NodeDatabase(':memory:', 'node-codex-title-echo');
     const workspace = database.saveWorkspace({
       id: 'workspace-codex-title-echo',
-      path: '/workspace/title-echo',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1002,9 +1017,10 @@ describe('Codex input, commands, and event projection', () => {
 
   it('cleans up the bootstrap session and identity waiter when first-message validation fails', async () => {
     const database = new NodeDatabase(':memory:', 'node-native-session-failure');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-native-failure',
-      path: '/workspace/native-failure',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });

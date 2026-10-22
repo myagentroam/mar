@@ -1893,7 +1893,7 @@ export type RunnerCommandExecution = z.infer<typeof runnerCommandExecutionSchema
 export const serverWorkbenchCapabilitiesSchema = z.object({
   workbenchProtocolVersion: z.literal(WORKBENCH_PROTOCOL_VERSION),
   serverVersion: z.string().trim().min(1).max(128).optional(),
-  conversationItemVersions: z.array(z.literal(1)).min(1),
+  conversationItemVersions: z.array(z.literal(2)).min(1),
   supportsSessionDetailStream: z.boolean(),
   supportsTerminalBrowserRelay: z.boolean(),
   supportsTerminalNodeDataChannel: z.boolean(),
@@ -1910,7 +1910,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   platform: nodePlatformSchema,
   architecture: z.string().min(1).max(128),
   conversation: capabilitySchemaWith({
-    itemVersions: z.array(z.literal(1)),
+    itemVersions: z.array(z.literal(2)).min(1),
     supportsSessionCursor: z.boolean(),
     supportsHistoryPaging: z.boolean(),
     supportsItemFinalSnapshots: z.boolean(),
@@ -2004,6 +2004,10 @@ export const permissionStopSchema = z.object({
 });
 export type PermissionStop = z.infer<typeof permissionStopSchema>;
 
+export const conversationProcessGroupSchema = z.object({
+  id: z.string().min(1).max(128),
+  isStart: z.literal(true).optional()
+});
 const conversationItemBaseSchema = z.object({
   id: z.string().min(1).max(128),
   sessionId: z.string().min(1).max(128),
@@ -2025,6 +2029,7 @@ const conversationItemBaseSchema = z.object({
   completedAt: z.number().int().nonnegative().nullable(),
   segmentId: z.string().min(1).max(256).optional(),
   segmentIndex: z.number().int().nonnegative().optional(),
+  processGroup: conversationProcessGroupSchema.optional(),
   permissionStop: permissionStopSchema.optional()
 });
 
@@ -2126,10 +2131,11 @@ const summaryItemSchema = conversationItemBaseSchema.extend({
     durationMs: z.number().int().nonnegative().nullable()
   })
 });
-const reasoningSummaryItemSchema = conversationItemBaseSchema.extend({
-  kind: z.literal('reasoning_summary'),
+const reasoningItemSchema = conversationItemBaseSchema.extend({
+  kind: z.literal('reasoning'),
   payload: z.object({
-    sections: z.array(z.object({ index: z.number().int().nonnegative(), text: z.string() }))
+    sections: z.array(z.object({ index: z.number().int().nonnegative(), text: z.string() })),
+    representation: z.enum(['summary', 'visible_thinking', 'unspecified'])
   })
 });
 export const subagentOperationSchema = z.enum(['START', 'STATUS', 'CANCEL', 'MESSAGE', 'RESUME']);
@@ -2297,7 +2303,7 @@ const unknownItemSchema = conversationItemBaseSchema.extend({
 export const conversationItemSchema = z.discriminatedUnion('kind', [
   assistantMessageItemSchema,
   userMessageItemSchema,
-  reasoningSummaryItemSchema,
+  reasoningItemSchema,
   planItemSchema,
   todoListItemSchema,
   toolCallItemSchema,

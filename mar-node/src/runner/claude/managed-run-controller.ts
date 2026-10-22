@@ -1,3 +1,4 @@
+import { claudeAssistantBlocks, extractClaudeThinkingText } from './conversation-parser.js';
 import { ClaudeUsageNormalizer } from './tool-normalizer.js';
 import type {
   NodeEnvelope,
@@ -16,7 +17,6 @@ import {
   claudePlanText,
   compactRunnerText,
   extractClaudeText,
-  extractClaudeThinkingSummaries,
   extractClaudeToolUses,
   type PublicConversationItem
 } from '../codex/conversation-parser.js';
@@ -467,85 +467,111 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
               finalOutputTokens.set(snapshotId, snapshotUsage.output_tokens);
               settleGeneration(snapshotId, receiptAt);
             }
-            const text = extractClaudeText(record);
-            if (mainTask && (text.length > 0 || extractClaudeThinkingSummaries(record).length > 0))
-              observeResponse(
-                typeof (record.message as Record<string, unknown> | undefined)?.id === 'string'
-                  ? ((record.message as Record<string, unknown>).id as string)
-                  : undefined
-              );
-            const planText = claudePlanText(text);
-            if (planText !== undefined)
-              this.host.emitItem(runId, {
-                itemId: boundedConversationItemId(
-                  'claude-plan',
-                  typeof record.uuid === 'string' ? record.uuid : `${runId}:plan`
-                ),
-                kind: 'plan',
-                status: 'COMPLETED',
-                payload: { explanation: compactRunnerText(planText, 20_000), steps: [] }
-              });
-            else if (text.length > 0) this.host.emit(runId, 'text.delta', { text });
-            for (const [index, text] of extractClaudeThinkingSummaries(record).entries()) {
-              this.host.emitItem(runId, {
-                itemId: boundedConversationItemId(
-                  'claude-reasoning',
-                  `${typeof record.uuid === 'string' ? record.uuid : runId}:${index}`
-                ),
-                kind: 'reasoning_summary',
-                status: 'COMPLETED',
-                payload: { sections: [{ index, text }] }
-              });
-            }
-            for (const tool of extractClaudeToolUses(record)) {
-              const latencyMs = mainTask ? responseLatency.toolStarted(tool.id) : undefined;
-              if (latencyMs !== undefined) this.host.emit(runId, 'run.performance', { latencyMs });
-              if (tool.name === 'AskUserQuestion') {
-                toolKinds.set(tool.id, 'user_input_request');
-                continue;
-              }
-              const itemId = boundedConversationItemId('claude-tool', tool.id);
-              toolInputs.set(tool.id, tool);
-              const normalized = normalizeClaudeTool(
-                tool.name,
-                tool.input,
-                null,
-                false,
-                tool.inputTruncated,
-                knownSubagents
-              );
-              const kind = normalized.kind;
-              toolKinds.set(tool.id, kind);
-              this.host.emitItem(runId, {
-                itemId,
-                kind,
-                status: 'IN_PROGRESS',
-                payload: normalized.payload
-              });
-            }
-            for (const [index, block] of claudeContentBlocks(record).entries()) {
-              const type = typeof block.type === 'string' ? block.type : 'unknown';
+            const fallbackMessageId = crypto.randomUUID();
+            for (const { record: blockRecord, blockIndex, sourceItemId } of claudeAssistantBlocks(
+              record
+            )) {
+              const text = extractClaudeText(blockRecord);
               if (
-                type === 'text' ||
-                type === 'thinking' ||
-                type === 'redacted_thinking' ||
-                type === 'encrypted_thinking' ||
-                type === 'tool_use' ||
-                type === 'tool_result'
+                mainTask &&
+                (text.length > 0 || extractClaudeThinkingText(blockRecord).length > 0)
               )
-                continue;
-              this.host.emitItem(runId, {
-                itemId: boundedConversationItemId(
-                  'claude-item',
-                  `${typeof record.uuid === 'string' ? record.uuid : runId}:${index}`
-                ),
-                kind: 'unknown',
-                status: 'COMPLETED',
-                payload: {
-                  sourceEventType: `claude-code:${type}`,
-                  label: `Claude Code ${compactRunnerText(type, 128)}`
+                observeResponse(
+                  typeof (record.message as Record<string, unknown> | undefined)?.id === 'string'
+                    ? ((record.message as Record<string, unknown>).id as string)
+                    : undefined
+                );
+              const planText = claudePlanText(text);
+              if (planText !== undefined)
+                this.host.emitItem(runId, {
+                  itemId: boundedConversationItemId(
+                    'claude-plan',
+                    sourceItemId ?? `${fallbackMessageId}:${blockIndex}`
+                  ),
+                  ...(sourceItemId === undefined ? {} : { sourceItemId }),
+                  kind: 'plan',
+                  status: 'COMPLETED',
+                  payload: { explanation: compactRunnerText(planText, 20_000), steps: [] }
+                });
+              else if (text.length > 0)
+                this.host.emitItem(runId, {
+                  itemId: boundedConversationItemId(
+                    'claude-text',
+                    sourceItemId ?? `${fallbackMessageId}:${blockIndex}`
+                  ),
+                  ...(sourceItemId === undefined ? {} : { sourceItemId }),
+                  kind: 'assistant_message',
+                  status: 'COMPLETED',
+                  payload: { text, format: 'markdown', model: null }
+                });
+              for (const text of extractClaudeThinkingText(blockRecord)) {
+                this.host.emitItem(runId, {
+                  itemId: boundedConversationItemId(
+                    'claude-reasoning',
+                    sourceItemId ?? `${fallbackMessageId}:${blockIndex}`
+                  ),
+                  ...(sourceItemId === undefined ? {} : { sourceItemId }),
+                  kind: 'reasoning',
+                  status: 'COMPLETED',
+                  payload: {
+                    representation: 'visible_thinking',
+                    sections: [{ index: blockIndex, text }]
+                  }
+                });
+              }
+              for (const tool of extractClaudeToolUses(blockRecord)) {
+                const latencyMs = mainTask ? responseLatency.toolStarted(tool.id) : undefined;
+                if (latencyMs !== undefined)
+                  this.host.emit(runId, 'run.performance', { latencyMs });
+                if (tool.name === 'AskUserQuestion') {
+                  toolKinds.set(tool.id, 'user_input_request');
+                  continue;
                 }
-              });
+                const itemId = boundedConversationItemId('claude-tool', tool.id);
+                toolInputs.set(tool.id, tool);
+                const normalized = normalizeClaudeTool(
+                  tool.name,
+                  tool.input,
+                  null,
+                  false,
+                  tool.inputTruncated,
+                  knownSubagents
+                );
+                const kind = normalized.kind;
+                toolKinds.set(tool.id, kind);
+                this.host.emitItem(runId, {
+                  itemId,
+                  sourceItemId: itemId,
+                  kind,
+                  status: 'IN_PROGRESS',
+                  payload: normalized.payload
+                });
+              }
+              for (const block of claudeContentBlocks(blockRecord)) {
+                const type = typeof block.type === 'string' ? block.type : 'unknown';
+                if (
+                  type === 'text' ||
+                  type === 'thinking' ||
+                  type === 'redacted_thinking' ||
+                  type === 'encrypted_thinking' ||
+                  type === 'tool_use' ||
+                  type === 'tool_result'
+                )
+                  continue;
+                this.host.emitItem(runId, {
+                  itemId: boundedConversationItemId(
+                    'claude-item',
+                    sourceItemId ?? `${fallbackMessageId}:${blockIndex}`
+                  ),
+                  ...(sourceItemId === undefined ? {} : { sourceItemId }),
+                  kind: 'unknown',
+                  status: 'COMPLETED',
+                  payload: {
+                    sourceEventType: `claude-code:${type}`,
+                    label: `Claude Code ${compactRunnerText(type, 128)}`
+                  }
+                });
+              }
             }
           }
           if (record.type === 'tool_progress' && typeof record.tool_use_id === 'string') {

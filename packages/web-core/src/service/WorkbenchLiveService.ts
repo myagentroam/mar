@@ -1,3 +1,4 @@
+import { readonly, ref } from 'vue';
 import {
   directBrowserMessageSchema,
   directServerMessageSchema,
@@ -57,7 +58,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
   let workbenchConnectionId: string | undefined;
   let workbenchResumeToken: string | undefined;
   let reconnectingSocket = false;
-  let liveReady = false;
+  const connected = ref(false);
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let nextPingId = 0;
   const pendingPings = new Map<string, number>();
@@ -107,7 +108,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       workbenchConnectionId = message.workbenchConnectionId;
       workbenchResumeToken = message.workbenchResumeToken;
       const resumed = message.resumed === true;
-      liveReady = true;
+      connected.value = true;
       options.onReady?.(workbenchConnectionId, resumed);
       if (reconnectingSocket) options.onConnectionRestored?.(resumed);
       if (reconnectingSocket && resumed) options.onReconnect();
@@ -202,7 +203,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       reconnectDelay = 500;
       sequences.clear();
       reconnectingSocket = reconnecting;
-      liveReady = false;
+      connected.value = false;
       next.send(
         JSON.stringify({
           type: 'resume',
@@ -231,7 +232,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     next.addEventListener('close', (event) => {
       if (socket !== next) return;
       socket = undefined;
-      liveReady = false;
+      connected.value = false;
       stopPing();
       options.diagnostics?.setConnectionState('disconnected');
       options.onDisconnected?.();
@@ -253,7 +254,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     reconnectTimer = undefined;
     const current = socket;
     socket = undefined;
-    liveReady = false;
+    connected.value = false;
     stopPing();
     options.diagnostics?.setConnectionState('disconnected');
     current?.close(1000, 'PAGE_CLOSED');
@@ -265,7 +266,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     reconnectTimer = undefined;
     const current = socket;
     socket = undefined;
-    liveReady = false;
+    connected.value = false;
     stopPing();
     options.diagnostics?.setConnectionState('connecting');
     current?.close(4000, 'PAGE_VISIBLE_RECONNECT');
@@ -276,7 +277,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     const parsed = directBrowserMessageSchema.safeParse(message);
     if (
       !parsed.success ||
-      !liveReady ||
+      !connected.value ||
       socket === undefined ||
       socket.readyState !== WebSocket.OPEN
     )
@@ -289,7 +290,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     const parsed = terminalDirectBrowserMessageSchema.safeParse(message);
     if (
       !parsed.success ||
-      !liveReady ||
+      !connected.value ||
       socket === undefined ||
       socket.readyState !== WebSocket.OPEN
     )
@@ -299,8 +300,17 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
   }
 
   function updateShareVisitor(visitor: import('@myagentroam/protocol').SessionShareVisitor): void {
-    if (liveReady && socket?.readyState === WebSocket.OPEN)
+    if (connected.value && socket?.readyState === WebSocket.OPEN)
       socket.send(JSON.stringify({ type: 'session-share.visitor', visitor }));
   }
-  return { restore, connect, reconnect, close, sendDirect, sendTerminalDirect, updateShareVisitor };
+  return {
+    connected: readonly(connected),
+    restore,
+    connect,
+    reconnect,
+    close,
+    sendDirect,
+    sendTerminalDirect,
+    updateShareVisitor
+  };
 }

@@ -207,7 +207,13 @@ function openCodeTurn(
         completedAt,
         sequence
       );
-      if (projected !== undefined) items.push(projected);
+      if (projected !== undefined)
+        items.push({
+          ...projected,
+          ...(typeof assistant.info.id === 'string' && typeof record(part)?.id === 'string'
+            ? { sourceItemId: openCodeSourceItemId(assistant.info.id, record(part)!.id as string) }
+            : {})
+        });
     }
   }
   if (items.length === 0) return undefined;
@@ -260,18 +266,23 @@ function partItem(
 ): NodeConversationItem | undefined {
   const part = record(raw);
   if (typeof part?.id !== 'string' || typeof part.type !== 'string') return undefined;
+  if (part.type === 'reasoning' && (typeof part.text !== 'string' || !part.text.trim()))
+    return undefined;
   if ((part.type === 'text' || part.type === 'reasoning') && typeof part.text === 'string')
     return item(
       session,
       turnId,
       part.id,
-      part.type === 'text' ? (planMode ? 'plan' : 'assistant_message') : 'reasoning_summary',
+      part.type === 'text' ? (planMode ? 'plan' : 'assistant_message') : 'reasoning',
       completedAt === null ? 'IN_PROGRESS' : 'COMPLETED',
       part.type === 'text'
         ? planMode
           ? { explanation: compactRunnerText(part.text, 20_000), steps: [] }
           : { text: compactRunnerText(part.text, 20_000), format: 'markdown', model: null }
-        : { sections: [{ index: 0, text: compactRunnerText(part.text, 10_000) }] },
+        : {
+            representation: 'unspecified',
+            sections: [{ index: 0, text: compactRunnerText(part.text, 10_000) }]
+          },
       startedAt,
       completedAt,
       sequence
@@ -404,6 +415,10 @@ export function openCodePatchToolPayload() {
     errorCode: null,
     truncated: false
   };
+}
+
+export function openCodeSourceItemId(messageId: string, partId: string): string {
+  return JSON.stringify(['opencode', messageId, partId]);
 }
 
 function item(

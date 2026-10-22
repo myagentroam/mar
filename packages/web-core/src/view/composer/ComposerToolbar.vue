@@ -35,6 +35,7 @@ const props = defineProps<{
   readonly inputHasContent: boolean;
   readonly hasSelectedCommand: boolean;
   readonly loading: boolean;
+  readonly submitting?: boolean;
   readonly attachmentsPending: boolean;
   readonly effortLabel: (effort: string) => string;
 }>();
@@ -238,6 +239,9 @@ function selectFiles(event: Event): void {
         ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
         : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
     }}</span>
+    <span v-if="submitting" class="composer-submitting" role="status">{{
+      translate('workbench.sending')
+    }}</span>
     <button
       v-if="interruptVisible"
       class="composer-stop-button"
@@ -271,6 +275,12 @@ function selectFiles(event: Event): void {
 </template>
 
 <style scoped>
+.composer-submitting {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  flex-shrink: 0;
+}
+
 .attachment-file-input {
   display: none;
 }

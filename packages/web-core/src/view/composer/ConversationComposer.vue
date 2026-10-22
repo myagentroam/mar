@@ -42,6 +42,8 @@ const props = withDefaults(
     placeholder: string;
     working: boolean;
     workingLabel: string;
+    elapsedLabel?: string;
+    connectionLabel?: string;
     readonly: boolean;
     dropTarget: boolean;
     mobileViewport: boolean;
@@ -145,16 +147,19 @@ const emit = defineEmits<{
     @submit.prevent="emit('submit')"
   >
     <div ref="composerElement" class="composer">
-      <span v-if="working" class="composer-working" role="status" aria-live="polite">
-        <i aria-hidden="true" />
-        <span>{{ workingLabel }}</span>
+      <span v-if="working || connectionLabel" class="composer-working">
+        <i v-if="working && !connectionLabel" aria-hidden="true" />
+        <span role="status" aria-live="polite">{{ connectionLabel || workingLabel }}</span>
+        <span v-if="elapsedLabel && !connectionLabel" class="composer-elapsed">{{
+          elapsedLabel
+        }}</span>
       </span>
       <div
         :class="[
           'composer-shell',
           {
             readonly,
-            'has-working': working,
+            'has-working': working || Boolean(connectionLabel),
             'composer-drop-target': dropTarget
           }
         ]"

@@ -96,12 +96,13 @@ interface MarAgentRunHost {
         | 'plan'
         | 'todo_list'
         | 'context_compaction'
-        | 'reasoning_summary'
+        | 'reasoning'
         | 'user_input_request'
         | 'error';
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
       payload: Record<string, unknown>;
       permissionStop?: NonNullable<ExecutionResult['permissionStop']>;
+      parentItemId?: string;
       merge?: boolean;
     }
   ): void;
@@ -943,6 +944,7 @@ export class MarAgentManagedRunController {
               []);
         this.host.emitItem(runId, {
           itemId: item.itemId,
+          ...(item.parentItemId === undefined ? {} : { parentItemId: item.parentItemId }),
           kind: item.kind,
           status: item.status,
           payload: attachments.length === 0 ? item.payload : { ...item.payload, attachments },

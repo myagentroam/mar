@@ -1028,6 +1028,33 @@ describe('Web Hosted Conversation Workspace Service', () => {
     await expect(initial).resolves.toBeUndefined();
   });
 
+  it('preserves authoritative work process metadata when projecting a hosted snapshot', () => {
+    const workspace = service(async () => {
+      throw new Error('Unexpected request');
+    });
+    const turn = hostedTurn('turn-process', 20, 'Request');
+    const processGroup = { id: 'process-hosted', isStart: true };
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      turns: [
+        {
+          ...turn,
+          items: [
+            ...turn.items,
+            {
+              ...turn.items[0],
+              id: 'reasoning-hosted',
+              kind: 'reasoning',
+              processGroup,
+              payload: { representation: 'summary', sections: [{ index: 0, text: 'Inspect.' }] }
+            }
+          ]
+        }
+      ]
+    } as never);
+    expect(workspace.turns.value[0]?.items[1]?.processGroup).toEqual(processGroup);
+  });
+
   it('loads older hosted turns by cursor and preserves them when a recent Watch snapshot arrives', async () => {
     let watchId = '';
     const latest = hostedTurn('turn-latest', 20, 'Latest');
@@ -1055,6 +1082,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       turns: [latest],
       historyNextCursor: 'older-cursor'
     } as never);
+    expect(workspace.watchReady.value).toBe(false);
 
     await workspace.loadOlderHistory();
     expect(workspace.turns.value.map((turn) => turn.id)).toEqual(['turn-older', 'turn-latest']);
@@ -1062,6 +1090,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
 
     const initial = workspace.beginSelectedConversationWatch();
     await Promise.resolve();
+    expect(workspace.watchReady.value).toBe(false);
     expect(
       workspace.handleWatchEvent({
         type: 'watch.hosted-conversation.snapshot',
@@ -1082,8 +1111,97 @@ describe('Web Hosted Conversation Workspace Service', () => {
       })
     ).toBe(true);
     await initial;
+    expect(workspace.watchReady.value).toBe(true);
     expect(workspace.turns.value.map((turn) => turn.id)).toEqual(['turn-older', 'turn-latest']);
     expect(workspace.historyNextCursor.value).toBeNull();
+    workspace.pauseSelectedConversationWatch();
+    expect(workspace.watchReady.value).toBe(false);
+  });
+
+  it('Keeps older history errors scoped to the selected conversation and retries only on explicit load', async () => {
+    let rejectOldHistory!: (error: Error) => void;
+    const oldHistory = new Promise<never>((_resolve, reject) => {
+      rejectOldHistory = reject;
+    });
+    const current = hostedTurn('turn-current-2', 20, 'Current');
+    const older = hostedTurn('turn-older-2', 10, 'Older');
+    const requests: string[] = [];
+    let currentHistoryRequests = 0;
+    const workspace = service(async (path) => {
+      if (!path.includes('/history?')) throw new Error(`unexpected request: ${path}`);
+      requests.push(path);
+      if (path.includes('conversation-1')) return oldHistory as never;
+      currentHistoryRequests += 1;
+      if (currentHistoryRequests === 1) throw new Error('temporary history failure');
+      return { turns: [older], nextCursor: null } as never;
+    });
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      turns: [hostedTurn('turn-current-1', 30, 'Old selection')],
+      historyNextCursor: 'cursor-one'
+    } as never);
+
+    const staleLoad = workspace.loadOlderHistory();
+    workspace.selectConversation('node-1', 'conversation-2', {
+      ...snapshot,
+      conversation: { ...conversation, id: 'conversation-2' },
+      turns: [current],
+      historyNextCursor: 'cursor-two'
+    } as never);
+    rejectOldHistory(new Error('stale selection failed'));
+    await staleLoad;
+
+    expect(workspace.turns.value.map((turn) => turn.id)).toEqual(['turn-current-2']);
+    expect(workspace.historyNextCursor.value).toBe('cursor-two');
+    expect(workspace.olderHistoryError.value).toBeUndefined();
+    expect(requests).toHaveLength(1);
+
+    await workspace.loadOlderHistory();
+    expect(workspace.olderHistoryError.value).toBeInstanceOf(Error);
+    expect(requests).toHaveLength(2);
+
+    await workspace.loadOlderHistory();
+    expect(requests).toHaveLength(3);
+    expect(workspace.turns.value.map((turn) => turn.id)).toEqual([
+      'turn-older-2',
+      'turn-current-2'
+    ]);
+    expect(workspace.historyNextCursor.value).toBeNull();
+    expect(workspace.olderHistoryError.value).toBeUndefined();
+  });
+
+  it('Clears hosted older loading when rollback replaces the authoritative history window', async () => {
+    const olderResponse = deferred<unknown>();
+    const rollbackResponse = deferred<unknown>();
+    const current = hostedTurn('turn-current', 20, 'Current');
+    const older = hostedTurn('turn-older', 10, 'Older');
+    const workspace = service(async (path) => {
+      if (path.includes('/history?')) return olderResponse.promise as never;
+      if (path.endsWith('/rollback')) return rollbackResponse.promise as never;
+      throw new Error(`unexpected request: ${path}`);
+    });
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      turns: [current],
+      historyNextCursor: 'older-cursor'
+    } as never);
+
+    const loading = workspace.loadOlderHistory();
+    expect(workspace.loadingOlderHistory.value).toBe(true);
+    const rollback = workspace.rollback(current.id, null);
+    rollbackResponse.resolve({
+      ...snapshot,
+      turns: [current],
+      historyNextCursor: 'fresh-cursor',
+      snapshotSequence: 2
+    });
+    await rollback;
+    olderResponse.resolve({ turns: [older], nextCursor: null });
+    await loading;
+
+    expect(workspace.turns.value.map((turn) => turn.id)).toEqual(['turn-current']);
+    expect(workspace.historyNextCursor.value).toBe('fresh-cursor');
+    expect(workspace.loadingOlderHistory.value).toBe(false);
   });
 
   it('Merge by Stable Turn, Item, File ID and do not infer files from message text', async () => {

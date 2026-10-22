@@ -443,6 +443,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
     const textPhases = new Map<string, 'commentary' | 'final_answer'>();
     const pendingCompletedText = new Map<string, string>();
     const emittedCompletedText = new Set<string>();
+    const emittedReasoning = new Set<string>();
     const emittedFunctionCalls = new Set<string>();
     const hostedWebCalls = new Map<
       string,
@@ -584,16 +585,24 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
               modelStreamEventObservedAt(raw)
             );
           } else pendingCompletedText.set(itemId, completedText);
-        } else if (type === 'response.reasoning_summary_text.done')
+        } else if (type === 'response.reasoning_summary_text.done') {
+          const itemId = JSON.stringify([
+            text(event.item_id) ?? `reasoning-${event.output_index ?? 0}`,
+            event.summary_index ?? 0
+          ]);
+          const summary = text(event.text) ?? '';
+          if (!summary.trim() || emittedReasoning.has(itemId)) continue;
+          emittedReasoning.add(itemId);
           yield observeModelStreamEvent(
             {
-              type: 'reasoning.summary',
-              itemId: text(event.item_id) ?? 'reasoning',
-              text: text(event.text) ?? ''
+              type: 'reasoning.completed',
+              itemId,
+              representation: 'summary',
+              text: summary
             },
             modelStreamEventObservedAt(raw)
           );
-        else if (
+        } else if (
           type === 'response.output_item.done' &&
           text(record(event.item).type) === 'tool_search_call'
         ) {
@@ -940,7 +949,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
           event.type === 'text.delta' ||
           event.type === 'output.delta' ||
           event.type === 'text.completed' ||
-          event.type === 'reasoning.summary' ||
+          event.type === 'reasoning.completed' ||
           event.type === 'client_tool.call' ||
           event.type === 'hosted_tool' ||
           event.type === 'citation' ||
@@ -1915,7 +1924,7 @@ function isSemanticEvent(event: ModelEvent): boolean {
   if (event.type === 'response.started' || event.type === 'usage' || event.type === 'response.item')
     return false;
   if (event.type === 'text.delta') return event.delta.length > 0;
-  if (event.type === 'text.completed' || event.type === 'reasoning.summary')
+  if (event.type === 'text.completed' || event.type === 'reasoning.completed')
     return event.text.length > 0;
   return true;
 }

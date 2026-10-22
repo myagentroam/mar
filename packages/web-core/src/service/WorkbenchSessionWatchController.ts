@@ -1,6 +1,6 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ApiError, errorCode } from '../util/api-error.js';
-import type { Ref } from 'vue';
+import { shallowRef, type Ref } from 'vue';
 import type { ConversationSegmentPage, ConversationTurnPage, Session } from '../model/workbench.js';
 import { sessionActivity } from '../util/session-presentation.js';
 import {
@@ -45,15 +45,13 @@ export function createWorkbenchSessionWatchController(options: {
   let watchedWorkspaceId: string | undefined;
   let watchedConnectionId: string | undefined;
   let nodeGeneration: string | undefined;
-  let appliedInitialSnapshot:
-    | {
-        readonly watchId: string;
-        readonly nodeId: string;
-        readonly workspaceId: string;
-        readonly sessionId: string;
-        readonly connectionId: string;
-      }
-    | undefined;
+  const appliedInitialSnapshot = shallowRef<{
+    readonly watchId: string;
+    readonly nodeId: string;
+    readonly workspaceId: string;
+    readonly sessionId: string;
+    readonly connectionId: string;
+  }>();
   let failureRetryTimer: ReturnType<typeof setTimeout> | undefined;
   let failureRetries = 0;
   let pendingInitial:
@@ -134,7 +132,7 @@ export function createWorkbenchSessionWatchController(options: {
     )
       return;
     if (mode === 'initial') {
-      appliedInitialSnapshot = undefined;
+      appliedInitialSnapshot.value = undefined;
       watchId = crypto.randomUUID().replace(/-/g, '');
       nodeGeneration = undefined;
       watchedSessionId = sessionId;
@@ -222,7 +220,7 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function stop(): void {
-    appliedInitialSnapshot = undefined;
+    appliedInitialSnapshot.value = undefined;
     cancelPendingInitial();
     const sessionId = watchedSessionId;
     const currentWatchId = watchId;
@@ -260,7 +258,7 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function restart(sessionId: string, resetFailures = true): Promise<void> | undefined {
-    appliedInitialSnapshot = undefined;
+    appliedInitialSnapshot.value = undefined;
     if (failureRetryTimer !== undefined) clearTimeout(failureRetryTimer);
     failureRetryTimer = undefined;
     cancelPendingInitial();
@@ -384,7 +382,7 @@ export function createWorkbenchSessionWatchController(options: {
       pendingInitial = undefined;
       pending.removeAbortListener();
       options.applySnapshot(sessionId, page);
-      appliedInitialSnapshot = {
+      appliedInitialSnapshot.value = {
         watchId: pending.watchId,
         nodeId: event.nodeId as string,
         workspaceId: event.workspaceId as string,
@@ -476,13 +474,13 @@ export function createWorkbenchSessionWatchController(options: {
 
   return {
     hasInitialSessionSnapshot: (sessionId: string): boolean =>
-      appliedInitialSnapshot !== undefined &&
-      appliedInitialSnapshot.watchId === watchId &&
-      appliedInitialSnapshot.nodeId === options.workspaceTarget.value?.nodeId &&
-      appliedInitialSnapshot.workspaceId === options.workspaceTarget.value?.workspaceId &&
-      appliedInitialSnapshot.sessionId === sessionId &&
+      appliedInitialSnapshot.value !== undefined &&
+      appliedInitialSnapshot.value.watchId === watchId &&
+      appliedInitialSnapshot.value.nodeId === options.workspaceTarget.value?.nodeId &&
+      appliedInitialSnapshot.value.workspaceId === options.workspaceTarget.value?.workspaceId &&
+      appliedInitialSnapshot.value.sessionId === sessionId &&
       options.selectedSessionId.value === sessionId &&
-      appliedInitialSnapshot.connectionId === connectionId(),
+      appliedInitialSnapshot.value.connectionId === connectionId(),
     canWatchSessionHistory: (session: Session) =>
       options.enabled?.() !== false && canWatch(session),
     initializeSelectedSessionWatch: initialize,

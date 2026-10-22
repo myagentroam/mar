@@ -489,9 +489,16 @@ export function createSessionShareConversationService(options: {
     fileReferences,
     state,
     scroll,
+    runs: runState.runs,
     activeRun,
     busy,
     ready,
+    connected: computed(() => connected.value && nodeConnected.value),
+    watchReady: computed(
+      () =>
+        selectedSessionId.value !== undefined &&
+        sessionWatch.hasInitialSessionSnapshot(selectedSessionId.value)
+    ),
     participants,
     sharerOnline,
     canRename,

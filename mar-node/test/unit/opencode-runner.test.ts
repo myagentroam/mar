@@ -14,8 +14,108 @@ import { openCodeConversationPage } from '../../src/runner/opencode/conversation
 import { OpenCodeManagedRunController } from '../../src/runner/opencode/managed-run-controller.js';
 import { normalizeOpenCodeTool } from '../../src/runner/opencode/tool-normalizer.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
+import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
+import type { NodeConversationItem } from '../../src/runtime-model.js';
 
 describe('OpenCode Runner', () => {
+  it('keeps reasoning process identity across SSE and official history without empty cards', async () => {
+    const items: Record<string, unknown>[] = [];
+    let listener: ((event: unknown) => void) | undefined;
+    const fakeClient = {
+      configureEnvironment: vi.fn(),
+      createSession: vi.fn(async () => ({ id: 'native-1' })),
+      subscribe: vi.fn(
+        async (
+          _cwd: string,
+          _signal: AbortSignal,
+          event: (value: unknown) => void,
+          ready: () => void
+        ) => {
+          listener = event;
+          ready();
+        }
+      ),
+      prompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined)
+    } as unknown as OpenCodeServerClient;
+    const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+    const controller = new OpenCodeManagedRunController(runner, {
+      ...commandHost(),
+      intercepted: () => false,
+      active: new Set<string>(),
+      parseAttachments: () => [],
+      persistAttachments: async () => [],
+      emit: () => undefined,
+      emitItem: (_id, item) => items.push({ ...item }),
+      adopt: () => undefined,
+      promote: () => undefined,
+      rememberNative: () => undefined,
+      send: () => undefined,
+      createApproval: () => undefined,
+      publishApproval: () => undefined,
+      expireApproval: () => undefined
+    });
+    try {
+      controller.start(envelope());
+      await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+      const info = {
+        id: 'assistant',
+        sessionID: 'native-1',
+        role: 'assistant',
+        parentID: 'user',
+        time: { completed: 2 }
+      };
+      listener?.({ type: 'message.updated', properties: { info } });
+      const parts = ['', '  ', 'Inspect the files.'].map((text, index) => ({
+        id: `reasoning-${index}`,
+        messageID: 'assistant',
+        sessionID: 'native-1',
+        type: 'reasoning',
+        text,
+        time: { start: 1, end: 2 }
+      }));
+      for (const part of parts) listener?.({ type: 'message.part.updated', properties: { part } });
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        kind: 'reasoning',
+        payload: { representation: 'unspecified' }
+      });
+      const history = openCodeConversationPage(
+        { id: 'session', runner: 'opencode' } as NodeAgentSession,
+        [
+          {
+            info: { id: 'user', role: 'user', time: { created: 1 } },
+            parts: [{ type: 'text', text: 'Inspect.' }]
+          },
+          { info, parts }
+        ],
+        {},
+        () => undefined
+      )!.turns[0]!;
+      const official = projectConversationWorkProcesses(history);
+      expect(official.items.filter((item) => item.kind === 'reasoning')).toHaveLength(1);
+      const reasoning = official.items.find((item) => item.kind === 'reasoning')!;
+      expect(reasoning.sourceItemId).toBe(items[0]?.sourceItemId);
+      const live = projectConversationWorkProcesses({
+        ...history,
+        items: [
+          history.items[0]!,
+          {
+            ...reasoning,
+            id: `run:${items[0]!.itemId}`,
+            runId: 'run',
+            sourceItemId: items[0]!.sourceItemId
+          } as NodeConversationItem
+        ]
+      });
+      expect(live.items[1]?.processGroup).toEqual(reasoning.processGroup);
+    } finally {
+      listener?.({ type: 'session.idle', properties: { sessionID: 'native-1' } });
+      await runner.stop();
+    }
+  });
+
   it('normalizes the shell tool to a command while keeping patch as a regular tool', () => {
     expect(
       normalizeOpenCodeTool('bash', {

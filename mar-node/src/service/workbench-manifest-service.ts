@@ -38,7 +38,7 @@ export class WorkbenchManifestService {
       conversation: {
         available: true,
         reasonCode: null,
-        itemVersions: [1],
+        itemVersions: [2],
         supportsSessionCursor: true,
         supportsHistoryPaging: true,
         supportsItemFinalSnapshots: true,

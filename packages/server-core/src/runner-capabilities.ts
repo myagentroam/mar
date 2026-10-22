@@ -6,7 +6,7 @@ export function serverWorkbenchCapabilities(serverVersion: string): ServerWorkbe
   return {
     workbenchProtocolVersion: WORKBENCH_PROTOCOL_VERSION,
     serverVersion,
-    conversationItemVersions: [1],
+    conversationItemVersions: [2],
     supportsSessionDetailStream: false,
     supportsTerminalBrowserRelay: true,
     supportsTerminalNodeDataChannel: true,

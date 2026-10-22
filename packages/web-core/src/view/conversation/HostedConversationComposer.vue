@@ -3,7 +3,6 @@ import type { HostedConversationUpload } from '@myagentroam/protocol';
 import { ArrowDown, Document, Paperclip, Promotion } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import type { AgentRun } from '../../model/workbench.js';
 import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
 import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -12,7 +11,10 @@ import {
   type createHostedConversationWorkspaceService
 } from '../../service/HostedConversationWorkspaceService.js';
 import { errorCode } from '../../util/api-error.js';
-import { workingElapsedLabel } from '../../util/time-presentation.js';
+import {
+  conversationActivityLabel,
+  conversationElapsedLabel
+} from '../../util/conversation-activity.js';
 import ConversationComposer from '../composer/ConversationComposer.vue';
 
 interface HostedAttachment {
@@ -29,6 +31,7 @@ interface HostedAttachment {
 }
 
 const props = defineProps<{
+  readonly connected?: boolean;
   readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
   readonly mobileViewport: boolean;
   readonly readonly: boolean;
@@ -76,17 +79,13 @@ const activeRun = computed(() => {
     ? run
     : undefined;
 });
-const clockRun = computed<AgentRun | undefined>(() => {
+const clockRun = computed(() => {
   const run = activeRun.value;
   const conversation = snapshot.value?.conversation;
   if (run === undefined || conversation === undefined) return undefined;
   return {
-    id: run.id,
     sessionId: conversation.sessionId,
-    status: run.status,
-    recoveryState: 'ACTIVE',
-    clientMessageId: 'hosted-conversation',
-    ...(run.startedAt === null ? {} : { createdAt: run.startedAt })
+    startedAt: run.startedAt
   };
 });
 const authoritativeWorking = computed(() => activeRun.value !== undefined);
@@ -126,11 +125,12 @@ const composerReadonly = computed(
     submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
-const working = computed(() => submitting.value || clockWorking.value);
+const working = clockWorking;
 const workingLabel = computed(() =>
-  submitting.value
-    ? translate('workbench.sending')
-    : workingElapsedLabel(workingNow.value - (workingStartedAt.value ?? workingNow.value))
+  conversationActivityLabel(activeRun.value, props.readonly ? [] : props.workspace.turns.value)
+);
+const elapsedLabel = computed(() =>
+  props.readonly ? '' : conversationElapsedLabel(workingStartedAt.value, workingNow.value)
 );
 const models = computed(() => snapshot.value?.models ?? []);
 const selectedModelId = computed(() => snapshot.value?.conversation.modelId ?? '');
@@ -421,6 +421,14 @@ onBeforeUnmount(() => {
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
     :working-label="workingLabel"
+    :elapsed-label="elapsedLabel"
+    :connection-label="
+      connected === false
+        ? translate('conversationActivity.reconnecting')
+        : !workspace.watchReady.value && !workspace.watchFailureCode.value
+          ? translate('conversationActivity.syncing')
+          : ''
+    "
     :readonly="composerReadonly"
     :drop-target="draggingAttachments"
     :mobile-viewport="mobileViewport"
@@ -545,6 +553,9 @@ onBeforeUnmount(() => {
         <span v-if="canReplaceCurrent" class="hosted-replace-hint" role="status">
           {{ translate('hostedConversations.replaceCurrentHint') }}
         </span>
+        <span v-if="submitting" class="composer-submitting" role="status">{{
+          translate('workbench.sending')
+        }}</span>
         <button
           v-if="activeRun"
           class="hosted-stop-button"
@@ -577,6 +588,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.composer-submitting {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  flex-shrink: 0;
+}
+
 .hosted-file-input {
   display: none;
 }

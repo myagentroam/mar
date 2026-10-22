@@ -55,6 +55,7 @@ import WorkspaceTextFilePage from '../workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../workspace/WorkspaceFormatFilePage.vue';
 
 const props = defineProps<{
+  readonly connected?: boolean;
   readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly mobileViewport: boolean;
@@ -245,7 +246,9 @@ function fileDirectoryActionLabel(
 }
 
 function handleConversationScroll(): void {
-  conversationScrollService.handleScroll(() => void loadOlderConversationHistory());
+  conversationScrollService.handleScroll(() => {
+    if (props.workspace.olderHistoryError.value === undefined) void loadOlderConversationHistory();
+  });
 }
 
 function setConversationScrollElement(element: HTMLElement | undefined): void {
@@ -262,13 +265,16 @@ function setConversationScrollElement(element: HTMLElement | undefined): void {
 async function loadOlderConversationHistory(): Promise<void> {
   const element = conversationScrollElement.value;
   const previousHeight = element?.scrollHeight ?? 0;
-  try {
-    await props.workspace.loadOlderHistory();
-    await nextTick();
-    if (element !== undefined) element.scrollTop += element.scrollHeight - previousHeight;
-  } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
-  }
+  const target = selectedConversationKey.value;
+  await props.workspace.loadOlderHistory();
+  await nextTick();
+  if (
+    target === selectedConversationKey.value &&
+    element === conversationScrollElement.value &&
+    element !== undefined &&
+    props.workspace.olderHistoryError.value === undefined
+  )
+    element.scrollTop += element.scrollHeight - previousHeight;
 }
 
 async function initialize(): Promise<void> {
@@ -1049,6 +1055,11 @@ onBeforeUnmount(() => {
           :loading-initial="false"
           :initial-load-failed="false"
           :loading-older="workspace.loadingOlderHistory.value"
+          :older-error="
+            workspace.olderHistoryError.value === undefined
+              ? ''
+              : hostedErrorMessage(workspace.olderHistoryError.value)
+          "
           :has-turns="timelineTurns.length > 0"
           :following="conversationScrollService.following.value"
           @scroll-element="setConversationScrollElement"
@@ -1057,6 +1068,7 @@ onBeforeUnmount(() => {
           @latest="conversationScrollService.scrollToLatest"
         >
           <ConversationTimeline
+            :runs="workspace.snapshot.value?.run ? [workspace.snapshot.value.run] : []"
             :turns="timelineTurns"
             workspace-root="/workspace"
             :loading="rollbackPending"
@@ -1080,6 +1092,7 @@ onBeforeUnmount(() => {
           />
         </ConversationScroll>
         <HostedConversationComposer
+          :connected="connected"
           ref="composer"
           :key="selectedConversationKey"
           :workspace="workspace"

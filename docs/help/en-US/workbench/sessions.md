@@ -11,6 +11,10 @@ Select **New Session** to prepare an Agent, model, reasoning level, and permissi
 
 The session list initially loads up to 30 sessions. Choose **Load more** to read up to 30 additional sessions at a time.
 
+A conversation turn can contain several collapsible **Work processes**. Public reasoning text, tool calls, and file operations appear in their actual order; Agent replies, approvals, and questions remain outside these groups. The active process opens by default and collapses when finished; your manual expansion or collapse takes precedence. Missing public reasoning does not create an empty card, and reasoning text is not an execution status. File details still open in the existing dialog.
+
+At the top of the conversation, load earlier messages or select **Retry** after a failure without clearing the messages already loaded. **Beginning of conversation** marks the end of history. **Sending** means the message is being submitted, not that the Agent has started. Activity comes from Node; when no specific action is available, the display says **Running** without inventing a reasoning summary. Run duration uses its start and completion times, including waits and continuation within that Run. Missing reliable timestamps hide the duration; a new Run after a Node restart starts a new clock.
+
 Use the session list to reopen, rename, pin, reorder, or delete sessions. On supported Nodes, title search is executed by Node against the selected Workspace's native Agent sessions, so it can find sessions that have not been loaded into the browser. Clear the search to restore the normal list. Search and pagination stay within the selected Workspace. Deleting removes the native Agent session record and cannot be undone; it does not delete Workspace files.
 
 Working sessions hide Delete. If a session starts working during deletion confirmation, the operation is not submitted. Rename and Pin remain available.

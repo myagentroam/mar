@@ -219,10 +219,22 @@ export class RunEventService {
       targetsCurrentTurn && targetTurn === undefined && currentTurn === undefined
         ? this.options.runtime.conversationTurnForRun(runId)
         : undefined;
+    const projectedTurn =
+      this.options.runtime.conversationTurnForExecution(executionId) ??
+      this.options.runtime.conversationTurnForRun(runId);
+    const previousGroups = new Map(targetTurn?.items.map((item) => [item.id, item.processGroup]));
+    const correctedGroups =
+      projectedTurn !== undefined &&
+      projectedTurn.items.some(
+        (item) =>
+          previousGroups.has(item.id) &&
+          (previousGroups.get(item.id)?.id !== item.processGroup?.id ||
+            previousGroups.get(item.id)?.isStart !== item.processGroup?.isStart)
+      );
     if (targetsCurrentTurn)
       this.options.emitWorkbench(
         'conversation',
-        createdTurn === undefined
+        createdTurn === undefined && !correctedGroups
           ? {
               event: {
                 ...event,
@@ -230,7 +242,7 @@ export class RunEventService {
                 createdAt: recorded?.createdAt ?? Date.now()
               }
             }
-          : { turn: createdTurn }
+          : { turn: createdTurn ?? projectedTurn }
       );
     else {
       const projectedTurn = this.options.runtime.conversationTurnForExecution(executionId);

@@ -16,6 +16,7 @@ import { runnerErrorProjection } from '../../util/runner-error.js';
 import { toolPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 
 export interface MarAgentNormalizedItem {
+  readonly parentItemId?: string;
   readonly itemId: string;
   readonly kind:
     | 'user_message'
@@ -26,7 +27,7 @@ export interface MarAgentNormalizedItem {
     | 'plan'
     | 'todo_list'
     | 'context_compaction'
-    | 'reasoning_summary'
+    | 'reasoning'
     | 'error';
   readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
   readonly payload: Record<string, unknown>;
@@ -169,11 +170,11 @@ export class MarAgentConversationNormalizer {
         }
       ];
     }
-    if (event.type === 'message.completed') {
+    if (event.type === 'message.started' || event.type === 'message.completed') {
       const modelName = record(event)?.modelName;
       const itemId = this.messageItemId(event.itemId);
       const payload = {
-        text: event.text,
+        text: event.type === 'message.completed' ? event.text : '',
         format: 'markdown' as const,
         model: typeof modelName === 'string' ? modelName : null
       };
@@ -181,7 +182,7 @@ export class MarAgentConversationNormalizer {
         {
           itemId,
           kind: 'assistant_message',
-          status: 'COMPLETED',
+          status: event.type === 'message.completed' ? 'COMPLETED' : 'IN_PROGRESS',
           payload
         }
       ];
@@ -195,13 +196,16 @@ export class MarAgentConversationNormalizer {
           payload: { explanation: event.text, steps: [] }
         }
       ];
-    if (event.type === 'reasoning.summary')
+    if (event.type === 'reasoning.completed')
       return [
         {
-          itemId: itemId('reasoning', event.eventId),
-          kind: 'reasoning_summary',
+          itemId: itemId('reasoning', event.itemId),
+          kind: 'reasoning',
           status: 'COMPLETED',
-          payload: { sections: [{ index: 0, text: compactRunnerText(event.text, 10_000) }] }
+          payload: {
+            representation: event.representation,
+            sections: [{ index: 0, text: compactRunnerText(event.text, 10_000) }]
+          }
         }
       ];
     if (
@@ -556,7 +560,11 @@ export class MarAgentConversationNormalizer {
       if (projected.length === 0) continue;
       if (observation.id !== undefined) this.#codeModeObservationIds.add(observation.id);
       this.#codeModeSourceCallIds.add(observation.source.callId);
-      items.push(...projected);
+      items.push(
+        ...projected.map((item) =>
+          'callId' in event ? { ...item, parentItemId: itemId('tool', event.callId) } : item
+        )
+      );
     }
     return items;
   }

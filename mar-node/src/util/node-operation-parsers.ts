@@ -214,18 +214,6 @@ export function extractClaudeText(message: Record<string, unknown>): string {
     .join('');
 }
 
-export function extractClaudeThinkingSummaries(
-  message: Record<string, unknown>
-): readonly string[] {
-  return claudeContentBlocks(message).flatMap((block) => {
-    // `showThinkingSummaries` asks the SDK/API for exactly these public
-    // summaries. Partial raw thinking events are intentionally not read.
-    if (block.type !== 'thinking' || typeof block.thinking !== 'string') return [];
-    const text = compactRunnerText(block.thinking.trim(), 10_000);
-    return text.length === 0 ? [] : [text];
-  });
-}
-
 export function extractClaudeToolUses(message: Record<string, unknown>): readonly {
   readonly id: string;
   readonly name: string;

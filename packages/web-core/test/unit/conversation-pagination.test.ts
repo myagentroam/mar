@@ -9,6 +9,7 @@ import {
 } from '../../src/util/conversation-history.js';
 import { createWorkbenchConversationPagingService } from '../../src/service/WorkbenchConversationPagingService.js';
 import { ApiError } from '../../src/util/api-error.js';
+import type { ConversationTurn, ConversationTurnPage } from '../../src/model/workbench.js';
 
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -165,7 +166,7 @@ describe('Conversation History Pagination', () => {
     expect(scrollElement.scrollTop).toBe(150);
   });
 
-  it('Reports the error without retrying when cursor repair fails', async () => {
+  it('Reports cursor-repair failure until a later explicit load retries successfully', async () => {
     const turns = { value: [turn('current')] };
     const nextCursor = { value: 'expired-cursor' as string | null };
     const notice = { value: '' };
@@ -182,7 +183,10 @@ describe('Conversation History Pagination', () => {
       replaceRecent: vi.fn(),
       request: async (path) => {
         requests.push(path);
-        throw new Error('EVENT_CURSOR_INVALID');
+        if (requests.length <= 3) throw new Error('EVENT_CURSOR_INVALID');
+        if (requests.length === 4)
+          return segmentPage([turn('current'), turn('latest')], 'manual-recovered-cursor') as never;
+        return segmentPage([turn('older')], null) as never;
       },
       sessionPathId: (value) => value,
       notice: notice as never,
@@ -194,7 +198,99 @@ describe('Conversation History Pagination', () => {
     expect(requests).toHaveLength(2);
     expect(turns.value.map((candidate) => candidate.id)).toEqual(['current']);
     expect(nextCursor.value).toBe('expired-cursor');
-    expect(notice.value).toContain('EVENT_CURSOR_INVALID');
+    expect(service.olderHistoryError.value).toContain('EVENT_CURSOR_INVALID');
+    expect(notice.value).toBe('');
+
+    await service.loadOlderConversationTurns();
+
+    expect(requests).toHaveLength(5);
+    expect(turns.value.map((candidate) => candidate.id)).toEqual(['older', 'current', 'latest']);
+    expect(nextCursor.value).toBeNull();
+    expect(service.olderHistoryError.value).toBe('');
+  });
+
+  it('Clears older loading when a recent refresh invalidates its in-flight page', async () => {
+    const workspaceTarget = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+    const turns = ref<ConversationTurn[]>([turn('current')]);
+    const nextCursor = ref<string | null>('older-cursor');
+    const loadingOlder = ref(false);
+    let resolveOlder!: (value: unknown) => void;
+    let resolveRecent!: (value: unknown) => void;
+    const olderPage = new Promise<unknown>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const recentPage = new Promise<unknown>((resolve) => {
+      resolveRecent = resolve;
+    });
+    const service = createWorkbenchConversationPagingService({
+      workspaceTarget,
+      selectedSessionId: ref('session-1'),
+      turns: turns as never,
+      nextCursor,
+      loadingOlder,
+      scrollElement: ref(),
+      pageSize: 10,
+      recentSegmentWindowSize: 30,
+      replaceRecent: (page) => {
+        turns.value = page.turns;
+        nextCursor.value = page.nextCursor;
+      },
+      request: (path) => (path.includes('cursor=older-cursor') ? olderPage : recentPage) as never,
+      sessionPathId: (value) => value,
+      notice: ref(''),
+      errorMessage: String
+    });
+
+    const loading = service.loadOlderConversationTurns();
+    expect(loadingOlder.value).toBe(true);
+    const refreshing = service.refreshRecentConversationTurns();
+    resolveRecent(segmentPage([turn('latest')], 'fresh-cursor'));
+    await refreshing;
+    resolveOlder(segmentPage([turn('stale-older')], null));
+    await loading;
+
+    expect(turns.value.map((value) => value.id)).toEqual(['latest']);
+    expect(nextCursor.value).toBe('fresh-cursor');
+    expect(loadingOlder.value).toBe(false);
+  });
+
+  it('Discards a late recent refresh after the selected target changes A to B to A', async () => {
+    const workspaceTarget = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+    const turns = ref<ConversationTurn[]>([turn('current')]);
+    const nextCursor = ref<string | null>('current-cursor');
+    let resolveRecent!: (value: unknown) => void;
+    const recentPage = new Promise<unknown>((resolve) => {
+      resolveRecent = resolve;
+    });
+    const replaceRecent = vi.fn((page: ConversationTurnPage) => {
+      turns.value = page.turns;
+      nextCursor.value = page.nextCursor;
+    });
+    const service = createWorkbenchConversationPagingService({
+      workspaceTarget,
+      selectedSessionId: ref('session-1'),
+      turns: turns as never,
+      nextCursor,
+      loadingOlder: ref(false),
+      scrollElement: ref(),
+      pageSize: 10,
+      recentSegmentWindowSize: 30,
+      replaceRecent,
+      request: () => recentPage as never,
+      sessionPathId: (value) => value,
+      notice: ref(''),
+      errorMessage: String
+    });
+
+    const refreshing = service.refreshRecentConversationTurns();
+    workspaceTarget.value = { nodeId: 'node-1', workspaceId: 'workspace-2' };
+    workspaceTarget.value = { nodeId: 'node-1', workspaceId: 'workspace-1' };
+    resolveRecent(segmentPage([turn('stale-refresh')], 'stale-cursor'));
+    await refreshing;
+
+    expect(replaceRecent).not.toHaveBeenCalled();
+    expect(turns.value.map((value) => value.id)).toEqual(['current']);
+    expect(nextCursor.value).toBe('current-cursor');
   });
 
   it('Invalidates old recovery when the authoritative window changes during cursor repair', async () => {

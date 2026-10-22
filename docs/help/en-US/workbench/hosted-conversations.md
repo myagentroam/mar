@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-22
 ---
 
 # Start a Conversation from a Template
@@ -38,6 +38,8 @@ Mobile does not show the global **Expand/Fold** control or three tabs. Select **
 5. While a task is in progress, you can still edit the Composer and use **Stop**. With the Composer focused, press `Esc` to stop the current task; no second stop request is sent while it is stopping or a message is sending. On a host that supports it, `Ctrl+Enter` on desktop adds the current message with priority. When MAR Agent can accept it natively, the message appears immediately and takes effect after the complete response and tool batch without interrupting generation. Managed waits may return early without stopping background tasks; other tools still finish normally. If the target is not ready or you explicitly change settings such as the model, the original stop-then-send flow applies. Its body is marked as additional information received while working; when idle it sends normally. The wrapper is hidden from the conversation. Ordinary Enter does not queue a hosted-conversation message. On older hosts, on mobile, or while a task is stopping, select **Stop** and wait for it to finish before sending. Direct uploads and deletion in **Related files** are not disabled as a group by an active task.
 
 After an explicit request error, correct the input and retry. If the network disconnects while the result is unknown, the page keeps the same send intent to avoid duplicate execution.
+
+History loading, inline retry, and Run duration follow the [session reading behavior](sessions.md). Sending appears beside the send controls without replacing an active Run's status. Connection hints use the page connection state; they do not mean the Agent failed or restarted.
 
 ## Roll back conversation history
 

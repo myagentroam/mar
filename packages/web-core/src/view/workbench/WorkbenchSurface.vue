@@ -360,6 +360,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 :loading-initial="page.loadingInitialConversation"
                 :initial-load-failed="page.initialConversationLoadFailed"
                 :loading-older="page.loadingOlderConversation"
+                :older-error="page.olderHistoryError"
                 :has-turns="page.conversationTurns.length > 0"
                 :following="page.followConversation"
                 @scroll-element="page.conversationScroll = $event"
@@ -369,6 +370,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 @reload="page.reloadSelectedSession"
               >
                 <ConversationTimeline
+                  :runs="page.conversationRuns"
                   :turns="page.displayedConversationTurns"
                   :initializing="page.loadingInitialConversation"
                   :initial-render-version="page.conversationInitialRenderVersion"
@@ -381,6 +383,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                   :user-input-submitted="page.userInputSubmitted"
                   :plan-continuation="page.activePlanContinuation"
                   :node-ready="page.nodeReady"
+                  :synchronized="page.liveConnected && !page.conversationSyncPending"
                   :tool-change-enabled="
                     page.nodeReady &&
                     supportsNodeFeature(
@@ -434,6 +437,14 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 "
                 :working="page.composerWorking"
                 :working-label="page.composerWorkingLabel"
+                :elapsed-label="page.composerElapsedLabel"
+                :connection-label="
+                  !page.liveConnected
+                    ? translate('conversationActivity.reconnecting')
+                    : page.conversationSyncPending
+                      ? translate('conversationActivity.syncing')
+                      : ''
+                "
                 :readonly="page.composerInputDisabled"
                 :drop-target="page.draggingComposerAttachments"
                 :mobile-viewport="page.mobileViewport"
@@ -484,6 +495,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 </template>
                 <template #toolbar>
                   <ComposerToolbar
+                    :submitting="page.composerSubmitting"
                     v-if="page.canUseComposer"
                     ref="composerToolbar"
                     :draft-session-open="page.draftSessionOpen"
@@ -687,6 +699,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     </section>
     <HostedConversationWorkspacePage
       v-else-if="page.view === 'conversations'"
+      :connected="page.liveConnected"
       :workspace="page.hostedConversationWorkspace"
       :request="page.request"
       :mobile-viewport="page.mobileViewport"

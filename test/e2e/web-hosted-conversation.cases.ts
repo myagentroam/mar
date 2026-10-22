@@ -523,7 +523,7 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   const visualTurn = snapshot.turns[0];
-  const visualMessage = visualTurn.items[0];
+  const visualMessage = visualTurn.items.find((item) => item.kind === 'assistant_message')!;
   const visualSnapshot = {
     ...snapshot,
     historyNextCursor: null,
@@ -534,8 +534,12 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
           {
             ...visualMessage,
             id: 'hosted-visual-reasoning',
-            kind: 'reasoning_summary',
-            payload: { sections: [{ index: 0, text: '检查托管会话的阅读层级。' }] }
+            kind: 'reasoning',
+            processGroup: { id: 'hosted-visual-process', isStart: true },
+            payload: {
+              representation: 'summary',
+              sections: [{ index: 0, text: '检查托管会话的阅读层级。' }]
+            }
           },
           {
             ...visualMessage,

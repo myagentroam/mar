@@ -132,6 +132,8 @@ export interface AgentRun {
   readonly clientMessageId: string;
   readonly version?: number;
   readonly createdAt?: number;
+  readonly startedAt?: number | null;
+  readonly completedAt?: number | null;
 }
 
 export interface RunEvent {
@@ -161,6 +163,8 @@ export interface WorkspaceQueue {
 }
 
 export interface ConversationItem {
+  readonly processGroup?: { readonly id: string; readonly isStart?: true | undefined };
+  readonly parentItemId?: string | null;
   readonly permissionStop?: import('@myagentroam/protocol').PermissionStop;
   readonly id: string;
   readonly kind: string;

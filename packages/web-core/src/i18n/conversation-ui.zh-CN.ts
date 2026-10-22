@@ -1,4 +1,29 @@
 export const conversationUiZhCN = {
+  conversationProcess: {
+    title: '工作过程',
+    records: '已加载 {count} 条记录',
+    partial: '部分记录',
+    warning: '有需关注的记录'
+  },
+  conversationActivity: {
+    running: '运行中',
+    preparing: '正在准备',
+    stopping: '正在停止',
+    approval: '等待你的确认',
+    answer: '等待你的回答',
+    command: '正在执行命令',
+    tool: '正在调用工具',
+    reply: '正在回复',
+    compact: '正在整理上下文',
+    elapsed: '已运行 {value}',
+    total: '本轮耗时 {value}',
+    step: '耗时 {value}',
+    historyStart: '已到最早消息',
+    historyFailed: '加载更早消息失败',
+    retry: '重试',
+    reconnecting: '正在重新连接',
+    syncing: '正在同步会话'
+  },
   toolPresentation: {
     title: { WEB_SEARCH: '网页搜索', WEB_FETCH: '网页内容', SKILL: '加载技能', SLEEP: '等待' },
     status: { running: '执行中', completed: '已完成', failed: '失败', cancelled: '已取消' },

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,12 @@ import {
   capabilities,
   eventually
 } from './support/claude-connector.js';
+
+async function createTestWorkspacePath(): Promise<string> {
+  const workspacePath = await mkdtemp(join(tmpdir(), 'mar-claude-run-events-'));
+  onTestFinished(() => rm(workspacePath, { recursive: true, force: true }));
+  return workspacePath;
+}
 
 describe('Claude events and approvals', () => {
   it('updates live subagent identities from tool results before projecting later controls', async () => {
@@ -705,12 +711,51 @@ describe('Claude events and approvals', () => {
   });
 
   it('projects public Claude reasoning summaries and tool results without forwarding hidden reasoning events', async () => {
-    const database = preparedDatabase();
+    const workspacePath = await createTestWorkspacePath();
+    const database = new NodeDatabase(':memory:', 'node-1');
+    database.saveWorkspace({
+      id: 'workspace-1',
+      path: workspacePath,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const stream = publicConversationStream();
+    const next = stream.next.bind(stream);
+    stream.next = async (...args) => {
+      const result = await next(...args);
+      if (result.done || result.value.type !== 'assistant') return result;
+      return {
+        ...result,
+        value: {
+          ...result.value,
+          message: {
+            ...result.value.message,
+            content: [
+              {
+                type: 'thinking',
+                thinking: 'First inspect the current directory.',
+                signature: 'private-thinking-signature'
+              },
+              { type: 'tool_use', id: 'tool-pwd', name: 'Bash', input: { command: 'pwd' } },
+              { type: 'text', text: 'The current directory is the workspace.' },
+              {
+                type: 'tool_use',
+                id: 'tool-after-text',
+                name: 'Bash',
+                input: { command: 'printf later' }
+              },
+              { type: 'redacted_thinking', data: 'private-redacted-data' },
+              { type: 'future_content_block' }
+            ]
+          }
+        }
+      };
+    };
     const connector = new NodeConnector({
       reconnect: false,
       capabilities: capabilities(),
       database,
-      claudeClient: new ClaudeAgentSdkAdapter(bindings(() => publicConversationStream()))
+      claudeClient: new ClaudeAgentSdkAdapter(bindings(() => stream))
     });
     const emitted = vi.spyOn(
       (
@@ -739,7 +784,7 @@ describe('Claude events and approvals', () => {
     const created = await execute.executeNodeOperation('session.create', {
       workspaceId: 'workspace-1',
       runner: 'claude-code',
-      cwd: '/workspace'
+      cwd: workspacePath
     });
     await execute.executeNodeOperation('session.message', {
       sessionId: created.session.id,
@@ -749,18 +794,45 @@ describe('Claude events and approvals', () => {
     await eventually(() =>
       emitted.mock.calls.some(
         ([, eventType, payload]) =>
-          eventType === 'conversation.item' &&
-          (payload as { kind?: unknown }).kind === 'reasoning_summary'
+          eventType === 'conversation.item' && (payload as { kind?: unknown }).kind === 'reasoning'
       )
     );
     const items = emitted.mock.calls
       .filter(([, eventType]) => eventType === 'conversation.item')
-      .map(([, , payload]) => payload) as readonly { kind: string; payload: unknown }[];
+      .map(([, , payload]) => payload) as readonly {
+      kind: string;
+      sourceItemId?: string;
+      status?: string;
+      payload: unknown;
+    }[];
+    const thinkingSourceItemId = JSON.stringify(['claude', 'assistant-public', 0]);
+    const textSourceItemId = JSON.stringify(['claude', 'assistant-public', 2]);
+    const orderedItems = items.filter(({ sourceItemId }) =>
+      [
+        thinkingSourceItemId,
+        'claude-tool:tool-pwd',
+        textSourceItemId,
+        'claude-tool:tool-after-text'
+      ].includes(sourceItemId ?? '')
+    );
+    expect(orderedItems.map(({ kind, sourceItemId }) => ({ kind, sourceItemId }))).toEqual([
+      { kind: 'reasoning', sourceItemId: thinkingSourceItemId },
+      { kind: 'command_execution', sourceItemId: 'claude-tool:tool-pwd' },
+      { kind: 'assistant_message', sourceItemId: textSourceItemId },
+      { kind: 'command_execution', sourceItemId: 'claude-tool:tool-after-text' }
+    ]);
+    expect(orderedItems[2]).toMatchObject({
+      kind: 'assistant_message',
+      payload: { text: 'The current directory is the workspace.' }
+    });
     expect(items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          kind: 'reasoning_summary',
-          payload: { sections: [{ index: 0, text: 'First inspect the current directory.' }] }
+          kind: 'reasoning',
+          payload: {
+            representation: 'visible_thinking',
+            sections: [{ index: 0, text: 'First inspect the current directory.' }]
+          }
         }),
         expect.objectContaining({
           kind: 'command_execution',
@@ -781,12 +853,22 @@ describe('Claude events and approvals', () => {
       ])
     );
     expect(JSON.stringify(items)).not.toContain('hidden raw reasoning');
+    expect(JSON.stringify(items)).not.toContain('Hidden raw reasoning');
     expect(JSON.stringify(items)).not.toContain('must not be displayed');
+    expect(JSON.stringify(items)).not.toContain('private-thinking-signature');
+    expect(JSON.stringify(items)).not.toContain('private-redacted-data');
     connector.stop();
   });
 
   it('normalizes complete Claude <proposed_plan> text into a plan card instead of ordinary text', async () => {
-    const database = preparedDatabase();
+    const workspacePath = await createTestWorkspacePath();
+    const database = new NodeDatabase(':memory:', 'node-1');
+    database.saveWorkspace({
+      id: 'workspace-1',
+      path: workspacePath,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
     const connector = new NodeConnector({
       reconnect: false,
       capabilities: capabilities(),
@@ -893,7 +975,7 @@ describe('Claude events and approvals', () => {
     const created = await execute.executeNodeOperation('session.create', {
       workspaceId: 'workspace-1',
       runner: 'claude-code',
-      cwd: '/workspace'
+      cwd: workspacePath
     });
     await execute.executeNodeOperation('session.message', {
       sessionId: created.session.id,

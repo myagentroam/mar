@@ -95,8 +95,12 @@ function validEvent(event: CoreModelEvent): boolean {
         typeof event.text === 'string' &&
         (event.phase === undefined || ['commentary', 'final_answer'].includes(event.phase))
       );
-    case 'reasoning.summary':
-      return typeof event.itemId === 'string' && typeof event.text === 'string';
+    case 'reasoning.completed':
+      return (
+        typeof event.itemId === 'string' &&
+        typeof event.text === 'string' &&
+        ['summary', 'visible_thinking', 'unspecified'].includes(String(event.representation))
+      );
     case 'client_tool.call':
       return (
         typeof event.callId === 'string' &&

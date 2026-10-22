@@ -1,4 +1,29 @@
 export const conversationUiEnUS = {
+  conversationProcess: {
+    title: 'Work process',
+    records: '{count} loaded records',
+    partial: 'Partial history',
+    warning: 'Needs attention'
+  },
+  conversationActivity: {
+    running: 'Running',
+    preparing: 'Preparing',
+    stopping: 'Stopping',
+    approval: 'Waiting for your confirmation',
+    answer: 'Waiting for your answer',
+    command: 'Executing command',
+    tool: 'Calling tool',
+    reply: 'Responding',
+    compact: 'Compacting context',
+    elapsed: 'Elapsed {value}',
+    total: 'Run duration {value}',
+    step: 'Duration {value}',
+    historyStart: 'Beginning of conversation',
+    historyFailed: 'Could not load earlier messages',
+    retry: 'Retry',
+    reconnecting: 'Reconnecting',
+    syncing: 'Syncing conversation'
+  },
   toolPresentation: {
     title: {
       WEB_SEARCH: 'Web search',

@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import { conversationProcessGroupSchema } from '@myagentroam/protocol';
 import {
   CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT,
   CONVERSATION_RECENT_SEGMENT_LIMIT,
@@ -266,6 +267,10 @@ export function createConversationProjectionService(options: {
       id: itemId,
       kind,
       status,
+      ...(event.processGroup === undefined
+        ? {}
+        : { processGroup: conversationProcessGroupSchema.parse(event.processGroup) }),
+      ...(typeof event.parentItemId === 'string' ? { parentItemId: event.parentItemId } : {}),
       startedAt: itemStartedAt,
       completedAt: itemCompletedAt,
       payload: limitConversationPayloadText(

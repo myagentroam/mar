@@ -14,6 +14,10 @@ import type {
 } from '../model/workbench.js';
 import { sessionActivity, sessionHasNativeIdentity } from '../util/session-presentation.js';
 import { createWorkbenchClockService } from './WorkbenchClockService.js';
+import {
+  conversationActivityLabel,
+  conversationElapsedLabel
+} from '../util/conversation-activity.js';
 import type { SessionContextUsage } from './ConversationStateService.js';
 import type { createRunService } from './RunService.js';
 import type { createComposerConfigurationService } from './ComposerConfigurationService.js';
@@ -77,7 +81,6 @@ interface WorkbenchPresentationStateOptions {
   readonly runService: ReturnType<typeof createRunService>;
   readonly formatTokenCount: (value: number) => string;
   readonly formatPercentage: (value: number) => string;
-  readonly formatWorkingElapsed: (elapsedMs: number) => string;
 }
 
 /** Centralizes capability-derived and time-derived Workbench presentation state. */
@@ -253,17 +256,16 @@ export function createWorkbenchPresentationStateService(
     activeComposerRun
   );
   const workingElapsedLabel = computed(() => {
-    if (!composerWorking.value) return '';
-    return options.formatWorkingElapsed(
-      workingNow.value - (workingStartedAt.value ?? workingNow.value)
-    );
+    if (!composerWorking.value || !nodeReady.value) return '';
+    return conversationElapsedLabel(workingStartedAt.value, workingNow.value);
   });
   const composerWorkingLabel = computed(() =>
-    activeComposerRun.value?.status === 'CANCELLING'
-      ? translate('generated.workbenchPresentationStateService.stopping', {
-          value0: workingElapsedLabel.value.replace(/^.*? · /u, '')
-        })
-      : workingElapsedLabel.value
+    composerWorking.value
+      ? conversationActivityLabel(
+          activeComposerRun.value,
+          nodeReady.value ? options.turns.value : []
+        )
+      : ''
   );
   const interruptVisible = computed(
     () =>

@@ -6,7 +6,11 @@ import { createSessionShareConversationService } from '../../service/SessionShar
 import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
 import { createConversationImageService } from '../../service/ConversationImageService.js';
 import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
-import { workingElapsedLabel } from '../../util/time-presentation.js';
+import {
+  conversationActivityLabel,
+  conversationElapsedLabel
+} from '../../util/conversation-activity.js';
+import { sessionSubmissionContext } from '../../service/WorkbenchSubmissionService.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { userInputQuestions } from '../../util/conversation-user-input.js';
@@ -51,9 +55,15 @@ const clock = createWorkbenchClockService(
   activeRun
 );
 const workingLabel = computed(() =>
-  workingElapsedLabel(
-    clock.workingNow.value - (clock.workingStartedAt.value ?? clock.workingNow.value)
-  )
+  conversationActivityLabel(activeRun.value, chat.state.turns.value)
+);
+const elapsedLabel = computed(() =>
+  conversationElapsedLabel(clock.workingStartedAt.value, clock.workingNow.value)
+);
+const submitting = computed(
+  () =>
+    submission.pending.value &&
+    submission.context.value === sessionSubmissionContext(chat.target.sessionId)
 );
 const { turns, nextCursor, loadingInitial, initialLoadFailed, loadingOlder, initialRenderVersion } =
   chat.state;
@@ -182,16 +192,22 @@ onBeforeUnmount(() => {
         :loading-initial="loadingInitial"
         :initial-load-failed="initialLoadFailed"
         :loading-older="loadingOlder"
+        :older-error="chat.paging.olderHistoryError.value"
         :has-turns="turns.length > 0"
         :following="following"
         @scroll-element="chat.scroll.setElement"
-        @scroll="chat.scroll.handleScroll(chat.paging.loadOlderConversationTurns)"
+        @scroll="
+          chat.scroll.handleScroll(() => {
+            if (!chat.paging.olderHistoryError.value) void chat.paging.loadOlderConversationTurns();
+          })
+        "
         @load-older="chat.paging.loadOlderConversationTurns"
         @latest="chat.scroll.scrollToLatest"
         @reload="chat.restartWatch"
       >
         <ConversationTimeline
           :turns="turns"
+          :runs="chat.runs.value"
           :sharer-name="access.session.value!.sharerName"
           :workspace-root="undefined"
           :image-resource-url="
@@ -206,6 +222,7 @@ onBeforeUnmount(() => {
           :user-input-submitted="chat.questions.submitted"
           :plan-continuation="undefined"
           :node-ready="ready"
+          :synchronized="chat.connected.value && chat.watchReady.value"
           :rewind-enabled="false"
           :rollback-enabled="false"
           @open-file="
@@ -226,6 +243,14 @@ onBeforeUnmount(() => {
         :placeholder="translate('sessionShare.messagePlaceholder')"
         :working="clock.working.value"
         :working-label="workingLabel"
+        :elapsed-label="elapsedLabel"
+        :connection-label="
+          !chat.connected.value
+            ? translate('conversationActivity.reconnecting')
+            : !chat.watchReady.value && !initialLoadFailed
+              ? translate('conversationActivity.syncing')
+              : ''
+        "
         :readonly="!ready"
         :drop-target="false"
         :mobile-viewport="mobile"
@@ -303,6 +328,7 @@ onBeforeUnmount(() => {
         </template>
         <template #toolbar
           ><ComposerToolbar
+            :submitting="submitting"
             :draft-session-open="false"
             :runner="selectedSession?.runner ?? 'mar-agent'"
             :runner-options="[]"

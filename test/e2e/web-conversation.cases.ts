@@ -668,27 +668,43 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
             },
             {
               id: 'visual-reasoning',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
+              processGroup: { id: 'visual-process', isStart: true },
               status: 'COMPLETED',
-              payload: { sections: [{ text: '检查正文、过程和操作层级。' }] }
+              payload: {
+                representation: 'summary',
+                sections: [{ index: 0, text: '检查正文、过程和操作层级。' }]
+              }
             },
             {
               id: 'visual-command',
+              processGroup: { id: 'visual-process' },
               kind: 'command_execution',
               status: 'COMPLETED',
               payload: { command: 'git status', exitCode: 0 }
             },
             {
               id: 'visual-tool',
+              processGroup: { id: 'visual-process' },
               kind: 'tool_call',
               status: 'COMPLETED',
               payload: { toolName: 'read', input: { path: 'src/main.ts' } }
             },
             {
               id: 'visual-file-change',
+              processGroup: { id: 'visual-process' },
               kind: 'file_change',
               status: 'COMPLETED',
-              payload: { changes: [{ path: 'src/main.ts', change: 'MODIFIED' }] }
+              payload: {
+                changes: [
+                  {
+                    path: 'my-agent-roam/packages/web-core/src/view/workspace/WorkspaceFileTree.vue',
+                    change: 'MODIFIED',
+                    additions: 6,
+                    deletions: 1
+                  }
+                ]
+              }
             },
             {
               id: 'visual-answer',
@@ -712,9 +728,10 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
+  await page.locator('.conversation-process.is-group .process-heading').first().click();
   const reasoning = page.locator('.conversation-item.reasoning-group details');
   await expect(reasoning).not.toHaveAttribute('open', '');
-  await expect(reasoning.locator('summary')).toContainText('已完成思考');
+  await expect(reasoning.locator('summary > strong')).toHaveText('思考');
   await reasoning.locator('summary').click();
   await expect(reasoning).toHaveAttribute('open', '');
   await expect(reasoning.locator('p')).toContainText('检查正文、过程和操作层级。');
@@ -727,7 +744,7 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
   await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
-    'Thought completed'
+    'Reasoning'
   );
   await expect(page.locator('.conversation-item.reasoning-group details')).not.toHaveAttribute(
     'open',
@@ -736,7 +753,7 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
   await verifyConversationThemes(page, testInfo, 'workspace-mobile-en');
 });
 
-test('Completed reasoning items accept further content and finish only when the turn ends', async ({
+test('Work processes preserve manual disclosure, static reasoning and authoritative Run completion', async ({
   page
 }, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -748,7 +765,8 @@ test('Completed reasoning items accept further content and finish only when the 
     workspaceId: 'workspace-1',
     status: 'RUNNING',
     recoveryState: 'ACTIVE',
-    clientMessageId: 'message-reasoning'
+    clientMessageId: 'message-reasoning',
+    startedAt: Date.now() - 10_000
   };
   const segments = (append: boolean) =>
     (
@@ -762,9 +780,11 @@ test('Completed reasoning items accept further content and finish only when the 
           items: [
             {
               id: 'reasoning-first',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
+              processGroup: { id: 'process-reading', ...(append ? { isStart: true } : {}) },
               status: 'COMPLETED',
               payload: {
+                representation: 'summary',
                 sections: [
                   { index: 0, text: 'Inspecting patch ordering\nFurther reasoning detail' }
                 ]
@@ -774,12 +794,31 @@ test('Completed reasoning items accept further content and finish only when the 
               ? [
                   {
                     id: 'reasoning-second',
-                    kind: 'reasoning_summary',
+                    kind: 'reasoning',
+                    processGroup: { id: 'process-reading' },
                     status: 'COMPLETED',
                     payload: {
+                      representation: 'visible_thinking',
                       sections: [
                         { index: 0, text: `**${latestSummary}**\nFurther appended detail` }
                       ]
+                    }
+                  },
+                  {
+                    id: 'process-commentary',
+                    kind: 'assistant_message',
+                    status: 'COMPLETED',
+                    payload: { text: 'Starting verification.' }
+                  },
+                  {
+                    id: 'process-tool',
+                    kind: 'tool_call',
+                    status: 'FAILED',
+                    processGroup: { id: 'process-verification', isStart: true },
+                    payload: {
+                      toolName: 'read',
+                      input: {},
+                      outputSummary: 'Verification fixture failure.'
                     }
                   }
                 ]
@@ -806,10 +845,19 @@ test('Completed reasoning items accept further content and finish only when the 
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  const card = page.locator('.conversation-item.reasoning-group');
-  const subtitle = card.locator('.reasoning-subtitle');
-  await expect(card.locator('.reasoning-preview')).toHaveText('Inspecting patch ordering');
-  await expect(card.locator('details')).not.toHaveAttribute('open', '');
+  const processes = page.locator('.conversation-process.is-group');
+  const heading = processes.first().locator('.process-heading');
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await expect(heading).toContainText('部分记录');
+  await expect(processes.first().locator('.reasoning-subtitle')).toHaveText(
+    'Inspecting patch ordering'
+  );
+  await expect(processes.first().locator('.reasoning-subtitle')).toHaveCSS(
+    'animation-name',
+    'none'
+  );
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await emitMockSessionEvent(page, 'conversation', {
@@ -823,9 +871,20 @@ test('Completed reasoning items accept further content and finish only when the 
     },
     segments: segments(true)
   });
-  await expect(card).toHaveCount(1);
-  await expect(card.locator('.reasoning-preview')).toHaveText(latestSummary);
-  await expect(card.locator('.reasoning-preview')).not.toContainText('Further appended detail');
+  await expect(processes).toHaveCount(2);
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
+  await expect(heading).not.toContainText('部分记录');
+  await expect(processes.last().locator('.process-heading')).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+  await expect(processes.last().locator('.process-heading')).toContainText('有需关注的记录');
+  await heading.click();
+  const cards = processes.first().locator('.conversation-item.reasoning-group');
+  await expect(cards).toHaveCount(2);
+  const card = cards.last();
+  await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
+  await expect(card.locator('.reasoning-subtitle')).not.toContainText('Further appended detail');
   const desktopPreviewBounds = await card.locator('summary').evaluate((element) => ({
     clipped: element.scrollWidth > element.clientWidth,
     singleLine: getComputedStyle(element).whiteSpace === 'nowrap'
@@ -848,7 +907,7 @@ test('Completed reasoning items accept further content and finish only when the 
   expect(previewBounds.right).toBeLessThanOrEqual(previewBounds.cardRight);
   expect(previewBounds.display).toBe('list-item');
   expect(previewBounds.textOverflow).toBe('ellipsis');
-  await expect(card.locator('.reasoning-preview')).toHaveText(latestSummary);
+  await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
   await expect(card.locator('summary > strong')).toBeVisible();
   await expect(card.locator('summary svg')).toHaveCount(0);
   await card.screenshot({
@@ -860,7 +919,8 @@ test('Completed reasoning items accept further content and finish only when the 
   );
   await card.locator('summary').click();
   await expect(card.locator('details p')).toContainText(latestSummary);
-  await expect(card.locator('details p')).toContainText('Further reasoning detail');
+  await cards.first().locator('summary').click();
+  await expect(cards.first().locator('details p')).toContainText('Further reasoning detail');
   await expect(card.locator('details p')).toContainText('Further appended detail');
   await card.locator('summary').focus();
   await page.keyboard.press('Space');
@@ -868,9 +928,17 @@ test('Completed reasoning items accept further content and finish only when the 
   await page.keyboard.press('Enter');
   await expect(card.locator('details')).toHaveAttribute('open', '');
 
-  await emitMockSessionEvent(page, 'run', { run: { ...run, status: 'SUCCEEDED' } });
-  await expect(subtitle).toHaveText('已完成思考');
-  await expect(card.locator('details')).not.toHaveAttribute('open', '');
+  await emitMockSessionEvent(page, 'run', {
+    run: { ...run, status: 'SUCCEEDED', completedAt: run.startedAt + 20_000 }
+  });
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await expect(processes.last().locator('.process-heading')).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  );
+  await expect(processes.last().locator('.process-heading')).toContainText('有需关注的记录');
+  await expect(card.locator('details')).toHaveAttribute('open', '');
+  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 20s');
   await expect(card.locator('.reasoning-progress')).toHaveCount(0);
 });
 
@@ -2344,6 +2412,47 @@ test('Opening a session loads only the latest window without initial scroll back
   expect(watchReads).toBe(reopenedWatchReads);
   await expect(page.getByText('重新打开后读取的最新消息')).toBeVisible();
   expect(scrollTop).toBeGreaterThanOrEqual(0);
+  let olderAttempts = 0;
+  await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
+    olderAttempts += 1;
+    if (olderAttempts === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'TEMPORARILY_UNAVAILABLE', message: 'History unavailable' }
+        })
+      });
+    } else {
+      await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
+    }
+  });
+  await page.getByRole('button', { name: '加载更早记录' }).click();
+  await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
+  await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  expect(olderAttempts).toBe(1);
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(page.getByText('已到最早消息', { exact: true })).toBeVisible();
+  expect(olderAttempts).toBe(2);
+  await expect(page.locator('.conversation-history-error')).toHaveCount(0);
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    await page.emulateMedia({ reducedMotion });
+    await conversationScroll.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    const latest = page.locator('.conversation-latest');
+    await expect(latest).toBeVisible();
+    const leave = await latest.evaluate(async (button: HTMLButtonElement) => {
+      button.click();
+      await Promise.resolve();
+      return { className: button.className, duration: getComputedStyle(button).transitionDuration };
+    });
+    expect(leave.className).toContain('conversation-latest-leave-active');
+    expect(leave.duration).toBe(reducedMotion === 'reduce' ? '0s' : '0.16s, 0.16s');
+    await expect(latest).toHaveCount(0);
+  }
 });
 
 test('Switching from a paginated session to a new draft hides history backfill', async ({

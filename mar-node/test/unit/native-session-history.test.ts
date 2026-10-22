@@ -9,10 +9,13 @@ import {
   readClaudeNativeContextUsage,
   readCodexNativeContextUsage,
   readNativeSession,
-  removeNativeSession
+  removeNativeSession,
+  type NativeTranscriptItem
 } from '../../src/native-session-history.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
+import { claudeAssistantBlocks } from '../../src/runner/claude/conversation-parser.js';
+import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
 
 const directories: string[] = [];
 let previousHome: string | undefined;
@@ -28,6 +31,122 @@ afterEach(async () => {
 });
 
 describe('native session history adapter', () => {
+  it('keeps sourced native Item IDs stable when content changes or sibling blocks arrive', () => {
+    const session = { id: 'session', runner: 'claude-code' } as NodeAgentSession;
+    const user = {
+      kind: 'message' as const,
+      role: 'USER' as const,
+      text: 'Inspect.',
+      nativeId: 'user',
+      createdAt: 1
+    };
+    const thought = {
+      kind: 'reasoning_summary' as const,
+      nativeId: 'assistant',
+      sourceItemId: 'block-0',
+      sections: [{ index: 0, text: 'Inspect.' }],
+      createdAt: 2
+    };
+    const text = {
+      kind: 'message' as const,
+      role: 'ASSISTANT' as const,
+      nativeId: 'assistant',
+      sourceItemId: 'block-1',
+      text: 'Working.',
+      createdAt: 2
+    };
+    const history = {
+      runner: 'claude-code' as const,
+      externalSessionId: 'session',
+      cwd: '/workspace',
+      digest: 'test',
+      lastActivityAt: 2
+    };
+    const project = (items: readonly NativeTranscriptItem[]) =>
+      nativeConversationPage(session, { ...history, items }, {}).turns[0]!.items;
+    const initial = project([user, thought]);
+    const expanded = project([
+      user,
+      { ...thought, sections: [{ index: 0, text: 'Inspect the files.' }] },
+      text
+    ]);
+    const updated = project([user, thought, { ...text, text: 'Finished.' }]);
+    expect(expanded[1]?.id).toBe(initial[1]?.id);
+    expect(updated[1]?.id).toBe(initial[1]?.id);
+    expect(updated[2]?.id).toBe(expanded[2]?.id);
+    expect(expanded[1]?.id).not.toBe(expanded[2]?.id);
+    const { nativeId: _nativeId, ...partialThought } = thought;
+    expect(
+      project([{ ...partialThought, sections: [{ index: 0, text: 'Updated.' }] }])[0]?.id
+    ).toBe(project([partialThought])[0]?.id);
+  });
+
+  it('preserves Claude public thinking and mixed block order with SDK source identities', async () => {
+    const home = join(tmpdir(), `mar-native-claude-blocks-${crypto.randomUUID()}`);
+    directories.push(home);
+    previousHome = process.env.HOME;
+    process.env.HOME = home;
+    const directory = join(home, '.claude', 'projects', 'workspace');
+    await mkdir(directory, { recursive: true });
+    const assistant = {
+      type: 'assistant',
+      uuid: 'assistant-record',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'Inspect first.', signature: 'private-signature' },
+          { type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'a.ts' } },
+          { type: 'text', text: 'Now verify.' },
+          { type: 'redacted_thinking', data: 'private-redacted' },
+          { type: 'thinking', thinking: '  ' },
+          { type: 'tool_use', id: 'read-2', name: 'Read', input: { file_path: 'b.ts' } }
+        ]
+      }
+    };
+    await writeFile(
+      join(directory, 'blocks.jsonl'),
+      [
+        { type: 'user', uuid: 'user-record', message: { role: 'user', content: 'Inspect.' } },
+        assistant
+      ]
+        .map((record) =>
+          JSON.stringify({ sessionId: 'blocks', cwd: '/workspace/current', ...record })
+        )
+        .join('\n')
+    );
+    await discoverNativeSessions('claude-code', '/workspace/current');
+    const history = await readNativeSession('claude-code', '/workspace/current', 'blocks');
+    expect(history).toBeDefined();
+    const page = nativeConversationPage(
+      { id: 'session', runner: 'claude-code' } as NodeAgentSession,
+      history!,
+      {}
+    );
+    const turn = projectConversationWorkProcesses(page.turns[0]!);
+    expect(turn.items.map((item) => item.kind)).toEqual([
+      'user_message',
+      'reasoning',
+      'tool_call',
+      'assistant_message',
+      'tool_call'
+    ]);
+    const sources = claudeAssistantBlocks(assistant).map((block) => block.sourceItemId);
+    expect(turn.items.slice(1).map((item) => item.sourceItemId)).toEqual([
+      sources[0],
+      sources[1],
+      sources[2],
+      sources[5]
+    ]);
+    expect(turn.items[1]?.payload).toEqual({
+      representation: 'visible_thinking',
+      sections: [{ index: 0, text: 'Inspect first.' }]
+    });
+    expect(turn.items[1]?.processGroup?.id).toBeDefined();
+    expect(turn.items[1]?.processGroup?.id).toBe(turn.items[2]?.processGroup?.id);
+    expect(turn.items[4]?.processGroup?.id).not.toBe(turn.items[2]?.processGroup?.id);
+    expect(JSON.stringify(history)).not.toContain('private-signature');
+    expect(JSON.stringify(history)).not.toContain('private-redacted');
+  });
+
   it('keeps Claude subagent identity stable when earlier turns fall outside the requested page', () => {
     const tool = (id: string, toolName: string, input: unknown, output: unknown) => ({
       kind: 'tool_call' as const,

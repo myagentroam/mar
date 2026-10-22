@@ -141,7 +141,7 @@ function groupType(
   | undefined {
   if (item === undefined) return undefined;
   if (item.permissionStop !== undefined) return undefined;
-  if (item.kind === 'reasoning_summary') return 'reasoning_group';
+  if (item.kind === 'reasoning') return 'reasoning_group';
   if (item.kind === 'command_execution') return 'command_group';
   if (item.kind === 'file_change') return 'file_change_group';
   if (item.kind === 'tool_call' && isSubagentToolCall(conversationPayload(item.payload)))
@@ -162,172 +162,40 @@ function isImageGenerationItem(item: ConversationItem): boolean {
   return value !== undefined && !isSubagentToolCall(value) && isImageGenerationPayload(value);
 }
 
-function groupedDisplayItems(
-  items: readonly ConversationItem[],
-  reasoningCompleted = false
-): ConversationDisplayItem[] {
-  const normalizedItems = mergeConsecutiveAssistantItems(items);
-  const grouped = new Map<string, ConversationItem[]>();
-  const groupKey = (
-    item: ConversationItem,
-    type: NonNullable<ReturnType<typeof groupType>>
-  ): string => {
-    if (type !== 'subagent_group') return type;
-    const payload = conversationPayload(item.payload);
-    const agentId = payload === undefined ? '' : stringField(payload, 'subagentId');
-    return JSON.stringify([type, agentId ? 'agent' : 'call', agentId || item.id]);
-  };
-  for (const item of normalizedItems) {
-    const type = groupType(item);
-    if (type === undefined) continue;
-    const key = groupKey(item, type);
-    const values = grouped.get(key) ?? [];
-    values.push(item);
-    grouped.set(key, values);
-  }
-  const displayItems: ConversationDisplayItem[] = [];
-  for (const item of normalizedItems) {
-    const currentGroupType = groupType(item);
-    if (currentGroupType !== undefined) {
-      const groupItems = grouped.get(groupKey(item, currentGroupType));
-      const first = groupItems?.[0];
-      // Anchor at the latest member, but keep the first member's ID for disclosure state.
-      if (first === undefined || groupItems?.at(-1) !== item) continue;
-      if (currentGroupType === 'reasoning_group') {
-        displayItems.push({
-          type: currentGroupType,
-          id: first.id,
-          items: groupItems,
-          completed: reasoningCompleted,
-          text: groupItems
-            .flatMap((member) => {
-              const payload = conversationPayload(member.payload);
-              return payload === undefined ? [] : reasoningSections(payload);
-            })
-            .join('\n\n')
-        });
-      } else {
-        displayItems.push({ type: currentGroupType, id: first.id, items: groupItems });
-      }
-      continue;
-    }
-    if (item.permissionStop === undefined && isImageGenerationItem(item)) {
-      displayItems.push({
-        type: 'image_generation',
-        id: item.id,
-        item
-      });
-      continue;
-    }
-    displayItems.push({
-      type: 'item',
-      id: item.id,
-      item
-    });
-  }
-  return displayItems;
-}
-
-function mergeAssistantItems(items: readonly ConversationItem[]): ConversationItem {
-  const first = items[0];
-  const last = items.at(-1);
-  if (first === undefined || last === undefined) throw new Error('ASSISTANT_ITEMS_EMPTY');
-  if (items.length === 1) return first;
-  const firstPayload = conversationPayload(first.payload) ?? {};
-  const lastPayload = conversationPayload(last.payload) ?? {};
-  const text = items
-    .map((item) => {
-      const payload = conversationPayload(item.payload);
-      return payload !== undefined && typeof payload.text === 'string' ? payload.text : '';
-    })
-    .filter((text) => text.trim().length > 0)
-    .join('\n\n');
-  return {
-    ...first,
-    status: last.status,
-    payload: { ...firstPayload, ...lastPayload, text },
-    ...(last.completedAt === undefined ? {} : { completedAt: last.completedAt })
-  };
-}
-
-function mergeConsecutiveAssistantItems(
-  items: readonly ConversationItem[]
-): readonly ConversationItem[] {
-  const normalized: ConversationItem[] = [];
-  let assistants: ConversationItem[] = [];
-  const flush = (): void => {
-    if (assistants.length === 0) return;
-    normalized.push(mergeAssistantItems(assistants));
-    assistants = [];
-  };
-  for (const item of items) {
-    if (item.kind === 'assistant_message') {
-      assistants.push(item);
-      continue;
-    }
-    flush();
-    normalized.push(item);
-  }
-  flush();
-  return normalized;
-}
-
+/** Render each public record in place; process membership comes exclusively from Node. */
 export function conversationDisplayItems(
   items: readonly ConversationItem[]
 ): readonly ConversationDisplayItem[] {
-  const displayItems: ConversationDisplayItem[] = [];
-  let current: ConversationItem[] = [];
-  const compactionsAtAnchor = new Map<number, ConversationItem[]>();
-  const relocatedCompactionIds = new Set<string>();
-  items.forEach((item, index) => {
-    if (item.kind !== 'context_compaction') return;
-    const payload = conversationPayload(item.payload);
-    const hasExplicitMode = payload?.mode === 'BACKGROUND' || payload?.mode === 'BLOCKING';
-    if (!hasExplicitMode) return;
-    const anchorItemId = stringField(payload, 'anchorItemId');
-    if (anchorItemId.length === 0) return;
-    const anchorIndex = items.findIndex((candidate) => candidate.id === anchorItemId);
-    if (anchorIndex < 0 || anchorIndex === index) return;
-    const anchored = compactionsAtAnchor.get(anchorIndex) ?? [];
-    anchored.push(item);
-    compactionsAtAnchor.set(anchorIndex, anchored);
-    relocatedCompactionIds.add(item.id);
+  return items.flatMap((item): ConversationDisplayItem[] => {
+    if (
+      item.kind === 'assistant_message' &&
+      !stringField(conversationPayload(item.payload) ?? {}, 'text').trim()
+    )
+      return [];
+    const type = groupType(item);
+    if (type === 'reasoning_group') {
+      const text = reasoningSections(conversationPayload(item.payload) ?? {}).join('\n\n');
+      return text.trim() ? [{ type, id: item.id, items: [item], text, completed: true }] : [];
+    }
+    if (type !== undefined) return [{ type, id: item.id, items: [item] }];
+    return [
+      {
+        type:
+          item.permissionStop === undefined && isImageGenerationItem(item)
+            ? 'image_generation'
+            : 'item',
+        id: item.id,
+        item
+      }
+    ];
   });
-  const flush = (reasoningCompleted = false): void => {
-    displayItems.push(...groupedDisplayItems(current, reasoningCompleted));
-    current = [];
-  };
-  const appendCompaction = (item: ConversationItem, anchorResolved: boolean): void => {
-    const payload = conversationPayload(item.payload);
-    const installed = item.status === 'COMPLETED' && payload?.phase === 'COMPLETED';
-    const hasExplicitMode = payload?.mode === 'BACKGROUND' || payload?.mode === 'BLOCKING';
-    const reasoningCompleted = hasExplicitMode ? installed && anchorResolved : true;
-    flush(reasoningCompleted);
-    displayItems.push({ type: 'item', id: item.id, item });
-  };
-  for (const [index, item] of items.entries()) {
-    if (relocatedCompactionIds.has(item.id)) continue;
-    if (item.kind === 'context_compaction') {
-      appendCompaction(item, false);
-      continue;
-    }
-    if (current.at(-1)?.kind === 'assistant_message' && item.kind !== 'assistant_message') {
-      flush(true);
-    }
-    current.push(item);
-    for (const compact of compactionsAtAnchor.get(index) ?? []) appendCompaction(compact, true);
-  }
-  flush();
-  return displayItems;
 }
-
 export function reasoningDisclosureOpen(
   previousTurnActive: boolean | undefined,
-  turnActive: boolean,
+  _turnActive: boolean,
   currentOpen: boolean | undefined
 ): boolean {
   if (previousTurnActive === undefined) return false;
-  if (previousTurnActive && !turnActive) return false;
   return currentOpen ?? false;
 }
 
@@ -444,7 +312,7 @@ export function conversationItemLabel(kind: string, payload?: unknown): string {
     {
       user_message: translate('generated.conversationPresentation.you'),
       assistant_message: 'Agent',
-      reasoning_summary: translate('generated.conversationPresentation.reasoning'),
+      reasoning: translate('generated.conversationPresentation.reasoning'),
       plan: translate('generated.conversationPresentation.plan'),
       todo_list: translate('generated.conversationPresentation.taskList'),
       tool_call: translate('generated.conversationPresentation.tool'),
@@ -471,7 +339,7 @@ export function conversationItemText(
     const input = composerMessagePresentation(payload);
     return input.restarted ? translate('presentation.systemRestartMessage') : input.text;
   }
-  if (kind === 'reasoning_summary') {
+  if (kind === 'reasoning') {
     return status === 'PENDING' || status === 'IN_PROGRESS'
       ? translate('generated.conversationPresentation.thinking')
       : translate('generated.conversationPresentation.thoughtCompleted');
@@ -582,7 +450,7 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
   const value = conversationPayload(payload);
   if (value === undefined) return '';
   if (kind === 'error') return '';
-  if (kind === 'reasoning_summary') return reasoningSections(value).join('\n\n');
+  if (kind === 'reasoning') return reasoningSections(value).join('\n\n');
   if (kind === 'tool_call' && isSubagentToolCall(value)) return subagentToolDetail(value);
   if (kind === 'tool_call' && toolPresentation(payload)) return toolPresentationDetails(payload);
   if (kind === 'tool_call')

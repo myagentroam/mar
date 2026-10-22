@@ -27,6 +27,11 @@ export type MarAgentEvent = MarAgentEventBase &
         permissionMode?: import('../tools/permissions.js').PermissionMode;
       }
     | {
+        type: 'message.started';
+        itemId: string;
+        phase: 'commentary' | 'final_answer';
+      }
+    | {
         type: 'message.delta';
         itemId: string;
         phase: 'commentary' | 'final_answer';
@@ -57,7 +62,12 @@ export type MarAgentEvent = MarAgentEventBase &
         tokensPerSecond?: number | undefined;
       }
     | { type: 'plan.completed'; itemId: string; text: string }
-    | { type: 'reasoning.summary'; text: string }
+    | {
+        type: 'reasoning.completed';
+        itemId: string;
+        representation: 'summary' | 'visible_thinking' | 'unspecified';
+        text: string;
+      }
     | {
         /** Legacy persisted event; the Catalog exposes standard tool events instead. */
         type: 'hosted_tool.updated';

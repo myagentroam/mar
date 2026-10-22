@@ -80,7 +80,7 @@ export class CompactionOperation {
         if (event.type === 'text.delta') this.#textDeltaCharacters += event.delta.length;
         if (
           (event.type === 'text.delta' && event.delta.length > 0) ||
-          ((event.type === 'text.completed' || event.type === 'reasoning.summary') &&
+          ((event.type === 'text.completed' || event.type === 'reasoning.completed') &&
             event.text.length > 0)
         ) {
           this.#lastOutputAfterMs = Math.max(0, Date.now() - this.#startedAt);

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { projectConversationWorkProcesses } from './service/conversation-work-process.js';
 import { nodeLog } from './operational.js';
 import { safeErrorCode } from './util/safe-error.js';
 import {
@@ -1615,6 +1616,7 @@ export class NodeRuntimeState {
       conversationItemFromEvent(event) !== undefined
     )
       this.createItemOnlyTurn(run, event.createdAt);
+    let needsProcessProjection = false;
     const update = (turn: NodeConversationTurn): NodeConversationTurn => {
       if (
         event.eventType === 'text.delta' &&
@@ -1637,8 +1639,14 @@ export class NodeRuntimeState {
                 (item) => item.id === stableItemId && item.kind === 'assistant_message'
               );
         const text = `${existing === undefined ? '' : readableText(existing.payload)}${event.payload.text}`;
+        const sourceItemId = conversationSourceItemId(event.payload) ?? existing?.sourceItemId;
+        needsProcessProjection =
+          existing === undefined ||
+          existing.sourceItemId !== sourceItemId ||
+          (!readableText(existing.payload).trim() && !!text.trim());
         const item: NodeConversationItem = {
           id: existing?.id ?? stableItemId ?? `${event.runId}:assistant:${event.sequence}`,
+          ...(sourceItemId === undefined ? {} : { sourceItemId }),
           sessionId: run.sessionId,
           turnId: turn.id,
           runId: event.runId,
@@ -1646,6 +1654,7 @@ export class NodeRuntimeState {
           sourceSequence: existing?.sourceSequence ?? event.sequence,
           revision: event.sequence,
           kind: 'assistant_message',
+          ...(existing?.processGroup === undefined ? {} : { processGroup: existing.processGroup }),
           updatedAt: event.createdAt,
           status: 'IN_PROGRESS',
           payload: { text, format: 'markdown', model: null },
@@ -1691,15 +1700,31 @@ export class NodeRuntimeState {
             ? trailingItem
             : undefined);
         const status = projected.status;
+        const sourceItemId = projected.sourceItemId ?? existing?.sourceItemId;
+        const parentItemId =
+          projected.parentItemId === undefined
+            ? (existing?.parentItemId ?? null)
+            : runConversationItemId(event.runId, projected.parentItemId);
+        needsProcessProjection =
+          existing === undefined ||
+          existing.kind !== projected.kind ||
+          projected.kind === 'context_compaction' ||
+          existing.parentItemId !== parentItemId ||
+          existing.sourceItemId !== sourceItemId ||
+          (projected.kind === 'assistant_message' &&
+            !!readableText(existing.payload).trim() !== !!readableText(projected.payload).trim()) ||
+          (projected.kind === 'reasoning' && existing.processGroup === undefined);
         const item: NodeConversationItem = {
           id: itemId,
           sessionId: run.sessionId,
           turnId: turn.id,
           runId: event.runId,
-          parentItemId: null,
+          parentItemId,
+          ...(sourceItemId === undefined ? {} : { sourceItemId }),
           sourceSequence: existing?.sourceSequence ?? event.sequence,
           revision: (existing?.revision ?? -1) + 1,
           kind: projected.kind,
+          ...(existing?.processGroup === undefined ? {} : { processGroup: existing.processGroup }),
           updatedAt: event.createdAt,
           status,
           payload: mergeConversationItemPayload(existing?.payload, projected),
@@ -1744,12 +1769,17 @@ export class NodeRuntimeState {
       }
       return turn;
     };
-    if (turnId === undefined) this.updateCurrentTurnForRun(event.runId, update);
+    const project = (turn: NodeConversationTurn) => {
+      const next = update(turn);
+      // Ordinary token/output updates retain membership; only structural input needs a scan.
+      return needsProcessProjection ? projectConversationWorkProcesses(next) : next;
+    };
+    if (turnId === undefined) this.updateCurrentTurnForRun(event.runId, project);
     else {
       const current = this.turns.get(run.sessionId) ?? [];
       this.turns.set(
         run.sessionId,
-        current.map((turn) => (turn.id === turnId ? update(turn) : turn))
+        current.map((turn) => (turn.id === turnId ? project(turn) : turn))
       );
     }
   }
@@ -1776,6 +1806,8 @@ function readableText(value: unknown): string {
 }
 
 type ProjectedConversationItem = {
+  readonly sourceItemId?: string;
+  readonly parentItemId?: string;
   readonly permissionStop?: PermissionStop;
   readonly itemId: string;
   readonly kind: string;
@@ -1840,12 +1872,19 @@ function conversationItemFromEvent(event: RuntimeRunEvent): ProjectedConversatio
   )
     return undefined;
   const append = event.payload.append;
+  const sourceItemId = conversationSourceItemId(event.payload);
   const permissionStop = permissionStopSchema.safeParse(event.payload.permissionStop);
   return {
     itemId,
     kind,
     status,
     payload,
+    ...(sourceItemId === undefined ? {} : { sourceItemId }),
+    ...(typeof event.payload.parentItemId === 'string' &&
+    event.payload.parentItemId.length > 0 &&
+    event.payload.parentItemId.length <= 88
+      ? { parentItemId: event.payload.parentItemId }
+      : {}),
     ...(permissionStop.success ? { permissionStop: permissionStop.data } : {}),
     merge: event.payload.merge === true,
     ...(append === 'sections' || append === 'outputPreview' || append === 'outputSummary'
@@ -1854,11 +1893,19 @@ function conversationItemFromEvent(event: RuntimeRunEvent): ProjectedConversatio
   };
 }
 
+function conversationSourceItemId(payload: Record<string, unknown>): string | undefined {
+  return typeof payload.sourceItemId === 'string' &&
+    payload.sourceItemId.length > 0 &&
+    payload.sourceItemId.length <= 1024
+    ? payload.sourceItemId
+    : undefined;
+}
+
 function projectableConversationKind(value: string): boolean {
   return (
     value === 'user_message' ||
     value === 'assistant_message' ||
-    value === 'reasoning_summary' ||
+    value === 'reasoning' ||
     value === 'tool_call' ||
     value === 'command_execution' ||
     value === 'approval_request' ||
