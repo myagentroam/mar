@@ -3,6 +3,31 @@ import { fulfillMockSessionWatch, mockConsoleApi, json, write } from './support/
 
 // Composer, attachments, commands, and context
 
+for (const width of [390, 420]) {
+  test(`Mobile inputs share compact typography across login and Composer at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.goto('/console');
+    await expect(page.getByLabel('密码', { exact: true })).toHaveCSS('font-size', '14px');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    const tree = page.locator('.workspace-tree');
+    await tree.getByRole('button', { name: /node-1/ }).click();
+    await tree.getByRole('button', { name: 'project', exact: true }).click();
+    const editor = page.getByRole('textbox', { name: '输入消息' });
+    await expect(editor).toHaveCSS('font-size', '14px');
+    await expect
+      .poll(() => editor.evaluate((element) => getComputedStyle(element, '::placeholder').fontSize))
+      .toBe('14px');
+    await editor.fill('检查移动端输入字号 Mobile input typography');
+    await expect(editor).toHaveCSS('font-size', '14px');
+    await expect(page.locator('.workbench-brand')).toHaveCSS('height', '46px');
+    await page.screenshot({ path: testInfo.outputPath(`mobile-input-${width}.png`) });
+  });
+}
+
 test('New Session focuses the Composer from buttons and keyboard shortcuts', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.goto('/console');

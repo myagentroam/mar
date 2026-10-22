@@ -26,6 +26,7 @@ it('uses shared Composer typography and registered semantic colors without chang
   const completion = source('composer/PromptCompletionEditor');
   const toolbar = source('composer/ComposerToolbar');
   expect(composer).toContain('font-size: var(--mar-font-size-input)');
+  expect(composer).not.toMatch(/--mar-font-size-input\s*:/u);
   expect(composer).toContain('font-family: inherit');
   expect(composer).toContain('color: var(--mar-color-success-text)');
   expect(composer).toContain('background: var(--mar-color-warning-bg)');

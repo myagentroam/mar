@@ -1543,6 +1543,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     breadcrumb.boundingBox()
   ]);
   const hostedMobileHeaderHeight = mobileHeaderBox?.height;
+  await expect(page.locator('textarea.composer-input')).toHaveCSS('font-size', '14px');
   const hostedMobileBreadcrumbInset = (mobileBreadcrumbBox?.x ?? 0) - (mobileHeaderBox?.x ?? 0);
   await expect(workbenchHeader.locator('.workbench-tree-toggle')).toHaveCount(0);
   await page.getByRole('button', { name: '设置', exact: true }).click();

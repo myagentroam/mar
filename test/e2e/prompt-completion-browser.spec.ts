@@ -716,6 +716,15 @@ for (const mode of ['workspace'] as const) {
       page
     }) => {
       await page.setViewportSize({ width: 390, height: 844 });
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            getComputedStyle(document.documentElement)
+              .getPropertyValue('--mar-font-size-input')
+              .trim()
+          )
+        )
+        .toBe('0.875rem');
       const editor = page.locator('textarea.composer-input');
       const placeholderSize = () =>
         editor.evaluate((element) => getComputedStyle(element, '::placeholder').fontSize);

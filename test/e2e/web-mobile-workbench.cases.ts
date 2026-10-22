@@ -1171,6 +1171,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   ).toBeLessThan(3);
   expect(mobileQueueEditLayout.bottomGap).toBeLessThanOrEqual(5);
   const queueEditor = pendingWork.locator('.composer-queue-input textarea');
+  await expect(queueEditor).toHaveCSS('font-size', '14px');
   await queueEditor.fill('第一行\n第二行');
   await expect
     .poll(async () => (await queueEditor.boundingBox())?.height)

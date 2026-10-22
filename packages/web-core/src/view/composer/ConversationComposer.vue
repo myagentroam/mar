@@ -489,7 +489,6 @@ const emit = defineEmits<{
   }
 
   .composer {
-    --mar-font-size-input: 0.875rem;
     position: fixed;
     z-index: 6;
     right: 0;

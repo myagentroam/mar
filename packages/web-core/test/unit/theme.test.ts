@@ -45,7 +45,8 @@ it('shares global typography with native inputs and Element Plus without undefin
   expect(css).toContain('--el-font-family: var(--mar-font-sans)');
   expect(css).toContain('--el-font-size-base: var(--mar-font-size-body)');
   expect(css).toContain('--mar-font-size-input: var(--mar-font-size-body)');
-  expect(css).toContain('--mar-font-size-input: 1rem');
+  expect(css).toContain('--mar-font-size-input: 0.875rem');
+  expect(css).not.toContain('--mar-font-size-input: 1rem');
   expect(css).not.toContain('--mar-font-size-nav-label');
   expect(css).toContain('font-size: var(--mar-font-size-input)');
   const root = fileURLToPath(new URL('../../src/view/', import.meta.url));
