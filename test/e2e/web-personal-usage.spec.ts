@@ -216,8 +216,25 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const categoryFontSize = await categories.evaluate((element) =>
       getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
     );
-    for (const button of await categories.getByRole('button').all())
+    for (const button of await categories.getByRole('button').all()) {
       await expect(button).toHaveCSS('font-size', categoryFontSize);
+      await expect(button).toHaveCSS('border-radius', '6px');
+      await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    }
+    const selectedCategory = categories.locator('[aria-pressed="true"]');
+    const selectedBackground = await selectedCategory.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    expect(selectedBackground).not.toBe('rgba(0, 0, 0, 0)');
+    await selectedCategory.hover();
+    await expect(selectedCategory).toHaveCSS('background-color', selectedBackground);
+    await selectedCategory.focus();
+    await page.keyboard.press('Tab');
+    const nextCategory = categories.getByRole('button').nth(1);
+    await expect(nextCategory).toBeFocused();
+    await expect(nextCategory).toHaveCSS('outline-style', 'solid');
+    await expect(nextCategory).toHaveCSS('outline-width', '2px');
+    await expect(nextCategory).toHaveAttribute('aria-pressed', 'false');
     await categories.screenshot({ path: testInfo.outputPath('usage-category-labels.png') });
     const panelLayout = await panel.evaluate((element) => {
       const parent = element.parentElement!;

@@ -735,7 +735,8 @@ onUnmounted(() => {
 }
 .usage-purposes button {
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--mar-border-default);
+  border: 1px solid transparent;
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;
@@ -743,14 +744,17 @@ onUnmounted(() => {
   line-height: 1.5;
   cursor: pointer;
 }
+.usage-purposes button:hover {
+  color: var(--mar-text-primary);
+  background: var(--mar-fill-muted);
+}
 .usage-purposes button:focus-visible {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
 .usage-purposes button[aria-pressed='true'] {
-  color: var(--mar-text-primary);
-  border-color: var(--mar-text-primary);
-  background: var(--mar-fill-hover);
+  color: var(--mar-color-brand-text);
+  background: var(--mar-color-brand-selected);
 }
 
 .usage {
