@@ -266,6 +266,64 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   }
 });
 
+for (const scheme of ['Light', 'Dark']) {
+  test(
+    'theme helper and action controls share standard hover states in ' + scheme,
+    async ({ page }, testInfo) => {
+      const options = page.locator('.theme-option');
+      if (scheme === 'Light')
+        await options.nth(1).getByRole('button', { name: 'Apply theme', exact: true }).click();
+      const palette = await page.locator('html').evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          utility: style.getPropertyValue('--mar-color-brand-text').trim(),
+          link: style.getPropertyValue('--mar-control-link-hover').trim()
+        };
+      });
+      const help = page.getByRole('button', { name: 'Theme color reference', exact: true });
+      const more = options.first().getByRole('button', { name: /^More actions for / });
+      for (const control of [help, more]) {
+        await expect(control).toHaveAttribute(
+          'title',
+          (await control.getAttribute('aria-label')) ?? ''
+        );
+        await control.hover();
+        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+        await expect
+          .poll(async () =>
+            resolvedColorToHex(await control.evaluate((element) => getComputedStyle(element).color))
+          )
+          .toBe(palette.utility);
+      }
+      const apply = options
+        .nth(scheme === 'Light' ? 0 : 1)
+        .getByRole('button', { name: 'Apply theme', exact: true });
+      await apply.hover();
+      await expect(apply).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect
+        .poll(async () =>
+          resolvedColorToHex(await apply.evaluate((element) => getComputedStyle(element).color))
+        )
+        .toBe(palette.link);
+      await help.focus();
+      await help.press('Enter');
+      const dialog = page.getByRole('dialog', { name: 'Theme color reference', exact: true });
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await more.focus();
+      await more.press('Enter');
+      await expect(page.getByRole('menuitem', { name: 'Duplicate', exact: true })).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath('theme-actions-' + scheme + '.png'),
+        animations: 'disabled'
+      });
+      await page.keyboard.press('Escape');
+    }
+  );
+}
+
 test('theme choices apply immediately without replacing an unsaved draft', async ({
   page
 }, testInfo) => {

@@ -278,6 +278,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         <div class="theme-controls">
           <el-button
             link
+            type="primary"
             :icon="Check"
             :disabled="service.theme.value === item.id"
             @click="applyTheme(item)"
@@ -286,9 +287,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           </el-button>
           <el-dropdown trigger="click" @command="themeAction(item, $event)">
             <el-button
+              class="utility-control"
               text
               :icon="MoreFilled"
               :aria-label="t('customThemes.moreActions', { name: item.name })"
+              :title="t('customThemes.moreActions', { name: item.name })"
             />
             <template #dropdown>
               <el-dropdown-menu>

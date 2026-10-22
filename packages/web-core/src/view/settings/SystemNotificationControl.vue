@@ -31,7 +31,17 @@ const blocked = computed(
           }}
         </h3>
         <p role="status">
-          {{ translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`) }}
+          <el-tag
+            v-if="service.status.value === 'enabled' || service.status.value === 'disabled'"
+            :type="service.status.value === 'enabled' ? 'success' : 'info'"
+            effect="plain"
+            >{{
+              translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
+            }}</el-tag
+          >
+          <template v-else>{{
+            translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
+          }}</template>
         </p>
         <p v-if="service.mode === 'mobile-push'" role="status">
           {{ translate(`workbenchNotificationCenter.webPush.${service.pushStatus.value}`) }}
@@ -40,6 +50,7 @@ const blocked = computed(
       <div class="notification-channel-actions">
         <el-button
           link
+          type="primary"
           :icon="service.enabled.value ? SwitchButton : Bell"
           :loading="service.requesting.value"
           :disabled="blocked"
@@ -64,6 +75,7 @@ const blocked = computed(
             ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
           "
           link
+          type="primary"
           :icon="Bell"
           @click="service.enablePush()"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button

@@ -144,6 +144,9 @@ for (const language of [
     });
     await expect(settingsPanel.locator('p.account-summary')).toHaveText([language.summary]);
     await expect(settingsPanel.getByRole('status').first()).toHaveText(language.disabled);
+    await expect(settingsPanel.getByRole('status').first().locator('.el-tag')).toHaveClass(
+      /el-tag--info/
+    );
     const enable = page.getByRole('button', { name: language.enable, exact: true });
     await enable.click();
     await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
