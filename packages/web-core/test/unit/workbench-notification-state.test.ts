@@ -729,6 +729,34 @@ describe('Web Workbench notification state', () => {
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
+  it.each(['STARTING', 'RUNNING', 'CANCELLING'] as const)(
+    'keeps the last session with a %s Run unless an unread session takes priority',
+    async (status) => {
+      const f = recoveryFixture([]);
+      f.server.recentRuns = [
+        { ...workspaceRun(), runId: 'newer', sessionId: 'newer', sortAt: 200 },
+        { ...workspaceRun(status), runId: 'last', sessionId: 'last', sortAt: 100 }
+      ];
+      await f.state.load();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('last');
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'idle')).toBe('newer');
+      expect(f.state.workspaceTabSession('node-2', 'workspace-1', 'last')).toBeUndefined();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-2', 'last')).toBeUndefined();
+
+      f.server.entries = [notification('unread', 'unread-session')];
+      await f.state.load();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('unread-session');
+      await f.state.markSessionRead('node-1', 'workspace-1', 'unread-session');
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('last');
+
+      f.server.recentRuns = f.server.recentRuns.map((run) =>
+        run.sessionId === 'last' ? { ...run, status: 'SUCCEEDED' as const } : run
+      );
+      await f.state.load();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('newer');
+    }
+  );
+
   it('keeps Workspace activity independent of remaining unread sessions through authoritative refreshes', async () => {
     let entries = [notification('first', 'session-1'), notification('second', 'session-2')];
     let runs: RecentRun[] = [

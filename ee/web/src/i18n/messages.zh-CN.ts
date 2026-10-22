@@ -1,4 +1,3 @@
-import { marketingZhCN } from './marketing.zh-CN.js';
 import { hostingManagementZhCN } from '@myagentroam/web-core/hosting-management-messages';
 import { templateManagementZhCN } from '@myagentroam/web-core/template-management-messages';
 import { resourceDetailsZhCN } from '@myagentroam/web-core/resource-details-messages';
@@ -960,6 +959,5 @@ export const zhCN = {
     skillUnavailableToken: composerZhCN.composer.skillUnavailableToken,
     skillUnavailable: composerZhCN.composer.skillUnavailable
   },
-  inlineFind: filePreviewZhCN.inlineFind,
-  marketing: marketingZhCN
+  inlineFind: filePreviewZhCN.inlineFind
 } as const;

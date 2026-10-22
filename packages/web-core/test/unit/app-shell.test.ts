@@ -24,10 +24,18 @@ describe('shared product application shell', () => {
     ['', false, 'touch', true],
     ['', false, '', true],
     ['', false, 'touch', false],
-    ['', true, '', false]
+    ['', true, '', false],
+    ['?node=node-1&workspace=workspace-1', true, 'mouse', false, '/'],
+    ['?next=https%3A%2F%2Fexample.com', true, 'mouse', false, '/index.html']
   ] as const)(
     'applies native context menu policy (search=%s, prevented=%s, pointerType=%s, touchDevice=%s)',
-    (search, prevented, pointerType = 'mouse', touchDevice = false) => {
+    (
+      search,
+      prevented,
+      pointerType = 'mouse',
+      touchDevice = false,
+      pathname: string = '/console'
+    ) => {
       const documentTarget = Object.assign(new EventTarget(), {
         documentElement: {
           lang: '',
@@ -37,11 +45,16 @@ describe('shared product application shell', () => {
         },
         getElementById: () => null
       });
-      vi.stubGlobal('location', { pathname: '/console', search });
+      vi.stubGlobal('location', { pathname, search, hash: '#context' });
       vi.stubGlobal('document', documentTarget);
       vi.stubGlobal('HTMLElement', class {});
       vi.stubGlobal('localStorage', { getItem: () => null });
-      vi.stubGlobal('window', { matchMedia: () => ({ matches: touchDevice }) });
+      const replaceState = vi.fn();
+      const historyState = { existing: 'fixture' };
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: touchDevice }),
+        history: { state: historyState, replaceState }
+      });
       const renderer = createRenderer<object, object>({
         patchProp() {},
         insert() {},
@@ -59,7 +72,6 @@ describe('shared product application shell', () => {
       const app = renderer.createApp(
         { ...AppShell, render: () => null },
         {
-          home: page,
           workbench: page,
           filePreview: page
         }
@@ -67,6 +79,9 @@ describe('shared product application shell', () => {
       app.use(i18n).use(ElementPlus);
       app.provide(ssrContextKey, {});
       app.mount({});
+      if (pathname === '/' || pathname === '/index.html')
+        expect(replaceState).toHaveBeenCalledWith(historyState, '', `/console${search}#context`);
+      else expect(replaceState).not.toHaveBeenCalled();
       try {
         const event = Object.assign(new Event('contextmenu', { cancelable: true }), {
           pointerType
@@ -126,7 +141,12 @@ describe('shared product application shell', () => {
     async (available) => {
       vi.stubGlobal('location', { pathname: '/', search: '' });
       vi.stubGlobal('document', {
-        documentElement: { lang: '', classList: { toggle: vi.fn() } }
+        documentElement: {
+          lang: '',
+          classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() },
+          setAttribute: vi.fn(),
+          removeAttribute: vi.fn()
+        }
       });
       const page = defineComponent({
         setup() {
@@ -135,7 +155,6 @@ describe('shared product application shell', () => {
         }
       });
       const app = createSSRApp(AppShell, {
-        home: page,
         workbench: page,
         filePreview: page,
         documentationAvailable: available
@@ -146,20 +165,18 @@ describe('shared product application shell', () => {
   );
 
   it.each([
-    ['/', '', 'home', false, false],
-    ['/index.html', '?standaloneFile=1', 'home', false, false],
-    ['/console', '', 'workbench', true, false],
-    ['/console', '?standaloneFile=1', 'workbench', true, false],
-    ['/console', '?standaloneFile=1&markdownPreview=1', 'preview', true, false],
-    ['/console', '?standaloneFile=1&htmlPreview=1', 'preview', true, false],
-    ['/console', '?htmlPreview=1', 'workbench', true, false],
-    ['/', '', 'workbench', true, true],
-    ['/index.html', '?standaloneFile=1', 'workbench', true, true],
-    ['/index.html', '?standaloneFile=1&markdownPreview=1', 'preview', true, true],
-    ['/index.html', '?standaloneFile=1&htmlPreview=1', 'preview', true, true]
+    ['/', '', 'workbench'],
+    ['/index.html', '?standaloneFile=1', 'workbench'],
+    ['/console', '', 'workbench'],
+    ['/console', '?standaloneFile=1', 'workbench'],
+    ['/console', '?standaloneFile=1&markdownPreview=1', 'preview'],
+    ['/console', '?standaloneFile=1&htmlPreview=1', 'preview'],
+    ['/console', '?htmlPreview=1', 'workbench'],
+    ['/index.html', '?standaloneFile=1&markdownPreview=1', 'preview'],
+    ['/index.html', '?standaloneFile=1&htmlPreview=1', 'preview']
   ] as const)(
     'composes %s%s without initializing unselected pages',
-    async (pathname, search, target, consoleUi, rootWorkbench) => {
+    async (pathname, search, target) => {
       const toggle = vi.fn();
       const getItem = vi.fn(() => null);
       vi.stubGlobal('location', { pathname, search });
@@ -181,8 +198,6 @@ describe('shared product application shell', () => {
           }
         });
       const app = createSSRApp(AppShell, {
-        home: page('home'),
-        rootWorkbench,
         workbench: page('workbench'),
         filePreview: page('preview')
       });
@@ -191,21 +206,25 @@ describe('shared product application shell', () => {
       const html = await renderToString(app);
       expect(html).toContain(`data-page="${target}"`);
       expect(selected).toEqual([target]);
-      expect(toggle).toHaveBeenCalledWith('console-ui', consoleUi);
-      if (!consoleUi) expect(getItem).not.toHaveBeenCalled();
+      expect(toggle).toHaveBeenCalledWith('console-ui', true);
     }
   );
 
   it.each(['zh-CN', 'en-US'] as const)('shares the product locale (%s)', async (locale) => {
     vi.stubGlobal('location', { pathname: '/', search: '' });
     vi.stubGlobal('document', {
-      documentElement: { lang: '', classList: { toggle: vi.fn() } }
+      documentElement: {
+        lang: '',
+        classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() },
+        setAttribute: vi.fn(),
+        removeAttribute: vi.fn()
+      }
     });
     localePreferenceService().setLocale(locale);
     const page = defineComponent({
       setup: () => () => h('div', i18n.global.locale.value)
     });
-    const app = createSSRApp(AppShell, { home: page, workbench: page, filePreview: page });
+    const app = createSSRApp(AppShell, { workbench: page, filePreview: page });
     app.use(i18n);
     app.use(ElementPlus);
     expect(await renderToString(app)).toContain(locale);

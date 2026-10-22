@@ -15,6 +15,7 @@ const props = defineProps<{
 }>();
 const service = new PersonalGitService(props.request);
 const preserve = ref(false);
+const includeParent = ref<boolean>();
 const loading = ref(false);
 const saving = ref(false);
 const loaded = ref(false);
@@ -30,6 +31,7 @@ watch(
 async function load(): Promise<void> {
   const current = ++generation;
   preserve.value = props.initialValue ?? false;
+  includeParent.value = undefined;
   loaded.value = false;
   loading.value = false;
   saving.value = false;
@@ -39,6 +41,7 @@ async function load(): Promise<void> {
     const result = await service.workspacePolicy(props.nodeId, props.workspaceId);
     if (current !== generation) return;
     preserve.value = result.preserveGitConfig;
+    includeParent.value = result.includeParentRepository;
     loaded.value = true;
   } catch (error) {
     if (current === generation) ElMessage.error(errorMessage(error));
@@ -54,10 +57,12 @@ async function save(): Promise<void> {
     const result = await service.saveWorkspacePolicy(
       props.nodeId,
       props.workspaceId,
-      preserve.value
+      preserve.value,
+      includeParent.value
     );
     if (current === generation) {
       preserve.value = result.preserveGitConfig;
+      includeParent.value = result.includeParentRepository;
       ElMessage.success(t('personalGit.saved'));
     }
   } catch (error) {
@@ -76,6 +81,12 @@ async function save(): Promise<void> {
         <el-checkbox v-if="loaded" v-model="preserve" :disabled="!writable || saving">{{
           t('personalGit.preserve')
         }}</el-checkbox>
+        <el-checkbox
+          v-if="loaded && includeParent !== undefined"
+          v-model="includeParent"
+          :disabled="!writable || saving"
+          >{{ t('personalGit.includeParent') }}</el-checkbox
+        >
         <el-button
           v-if="writable"
           type="primary"
@@ -86,6 +97,9 @@ async function save(): Promise<void> {
         >
       </div>
       <p class="workspace-git-hint">{{ t('personalGit.preserveHint') }}</p>
+      <p v-if="includeParent !== undefined" class="workspace-git-hint">
+        {{ t('personalGit.includeParentHint') }}
+      </p>
       <el-button v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</el-button>
     </template>
   </section>

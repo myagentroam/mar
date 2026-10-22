@@ -57,6 +57,9 @@ export const personalGitEnUS = {
   secretInvalid: 'Enter a token, password, or valid SSH private key.',
   passphraseInvalid: 'Enter a valid private key passphrase.',
   workspaceTitle: 'Workspace Git configuration',
+  includeParent: 'Use parent Git repository',
+  includeParentHint:
+    'Enabled by default. Git views and restore actions cover the entire containing repository, including files outside this workspace. Files and session directories stay unchanged.',
   preserve: 'Do not override Git parameters',
   preserveHint:
     'When selected, new terminals and Agent executions for everyone using this workspace keep the current environment and repository Git configuration.',

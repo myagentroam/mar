@@ -15,6 +15,10 @@
 </p>
 <p align="center"><sub>Apache-2.0 core · source-available product/EE · <a href="LICENSING.md">Exact licensing scope</a></sub></p>
 
+<p align="center">
+  <img src="docs/assets/mio.png" width="160" alt="Mio, the MyAgentRoam mascot, welcoming you" />
+</p>
+
 ![MyAgentRoam development: MAR Agent sessions, recovery checklist, Git changes, context usage, and a live terminal](docs/assets/workbench-hero.en-US.png)
 
 ## Agent First

@@ -39,6 +39,21 @@ const hostExtensions = {
   executeTool: async () => ({ content: 'Action complete' })
 };
 
+function latestTaskMessage(request: ModelRequest) {
+  return request.messages
+    .filter((message) => !(message.role === 'user' && message.contextKind === 'contextual'))
+    .at(-1);
+}
+
+function skillCatalog(request: ModelRequest) {
+  const message = request.messages.findLast(
+    (message) => message.role === 'user' && message.contextualBlock?.id === 'core:skill-catalog'
+  );
+  return message?.role === 'user' && message.contextualBlock?.operation === 'replace'
+    ? message.content
+    : '';
+}
+
 describe('Host-provided skills', () => {
   it('projects host defaults from the selected model without automatically loading or invoking them', async () => {
     const paths = await fixture();
@@ -88,10 +103,8 @@ describe('Host-provided skills', () => {
         configuration,
         async *start(request): AsyncIterable<ModelEvent> {
           requests.push(request);
-          if (
-            request.messages.at(-1)?.role === 'user' &&
-            request.messages.at(-1)?.content === 'Load the image skill directly.'
-          ) {
+          const last = latestTaskMessage(request);
+          if (last?.role === 'user' && last.content === 'Load the image skill directly.') {
             yield {
               type: 'client_tool.call',
               callId: 'load-skill-directly',
@@ -114,15 +127,15 @@ describe('Host-provided skills', () => {
       await expect(
         session.run({ modelId: 'image', prompt: 'Explain what a PNG is.' }).result()
       ).resolves.toMatchObject({ status: 'completed' });
-      expect(requests[0]?.system).toContain('host-workflow');
-      expect(requests[0]?.system).not.toContain('## Host workflow');
+      expect(skillCatalog(requests[0]!)).toContain('host-workflow');
+      expect(skillCatalog(requests[0]!)).not.toContain('## Host workflow');
       expect(requests[0]?.tools.map((tool) => tool.name)).toContain('skill');
       expect(requests[0]?.tools.map((tool) => tool.name)).toContain('host_action');
       host.unbindExecutionMcp(binding);
       await expect(
         session.run({ modelId: 'text', prompt: 'Continue the explanation.' }).result()
       ).resolves.toMatchObject({ status: 'completed' });
-      expect(requests[1]?.system).not.toContain('host-workflow');
+      expect(skillCatalog(requests[1]!)).toBe('');
       expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('skill');
       expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('host_action');
       expect(host.events.filter((event) => event.type === 'tool.started')).toEqual([]);
@@ -146,6 +159,92 @@ describe('Host-provided skills', () => {
         )
       ).toBe(false);
       expect(provider.acquire).not.toHaveBeenCalled();
+    } finally {
+      await agent.dispose();
+    }
+  });
+
+  it('retains loaded guidance across executions and restart while allowing an explicit refresh', async () => {
+    const paths = await fixture();
+    let revision = 1;
+    const load = vi.fn(async () => `## Host workflow\nRevision ${revision}: use host_action.`);
+    const requests: ModelRequest[] = [];
+    const create = async () => {
+      const host = new LocalAgentHost({ homeDirectory: paths.home, workspace: paths.workspace });
+      host.bindExecutionExtensions({
+        ...hostExtensions,
+        skills: [{ ...hostSkill, load }]
+      });
+      return createMarAgent({
+        mode: 'normal',
+        host,
+        models: [
+          {
+            id: 'test',
+            name: 'Test',
+            modelId: 'test-model',
+            protocol: 'OPENAI_RESPONSES',
+            baseUrl: 'https://example.test',
+            apiKey: new SecretValue('unused'),
+            enabled: true,
+            contextWindowTokens: 200_000,
+            maxOutputTokens: 4096,
+            inputCapabilities: ['TEXT'],
+            outputCapabilities: ['TEXT'],
+            reasoningEfforts: ['medium']
+          }
+        ],
+        adapterFactory: (configuration) => ({
+          configuration,
+          async *start(request): AsyncIterable<ModelEvent> {
+            requests.push(request);
+            const last = latestTaskMessage(request);
+            if (last?.role === 'user' && /^(Load|Refresh) the workflow\.$/u.test(last.content)) {
+              yield {
+                type: 'client_tool.call',
+                callId: `load-revision-${revision}`,
+                name: 'skill',
+                arguments: { name: 'host-workflow' }
+              };
+              yield { type: 'completed', reason: 'tool_use' };
+              return;
+            }
+            yield { type: 'text.completed', itemId: 'answer', text: 'Ready.' };
+            yield { type: 'completed', reason: 'completed' };
+          }
+        })
+      });
+    };
+    const bodies = (request: ModelRequest) =>
+      request.messages.flatMap((message) =>
+        message.role === 'tool' && message.name === 'skill' ? [message.content] : []
+      );
+    let agent = await create();
+    try {
+      let session = await agent.createSession({ workspace: paths.workspace, title: 'Skill reuse' });
+      const run = (prompt: string) =>
+        expect(session.run({ prompt }).result()).resolves.toMatchObject({ status: 'completed' });
+      await run('Load the workflow.');
+      expect(load).toHaveBeenCalledTimes(1);
+      await run('Continue using the workflow.');
+      expect(bodies(requests.at(-1)!)).toHaveLength(1);
+      expect(bodies(requests.at(-1)!)[0]).toContain('Revision 1');
+      expect(load).toHaveBeenCalledTimes(1);
+
+      const sessionId = session.id;
+      await agent.dispose();
+      agent = await create();
+      session = await agent.openSession(sessionId);
+      await run('Continue after restart.');
+      expect(bodies(requests.at(-1)!)).toHaveLength(1);
+      expect(bodies(requests.at(-1)!)[0]).toContain('Revision 1');
+      expect(load).toHaveBeenCalledTimes(1);
+
+      revision = 2;
+      await run('Refresh the workflow.');
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(bodies(requests.at(-1)!)).toHaveLength(2);
+      expect(bodies(requests.at(-1)!).at(-1)).toContain('Revision 2');
     } finally {
       await agent.dispose();
     }

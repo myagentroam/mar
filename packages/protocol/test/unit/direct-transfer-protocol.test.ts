@@ -11,6 +11,31 @@ import {
 } from '../../src/index.js';
 
 describe('workspace direct transfer protocol', () => {
+  it('retains explicit root Git download targets but never accepts them for uploads', () => {
+    const resource = {
+      kind: 'WORKSPACE_FILE',
+      workspaceId: 'w',
+      path: 'same.txt',
+      repositoryPath: ''
+    };
+    const descriptor = {
+      direction: 'DOWNLOAD',
+      resource,
+      fileName: 'same.txt',
+      size: 4,
+      revision: 'rev'
+    };
+    expect(directTransferDescriptorSchema.parse(descriptor).resource).toEqual(resource);
+    expect(
+      directTransferDescriptorSchema.safeParse({
+        direction: 'UPLOAD',
+        resource,
+        fileName: 'same.txt',
+        size: 4,
+        sha256: 'a'.repeat(64)
+      }).success
+    ).toBe(false);
+  });
   it('keeps terminal grants separate from file transfer and rejects extra frames', () => {
     const terminal = {
       type: 'terminal.direct.prepare',

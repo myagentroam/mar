@@ -1,9 +1,11 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-10-12
+lastUpdated: 2026-10-22
 ---
 
 # Git Changes and Diff
+
+When the Workspace is a repository subdirectory, Git uses the containing repository by default. Paths are relative to each repository root and may include files outside the Workspace. Git current-file previews and downloads use that repository target and remain read-only; they never save a same-named Workspace file. Revert affects the file in the listed repository. For ordinary editing, open files inside the Workspace through Files. Disable **Use parent Git repository** in Workspace details when unnecessary; ordinary Files and sessions remain available.
 
 The repository title, branch, and Refresh button share the first row; status tags appear on the second row. When commits are not synchronized, a tag shows `↓ incoming count ↑ outgoing count`, with the upstream and an explanation on hover. Counts are independent of uncommitted file changes and compare only the locally known upstream. The page never automatically runs fetch, pull, or push. The tag is hidden when there is no available upstream, HEAD is detached, or both counts are zero. To update remote information, run your normal Git fetch in the terminal, then refresh the page.
 

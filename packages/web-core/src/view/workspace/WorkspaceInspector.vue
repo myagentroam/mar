@@ -125,6 +125,7 @@ interface FilePreviewContent {
 }
 
 interface PreviewFrame {
+  repositoryPath?: string | undefined;
   readonly id: number;
   readonly fileContent: Ref<FilePreviewContent | undefined>;
   readonly contentUrl: Ref<string | undefined>;
@@ -187,6 +188,7 @@ const props = defineProps<{
   readonly nodeId: string | undefined;
   readonly workspaceId: string | undefined;
   readonly workspaceName: string;
+  readonly workspacePath?: string | undefined;
   readonly workspaceKind: 'DIRECTORY' | 'GIT_WORKSPACE' | undefined;
   readonly csrfToken: string;
   readonly renewCsrfToken: () => Promise<string>;
@@ -206,18 +208,21 @@ const props = defineProps<{
   readonly fileWriteEnabled: boolean;
   readonly directFileDownload?: (
     path: string,
-    worktreePath?: string
+    worktreePath?: string,
+    repositoryPath?: string
   ) => Promise<'COMPLETED' | 'UNAVAILABLE' | 'CANCELLED' | 'FAILED'>;
   readonly directFileObjectUrl?: (
     path: string,
-    worktreePath?: string
+    worktreePath?: string,
+    repositoryPath?: string
   ) => Promise<string | undefined>;
   readonly directFileReadRange?: (
     path: string,
     offset: number,
     length: number,
     worktreePath?: string,
-    identity?: { readonly revision: string; readonly size: number }
+    identity?: { readonly revision: string; readonly size: number },
+    repositoryPath?: string
   ) => Promise<
     | {
         readonly revision: string;
@@ -367,6 +372,7 @@ function recordPredictionAttention(
 ): void {
   if (
     !props.predictionEnabled ||
+    tab.gitFile === true ||
     tab.id !== workspaceFileTabService.activeTabId.value ||
     document.visibilityState !== 'visible' ||
     !document.hasFocus()
@@ -533,6 +539,7 @@ const historyRepositories = computed(() =>
 const previewFileWriteEnabled = (preview: PreviewFrame): boolean =>
   props.fileWriteEnabled &&
   preview.worktreePath.value === undefined &&
+  preview.repositoryPath === undefined &&
   !isComposerAttachmentResourcePath(preview.fileContent.value?.path ?? '');
 const historyRepositorySelection = computed({
   get: () =>
@@ -861,7 +868,8 @@ async function open(
   serverOnly = false,
   stacked = false,
   existingPreview?: PreviewFrame,
-  targetColumn?: number
+  targetColumn?: number,
+  repositoryPath?: string
 ): Promise<void> {
   if (entry.kind === 'DIRECTORY') return;
   if (!ready.value || base.value === undefined) return;
@@ -872,7 +880,8 @@ async function open(
     nodeId: props.nodeId ?? '',
     workspaceId: props.workspaceId ?? '',
     path: entry.path,
-    repositoryPath: '',
+    repositoryPath: repositoryPath ?? '',
+    ...(repositoryPath === undefined ? {} : { gitFile: true }),
     worktreePath: worktreePath ?? '',
     ...(targetLine === undefined ? {} : { targetLine }),
     ...(targetColumn === undefined ? {} : { targetColumn })
@@ -893,6 +902,7 @@ async function open(
   preview.targetLine.value = targetLine;
   preview.targetColumn.value = targetColumn;
   preview.worktreePath.value = worktreePath;
+  preview.repositoryPath = repositoryPath;
   preview.historySource = undefined;
   preview.directIdentity = undefined;
   preview.directReadStarted = false;
@@ -915,13 +925,14 @@ async function open(
       const direct = serverOnly
         ? undefined
         : await readFilePreviewObject(entry.path, async () =>
-            props.directFileObjectUrl?.(entry.path, worktreePath)
+            props.directFileObjectUrl?.(entry.path, worktreePath, repositoryPath)
           );
       if (generation !== inspectorGeneration || requestGeneration !== preview.requestGeneration) {
         if (direct?.startsWith('blob:')) revokeWorkspaceDirectObjectUrl(direct);
         return;
       }
-      preview.contentUrl.value = direct ?? workspaceFileContentUrl(entry.path, worktreePath);
+      preview.contentUrl.value =
+        direct ?? workspaceFileContentUrl(entry.path, worktreePath, false, repositoryPath);
       return;
     }
     const first = await readFilePreview(
@@ -963,7 +974,7 @@ async function open(
       truncated,
       ...(revision === undefined ? {} : { revision })
     };
-    if (encoding === 'utf-8' && worktreePath === undefined)
+    if (encoding === 'utf-8' && worktreePath === undefined && repositoryPath === undefined)
       prewarmCodeNavigation(entry.path, requestBase, requestNodeId);
   } catch (error) {
     if (
@@ -972,7 +983,16 @@ async function open(
       generation === inspectorGeneration &&
       requestGeneration === preview.requestGeneration
     ) {
-      return await open(entry, targetLine, worktreePath, true, stacked, preview, targetColumn);
+      return await open(
+        entry,
+        targetLine,
+        worktreePath,
+        true,
+        stacked,
+        preview,
+        targetColumn,
+        repositoryPath
+      );
     }
     if (
       generation === inspectorGeneration &&
@@ -1005,11 +1025,13 @@ async function open(
 function workspaceFileContentUrl(
   path: string,
   worktreePath = previewWorktreePath.value,
-  download = false
+  download = false,
+  repositoryPath?: string
 ): string {
   if (base.value === undefined) throw new Error('NODE_RESPONSE_INVALID');
   return queryUrl(`${base.value}/files/content`, {
     path,
+    ...(repositoryPath === undefined ? {} : { repositoryPath }),
     ...(worktreePath === undefined ? {} : { worktreePath }),
     ...(download ? { download: '1' } : {})
   });
@@ -1019,6 +1041,7 @@ async function navigateSymbol(symbol: string): Promise<void> {
   const preview = activePreview.value;
   if (
     !props.codeNavigationEnabled ||
+    preview?.repositoryPath !== undefined ||
     base.value === undefined ||
     preview === undefined ||
     preview.fileContent.value === undefined ||
@@ -1277,7 +1300,8 @@ function openWorkspaceFile(
   line?: number,
   worktreePath?: string,
   stacked = false,
-  column?: number
+  column?: number,
+  repositoryPath?: string
 ): Promise<void> {
   const name = path.split('/').at(-1) ?? path;
   return open(
@@ -1287,7 +1311,8 @@ function openWorkspaceFile(
     false,
     stacked,
     undefined,
-    column
+    column,
+    repositoryPath
   );
 }
 
@@ -1388,7 +1413,8 @@ function openWorkspaceFileExternal(
   line?: number,
   column?: number,
   renderedPreview: 'markdown' | 'html' | undefined = undefined,
-  worktreePath?: string
+  worktreePath?: string,
+  repositoryPath?: string
 ): void {
   if (props.nodeId === undefined || props.workspaceId === undefined) return;
   const parameters = new URLSearchParams({
@@ -1397,7 +1423,10 @@ function openWorkspaceFileExternal(
     workspaceId: props.workspaceId,
     path,
     rawContent: '1',
-    ...(props.fileWriteEnabled && worktreePath === undefined ? { write: '1' } : {}),
+    ...(props.fileWriteEnabled && worktreePath === undefined && repositoryPath === undefined
+      ? { write: '1' }
+      : {}),
+    ...(repositoryPath === undefined ? {} : { repositoryPath }),
     ...(worktreePath === undefined ? {} : { worktreePath }),
     ...(renderedPreview === 'markdown' ? { markdownPreview: '1' } : {}),
     ...(renderedPreview === 'html' ? { htmlPreview: '1' } : {}),
@@ -1417,6 +1446,7 @@ function openGitDiffExternal(intent: WorkspaceFileOpenIntent): void {
     nodeId: props.nodeId,
     workspaceId: props.workspaceId,
     fileTabKind: intent.kind,
+    ...(intent.gitFile ? { gitFile: '1' } : {}),
     path: intent.path,
     ...(intent.repositoryPath === '' ? {} : { repositoryPath: intent.repositoryPath }),
     ...(intent.worktreePath === '' ? {} : { worktreePath: intent.worktreePath }),
@@ -1434,9 +1464,16 @@ function openCurrentRenderedPreview(): boolean {
   if (fileContent.value === undefined) return false;
   const path = fileContent.value.path;
   const preview = isMarkdownFile(path) ? 'markdown' : isHtmlFile(path) ? 'html' : undefined;
-  if (preview === undefined) return false;
+  if (preview === undefined || activePreview.value?.repositoryPath !== undefined) return false;
   if (preview === 'html' && activePreview.value?.worktreePath.value !== undefined) return false;
-  openWorkspaceFileExternal(path, previewTargetLine.value, undefined, preview);
+  openWorkspaceFileExternal(
+    path,
+    previewTargetLine.value,
+    undefined,
+    preview,
+    activePreview.value?.worktreePath.value,
+    activePreview.value?.repositoryPath
+  );
   return true;
 }
 
@@ -1792,7 +1829,8 @@ async function restoreWorkspaceFileTabs(): Promise<void> {
         tab.targetLine,
         tab.worktreePath === '' ? undefined : tab.worktreePath,
         true,
-        tab.targetColumn
+        tab.targetColumn,
+        tab.gitFile ? tab.repositoryPath : undefined
       );
       continue;
     }
@@ -1874,7 +1912,8 @@ async function readFileRange(
         offset,
         limit,
         worktreePath,
-        preview.directIdentity
+        preview.directIdentity,
+        preview.repositoryPath
       )
     : undefined;
   if (direct !== undefined) {
@@ -1917,6 +1956,7 @@ async function readFileRange(
         path: filePath,
         offset: String(offset),
         limit: String(limit),
+        ...(preview.repositoryPath === undefined ? {} : { repositoryPath: preview.repositoryPath }),
         ...(worktreePath === undefined ? {} : { worktreePath })
       },
       requestNodeId
@@ -1974,10 +2014,10 @@ async function downloadFile(
   if (path === undefined || !ready.value || base.value === undefined) return;
   if (preview !== undefined) preview.downloading.value = true;
   try {
-    const direct = await props.directFileDownload?.(path, worktreePath);
+    const direct = await props.directFileDownload?.(path, worktreePath, preview?.repositoryPath);
     if (direct !== undefined && direct !== 'UNAVAILABLE') return;
     const anchor = document.createElement('a');
-    anchor.href = workspaceFileContentUrl(path, worktreePath, true);
+    anchor.href = workspaceFileContentUrl(path, worktreePath, true, preview?.repositoryPath);
     anchor.download = path.split('/').at(-1) ?? 'download.txt';
     anchor.click();
   } catch (error) {
@@ -2128,17 +2168,24 @@ function downloadDiffContent(diff: unknown, path: string): void {
 async function openWorktreeDiffText(tab: WorkspaceFileTab): Promise<void> {
   if (tab.kind !== 'WORKTREE_DIFF') return;
   const source = currentFilePosition();
+  const repositoryPath = tab.gitFile
+    ? tab.repositoryPath
+    : gitFileRepositoryPath(tab.repositoryPath, tab.worktreePath || undefined);
   const path =
-    tab.worktreePath === ''
-      ? tab.repositoryPath === ''
-        ? tab.path
-        : `${tab.repositoryPath}/${tab.path}`
-      : tab.path;
+    repositoryPath !== undefined
+      ? tab.path
+      : tab.worktreePath === ''
+        ? tab.repositoryPath === ''
+          ? tab.path
+          : `${tab.repositoryPath}/${tab.path}`
+        : tab.path;
   await openWorkspaceFile(
     path,
     undefined,
     tab.worktreePath === '' ? undefined : tab.worktreePath,
-    true
+    true,
+    undefined,
+    repositoryPath
   );
   const targetId = workspaceFileTabService.activeTabId.value;
   if (targetId !== undefined) recordFileNavigation(source, targetId);
@@ -2581,6 +2628,9 @@ function changeDiffIntent(entry: ChangeEntry): WorkspaceFileOpenIntent {
     .map((candidate) => candidate.path);
   return {
     kind: 'WORKTREE_DIFF',
+    ...(gitFileRepositoryPath(entry.repositoryPath, entry.worktreePath) === undefined
+      ? {}
+      : { gitFile: true }),
     nodeId: props.nodeId ?? '',
     workspaceId: props.workspaceId ?? '',
     path: entry.path,
@@ -2601,25 +2651,35 @@ function refreshFiles(): void {
   void filesRefreshTask.request();
 }
 
+function gitFileRepositoryPath(repositoryPath: string, worktreePath?: string): string | undefined {
+  if (worktreePath !== undefined) return undefined;
+  const root = (changes.value as { repositoryRoot?: unknown } | undefined)?.repositoryRoot;
+  return typeof root === 'string' && (repositoryPath !== '' || root !== props.workspacePath)
+    ? repositoryPath
+    : undefined;
+}
+
 function openChange(entry: ChangeEntry, event?: MouseEvent): void {
+  const repositoryPath = gitFileRepositoryPath(entry.repositoryPath, entry.worktreePath);
+  const path =
+    repositoryPath === undefined && entry.worktreePath === undefined
+      ? workspaceChangePath(entry)
+      : entry.path;
   if (event?.ctrlKey || event?.metaKey) {
     if (entry.diffAvailable) openGitDiffExternal(changeDiffIntent(entry));
     else
       openWorkspaceFileExternal(
-        entry.worktreePath === undefined ? workspaceChangePath(entry) : entry.path,
+        path,
         undefined,
         undefined,
         undefined,
-        entry.worktreePath
+        entry.worktreePath,
+        repositoryPath
       );
     return;
   }
   if (!entry.diffAvailable) {
-    void openWorkspaceFile(
-      entry.worktreePath === undefined ? workspaceChangePath(entry) : entry.path,
-      undefined,
-      entry.worktreePath
-    );
+    void openWorkspaceFile(path, undefined, entry.worktreePath, false, undefined, repositoryPath);
     return;
   }
   void openChangeDiff(entry);
@@ -2676,13 +2736,25 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 function resetGitState(): void {
   inspectorGeneration += 1;
-  appliedChangesWatchRevision = -1;
   if (activeSection.value === 'changes' || activeSection.value === 'history')
     activeSection.value = 'files';
   changes.value = undefined;
   changesRefreshing.value = false;
+  for (const preview of [...filePageFrames.value])
+    if (
+      preview.repositoryPath !== undefined ||
+      preview.worktreePath.value !== undefined ||
+      preview.historySource !== undefined
+    )
+      closeFilePreview(preview);
   for (const tab of workspaceFileTabService.tabs.value)
-    if (tab.kind === 'WORKTREE_DIFF' || tab.kind === 'HISTORY_DIFF')
+    if (
+      tab.gitFile === true ||
+      tab.worktreePath !== '' ||
+      tab.kind === 'WORKTREE_DIFF' ||
+      tab.kind === 'HISTORY_DIFF' ||
+      tab.kind === 'HISTORY_TEXT'
+    )
       workspaceFileTabService.remove(tab.id);
   restoringPath.value = undefined;
   historyRepositoryPath.value = '';
@@ -3132,15 +3204,24 @@ function applySubscriptionSnapshot(snapshot = props.subscriptionSnapshot): void 
     isNewerWatchRevision(snapshot.filesWatchRevision, appliedFilesWatchRevision)
   ) {
     fileTree.applyRootPage(snapshot.files.files);
+    const workspace = filePageWorkspace(snapshot.files.workspace);
+    if (workspace !== undefined) emit('workspace', workspace);
     appliedFilesWatchRevision = appliedWatchRevision(snapshot.filesWatchRevision);
   }
   if (
     snapshot.changes !== undefined &&
-    props.workspaceKind === 'GIT_WORKSPACE' &&
     isNewerWatchRevision(snapshot.changesWatchRevision, appliedChangesWatchRevision)
   ) {
-    changes.value = snapshot.changes;
+    const workspace = filePageWorkspace(
+      (snapshot.changes as { workspace?: unknown } | null)?.workspace
+    );
     appliedChangesWatchRevision = appliedWatchRevision(snapshot.changesWatchRevision);
+    if (workspace !== undefined) emit('workspace', workspace);
+    if ((workspace?.kind ?? props.workspaceKind) !== 'GIT_WORKSPACE') {
+      resetGitState();
+      return;
+    }
+    changes.value = snapshot.changes;
     const branch = currentChangesBranch(snapshot.changes);
     if (branch !== undefined) emit('branch', snapshot.workspaceId, branch);
   }
@@ -3544,7 +3625,10 @@ onBeforeUnmount(revokePreviewObjectUrl);
                   </el-tag>
                 </div>
                 <code
-                  v-if="repository.source === 'WORKTREE' && repository.physicalPath"
+                  v-if="
+                    (repository.source === 'WORKTREE' || repository.source === 'ROOT') &&
+                    repository.physicalPath
+                  "
                   class="repository-physical-path"
                   :title="repository.physicalPath"
                 >
@@ -3875,11 +3959,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
           :kind="previewKindFor(preview)"
           :loading="preview.loading.value"
           :markdown="
+            preview.repositoryPath === undefined &&
             preview.worktreePath.value === undefined &&
             preview.fileContent.value.encoding === 'utf-8' &&
             isMarkdownFile(preview.fileContent.value.path)
           "
           :html="
+            preview.repositoryPath === undefined &&
             preview.worktreePath.value === undefined &&
             preview.fileContent.value.encoding === 'utf-8' &&
             isHtmlFile(preview.fileContent.value.path)
@@ -3891,7 +3977,9 @@ onBeforeUnmount(revokePreviewObjectUrl);
           :target-line="preview.targetLine.value"
           :target-column="preview.targetColumn.value"
           :code-navigation-enabled="
-            codeNavigationEnabled && preview.worktreePath.value === undefined
+            codeNavigationEnabled &&
+            preview.worktreePath.value === undefined &&
+            preview.repositoryPath === undefined
           "
           :navigation-loading="preview.navigationLoading.value"
           :navigation-targets="preview.navigationTargets.value"
@@ -3945,7 +4033,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
         :ref="registerPageHandle"
         v-show="active"
         :active="active"
-        :code-navigation-enabled="codeNavigationEnabled"
+        :code-navigation-enabled="codeNavigationEnabled && tab.gitFile !== true"
         :load="loadDiff"
         @viewed="active && recordPredictionAttention(tab)"
         :tab="tab"

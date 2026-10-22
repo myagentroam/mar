@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { GitCommandError, resolveWorkspaceGitRoot } from '../workspace.js';
 
 const MAR_TEMP_DIRECTORY = '/.mar/';
 const BLOCK_BEGIN = '# BEGIN MyAgentRoam';
@@ -10,57 +11,114 @@ const BLOCK_END = '# END MyAgentRoam';
 const LEGACY_BLOCK_BEGIN = '# BEGIN MyAgentRoam Skills';
 const LEGACY_BLOCK_END = '# END MyAgentRoam Skills';
 
-export async function ensureWorkspaceGitExclude(workspace: string): Promise<void> {
-  await mutateGitExclude(workspace, () => undefined);
+export async function ensureWorkspaceGitExclude(
+  workspace: string,
+  includeParentRepository = true
+): Promise<void> {
+  await mutateGitExclude(workspace, () => undefined, includeParentRepository);
 }
 
 export async function updateWorkspaceSkillGitExclude(
   workspace: string,
   name: string,
-  add: boolean
+  add: boolean,
+  includeParentRepository = true
 ): Promise<void> {
-  await mutateGitExclude(workspace, (entries) => {
-    for (const root of ['.agents', '.claude']) {
-      const line = `/${root}/skills/${name}/`;
-      if (add) entries.add(line);
-      else entries.delete(line);
-    }
-  });
+  await mutateGitExclude(
+    workspace,
+    (entries, prefix) => {
+      for (const root of ['.agents', '.claude']) {
+        const line = `${prefix}${root}/skills/${name}/`;
+        if (add) entries.add(line);
+        else entries.delete(line);
+      }
+    },
+    includeParentRepository
+  );
 }
 
 export async function rewriteWorkspaceGitExclude(
   workspace: string,
-  names: ReadonlySet<string>
+  names: ReadonlySet<string>,
+  includeParentRepository = true
 ): Promise<void> {
-  await mutateGitExclude(workspace, (entries) => {
-    entries.clear();
-    for (const name of names)
-      for (const root of ['.agents', '.claude']) entries.add(`/${root}/skills/${name}/`);
-  });
+  await mutateGitExclude(
+    workspace,
+    (entries, prefix) => {
+      for (const entry of entries)
+        if (['.agents', '.claude'].some((root) => entry.startsWith(`${prefix}${root}/skills/`)))
+          entries.delete(entry);
+      for (const name of names)
+        for (const root of ['.agents', '.claude']) entries.add(`${prefix}${root}/skills/${name}/`);
+    },
+    includeParentRepository
+  );
 }
 
 export async function hasBrokenWorkspaceSkillGitExclude(
   workspace: string,
-  names: readonly string[]
+  names: readonly string[],
+  includeParentRepository = true
 ): Promise<boolean> {
-  if (!(await exists(path.join(workspace, '.git')))) return false;
   try {
-    const exclude = await resolveGitExclude(workspace);
+    const target = await gitExcludeTarget(workspace, includeParentRepository);
+    if (target === undefined) return false;
+    const { exclude, prefix } = target;
     const content = await readFile(exclude, 'utf8');
     return names
-      .flatMap((name) => [`/.agents/skills/${name}/`, `/.claude/skills/${name}/`])
+      .flatMap((name) => [`${prefix}.agents/skills/${name}/`, `${prefix}.claude/skills/${name}/`])
       .some((entry) => !content.includes(entry));
   } catch {
     return true;
   }
 }
 
+const mutationTails = new Map<string, Promise<void>>();
+
+async function gitExcludeTarget(workspace: string, includeParentRepository: boolean) {
+  let root: string;
+  try {
+    root = await resolveWorkspaceGitRoot(workspace, includeParentRepository);
+  } catch (error) {
+    if (
+      (error instanceof GitCommandError && error.code === 128) ||
+      (error instanceof Error && error.message === 'WORKSPACE_NOT_GIT') ||
+      (error as NodeJS.ErrnoException).code === 'ENOENT'
+    )
+      return undefined;
+    throw error;
+  }
+  const relative = path
+    .relative(root, await realpath(workspace))
+    .split(path.sep)
+    .join('/');
+  const escaped = relative.replace(/[\\*?\[\]#! ]/g, '\\$&');
+  return { exclude: await resolveGitExclude(root), prefix: relative === '' ? '/' : `/${escaped}/` };
+}
+
 async function mutateGitExclude(
   workspace: string,
+  mutate: (entries: Set<string>, prefix: string) => void,
+  includeParentRepository: boolean
+): Promise<void> {
+  const target = await gitExcludeTarget(workspace, includeParentRepository);
+  if (target === undefined) return;
+  const { exclude, prefix } = target;
+  const request = (mutationTails.get(exclude) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => writeGitExclude(exclude, (entries) => mutate(entries, prefix)));
+  mutationTails.set(exclude, request);
+  try {
+    await request;
+  } finally {
+    if (mutationTails.get(exclude) === request) mutationTails.delete(exclude);
+  }
+}
+
+async function writeGitExclude(
+  exclude: string,
   mutate: (entries: Set<string>) => void
 ): Promise<void> {
-  if (!(await exists(path.join(workspace, '.git')))) return;
-  const exclude = await resolveGitExclude(workspace);
   await mkdir(path.dirname(exclude), { recursive: true });
   let content = '';
   try {
@@ -73,7 +131,7 @@ async function mutateGitExclude(
   }
   const pattern = managedBlockPattern();
   const existing = [...content.matchAll(pattern)].map((match) => match[0]).join('\n');
-  const entries = new Set(existing.split(/\r?\n/u).filter((line) => line.startsWith('/.')));
+  const entries = new Set(existing.split(/\r?\n/u).filter((line) => line.startsWith('/')));
   entries.delete(MAR_TEMP_DIRECTORY);
   mutate(entries);
   const block =
@@ -107,16 +165,6 @@ async function resolveGitExclude(workspace: string): Promise<string> {
     return exclude;
   } catch {
     throw new Error('WORKSPACE_SKILL_GIT_EXCLUDE_FAILED');
-  }
-}
-
-async function exists(value: string): Promise<boolean> {
-  try {
-    await lstat(value);
-    return true;
-  } catch (error) {
-    if (isMissing(error)) return false;
-    throw error;
   }
 }
 

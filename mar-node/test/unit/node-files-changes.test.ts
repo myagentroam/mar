@@ -594,6 +594,44 @@ describe('Node Files and Changes fixed operations', () => {
     database.close();
   });
 
+  it.each(['workspace.file.read', 'workspace.file.content.read', 'workspace.file.direct.metadata'])(
+    'rejects sandbox absolute aliases for explicit repository targets in %s',
+    async (name) => {
+      const root = await temporaryDirectory();
+      const repository = join(root, 'repo');
+      await mkdir(repository);
+      await git(repository, ['init', '-b', 'main']);
+      const outside = join(root, 'outside file.txt');
+      await writeFile(outside, 'outside repository');
+      await writeFile(join(repository, 'inside.txt'), 'inside repository');
+      const database = new NodeDatabase(':memory:', 'node-repository-preview-boundary');
+      const workspace = database.saveWorkspace({
+        path: repository,
+        kind: 'GIT_WORKSPACE',
+        gitSummary: null
+      });
+      const connector = connectorFor(database, [repository]);
+      try {
+        await expect(
+          operation(connector, name, {
+            workspaceId: workspace.id,
+            repositoryPath: '',
+            path: 'inside.txt'
+          })
+        ).resolves.toMatchObject({ file: { size: 17 } });
+        await expect(
+          operation(connector, name, {
+            workspaceId: workspace.id,
+            repositoryPath: '',
+            path: `sandbox:${outside.replace(' ', '%20')}`
+          })
+        ).rejects.toThrow('FILE_PATH_ESCAPE');
+      } finally {
+        await connector.stop();
+      }
+    }
+  );
+
   it('supports absolute and sandbox read-only previews outside Node roots without expanding mutations', async () => {
     const temporaryRoot = await temporaryDirectory();
     const workspaceRoot = join(temporaryRoot, 'workspace');
@@ -1583,10 +1621,11 @@ describe('Node Files and Changes fixed operations', () => {
         })
       ).rejects.toThrow('GIT_REPOSITORY_INVALID');
       const operationCommands = await recorder.read();
+      // Absolute file paths fail before Git lookup; the seven relative targets still revalidate membership.
       expect(
         operationCommands.filter((command) => command.arguments === 'worktree list --porcelain -z')
           .length
-      ).toBeGreaterThanOrEqual(8);
+      ).toBeGreaterThanOrEqual(7);
     } finally {
       recorder.restore();
       database.close();
@@ -1642,22 +1681,27 @@ describe('Node Files and Changes fixed operations', () => {
   });
 
   it('discovers recursive submodules once and does not repeat status for child-repository Changes and History', async () => {
+    const commit = (cwd: string, ...args: string[]) =>
+      git(cwd, [
+        '-c',
+        'user.email=test@example.invalid',
+        '-c',
+        'user.name=Test',
+        'commit',
+        ...args
+      ]);
     const repository = await temporaryDirectory();
     const submoduleSource = await temporaryDirectory();
     const nestedSubmoduleSource = await temporaryDirectory();
     await git(nestedSubmoduleSource, ['init', '-b', 'main']);
-    await git(nestedSubmoduleSource, ['config', 'user.email', 'test@example.invalid']);
-    await git(nestedSubmoduleSource, ['config', 'user.name', 'Test']);
     await writeFile(join(nestedSubmoduleSource, 'nested.txt'), 'nested-base');
     await git(nestedSubmoduleSource, ['add', 'nested.txt']);
-    await git(nestedSubmoduleSource, ['commit', '-m', 'nested base']);
+    await commit(nestedSubmoduleSource, '-m', 'nested base');
 
     await git(submoduleSource, ['init', '-b', 'main']);
-    await git(submoduleSource, ['config', 'user.email', 'test@example.invalid']);
-    await git(submoduleSource, ['config', 'user.name', 'Test']);
     await writeFile(join(submoduleSource, 'child.txt'), 'child-base');
     await git(submoduleSource, ['add', 'child.txt']);
-    await git(submoduleSource, ['commit', '-m', 'child base']);
+    await commit(submoduleSource, '-m', 'child base');
     await git(submoduleSource, [
       '-c',
       'protocol.file.allow=always',
@@ -1666,14 +1710,12 @@ describe('Node Files and Changes fixed operations', () => {
       nestedSubmoduleSource,
       'deps/nested'
     ]);
-    await git(submoduleSource, ['commit', '-am', 'add nested']);
+    await commit(submoduleSource, '-am', 'add nested');
 
     await git(repository, ['init', '-b', 'main']);
-    await git(repository, ['config', 'user.email', 'test@example.invalid']);
-    await git(repository, ['config', 'user.name', 'Test']);
     await writeFile(join(repository, 'root.txt'), 'root-base');
     await git(repository, ['add', 'root.txt']);
-    await git(repository, ['commit', '-m', 'root base']);
+    await commit(repository, '-m', 'root base');
     await git(repository, [
       '-c',
       'protocol.file.allow=always',
@@ -1682,7 +1724,7 @@ describe('Node Files and Changes fixed operations', () => {
       submoduleSource,
       'modules/child'
     ]);
-    await git(repository, ['commit', '-am', 'add child']);
+    await commit(repository, '-am', 'add child');
     await git(repository, [
       '-c',
       'protocol.file.allow=always',

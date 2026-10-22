@@ -43,6 +43,7 @@ const workspaceFileResourceSchema = z
     kind: z.literal('WORKSPACE_FILE'),
     workspaceId: resourceIdentifierSchema,
     path: relativePathSchema,
+    repositoryPath: z.string().max(4096).optional(),
     worktreePath: relativePathSchema.optional()
   })
   .strict();
@@ -85,6 +86,16 @@ const directUploadDescriptorSchema = directTransferDescriptorBaseSchema
   })
   .strict()
   .superRefine((descriptor, context) => {
+    if (
+      descriptor.resource.kind === 'WORKSPACE_FILE' &&
+      (descriptor.resource.repositoryPath !== undefined ||
+        descriptor.resource.worktreePath !== undefined)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['resource'],
+        message: 'Git file targets are read-only'
+      });
     if (descriptor.resumeOffset !== undefined && descriptor.resumeOffset > descriptor.size)
       context.addIssue({
         code: 'custom',

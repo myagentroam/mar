@@ -34,12 +34,20 @@ export class PersonalGitService {
       await this.request(this.policyPath(nodeId, workspaceId), { cache: 'no-store' })
     );
   }
-  async saveWorkspacePolicy(nodeId: string, workspaceId: string, preserveGitConfig: boolean) {
+  async saveWorkspacePolicy(
+    nodeId: string,
+    workspaceId: string,
+    preserveGitConfig: boolean,
+    includeParentRepository?: boolean
+  ) {
     return workspaceGitSettingsSchema.parse(
       await this.request(this.policyPath(nodeId, workspaceId), {
         method: 'PUT',
         cache: 'no-store',
-        body: JSON.stringify({ preserveGitConfig })
+        body: JSON.stringify({
+          preserveGitConfig,
+          ...(includeParentRepository === undefined ? {} : { includeParentRepository })
+        })
       })
     );
   }

@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { createWorkbenchWorkspaceTreeController } from '../../ee/web/src/service/WorkbenchWorkspaceTreeController.js';
 import { createWorkbenchLiveService as publicLiveService } from '../../packages/web-core/src/service/WorkbenchLiveService';
@@ -499,7 +499,7 @@ describe('single shared Web implementation', () => {
     expect(adapter).toContain("from '@myagentroam/web-core/live'");
     expect(adapter).not.toMatch(/new WebSocket|setInterval|addEventListener/u);
     expect(read(`${root}/src/service/WorkbenchLiveService.ts`)).toContain(
-      "new URL('/api/workbench/live', window.location.origin)"
+      "new URL(options.endpoint?.() ?? '/api/workbench/live', window.location.origin)"
     );
   });
 
@@ -659,11 +659,13 @@ describe('single shared Web implementation', () => {
 
   it('maps the shared Workspace activation intent to the enterprise navigation identity', async () => {
     const view = ref('conversations');
+    const closeMobileSidebar = vi.fn();
     const tree = createWorkbenchWorkspaceTreeController({
       workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
       nodes: ref([{ id: 'node-1', connected: true, disabled: false }]),
       workspaces: ref([{ id: 'workspace-1' }]),
       view,
+      closeMobileSidebar,
       activateWorkspace: async () => true
     } as never);
     await tree.activateWorkspaceTab({
@@ -674,6 +676,7 @@ describe('single shared Web implementation', () => {
       lastActiveAt: 1
     });
     expect(view.value).toBe('nodes');
+    expect(closeMobileSidebar).toHaveBeenCalledOnce();
   });
 
   it('keeps Workspace selection, tree and cache controllers public without product page identifiers', () => {

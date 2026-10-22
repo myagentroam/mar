@@ -71,7 +71,7 @@ describe('Web theme preference', () => {
 
   it('uses the shared neutral daylight palette with accessible interactive and text colors', () => {
     const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    const daylight = styleDeclarations(source, ':root')[0]!;
+    const daylight = styleDeclarations(source, ':root').find((rule) => '--mar-bg-page' in rule)!;
 
     expect(daylight['--mar-bg-page']).toBe('#f3f6f9');
     expect(daylight['--mar-bg-panel']).toBe('#ffffff');
@@ -257,7 +257,9 @@ describe('Web theme preference', () => {
       return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
     };
     for (const selector of themes) {
-      const declarations = styleDeclarations(source, selector)[0]!;
+      const declarations = styleDeclarations(source, selector).find(
+        (rule) => '--mar-conversation-canvas' in rule
+      )!;
       const tokens = new Map(
         Object.entries(declarations)
           .filter(([name]) => name.startsWith('--mar-conversation-'))

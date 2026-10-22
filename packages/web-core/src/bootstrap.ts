@@ -11,8 +11,6 @@ import {
 import './styles.css';
 
 export interface ConsoleComposition {
-  readonly home: Component;
-  readonly rootWorkbench?: boolean;
   readonly documentationAvailable?: boolean;
   readonly workbench: Component;
   readonly filePreview: Component;

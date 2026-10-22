@@ -1,4 +1,4 @@
-import { rmdir } from 'node:fs/promises';
+import { realpath, rmdir } from 'node:fs/promises';
 import type { NodeConfig } from '../config.js';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import type { NodeDatabase } from '../database.js';
@@ -16,7 +16,8 @@ export class WorkspaceService {
     private readonly database: () => NodeDatabase,
     private readonly config: () => NodeConfig,
     private readonly runtime: NodeRuntimeState,
-    private readonly onRemoved: (workspaceId: string) => void
+    private readonly onRemoved: (workspaceId: string) => void,
+    private readonly onGitPolicyChanged: (workspaceId: string) => void = () => undefined
   ) {}
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
@@ -47,14 +48,36 @@ export class WorkspaceService {
               this.config().allowedRoots
             ))
           : input.path;
-      const inspected = await inspectWorkspace(path, this.config().allowedRoots);
-      await ensureWorkspaceGitExclude(inspected.path);
+      const canonicalPath = await realpath(path);
+      const current = this.database().getWorkspaceByPath(canonicalPath);
+      const includeParentRepository = current?.includeParentRepository ?? true;
+      const inspected = await inspectWorkspace(
+        canonicalPath,
+        this.config().allowedRoots,
+        includeParentRepository
+      );
+      let latest = this.database().getWorkspaceByPath(canonicalPath);
+      if (
+        latest !== undefined &&
+        (latest.includeParentRepository ?? true) !== includeParentRepository
+      )
+        return { workspace: latest };
+      if (inspected.kind === 'GIT_WORKSPACE') {
+        await ensureWorkspaceGitExclude(inspected.path, includeParentRepository);
+        latest = this.database().getWorkspaceByPath(canonicalPath);
+        if (
+          latest !== undefined &&
+          (latest.includeParentRepository ?? true) !== includeParentRepository
+        )
+          return { workspace: latest };
+      }
       return {
         workspace: this.database().saveWorkspace({
           path: inspected.path,
           kind: inspected.kind,
           gitSummary: inspected.gitSummary ?? null,
-          preserveGitConfig: input.preserveGitConfig === true
+          preserveGitConfig: input.preserveGitConfig === true,
+          includeParentRepository
         })
       };
     } catch (error) {
@@ -90,15 +113,26 @@ export class WorkspaceService {
     if (typeof input.workspaceId !== 'string') throw new Error('WORKSPACE_NOT_FOUND');
     const current = this.database().getWorkspace(input.workspaceId);
     if (current === undefined) throw new Error('WORKSPACE_NOT_FOUND');
-    if (!update) return { preserveGitConfig: current.preserveGitConfig ?? true };
+    if (!update)
+      return {
+        preserveGitConfig: current.preserveGitConfig ?? true,
+        includeParentRepository: current.includeParentRepository ?? true
+      };
     const parsed = workspaceGitSettingsSchema.safeParse({
-      preserveGitConfig: input.preserveGitConfig
+      preserveGitConfig: input.preserveGitConfig,
+      includeParentRepository: input.includeParentRepository
     });
     if (!parsed.success) throw new Error('GIT_CONFIGURATION_INVALID');
     const result = this.database().setWorkspaceGitPolicy(
       input.workspaceId,
-      parsed.data.preserveGitConfig
+      parsed.data.preserveGitConfig,
+      parsed.data.includeParentRepository
     );
-    return { preserveGitConfig: result.preserveGitConfig };
+    if (result.includeParentRepository !== current.includeParentRepository)
+      this.onGitPolicyChanged(current.id);
+    return {
+      preserveGitConfig: result.preserveGitConfig,
+      includeParentRepository: result.includeParentRepository
+    };
   }
 }

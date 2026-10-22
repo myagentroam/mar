@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
+import { WorkspaceChangeService } from '../../src/service/workspace-change-service.js';
 import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
 import {
   WorkspaceSessionService,
@@ -334,6 +335,96 @@ describe('Node Workspace watch', () => {
     await service.invalidate('workspace-1', 'sessions');
     expect(emitted).toHaveBeenCalledOnce();
   });
+
+  it.each(['success', 'failure'] as const)(
+    'does not reuse or publish a late Changes %s read after parent Git is disabled and re-enabled',
+    async (staleOutcome) => {
+      const state = new WorkspaceDomainState();
+      const database = new NodeDatabase(':memory:', `node-watch-policy-race-${staleOutcome}`);
+      const workspace = database.saveWorkspace({
+        path: '/workspace',
+        kind: 'GIT_WORKSPACE',
+        gitSummary: { repositoryRoot: '/repository' },
+        includeParentRepository: true
+      });
+      const changes = new WorkspaceChangeService(state);
+      const oldRead = deferred<unknown>();
+      const currentRead = deferred<unknown>();
+      const oldReadStarted = deferred<void>();
+      const currentReadStarted = deferred<void>();
+      const emitted: unknown[] = [];
+      const current = vi.spyOn(changes, 'current').mockImplementation(() => {
+        if (current.mock.calls.length === 1) {
+          oldReadStarted.resolve(undefined);
+          return oldRead.promise;
+        }
+        if (current.mock.calls.length >= 2) {
+          currentReadStarted.resolve(undefined);
+          return currentRead.promise;
+        }
+        throw new Error('UNEXPECTED_CHANGES_READ');
+      });
+      const watches = new WorkspaceWatchService(state, vi.fn(), vi.fn(), vi.fn());
+      const watch = watches.create(
+        workspace.id,
+        'watch-parent-git',
+        'session-hash',
+        'connection-1',
+        'generation-1',
+        { sessions: false, changes: true, files: undefined }
+      );
+      const snapshots = new WorkspaceWatchSnapshotService({
+        requireWorkspace: (workspaceId) => database.getWorkspace(String(workspaceId))!,
+        watch: watches,
+        files: {} as never,
+        changes,
+        listSessions: vi.fn(),
+        nodeId: () => 'node-1',
+        emitWatchEvent: (event) => emitted.push(event)
+      });
+      let oldInitial: Promise<void> | undefined;
+      let currentInitial: Promise<void> | undefined;
+
+      try {
+        oldInitial = snapshots.initial(workspace, watch);
+        await oldReadStarted.promise;
+
+        database.setWorkspaceGitPolicy(workspace.id, true, false);
+        changes.invalidate(workspace.id);
+        database.setWorkspaceGitPolicy(workspace.id, true, true);
+        changes.invalidate(workspace.id);
+
+        currentInitial = snapshots.initial(database.getWorkspace(workspace.id)!, watch);
+        expect(current).toHaveBeenCalledTimes(2);
+        await currentReadStarted.promise;
+
+        if (staleOutcome === 'success') oldRead.resolve({ marker: 'stale-parent-read' });
+        else oldRead.reject(new Error('STALE_CHANGES_READ_FAILED'));
+        await oldInitial;
+
+        const refresh = snapshots.ensureSnapshot(workspace.id, 'changes');
+        currentRead.resolve({ marker: 'current-parent-read' });
+        await Promise.all([currentInitial, refresh]);
+
+        expect(emitted).toEqual([
+          expect.objectContaining({
+            type: 'watch.workspace.snapshot',
+            watchId: watch.watchId,
+            topic: 'changes',
+            payload: { marker: 'current-parent-read' }
+          })
+        ]);
+      } finally {
+        watches.clearAll();
+        snapshots.clearAll();
+        oldRead.resolve({ marker: 'cleanup' });
+        currentRead.resolve({ marker: 'cleanup' });
+        await Promise.allSettled([oldInitial, currentInitial]);
+        await snapshots.ensureSnapshot(workspace.id, 'changes');
+        database.close();
+      }
+    }
+  );
 
   it('coalesces in-flight reads for one topic and merges repeated invalidations into one trailing refresh', async () => {
     let activeReads = 0;
@@ -1286,4 +1377,18 @@ function operation(connector: NodeConnector, operation: string, data: unknown): 
       executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
     }
   ).executeNodeOperation(operation, requestData);
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

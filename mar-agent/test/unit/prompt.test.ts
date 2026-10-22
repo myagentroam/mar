@@ -4,6 +4,7 @@ import { buildCompactionInput } from '../../src/agent-core/runtime/compaction/hi
 import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
 import { applyPatchToolDefinition } from '../../src/agent-core/tools/local/apply-patch.js';
 import { questionToolDefinition } from '../../src/agent-core/tools/agent/question.js';
+import { skillToolDefinition } from '../../src/agent-core/tools/agent/skill.js';
 import { readToolDefinition } from '../../src/agent-core/tools/local/read.js';
 import { agentWaitToolDefinition } from '../../src/agent-core/tools/agent/agent-wait.js';
 import { todoWriteToolDefinition } from '../../src/agent-core/tools/agent/todo-write.js';
@@ -275,7 +276,7 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('working in a deeper subdirectory');
     expect(normalized).not.toContain('check for applicable agents.md');
     expect(normalized).not.toContain('candidates discovered under this rule apply');
-    expect(normalized).toContain('clearly matches an available skill');
+    expect(normalized).toContain('named or clearly relevant skill');
     expect(normalized).toContain('before generic tools');
     expect(normalized).toContain(
       "safety boundaries apply only to mar agent's own actions and outputs"
@@ -339,7 +340,31 @@ describe('system prompt', () => {
     expect(normalized).toContain('focus final answers on the most important information');
     expect(normalized).toContain('avoid long-winded explanations unless necessary');
     expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.66');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.67');
+  });
+
+  it('reuses available Skill instructions without skipping first-use or post-compaction loading', () => {
+    const prompt = buildSystemPrompt({
+      mode: 'run',
+      platform: 'linux',
+      workspace: '/workspace',
+      tools: ['skill', 'exec']
+    });
+    expect(prompt).toContain('Reuse instructions already in context');
+    expect(prompt).toContain('call skill before generic tools');
+    expect(prompt).toContain('only when they are unavailable or a refresh is requested');
+    expect(prompt).not.toContain('call skill before generic tools and follow the loaded workflow');
+    expect(skillToolDefinition.description).toBe(
+      "Load a Skill's instructions by its exact catalog name."
+    );
+    expect(
+      buildSystemPrompt({
+        mode: 'run',
+        platform: 'linux',
+        workspace: '/workspace',
+        tools: ['exec']
+      })
+    ).not.toContain('Reuse instructions already in context');
   });
 
   it('keeps scope boundaries without prescribing project-specific workflows', () => {
@@ -546,7 +571,7 @@ describe('system prompt', () => {
     });
     const normalized = prompt.toLowerCase();
 
-    expect(normalized).toContain('clearly matches an available skill');
+    expect(normalized).toContain('named or clearly relevant skill');
     expect(normalized).toContain('call skill before generic tools');
     expect(prompt).toContain('# Subagents');
     expect(normalized).toContain('agent_wait');

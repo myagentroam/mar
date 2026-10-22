@@ -192,6 +192,7 @@ describe('Node path and reconnection safety', () => {
   it('cleans up only the empty directory created by a failed Workspace registration', async () => {
     const root = await temporaryDirectory();
     const database = {
+      getWorkspaceByPath: vi.fn(() => undefined),
       saveWorkspace: vi.fn(() => {
         throw new Error('DATABASE_WRITE_FAILED');
       })
@@ -212,6 +213,7 @@ describe('Node path and reconnection safety', () => {
     await expect(access(join(root, 'cleanup-project'))).rejects.toThrow();
 
     const occupiedDatabase = {
+      getWorkspaceByPath: vi.fn(() => undefined),
       saveWorkspace: vi.fn((input: { path: string }) => {
         writeFileSync(join(input.path, 'keep.txt'), 'keep');
         throw new Error('DATABASE_WRITE_FAILED');
@@ -242,6 +244,7 @@ describe('Node path and reconnection safety', () => {
       '# local\n/local-only/\n# BEGIN MyAgentRoam Skills\n/.mar/\n/.agents/skills/review/\n# END MyAgentRoam Skills\n'
     );
     const database = {
+      getWorkspaceByPath: vi.fn(() => undefined),
       saveWorkspace: vi.fn((input: { path: string; kind: string }) => ({
         id: 'workspace-1',
         ...input

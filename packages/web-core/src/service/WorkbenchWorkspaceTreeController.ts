@@ -30,7 +30,11 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
     target: WorkspaceTarget,
     restoreSession?: boolean
   ) => Promise<boolean>;
-  readonly workspaceTabSession: (nodeId: string, workspaceId: string) => string | undefined;
+  readonly workspaceTabSession: (
+    nodeId: string,
+    workspaceId: string,
+    lastSessionId?: string
+  ) => string | undefined;
   readonly openWorkspaceTabSession: (sessionId: string) => Promise<void>;
   readonly clearWorkspace: () => void;
   readonly currentSelectionRevision: () => number;
@@ -156,7 +160,12 @@ export function createWorkbenchWorkspaceTreeController(
       closeWorkspaceTab(tab, true);
       return;
     }
-    const sessionId = options.workspaceTabSession(tab.nodeId, tab.workspaceId);
+    const current = options.workspaceTarget.value;
+    const lastSessionId =
+      current?.nodeId === tab.nodeId && current.workspaceId === tab.workspaceId
+        ? options.selectedSessionId.value
+        : tab.selectedSessionId;
+    const sessionId = options.workspaceTabSession(tab.nodeId, tab.workspaceId, lastSessionId);
     const activation = activateWorkspaceTarget(tab, sessionId === undefined);
     const revision = options.currentSelectionRevision();
     if (!(await activation) || revision !== options.currentSelectionRevision()) return;

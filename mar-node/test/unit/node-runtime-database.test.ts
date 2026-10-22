@@ -23,29 +23,32 @@ afterEach(async () => {
 describe('Node SQLite session records', () => {
   it('backfills v18 creation parents and preserves relationships across metadata updates and restarts', async () => {
     const { path } = await databasePath('parent-migration');
-    const original = new NodeDatabase(path, 'node-a');
-    const workspace = original.saveWorkspace({
-      path: '/parent-migration',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
-    for (const id of ['legacy', 'linked'])
-      original.saveNativeSessionMetadata({
-        runner: 'codex',
-        externalSessionId: id,
-        workspaceId: workspace.id,
-        customTitle: id,
-        sessionPrompt: 'Keep instructions',
-        pinned: true,
-        ...(id === 'linked' ? { parentSessionId: 'parent' } : {})
-      });
-    original.raw
+    const original = new DatabaseSync(path);
+    migrate(
+      original,
+      NODE_SCHEMA_MIGRATIONS.filter(({ version }) => version <= 18)
+    );
+    const workspace = { id: 'parent-workspace' };
+    original
       .prepare(
-        "UPDATE agent_sessions SET metadata=json_remove(metadata, '$.parentSessionId') WHERE id='legacy'"
+        "INSERT INTO workspaces (id,path,kind,created_at,updated_at) VALUES (?, '/parent-migration', 'DIRECTORY', 1, 1)"
       )
-      .run();
-    original.raw.exec('DROP INDEX scheduled_session_occurrences_unfinished');
-    original.raw.prepare('DELETE FROM node_schema_migrations WHERE version>=19').run();
+      .run(workspace.id);
+    for (const id of ['legacy', 'linked'])
+      original
+        .prepare(
+          "INSERT INTO agent_sessions (id,workspace_id,runner,pin_order,metadata) VALUES (?, ?, 'codex', 0, ?)"
+        )
+        .run(
+          id,
+          workspace.id,
+          JSON.stringify({
+            version: 1,
+            customTitle: id,
+            sessionPrompt: 'Keep instructions',
+            ...(id === 'linked' ? { parentSessionId: 'parent' } : {})
+          })
+        );
     original.close();
     for (let iteration = 0; iteration < 2; iteration += 1) {
       const reopened = new NodeDatabase(path, 'node-a');
@@ -82,7 +85,8 @@ describe('Node SQLite session records', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
-      { version: 20 }
+      { version: 20 },
+      { version: 21 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -172,7 +176,7 @@ describe('Node SQLite session records', () => {
     database.close();
   });
 
-  it('reopens the current v20 database after a Node restart', async () => {
+  it('reopens the current v21 database after a Node restart', async () => {
     const { path } = await databasePath('current-reopen');
     const first = new NodeDatabase(path, 'node-a');
     const workspace = first.saveWorkspace({
@@ -193,7 +197,8 @@ describe('Node SQLite session records', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
-      { version: 20 }
+      { version: 20 },
+      { version: 21 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -202,20 +207,17 @@ describe('Node SQLite session records', () => {
 
   it('backfills missing Session Prompt metadata from v17 and preserves records across repeated reopen', async () => {
     const { path } = await databasePath('v17-session-prompt');
-    const original = new NodeDatabase(path, 'node-a');
-    const workspace = original.saveWorkspace({
-      path: '/v17-session-prompt',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
-    original.saveNativeSessionMetadata({
-      runner: 'codex',
-      externalSessionId: 'legacy-thread',
-      workspaceId: workspace.id,
-      customTitle: 'Preserved title',
-      runnerTitle: 'Preserved Runner title',
-      pinned: true
-    });
+    const original = new DatabaseSync(path);
+    migrate(
+      original,
+      NODE_SCHEMA_MIGRATIONS.filter(({ version }) => version <= 17)
+    );
+    const workspace = { id: 'prompt-workspace' };
+    original
+      .prepare(
+        "INSERT INTO workspaces (id,path,kind,created_at,updated_at) VALUES (?, '/v17-session-prompt', 'DIRECTORY', 1, 1)"
+      )
+      .run(workspace.id);
     const legacyMetadata = {
       version: 1,
       customTitle: 'Preserved title',
@@ -225,11 +227,11 @@ describe('Node SQLite session records', () => {
       effort: null,
       access: null
     };
-    original.raw
-      .prepare('UPDATE agent_sessions SET metadata=? WHERE id=?')
-      .run(JSON.stringify(legacyMetadata), 'legacy-thread');
-    original.raw.exec('DROP INDEX scheduled_session_occurrences_unfinished');
-    original.raw.prepare('DELETE FROM node_schema_migrations WHERE version>=18').run();
+    original
+      .prepare(
+        "INSERT INTO agent_sessions (id,workspace_id,runner,pin_order,metadata) VALUES ('legacy-thread', ?, 'codex', 0, ?)"
+      )
+      .run(workspace.id, JSON.stringify(legacyMetadata));
     original.close();
 
     const upgraded = new NodeDatabase(path, 'node-a');
@@ -243,7 +245,8 @@ describe('Node SQLite session records', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
-      { version: 20 }
+      { version: 20 },
+      { version: 21 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
@@ -292,7 +295,8 @@ describe('Node SQLite session records', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
-      { version: 20 }
+      { version: 20 },
+      { version: 21 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -566,7 +570,8 @@ describe('Node SQLite session records', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
-      { version: 20 }
+      { version: 20 },
+      { version: 21 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -730,18 +735,17 @@ describe('Node SQLite session records', () => {
     'compacts a complete v%s-v12 ledger into the v13 baseline without changing application data',
     async (firstVersion) => {
       const { path } = await databasePath(`legacy-ledger-${firstVersion}`);
-      const first = new NodeDatabase(path, 'node-a');
-      const workspace = first.saveWorkspace({
-        path: '/legacy-workspace',
-        kind: 'DIRECTORY',
-        gitSummary: null
-      });
-      first.raw.exec(
-        'DROP TABLE model_usage_outbox; DROP TABLE scheduled_session_proposals; DROP TABLE scheduled_session_occurrences; DROP TABLE scheduled_session_tasks;'
-      );
-      first.raw.prepare('DELETE FROM node_schema_migrations').run();
+      const first = new DatabaseSync(path);
+      migrate(first, []);
+      const workspace = { id: 'legacy-workspace' };
+      first
+        .prepare(
+          "INSERT INTO workspaces (id,path,kind,created_at,updated_at) VALUES (?, '/legacy-workspace', 'DIRECTORY', 1, 1)"
+        )
+        .run(workspace.id);
+      first.prepare('DELETE FROM node_schema_migrations').run();
       for (let version = firstVersion; version <= 12; version++)
-        first.raw.prepare('INSERT INTO node_schema_migrations VALUES (?, 1)').run(version);
+        first.prepare('INSERT INTO node_schema_migrations VALUES (?, 1)').run(version);
       first.close();
 
       const reopened = new NodeDatabase(path, 'node-a');
@@ -753,7 +757,8 @@ describe('Node SQLite session records', () => {
         { version: 17 },
         { version: 18 },
         { version: 19 },
-        { version: 20 }
+        { version: 20 },
+        { version: 21 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -790,7 +795,8 @@ describe('Node SQLite session records', () => {
         { version: 17 },
         { version: 18 },
         { version: 19 },
-        { version: 20 }
+        { version: 20 },
+        { version: 21 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(
@@ -1111,8 +1117,9 @@ describe('Node SQLite session records', () => {
 
   it('rejects a v13 table with intact columns but a narrower Runner constraint', async () => {
     const { path } = await databasePath('invalid-runner-constraint');
-    const original = new NodeDatabase(path, 'node-a');
-    original.raw.exec(`DROP TABLE runner_defaults;
+    const original = new DatabaseSync(path);
+    migrate(original, []);
+    original.exec(`DROP TABLE runner_defaults;
       CREATE TABLE runner_defaults (
         runner TEXT PRIMARY KEY CHECK (runner IN ('mar-agent')),
         model TEXT NOT NULL, effort TEXT NOT NULL, access TEXT NOT NULL

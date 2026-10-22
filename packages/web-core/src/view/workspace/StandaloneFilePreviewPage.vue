@@ -64,7 +64,12 @@ if (shareAccess !== undefined) {
   query.delete('write');
   query.delete('source');
   query.delete('worktreePath');
+  query.delete('repositoryPath');
 }
+const fileTarget = {
+  ...(query.has('repositoryPath') ? { repositoryPath: query.get('repositoryPath')! } : {}),
+  ...(query.has('worktreePath') ? { worktreePath: query.get('worktreePath')! } : {})
+};
 const shareClient =
   shareAccess === undefined
     ? undefined
@@ -73,8 +78,8 @@ const standaloneWindows = createStandaloneFileWindowService(
   undefined,
   shareAccess === undefined ? 'workbench' : `share:${shareAccess.session.value!.share.id}`
 );
-const markdownPreviewMode = query.get('markdownPreview') === '1';
-const htmlPreviewMode = query.get('htmlPreview') === '1';
+const markdownPreviewMode = !query.has('repositoryPath') && query.get('markdownPreview') === '1';
+const htmlPreviewMode = !query.has('repositoryPath') && query.get('htmlPreview') === '1';
 const renderedPreviewMode = markdownPreviewMode || htmlPreviewMode;
 const hostedMode = query.get('source') === 'hosted';
 const storageScope =
@@ -102,7 +107,8 @@ const downloading = ref(false);
 const csrfToken = ref(
   shareAccess === undefined ? (sessionStorage.getItem('mar.user.csrf-token') ?? '') : ''
 );
-const writeEnabled = shareAccess === undefined && query.get('write') === '1';
+const writeEnabled =
+  shareAccess === undefined && query.get('write') === '1' && Object.keys(fileTarget).length === 0;
 const http =
   shareClient ??
   createScopedHttpService({
@@ -149,8 +155,9 @@ function restoreStandaloneTabs(): void {
     nodeId,
     workspaceId,
     path,
-    repositoryPath: '',
-    worktreePath: '',
+    repositoryPath: query.get('repositoryPath') ?? '',
+    worktreePath: query.get('worktreePath') ?? '',
+    ...(query.has('repositoryPath') ? { gitFile: true } : {}),
     ...(Number(query.get('line')) > 0 ? { targetLine: Number(query.get('line')) } : {}),
     ...(Number(query.get('column')) > 0 ? { targetColumn: Number(query.get('column')) } : {})
   } as const;
@@ -304,12 +311,16 @@ onMounted(async () => {
     return;
   }
   if (!hostedMode && shareAccess === undefined)
-    directTransfer = createStandaloneWorkspaceDirectTransferService({ nodeId, workspaceId });
+    directTransfer = createStandaloneWorkspaceDirectTransferService({
+      nodeId,
+      workspaceId,
+      ...fileTarget
+    });
   document.title = `${path.split('/').at(-1) ?? path} · MyAgentRoam`;
   if (htmlPreviewMode) {
     loading.value = true;
     htmlFrameLoaded.value = false;
-    if (!hostedMode && isHtmlFile(path)) {
+    if (!hostedMode && isHtmlFile(path) && Object.keys(fileTarget).length === 0) {
       try {
         const result = await http.request<{ readonly url: string }>('/api/html-preview/grants', {
           method: 'POST',
@@ -635,7 +646,8 @@ async function readRange(
     nodeId,
     path,
     offset: String(offset),
-    limit: String(limit)
+    limit: String(limit),
+    ...fileTarget
   });
   let body: { readonly file?: FileRead };
   if (shareClient !== undefined)
@@ -739,7 +751,8 @@ function rawContentUrl(
   const parameters = new URLSearchParams({
     nodeId,
     path,
-    ...(download ? { download: '1' } : {})
+    ...(download ? { download: '1' } : {}),
+    ...fileTarget
   });
   const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/files/content?${parameters.toString()}`;
   return shareClient?.resourceUrl(url) ?? url;
@@ -822,8 +835,8 @@ function rawContentUrl(
       :target-line="line"
       :target-column="column"
       :write-enabled="writeEnabled"
-      :html="isHtmlFile(file.path) && query.get('worktreePath') === null"
-      :markdown="isMarkdownFile(file.path)"
+      :html="isHtmlFile(file.path) && Object.keys(fileTarget).length === 0"
+      :markdown="!query.has('repositoryPath') && isMarkdownFile(file.path)"
       :markdown-resource-url="workspaceResourceUrl"
       :save-file="saveFile"
       :tab-identity="tab.identity"

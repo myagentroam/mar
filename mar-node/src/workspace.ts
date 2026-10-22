@@ -1471,7 +1471,8 @@ export function isWithinAllowedRoot(
 /** Resolving both candidate and roots rejects Linux symlinks which point outside a root. */
 export async function inspectWorkspace(
   requestedPath: string,
-  allowedRoots: readonly string[]
+  allowedRoots: readonly string[],
+  includeParentRepository = true
 ): Promise<WorkspaceInspection> {
   const resolvedPath = await realpath(requestedPath);
   const resolvedRoots = await Promise.all(allowedRoots.map((root) => realpath(root)));
@@ -1480,14 +1481,47 @@ export async function inspectWorkspace(
     throw new Error('WORKSPACE_NOT_ALLOWED');
   }
   try {
-    const summary = await readGitSummary(resolvedPath);
+    const repositoryRoot = await resolveWorkspaceGitRoot(resolvedPath, includeParentRepository);
+    const summary = { ...(await readGitSummary(repositoryRoot)), repositoryRoot };
     return { path: resolvedPath, kind: 'GIT_WORKSPACE', gitSummary: summary };
   } catch (error) {
-    if ((error instanceof GitCommandError && error.code === 128) || isGitUnavailable(error)) {
+    if (
+      (error instanceof GitCommandError && error.code === 128) ||
+      isGitUnavailable(error) ||
+      (error instanceof Error && error.message === 'WORKSPACE_NOT_GIT')
+    ) {
       return { path: resolvedPath, kind: 'DIRECTORY' };
     }
     throw error;
   }
+}
+
+/** Resolves the working tree without changing the registered Workspace identity. */
+export async function resolveWorkspaceGitRoot(
+  workspacePath: string,
+  includeParentRepository = true
+): Promise<string> {
+  const workspace = await resolveRegisteredWorkspaceRoot(workspacePath);
+  if (!includeParentRepository) {
+    const marker = await lstat(resolve(workspace, '.git')).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (
+      marker === undefined ||
+      marker.isSymbolicLink() ||
+      (!marker.isFile() && !marker.isDirectory())
+    )
+      throw new Error('WORKSPACE_NOT_GIT');
+  }
+  const result = await runReadOnlyGit(workspace, ['rev-parse', '--show-toplevel']);
+  const root = await realpath(result.text.replace(/\n$/u, ''));
+  if (
+    !includeParentRepository &&
+    normalizeWorkspacePath(root) !== normalizeWorkspacePath(workspace)
+  )
+    throw new Error('WORKSPACE_NOT_GIT');
+  return root;
 }
 
 export async function readGitSummary(workspacePath: string): Promise<GitSummary> {

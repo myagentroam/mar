@@ -15,6 +15,10 @@
 </p>
 <p align="center"><sub>Apache-2.0 公共核心 · 源码可见的产品组合与 EE · <a href="LICENSING.md">准确许可范围</a></sub></p>
 
+<p align="center">
+  <img src="docs/assets/mio.png" width="160" alt="MyAgentRoam 吉祥物 Mio 向你介绍工作台" />
+</p>
+
 ![MyAgentRoam 开发场景：MAR Agent 会话、恢复任务清单、Git 变更、上下文用量与终端](docs/assets/workbench-hero.zh-CN.png)
 
 ## Agent First

@@ -35,7 +35,6 @@ COPY packages/web-core packages/web-core
 COPY ee/web ee/web
 COPY mar-web-console mar-web-console
 COPY docs/help docs/help
-COPY docs/assets docs/assets
 COPY scripts/validate-help-docs.mjs scripts/validate-help-docs.mjs
 
 RUN pnpm --filter @myagentroam/web-console... build

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import type { CodexAppServerClient } from '../../src/codex-app-server.js';
@@ -278,9 +281,11 @@ describe('Node Workbench Manifest and command control', () => {
   );
 
   it('provides versioned Manifest and Runner Profiles with restricted session metadata and history operations', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'mar-workbench-defaults-'));
+    onTestFinished(() => rm(workspacePath, { recursive: true, force: true }));
     const database = new NodeDatabase(':memory:', 'node-workbench');
     const workspace = database.saveWorkspace({
-      path: '/workspace/workbench',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });

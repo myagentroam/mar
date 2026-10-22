@@ -497,6 +497,7 @@ export function registerWorkspaceRoutes(input: {
       nodeId?: string;
       path?: string;
       worktreePath?: string;
+      repositoryPath?: string;
       offset?: string;
       limit?: string;
     };
@@ -514,6 +515,9 @@ export function registerWorkspaceRoutes(input: {
         await requestUserNode(nodeControl, admin, request.query.nodeId, 'workspace.file.read', {
           workspaceId: request.params.workspaceId,
           path: request.query.path,
+          ...(request.query.repositoryPath === undefined
+            ? {}
+            : { repositoryPath: request.query.repositoryPath }),
           ...(request.query.worktreePath === undefined
             ? {}
             : { worktreePath: request.query.worktreePath }),
@@ -532,6 +536,8 @@ export function registerWorkspaceRoutes(input: {
       path?: unknown;
       content?: unknown;
       expectedRevision?: unknown;
+      repositoryPath?: unknown;
+      worktreePath?: unknown;
     };
   }>(
     '/api/workspaces/:workspaceId/files/write',
@@ -544,6 +550,8 @@ export function registerWorkspaceRoutes(input: {
       if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
       const body = request.body ?? {};
       if (
+        body.repositoryPath !== undefined ||
+        body.worktreePath !== undefined ||
         !isNonEmptyString(body.nodeId) ||
         !isSafeResourceText(body.path) ||
         typeof body.content !== 'string' ||
@@ -569,7 +577,13 @@ export function registerWorkspaceRoutes(input: {
 
   app.get<{
     Params: { workspaceId: string };
-    Querystring: { nodeId?: string; path?: string; worktreePath?: string; download?: string };
+    Querystring: {
+      nodeId?: string;
+      path?: string;
+      worktreePath?: string;
+      repositoryPath?: string;
+      download?: string;
+    };
   }>('/api/workspaces/:workspaceId/files/content', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
@@ -595,7 +609,8 @@ export function registerWorkspaceRoutes(input: {
             request.query.path as string,
             request.query.worktreePath,
             offset,
-            limit
+            limit,
+            request.query.repositoryPath
           )
       });
     } catch (error) {
@@ -609,6 +624,7 @@ export function registerWorkspaceRoutes(input: {
       nodeId?: string;
       path?: string;
       worktreePath?: string;
+      repositoryPath?: string;
       offset?: string;
       length?: string;
       size?: string;
@@ -633,6 +649,9 @@ export function registerWorkspaceRoutes(input: {
           {
             workspaceId: request.params.workspaceId,
             path: request.query.path,
+            ...(request.query.repositoryPath === undefined
+              ? {}
+              : { repositoryPath: request.query.repositoryPath }),
             ...(request.query.worktreePath === undefined
               ? {}
               : { worktreePath: request.query.worktreePath }),
@@ -1428,11 +1447,13 @@ async function readFileContentChunk(
   path: string,
   worktreePath: string | undefined,
   offset: number,
-  limit: number
+  limit: number,
+  repositoryPath?: string
 ): Promise<FileContentChunk> {
   const result = (await requestUserNode(nodeControl, admin, nodeId, 'workspace.file.content.read', {
     workspaceId,
     path,
+    ...(repositoryPath === undefined ? {} : { repositoryPath }),
     ...(worktreePath === undefined ? {} : { worktreePath }),
     offset,
     limit

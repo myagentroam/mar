@@ -1,6 +1,6 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-22
 ---
 
 # What Is MyAgentRoam?
@@ -22,7 +22,7 @@ Each Workspace belongs to one Node. Files, terminals, and sessions never cross N
 
 ## Interface Language
 
-The homepage, Console, and documentation center use the language saved in the current browser. Opening documentation from Console takes you to the matching language. When you sign in or return to Console, the browser's language is synchronized to your account and used for notifications created afterward; changing the language in Settings also updates the account preference. A notification keeps the final text generated when it was created, so later language changes do not rewrite it. Switching languages in the documentation center opens the matching version of the current page; a direct documentation link takes precedence over the saved language.
+Console and the documentation center use the language saved in the current browser. The independent marketing website has a separate language preference. Opening documentation from Console takes you to the matching language. When you sign in or return to Console, the browser's language is synchronized to your account and used for notifications created afterward; changing the language in Settings also updates the account preference. A notification keeps the final text generated when it was created, so later language changes do not rewrite it. Switching languages in the documentation center opens the matching version of the current page; a direct documentation link takes precedence over the saved language.
 
 ## Fastest path to success
 

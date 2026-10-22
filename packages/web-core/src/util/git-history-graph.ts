@@ -40,8 +40,9 @@ export function buildGitHistoryGraph(commits: readonly GitGraphCommit[]): readon
     let commitLane = lanes.indexOf(commit.hash);
     const hasIncomingEdge = commitLane >= 0;
     if (!hasIncomingEdge) {
-      commitLane = 0;
-      lanes = [commit.hash, ...lanes];
+      // New tips have no incoming edge and must not shift the existing frontier.
+      commitLane = lanes.length;
+      lanes = [...lanes, commit.hash];
     }
 
     const before = [...lanes];

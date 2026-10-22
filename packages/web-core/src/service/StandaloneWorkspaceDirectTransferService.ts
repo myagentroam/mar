@@ -17,7 +17,15 @@ const INITIAL_DIRECT_WAIT_MS = 800;
 export function createStandaloneWorkspaceDirectTransferService(input: {
   readonly nodeId: string;
   readonly workspaceId: string;
+  readonly repositoryPath?: string;
+  readonly worktreePath?: string;
 }) {
+  function fileTarget() {
+    return {
+      ...(input.repositoryPath === undefined ? {} : { repositoryPath: input.repositoryPath }),
+      ...(input.worktreePath === undefined ? {} : { worktreePath: input.worktreePath })
+    };
+  }
   let active = true;
   let generation: string | undefined;
   let settleReady: ((available: boolean) => void) | undefined;
@@ -87,6 +95,8 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
     if (waitForInitialReady && !(await ready)) return undefined;
     if (generation === undefined || !direct.isConnected(input.nodeId, generation)) return undefined;
     const parameters = new URLSearchParams({ nodeId: input.nodeId, path });
+    if (input.repositoryPath !== undefined) parameters.set('repositoryPath', input.repositoryPath);
+    if (input.worktreePath !== undefined) parameters.set('worktreePath', input.worktreePath);
     const response = await fetch(
       `/api/workspaces/${encodeURIComponent(input.workspaceId)}/files/direct-metadata?${parameters.toString()}`,
       { credentials: 'same-origin' }
@@ -119,7 +129,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
       direct,
       nodeId: input.nodeId,
       nodeGeneration: generation,
-      resource: { kind: 'WORKSPACE_FILE', workspaceId: input.workspaceId, path },
+      resource: { kind: 'WORKSPACE_FILE', workspaceId: input.workspaceId, path, ...fileTarget() },
       fileName: path.split('/').at(-1) ?? 'file',
       offset,
       length,
@@ -142,7 +152,12 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
         nodeGeneration: value.generation,
         descriptor: {
           direction: 'DOWNLOAD',
-          resource: { kind: 'WORKSPACE_FILE', workspaceId: input.workspaceId, path },
+          resource: {
+            kind: 'WORKSPACE_FILE',
+            workspaceId: input.workspaceId,
+            path,
+            ...fileTarget()
+          },
           fileName: path.split('/').at(-1) ?? 'file',
           revision: value.revision,
           size: value.size
@@ -173,7 +188,12 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
         nodeGeneration: value.generation,
         descriptor: {
           direction: 'DOWNLOAD',
-          resource: { kind: 'WORKSPACE_FILE', workspaceId: input.workspaceId, path },
+          resource: {
+            kind: 'WORKSPACE_FILE',
+            workspaceId: input.workspaceId,
+            path,
+            ...fileTarget()
+          },
           fileName,
           revision: value.revision,
           size: value.size

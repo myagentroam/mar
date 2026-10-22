@@ -15,6 +15,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { skillInstallMetadataSchema, type SkillInstallMetadata } from '@myagentroam/protocol';
+import { GitCommandError, resolveWorkspaceGitRoot } from '../workspace.js';
 import {
   rewriteWorkspaceGitExclude,
   updateWorkspaceSkillGitExclude
@@ -84,7 +85,7 @@ export class SkillInstallService {
     name: string,
     bundle: InstallableSkillBundle,
     metadata: SkillInstallMetadata,
-    options: { readonly confirmTracked?: boolean } = {}
+    options: { readonly confirmTracked?: boolean; readonly includeParentRepository?: boolean } = {}
   ): Promise<void> {
     assertName(name);
     skillInstallMetadataSchema.parse(metadata);
@@ -102,12 +103,28 @@ export class SkillInstallService {
       name,
       bundle,
       metadata,
-      () => updateWorkspaceSkillGitExclude(workspace, name, true),
-      () => updateWorkspaceSkillGitExclude(workspace, name, false)
+      () =>
+        updateWorkspaceSkillGitExclude(
+          workspace,
+          name,
+          true,
+          options.includeParentRepository ?? true
+        ),
+      () =>
+        updateWorkspaceSkillGitExclude(
+          workspace,
+          name,
+          false,
+          options.includeParentRepository ?? true
+        )
     );
   }
 
-  async removeWorkspace(workspace: string, name: string): Promise<void> {
+  async removeWorkspace(
+    workspace: string,
+    name: string,
+    includeParentRepository = true
+  ): Promise<void> {
     assertName(name);
     const agentsRoot = path.join(workspace, '.agents', 'skills');
     const claudeRoot = path.join(workspace, '.claude', 'skills');
@@ -117,8 +134,8 @@ export class SkillInstallService {
       agentsRoot,
       claudeRoot,
       name,
-      () => updateWorkspaceSkillGitExclude(workspace, name, false),
-      () => updateWorkspaceSkillGitExclude(workspace, name, true)
+      () => updateWorkspaceSkillGitExclude(workspace, name, false, includeParentRepository),
+      () => updateWorkspaceSkillGitExclude(workspace, name, true, includeParentRepository)
     );
   }
 
@@ -132,7 +149,10 @@ export class SkillInstallService {
     else await removeSingle(agentsRoot, name);
   }
 
-  async repairWorkspaceGitExclude(workspace: string): Promise<void> {
+  async repairWorkspaceGitExclude(
+    workspace: string,
+    includeParentRepository = true
+  ): Promise<void> {
     const root = path.join(workspace, '.agents', 'skills');
     const names = new Set<string>();
     try {
@@ -148,13 +168,22 @@ export class SkillInstallService {
     } catch (error) {
       if (!isMissing(error)) throw error;
     }
-    await rewriteWorkspaceGitExclude(workspace, names);
+    await rewriteWorkspaceGitExclude(workspace, names, includeParentRepository);
   }
 }
 
 export async function workspaceSkillTracked(workspace: string, name: string): Promise<boolean> {
   assertName(name);
-  if (!(await exists(path.join(workspace, '.git')))) return false;
+  try {
+    await resolveWorkspaceGitRoot(workspace);
+  } catch (error) {
+    if (
+      (error instanceof GitCommandError && error.code === 128) ||
+      (error as NodeJS.ErrnoException).code === 'ENOENT'
+    )
+      return false;
+    throw error;
+  }
   try {
     const result = await promisify(execFile)(
       'git',

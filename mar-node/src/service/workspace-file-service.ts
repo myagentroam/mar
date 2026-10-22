@@ -283,6 +283,8 @@ export class WorkspaceFileService {
 
   async write(workspace: NodeWorkspace, input: Record<string, unknown>): Promise<unknown> {
     if (
+      input.repositoryPath !== undefined ||
+      input.worktreePath !== undefined ||
       typeof input.path !== 'string' ||
       typeof input.content !== 'string' ||
       typeof input.expectedRevision !== 'string'

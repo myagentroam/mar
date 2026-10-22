@@ -1387,7 +1387,11 @@ export function createWorkbenchPageController<
     });
   };
 
-  async function workspaceDirectMetadata(path: string, worktreePath?: string) {
+  async function workspaceDirectMetadata(
+    path: string,
+    worktreePath?: string,
+    repositoryPath?: string
+  ) {
     if (isComposerAttachmentResourcePath(path)) return undefined;
     const nodeId = workspaceNodeId.value;
     const workspaceId = activeWorkspaceId.value;
@@ -1402,6 +1406,7 @@ export function createWorkbenchPageController<
       return undefined;
     const parameters = new URLSearchParams({ nodeId, path });
     if (worktreePath !== undefined) parameters.set('worktreePath', worktreePath);
+    if (repositoryPath !== undefined) parameters.set('repositoryPath', repositoryPath);
     const result = await request<{
       readonly file?: {
         size?: unknown;
@@ -1426,7 +1431,8 @@ export function createWorkbenchPageController<
     offset: number,
     length: number,
     worktreePath?: string,
-    identity?: WorkspaceDirectFileIdentity
+    identity?: WorkspaceDirectFileIdentity,
+    repositoryPath?: string
   ) {
     if (isComposerAttachmentResourcePath(path)) return undefined;
     const nodeId = workspaceNodeId.value;
@@ -1448,13 +1454,14 @@ export function createWorkbenchPageController<
         kind: 'WORKSPACE_FILE',
         workspaceId,
         path,
+        ...(repositoryPath === undefined ? {} : { repositoryPath }),
         ...(worktreePath === undefined ? {} : { worktreePath })
       },
       fileName: path.split('/').at(-1) ?? 'file',
       offset,
       length,
       ...(identity === undefined ? {} : { identity }),
-      metadata: () => workspaceDirectMetadata(path, worktreePath)
+      metadata: () => workspaceDirectMetadata(path, worktreePath, repositoryPath)
     }).catch(() => undefined);
   }
 
@@ -1539,9 +1546,12 @@ export function createWorkbenchPageController<
 
   async function directWorkspaceFileObjectUrl(
     path: string,
-    worktreePath?: string
+    worktreePath?: string,
+    repositoryPath?: string
   ): Promise<string | undefined> {
-    const metadata = await workspaceDirectMetadata(path, worktreePath).catch(() => undefined);
+    const metadata = await workspaceDirectMetadata(path, worktreePath, repositoryPath).catch(
+      () => undefined
+    );
     if (metadata === undefined) return undefined;
     try {
       const target = await createWorkspaceDirectObjectUrlSink(path.split('/').at(-1) ?? 'file');
@@ -1554,6 +1564,7 @@ export function createWorkbenchPageController<
             kind: 'WORKSPACE_FILE',
             workspaceId: metadata.workspaceId,
             path,
+            ...(repositoryPath === undefined ? {} : { repositoryPath }),
             ...(worktreePath === undefined ? {} : { worktreePath })
           },
           fileName: path.split('/').at(-1) ?? 'file',
@@ -1570,7 +1581,8 @@ export function createWorkbenchPageController<
 
   async function directWorkspaceFileDownload(
     path: string,
-    worktreePath?: string
+    worktreePath?: string,
+    repositoryPath?: string
   ): Promise<WorkspaceDirectDownloadResult> {
     const nodeId = workspaceNodeId.value;
     if (
@@ -1581,7 +1593,9 @@ export function createWorkbenchPageController<
       !workspaceDirectAvailable(nodeId)
     )
       return 'UNAVAILABLE';
-    const metadata = await workspaceDirectMetadata(path, worktreePath).catch(() => undefined);
+    const metadata = await workspaceDirectMetadata(path, worktreePath, repositoryPath).catch(
+      () => undefined
+    );
     if (metadata === undefined) return 'UNAVAILABLE';
     const fileName = path.split('/').at(-1) ?? 'download';
     let target: Awaited<ReturnType<typeof createWorkspaceDirectDownloadStream>> | undefined;
@@ -1596,6 +1610,7 @@ export function createWorkbenchPageController<
             kind: 'WORKSPACE_FILE',
             workspaceId: metadata.workspaceId,
             path,
+            ...(repositoryPath === undefined ? {} : { repositoryPath }),
             ...(worktreePath === undefined ? {} : { worktreePath })
           },
           fileName,
@@ -2331,7 +2346,7 @@ export function createWorkbenchPageController<
       pendingStandaloneFileIntent.value = undefined;
       consumedStandaloneFileIntent = true;
       if (intent.tab !== undefined) workspaceInspector.value.openWorkspaceFileTab(intent.tab);
-      else if (intent.worktreePath === undefined)
+      else if (intent.worktreePath === undefined && intent.repositoryPath === undefined)
         await workspaceInspector.value.openFile(intent.path, intent.line, intent.column);
       else
         await workspaceInspector.value.openWorkspaceFile(
@@ -2339,7 +2354,8 @@ export function createWorkbenchPageController<
           intent.line,
           intent.worktreePath,
           false,
-          intent.column
+          intent.column,
+          intent.repositoryPath
         );
       if (
         intentUrl !== undefined &&

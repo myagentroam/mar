@@ -39,7 +39,7 @@ describe('shared Console bootstrap', () => {
           props: ({ request }) => ({ request })
         }
       ]);
-      const pages = { home: {}, workbench: {}, filePreview: {} };
+      const pages = { workbench: {}, filePreview: {} };
       expect(bootstrapConsole({ ...pages, management })).toBe(app);
       expect(createApp).toHaveBeenCalledWith(AppShell, pages);
       expect(app.provide).toHaveBeenCalledWith(MANAGEMENT_COMPOSITION_KEY, management);

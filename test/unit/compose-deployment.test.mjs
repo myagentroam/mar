@@ -80,12 +80,12 @@ test('Server image reuses the pnpm store and trusts the copied lockfile', async 
   );
 });
 
-test('Web image build copies marketing screenshots referenced by the portal', async () => {
+test('Web image build includes product help without marketing-only screenshots', async () => {
   const dockerfile = await readFile(resolve(root, 'Dockerfile'), 'utf8');
   const webBuild = dockerfile.split('FROM dependencies AS web-build')[1]?.split('FROM ')[0] ?? '';
-  assert.match(webBuild, /COPY docs\/assets docs\/assets/u);
+  assert.doesNotMatch(webBuild, /COPY docs\/assets docs\/assets/u);
   assert.match(webBuild, /COPY docs\/help docs\/help/u);
-  const assetsCopyIndex = webBuild.indexOf('COPY docs/assets docs/assets');
+  const helpCopyIndex = webBuild.indexOf('COPY docs/help docs/help');
   const buildIndex = webBuild.search(/RUN pnpm --filter @myagentroam\/web-console\.\.\. build/u);
-  assert.ok(assetsCopyIndex >= 0 && buildIndex > assetsCopyIndex);
+  assert.ok(helpCopyIndex >= 0 && buildIndex > helpCopyIndex);
 });
