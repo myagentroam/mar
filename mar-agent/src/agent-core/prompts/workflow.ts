@@ -26,7 +26,7 @@ export function toolUsagePrompt(
 
   if (names.has('skill'))
     clauses.push(
-      'If the request names or clearly matches an available Skill description, call skill before generic tools and follow the loaded workflow; semantic matches do not require the user to know the Skill name. Do not load unrelated Skills or claim to use one without calling skill.'
+      'Use a named or clearly relevant Skill. Reuse instructions already in context; call skill before generic tools only when they are unavailable or a refresh is requested.'
     );
 
   if (names.has('exec'))

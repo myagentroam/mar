@@ -7,8 +7,7 @@ export const skillToolDefinition: ClientToolDefinition = {
   name: 'skill',
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
-  description:
-    'Load a specialized Skill when the task matches one listed in the system prompt. Returns its instructions and source; file-based Skills also include a base directory and resource-path sample. Host-provided skills have no filesystem base. The name must exactly match the advertised catalog.',
+  description: "Load a Skill's instructions by its exact catalog name.",
   inputSchema: {
     type: 'object',
     properties: {
