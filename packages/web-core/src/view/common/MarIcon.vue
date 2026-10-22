@@ -31,9 +31,14 @@ withDefaults(
     </template>
     <template v-else>
       <path
-        d="M11.2 14.2v-.4c0-1.25.52-1.9 1.5-2.56.84-.56 1.28-.98 1.28-1.76 0-1.02-.76-1.68-1.94-1.68-1.08 0-1.82.48-2.3 1.44L8.4 8.5c.7-1.42 1.96-2.16 3.7-2.16 2.12 0 3.58 1.18 3.58 3.04 0 1.42-.7 2.18-1.9 2.98-.86.58-1.14 1-1.14 1.84H11.2Z"
+        d="M9 10C9 8.8 10.2 8 12 8S15 8.9 15 10.2C15 11.3 14.4 11.9 13.3 12.6C12.3 13.25 12 13.7 12 14.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       />
-      <circle cx="11.92" cy="17.1" r="1" />
+      <circle cx="12" cy="17" r="0.75" />
     </template>
   </svg>
 </template>
