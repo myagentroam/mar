@@ -449,7 +449,7 @@ function onKeydown(event: KeyboardEvent): void {
   display: grid;
   gap: 0.4rem;
   color: var(--mar-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .quick-open-status {
@@ -486,7 +486,7 @@ function onKeydown(event: KeyboardEvent): void {
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--mar-font-size-body);
   cursor: pointer;
 }
 .quick-open-tabs button:hover {
@@ -585,7 +585,7 @@ function onKeydown(event: KeyboardEvent): void {
   padding: 0.1rem 0.45rem;
   background: var(--mar-bg-subtle);
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 1.25;
 }

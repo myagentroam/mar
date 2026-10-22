@@ -540,7 +540,7 @@ onBeforeUnmount(() => {
 .hosting-maintenance-eyebrow {
   color: var(--mar-color-brand-text);
   font-size: var(--mar-font-size-meta);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -603,7 +603,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 85fr 10fr 5fr;
   color: var(--mar-text-muted);
-  font-size: 10px;
+  font-size: var(--mar-font-size-nano);
   font-variant-numeric: tabular-nums;
 }
 .capacity-scale span:nth-child(2),

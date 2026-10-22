@@ -228,7 +228,7 @@ function createNodeToken(): void {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 
 .registration-owner .el-select {

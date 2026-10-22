@@ -1,8 +1,4 @@
-import {
-  CUSTOM_THEME_TOKENS,
-  LEGACY_THEME_TOKENS,
-  type BuiltinTheme
-} from '../model/custom-theme.js';
+import { CUSTOM_THEME_TOKENS, type BuiltinTheme } from '../model/custom-theme.js';
 
 export interface ThemeWarning {
   readonly code: 'structure' | 'name' | 'version' | 'colors' | 'unknown' | 'color' | 'contrast';
@@ -67,15 +63,16 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
   if (!isObject(value.colors)) warn('colors', 'colors');
   else
     for (const [key, color] of Object.entries(value.colors)) {
-      const token = Object.hasOwn(LEGACY_THEME_TOKENS, key) ? LEGACY_THEME_TOKENS[key]! : key;
-      if (!tokens.has(token)) warn('unknown', key);
+      if (!tokens.has(key)) warn('unknown', key);
       else if (typeof color !== 'string' || !hexColor.test(color)) warn('color', key);
-      else if (key === token || !Object.hasOwn(value.colors, token)) colors[token] = color;
+      else colors[key] = color;
     }
   // Assess only explicit opaque pairs; inherited/translucent colors need visual inspection.
   for (const [foreground, background] of [
     ['--mar-text-primary', '--mar-bg-panel'],
     ['--mar-text-secondary', '--mar-bg-panel'],
+    ['--mar-text-primary', '--mar-bg-chrome'],
+    ['--mar-text-secondary', '--mar-bg-chrome'],
     ['--mar-conversation-text', '--mar-conversation-surface'],
     ['--mar-conversation-muted', '--mar-conversation-surface'],
     ['--mar-color-on-accent', '--mar-color-brand']

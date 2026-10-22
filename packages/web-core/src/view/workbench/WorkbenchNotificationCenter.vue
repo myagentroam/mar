@@ -387,7 +387,7 @@ const emit = defineEmits<{
   place-items: center;
 }
 .workbench-notification-trigger-label {
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-center.mobile-mode .workbench-notification-trigger {
   display: grid;
@@ -447,7 +447,7 @@ const emit = defineEmits<{
   justify-content: space-between;
   border-bottom: 1px solid var(--mar-border-default);
   padding: 0.55rem 0.7rem;
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-mark-all {
   flex: none;
@@ -512,7 +512,7 @@ const emit = defineEmits<{
 .workbench-recent-run-title {
   min-width: 0;
   color: var(--el-text-color-primary);
-  font-size: 0.74rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 500;
   line-height: 1.35;
 }
@@ -521,7 +521,7 @@ const emit = defineEmits<{
   grid-row: 2;
   min-width: 0;
   color: var(--mar-text-muted);
-  font-size: 0.64rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-recent-run-list .el-tag,
 .workbench-recent-run-list time {
@@ -532,14 +532,14 @@ const emit = defineEmits<{
   grid-row: 1;
   height: 20px;
   padding: 0 0.38rem;
-  font-size: 0.6rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 18px;
 }
 .workbench-recent-run-list time {
   grid-row: 2;
   align-self: center;
   color: var(--mar-text-muted);
-  font-size: 0.58rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-upload {
   display: grid;
@@ -548,7 +548,7 @@ const emit = defineEmits<{
   align-items: center;
   border-bottom: 1px solid var(--mar-fill-hover);
   padding: 0.55rem 0.65rem;
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-upload,
 .workbench-notification-list > li {
@@ -562,7 +562,7 @@ const emit = defineEmits<{
   align-items: center;
   border-bottom: 1px solid var(--mar-fill-hover);
   padding: 0.32rem 0.65rem;
-  font-size: 0.64rem;
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-upload > .el-icon {
   color: var(--mar-color-brand-text);
@@ -586,12 +586,12 @@ const emit = defineEmits<{
   color: var(--mar-text-muted);
 }
 .workbench-notification-list > li > button:first-child strong {
-  font-size: 0.74rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 500;
   line-height: 1.35;
 }
 .workbench-notification-list > li > button:first-child small {
-  font-size: 0.64rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.35;
 }
 .workbench-upload-size {
@@ -636,7 +636,7 @@ const emit = defineEmits<{
   border-radius: 3px;
   background: var(--mar-bg-page);
   color: var(--mar-text-tertiary);
-  font-size: 0.56rem;
+  font-size: var(--mar-font-size-nano);
   font-weight: 600;
   line-height: 1;
   padding: 2px 4px;
@@ -646,7 +646,7 @@ const emit = defineEmits<{
   grid-column: 2;
   align-self: center;
   color: var(--mar-text-muted);
-  font-size: 0.58rem;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .workbench-notification-panel .workbench-notification-delete {
@@ -667,7 +667,7 @@ html[data-theme='vscode-dark-2026'] .workbench-notification-panel .workbench-not
   margin: 0;
   padding: 1.2rem;
   color: var(--mar-text-muted);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
   text-align: center;
 }
 .workbench-notification-panel-enter-active,

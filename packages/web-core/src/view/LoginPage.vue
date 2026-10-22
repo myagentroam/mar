@@ -57,7 +57,7 @@ function submit(): void {
 .gate-panel h1 {
   margin: 0 0 0.4rem;
   color: var(--mar-text-primary);
-  font-size: 1.25rem;
+  font-size: var(--mar-font-size-page-title);
   line-height: 1.35;
   letter-spacing: -0.015em;
 }
@@ -65,7 +65,7 @@ function submit(): void {
 .lede {
   margin: 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.8125rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 
@@ -86,7 +86,7 @@ function submit(): void {
 
 .login-brand strong {
   color: var(--mar-text-primary);
-  font-size: 0.94rem;
+  font-size: var(--mar-font-size-title);
   letter-spacing: -0.01em;
 }
 
@@ -100,7 +100,7 @@ function submit(): void {
   display: grid;
   gap: 0.35rem;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
 }
 

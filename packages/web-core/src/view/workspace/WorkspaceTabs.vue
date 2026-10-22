@@ -533,17 +533,17 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab-strip {
-  --workspace-tab-base-bg: var(--mar-bg-page);
+  --workspace-tab-base-bg: var(--mar-bg-chrome);
   display: flex;
   min-width: 0;
   min-height: 34px;
   align-items: stretch;
-  border-bottom: 1px solid var(--mar-border-default);
-  background: var(--mar-bg-page);
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
 }
 
 .workspace-tab-strip-header {
-  --workspace-tab-base-bg: var(--mar-bg-panel);
+  --workspace-tab-base-bg: var(--mar-bg-chrome);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -555,7 +555,7 @@ function activate(tab: WorkspaceTab): void {
   height: 100%;
   min-height: 0;
   align-items: center;
-  padding: 5px 3px;
+  padding: 5px 6px;
 }
 
 .workspace-tab-strip-header .workspace-tab {
@@ -580,7 +580,7 @@ function activate(tab: WorkspaceTab): void {
   gap: 3px;
   overflow-x: auto;
   margin: 0;
-  padding: 3px;
+  padding: 4px 6px;
   scrollbar-width: none;
 }
 
@@ -604,7 +604,7 @@ function activate(tab: WorkspaceTab): void {
 
 .tab-strip-scroll:hover:not(:disabled),
 .workspace-tab-menu:hover {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
@@ -637,7 +637,7 @@ function activate(tab: WorkspaceTab): void {
 
 :global(.workspace-tab-menu-list .el-dropdown-menu__item > small) {
   color: var(--mar-text-faint);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 :global(.workspace-tab-menu-list .el-dropdown-menu__item.active) {
@@ -653,7 +653,7 @@ function activate(tab: WorkspaceTab): void {
   width: fit-content;
   min-width: 124px;
   max-width: 236px;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: var(--workspace-tab-base-bg);
   touch-action: pan-y;
   user-select: none;
@@ -704,11 +704,11 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab:not(.active):hover {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
 }
 
 .workspace-tab:not(.active) > button:first-child:hover:not(:disabled) {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
@@ -721,7 +721,7 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab-content > span {
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -733,8 +733,8 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab small {
   overflow: hidden;
-  color: var(--mar-text-faint);
-  font-size: 0.625rem;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -763,7 +763,7 @@ function activate(tab: WorkspaceTab): void {
 .workspace-tab-direct-icon {
   flex: none;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .workspace-tab-unread {
@@ -772,7 +772,7 @@ function activate(tab: WorkspaceTab): void {
   border-radius: 3px;
   background: var(--mar-bg-page);
   color: var(--mar-text-tertiary);
-  font-size: 0.56rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 1;
   padding: 2px 3px;
@@ -813,7 +813,7 @@ function activate(tab: WorkspaceTab): void {
 @media (max-width: 767px) {
   .workspace-tab > button:first-child {
     min-width: 0;
-    padding: 0.35rem calc(0.55rem + 36px) 0.35rem 0.55rem;
+    padding: 0.35rem calc(0.55rem + var(--mar-utility-control-size)) 0.35rem 0.55rem;
   }
 }
 
@@ -828,13 +828,13 @@ function activate(tab: WorkspaceTab): void {
 @media (max-width: 767px) {
   .workspace-tab-content > span {
     display: block;
-    font-size: 0.78rem;
+    font-size: var(--mar-font-size-body);
   }
 }
 
 @media (max-width: 767px) {
   .workspace-tab small {
-    font-size: 0.625rem;
+    font-size: var(--mar-font-size-meta);
   }
 }
 

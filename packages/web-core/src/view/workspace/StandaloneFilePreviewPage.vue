@@ -883,7 +883,7 @@ function rawContentUrl(
   margin: 0;
   padding: 24px;
   color: var(--mar-color-danger-text);
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .standalone-preview-body {
@@ -898,11 +898,11 @@ function rawContentUrl(
 }
 
 .standalone-preview-body :deep(.file-preview-loading) {
-  color: #57606a;
+  color: var(--mar-text-secondary);
 }
 
 .standalone-preview-body :deep(.file-preview-loading.is-overlay) {
-  background: #fff;
+  background: var(--mar-bg-panel);
 }
 
 .standalone-markdown-header {
@@ -912,10 +912,10 @@ function rawContentUrl(
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid #d0d7de;
-  background: #f6f8fa;
-  color: #57606a;
-  font-size: 0.75rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
 }
 .standalone-markdown-header code {
   min-width: 0;

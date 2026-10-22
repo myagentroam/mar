@@ -925,7 +925,7 @@ p {
   background: var(--mar-bg-subtle);
   padding: 20px;
   color: var(--mar-text-tertiary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
   text-align: center;
 }
 @media (max-width: 720px) {

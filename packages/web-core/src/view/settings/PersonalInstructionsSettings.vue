@@ -339,7 +339,7 @@ h2 {
   color: var(--el-text-color-regular);
   padding: 0.5rem 0.7rem;
   font-family: inherit;
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-input);
   line-height: 1.5;
   resize: vertical;
 }

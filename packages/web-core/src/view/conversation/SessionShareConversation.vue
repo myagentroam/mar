@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 .share-kicker {
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   color: var(--el-text-color-secondary);
 }
 .share-heading > div {
@@ -431,12 +431,12 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 .share-workspace {
-  font-size: 0.8rem;
+  font-size: var(--mar-font-size-body);
   color: var(--el-text-color-secondary);
   overflow-wrap: anywhere;
 }
 h1 {
-  font-size: 1.05rem;
+  font-size: var(--mar-font-size-page-title);
   font-weight: 600;
   margin: 0.25rem 0 0;
   overflow-wrap: anywhere;
@@ -446,7 +446,7 @@ h1 {
   overflow: auto;
 }
 .share-people h2 {
-  font-size: 0.9rem;
+  font-size: var(--mar-font-size-title);
   margin: 0 0 1rem;
   display: flex;
   justify-content: space-between;
@@ -461,7 +461,7 @@ h1 {
   gap: 0.75rem;
   padding: 0.7rem 0;
   overflow-wrap: anywhere;
-  font-size: 0.9rem;
+  font-size: var(--mar-font-size-body);
 }
 .sharer {
   border-bottom: 1px solid var(--el-border-color-lighter);

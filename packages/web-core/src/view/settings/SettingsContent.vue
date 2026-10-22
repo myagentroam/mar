@@ -657,7 +657,7 @@ async function confirmLogout(): Promise<void> {
   grid-row: 2;
   margin: 0;
   color: var(--el-color-danger);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.4;
 }
 </style>
@@ -691,12 +691,12 @@ async function confirmLogout(): Promise<void> {
 }
 .system-brand strong {
   color: var(--mar-text-primary);
-  font-size: 26px;
+  font-size: var(--mar-font-size-page-title);
   letter-spacing: -0.02em;
 }
 .system-brand code {
   color: var(--mar-text-muted);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
 }
 
 .about-settings :deep(.el-descriptions) {
@@ -848,7 +848,7 @@ async function confirmLogout(): Promise<void> {
 
 .theme-label {
   color: var(--mar-text-primary);
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 600;
 }
 
@@ -882,26 +882,26 @@ async function confirmLogout(): Promise<void> {
   padding: 0.08rem 0.35rem;
   background: var(--mar-fill-subtle);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .account-summary {
   margin-bottom: 0.65rem;
   color: var(--mar-text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.55;
 }
 
 .registration-summary {
   margin-bottom: 0.65rem;
   color: var(--mar-text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.55;
 }
 
 .registration-guide {
   margin: -0.2rem 0 0.75rem;
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.55;
 }
 
@@ -961,14 +961,14 @@ async function confirmLogout(): Promise<void> {
 
 .admin-sessions li > strong {
   color: var(--mar-text-primary);
-  font-size: 0.74rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .admin-sessions li > span {
   min-width: 0;
   overflow: hidden;
   color: var(--mar-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -976,7 +976,7 @@ async function confirmLogout(): Promise<void> {
 .admin-sessions li > small {
   grid-column: 2;
   color: var(--mar-text-tertiary);
-  font-size: 0.66rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }
 

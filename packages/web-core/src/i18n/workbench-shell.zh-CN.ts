@@ -241,7 +241,7 @@ export const workbenchShellZhCN = {
     management: '管理',
     settings: '设置',
     home: '返回 MyAgentRoam 首页',
-    brandSummary: '管理你的 Agent 工作空间',
+    brandSummary: 'Your agents. Wherever you roam.',
     main: '主导航',
     help: '帮助',
     nodeWorkspace: '节点与工作区',

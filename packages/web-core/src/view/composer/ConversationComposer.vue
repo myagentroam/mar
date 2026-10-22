@@ -262,7 +262,16 @@ const emit = defineEmits<{
   z-index: 3;
   border-top: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-body);
   padding: 0.4rem 0.8rem 0.75rem;
+}
+
+.composer :deep(button),
+.composer :deep(input),
+.composer :deep(select),
+.composer :deep(textarea) {
+  font-family: inherit;
 }
 
 .composer-input {
@@ -277,8 +286,15 @@ const emit = defineEmits<{
   padding: 0.55rem 0.7rem;
   color: var(--mar-text-primary);
   font: inherit;
+  font-size: var(--mar-font-size-input);
+  caret-color: var(--mar-text-primary);
   line-height: 1.55;
   resize: none;
+}
+
+.composer-input::placeholder {
+  color: var(--mar-text-tertiary);
+  opacity: 1;
 }
 
 .composer-working {
@@ -293,15 +309,15 @@ const emit = defineEmits<{
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
   border-bottom-color: var(--mar-bg-panel);
-  border-radius: 7px 7px 0 0;
+  border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
   background: var(--mar-bg-panel);
   color: var(--mar-color-brand-text);
   padding: 0.08rem 0.5rem 0.08rem 0.42rem;
   pointer-events: none;
   white-space: nowrap;
   isolation: isolate;
-  font-size: 0.66rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -371,7 +387,7 @@ const emit = defineEmits<{
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-bg-panel);
   box-shadow: none;
 }
@@ -405,11 +421,11 @@ const emit = defineEmits<{
 
 .composer-shell .composer-input {
   min-height: 96px !important;
-  border-radius: 7px 7px 0 0;
+  border-radius: calc(var(--mar-radius-surface) - 1px) calc(var(--mar-radius-surface) - 1px) 0 0;
   box-shadow: none;
   color: var(--mar-text-primary);
-  font-size: 0.8125rem;
-  line-height: 1.65;
+  font-size: var(--mar-font-size-input);
+  line-height: 1.55;
   padding: 0.75rem 0.8rem 0.25rem;
 }
 
@@ -433,7 +449,7 @@ const emit = defineEmits<{
   background: var(--mar-color-brand-subtle);
   color: var(--mar-color-brand-text);
   padding: 0.2rem 0.5rem;
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .composer-command-state:not(:disabled) {
@@ -445,19 +461,19 @@ const emit = defineEmits<{
 }
 
 .composer-skill-state {
-  border-color: var(--el-color-success);
-  background: color-mix(in srgb, var(--el-color-success) 10%, var(--mar-bg-panel));
-  color: var(--el-color-success);
+  border-color: var(--mar-color-success-text);
+  background: var(--mar-color-success-bg);
+  color: var(--mar-color-success-text);
 }
 
 .composer-skill-state:not(:disabled):hover {
-  background: color-mix(in srgb, var(--el-color-success) 16%, var(--mar-bg-panel));
+  background: var(--mar-fill-row-hover);
 }
 
 .composer-skill-state.unavailable {
-  border-color: var(--el-color-warning);
-  background: color-mix(in srgb, var(--el-color-warning) 10%, var(--mar-bg-panel));
-  color: var(--el-color-warning);
+  border-color: var(--mar-color-warning-accent);
+  background: var(--mar-color-warning-bg);
+  color: var(--mar-color-warning-text);
 }
 </style>
 
@@ -468,6 +484,7 @@ const emit = defineEmits<{
   }
 
   .composer {
+    --mar-font-size-input: 0.875rem;
     position: fixed;
     z-index: 6;
     right: 0;

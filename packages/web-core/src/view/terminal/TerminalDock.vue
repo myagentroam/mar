@@ -461,7 +461,8 @@ defineExpose({ release, toggle: toggleTerminal });
 
 <style scoped>
 .admin-terminal {
-  background: var(--mar-bg-subtle);
+  border-top: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
 }
 
 .admin-terminal-header {
@@ -475,9 +476,10 @@ defineExpose({ release, toggle: toggleTerminal });
 
 .admin-terminal-header h2 {
   margin: 0;
-  font-size: 13px;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
   font-weight: 500;
-  line-height: 18px;
+  line-height: 1.4;
 }
 
 .admin-terminal-actions {
@@ -497,9 +499,8 @@ defineExpose({ release, toggle: toggleTerminal });
   display: flex;
   gap: 3px;
   overflow-x: auto;
-  border-top: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-subtle);
-  padding: 3px;
+  background: var(--mar-bg-chrome);
+  padding: 4px 3px 3px;
 }
 
 .terminal-tab {
@@ -508,10 +509,10 @@ defineExpose({ release, toggle: toggleTerminal });
   flex: none;
   align-items: center;
   min-width: 100px;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-tertiary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .terminal-tab-select {
@@ -532,7 +533,7 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab:not(.active):hover:not(:disabled) {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
@@ -560,7 +561,7 @@ defineExpose({ release, toggle: toggleTerminal });
 
 .terminal-profile {
   gap: 2px;
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .terminal-profile select {
@@ -570,7 +571,7 @@ defineExpose({ release, toggle: toggleTerminal });
 
 @media (max-width: 767px) {
   .admin-terminal {
-    background: var(--mar-bg-page);
+    background: var(--mar-bg-chrome);
   }
 
   .admin-terminal-header {

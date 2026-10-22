@@ -83,11 +83,11 @@ const { t } = useI18n();
 <style scoped>
 .theme-preview {
   border: 1px solid var(--mar-border-default);
-  border-radius: 6px;
+  border-radius: var(--mar-radius-surface);
   overflow: hidden;
   background: var(--mar-bg-page);
   color: var(--mar-text-primary);
-  font-size: 0.786rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
 .preview-toolbar {
@@ -130,7 +130,7 @@ const { t } = useI18n();
   margin-top: 0.3rem;
   padding: 0.25rem;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
   text-align: left;
@@ -175,17 +175,17 @@ const { t } = useI18n();
   margin-left: 0.7rem;
   margin-bottom: 0.5rem;
   padding: 0.4rem 0.5rem;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
-  border: 1px solid var(--mar-color-brand-border);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--mar-color-brand) 6%, var(--mar-conversation-surface));
+  color: var(--mar-conversation-text);
+  border: 1px solid color-mix(in srgb, var(--mar-color-brand) 8%, var(--mar-conversation-border));
+  border-radius: var(--mar-radius-surface);
 }
 .assistant-message {
   padding: 0.5rem;
   background: var(--mar-conversation-surface);
   color: var(--mar-conversation-text);
   border: 1px solid var(--mar-conversation-border);
-  border-radius: 4px;
+  border-radius: var(--mar-radius-surface);
 }
 .assistant-message p {
   color: var(--mar-conversation-muted);
@@ -230,7 +230,7 @@ const { t } = useI18n();
   background: var(--mar-conversation-process);
   color: var(--mar-conversation-muted);
   border: 1px solid var(--mar-conversation-process-border);
-  border-radius: 4px;
+  border-radius: var(--mar-radius-surface);
 }
 .preview-controls {
   padding: 0.65rem;
@@ -246,7 +246,7 @@ const { t } = useI18n();
 }
 .status {
   padding: 0.2rem 0.45rem;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
 }
 .success {
   color: var(--mar-color-success-text);
@@ -276,7 +276,7 @@ input {
   padding: 0.35rem 0.5rem;
   margin-top: 0.2rem;
   border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   background: var(--el-fill-color-blank);
   color: var(--el-text-color-primary);
   font: inherit;
@@ -288,7 +288,7 @@ input::placeholder {
   font: inherit;
   padding: 0.3rem 0.55rem;
   border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   background: var(--el-fill-color-blank);
   color: var(--el-text-color-regular);
   cursor: pointer;
@@ -305,8 +305,8 @@ input::placeholder {
 }
 .preview-button.primary:hover {
   color: var(--mar-color-on-accent);
-  background: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
+  background: var(--mar-color-brand-hover);
+  border-color: var(--mar-color-brand-hover);
 }
 .preview-button.primary:active {
   background: var(--el-color-primary-dark-2);
@@ -327,7 +327,7 @@ input:focus-visible {
   margin: 0.5rem 0 0;
 }
 .theme-preview.expanded {
-  font-size: 1rem;
+  font-size: var(--mar-font-size-body);
 }
 .expanded .preview-workbench {
   grid-template-columns: minmax(8rem, 1fr) 3fr;

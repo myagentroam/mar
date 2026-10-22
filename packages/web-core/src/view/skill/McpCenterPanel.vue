@@ -562,7 +562,7 @@ function mcpErrorMessage(error: unknown): string {
   color: var(--mar-text-tertiary);
   padding: 5px 12px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
   cursor: pointer;
 }
 .mcp-category-strip button:hover {
@@ -598,11 +598,11 @@ function mcpErrorMessage(error: unknown): string {
 }
 .mcp-target-panel strong {
   color: var(--mar-text-primary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
 }
 .mcp-target-panel span {
   color: var(--mar-text-tertiary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .mcp-target-panel .el-select {
   width: min(240px, 100%);
@@ -611,7 +611,7 @@ function mcpErrorMessage(error: unknown): string {
   float: right;
   margin-left: 16px;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .mcp-tags {
   display: flex;
@@ -635,7 +635,7 @@ function mcpErrorMessage(error: unknown): string {
   display: grid;
   gap: 6px;
   color: var(--mar-text-tertiary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 @media (max-width: 720px) {
   .mcp-target-panel .el-select {

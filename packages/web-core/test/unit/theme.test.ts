@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createThemePreferenceService,
   parseStoredThemePreference,
@@ -24,6 +26,47 @@ function styleDeclarations(source: string, selector: string): Record<string, str
     )
   );
 }
+
+function contrast(foreground: string, background: string) {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((offset) => {
+      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  };
+  const values = [luminance(foreground), luminance(background)];
+  return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+}
+
+it('shares global typography with native inputs and Element Plus without undefined font roles', () => {
+  const css = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+  const defined = new Set([...css.matchAll(/(--mar-font-[\w-]+)\s*:/gu)].map((match) => match[1]));
+  expect(css).toContain('--el-font-family: var(--mar-font-sans)');
+  expect(css).toContain('--el-font-size-base: var(--mar-font-size-body)');
+  expect(css).toContain('--mar-font-size-input: var(--mar-font-size-body)');
+  expect(css).toContain('--mar-font-size-input: 1rem');
+  expect(css).toContain('--mar-font-size-nav-label: var(--mar-font-size-meta)');
+  expect(css).toContain('--mar-font-size-nav-label: 10px');
+  expect(css).toContain('font-size: var(--mar-font-size-input)');
+  const root = fileURLToPath(new URL('../../src/view/', import.meta.url));
+  for (const file of readdirSync(root, {
+    recursive: true,
+    encoding: 'utf8',
+    withFileTypes: false
+  })) {
+    if (!file.endsWith('.vue')) continue;
+    const source = readFileSync(join(root, file), 'utf8');
+    for (const match of source.matchAll(/var\((--mar-font-[\w-]+)/gu)) {
+      expect(defined.has(match[1]!), `${file}: ${match[1]}`).toBe(true);
+    }
+  }
+  for (const type of ['success', 'warning', 'danger', 'info']) {
+    for (const suffix of ['light-3', 'light-5', 'light-7', 'light-8', 'light-9', 'dark-2']) {
+      expect(css).toContain(`--el-color-${type}-${suffix}:`);
+    }
+  }
+});
 
 function stubBrowserEnvironment() {
   const storage = new Map<string, string>();
@@ -92,19 +135,13 @@ describe('Web theme preference', () => {
       /html\.console-ui \.el-message__content\s*\{[^}]*white-space:\s*pre-line;[^}]*line-height:\s*1\.5;/u
     );
 
-    const luminance = (hex: string) => {
-      const channels = [1, 3, 5].map((offset) => {
-        const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-      });
-      return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-    };
-    const contrast = (foreground: string, background: string) => {
-      const values = [luminance(foreground), luminance(background)];
-      return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
-    };
-
-    expect(contrast('#ffffff', '#0a6fd8')).toBeGreaterThanOrEqual(4.5);
+    for (const state of [
+      '--mar-color-brand',
+      '--mar-color-brand-hover',
+      '--mar-control-color-primary-dark-2'
+    ]) {
+      expect(contrast('#ffffff', daylight[state]!)).toBeGreaterThanOrEqual(4.5);
+    }
     for (const foreground of ['#1c2733', '#47586a', '#5f7082', '#627386']) {
       expect(contrast(foreground, '#ffffff')).toBeGreaterThanOrEqual(4.5);
     }
@@ -119,32 +156,82 @@ describe('Web theme preference', () => {
     }
   });
 
-  it('uses the shared blue-gray dark palette for Console surfaces and semantic accents', () => {
+  it('uses the original dark palette with distinct surfaces and readable button text', () => {
     const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
     const dark = styleDeclarations(source, "html.console-ui[data-theme='vscode-dark-2026']")[0]!;
 
     expect(dark['--mar-bg-page']).toBe('#0e1116');
-    expect(dark['--mar-bg-panel']).toBe('#131922');
-    expect(dark['--mar-bg-tab-inactive']).toBe('#1a2230');
+    expect(dark['--mar-bg-panel']).toBe('#161d28');
+    expect(dark['--mar-bg-chrome']).toBe('#131922');
+    for (const [role, color] of Object.entries({
+      canvas: '#0e1116',
+      surface: '#131922',
+      process: '#111720',
+      border: '#313d50',
+      'process-border': '#202a39',
+      text: '#e8eef8',
+      muted: '#9fb0c7',
+      code: '#111720'
+    })) {
+      expect(dark[`--mar-conversation-${role}`]).toBe(color);
+    }
+    expect(dark['--mar-control-bg-color-overlay']).toBe('#1a2230');
+    expect(dark['--mar-bg-tab-inactive']).toBe('#111720');
     expect(dark['--mar-border-default']).toBe('#273142');
-    expect(dark['--mar-color-brand']).toBe('#3093ff');
-    expect(dark['--mar-color-brand-hover']).toBe('#4aa3ff');
-    expect(dark['--mar-color-brand-selected']).toBe(
-      'color-mix(in srgb, var(--mar-color-brand) 8%, transparent)'
-    );
-    expect(dark['--mar-color-accent']).toBe('#37c8ff');
-    expect(dark['--mar-control-color-success']).toBe('#22c55e');
+    expect(dark['--mar-border-subtle']).toBe('#202a39');
+    expect(dark['--mar-color-brand']).toBe('#1f73cf');
+    expect(dark['--mar-color-brand-hover']).toBe('#2477d1');
+    expect(dark['--mar-color-brand-selected']).toBe('#162c44');
+    expect(dark['--mar-color-on-accent']).toBe('#ffffff');
+    expect(
+      contrast(dark['--mar-color-brand-text']!, dark['--mar-color-brand-selected']!)
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(dark['--mar-color-accent']).toBe('#5edcec');
+    expect(dark['--mar-control-color-success']).toBe('#62d6a4');
     expect(dark['--mar-text-primary']).toBe('#e8eef8');
     expect(dark['--mar-text-secondary']).toBe('#9fb0c7');
-    expect(dark['--mar-text-muted']).toBe('#6d7c92');
-    expect(dark['--mar-shadow-medium']).toBe('rgb(0 0 0 / 28%)');
-    expect(dark['--mar-overlay-scrim']).toBe('rgb(0 0 0 / 48%)');
-    expect(dark['--mar-text-neutral-control']).toBe('var(--mar-text-faint)');
+    expect(dark['--mar-text-muted']).toBe('#8799b1');
+    for (const surface of [
+      '--mar-bg-page',
+      '--mar-bg-chrome',
+      '--mar-bg-panel',
+      '--mar-control-bg-color-overlay'
+    ]) {
+      for (const text of ['--mar-text-primary', '--mar-text-secondary', '--mar-text-tertiary']) {
+        expect(
+          contrast(dark[text]!, dark[surface]!),
+          text + ' on ' + surface
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    for (const brandState of [
+      '--mar-color-brand',
+      '--mar-color-brand-hover',
+      '--mar-control-color-primary-light-3',
+      '--mar-control-color-primary-dark-2'
+    ]) {
+      expect(contrast(dark['--mar-color-on-accent']!, dark[brandState]!)).toBeGreaterThanOrEqual(
+        4.5
+      );
+    }
+    expect(dark['--mar-shadow-medium']).toBe('#00000047');
+    expect(dark['--mar-overlay-scrim']).toBe('#0000007a');
+    expect(dark['--mar-text-neutral-control']).toBe('#8799b1');
     expect(source).toContain("html.console-ui[data-theme='vscode-dark-2026'] .el-message--info {");
     expect(source).toContain('--el-message-bg-color: var(--mar-bg-tab-inactive);');
   });
 
   it('uses rounded brand-highlight selection without tab underlines on desktop and mobile', () => {
+    const global = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    const radii = styleDeclarations(global, ':root').find(
+      (rule) => '--mar-radius-selection' in rule
+    )!;
+    expect(radii).toMatchObject({
+      '--mar-radius-marker': '4px',
+      '--mar-radius-control': '6px',
+      '--mar-radius-selection': '6px',
+      '--mar-radius-surface': '12px'
+    });
     const readView = (path: string) =>
       readFileSync(new URL(`../../src/view/${path}`, import.meta.url), 'utf8');
     const workspaceTabs = readView('workspace/WorkspaceTabs.vue');
@@ -155,12 +242,26 @@ describe('Web theme preference', () => {
     const workspaceTree = readView('workspace/WorkspaceTree.vue');
     const sessionList = readView('workspace/WorkspaceSessionList.vue');
 
+    for (const [component, selector] of [
+      [workspaceTabs, '.workspace-tab'],
+      [fileTabs, '.workspace-file-tab'],
+      [terminal, '.terminal-tab'],
+      [inspector, '.inspector-tabs button'],
+      [workspaceTree, '.workspace-branches > li'],
+      [sessionList, '.session-row'],
+      [readView('workbench/WorkbenchNavigation.vue'), '.activity-rail nav button']
+    ] as const) {
+      expect(styleDeclarations(component, selector)).toContainEqual(
+        expect.objectContaining({ 'border-radius': 'var(--mar-radius-selection)' })
+      );
+    }
+
     expect(workspaceTabs).not.toContain('box-shadow: inset 0 -2px 0 var(--mar-color-brand)');
     expect(styleDeclarations(workspaceTabs, '.workspace-tab.active')[0]!['background']).toContain(
       'var(--mar-color-brand-selected)'
     );
     expect(styleDeclarations(workspaceTabs, '.workspace-tab:not(.active):hover')).toContainEqual(
-      expect.objectContaining({ background: 'var(--mar-bg-tab-inactive)' })
+      expect.objectContaining({ background: 'var(--mar-fill-row-hover)' })
     );
     expect(inspector).not.toContain('.inspector-tabs button.active::after');
     for (const selector of [
@@ -185,11 +286,24 @@ describe('Web theme preference', () => {
       styleDeclarations(terminal, '.terminal-tab:not(.active):hover:not(:disabled)')
     ).toContainEqual(
       expect.objectContaining({
-        background: 'var(--mar-bg-tab-inactive)',
+        background: 'var(--mar-fill-row-hover)',
         color: 'var(--mar-text-primary)'
       })
     );
-    expect(terminal).toContain('background: var(--mar-bg-subtle);');
+    for (const [component, selector] of [
+      [
+        readView('workbench/WorkbenchNavigation.vue'),
+        '.activity-rail nav button:hover:not(:disabled)'
+      ],
+      [workspaceTree, '.workspace-group-toggle:hover'],
+      [workspaceTree, '.workspace-branches > li:hover'],
+      [sessionList, '.session-row:hover']
+    ] as const) {
+      expect(styleDeclarations(component, selector)).toContainEqual(
+        expect.objectContaining({ background: 'var(--mar-fill-row-hover)' })
+      );
+    }
+    expect(terminal).toContain('background: var(--mar-bg-chrome);');
     expect(terminal).toContain('class="terminal-tab-close icon-button utility-control"');
     expect(terminal).toContain('<el-icon><Close /></el-icon>');
     expect(terminal).not.toContain('role="button"');
@@ -237,13 +351,101 @@ describe('Web theme preference', () => {
     );
     expect(workspaceTree).toContain('margin: 2px 6px;');
     expect(sessionList).not.toContain('box-shadow: inset 2px 0 var(--mar-color-brand)');
-    expect(sessionList).toContain('border-radius: var(--el-border-radius-base);');
+    expect(styleDeclarations(sessionList, '.session-row')).toContainEqual(
+      expect.objectContaining({ 'border-radius': 'var(--mar-radius-selection)' })
+    );
+    expect(styleDeclarations(sessionList, '.session-link')).toContainEqual(
+      expect.objectContaining({ 'border-radius': 'inherit' })
+    );
     expect(styleDeclarations(sessionList, '.session-list li')).toContainEqual(
-      expect.objectContaining({ 'border-bottom': '0', padding: '1px 6px' })
+      expect.objectContaining({ 'border-bottom': '0', padding: '2px 6px' })
+    );
+    expect(styleDeclarations(sessionList, '.session-list li:first-child')).toContainEqual(
+      expect.objectContaining({ 'padding-top': '4px' })
     );
     expect(terminalView).not.toContain('#17232d');
     expect(terminalView).not.toContain('#18212b');
     expect(terminalView).toContain('background: var(--mar-terminal-background);');
+  });
+
+  it('keeps private headers and file actions in their owning components', () => {
+    const global = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    const frame = readFileSync(
+      new URL('../../src/view/workspace/WorkspaceFilePageFrame.vue', import.meta.url),
+      'utf8'
+    );
+    const header = readFileSync(
+      new URL('../../src/view/conversation/ConversationHeader.vue', import.meta.url),
+      'utf8'
+    );
+    for (const selector of [
+      '.file-preview-header',
+      '.mobile-preview-actions',
+      '.conversation-header'
+    ])
+      expect(global).not.toContain(selector);
+    expect(styleDeclarations(frame, '.workspace-file-page-frame-header')).toContainEqual(
+      expect.objectContaining({ display: 'flex', 'justify-content': 'space-between' })
+    );
+    expect(styleDeclarations(frame, '.workspace-file-mobile-actions')).toContainEqual(
+      expect.objectContaining({ display: 'none' })
+    );
+    expect(styleDeclarations(frame, '.workspace-file-mobile-actions')).toContainEqual(
+      expect.objectContaining({ display: 'flex', position: 'fixed', 'border-radius': '0.75rem' })
+    );
+    expect(styleDeclarations(header, '.conversation-header h2')).toContainEqual(
+      expect.objectContaining({ 'font-size': 'var(--mar-font-size-body)' })
+    );
+  });
+
+  it('keeps theme previews, status markers and overlays on the shared radius roles', () => {
+    const readView = (path: string) =>
+      readFileSync(new URL(`../../src/view/${path}`, import.meta.url), 'utf8');
+    const global = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    const preview = readView('settings/ThemePreview.vue');
+    const timeline = readView('conversation/ConversationTimeline.vue');
+    for (const selector of ['.user-message', '.assistant-message', '.process'])
+      expect(styleDeclarations(preview, selector)).toContainEqual(
+        expect.objectContaining({ 'border-radius': 'var(--mar-radius-surface)' })
+      );
+    for (const selector of [
+      '.task-list-status',
+      '.conversation-file-change-status',
+      '.conversation-error-code'
+    ])
+      expect(styleDeclarations(timeline, selector)).toContainEqual(
+        expect.objectContaining({ 'border-radius': 'var(--mar-radius-marker)' })
+      );
+    const message = styleDeclarations(timeline, '.conversation-item.user_message')[0]!;
+    expect(styleDeclarations(preview, '.user-message')[0]!['background']).toBe(
+      message['background']
+    );
+    expect(styleDeclarations(preview, '.user-message')[0]!['border']).toBe(
+      `1px solid ${message['border-color']}`
+    );
+    for (const name of ['dialog', 'popover'])
+      expect(styleDeclarations(global, `html.console-ui .el-${name}`)).toContainEqual(
+        expect.objectContaining({ [`--el-${name}-border-radius`]: 'var(--mar-radius-surface)' })
+      );
+  });
+
+  it('uses conversation-level separators for task, tool and command details', () => {
+    const timeline = readFileSync(
+      new URL('../../src/view/conversation/ConversationTimeline.vue', import.meta.url),
+      'utf8'
+    );
+    for (const [selector, edge, width] of [
+      ['.task-list-items', 'border-top', '1px'],
+      ['.task-list-items > li', 'border-bottom', '1px'],
+      ['.conversation-tool-list', 'border-left', '2px'],
+      ['.conversation-command-list', 'border-left', '2px'],
+      ['.conversation-tool-detail', 'border-top', '1px'],
+      ['.conversation-command-detail', 'border-top', '1px']
+    ] as const) {
+      expect(styleDeclarations(timeline, selector)).toContainEqual(
+        expect.objectContaining({ [edge]: `${width} solid var(--mar-conversation-process-border)` })
+      );
+    }
   });
 
   it('keeps conversation text readable on each theme surface without changing global colors', () => {
@@ -263,7 +465,10 @@ describe('Web theme preference', () => {
       const tokens = new Map(
         Object.entries(declarations)
           .filter(([name]) => name.startsWith('--mar-conversation-'))
-          .map(([name, value]) => [name.slice('--mar-conversation-'.length), value])
+          .map(([name, value]) => [
+            name.slice('--mar-conversation-'.length),
+            value.startsWith('var(') ? declarations[value.slice(4, -1)] : value
+          ])
       );
       for (const name of [
         'canvas',

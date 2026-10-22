@@ -103,7 +103,7 @@ async function copy(token: string): Promise<void> {
 }
 h3 {
   margin: 1rem 0 0.25rem;
-  font-size: 1rem;
+  font-size: var(--mar-font-size-title);
 }
 dl {
   margin: 0;
@@ -122,12 +122,12 @@ code {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--mar-font-mono);
-  font-size: 0.857rem;
+  font-size: var(--mar-font-size-body);
 }
 dd {
   margin: 0.25rem 0 0 1.5rem;
   color: var(--mar-text-secondary);
-  font-size: 0.929rem;
+  font-size: var(--mar-font-size-body);
 }
 .swatch {
   width: 1rem;

@@ -824,7 +824,7 @@ function scopeLabel(scope: string): string {
 .skill-page-header p {
   margin: 2px 0 0;
   color: var(--mar-text-tertiary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
 }
 .skill-content {
   display: flex;
@@ -865,7 +865,7 @@ function scopeLabel(scope: string): string {
   color: var(--mar-text-tertiary);
   padding: 5px 12px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
   cursor: pointer;
 }
 .skill-category-strip button:hover {
@@ -892,7 +892,7 @@ function scopeLabel(scope: string): string {
   gap: 5px;
   min-width: 180px;
   color: var(--mar-text-tertiary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .skill-table-section {
   min-height: 180px;
@@ -915,7 +915,7 @@ function scopeLabel(scope: string): string {
   background: var(--mar-bg-subtle);
   padding: 20px;
   color: var(--mar-text-tertiary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
   text-align: center;
 }
 .target-panel {
@@ -934,12 +934,12 @@ function scopeLabel(scope: string): string {
 }
 .target-panel strong {
   color: var(--mar-text-primary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
 }
 .target-panel div span,
 .target-name {
   color: var(--mar-text-tertiary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .target-select {
   width: min(240px, 100%);
@@ -953,7 +953,7 @@ function scopeLabel(scope: string): string {
 .installed-heading {
   margin: 4px 0 0;
   color: var(--mar-text-primary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
   font-weight: 600;
 }
 @media (max-width: 700px) {

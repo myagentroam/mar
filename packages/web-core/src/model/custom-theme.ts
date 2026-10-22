@@ -16,6 +16,7 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-control-link-hover',
 
   '--mar-bg-panel',
+  '--mar-bg-chrome',
   '--mar-bg-subtle',
   '--mar-bg-tab-inactive',
   '--mar-fill-subtle',
@@ -65,7 +66,6 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-color-brand-text',
   '--mar-color-on-accent',
   '--mar-color-brand-hover',
-  '--mar-color-brand-active',
   '--mar-color-brand-subtle',
   '--mar-color-brand-selected',
   '--mar-color-brand-border',
@@ -82,39 +82,6 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-color-diff-del-text',
   '--mar-shadow-soft',
   '--mar-shadow-medium',
-  '--mar-shadow-strong',
   '--mar-overlay-scrim',
   '--mar-overlay-border'
 ] as const;
-
-// Read-only aliases for previously exported themes. New palettes use MAR tokens only.
-export const LEGACY_THEME_TOKENS: Readonly<Record<string, string>> = {
-  '--el-color-primary': '--mar-color-brand',
-  '--el-color-primary-light-3': '--mar-control-color-primary-light-3',
-  '--el-color-primary-light-5': '--mar-control-color-primary-light-5',
-  '--el-color-primary-light-7': '--mar-control-color-primary-light-7',
-  '--el-color-primary-light-8': '--mar-control-color-primary-light-8',
-  '--el-color-primary-light-9': '--mar-control-color-primary-light-9',
-  '--el-color-primary-dark-2': '--mar-control-color-primary-dark-2',
-  '--el-color-success': '--mar-control-color-success',
-  '--el-color-warning': '--mar-control-color-warning',
-  '--el-color-danger': '--mar-control-color-danger',
-  '--el-bg-color': '--mar-bg-panel',
-  '--el-bg-color-page': '--mar-bg-page',
-  '--el-bg-color-overlay': '--mar-control-bg-color-overlay',
-  '--el-fill-color': '--mar-control-fill-color',
-  '--el-fill-color-light': '--mar-control-fill-color-light',
-  '--el-fill-color-lighter': '--mar-control-fill-color-lighter',
-  '--el-fill-color-extra-light': '--mar-control-fill-color-extra-light',
-  '--el-fill-color-blank': '--mar-bg-panel',
-  '--el-text-color-primary': '--mar-text-primary',
-  '--el-text-color-regular': '--mar-text-secondary',
-  '--el-text-color-secondary': '--mar-text-tertiary',
-  '--el-text-color-placeholder': '--mar-text-faint',
-  '--el-border-color': '--mar-border-default',
-  '--el-border-color-light': '--mar-border-subtle',
-  '--el-border-color-lighter': '--mar-control-border-color-lighter',
-  '--el-border-color-extra-light': '--mar-control-border-color-extra-light',
-  '--el-border-color-dark': '--mar-control-border-color-dark',
-  '--el-border-color-darker': '--mar-control-border-color-darker'
-};

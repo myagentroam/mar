@@ -293,7 +293,7 @@ function closeStandaloneFileWindow(): void {
   place-items: center;
   background: var(--mar-bg-page);
   color: var(--mar-text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--mar-font-size-body);
   text-align: center;
 }
 

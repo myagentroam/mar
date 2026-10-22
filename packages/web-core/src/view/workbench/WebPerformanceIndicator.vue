@@ -204,7 +204,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 }
 .web-performance-panel {
   color: var(--mar-text-primary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 .web-performance-panel header {
   display: flex;

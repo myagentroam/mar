@@ -301,7 +301,7 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
   await expect(page.locator('.xterm-host')).toBeHidden();
   await toggleTerminalShortcut();
   await expect(page.getByRole('heading', { name: '终端' })).toHaveCSS('font-weight', '500');
-  await expect(page.getByRole('heading', { name: '终端' })).toHaveCSS('font-size', '13px');
+  await expect(page.getByRole('heading', { name: '终端' })).toHaveCSS('font-size', '14px');
   await expect(page.locator('.admin-terminal-header')).toHaveCSS('min-height', '32px');
   await expect(page.getByRole('button', { name: '重新连接' })).toHaveCount(0);
   await expect(page.locator('.xterm-host')).toBeVisible();
@@ -311,7 +311,15 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
     )
     .toBe(true);
   await expect(page.locator('.admin-terminal-status')).toHaveCount(0);
-  await expect(page.locator('.admin-terminal')).toHaveCSS('background-color', 'rgb(247, 249, 251)');
+  const chromeBackground = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--mar-bg-chrome)';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(page.locator('.admin-terminal')).toHaveCSS('background-color', chromeBackground);
   await expect(page.locator('.admin-terminal-body')).toHaveCSS(
     'background-color',
     'rgb(14, 17, 22)'

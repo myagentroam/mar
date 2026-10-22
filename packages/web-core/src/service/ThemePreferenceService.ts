@@ -1,10 +1,5 @@
 import { computed, ref, type Ref } from 'vue';
-import {
-  LEGACY_THEME_TOKENS,
-  type BuiltinTheme,
-  type CustomTheme,
-  type ThemePreference
-} from '../model/custom-theme.js';
+import type { BuiltinTheme, CustomTheme, ThemePreference } from '../model/custom-theme.js';
 import { analyzeCustomTheme, createThemeSource, themeColorScheme } from '../util/custom-theme.js';
 import { readBuiltinThemeColors } from '../util/theme-palette.js';
 
@@ -114,23 +109,12 @@ export function createThemePreferenceService(
       const data: Record<string, unknown> =
         original && typeof original === 'object' && !Array.isArray(original) ? { ...original } : {};
       delete data.base;
-      const originalColors =
-        data.colors && typeof data.colors === 'object' && !Array.isArray(data.colors)
-          ? data.colors
-          : {};
       return JSON.stringify(
         {
           ...data,
           version: 1,
           name,
-          colors: {
-            ...Object.fromEntries(
-              Object.entries(originalColors).filter(
-                ([key]) => !Object.hasOwn(LEGACY_THEME_TOKENS, key)
-              )
-            ),
-            ...resolveColors(source)
-          }
+          colors: resolveColors(source)
         },
         null,
         2

@@ -477,7 +477,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 .git-form-group-title {
   margin: 0 0 8px;
   color: var(--el-text-color-regular);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
   font-weight: 500;
 }
 .git-identity-fields {

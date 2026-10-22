@@ -831,7 +831,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .workspace-group-toggle {
   display: grid;
-  width: 100%;
+  width: calc(100% - 12px);
+  margin: 2px 6px;
   min-width: 0;
   min-height: 30px;
   grid-template-columns:
@@ -840,7 +841,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   align-items: center;
   column-gap: var(--workspace-tree-arrow-content-gap);
   border: 0;
-  border-radius: 0;
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
   padding: 4px 6px 4px calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
@@ -863,7 +864,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .workspace-group-toggle .tree-chevron {
   grid-column: 1;
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--workspace-tree-control);
   transition: transform 0.12s ease;
 }
 
@@ -893,7 +894,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .workspace-group-move-hint,
 .workspace-group-move-error {
   margin: 8px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .workspace-group-move-control {
@@ -952,7 +953,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-content > small {
   color: var(--mar-text-tertiary);
-  font-size: 0.61rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .tree-node-content > span:last-child,
@@ -1015,7 +1016,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   min-height: 30px;
   margin: 2px 6px;
   padding-left: calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -1100,7 +1101,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   column-gap: var(--workspace-tree-arrow-content-gap);
   margin: 2px 6px;
   padding-left: var(--workspace-tree-leading);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -1156,7 +1157,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .node-expand-button :deep(.el-icon) {
-  font-size: 12px;
+  font-size: var(--workspace-tree-control);
 }
 
 .node-expand-spacer {
@@ -1228,30 +1229,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-foot {
   margin: 0 0.9rem;
-  border-top: 1px solid var(--mar-fill-hover);
   padding: 0.25rem 0.1rem 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.69rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
 
 @media (max-width: 767px) {
-  .tree-node,
-  .node-expand-button,
-  .workspace-group-toggle,
-  .workspace-branches .workspace-branch-button,
-  .tree-more-button {
-    min-height: 36px;
-  }
-
-  .tree-more-button {
-    width: 36px;
-  }
-
-  .tree-node-row.actions-visible {
-    grid-template-columns: var(--workspace-tree-control) minmax(0, 1fr) 36px;
-  }
-
   .node-row span:not(.state-dot),
   .node-row code {
     display: none;

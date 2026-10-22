@@ -241,8 +241,8 @@ void load();
 }
 .license-code-input :deep(.el-input__inner) {
   color: var(--el-text-color-regular);
-  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
-  font-size: var(--mar-font-size-meta);
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-input);
   text-overflow: ellipsis;
 }
 .license-code-input :deep(.el-input-group__append .el-button) {
@@ -260,7 +260,7 @@ void load();
 .license-import :deep(.el-textarea__inner) {
   min-height: 92px !important;
   font-family: var(--el-font-family);
-  font-size: 12px;
+  font-size: var(--mar-font-size-input);
   line-height: 18px;
 }
 @media (max-width: 767px) {

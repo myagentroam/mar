@@ -489,7 +489,7 @@ onMounted(() => {
 .smtp-dialog-hint {
   margin: 0;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
 .smtp-dialog-footer {

@@ -75,18 +75,21 @@ watch(
   overflow: auto;
   border: 1px solid var(--mar-border-strong);
   border-radius: 5px;
-  background: var(--mar-bg-panel);
+  background: var(--mar-control-bg-color-overlay);
   box-shadow: 0 4px 12px var(--mar-shadow-soft);
 }
 
 .command-picker button {
+  font-family: inherit;
+  font-size: var(--mar-font-size-body);
+  line-height: 1.4;
   display: grid;
   grid-template-columns: max-content 150px minmax(0, 1fr) max-content;
   gap: 0.55rem;
   border: 0;
   border-bottom: 1px solid var(--mar-fill-hover);
   border-radius: 0;
-  background: var(--mar-bg-panel);
+  background: var(--mar-control-bg-color-overlay);
   color: var(--mar-text-primary);
   cursor: pointer;
   padding: 0.55rem 0.65rem;
@@ -95,14 +98,24 @@ watch(
 
 .command-picker button:hover,
 .command-picker button.active {
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-color-brand-selected);
+}
+
+.command-picker button strong {
+  font-weight: 600;
+}
+
+.command-picker button:is(:hover, .active),
+.command-picker button:is(:hover, .active) code,
+.command-picker button:is(:hover, .active) .entry-kind {
+  color: var(--mar-color-brand-text);
 }
 
 .command-picker p {
   margin: 0;
   color: var(--mar-text-tertiary);
   padding: 0.65rem;
-  font-size: 0.69rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-reference-picker button code,
@@ -115,12 +128,12 @@ watch(
 
 .file-reference-picker button code {
   color: var(--mar-text-tertiary);
-  font-size: 0.69rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .entry-kind {
   color: var(--mar-text-faint);
-  font-size: 0.65rem;
+  font-size: var(--mar-font-size-meta);
   white-space: nowrap;
 }
 </style>

@@ -410,16 +410,16 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
   overflow: auto;
 }
 h2 {
-  font-size: 1.071rem;
+  font-size: var(--mar-font-size-title);
   margin: 0 0 0.6rem;
 }
 h3 {
-  font-size: 1rem;
+  font-size: var(--mar-font-size-title);
   margin: 0;
 }
 .summary {
   color: var(--mar-text-secondary);
-  font-size: 0.929rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
   margin: 0.5rem 0 1rem;
 }
@@ -502,7 +502,7 @@ h3 {
   overflow-wrap: anywhere;
 }
 .theme-meta {
-  font-size: 0.857rem;
+  font-size: var(--mar-font-size-body);
   color: var(--mar-text-secondary);
 }
 .theme-controls {
@@ -528,7 +528,7 @@ h3 {
 }
 .json-editor :deep(textarea) {
   font-family: var(--mar-font-mono);
-  font-size: 0.929rem;
+  font-size: var(--mar-font-size-input);
   line-height: 1.6;
   tab-size: 2;
 }

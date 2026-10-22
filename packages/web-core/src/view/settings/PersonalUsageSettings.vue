@@ -820,7 +820,7 @@ p {
 }
 .overview-cell strong {
   display: inline-block;
-  font-size: 1.5rem;
+  font-size: var(--mar-font-size-display);
   font-weight: 600;
   margin-right: 0.4rem;
   font-variant-numeric: tabular-nums;

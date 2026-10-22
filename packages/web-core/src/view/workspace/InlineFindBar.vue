@@ -97,7 +97,7 @@ onMounted(focus);
 .inline-find-count {
   min-width: 3.4rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
   text-align: center;
   white-space: nowrap;
 }

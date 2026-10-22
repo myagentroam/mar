@@ -148,14 +148,14 @@ onBeforeUnmount(() => {
   background: var(--el-bg-color);
 }
 .share-entry-mark {
-  font-family: ui-monospace, monospace;
-  font-size: 0.75rem;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
   letter-spacing: 0.12em;
   color: var(--el-color-primary);
 }
 h1 {
-  font-size: 0.9375rem;
+  font-size: var(--mar-font-size-page-title);
   margin: 1rem 0;
 }
 p {

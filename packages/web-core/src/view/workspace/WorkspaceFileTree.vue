@@ -567,7 +567,7 @@ defineExpose({ reveal });
   margin: 0;
   color: var(--mar-text-muted);
   padding: 0.45rem 0.65rem;
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-tree-row,
@@ -581,7 +581,7 @@ defineExpose({ reveal });
   border: 0;
   background: transparent;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.25;
   text-align: left;
   white-space: nowrap;

@@ -90,7 +90,7 @@ function submit(): void {
 .gate-panel h1 {
   margin: 0 0 0.4rem;
   color: var(--mar-text-primary);
-  font-size: 1.25rem;
+  font-size: var(--mar-font-size-page-title);
   line-height: 1.35;
   letter-spacing: -0.015em;
 }
@@ -98,15 +98,15 @@ function submit(): void {
 .eyebrow {
   margin: 0 0 0.55rem;
   color: var(--mar-text-secondary);
-  font-size: 0.69rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.06em;
 }
 
 .lede {
   margin: 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.8125rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 
@@ -120,7 +120,7 @@ function submit(): void {
   display: grid;
   gap: 0.35rem;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
 }
 
@@ -154,7 +154,7 @@ function submit(): void {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--el-color-danger);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.4;
 }
 </style>

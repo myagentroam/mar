@@ -157,6 +157,6 @@ function submit(): void {
 .workspace-picker-ownership > span {
   margin: 0;
   color: var(--mar-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 </style>

@@ -599,7 +599,7 @@ onBeforeUnmount(() => {
   min-height: 36px;
   border-bottom: 1px solid var(--mar-border-subtle);
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
 }
 
 .hosted-attachments img {
@@ -617,6 +617,7 @@ onBeforeUnmount(() => {
 
 .hosted-attachments small {
   color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
 }
 
 .hosted-attachments .attachment-error {
@@ -698,7 +699,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: var(--mar-bg-panel);
   color: var(--mar-text-secondary);
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1;
 }
 
@@ -730,7 +731,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-model-trigger:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--mar-color-brand) 45%, transparent);
+  outline: 2px solid var(--mar-color-brand-text);
   outline-offset: 1px;
 }
 
@@ -764,7 +765,7 @@ onBeforeUnmount(() => {
 
 .hosted-model-unavailable {
   color: var(--mar-color-warning-text);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1;
   white-space: nowrap;
 }
@@ -772,7 +773,7 @@ onBeforeUnmount(() => {
 .hosted-replace-hint {
   min-width: 0;
   color: var(--mar-text-tertiary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.35;
 }
 

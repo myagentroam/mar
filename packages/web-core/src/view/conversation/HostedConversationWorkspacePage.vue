@@ -1299,8 +1299,8 @@ onBeforeUnmount(() => {
 
 .pane-header span {
   color: var(--mar-text-tertiary);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1310,7 +1310,7 @@ onBeforeUnmount(() => {
   margin: 3px 0 0;
   overflow: hidden;
   color: var(--mar-text-primary);
-  font-size: 16px;
+  font-size: var(--mar-font-size-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1337,7 +1337,7 @@ onBeforeUnmount(() => {
 
 .history-header h2 {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-title);
 }
 
 .history-controls {
@@ -1389,7 +1389,7 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 34px 12px;
   color: var(--mar-text-faint);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.6;
   text-align: center;
 }
@@ -1452,12 +1452,12 @@ onBeforeUnmount(() => {
 
 .history-title-row strong {
   color: var(--mar-text-primary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
 }
 
 .history-open time {
   color: var(--mar-text-tertiary);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1619,7 +1619,7 @@ onBeforeUnmount(() => {
   background: transparent;
   padding: 10px 12px;
   color: var(--mar-text-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   text-align: left;
   cursor: pointer;
@@ -1664,7 +1664,7 @@ onBeforeUnmount(() => {
 .files-list h3 {
   margin: 0 0 6px;
   color: var(--mar-text-secondary);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1672,7 +1672,7 @@ onBeforeUnmount(() => {
 .files-list p {
   margin: 0;
   color: var(--mar-text-faint);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-row {

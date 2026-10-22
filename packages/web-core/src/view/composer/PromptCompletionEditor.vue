@@ -502,7 +502,7 @@ onBeforeUnmount(() => {
 }
 .completion-shell :deep(textarea[data-completion-preview]) {
   color: transparent;
-  caret-color: var(--mar-text);
+  caret-color: var(--mar-text-primary);
 }
 .completion-mirror {
   position: absolute;
@@ -515,7 +515,6 @@ onBeforeUnmount(() => {
 }
 .completion-insertion {
   color: var(--mar-text-muted);
-  opacity: 0.78;
 }
 .completion-actions {
   display: grid;
@@ -527,7 +526,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-top: 1px solid var(--mar-border-subtle);
   border-radius: 0;
-  font-size: calc(var(--mar-font-size-meta) - 1px);
+  font-size: var(--mar-font-size-meta);
   line-height: 1.4;
   background: transparent;
   transition:
@@ -536,7 +535,7 @@ onBeforeUnmount(() => {
 }
 .completion-actions[data-state='pending'],
 .completion-actions[data-state='ready'] {
-  background: color-mix(in srgb, var(--el-color-primary) 4%, transparent);
+  background: var(--mar-color-brand-subtle);
 }
 .completion-buttons {
   display: inline-flex;
@@ -573,13 +572,13 @@ onBeforeUnmount(() => {
   width: 0.625rem;
   height: 0.625rem;
   box-sizing: border-box;
-  border: 2px solid color-mix(in srgb, var(--el-color-primary) 25%, transparent);
-  border-top-color: var(--el-color-primary);
+  border: 2px solid var(--mar-color-brand-border);
+  border-top-color: var(--mar-color-brand-text);
   background: transparent;
   animation: prediction-spin 800ms linear infinite;
 }
 .completion-actions[data-state='ready'] .completion-indicator {
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand-text);
   animation: prediction-ready 240ms ease-out;
 }
 .completion-hint {

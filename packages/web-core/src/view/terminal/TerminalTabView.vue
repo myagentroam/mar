@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--mar-terminal-surface) 90%, transparent);
   color: var(--mar-terminal-foreground);
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   pointer-events: none;
 }
 

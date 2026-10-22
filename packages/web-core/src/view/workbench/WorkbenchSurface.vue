@@ -771,7 +771,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
   max-width: 430px;
   margin-bottom: 0.8rem;
   color: var(--mar-text-secondary);
-  font-size: 0.82rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 
@@ -791,7 +791,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 }
 
 .workspace-selection-panel > h1 {
-  font-size: 1.22rem;
+  font-size: var(--mar-font-size-page-title);
 }
 
 .workspace-selection-panel > p {
@@ -801,7 +801,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .workspace-selection-hint {
   color: var(--mar-text-tertiary) !important;
-  font-size: 0.74rem !important;
+  font-size: var(--mar-font-size-meta) !important;
 }
 
 .readonly-banner {
@@ -846,7 +846,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .workspace-offline-message p {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -893,7 +893,8 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .inspector-column {
   position: relative;
-  border-left: 1px solid var(--mar-border-default);
+  border-left: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -961,7 +962,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 @media (max-width: 767px) {
   .inspector-column {
     max-height: none;
-    background: var(--mar-bg-panel);
+    background: var(--mar-bg-chrome);
   }
 }
 
@@ -988,7 +989,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     display: flex;
     min-height: 0;
     flex-direction: column;
-    background: var(--mar-bg-panel);
+    background: var(--mar-bg-chrome);
   }
 }
 

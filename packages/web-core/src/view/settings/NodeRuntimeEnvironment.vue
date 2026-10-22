@@ -130,7 +130,7 @@ function computerUseStatus(capability: ComputerUseCapability): string {
   align-items: center;
   gap: 8px;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 
 .runtime-command-row code {

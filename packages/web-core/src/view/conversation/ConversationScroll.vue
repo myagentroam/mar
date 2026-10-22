@@ -113,7 +113,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
 
 .conversation-loading-initial {
   color: var(--mar-text-faint);
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
   text-align: center;
 }
 

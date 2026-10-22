@@ -1207,7 +1207,7 @@ function messageTimeTitle(timestamp: number): string {
 .conversation-tool-source-host {
   margin-left: 0.5rem;
   color: var(--mar-conversation-muted);
-  font-size: var(--mar-font-size-caption);
+  font-size: var(--mar-font-size-meta);
 }
 
 .permission-stop-card {
@@ -1231,8 +1231,8 @@ function messageTimeTitle(timestamp: number): string {
   display: inline-block;
   margin-bottom: 0.2rem;
   color: var(--mar-text-secondary);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
 }
 
 .task-list {
@@ -1249,7 +1249,7 @@ function messageTimeTitle(timestamp: number): string {
 .task-list-items {
   display: grid;
   margin: 0;
-  border-top: 1px solid var(--mar-border-medium);
+  border-top: 1px solid var(--mar-conversation-process-border);
   padding: 0;
   list-style: none;
 }
@@ -1260,7 +1260,7 @@ function messageTimeTitle(timestamp: number): string {
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: start;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--mar-border-medium);
+  border-bottom: 1px solid var(--mar-conversation-process-border);
   padding: 0.42rem 0;
 }
 
@@ -1304,7 +1304,7 @@ function messageTimeTitle(timestamp: number): string {
   min-width: 0;
   box-sizing: border-box;
   border: 1px solid var(--mar-conversation-border);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-surface);
   color: var(--mar-conversation-text);
   padding: 12px 14px;
@@ -1436,12 +1436,12 @@ function messageTimeTitle(timestamp: number): string {
 .conversation-error-http-status,
 .conversation-error-code {
   border: 1px solid color-mix(in srgb, var(--el-color-danger) 52%, transparent);
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--el-color-danger) 12%, transparent);
   padding: 0 0.3rem;
   color: var(--el-color-danger);
-  font-size: 0.625rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -1450,7 +1450,7 @@ function messageTimeTitle(timestamp: number): string {
   border-color: var(--mar-border-medium);
   background: var(--mar-fill-soft);
   color: var(--mar-text-secondary);
-  font-family: var(--el-font-family-mono);
+  font-family: var(--mar-font-mono);
   overflow-wrap: anywhere;
 }
 
@@ -1466,13 +1466,13 @@ function messageTimeTitle(timestamp: number): string {
   display: grid;
   gap: 0.45rem;
   margin: 0.45rem 0 0 0.65rem;
-  border-left: 2px solid var(--mar-border-medium);
+  border-left: 2px solid var(--mar-conversation-process-border);
   padding-left: 0.7rem;
 }
 
 .conversation-tool-detail,
 .conversation-command-detail {
-  border-top: 1px solid var(--mar-border-medium);
+  border-top: 1px solid var(--mar-conversation-process-border);
   padding-top: 0.45rem;
 }
 
@@ -1491,7 +1491,7 @@ function messageTimeTitle(timestamp: number): string {
   list-style: none;
   color: var(--mar-text-primary);
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.65;
   word-break: break-all;
 }
@@ -1519,19 +1519,19 @@ function messageTimeTitle(timestamp: number): string {
 }
 .conversation-file-change-note {
   color: var(--el-text-color-secondary);
-  font-size: var(--mar-font-size-small, 0.75rem);
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-file-change-status,
 .task-list-status {
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--el-color-info) 48%, transparent);
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--el-color-info) 12%, transparent);
   padding: 0 0.3rem;
   color: var(--mar-text-secondary);
-  font-size: 0.625rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1.3;
   text-align: center;
   white-space: nowrap;
@@ -1629,7 +1629,7 @@ function messageTimeTitle(timestamp: number): string {
 
 .conversation-item strong {
   color: var(--mar-conversation-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
 }
 
 .conversation-item-heading {
@@ -1648,7 +1648,7 @@ function messageTimeTitle(timestamp: number): string {
   align-self: center;
   margin-right: auto;
   color: var(--mar-conversation-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -1697,7 +1697,7 @@ function messageTimeTitle(timestamp: number): string {
   border-radius: 6px;
   padding: 0.3rem 0.5rem;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-item details {
@@ -1769,7 +1769,7 @@ function messageTimeTitle(timestamp: number): string {
   background: var(--mar-conversation-code);
   padding: 0.45rem 0.55rem;
   color: var(--mar-conversation-text);
-  font-family: var(--el-font-family-mono, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace);
+  font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   white-space: pre-wrap;

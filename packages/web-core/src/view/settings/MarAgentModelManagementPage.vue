@@ -2623,7 +2623,7 @@ onBeforeUnmount(() => {
 }
 .model-test-result h3 {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--mar-font-size-title);
 }
 .model-test-result-heading {
   margin-bottom: 12px;
@@ -2634,10 +2634,10 @@ onBeforeUnmount(() => {
 .model-test-response-body-label {
   margin: 16px 0 6px;
   color: var(--mar-text-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .model-test-response-body :deep(textarea) {
-  font-family: var(--mar-font-mono);
+  font-family: inherit;
   overflow-wrap: anywhere;
 }
 .form-hint {
@@ -2645,7 +2645,7 @@ onBeforeUnmount(() => {
   width: 100%;
   margin-top: 6px;
   color: var(--mar-text-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
 .device-login-code {
@@ -2657,8 +2657,8 @@ onBeforeUnmount(() => {
   background: var(--mar-fill-subtle);
   color: var(--mar-text-primary);
   font-family: var(--mar-font-mono);
-  font-size: 24px;
-  font-weight: 700;
+  font-size: var(--mar-font-size-display);
+  font-weight: 600;
   letter-spacing: 0.12em;
 }
 .catalog-table-wrap {
@@ -2677,7 +2677,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-top: 8px;
   color: var(--mar-text-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }
 .catalog-reasoning-label {
@@ -2705,11 +2705,11 @@ onBeforeUnmount(() => {
 }
 .credential-usage h3 {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--mar-font-size-title);
 }
 .credential-usage h4 {
   margin: 16px 0 8px;
-  font-size: 13px;
+  font-size: var(--mar-font-size-title);
 }
 .credential-usage-summary {
   display: grid;
@@ -2730,11 +2730,11 @@ onBeforeUnmount(() => {
 .credential-usage-metric span,
 .credential-usage-date {
   color: var(--mar-text-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .credential-usage-metric strong {
   overflow: hidden;
-  font-size: 16px;
+  font-size: var(--mar-font-size-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

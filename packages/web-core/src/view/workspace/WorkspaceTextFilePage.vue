@@ -1137,8 +1137,8 @@ defineExpose({
 .file-navigation-group-title {
   margin: 0 0 0.2rem;
   color: var(--mar-text-secondary);
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1206,7 +1206,7 @@ defineExpose({
   margin-top: 0.2rem;
   color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
