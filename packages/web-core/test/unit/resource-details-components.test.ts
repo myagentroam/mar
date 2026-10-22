@@ -5,6 +5,7 @@ import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
+import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 
@@ -17,8 +18,9 @@ describe('Public resource details', () => {
     );
     expect(source).toMatch(/<slot name="resource-details"[^>]*>\s*<NodeDetailsDialogs/u);
     expect(source).toContain('@open-workspace-details="openWorkspaceDetails"');
-    expect(source).toContain(':workspace-node-secret-manageable=');
-    expect(source).toContain('workspaceDetailsNode()?.secretManageable');
+    expect(source).toContain(
+      ':workspace-secret-manageable="workspaceDetails?.workspace.manageable"'
+    );
     expect(source).toContain(':node-refreshable="page.nodeDetails !== undefined"');
     expect(source).toContain('@refresh-node="refreshNodeDetails"');
     expect(source).toContain('await props.page.refreshNodes()');
@@ -76,6 +78,32 @@ describe('Public resource details', () => {
     expect(source).not.toContain('personalGit.workspaceScope');
     expect(source).not.toContain('personalGit.appliesLater');
   });
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders the Workspace Git save action with an icon and text in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const app = createSSRApp({
+        render: () =>
+          h(WorkspaceGitSettings, {
+            request: async <T>() =>
+              ({ preserveGitConfig: false, includeParentRepository: true }) as T,
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            connected: true,
+            writable: true
+          })
+      });
+      app.use(ElementPlus).use(i18n);
+      app.provide(ID_INJECTION_KEY, { prefix: 1, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      const html = await renderToString(app);
+      const save = html
+        .match(/<button\b[^>]*>[\s\S]*?<\/button>/gu)
+        ?.find((button) => button.includes(commonMessages[locale].personalGit.save));
+      expect(save).toContain('<svg');
+      expect(html).toContain(commonMessages[locale].personalGit.preserveHint);
+    }
+  );
   it.each(['en-US', 'zh-CN'] as const)(
     'renders node, workspace and usage dialogs independently in %s',
     async (locale) => {

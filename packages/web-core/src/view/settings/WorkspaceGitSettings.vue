@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
+import { Check } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { PersonalGitService } from '../../service/PersonalGitService.js';
 import { translate as t } from '../../service/LocalePreferenceService.js';
@@ -90,6 +91,7 @@ async function save(): Promise<void> {
         <el-button
           v-if="writable"
           type="primary"
+          :icon="Check"
           :disabled="!loaded || loading || saving"
           :loading="saving"
           @click="save"

@@ -59,9 +59,8 @@ export const personalGitEnUS = {
   workspaceTitle: 'Workspace Git configuration',
   includeParent: 'Use parent Git repository',
   includeParentHint:
-    'Enabled by default. Git views and restore actions cover the entire containing repository, including files outside this workspace. Files and session directories stay unchanged.',
+    'When enabled, Git views and restores include files outside this workspace. File browsing and working directories stay unchanged.',
   preserve: 'Do not override Git parameters',
-  preserveHint:
-    'When selected, new terminals and Agent executions for everyone using this workspace keep the current environment and repository Git configuration.',
+  preserveHint: 'When checked, new terminals and Agent runs keep existing Git settings.',
   offline: 'Connect the Node to read or change this setting.'
 };
