@@ -41,6 +41,194 @@ function minimalSpreadsheet(): Buffer {
   );
 }
 
+for (const language of [
+  { locale: 'zh-CN', login: '进入控制台', work: '工作', history: 'Git 历史', more: '加载更多' },
+  {
+    locale: 'en-US',
+    login: 'Open console',
+    work: 'Work',
+    history: 'Git History',
+    more: 'Load more'
+  }
+]) {
+  test(`Git History graph stays connected across branch tips, pages and expanded files: ${language.locale}`, async ({
+    page
+  }, testInfo) => {
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'GIT_WORKSPACE');
+    await page.addInitScript(
+      (locale) => localStorage.setItem('mar.locale.v2', locale),
+      language.locale
+    );
+    const hash = (digit: string) => digit.repeat(40);
+    const commits = [
+      { hash: hash('a'), parents: [hash('c')], subject: 'Left selected tip' },
+      { hash: hash('b'), parents: [hash('c')], subject: 'Right selected tip' },
+      { hash: hash('c'), parents: [hash('d'), hash('e')], subject: 'Shared merge ancestor' },
+      { hash: hash('d'), parents: [hash('f')], subject: 'Main branch' },
+      { hash: hash('e'), parents: [hash('f')], subject: 'Feature branch' },
+      { hash: hash('f'), parents: [], subject: 'Root commit' }
+    ].map((commit, index) => ({
+      ...commit,
+      authorName: 'Graph regression author with a long display name',
+      authorEmail: 'graph@example.invalid',
+      committedAt: 1_900_000_000_000,
+      refs:
+        index === 0
+          ? ['main', 'origin/main', 'feature/long-selected-branch-name', 'release/graph']
+          : index === 1
+            ? ['right', 'origin/right']
+            : []
+    }));
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/refs(?:\?.*)?$/, (route) =>
+      json(route, {
+        refs: [
+          {
+            name: 'refs/heads/main',
+            displayName: 'main',
+            kind: 'LOCAL',
+            hash: hash('a'),
+            current: true
+          },
+          {
+            name: 'refs/heads/right',
+            displayName: 'right',
+            kind: 'LOCAL',
+            hash: hash('b'),
+            current: false
+          }
+        ]
+      })
+    );
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/history(?:\?.*)?$/, (route) => {
+      const nextPage = new URL(route.request().url()).searchParams.get('cursor') === 'graph-page-2';
+      return json(route, {
+        commits: nextPage ? commits.slice(2) : commits.slice(0, 2),
+        nextCursor: nextPage ? null : 'graph-page-2'
+      });
+    });
+    await page.route(
+      /\/api\/workspaces\/workspace-1\/git\/commits\/[a-f0-9]+\/files(?:\?.*)?$/,
+      (route) =>
+        json(route, {
+          files: [
+            { path: 'README.md', change: 'MODIFIED' },
+            { path: 'src/history.ts', change: 'ADDED' },
+            { path: 'src/nested/graph.ts', change: 'MODIFIED' }
+          ]
+        })
+    );
+    await page.goto('/console');
+    await page.getByRole('button', { name: language.login, exact: true }).click();
+    await page.getByRole('button', { name: language.work, exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await page.getByRole('tab', { name: language.history, exact: true }).click();
+    await expect(page.locator('.history-commit')).toHaveCount(2);
+
+    const measure = () =>
+      page.locator('.history-list').evaluate((list) => {
+        const rect = (element: Element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const endpoints = (element: SVGGeometryElement) => {
+          const matrix = element.getScreenCTM()!;
+          const start = element.getPointAtLength(0).matrixTransform(matrix);
+          const end = element.getPointAtLength(element.getTotalLength()).matrixTransform(matrix);
+          return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+        };
+        return {
+          width: list.clientWidth,
+          scrollWidth: list.scrollWidth,
+          rows: Array.from(list.querySelectorAll('.history-commit')).map((row) => {
+            const graph = row.querySelector<SVGSVGElement>('.history-graph')!;
+            return {
+              row: rect(row.querySelector('.history-commit-row')!),
+              graph: rect(graph),
+              subject: rect(row.querySelector('.history-subject')!),
+              svg: graph.outerHTML,
+              paths: Array.from(graph.querySelectorAll('path')).map(endpoints),
+              continuation: Array.from(
+                row.querySelectorAll<SVGLineElement>('.history-graph-continuation line')
+              ).map(endpoints)
+            };
+          })
+        };
+      });
+    // Pending lanes after each commit, including the boundary between pages.
+    const outgoingCounts = [1, 1, 2, 2, 1, 0];
+    const verify = async (label: string) => {
+      const layout = await measure();
+      await testInfo.attach(`graph-${label}.json`, {
+        body: JSON.stringify(layout, null, 2),
+        contentType: 'application/json'
+      });
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
+      for (const [index, row] of layout.rows.entries()) {
+        expect(row.subject.width).toBeGreaterThan(0);
+        expect(row.graph.height).toBe(38);
+        expect(row.row.height).toBeCloseTo(row.graph.height, 2);
+        const next = layout.rows[index + 1];
+        if (!next) continue;
+        for (let lane = 0; lane < outgoingCounts[index]!; lane += 1) {
+          const x = row.graph.x + lane * 14 + 7;
+          const bottom = row.graph.y + row.graph.height;
+          expect(
+            row.paths.some(({ end }) => Math.abs(end.x - x) < 0.1 && Math.abs(end.y - bottom) < 0.1)
+          ).toBe(true);
+          const incoming = next.paths.find(
+            ({ start }) => Math.abs(start.x - x) < 0.1 && Math.abs(start.y - next.graph.y) < 0.1
+          );
+          expect(incoming, `lane ${lane} after row ${index} (${label})`).toBeDefined();
+          if (row.continuation.length) {
+            const line = row.continuation[lane]!;
+            expect(line.start.x).toBeCloseTo(x, 2);
+            expect(line.start.y).toBeCloseTo(bottom, 2);
+            expect(line.end.x).toBeCloseTo(incoming!.start.x, 2);
+            expect(line.end.y).toBeCloseTo(incoming!.start.y, 2);
+          } else {
+            expect(bottom).toBeCloseTo(incoming!.start.y, 2);
+          }
+        }
+      }
+      return layout;
+    };
+    const prefix = await verify('first-page');
+    await page.getByRole('link', { name: language.more, exact: true }).click();
+    await expect(page.locator('.history-commit')).toHaveCount(commits.length);
+    const appended = await verify('appended');
+    expect(appended.rows.slice(0, 2).map((row) => row.svg)).toEqual(
+      prefix.rows.map((row) => row.svg)
+    );
+    await expect(page.locator('.history-ref')).toHaveCount(6);
+
+    const inspector = page.locator('.workspace-inspector');
+    await inspector.evaluate((element) =>
+      Object.assign((element as HTMLElement).style, {
+        width: '260px',
+        minWidth: '0',
+        maxWidth: '260px'
+      })
+    );
+    await verify('narrow-multiple-refs');
+    await inspector.screenshot({ path: testInfo.outputPath('graph-narrow.png') });
+    await page.getByText('Left selected tip', { exact: true }).click();
+    await page.getByRole('button', { name: 'src', exact: true }).click();
+    await page.getByRole('button', { name: 'nested', exact: true }).click();
+    await expect(page.getByRole('button', { name: /graph\.ts/ })).toBeVisible();
+    await expect(page.locator('.history-graph-continuation line')).toHaveCount(1);
+    await verify('narrow-expanded-files');
+    await inspector.screenshot({ path: testInfo.outputPath('graph-narrow-expanded.png') });
+    await page.getByText('Shared merge ancestor', { exact: true }).click();
+    await expect(page.locator('.history-graph-continuation line')).toHaveCount(3);
+    await verify('narrow-expanded-merge');
+    await inspector.screenshot({ path: testInfo.outputPath('graph-narrow-expanded-merge.png') });
+  });
+}
+
 test('Git History filters all or selected branches, expands commit files, and opens diffs', async ({
   page
 }) => {
