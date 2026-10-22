@@ -43,7 +43,7 @@ JSON uses `version: 1`, `name`, and `colors`, not `base`. The colors object maps
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 
-Themes do not change layout, fonts, file icon themes, the fixed terminal palette, the marketing homepage, or public help. The preview is a representative color sample: it does not perform real workbench actions or cover unaffected areas such as terminals.
+Themes do not change layout, fonts, file icon themes, the fixed terminal palette, or public help. The preview is a representative color sample: it does not perform real workbench actions or cover unaffected areas such as terminals.
 
 ## System notifications
 

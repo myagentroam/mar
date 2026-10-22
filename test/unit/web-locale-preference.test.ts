@@ -93,8 +93,6 @@ describe('Web locale preference', () => {
   it('uses the confirmed product terminology in both interface languages', () => {
     localePreferenceService().setLocale('zh-CN');
     expect(translate('navigation.nodes')).toBe('工作');
-    expect(translate('marketing.summary')).toContain('Agent-first');
-    expect(translate('marketing.summary')).toContain('自托管');
     expect(translate('personalInstructions.prompt')).toBe('个性化提示词');
     expect(translate('personalInstructions.marAgent')).toBe('MAR Agent');
     expect(translate('common.runner')).toBe('Agent');
@@ -113,8 +111,6 @@ describe('Web locale preference', () => {
 
     localePreferenceService().setLocale('en-US');
     expect(translate('navigation.nodes')).toBe('Work');
-    expect(translate('marketing.summary')).toContain('Agent-first');
-    expect(translate('marketing.summary')).toContain('self-hosted');
     expect(translate('common.runner')).toBe('Agent');
     expect(translate('personalInstructions.prompt')).toBe('Personal instructions');
     expect(translate('personalInstructions.marAgent')).toBe('MAR Agent');
@@ -123,7 +119,6 @@ describe('Web locale preference', () => {
       'This Agent is unavailable, so usage cannot be queried.'
     );
     expect(translate('auth.title')).toBe('Continue working with your Agent.');
-    expect(translate('marketing.heroEmphasis')).toBe('Work Anywhere.');
     expect(translate('workbenchNotificationCenter.runStatus.SUCCEEDED')).toBe('Completed');
   });
 

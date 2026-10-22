@@ -1,4 +1,3 @@
-import { marketingEnUS } from './marketing.en-US.js';
 import { hostingManagementEnUS } from '@myagentroam/web-core/hosting-management-messages';
 import { templateManagementEnUS } from '@myagentroam/web-core/template-management-messages';
 import { resourceDetailsEnUS } from '@myagentroam/web-core/resource-details-messages';
@@ -969,6 +968,5 @@ export const enUS = {
     skillUnavailableToken: composerEnUS.composer.skillUnavailableToken,
     skillUnavailable: composerEnUS.composer.skillUnavailable
   },
-  inlineFind: filePreviewEnUS.inlineFind,
-  marketing: marketingEnUS
+  inlineFind: filePreviewEnUS.inlineFind
 } as const;

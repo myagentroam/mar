@@ -18,8 +18,6 @@ const SessionSharePage = defineAsyncComponent(
 );
 
 const props = defineProps<{
-  readonly home: Component;
-  readonly rootWorkbench?: boolean;
   readonly documentationAvailable?: boolean;
   readonly workbench: Component;
   readonly filePreview: Component;
@@ -27,16 +25,14 @@ const props = defineProps<{
 
 provide(DOCUMENTATION_AVAILABLE_KEY, props.documentationAvailable ?? true);
 
-const marketingHome =
-  !props.rootWorkbench && (location.pathname === '/' || location.pathname === '/index.html');
 const query = new URLSearchParams(location.search);
 const shareId = /^[/]share[/]([A-Za-z0-9_-]{1,128})$/u.exec(location.pathname)?.[1];
 const renderedFilePreview =
   query.get('markdownPreview') === '1' || query.get('htmlPreview') === '1';
 const standaloneFilePreview =
   query.get('standaloneFile') === '1' && (renderedFilePreview || query.get('source') === 'hosted');
-document.documentElement.classList.toggle('console-ui', !marketingHome);
-if (!marketingHome) themePreferenceService();
+document.documentElement.classList.toggle('console-ui', true);
+themePreferenceService();
 const localeService = localePreferenceService();
 const elementLocales = { 'zh-CN': zhCn, 'en-US': en } as const;
 const elementLocale = computed(() => elementLocales[localeService.locale.value]);
@@ -67,6 +63,12 @@ function preventBrowserContextMenu(event: MouseEvent): void {
 }
 
 onMounted(() => {
+  if (location.pathname === '/' || location.pathname === '/index.html')
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `/console${location.search}${location.hash}`
+    );
   document.addEventListener('contextmenu', preventBrowserContextMenu);
   document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
@@ -79,8 +81,7 @@ onBeforeUnmount(() => {
 <template>
   <Suspense @resolve="revealApplication">
     <el-config-provider :locale="elementLocale">
-      <component :is="home" v-if="marketingHome" />
-      <SessionSharePage v-else-if="shareId" :share-id="shareId" />
+      <SessionSharePage v-if="shareId" :share-id="shareId" />
       <component :is="filePreview" v-else-if="standaloneFilePreview" />
       <component :is="workbench" v-else />
     </el-config-provider>
