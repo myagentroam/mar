@@ -698,6 +698,7 @@ defineExpose({
           size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
+          :title="translate('generated.gitDiffViewer.previousFile')"
           @click="emit('moveFile', -1)"
           ><el-icon><ArrowLeft /></el-icon
         ></el-button>
@@ -706,6 +707,7 @@ defineExpose({
           size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
+          :title="translate('generated.gitDiffViewer.previousChange')"
           @click="moveDiff(-1)"
           ><el-icon><ArrowUp /></el-icon
         ></el-button>
@@ -714,6 +716,7 @@ defineExpose({
           size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
+          :title="translate('generated.gitDiffViewer.nextChange')"
           @click="moveDiff(1)"
           ><el-icon><ArrowDown /></el-icon
         ></el-button>
@@ -722,6 +725,7 @@ defineExpose({
           size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
+          :title="translate('generated.gitDiffViewer.nextFile')"
           @click="emit('moveFile', 1)"
           ><el-icon><ArrowRight /></el-icon
         ></el-button>
@@ -740,11 +744,13 @@ defineExpose({
           circle
           size="small"
           :aria-label="translate('inlineFind.label')"
+          :title="translate('inlineFind.label')"
           @click="openInternalFind"
           ><el-icon><Search /></el-icon
         ></el-button>
         <el-button
           :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
+          :title="translate('generated.gitDiffViewer.downloadDiff')"
           circle
           size="small"
           @click="emit('download')"
@@ -754,6 +760,7 @@ defineExpose({
         <el-button
           v-if="!embedded"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
+          :title="translate('generated.gitDiffViewer.closeDiffPreview2')"
           circle
           size="small"
           type="primary"
@@ -833,6 +840,7 @@ defineExpose({
           v-if="!embedded"
           class="diff-close-button"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
+          :title="translate('generated.gitDiffViewer.closeDiffPreview')"
           circle
           size="small"
           type="primary"

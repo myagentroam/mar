@@ -34,6 +34,14 @@ function buttonTag(html: string, label: string): string {
   return button!;
 }
 
+function expectNativeButtonTitles(html: string): void {
+  const buttons = html.match(/<button\b[^>]*aria-label="[^"]+"[^>]*>/gu) ?? [];
+  expect(buttons.length).toBeGreaterThan(0);
+  for (const button of buttons) {
+    expect(button).toMatch(/\stitle="[^"]+"/u);
+  }
+}
+
 function stubBrowserEnvironment(): {
   readonly storage: Map<string, string>;
   readonly setItem: ReturnType<typeof vi.fn>;
@@ -262,10 +270,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     };
     for (const component of [WorkspaceFilePage, WorkspaceFormatFilePage]) {
       const embedded = await render(component, base);
+      expectNativeButtonTitles(embedded);
       expect(embedded).not.toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
       const standalone = await render(component, { ...base, fullscreen: true });
+      expectNativeButtonTitles(standalone);
       expect(standalone).toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
@@ -347,6 +357,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expect(html).toContain(i18n.global.t('inlineFind.label'));
     expect(html).toContain(i18n.global.t('inlineFind.placeholder'));
     expect(html).toContain('2 / 7+');
+    expectNativeButtonTitles(html);
     expect(html).toContain(`aria-label="${i18n.global.t('inlineFind.previous')}"`);
     expect(html).toContain(`aria-label="${i18n.global.t('inlineFind.next')}"`);
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
@@ -365,6 +376,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     });
 
     expect(html).toContain('0 / 0');
+    expectNativeButtonTitles(html);
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
       expect(buttonTag(html, i18n.global.t(key))).toMatch(/\sdisabled(?:\s|=|>)/u);
     }
@@ -386,6 +398,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       source: 'WORKING_TREE',
       previewEnabled: false
     });
+
+    expectNativeButtonTitles(html);
 
     expect(html).toContain('role="dialog"');
     expect(html).toContain(`title="assets/&lt;logo&gt;.png"`);
@@ -528,6 +542,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expect(html).toContain(i18n.global.t('fileEditor.readOnly'));
     expect(html).toContain('693.19 KB');
     expect(html).toContain('file-text-preview');
+    expectNativeButtonTitles(html);
     expect(html).toContain(i18n.global.t('generated.filePreviewDialog.onlyTheFirst512KiBIsShown'));
     expect(html).not.toContain('code-file-editor');
     expect(html).not.toContain('aria-hidden="true"');

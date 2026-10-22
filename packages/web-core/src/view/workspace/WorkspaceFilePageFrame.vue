@@ -79,6 +79,11 @@ defineExpose({ root });
             ? translate('filePreviewDialog.collapseMobileActions')
             : translate('filePreviewDialog.expandMobileActions')
         "
+        :title="
+          mobileActionsExpanded
+            ? translate('filePreviewDialog.collapseMobileActions')
+            : translate('filePreviewDialog.expandMobileActions')
+        "
         @click="toggleMobileActions"
       >
         <el-icon><Fold v-if="mobileActionsExpanded" /><Expand v-else /></el-icon>

@@ -114,6 +114,7 @@ test('File navigation uses rounded selection and the editor fills its surface wi
       const controls = preview.locator('.file-preview-desktop-actions .el-button.is-circle');
       expect(await controls.count()).toBeGreaterThan(0);
       for (const button of await controls.all()) {
+        await expect(button).toHaveAttribute('title', (await button.getAttribute('aria-label'))!);
         await expect(button).toHaveCSS('height', '26px');
         await expect(button).toHaveCSS('width', '26px');
       }
