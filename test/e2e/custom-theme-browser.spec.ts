@@ -614,7 +614,7 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(10, 111, 216)'
+        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(36, 95, 168)'
       );
       expect(
         resolvedColorToHex(
@@ -625,17 +625,17 @@ for (const scheme of ['Light', 'Dark']) {
       ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(243, 246, 249)'
+        scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(236, 240, 244)'
       );
       await controls.locator('.el-table__body tr').first().hover();
       await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(237, 242, 247)'
+        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(228, 234, 241)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(9, 102, 200)'
+        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(24, 71, 128)'
       );
 
       await useThemeMenu(page, row, 'Duplicate');

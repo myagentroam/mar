@@ -46,8 +46,7 @@ it('shares global typography with native inputs and Element Plus without undefin
   expect(css).toContain('--el-font-size-base: var(--mar-font-size-body)');
   expect(css).toContain('--mar-font-size-input: var(--mar-font-size-body)');
   expect(css).toContain('--mar-font-size-input: 1rem');
-  expect(css).toContain('--mar-font-size-nav-label: var(--mar-font-size-meta)');
-  expect(css).toContain('--mar-font-size-nav-label: 10px');
+  expect(css).not.toContain('--mar-font-size-nav-label');
   expect(css).toContain('font-size: var(--mar-font-size-input)');
   const root = fileURLToPath(new URL('../../src/view/', import.meta.url));
   for (const file of readdirSync(root, {
@@ -112,24 +111,24 @@ describe('Web theme preference', () => {
     expect(cssImports('../e2e/custom-theme-app.ts')).toEqual(cssImports('../../src/bootstrap.ts'));
   });
 
-  it('uses the shared neutral daylight palette with accessible interactive and text colors', () => {
+  it('uses the porcelain daylight palette with accessible interactive and text colors', () => {
     const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
     const daylight = styleDeclarations(source, ':root').find((rule) => '--mar-bg-page' in rule)!;
 
-    expect(daylight['--mar-bg-page']).toBe('#f3f6f9');
+    expect(daylight['--mar-bg-page']).toBe('#f7f8fa');
     expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-    expect(daylight['--mar-bg-tab-inactive']).toBe('#f1f4f7');
-    expect(daylight['--mar-border-default']).toBe('#dce3ea');
-    expect(daylight['--mar-color-brand']).toBe('#0a6fd8');
-    expect(daylight['--mar-color-brand-text']).toBe('#135fa8');
-    expect(daylight['--mar-color-brand-selected']).toBe('#e4effb');
-    expect(daylight['--mar-color-accent']).toBe('#14778a');
-    expect(daylight['--mar-control-color-success']).toBe('#17803d');
-    expect(daylight['--mar-text-primary']).toBe('#1c2733');
-    expect(daylight['--mar-text-secondary']).toBe('#47586a');
-    expect(daylight['--mar-text-tertiary']).toBe('#5f7082');
-    expect(daylight['--mar-text-muted']).toBe('#627386');
-    expect(daylight['--mar-text-faint']).toBe('#8c9bab');
+    expect(daylight['--mar-bg-tab-inactive']).toBe('#e7ecf2');
+    expect(daylight['--mar-border-default']).toBe('#c7d1dd');
+    expect(daylight['--mar-color-brand']).toBe('#245fa8');
+    expect(daylight['--mar-color-brand-text']).toBe('#245994');
+    expect(daylight['--mar-color-brand-selected']).toBe('#dce8f7');
+    expect(daylight['--mar-color-accent']).toBe('#386b80');
+    expect(daylight['--mar-control-color-success']).toBe('#21694f');
+    expect(daylight['--mar-text-primary']).toBe('#202b3b');
+    expect(daylight['--mar-text-secondary']).toBe('#4f6073');
+    expect(daylight['--mar-text-tertiary']).toBe('#5d6d80');
+    expect(daylight['--mar-text-muted']).toBe('#5d6d80');
+    expect(daylight['--mar-text-faint']).toBe('#5d6d80');
     expect(source).toContain('html.console-ui .el-message--info {');
     expect(source).toMatch(
       /html\.console-ui \.el-message__content\s*\{[^}]*white-space:\s*pre-line;[^}]*line-height:\s*1\.5;/u
@@ -142,17 +141,19 @@ describe('Web theme preference', () => {
     ]) {
       expect(contrast('#ffffff', daylight[state]!)).toBeGreaterThanOrEqual(4.5);
     }
-    for (const foreground of ['#1c2733', '#47586a', '#5f7082', '#627386']) {
-      expect(contrast(foreground, '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    for (const role of ['primary', 'secondary', 'tertiary', 'muted', 'faint']) {
+      expect(
+        contrast(daylight[`--mar-text-${role}`]!, daylight['--mar-bg-panel']!)
+      ).toBeGreaterThanOrEqual(4.5);
     }
     for (const [foreground, background] of [
-      ['#135fa8', '#e4effb'],
-      ['#14778a', '#e8f5f7'],
-      ['#17803d', '#eaf7ef'],
-      ['#946200', '#fff6d6'],
-      ['#c83b3b', '#fff0ee']
+      ['--mar-color-brand-text', '--mar-color-brand-selected'],
+      ['--mar-color-accent', '--mar-color-accent-bg'],
+      ['--mar-color-success-text', '--mar-color-success-bg'],
+      ['--mar-color-warning-text', '--mar-color-warning-bg'],
+      ['--mar-color-danger-text', '--mar-color-danger-bg']
     ]) {
-      expect(contrast(foreground!, background!)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
     }
   });
 
@@ -525,7 +526,7 @@ describe('Web theme preference', () => {
     expect(service.theme.value).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#ffffff');
+    expect(themeColorAttributes.get('content')).toBe('#f7f8fa');
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
   });
 
@@ -545,6 +546,6 @@ describe('Web theme preference', () => {
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#ffffff');
+    expect(themeColorAttributes.get('content')).toBe('#f7f8fa');
   });
 });

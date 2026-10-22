@@ -1,5 +1,8 @@
 export const notificationsEnUS = {
   workbenchNotificationCenter: {
+    recentSessions: 'Recent Sessions',
+    noRecentSessions: 'No recent sessions',
+    recentSessionsCount: '{count} active sessions',
     webPush: {
       title: 'Offline Push',
       summary:
@@ -93,8 +96,6 @@ export const notificationsEnUS = {
       delete: 'Delete {value0}',
       cancel: 'Cancel',
       noNotifications: 'No notifications',
-      recentTasks: 'Recent tasks',
-      noRecentTasks: 'No recent tasks',
       unread: 'Unread',
       deleteNotification: 'Delete notification {value0}'
     }

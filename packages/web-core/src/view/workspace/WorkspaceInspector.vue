@@ -4235,19 +4235,25 @@ onBeforeUnmount(revokePreviewObjectUrl);
   overflow: auto;
 }
 
+.content-search-results > li + li {
+  margin-top: 2px;
+}
+
 .content-search-results button {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) max-content;
   gap: 0.18rem 0.5rem;
   border: 0;
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   padding: 0.35rem 0.25rem;
   text-align: left;
   cursor: pointer;
 }
 
-.content-search-results button:hover {
+.content-search-results button:hover,
+.content-search-results button:focus-visible {
   background: var(--mar-color-brand-subtle);
 }
 
@@ -4573,6 +4579,18 @@ onBeforeUnmount(revokePreviewObjectUrl);
   font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.change-list .change-entry,
+.change-list .change-path,
+.history-commit-row,
+.history-files :deep(.el-button) {
+  border-radius: var(--mar-radius-selection);
+}
+
+.change-list .change-entry:hover,
+.change-list .change-entry:focus-within {
+  background: var(--mar-fill-row-hover);
 }
 
 .change-list .change-path:not(.is-disabled):hover {
@@ -4976,7 +4994,7 @@ button.history-refresh {
 }
 
 .history-commit-row:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
 }
 
 .history-content,

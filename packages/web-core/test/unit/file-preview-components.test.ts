@@ -710,10 +710,12 @@ describe('standalone Markdown preview', () => {
     expect(standalone).toContain('@activate="activateStandaloneTab"');
     expect(standalone).toContain('@close="closeStandaloneTab"');
     expect(standalone).toContain(
-      "const markdownPreviewMode = query.get('markdownPreview') === '1';"
+      "const markdownPreviewMode = !query.has('repositoryPath') && query.get('markdownPreview') === '1';"
     );
     expect(standalone).toContain('v-if="markdownPreviewMode"');
-    expect(standalone).toContain("query.get('worktreePath') === null");
+    expect(standalone).toContain(
+      "const htmlPreviewMode = !query.has('repositoryPath') && query.get('htmlPreview') === '1';"
+    );
     const inspector = readFileSync(
       new URL('../../src/view/workspace/WorkspaceInspector.vue', import.meta.url),
       'utf8'

@@ -1,4 +1,4 @@
-import { createSSRApp, h } from 'vue';
+import { createSSRApp, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -128,7 +128,12 @@ describe('Shared workbench shell', () => {
           h(WorkbenchNavigation, {
             webVersion: 'test',
             view: 'conversations',
-            navigationItems: [{ id: 'conversations', label }],
+            navigationItems: [
+              { id: 'nodes', label: 'Work' },
+              { id: 'conversations', label },
+              { id: 'management', label: 'Management' },
+              { id: 'settings', label: 'Settings' }
+            ],
             settingsSection: 'account',
             settingsItems: [],
             managementSection: 'overview',
@@ -145,13 +150,18 @@ describe('Shared workbench shell', () => {
             workspaceLabel: () => '',
             workspaces: () => [],
             mobileViewport: true,
-            notificationService: {} as unknown as WorkbenchNotificationService,
+            notificationService: {
+              recentRuns: ref([]),
+              load: async () => undefined
+            } as unknown as WorkbenchNotificationService,
             performanceDiagnostics: {} as ReturnType<typeof createWebPerformanceDiagnostics>,
             uploads: [],
             uploadStatusLabel: () => ''
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
       const html = await renderToString(app);
       const source = readFileSync(
@@ -165,6 +175,22 @@ describe('Shared workbench shell', () => {
 
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).toContain(`title="${label}"`);
+      const navigationButtons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gsu)].filter(
+        (match) => match[1]!.includes('nav-menu-button')
+      );
+      expect(navigationButtons).toHaveLength(4);
+      expect(navigationButtons.map((match) => match[1]!.includes('utility'))).toEqual([
+        false,
+        false,
+        true,
+        true
+      ]);
+      expect(navigationButtons[1]![1]).toContain('aria-current="page"');
+      for (const button of navigationButtons) {
+        expect(button[1]).toMatch(/aria-label="[^"]+"/u);
+        expect(button[1]).toMatch(/title="[^"]+"/u);
+        expect(button[2]).not.toContain('rail-label');
+      }
       expect(html).toContain('documentation-icon');
       expect(html).toContain('aria-hidden="true"');
       expect(html).toContain('viewbox="0 0 24 24"');
@@ -180,7 +206,7 @@ describe('Shared workbench shell', () => {
       expect(source).not.toContain('<Help />');
       expect(source).not.toContain('<circle cx="12" cy="12" r="10" />');
       expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .nav-item-content {\n    min-height: 32px;\n    grid-template-rows: 18px auto;'
+        '.activity-rail nav .nav-menu-button .nav-item-content {\n    min-height: 18px;\n    grid-template-rows: 18px;'
       );
       expect(source).toContain('flex: 0 0 auto;\n    min-height: 0;\n    min-width: 0;');
       expect(source).not.toContain('min-height: 44px;');
@@ -192,7 +218,7 @@ describe('Shared workbench shell', () => {
         '.activity-rail nav .nav-menu-button .el-icon {\n    display: grid;\n    width: 18px;\n    height: 18px;\n    place-items: center;\n    font-size: 1.125rem;\n    line-height: 18px;'
       );
       expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .rail-label {\n    min-height: 1.2em;\n    font-size: var(--mar-font-size-nav-label);\n    font-weight: 400;\n    line-height: 1.2;'
+        '.activity-rail nav .nav-menu-button .rail-label {\n    display: none;'
       );
       expect(source).toContain('class="nav-menu-button documentation-link"');
       expect(source).not.toContain('class="nav-menu-button documentation-link utility-control"');
@@ -430,7 +456,8 @@ describe('Shared workbench shell', () => {
     expect(source).not.toContain('.workspace-group-toggle.expanded :deep(.el-icon)');
     expect(source).toContain('.workspace-branch-button:focus-visible');
     expect(source).not.toContain('min-height: 36px;');
-    expect(source).toContain('font-weight: 500;');
+    expect(source).toMatch(/\.tree-node\s*\{[^}]*font-weight:\s*400;/u);
+    expect(source).not.toContain('font-weight: 500;');
     expect(source).not.toContain('font-weight: 650;');
     expect(source).toContain('@contextmenu="openNodeActions($event, result.node.id)"');
     expect(source).toContain(

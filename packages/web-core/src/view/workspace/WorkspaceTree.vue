@@ -933,7 +933,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   color: var(--mar-text-primary);
   padding: 4px 7px 4px 0;
   min-height: 30px;
-  font-weight: 500;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
 }
@@ -1043,7 +1043,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .workspace-branches > li.selected .workspace-branch-button {
   color: var(--mar-color-brand-text);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .workspace-branches > li.dragging {
@@ -1069,6 +1069,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .workspace-branches .workspace-branch-button:active {
   cursor: grabbing;
+}
+
+@media (min-width: 768px) {
+  .workspace-branches .workspace-branch-button {
+    font-size: calc(var(--mar-font-size-body) - 1px);
+  }
 }
 
 .tree-more-button {

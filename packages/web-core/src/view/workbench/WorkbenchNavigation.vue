@@ -15,6 +15,7 @@ import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.j
 import type { RecentRun } from '../../service/WorkbenchNotificationService.js';
 import MarIcon from '../common/MarIcon.vue';
 import WorkbenchNotificationCenter from './WorkbenchNotificationCenter.vue';
+import WorkbenchRecentSessions from './WorkbenchRecentSessions.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
@@ -153,25 +154,37 @@ function openBlankMenu(event: MouseEvent): void {
   </header>
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
-      <button
-        v-for="item in navigationItems"
-        :key="item.id"
-        :class="['nav-menu-button', { active: view === item.id }]"
-        :aria-label="item.label"
-        :title="item.label"
-        type="button"
-        @click="emit('selectNavigation', item.id)"
-      >
-        <span class="nav-item-content">
-          <el-icon aria-hidden="true">
-            <Monitor v-if="item.id === 'nodes'" />
-            <ChatDotRound v-else-if="item.id === 'conversations'" />
-            <Setting v-else-if="item.id === 'settings'" />
-            <SetUp v-else />
-          </el-icon>
-          <span class="rail-label">{{ item.label }}</span>
-        </span>
-      </button>
+      <template v-for="item in navigationItems" :key="item.id">
+        <button
+          :class="[
+            'nav-menu-button',
+            {
+              active: view === item.id,
+              utility: item.id === 'management' || item.id === 'settings'
+            }
+          ]"
+          :aria-label="item.label"
+          :aria-current="view === item.id ? 'page' : undefined"
+          :title="item.label"
+          type="button"
+          @click="emit('selectNavigation', item.id)"
+        >
+          <span class="nav-item-content">
+            <el-icon aria-hidden="true">
+              <Monitor v-if="item.id === 'nodes'" />
+              <ChatDotRound v-else-if="item.id === 'conversations'" />
+              <Setting v-else-if="item.id === 'settings'" />
+              <SetUp v-else />
+            </el-icon>
+          </span>
+        </button>
+        <WorkbenchRecentSessions
+          v-if="item.id === 'conversations'"
+          :service="notificationService"
+          :mobile-mode="mobileViewport"
+          @open-recent-run="emit('openRecentRun', $event)"
+        />
+      </template>
       <el-link
         v-if="documentationAvailable"
         class="nav-menu-button documentation-link"
@@ -196,7 +209,6 @@ function openBlankMenu(event: MouseEvent): void {
         :status-label="uploadStatusLabel"
         :mobile-mode="mobileViewport"
         @open-notification="emit('openNotification', $event)"
-        @open-recent-run="emit('openRecentRun', $event)"
         @retry-upload="emit('retryUpload', $event)"
         @cancel-upload="emit('cancelUpload', $event)"
         @remove-upload="emit('removeUpload', $event)"
@@ -399,10 +411,14 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 .activity-rail nav {
-  display: grid;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
   width: 100%;
   gap: 0.25rem;
-  padding: 0.5rem 0;
+  padding: 0.5rem 0 52px;
 }
 
 .global-notification-center {
@@ -483,11 +499,15 @@ function openBlankMenu(event: MouseEvent): void {
   width: 100%;
 }
 
+.activity-rail nav button .el-icon {
+  font-size: 1.25rem;
+}
+
 .rail-label {
   width: 100%;
   white-space: nowrap;
   text-align: center;
-  font-size: var(--mar-font-size-nav-label);
+  font-size: var(--mar-font-size-meta);
   line-height: 1.1;
 }
 
@@ -502,6 +522,18 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (min-width: 768px) {
+  .activity-rail nav .nav-menu-button.utility {
+    margin-top: auto;
+  }
+
+  .activity-rail nav .nav-menu-button.utility ~ .nav-menu-button.utility {
+    margin-top: 0;
+  }
+
+  .activity-rail nav .nav-menu-button {
+    flex-shrink: 0;
+  }
+
   .activity-rail {
     border-right: 1px solid var(--mar-border-subtle);
   }
@@ -624,6 +656,7 @@ function openBlankMenu(event: MouseEvent): void {
 @media (max-width: 767px) {
   .activity-rail nav {
     display: flex;
+    flex-direction: row;
     box-sizing: border-box;
     align-items: center;
     min-width: 0;
@@ -665,7 +698,7 @@ function openBlankMenu(event: MouseEvent): void {
     flex: 0 0 auto;
     min-height: 0;
     min-width: 0;
-    width: auto;
+    width: 36px;
     height: 36px;
     place-items: center;
     border: 0;
@@ -681,8 +714,8 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail nav .nav-menu-button .nav-item-content {
-    min-height: 32px;
-    grid-template-rows: 18px auto;
+    min-height: 18px;
+    grid-template-rows: 18px;
     align-content: center;
     gap: 2px;
   }
@@ -707,10 +740,7 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail nav .nav-menu-button .rail-label {
-    min-height: 1.2em;
-    font-size: var(--mar-font-size-nav-label);
-    font-weight: 400;
-    line-height: 1.2;
+    display: none;
   }
 
   .documentation-link {

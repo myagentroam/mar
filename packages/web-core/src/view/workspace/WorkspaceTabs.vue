@@ -534,6 +534,7 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab-strip {
   --workspace-tab-base-bg: var(--mar-bg-chrome);
+  --workspace-tab-gap: 3px;
   display: flex;
   min-width: 0;
   min-height: 34px;
@@ -555,7 +556,7 @@ function activate(tab: WorkspaceTab): void {
   height: 100%;
   min-height: 0;
   align-items: center;
-  padding: 5px 6px;
+  padding: 5px 6px 5px 2px;
 }
 
 .workspace-tab-strip-header .workspace-tab {
@@ -577,7 +578,7 @@ function activate(tab: WorkspaceTab): void {
   flex: 1 1 auto;
   min-height: 34px;
   align-items: stretch;
-  gap: 3px;
+  gap: var(--workspace-tab-gap);
   overflow-x: auto;
   margin: 0;
   padding: 4px 6px;
@@ -673,6 +674,15 @@ function activate(tab: WorkspaceTab): void {
   z-index: 2;
 }
 
+.workspace-tab.sticky-pinned::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--workspace-tab-gap));
+  border: var(--workspace-tab-gap) solid var(--workspace-tab-base-bg);
+  border-radius: calc(var(--mar-radius-selection) + var(--workspace-tab-gap));
+  pointer-events: none;
+}
+
 .workspace-tab.sticky-pinned.dragging {
   z-index: 3;
 }
@@ -722,7 +732,7 @@ function activate(tab: WorkspaceTab): void {
 .workspace-tab-content > span {
   overflow: hidden;
   font-size: var(--mar-font-size-body);
-  font-weight: 500;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -735,8 +745,19 @@ function activate(tab: WorkspaceTab): void {
   overflow: hidden;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .workspace-tab-content > span {
+    font-size: calc(var(--mar-font-size-body) - 1px);
+  }
+
+  .workspace-tab small {
+    font-size: calc(var(--mar-font-size-meta) - 1px);
+  }
 }
 
 .workspace-tab-meta {

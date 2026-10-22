@@ -588,12 +588,14 @@ defineExpose({ reveal });
 }
 
 .file-tree-row {
+  min-height: calc(var(--mar-compact-row-size) - 2px);
+  height: calc(var(--mar-compact-row-size) - 2px);
   grid-template-columns: 0.8rem 18px minmax(0, 1fr);
   gap: 0;
   width: auto;
   flex: 1;
   align-items: center;
-  padding: 3px 6px 3px calc(4px + var(--tree-depth) * 8px);
+  padding: 2px 6px 2px calc(4px + var(--tree-depth) * 8px);
   cursor: pointer;
 }
 
@@ -602,6 +604,11 @@ defineExpose({ reveal });
   display: flex;
   width: 100%;
   min-width: 0;
+  height: var(--mar-compact-row-size);
+  box-sizing: border-box;
+  border-block: 1px solid transparent;
+  border-radius: var(--mar-radius-selection);
+  background-clip: padding-box;
   overflow: hidden;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -610,7 +617,7 @@ defineExpose({ reveal });
 
 .file-tree-row-shell:hover,
 .file-tree-row-shell:focus-within {
-  background: var(--mar-fill-muted);
+  background-color: var(--mar-fill-muted);
 }
 
 .file-tree-row:hover:not(:disabled),
@@ -619,11 +626,15 @@ defineExpose({ reveal });
 }
 
 .file-tree-row-shell.selected {
-  background: var(--mar-color-brand-subtle);
+  background-color: var(--mar-color-brand-selected);
+}
+
+.file-tree-row-shell.selected .file-tree-row {
+  color: var(--mar-color-brand-text);
 }
 
 .file-tree-row-shell.drop-target {
-  background: var(--mar-color-brand-subtle);
+  background-color: var(--mar-color-brand-subtle);
   outline: 1px solid var(--mar-color-brand);
   outline-offset: -1px;
 }

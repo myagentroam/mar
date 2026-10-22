@@ -345,6 +345,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(page.getByRole('combobox', { name: '选择 Git 仓库' })).toHaveValue('');
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await expect.poll(() => historyRequests).toBe(1);
+  await expect(page.locator('.history-commit-row').first()).toHaveCSS('border-radius', '6px');
   holdHistoryRefresh = true;
   await page.getByRole('tab', { name: 'Git 变更' }).click();
   await page.getByRole('tab', { name: 'Git 历史' }).click();
@@ -366,6 +367,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await page.getByText('初始化 Git History').click();
   await expect(page.getByRole('button', { name: /README\.md/ })).toBeVisible();
+  await expect(page.locator('.history-files .el-button').first()).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: 'src', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /src\/history.ts/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'nested', exact: true })).toHaveCount(0);
@@ -1236,9 +1238,10 @@ test('Notifications use full timestamps even within the same calendar day', asyn
   );
 });
 
-test('Recent running tasks show status tags and cumulative duration in notifications', async ({
+test('Recent sessions show their own count, status tags and cumulative duration', async ({
   page
 }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -1273,22 +1276,55 @@ test('Recent running tasks show status tags and cumulative duration in notificat
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await page.getByRole('button', { name: '打开通知中心' }).click();
+  await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
+  const recentSessionsIcon = page
+    .getByRole('button', { name: '最近会话', exact: true })
+    .locator('svg');
+  await expect(recentSessionsIcon).toBeVisible();
+  await expect(recentSessionsIcon.locator('..')).toHaveAttribute('aria-hidden', 'true');
+  await page.getByRole('button', { name: '最近会话', exact: true }).click();
   const task = page
-    .getByRole('complementary', { name: '通知中心' })
-    .locator('.workbench-recent-run-list > li');
+    .getByRole('region', { name: '最近会话', exact: true })
+    .locator('.recent-sessions-list > li');
   await expect(task).toContainText('my-agent-roam: 状态展示');
   await expect(task).toContainText('继续完成当前任务');
+  const textWidths = await task.evaluate((element) => ({
+    row: element.getBoundingClientRect().width,
+    title: element.querySelector('.recent-session-title')!.getBoundingClientRect().width,
+    summary: element.querySelector('small')!.getBoundingClientRect().width
+  }));
+  expect(textWidths.title).toBeGreaterThan(textWidths.row / 2);
+  expect(textWidths.summary).toBeGreaterThan(textWidths.row * 0.75);
   await expect(task.locator('.el-tag')).toHaveText('运行中');
-  await expect(task.locator('.el-tag')).toHaveClass(/el-tag--primary/);
+  await expect(task.locator('.el-tag')).toHaveClass(/el-tag--success/);
+  const runningColors = await task.locator('.el-tag').evaluate((element) => {
+    const reference = document.createElement('span');
+    reference.style.color = 'var(--mar-color-success-text)';
+    element.append(reference);
+    const colors = {
+      actual: getComputedStyle(element).color,
+      expected: getComputedStyle(reference).color
+    };
+    reference.remove();
+    return colors;
+  });
+  expect(runningColors.actual).toBe(runningColors.expected);
   await expect(task.locator('time')).toHaveText(
     /^运行时间 3m 启动于 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/
   );
+  expect(
+    await page
+      .locator('.recent-sessions-entry')
+      .evaluate((entry) => entry.previousElementSibling?.getAttribute('aria-label'))
+  ).toBe('对话');
+  await task.getByRole('button').click();
+  await expect(page.getByRole('region', { name: '最近会话', exact: true })).toBeHidden();
+  await expect(page.locator('.session-link.selected')).toHaveCount(1);
 });
 
 for (const mobile of [false, true]) {
   for (const notificationCount of [0, 30]) {
-    test(`Notifications retain vertical spacing and expand recent tasks to available height: ${mobile ? 'mobile' : 'desktop'}-${notificationCount} notifications`, async ({
+    test(`Recent sessions remain separate from notifications and fit the viewport: ${mobile ? 'mobile' : 'desktop'}-${notificationCount} notifications`, async ({
       page
     }, testInfo) => {
       const viewport = { width: mobile ? 390 : 1365, height: mobile ? 844 : 900 };
@@ -1296,6 +1332,7 @@ for (const mobile of [false, true]) {
       await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
       const now = Date.now();
       let taskCount = 30;
+      let activeStatus = 'RUNNING';
       await page.route('**/api/notifications', (route) =>
         json(route, {
           notifications: Array.from({ length: notificationCount }, (_, index) => ({
@@ -1303,6 +1340,12 @@ for (const mobile of [false, true]) {
             kind: 'run',
             title: `Notification ${index}`,
             message: 'Open the related session.',
+            target: {
+              targetType: 'WORKSPACE_SESSION',
+              nodeId: 'node-1',
+              workspaceId: 'workspace-1',
+              sessionId: `session-${index}`
+            },
             read: true,
             createdAt: now,
             updatedAt: now,
@@ -1317,7 +1360,7 @@ for (const mobile of [false, true]) {
             userMessage: `Message ${index}`,
             runId: `run-${index}`,
             runner: 'codex',
-            status: index === taskCount - 1 ? 'RUNNING' : 'SUCCEEDED',
+            status: index === taskCount - 1 ? activeStatus : 'SUCCEEDED',
             createdAt: now - index * 1000,
             startedAt: now - index * 1000,
             sortAt: now - index * 1000,
@@ -1329,11 +1372,16 @@ for (const mobile of [false, true]) {
       );
       await page.goto('/console');
       await page.getByRole('button', { name: '进入控制台' }).click();
-      const trigger = page.getByRole('button', { name: '打开通知中心' });
+      const trigger = page.getByRole('button', { name: '最近会话', exact: true });
+      await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
+      await expect(trigger).toHaveAttribute('aria-description', '1 个进行中的会话');
       await trigger.click();
-      const panel = page.getByRole('complementary', { name: '通知中心' });
-      const tasks = panel.locator('.workbench-recent-run-list > li');
+      const panel = page.getByRole('region', { name: '最近会话', exact: true });
+      const tasks = panel.locator('.recent-sessions-list > li');
       await expect(tasks).toHaveCount(30);
+      await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--success/);
+      await expect(tasks.nth(1).locator('.el-tag')).toHaveClass(/el-tag--primary/);
+      await expect(page.locator('.recent-sessions-popover')).toHaveCSS('opacity', '1');
       await expect(tasks.nth(0)).toContainText('Workspace: Task 29');
       await expect(tasks.nth(1)).toContainText('Workspace: Task 28');
       await expect(tasks.nth(29)).toContainText('Workspace: Task 0');
@@ -1342,47 +1390,88 @@ for (const mobile of [false, true]) {
           .poll(() =>
             panel.evaluate((element) => {
               const bounds = element.getBoundingClientRect();
-              const style = getComputedStyle(element);
-              const headerHeight = Number.parseFloat(
-                style.getPropertyValue('--notification-panel-header-height')
-              );
-              const gap =
-                Number.parseFloat(getComputedStyle(document.documentElement).fontSize) / 2;
               return (
-                Math.abs(bounds.top - headerHeight - gap) <= 1 &&
-                Math.abs(window.innerHeight - bounds.bottom - gap) <= 1 &&
-                bounds.left >= 0 &&
-                bounds.right <= window.innerWidth
+                bounds.top >= 8 &&
+                bounds.bottom <= window.innerHeight - 8 &&
+                bounds.left >= 8 &&
+                bounds.right <= window.innerWidth - 8
               );
             })
           )
           .toBe(true);
       };
       await checkBounds();
-      const list = panel.locator('.workbench-recent-run-list');
+      const list = panel.locator('.recent-sessions-list');
       expect(await list.evaluate((element) => element.clientHeight)).toBeGreaterThan(264);
       await tasks.last().scrollIntoViewIfNeeded();
       await expect(tasks.last()).toBeInViewport();
-      await page.screenshot({ path: testInfo.outputPath('notification-center.png') });
+      await page.screenshot({
+        path: testInfo.outputPath('recent-sessions.png'),
+        animations: 'disabled'
+      });
       await page.setViewportSize({ ...viewport, height: 300 });
       await checkBounds();
       await tasks.first().scrollIntoViewIfNeeded();
       await expect(tasks.first()).toBeInViewport();
       await tasks.last().scrollIntoViewIfNeeded();
       await expect(tasks.last()).toBeInViewport();
+      await trigger.click();
+      await page.getByRole('button', { name: '打开通知中心' }).click();
+      const notificationsPanel = page.getByRole('complementary', { name: '通知中心' });
+      await expect(notificationsPanel.locator('.recent-sessions-list')).toHaveCount(0);
+      await expect(notificationsPanel.locator('.workbench-notification-list > li')).toHaveCount(
+        notificationCount
+      );
       if (notificationCount > 0) {
-        const notifications = panel.locator('.workbench-notification-list > li');
+        const notifications = notificationsPanel.locator('.workbench-notification-list > li');
         await notifications.last().scrollIntoViewIfNeeded();
         await expect(notifications.last()).toBeInViewport();
       }
-      await trigger.click();
+      await page.getByRole('button', { name: '打开通知中心' }).click();
+      await expect(notificationsPanel).toBeHidden();
+      await expect(panel).toBeHidden();
       taskCount = 1;
       await page.setViewportSize(viewport);
       await trigger.click();
       await expect(tasks).toHaveCount(1);
+      await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
       expect(
         await panel.evaluate((element) => element.getBoundingClientRect().bottom)
       ).toBeLessThan(viewport.height - 50);
+      await trigger.click();
+      await expect(panel).toBeHidden();
+      for (const [status, label] of [
+        ['STARTING', '启动中'],
+        ['CANCELLING', '停止中'],
+        ['SUCCEEDED', '已完成'],
+        ['FAILED', '失败'],
+        ['CANCELLED', '已取消'],
+        ['INTERRUPTED', '已中断']
+      ] as const) {
+        activeStatus = status;
+        await trigger.click();
+        await expect(tasks).toHaveCount(1);
+        await expect(tasks.first().locator('.el-tag')).toHaveText(label);
+        const active = status === 'STARTING' || status === 'CANCELLING';
+        await expect(trigger).toHaveAttribute(
+          'aria-description',
+          `${active ? 1 : 0} 个进行中的会话`
+        );
+        await expect(page.locator('.recent-sessions-badge')).toHaveCount(active ? 1 : 0);
+        if (status === 'SUCCEEDED') {
+          await expect(tasks.first().locator('.el-tag')).toHaveText('已完成');
+          await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--primary/);
+        }
+        await trigger.click();
+        await expect(panel).toBeHidden();
+      }
+      taskCount = 0;
+      await trigger.click();
+      await expect(tasks).toHaveCount(0);
+      await expect(panel).toContainText('暂无最近会话');
+      await expect(page.locator('.recent-sessions-badge')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(panel).toBeHidden();
     });
   }
 }

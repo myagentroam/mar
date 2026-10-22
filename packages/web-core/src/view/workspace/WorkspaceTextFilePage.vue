@@ -993,7 +993,14 @@ defineExpose({
       @next="moveFallbackFind(1)"
       @close="closeFallbackFind"
     />
-    <main class="file-preview-content" @click="!editing && focus()">
+    <main
+      class="file-preview-content"
+      :class="{
+        'file-preview-content-code':
+          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing)
+      }"
+      @click="!editing && focus()"
+    >
       <template v-if="!loading">
         <MarkdownFilePreview
           v-if="markdown && renderMarkdown && markdownResourceUrl && !editing && codeEditorEnabled"
@@ -1091,6 +1098,11 @@ defineExpose({
 <style scoped>
 .file-preview-content {
   flex: 1;
+}
+
+.file-preview-content-code {
+  overflow: hidden;
+  padding: 0;
 }
 
 .file-symbol-list {

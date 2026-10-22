@@ -91,6 +91,8 @@ const emit = defineEmits<{
   flex: 0 0 auto;
   width: var(--mar-compact-control-size);
   height: var(--mar-compact-control-size);
+  min-width: var(--mar-compact-control-size);
+  min-height: var(--mar-compact-control-size);
   place-items: center;
   line-height: 1;
 }

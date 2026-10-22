@@ -50,16 +50,18 @@ describe('Long Task diagnostic indicator', () => {
       app.use(i18n);
       app.component('ElButton', ElButton);
       app.component('ElIcon', ElIcon);
-      // Render the popover content directly; placement and hover are unchanged.
+      // Render the reference and content; placement and hover are unchanged.
       app.component(
         'ElPopover',
         defineComponent({
           setup(_props, { slots }) {
-            return () => h('div', slots.default?.());
+            return () => h('div', [slots.reference?.(), slots.default?.()]);
           }
         })
       );
       const html = await renderToString(app);
+      expect(html).toContain('class="mar-icon"');
+      expect(html).toContain('cx="12" cy="7.8" r="1"');
       expect(html).toContain('2026-10-17 23:45:46');
       const label = locale === 'en-US' ? 'Long tasks (10s)' : '长任务（10 秒）';
       const value = html

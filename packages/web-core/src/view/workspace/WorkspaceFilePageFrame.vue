@@ -162,6 +162,31 @@ defineExpose({ root });
   flex-direction: column;
 }
 
+@media (min-width: 768px) {
+  .workspace-file-page-frame-header {
+    box-sizing: border-box;
+    min-height: var(--mar-workbench-header-height);
+    height: var(--mar-workbench-header-height);
+    flex-shrink: 0;
+    padding: 0 12px;
+  }
+
+  .file-preview-desktop-actions {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .file-preview-desktop-actions :deep(.el-button + .el-button) {
+    margin-left: 0;
+  }
+
+  .file-preview-desktop-actions :deep(.el-button.is-circle) {
+    width: var(--mar-compact-control-size);
+    height: var(--mar-compact-control-size);
+    border-radius: var(--mar-radius-control);
+  }
+}
+
 @media (max-width: 767px) {
   .workspace-file-page-frame-header > .file-preview-desktop-actions {
     display: none;
