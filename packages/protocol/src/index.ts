@@ -413,6 +413,7 @@ export const workspaceKindSchema = z.enum(['DIRECTORY', 'GIT_WORKSPACE']);
 export type WorkspaceKind = z.infer<typeof workspaceKindSchema>;
 
 export const gitSummarySchema = z.object({
+  repositoryRoot: z.string().optional(),
   commonDir: z.string(),
   head: z.string(),
   branch: z.string().nullable(),

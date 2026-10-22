@@ -10,7 +10,8 @@ export interface WorkspaceInspectorHandle {
     line?: number,
     worktreePath?: string,
     stacked?: boolean,
-    column?: number
+    column?: number,
+    repositoryPath?: string
   ): Promise<void>;
   openWorkspaceFileComparison(path: string, line?: number, column?: number): Promise<void>;
   openWorkspaceFileExternal(path: string, line?: number, column?: number): void;

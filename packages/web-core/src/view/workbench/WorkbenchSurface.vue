@@ -595,6 +595,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                   : page.workspaceTabLabel(page.selectedWorkspace)
               "
               :workspace-kind="page.selectedWorkspace?.kind"
+              :workspace-path="page.selectedWorkspace?.path"
               :history-capability="page.nodeManifest?.git?.supportsHistory"
               :csrf-token="page.csrfToken"
               :renew-csrf-token="page.renewCsrfToken"

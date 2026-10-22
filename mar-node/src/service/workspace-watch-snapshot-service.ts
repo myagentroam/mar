@@ -34,13 +34,20 @@ export class WorkspaceWatchSnapshotService {
     if (watch.topics.files !== undefined) this.ensureFilesRefreshTimer();
     await Promise.all(
       this.subscribedTopics(watch).map(async (topic) => {
+        const revision = this.readRevision(workspace.id, topic);
         try {
           const payload = await this.read(workspace, topic, watch);
           if (!this.matches(workspace.id, watch)) return;
+          if (revision !== this.readRevision(workspace.id, topic)) {
+            void this.invalidate(workspace.id, topic);
+            return;
+          }
           this.signatures.set(this.viewKey(workspace.id, topic, watch), signature(payload));
           this.deliver(workspace, watch, topic, payload);
         } catch {
-          this.fail(workspace.id, watch, topic);
+          if (revision === this.readRevision(workspace.id, topic))
+            this.fail(workspace.id, watch, topic);
+          else void this.invalidate(workspace.id, topic);
         }
       })
     );
@@ -130,7 +137,21 @@ export class WorkspaceWatchSnapshotService {
     if (topic !== 'files') {
       const first = subscribers[0];
       if (first === undefined) return;
-      const payload = await this.read(workspace, topic, first);
+      const revision = this.readRevision(workspaceId, topic);
+      let payload: unknown;
+      try {
+        payload = await this.read(workspace, topic, first);
+      } catch (error) {
+        if (revision !== this.readRevision(workspaceId, topic)) {
+          void this.invalidate(workspaceId, topic);
+          return;
+        }
+        throw error;
+      }
+      if (revision !== this.readRevision(workspaceId, topic)) {
+        void this.invalidate(workspaceId, topic);
+        return;
+      }
       const activeSubscribers = subscribers.filter((watch) => this.matches(workspaceId, watch));
       if (activeSubscribers.length === 0) return;
       if (!this.changed(this.viewKey(workspaceId, topic, first), payload)) return;
@@ -169,7 +190,7 @@ export class WorkspaceWatchSnapshotService {
     const key =
       topic === 'files'
         ? `${workspace.id}:files:${JSON.stringify(watch.topics.files)}`
-        : `${workspace.id}:${topic}`;
+        : `${workspace.id}:${topic}:${this.readRevision(workspace.id, topic)}`;
     const active = this.reads.get(key);
     if (active !== undefined) return active;
     const read = (
@@ -178,8 +199,14 @@ export class WorkspaceWatchSnapshotService {
         : topic === 'changes'
           ? workspace.kind === 'GIT_WORKSPACE'
             ? this.options.changes.current(workspace)
-            : Promise.resolve(null)
-          : this.options.files.list(workspace, watch.topics.files!).then((files) => ({ files }))
+            : Promise.resolve(
+                workspace.includeParentRepository === false
+                  ? { workspace, changes: [], repositories: [] }
+                  : null
+              )
+          : this.options.files
+              .list(workspace, watch.topics.files!)
+              .then((files) => ({ files, workspace: this.options.requireWorkspace(workspace.id) }))
     ).finally(() => {
       if (this.reads.get(key) === read) this.reads.delete(key);
     });
@@ -192,6 +219,10 @@ export class WorkspaceWatchSnapshotService {
     if (this.signatures.get(key) === next) return false;
     this.signatures.set(key, next);
     return true;
+  }
+
+  private readRevision(workspaceId: string, topic: WorkspaceWatchTopic): number {
+    return topic === 'changes' ? this.options.changes.revision(workspaceId) : 0;
   }
 
   private viewKey(workspaceId: string, topic: WorkspaceWatchTopic, watch: WorkspaceWatch): string {

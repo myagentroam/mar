@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { createRenderer, createSSRApp, h, ref, ssrContextKey, type Ref } from 'vue';
+import { createRenderer, createSSRApp, h, nextTick, ref, ssrContextKey, type Ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
+import {
+  mergeWorkspaceWatchSnapshot,
+  type WorkspaceWatchSnapshot
+} from '../../src/service/WorkspaceRuntimeStateService.js';
 
 const originalLocale = localePreferenceService().locale.value;
 const fetchRequest = vi.fn();
@@ -98,8 +102,8 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
       'utf8'
     );
     expect(source).toContain('TEXT_FILE_PREVIEW_LIMIT_BYTES,');
-    expect(source).toContain(
-      'return await open(entry, targetLine, worktreePath, true, stacked, preview, targetColumn)'
+    expect(source).toMatch(
+      /return await open\(\s*entry,\s*targetLine,\s*worktreePath,\s*true,\s*stacked,\s*preview,\s*targetColumn,\s*repositoryPath\s*\)/u
     );
     expect(source).not.toContain("limit: '65536'");
     expect(source).not.toContain('props.fileWriteEnabled ||');
@@ -126,7 +130,9 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(source).toContain('void loadSymbolReferences({');
     expect(source).toContain('preview.navigationLoading.value = false;');
     expect(source).toContain('queryUrl(`${requestBase}/symbols/prepare`, { path }, requestNodeId)');
-    expect(source).toContain("if (encoding === 'utf-8' && worktreePath === undefined)");
+    expect(source).toContain(
+      "if (encoding === 'utf-8' && worktreePath === undefined && repositoryPath === undefined)"
+    );
     expect(source).toContain("if (parsed.data.state === 'BUILDING')");
     expect(source).toContain('void openFile(target.path, target.line, target.column)');
     expect(source).toContain('openFile(match.path, match.line, match.column)');
@@ -364,6 +370,108 @@ it('opens previews before slow tree reveal and keeps the latest navigation activ
   }
 });
 
+it('does not replay retained Changes metadata after the Workspace becomes a directory', async () => {
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  vi.stubGlobal('HTMLElement', TestHostNode);
+  vi.stubGlobal('Node', TestHostNode);
+  const workspaceKind = ref<'GIT_WORKSPACE' | 'DIRECTORY'>('GIT_WORKSPACE');
+  const snapshot = ref<WorkspaceWatchSnapshot>();
+  const onWorkspace = vi.fn((workspace: { kind: 'GIT_WORKSPACE' | 'DIRECTORY' }) => {
+    workspaceKind.value = workspace.kind;
+  });
+  const app = testRenderer.createApp({
+    render: () =>
+      h(WorkspaceInspector, {
+        ...baseProps,
+        workspaceKind: workspaceKind.value,
+        subscriptionSnapshot: snapshot.value,
+        onWorkspace
+      })
+  });
+  app.use(i18n);
+  app.use(ElementPlus);
+  app.provide(ssrContextKey, { modules: new Set<string>() });
+  app.config.warnHandler = () => {};
+  app.mount(new TestHostNode('container'));
+  const workspace = { id: 'workspace-1', path: '/repo/child', kind: 'GIT_WORKSPACE' };
+  try {
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      undefined,
+      'node-1',
+      'workspace-1',
+      {
+        changes: { workspace, changes: [], repositories: [] }
+      },
+      { topic: 'changes', revision: 1 }
+    );
+    await nextTick();
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      snapshot.value,
+      'node-1',
+      'workspace-1',
+      {
+        files: {
+          files: { entries: [], nextCursor: null },
+          workspace: { ...workspace, kind: 'DIRECTORY' }
+        }
+      },
+      { topic: 'files', revision: 1 }
+    );
+    await nextTick();
+    expect(workspaceKind.value).toBe('DIRECTORY');
+    const count = onWorkspace.mock.calls.length;
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      snapshot.value,
+      'node-1',
+      'workspace-1',
+      {},
+      {
+        topic: 'sessions',
+        revision: 1
+      }
+    );
+    await nextTick();
+    expect(workspaceKind.value).toBe('DIRECTORY');
+    expect(onWorkspace).toHaveBeenCalledTimes(count);
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      snapshot.value,
+      'node-1',
+      'workspace-1',
+      {
+        changes: { workspace: { ...workspace, kind: 'DIRECTORY' }, changes: [], repositories: [] }
+      },
+      { topic: 'changes', revision: 2 }
+    );
+    await nextTick();
+    const directoryCount = onWorkspace.mock.calls.length;
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      snapshot.value,
+      'node-1',
+      'workspace-1',
+      {},
+      {
+        topic: 'sessions',
+        revision: 2
+      }
+    );
+    await nextTick();
+    expect(onWorkspace).toHaveBeenCalledTimes(directoryCount);
+    snapshot.value = mergeWorkspaceWatchSnapshot(
+      snapshot.value,
+      'node-1',
+      'workspace-1',
+      {
+        changes: { workspace, changes: [], repositories: [] }
+      },
+      { topic: 'changes', revision: 1 }
+    );
+    await nextTick();
+    expect(workspaceKind.value).toBe('GIT_WORKSPACE');
+  } finally {
+    app.unmount();
+  }
+});
+
 it.each([
   ['clip.mp4', false],
   ['sound.mp3', false],
@@ -448,10 +556,13 @@ it.each([
   ['large.mts', true, new TextEncoder().encode('a'.repeat(4095) + '中文'), 'utf-8'],
   ['large.custom', false, new TextEncoder().encode('a'.repeat(5000)), 'utf-8'],
   ['notes.txt', true, new Uint8Array([65, 0, 66]), 'base64'],
-  ['notes.custom', true, new Uint8Array([0xff]), 'base64']
+  ['notes.custom', true, new Uint8Array([0xff]), 'base64'],
+  ['same.txt', false, new TextEncoder().encode('parent content'), 'utf-8', ''],
+  ['same.txt', true, new TextEncoder().encode('parent content'), 'utf-8', ''],
+  ['readme.md', false, new TextEncoder().encode('# Parent content'), 'utf-8', '']
 ] as const)(
   'reads actual preview content for %s (direct: %s)',
-  async (path, direct, bytes, encoding) => {
+  async (path, direct, bytes, encoding, repositoryPath?: string) => {
     vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
     vi.stubGlobal('HTMLElement', TestHostNode);
     vi.stubGlobal('Node', TestHostNode);
@@ -492,6 +603,7 @@ it.each([
         h(WorkspaceInspector, {
           ...baseProps,
           directFileReadRange,
+          fileWriteEnabled: true,
           codeNavigationPrewarmEnabled: true,
           onVnodeMounted: (vnode) => {
             setup = (vnode.component as unknown as { setupState: Record<string, unknown> })
@@ -506,6 +618,16 @@ it.each([
     app.mount(new TestHostNode('container'));
     const state = setup as {
       openFile(path: string): Promise<void>;
+      openWorkspaceFile(
+        path: string,
+        line?: number,
+        worktreePath?: string,
+        stacked?: boolean,
+        column?: number,
+        repositoryPath?: string
+      ): Promise<void>;
+      previewFileWriteEnabled(preview: unknown): boolean;
+      openCurrentRenderedPreview(): boolean;
       fileTree: { reveal(path: string): Promise<void>; selectPath(path: string): void };
       filePageFrames: {
         fileContent: Ref<{ encoding: string; content: string }>;
@@ -515,14 +637,34 @@ it.each([
     state.fileTree.reveal = vi.fn(async () => undefined);
     state.fileTree.selectPath = vi.fn();
     try {
-      await state.openFile(path);
-      expect(directFileReadRange).toHaveBeenCalledWith(path, 0, 4096, undefined, undefined);
+      if (repositoryPath === undefined) await state.openFile(path);
+      else
+        await state.openWorkspaceFile(path, undefined, undefined, false, undefined, repositoryPath);
+      expect(state.previewFileWriteEnabled(state.filePageFrames[0])).toBe(
+        repositoryPath === undefined
+      );
+      if (repositoryPath !== undefined) expect(state.openCurrentRenderedPreview()).toBe(false);
+      expect(directFileReadRange).toHaveBeenCalledWith(
+        path,
+        0,
+        4096,
+        undefined,
+        undefined,
+        repositoryPath
+      );
       expect(directFileReadRange).toHaveBeenCalledTimes(bytes.length > 4096 ? 2 : 1);
       if (direct && bytes.length > 4096)
-        expect(directFileReadRange).toHaveBeenLastCalledWith(path, 0, 512 * 1024, undefined, {
-          revision: 'revision-1',
-          size: bytes.length
-        });
+        expect(directFileReadRange).toHaveBeenLastCalledWith(
+          path,
+          0,
+          512 * 1024,
+          undefined,
+          {
+            revision: 'revision-1',
+            size: bytes.length
+          },
+          repositoryPath
+        );
       expect(state.filePageFrames[0]?.fileContent.value).toMatchObject({
         encoding,
         content: encoding === 'utf-8' ? new TextDecoder().decode(bytes) : ''
@@ -533,7 +675,15 @@ it.each([
       );
       expect(
         fetchRequest.mock.calls.some(([url]) => String(url).includes('/symbols/prepare?'))
-      ).toBe(encoding === 'utf-8');
+      ).toBe(encoding === 'utf-8' && repositoryPath === undefined);
+      if (!direct && repositoryPath !== undefined) {
+        const [url] = fetchRequest.mock.calls.find(([url]) =>
+          String(url).includes('/files/read?')
+        )!;
+        expect(new URL(String(url), 'http://test.local').searchParams.get('repositoryPath')).toBe(
+          repositoryPath
+        );
+      }
     } finally {
       app.unmount();
     }

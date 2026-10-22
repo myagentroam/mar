@@ -2,6 +2,7 @@ import { NODE_SCHEMA_MIGRATION_V17 } from './migrations/v017.js';
 import { NODE_SCHEMA_MIGRATION_V18 } from './migrations/v018.js';
 import { NODE_SCHEMA_MIGRATION_V19 } from './migrations/v019.js';
 import { NODE_SCHEMA_MIGRATION_V20 } from './migrations/v020.js';
+import { NODE_SCHEMA_MIGRATION_V21 } from './migrations/v021.js';
 import { normalizeSessionPrompt } from './util/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -40,19 +41,35 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
   NODE_SCHEMA_MIGRATION_V17,
   NODE_SCHEMA_MIGRATION_V18,
   NODE_SCHEMA_MIGRATION_V19,
-  NODE_SCHEMA_MIGRATION_V20
+  NODE_SCHEMA_MIGRATION_V20,
+  NODE_SCHEMA_MIGRATION_V21
 ];
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
 
 /** Whether a native session ID was created by this Node or merely discovered. */
 export type NativeSessionControl = 'MAR_MANAGED' | 'EXTERNAL';
+export interface NodeSettings {
+  readonly runnerDefaults?: Partial<
+    Record<RunnerDefaultConfiguration['runner'], Omit<RunnerDefaultConfiguration, 'runner'>>
+  >;
+}
+
+export interface WorkspaceSettings {
+  readonly git?: {
+    readonly preserveGitConfig?: boolean;
+    readonly includeParentRepository?: boolean;
+  };
+}
+
 export interface NodeWorkspace {
   readonly id: string;
   readonly path: string;
   readonly kind: 'DIRECTORY' | 'GIT_WORKSPACE';
   readonly gitSummary: unknown | null;
+  readonly settings?: WorkspaceSettings;
   readonly preserveGitConfig?: boolean;
+  readonly includeParentRepository?: boolean;
 }
 
 export interface NodeAgentSession {
@@ -154,30 +171,24 @@ export class NodeDatabase {
   }
 
   getRunnerDefaults(): readonly RunnerDefaultConfiguration[] {
-    const rows = this.raw
-      .prepare('SELECT runner, model, effort, access FROM runner_defaults ORDER BY runner')
-      .all() as readonly SqlRow[];
-    return rows.flatMap((row) => {
-      const parsed = runnerDefaultConfigurationSchema.safeParse({
-        runner: stringValue(row, 'runner'),
-        model: stringValue(row, 'model'),
-        effort: stringValue(row, 'effort'),
-        access: stringValue(row, 'access')
+    return Object.entries(this.getNodeSettings().runnerDefaults ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([runner, settings]) => {
+        const parsed = runnerDefaultConfigurationSchema.safeParse({ runner, ...settings });
+        return parsed.success ? [parsed.data] : [];
       });
-      return parsed.success ? [parsed.data] : [];
-    });
+  }
+
+  getNodeSettings(): NodeSettings {
+    const row = this.raw.prepare('SELECT settings FROM node_settings WHERE id = 1').get() as SqlRow;
+    return JSON.parse(stringValue(row, 'settings')) as NodeSettings;
   }
 
   saveRunnerDefaults(input: RunnerDefaultConfiguration): RunnerDefaultConfiguration {
+    const { runner, ...settings } = runnerDefaultConfigurationSchema.parse(input);
     this.raw
-      .prepare(
-        `INSERT INTO runner_defaults (runner, model, effort, access)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(runner) DO UPDATE SET
-           model = excluded.model, effort = excluded.effort,
-           access = excluded.access`
-      )
-      .run(input.runner, input.model, input.effort, input.access);
+      .prepare(`UPDATE node_settings SET settings = json_patch(settings, ?) WHERE id = 1`)
+      .run(JSON.stringify({ runnerDefaults: { [runner]: settings } }));
     return input;
   }
 
@@ -336,24 +347,34 @@ export class NodeDatabase {
       .run(this.now());
   }
 
-  saveWorkspace(input: Omit<NodeWorkspace, 'id'> & { readonly id?: string }): NodeWorkspace {
+  saveWorkspace(
+    input: Omit<NodeWorkspace, 'id' | 'settings'> & { readonly id?: string }
+  ): NodeWorkspace {
     const current = this.raw
-      .prepare('SELECT id, preserve_git_config FROM workspaces WHERE path = ?')
+      .prepare('SELECT id, settings FROM workspaces WHERE path = ?')
       .get(input.path) as SqlRow | undefined;
+    const settings: WorkspaceSettings =
+      current === undefined
+        ? {
+            git: {
+              preserveGitConfig: input.preserveGitConfig ?? false,
+              includeParentRepository: input.includeParentRepository ?? true
+            }
+          }
+        : (JSON.parse(stringValue(current, 'settings')) as WorkspaceSettings);
     const workspace: NodeWorkspace = {
       id: current === undefined ? (input.id ?? randomUUID()) : stringValue(current, 'id'),
       path: input.path,
       kind: input.kind,
       gitSummary: input.gitSummary,
-      preserveGitConfig:
-        current === undefined
-          ? (input.preserveGitConfig ?? false)
-          : Number(current.preserve_git_config) === 1
+      settings,
+      includeParentRepository: settings.git?.includeParentRepository ?? true,
+      preserveGitConfig: settings.git?.preserveGitConfig ?? false
     };
     const timestamp = this.now();
     this.raw
       .prepare(
-        `INSERT INTO workspaces (id, path, kind, git_summary, created_at, updated_at, preserve_git_config)
+        `INSERT INTO workspaces (id, path, kind, git_summary, created_at, updated_at, settings)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET kind = excluded.kind,
            git_summary = excluded.git_summary, updated_at = excluded.updated_at`
@@ -365,7 +386,7 @@ export class NodeDatabase {
         workspace.gitSummary === null ? null : JSON.stringify(workspace.gitSummary),
         timestamp,
         timestamp,
-        workspace.preserveGitConfig ? 1 : 0
+        JSON.stringify(settings)
       );
     return workspace;
   }
@@ -373,7 +394,7 @@ export class NodeDatabase {
   listWorkspaces(): readonly NodeWorkspace[] {
     return this.raw
       .prepare(
-        'SELECT id, path, kind, git_summary, preserve_git_config FROM workspaces ORDER BY created_at ASC'
+        'SELECT id, path, kind, git_summary, settings FROM workspaces ORDER BY created_at ASC'
       )
       .all()
       .map((row) => workspace(row as SqlRow));
@@ -381,19 +402,37 @@ export class NodeDatabase {
 
   getWorkspace(id: string): NodeWorkspace | undefined {
     const row = this.raw
-      .prepare(
-        'SELECT id, path, kind, git_summary, preserve_git_config FROM workspaces WHERE id = ?'
-      )
+      .prepare('SELECT id, path, kind, git_summary, settings FROM workspaces WHERE id = ?')
       .get(id) as SqlRow | undefined;
     return row === undefined ? undefined : workspace(row);
   }
 
-  /** Unregisters a Workspace registration without deleting its local directory. */
-  setWorkspaceGitPolicy(id: string, preserveGitConfig: boolean): NodeWorkspace {
+  getWorkspaceByPath(path: string): NodeWorkspace | undefined {
+    const row = this.raw
+      .prepare('SELECT id, path, kind, git_summary, settings FROM workspaces WHERE path = ?')
+      .get(path) as SqlRow | undefined;
+    return row === undefined ? undefined : workspace(row);
+  }
+
+  /** Updates only supplied policy fields without replacing Workspace metadata. */
+  setWorkspaceGitPolicy(
+    id: string,
+    preserveGitConfig: boolean,
+    includeParentRepository?: boolean
+  ): NodeWorkspace {
     if (this.getWorkspace(id) === undefined) throw new Error('WORKSPACE_NOT_FOUND');
     this.raw
-      .prepare('UPDATE workspaces SET preserve_git_config=?, updated_at=? WHERE id=?')
-      .run(preserveGitConfig ? 1 : 0, this.now(), id);
+      .prepare('UPDATE workspaces SET settings=json_patch(settings, ?), updated_at=? WHERE id=?')
+      .run(
+        JSON.stringify({
+          git: {
+            preserveGitConfig,
+            ...(includeParentRepository === undefined ? {} : { includeParentRepository })
+          }
+        }),
+        this.now(),
+        id
+      );
     return this.getWorkspace(id)!;
   }
 
@@ -703,7 +742,8 @@ export function migrate(
     throw new Error('NODE_DATABASE_VERSION_UNSUPPORTED');
   if (migratedVersions.some((version, index) => version !== NODE_SCHEMA_VERSION_V13 + index))
     throw new Error('NODE_DATABASE_MIGRATION_HISTORY_INVALID');
-  assertNodeSchemaV13(database);
+  if (current < NODE_SCHEMA_MIGRATION_V21.version) assertNodeSchemaV13(database);
+  else catalog[current - NODE_SCHEMA_VERSION_V13 - 1]!.assert(database);
   for (const entry of catalog) {
     if (entry.version <= current) continue;
     const foreignKeys = database.prepare('PRAGMA foreign_keys').get()?.['foreign_keys'];
@@ -858,9 +898,12 @@ function acquireNodeMigrationLock(databasePath: string): () => void {
 
 function workspace(row: SqlRow): NodeWorkspace {
   const summary = nullableString(row, 'git_summary');
+  const settings = JSON.parse(stringValue(row, 'settings')) as WorkspaceSettings;
   return {
     id: stringValue(row, 'id'),
-    preserveGitConfig: Number(row.preserve_git_config) === 1,
+    settings,
+    preserveGitConfig: settings.git?.preserveGitConfig ?? false,
+    includeParentRepository: settings.git?.includeParentRepository ?? true,
     path: stringValue(row, 'path'),
     kind: stringValue(row, 'kind') as NodeWorkspace['kind'],
     gitSummary: summary === null ? null : (JSON.parse(summary) as unknown)

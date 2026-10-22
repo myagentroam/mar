@@ -3,6 +3,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { PersonalGitService } from '../../src/service/PersonalGitService.js';
 
 describe('Personal Git settings client', () => {
+  it('preserves an explicit disabled parent repository policy without defaulting legacy responses', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue({ preserveGitConfig: true, includeParentRepository: false });
+    const service = new PersonalGitService(request);
+    expect(await service.workspacePolicy('node', 'child')).toEqual({
+      preserveGitConfig: true,
+      includeParentRepository: false
+    });
+    await service.saveWorkspacePolicy('node', 'child', true, false);
+    expect(JSON.parse(request.mock.calls[1]![1].body)).toEqual({
+      preserveGitConfig: true,
+      includeParentRepository: false
+    });
+    request.mockResolvedValue({ preserveGitConfig: true });
+    expect(
+      (await service.workspacePolicy('old-node', 'child')).includeParentRepository
+    ).toBeUndefined();
+  });
   it('uses no-store requests for workspace policies without an app-version gate', async () => {
     const request = vi.fn().mockResolvedValue({ preserveGitConfig: true });
     const service = new PersonalGitService(request);

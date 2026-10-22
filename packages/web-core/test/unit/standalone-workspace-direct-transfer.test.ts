@@ -84,7 +84,12 @@ afterEach(() => {
 });
 
 describe('Standalone Workspace direct transfer', () => {
-  it('creates its own live connection and transport before downloading through a new transfer', async () => {
+  it.each([
+    {},
+    { repositoryPath: '' },
+    { repositoryPath: 'libs/module' },
+    { worktreePath: '/linked' }
+  ])('preserves the file target %j through metadata and direct transfers', async (target) => {
     const downloadOrder: string[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const path = String(input);
@@ -96,6 +101,9 @@ describe('Standalone Workspace direct transfer', () => {
           }
         });
       if (path.includes('/files/direct-metadata?')) {
+        const parameters = new URL(path, 'http://test.local').searchParams;
+        expect(parameters.has('repositoryPath')).toBe('repositoryPath' in target);
+        for (const [key, value] of Object.entries(target)) expect(parameters.get(key)).toBe(value);
         downloadOrder.push('metadata');
         return response({
           file: { size: 3, revision: 'a'.repeat(64) }
@@ -109,7 +117,8 @@ describe('Standalone Workspace direct transfer', () => {
 
     const service = createStandaloneWorkspaceDirectTransferService({
       nodeId: 'node-1',
-      workspaceId: 'workspace-1'
+      workspaceId: 'workspace-1',
+      ...target
     });
     await vi.waitFor(() =>
       expect(mocks.direct.ensureTransport).toHaveBeenCalledWith('node-1', 'generation-1')
@@ -129,7 +138,8 @@ describe('Standalone Workspace direct transfer', () => {
           resource: {
             kind: 'WORKSPACE_FILE',
             workspaceId: 'workspace-1',
-            path: 'assets/image.bin'
+            path: 'assets/image.bin',
+            ...target
           }
         })
       })
@@ -140,6 +150,23 @@ describe('Standalone Workspace direct transfer', () => {
     await expect(service.download('assets/image.bin')).resolves.toBe('COMPLETED');
     expect(downloadOrder).toEqual(['metadata']);
     expect(mocks.createDownloadStream).toHaveBeenCalledWith('image.bin', 3);
+
+    await expect(service.readRange('assets/image.bin', 0, 3)).resolves.toMatchObject({
+      bytes: new Uint8Array([1, 2, 3]),
+      size: 3
+    });
+    for (const [input] of mocks.direct.download.mock.calls) {
+      expect(input).toMatchObject({
+        descriptor: {
+          resource: {
+            kind: 'WORKSPACE_FILE',
+            workspaceId: 'workspace-1',
+            path: 'assets/image.bin',
+            ...target
+          }
+        }
+      });
+    }
 
     service.close();
     expect(mocks.direct.invalidateNetwork).toHaveBeenCalled();

@@ -20,21 +20,28 @@ export function mergeWorkspaceWatchSnapshot(
     readonly revision: number;
   }
 ): WorkspaceWatchSnapshot {
+  const previous =
+    current?.nodeId === nodeId && current.workspaceId === workspaceId ? current : undefined;
+  // The Watch service already filters stale events. Node revisions can restart with a new Watch.
   return {
-    ...(current?.nodeId === nodeId && current.workspaceId === workspaceId ? current : {}),
+    ...previous,
     nodeId,
     workspaceId,
     ...(snapshot.files === undefined
       ? {}
       : {
           files: snapshot.files,
-          ...(update?.topic === 'files' ? { filesWatchRevision: update.revision } : {})
+          ...(update?.topic === 'files'
+            ? { filesWatchRevision: (previous?.filesWatchRevision ?? 0) + 1 }
+            : {})
         }),
     ...(snapshot.changes === undefined
       ? {}
       : {
           changes: snapshot.changes,
-          ...(update?.topic === 'changes' ? { changesWatchRevision: update.revision } : {})
+          ...(update?.topic === 'changes'
+            ? { changesWatchRevision: (previous?.changesWatchRevision ?? 0) + 1 }
+            : {})
         })
   };
 }

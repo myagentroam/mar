@@ -118,6 +118,26 @@ function mountTabs(
 }
 
 describe('Workspace file tab service', () => {
+  it('separates Git current files from same-name Workspace files and preserves their targets', () => {
+    const tabs = createWorkspaceFileTabService();
+    const ordinary = tabs.open(worktree('same.txt'));
+    const git = tabs.open({ ...worktree('same.txt'), gitFile: true });
+    expect(git.id).not.toBe(ordinary.id);
+    const snapshot = tabs.snapshot();
+    tabs.clear();
+    tabs.restore(snapshot);
+    expect(tabs.tabs.value.find((tab) => tab.id === git.id)?.gitFile).toBe(true);
+    expect(
+      standaloneFileOpenIntent(
+        'https://example.test/console?standaloneFile=1&nodeId=n&workspaceId=w&path=same.txt&repositoryPath='
+      )?.repositoryPath
+    ).toBe('');
+    expect(
+      standaloneFileOpenIntent(
+        'https://example.test/console?standaloneFile=1&nodeId=n&workspaceId=w&path=same.txt&worktreePath=%2Fother'
+      )?.worktreePath
+    ).toBe('/other');
+  });
   it('deduplicates by source-aware identity and updates navigation targets', () => {
     const service = createWorkspaceFileTabService();
     const first = service.open({ ...worktree('src/main.ts'), targetLine: 2 });

@@ -1,10 +1,12 @@
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import { createHash } from 'node:crypto';
+import { isAbsolute, win32 } from 'node:path';
 import type { DirectTransferDescriptor } from '@myagentroam/protocol';
 import type { NodeWorkspace } from '../database.js';
 import type { WorkspaceInspection } from '../workspace.js';
 import {
   listGitHistoryRefs,
+  normalizeFilePreviewPath,
   openGitHistoryFileContent,
   readGitHistory,
   readGitHistoryFileDiff,
@@ -14,6 +16,7 @@ import {
   readRestrictedDiff,
   resolveGitRepository,
   resolveGitRepositoryTarget,
+  resolveWorkspaceGitRoot,
   restoreCurrentChange
 } from '../workspace.js';
 import { WorkspaceChangeService } from './workspace-change-service.js';
@@ -153,7 +156,10 @@ export class WorkspaceWorkbenchService {
     worktreePath?: string
   ): Promise<unknown> {
     const workspace = this.options.requireWorkspace(workspaceId);
-    const repository = await this.fileRepository(workspace, worktreePath ? { worktreePath } : {});
+    const repository = await this.fileRepository(
+      workspace,
+      worktreePath ? { worktreePath, path } : {}
+    );
     const { readWorkspaceTextFile } = await import('../workspace.js');
     return readWorkspaceTextFile(repository, path, 0, 64 * 1024);
   }
@@ -246,7 +252,7 @@ export class WorkspaceWorkbenchService {
       throw new Error('GIT_DIFF_INVALID');
     const workspace = this.gitWorkspace(input.workspaceId);
     const repository = await resolveGitRepositoryTarget(
-      workspace.path,
+      await resolveWorkspaceGitRoot(workspace.path, workspace.includeParentRepository ?? true),
       input.repositoryPath ?? '',
       input.worktreePath
     );
@@ -264,7 +270,7 @@ export class WorkspaceWorkbenchService {
       throw new Error('GIT_CHANGE_RESTORE_UNAVAILABLE');
     const workspace = this.gitWorkspace(input.workspaceId);
     const repository = await resolveGitRepositoryTarget(
-      workspace.path,
+      await resolveWorkspaceGitRoot(workspace.path, workspace.includeParentRepository ?? true),
       input.repositoryPath ?? '',
       input.worktreePath
     );
@@ -280,16 +286,36 @@ export class WorkspaceWorkbenchService {
     )
       throw new Error('GIT_REPOSITORY_INVALID');
     const workspace = this.gitWorkspace(input.workspaceId);
-    return resolveGitRepository(workspace.path, input.repositoryPath ?? '');
+    return resolveGitRepository(
+      await resolveWorkspaceGitRoot(workspace.path, workspace.includeParentRepository ?? true),
+      input.repositoryPath ?? ''
+    );
   }
 
   private async fileRepository(
     workspace: NodeWorkspace,
     input: Record<string, unknown>
   ): Promise<string> {
-    if (input.worktreePath === undefined) return workspace.path;
-    if (typeof input.worktreePath !== 'string') throw new Error('GIT_REPOSITORY_INVALID');
-    return resolveGitRepositoryTarget(workspace.path, '', input.worktreePath);
+    if (input.worktreePath === undefined && input.repositoryPath === undefined)
+      return workspace.path;
+    if (
+      (input.worktreePath !== undefined && typeof input.worktreePath !== 'string') ||
+      (input.repositoryPath !== undefined && typeof input.repositoryPath !== 'string')
+    )
+      throw new Error('GIT_REPOSITORY_INVALID');
+    if (
+      typeof input.path !== 'string' ||
+      input.path.startsWith('mar-attachment:') ||
+      input.previewDirectory !== undefined
+    )
+      throw new Error('FILE_PATH_ESCAPE');
+    const path = normalizeFilePreviewPath(input.path);
+    if (isAbsolute(path) || win32.isAbsolute(path)) throw new Error('FILE_PATH_ESCAPE');
+    return resolveGitRepositoryTarget(
+      await resolveWorkspaceGitRoot(workspace.path, workspace.includeParentRepository ?? true),
+      (input.repositoryPath as string | undefined) ?? '',
+      input.worktreePath as string | undefined
+    );
   }
 
   private refs(input: Record<string, unknown>): readonly string[] | undefined {
@@ -394,6 +420,9 @@ export class WorkspaceWorkbenchService {
       const input: Record<string, unknown> = {
         workspaceId: workspace.id,
         path: descriptor.resource.path,
+        ...(descriptor.resource.repositoryPath === undefined
+          ? {}
+          : { repositoryPath: descriptor.resource.repositoryPath }),
         ...(descriptor.resource.worktreePath === undefined
           ? {}
           : { worktreePath: descriptor.resource.worktreePath })
@@ -511,12 +540,17 @@ export class WorkspaceWorkbenchService {
     )
       throw new Error('GIT_DIFF_INVALID');
     const workspace = this.gitWorkspace(input.workspaceId);
-    return { diff: await readRestrictedDiff(workspace.path, input.fromRef, input.toRef) };
+    return {
+      diff: await readRestrictedDiff(
+        await resolveWorkspaceGitRoot(workspace.path, workspace.includeParentRepository ?? true),
+        input.fromRef,
+        input.toRef
+      )
+    };
   }
 
   private gitWorkspace(workspaceId: string): NodeWorkspace {
     const workspace = this.options.requireWorkspace(workspaceId);
-    if (workspace.kind !== 'GIT_WORKSPACE') throw new Error('WORKSPACE_NOT_GIT');
     return workspace;
   }
 }

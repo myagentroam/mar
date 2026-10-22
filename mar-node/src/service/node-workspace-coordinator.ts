@@ -1,4 +1,6 @@
 import type { NodeEnvelope } from '@myagentroam/protocol';
+import { realpath } from 'node:fs/promises';
+import { nodeLog } from '../operational.js';
 import type { NodeConfig } from '../config.js';
 import type {
   NodeAgentSession,
@@ -41,7 +43,11 @@ export class NodeWorkspaceCoordinator {
   async inspectMetadata(workspace: NodeWorkspace): Promise<WorkspaceInspection> {
     const config = this.options.config();
     if (config === undefined) throw new Error('NODE_CONFIG_UNAVAILABLE');
-    const inspection = await inspectWorkspace(workspace.path, config.allowedRoots);
+    const inspection = await inspectWorkspace(
+      workspace.path,
+      config.allowedRoots,
+      workspace.includeParentRepository ?? true
+    );
     if (normalizeWorkspacePath(inspection.path) !== normalizeWorkspacePath(workspace.path))
       throw new Error('WORKSPACE_NOT_ALLOWED');
     return inspection;
@@ -55,8 +61,16 @@ export class NodeWorkspaceCoordinator {
     if (database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
     if (normalizeWorkspacePath(inspection.path) !== normalizeWorkspacePath(workspace.path))
       throw new Error('WORKSPACE_NOT_ALLOWED');
+    const current = this.require(workspace.id);
+    if ((current.includeParentRepository ?? true) !== (workspace.includeParentRepository ?? true))
+      return current;
     if (workspace.kind !== 'GIT_WORKSPACE' && inspection.kind === 'GIT_WORKSPACE')
-      await ensureWorkspaceGitExclude(workspace.path);
+      await ensureWorkspaceGitExclude(workspace.path, workspace.includeParentRepository ?? true);
+    if (
+      (this.require(workspace.id).includeParentRepository ?? true) !==
+      (workspace.includeParentRepository ?? true)
+    )
+      return this.require(workspace.id);
     const saved = database.saveWorkspace({
       id: workspace.id,
       path: workspace.path,
@@ -85,6 +99,15 @@ export class NodeWorkspaceCoordinator {
 
   invalidateChanges(workspaceId: string): void {
     this.options.changes.invalidate(workspaceId);
+  }
+
+  gitPolicyChanged(workspaceId: string): void {
+    this.invalidate(workspaceId);
+    const workspace = this.require(workspaceId);
+    void this.inspectMetadata(workspace)
+      .then((inspection) => this.commitMetadata(workspace, inspection))
+      .then(() => this.invalidate(workspaceId))
+      .catch(() => nodeLog('workspace.git-policy.refresh-failed', { workspaceId }));
   }
 
   persistTerminal(summary: TerminalSummary): void {
@@ -118,7 +141,13 @@ export class NodeWorkspaceCoordinator {
       return;
     }
     try {
-      const inspection = await inspectWorkspace(requestedPath, config.allowedRoots);
+      const path = await realpath(requestedPath);
+      const current = this.options.database()?.getWorkspaceByPath(path);
+      const inspection = await inspectWorkspace(
+        path,
+        config.allowedRoots,
+        current?.includeParentRepository ?? true
+      );
       this.options.send('workspace.inspect.result', inspection, envelope.id);
     } catch {
       this.options.send('workspace.inspect.result', { error: 'WORKSPACE_INVALID' }, envelope.id);

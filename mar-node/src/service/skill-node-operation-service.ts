@@ -38,14 +38,20 @@ export class SkillNodeOperationService {
       'workspace.skills.inspect': async (data: unknown) => {
         const workspace = this.workspacePath(record(data)['workspaceId']);
         await this.installer.recoverWorkspace(workspace);
-        return this.directories.inspectWorkspace(workspace);
+        return this.directories.inspectWorkspace(
+          workspace,
+          this.database().getWorkspaceByPath(workspace)?.includeParentRepository ?? true
+        );
       },
       'workspace.skills.install': (data: unknown) => this.install('WORKSPACE', data),
       'workspace.skills.remove': (data: unknown) => this.remove('WORKSPACE', data),
       'workspace.skills.git-exclude-repair': async (data: unknown) => {
         const workspace = this.workspacePath(record(data)['workspaceId']);
         await this.installer.recoverWorkspace(workspace);
-        await this.installer.repairWorkspaceGitExclude(workspace);
+        await this.installer.repairWorkspaceGitExclude(
+          workspace,
+          this.database().getWorkspaceByPath(workspace)?.includeParentRepository ?? true
+        );
         return { repaired: true };
       },
       'skill.install.job.get': (data: unknown) => this.job(data)
@@ -126,7 +132,9 @@ export class SkillNodeOperationService {
       await this.installer.installNodeHome(homedir(), input.name, bundle, input.metadata);
     else
       await this.installer.installWorkspace(input.workspace!, input.name, bundle, input.metadata, {
-        confirmTracked: true
+        confirmTracked: true,
+        includeParentRepository:
+          this.database().getWorkspaceByPath(input.workspace!)?.includeParentRepository ?? true
       });
   }
 
@@ -143,7 +151,11 @@ export class SkillNodeOperationService {
         await this.installer.removeNodeHome(homedir(), name);
       } else {
         await this.installer.recoverWorkspace(workspace!);
-        await this.installer.removeWorkspace(workspace!, name);
+        await this.installer.removeWorkspace(
+          workspace!,
+          name,
+          this.database().getWorkspaceByPath(workspace!)?.includeParentRepository ?? true
+        );
       }
     } finally {
       this.activeTargets.delete(targetKey);

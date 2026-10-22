@@ -277,7 +277,12 @@ export const personalGitSummarySchema = z
   })
   .strict();
 export type PersonalGitSummary = z.infer<typeof personalGitSummarySchema>;
-export const workspaceGitSettingsSchema = z.object({ preserveGitConfig: z.boolean() }).strict();
+export const workspaceGitSettingsSchema = z
+  .object({
+    preserveGitConfig: z.boolean(),
+    includeParentRepository: z.boolean().optional()
+  })
+  .strict();
 
 /** Reject unsupported persisted Git configuration shapes at the owning boundary. */
 export function parsePersonalGitRuntime(value: unknown): PersonalGitRuntime {

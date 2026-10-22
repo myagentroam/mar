@@ -1,6 +1,6 @@
 ---
 title: Register Your First Workspace
-lastUpdated: 2026-10-10
+lastUpdated: 2026-10-22
 ---
 
 # Register Your First Workspace
@@ -15,6 +15,8 @@ The Node must be online, the directory must be inside an `allowedRoots` entry, a
 4. Open Files and, for a Git repository, Git Changes.
 
 **Success:** the Workspace appears under its Node and the file tree is readable. Git repositories also show the current branch and Git Changes.
+
+You can register a repository subdirectory without opening the repository root. **Use parent Git repository** is enabled by default: Git views cover the containing repository, while Files, search, ordinary editing, and session execution keep the selected Workspace directory. Disable it in the Workspace details Git configuration when unnecessary, or enable it again to restore access. The setting persists. Disabling it does not disable a repository rooted at the Workspace itself or prevent Git commands in Agent sessions or terminals.
 
 If a Workspace registered by someone else is missing, right-click an empty area of the resource tree and select **Refresh workspaces** to update Nodes and loaded Workspace lists. You can also right-click a Node and select **Refresh workspaces** to update only that Node.
 

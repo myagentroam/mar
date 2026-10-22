@@ -49,6 +49,50 @@ function fixture(resources?: WorkspaceResourcePolicy) {
   };
 }
 describe('Shared Workspace HTTP routes', () => {
+  it.each([undefined, '', 'modules/tool'])(
+    'preserves the current-file repository target %s through reads and metadata',
+    async (repositoryPath) => {
+      const { app, requestNode, headers } = fixture();
+      const query = new URLSearchParams({ nodeId: 'node-1', path: 'same.txt' });
+      if (repositoryPath !== undefined) query.set('repositoryPath', repositoryPath);
+      requestNode.mockResolvedValue({ file: { size: 4, revision: 'a'.repeat(64) } });
+      for (const [route, operation] of [
+        ['read', 'workspace.file.read'],
+        ['direct-metadata', 'workspace.file.direct.metadata']
+      ]) {
+        const reply = await app.inject({
+          url: `/api/workspaces/workspace-1/files/${route}?${query}`,
+          headers
+        });
+        expect(reply.statusCode).toBe(200);
+        const call = requestNode.mock.calls.at(-1)!;
+        expect(call[1]).toBe(operation);
+        if (repositoryPath === undefined) expect(call[2]).not.toHaveProperty('repositoryPath');
+        else expect(call[2]).toHaveProperty('repositoryPath', repositoryPath);
+      }
+    }
+  );
+  it.each([{ repositoryPath: '' }, { worktreePath: 'trees/feature' }])(
+    'rejects Git file write target %j without relaying an ordinary write',
+    async (target) => {
+      const { app, requestNode, headers } = fixture();
+      const reply = await app.inject({
+        method: 'PUT',
+        url: '/api/workspaces/workspace-1/files/write',
+        headers,
+        payload: {
+          nodeId: 'node-1',
+          path: 'same.txt',
+          content: 'overwrite',
+          expectedRevision: 'a'.repeat(64),
+          ...target
+        }
+      });
+      expect(reply.statusCode).toBe(400);
+      expect(reply.json()).toMatchObject({ error: { code: 'FILE_WRITE_INVALID' } });
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+  );
   it('relays private attachment previews and ranges with authentication and Workspace authorization', async () => {
     const { app, requestNode, headers } = fixture();
     const path = 'mar-attachment://00000000-0000-4000-8000-000000000001/原图 with spaces.png';

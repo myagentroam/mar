@@ -1,11 +1,13 @@
 ---
 title: 查看 Git Changes 与 Diff
-lastUpdated: 2026-10-12
+lastUpdated: 2026-10-22
 ---
 
 # 查看 Git Changes 与 Diff
 
 在 Git 工作区中，“Git Changes”把当前根仓库、已初始化的子模块和全部 linked worktree 扁平列为同级分组，并列出各自尚未提交的文件改动。点击文件默认显示代码 Diff；聊天中的文件更改同样默认进入 Diff，只有无法生成 Diff 时才回退到普通文件预览。
+
+工作区是仓库子目录时，默认使用所属仓库，列表路径相对各自的仓库根，可能包括 Workspace 外的文件。Git 当前文件预览和下载使用该仓库目标并保持只读，不会把同名路径当作 Workspace 文件保存；还原则作用于列表中对应的仓库文件。需要普通编辑时，从 Files 打开 Workspace 内的文件。可在工作区详情关闭“使用父级 Git 仓库”，普通 Files 和会话不受影响。
 
 ## 前置条件
 

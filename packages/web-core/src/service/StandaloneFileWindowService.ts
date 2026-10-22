@@ -19,6 +19,7 @@ export interface StandaloneFileOpenIntent {
   readonly workspaceId: string;
   readonly path: string;
   readonly worktreePath?: string;
+  readonly repositoryPath?: string;
   readonly line?: number;
   readonly column?: number;
   readonly tab?: WorkspaceFileOpenIntent;
@@ -56,6 +57,7 @@ export function standaloneFileOpenIntent(url: string): StandaloneFileOpenIntent 
     const paths = parsed.searchParams.getAll('paths');
     tab = {
       kind: tabKind,
+      ...(parsed.searchParams.get('gitFile') === '1' ? { gitFile: true } : {}),
       nodeId,
       workspaceId,
       path,
@@ -72,6 +74,9 @@ export function standaloneFileOpenIntent(url: string): StandaloneFileOpenIntent 
     workspaceId,
     path,
     ...(worktreePath === null ? {} : { worktreePath }),
+    ...(tab === undefined && parsed.searchParams.has('repositoryPath')
+      ? { repositoryPath: parsed.searchParams.get('repositoryPath')! }
+      : {}),
     ...(line > 0 ? { line } : {}),
     ...(column > 0 ? { column } : {}),
     ...(tab === undefined ? {} : { tab })

@@ -51,13 +51,17 @@ export class SkillDirectoryService {
     };
   }
 
-  async inspectWorkspace(workspace: string): Promise<LocalSkillTargetInspection> {
+  async inspectWorkspace(
+    workspace: string,
+    includeParentRepository = true
+  ): Promise<LocalSkillTargetInspection> {
     const agents = await scanRoot(path.join(workspace, '.agents', 'skills'), 'AGENTS');
     const claude = await scanRoot(path.join(workspace, '.claude', 'skills'), 'CLAUDE');
     const skills = mergeWorkspaceCopies(agents, claude);
     const gitExcludeBroken = await hasBrokenWorkspaceSkillGitExclude(
       workspace,
-      skills.map((skill) => skill.name)
+      skills.map((skill) => skill.name),
+      includeParentRepository
     );
     return {
       targetKind: 'WORKSPACE',

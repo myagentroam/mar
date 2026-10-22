@@ -16,6 +16,7 @@ export interface WorkspaceFileTab {
   readonly fileName: string;
   readonly repositoryPath: string;
   readonly worktreePath: string;
+  readonly gitFile?: boolean;
   readonly commit?: string;
   readonly previousPath?: string;
   readonly refs?: readonly string[];
@@ -53,7 +54,7 @@ export function workspaceFileTabIdentity(intent: WorkspaceFileOpenIntent): strin
     case 'TOOL_CHANGE_DIFF':
       return `tool-change\0${intent.nodeId}\0${intent.toolChange?.scope ?? ''}\0${intent.toolChange?.sessionId ?? ''}\0${intent.toolChange?.changeId ?? ''}\0${intent.toolChange?.diff.resourceRef ?? ''}`;
     case 'WORKTREE_TEXT':
-      return `worktree-text\0${repositoryPath}\0${worktreePath}\0${intent.path}`;
+      return `worktree-text\0${repositoryPath}\0${worktreePath}\0${intent.path}${intent.gitFile ? '\0git' : ''}`;
     case 'WORKTREE_DIFF':
       return `worktree-diff\0${repositoryPath}\0${worktreePath}\0${intent.path}`;
     case 'HISTORY_DIFF':
@@ -61,7 +62,7 @@ export function workspaceFileTabIdentity(intent: WorkspaceFileOpenIntent): strin
     case 'HISTORY_TEXT':
       return `history-text\0${repositoryPath}\0${intent.commit ?? ''}\0${intent.path}`;
     case 'WORKTREE_PREVIEW':
-      return `worktree-preview\0${repositoryPath}\0${worktreePath}\0${intent.path}`;
+      return `worktree-preview\0${repositoryPath}\0${worktreePath}\0${intent.path}${intent.gitFile ? '\0git' : ''}`;
   }
 }
 

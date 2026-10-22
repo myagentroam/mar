@@ -1581,7 +1581,8 @@ export class NodeConnector {
         this.workspaceCoordinator.clearWatches(workspaceId);
         this.workspaceWorkbenchService.clearWorkspace(workspaceId);
         this.promptCompletion?.invalidateWorkspace(workspaceId);
-      }
+      },
+      (workspaceId) => this.workspaceCoordinator.gitPolicyChanged(workspaceId)
     );
     this.workspaceWorkbenchService = new WorkspaceWorkbenchService({
       requireWorkspace: (workspaceId) => this.workspaceCoordinator.require(workspaceId),
