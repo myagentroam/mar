@@ -1860,15 +1860,28 @@ export function createWorkbenchPageController<
       : loadMoreWorkspaceSessions();
   }
 
-  async function handleAuthenticated(): Promise<void> {
-    await startWorkbenchNotifications();
-    startWebVersionUpdateCheck();
-    await Promise.all([refreshNodes(), refreshServerCapabilities()]);
+  let authenticationRestoreGeneration = 0;
+
+  async function restoreAuthenticatedRoute(generation: number): Promise<void> {
+    await refreshNodes();
+    if (generation !== authenticationRestoreGeneration) return;
     connectWorkbenchLive();
     await restoreWorkbenchRoute();
+    if (generation !== authenticationRestoreGeneration) return;
     await restoreHostedConversationRoute();
+  }
+
+  async function handleAuthenticated(): Promise<void> {
+    const generation = ++authenticationRestoreGeneration;
+    startWebVersionUpdateCheck();
+    void refreshServerCapabilities();
+    // Notification snapshots and version display must not delay the active session.
+    // Keep notification navigation/read reconciliation after both initial reads finish.
+    await Promise.all([startWorkbenchNotifications(), restoreAuthenticatedRoute(generation)]);
+    if (generation !== authenticationRestoreGeneration) return;
     const openedSystemNotification =
       await workbenchNotificationService.openPendingSystemNotification();
+    if (generation !== authenticationRestoreGeneration) return;
     if (
       !openedSystemNotification &&
       view.value === 'nodes' &&
@@ -1884,6 +1897,7 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
+    authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
     removeWebVersionFocusListener?.();

@@ -3,7 +3,7 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
-import { computed, onBeforeUnmount, ref, type ShallowUnwrapRef } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, type ShallowUnwrapRef } from 'vue';
 import { Connection } from '@element-plus/icons-vue';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -27,7 +27,6 @@ import ComposerToolbar from '../../view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../view/composer/ComposerCommandPicker.vue';
 import ComposerFileReferencePicker from '../../view/composer/ComposerFileReferencePicker.vue';
-import SettingsContent from '../settings/SettingsContent.vue';
 import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
 import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
@@ -36,6 +35,8 @@ import { translate } from '../../service/LocalePreferenceService.js';
 import { useManagementComposition } from '../../service/ManagementComposition.js';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/WorkbenchLayoutService.js';
+
+const SettingsContent = defineAsyncComponent(() => import('../settings/SettingsContent.vue'));
 
 const props = defineProps<{
   page: ShallowUnwrapRef<

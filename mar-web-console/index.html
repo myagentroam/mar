@@ -44,39 +44,22 @@
       .mar-bootstrap__stage {
         position: relative;
         display: grid;
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
         place-items: center;
       }
 
       .mar-bootstrap__trace {
         position: absolute;
         inset: 0;
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
         color: #0a6fd8;
-        filter: drop-shadow(0 0 4px rgb(10 111 216 / 20%));
       }
 
       .mar-bootstrap__orbit {
         transform-origin: 32px 32px;
-        animation: mar-bootstrap-orbit 3.6s linear infinite;
-        opacity: 0.52;
-        stroke-dasharray: 26 74;
-        stroke-linecap: round;
-      }
-
-      .mar-bootstrap__orbit--middle {
-        animation-direction: reverse;
-        animation-duration: 1.35s;
-        opacity: 0.92;
-        stroke-dasharray: 34 66;
-      }
-
-      .mar-bootstrap__orbit--inner {
-        animation-duration: 1.05s;
-        opacity: 0.62;
-        stroke-dasharray: 18 32;
+        animation: mar-bootstrap-orbit 1.4s linear infinite;
       }
 
       @keyframes mar-bootstrap-orbit {
@@ -109,35 +92,30 @@
           class="mar-bootstrap__trace"
           viewBox="0 0 64 64"
           fill="none"
+          focusable="false"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle
-            class="mar-bootstrap__orbit"
-            cx="32"
-            cy="32"
-            r="25"
-            stroke="currentColor"
-            stroke-width="1.5"
-            pathLength="100"
-          />
-          <circle
-            class="mar-bootstrap__orbit mar-bootstrap__orbit--middle"
-            cx="32"
-            cy="32"
-            r="17"
-            stroke="currentColor"
-            stroke-width="2"
-            pathLength="100"
-          />
-          <circle
-            class="mar-bootstrap__orbit mar-bootstrap__orbit--inner"
-            cx="32"
-            cy="32"
-            r="9"
-            stroke="currentColor"
-            stroke-width="1.5"
-            pathLength="100"
-          />
+          <defs>
+            <linearGradient
+              id="mar-bootstrap-trail"
+              x1="54"
+              y1="10"
+              x2="10"
+              y2="32"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stop-color="currentColor" stop-opacity="0.08" />
+              <stop offset="0.55" stop-color="currentColor" stop-opacity="0.55" />
+              <stop offset="1" stop-color="currentColor" />
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="22" stroke="currentColor" stroke-width="0.75" opacity="0.12" />
+          <g class="mar-bootstrap__orbit">
+            <path
+              fill="url(#mar-bootstrap-trail)"
+              d="M32 9.9 C35.86 9.9 39.72 10.9 43.08 12.81 C46.44 14.72 49.3 17.52 51.28 20.87 C53.25 24.22 54.34 28.09 54.38 32 C54.42 35.91 53.42 39.83 51.5 43.26 C49.58 46.69 46.74 49.61 43.34 51.64 C39.94 53.67 35.99 54.8 32 54.87 C28.01 54.94 23.98 53.95 20.44 52.02 C16.89 50.09 13.83 47.23 11.64 43.76 C9.44 40.29 8.1 36.22 7.8 32 C7.65 30.3 8.35 29.05 9.8 28.5 C9.6 30 12.65 30.05 12.2 32 C11.9 35.46 12.62 39.06 14.26 42.24 C15.9 45.42 18.46 48.17 21.56 50.08 C24.67 51.99 28.31 53.06 32 53.13 C35.69 53.2 39.41 52.28 42.66 50.47 C45.91 48.65 48.69 45.96 50.6 42.74 C52.52 39.52 53.58 35.77 53.62 32 C53.66 28.23 52.69 24.43 50.83 21.13 C48.96 17.82 46.21 15.02 42.92 13.09 C39.63 11.16 35.82 10.1 32 10.1 Z"
+            />
+          </g>
         </svg>
       </div>
     </div>

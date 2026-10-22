@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Close, Plus } from '@element-plus/icons-vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/ScopedHttpService.js';
 import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
-import TerminalTabView from './TerminalTabView.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
+
+const TerminalTabView = defineAsyncComponent(() => import('./TerminalTabView.vue'));
 
 interface TerminalProfile {
   readonly id: string;
@@ -434,7 +435,10 @@ defineExpose({ release, toggle: toggleTerminal });
           :ref="
             (instance) => {
               if (instance === null) terminalViews.delete(item.id);
-              else terminalViews.set(item.id, instance as unknown as { focus(): void });
+              else {
+                terminalViews.set(item.id, instance as unknown as { focus(): void });
+                void focusSelectedTerminalIfReady();
+              }
             }
           "
           :terminal-id="item.id"

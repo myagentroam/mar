@@ -6,6 +6,15 @@ import { mockConsoleApi, json, write } from './support/web-console-api.js';
 test('Terminal creation, attachment, resizing, and closure require explicit Node capability', async ({
   page
 }) => {
+  let terminalModuleRequested = false;
+  let releaseTerminalModule!: () => void;
+  const pendingTerminalModule = new Promise<void>((resolve) => (releaseTerminalModule = resolve));
+  page.once('close', releaseTerminalModule);
+  await page.route(/\/TerminalTabView(?:\.vue|-[^/]+\.js)(?:\?.*)?$/, async (route) => {
+    terminalModuleRequested = true;
+    await pendingTerminalModule;
+    await route.continue();
+  });
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -276,7 +285,17 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
   await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
   expect(terminals.size).toBe(0);
   await expect(page.locator('.xterm-host')).toHaveCount(0);
-  await page.getByRole('button', { name: '展开终端' }).click();
+  expect(terminalModuleRequested).toBe(false);
+  await toggleTerminalShortcut();
+  await expect.poll(() => terminalModuleRequested).toBe(true);
+  await expect(page.getByRole('button', { name: '收起终端' })).toBeVisible();
+  releaseTerminalModule();
+  await expect(page.locator('.xterm-helper-textarea')).toBeAttached();
+  await expect
+    .poll(() =>
+      page.locator('.xterm-host').evaluate((host) => host.contains(document.activeElement))
+    )
+    .toBe(true);
   await expect(page.locator('.terminal-tab-add')).toBeEnabled();
   await page.getByRole('button', { name: '收起终端' }).click();
   await expect(page.locator('.xterm-host')).toBeHidden();
