@@ -27,7 +27,13 @@ describe('shared product application shell', () => {
     ['', true, '', false]
   ] as const)(
     'applies native context menu policy (search=%s, prevented=%s, pointerType=%s, touchDevice=%s)',
-    (search, prevented, pointerType = 'mouse', touchDevice = false) => {
+    (
+      search,
+      prevented,
+      pointerType = 'mouse',
+      touchDevice = false,
+      pathname: string = '/console'
+    ) => {
       const documentTarget = Object.assign(new EventTarget(), {
         documentElement: {
           lang: '',
@@ -37,7 +43,7 @@ describe('shared product application shell', () => {
         },
         getElementById: () => null
       });
-      vi.stubGlobal('location', { pathname: '/console', search });
+      vi.stubGlobal('location', { pathname, search, hash: '#context' });
       vi.stubGlobal('document', documentTarget);
       vi.stubGlobal('HTMLElement', class {});
       vi.stubGlobal('localStorage', { getItem: () => null });

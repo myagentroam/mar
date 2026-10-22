@@ -107,7 +107,11 @@ export interface WorkbenchNotificationService {
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
-  workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
+  workspaceTabSession(
+    nodeId: string,
+    workspaceId: string,
+    lastSessionId?: string
+  ): string | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
   hasUnreadConversation(nodeId: string, conversationId: string): boolean;
   notify(input: WorkbenchNotificationInput): void;
@@ -648,15 +652,22 @@ export function createWorkbenchNotificationService(
     return entry?.target?.targetType === 'WORKSPACE_SESSION' ? entry.target.sessionId : undefined;
   }
 
-  function workspaceTabSession(nodeId: string, workspaceId: string): string | undefined {
+  function workspaceTabSession(
+    nodeId: string,
+    workspaceId: string,
+    lastSessionId?: string
+  ): string | undefined {
+    const unreadSessionId = firstUnreadWorkspaceSession(nodeId, workspaceId);
+    if (unreadSessionId !== undefined) return unreadSessionId;
+    const activeRuns = recentRuns.value.filter(
+      (run) =>
+        run.nodeId === nodeId &&
+        run.workspaceId === workspaceId &&
+        activeRecentRunStatus(run.status)
+    );
     return (
-      firstUnreadWorkspaceSession(nodeId, workspaceId) ??
-      recentRuns.value.find(
-        (run) =>
-          run.nodeId === nodeId &&
-          run.workspaceId === workspaceId &&
-          activeRecentRunStatus(run.status)
-      )?.sessionId
+      activeRuns.find((run) => run.sessionId === lastSessionId)?.sessionId ??
+      activeRuns[0]?.sessionId
     );
   }
 

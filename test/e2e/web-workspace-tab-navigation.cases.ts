@@ -226,6 +226,18 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await expect(header).toContainText('Priority active-first');
       await first.getByRole('tab').click();
       await expect(header).toContainText('Priority active-second');
+      recentRuns = [
+        run('active-first', 'RUNNING', now + 3),
+        run('active-second', 'RUNNING', now + 1)
+      ];
+      await refresh();
+      const retained = identityReads.length;
+      await first.getByRole('tab').click();
+      await expect(header).toContainText('Priority active-second');
+      expect(identityReads).toHaveLength(retained);
+      await second.getByRole('tab').click();
+      await first.getByRole('tab').click();
+      await expect(header).toContainText('Priority active-second');
       recentRuns = [];
       await refresh();
       await expect(first.locator('.workspace-tab-running')).toHaveCount(0);

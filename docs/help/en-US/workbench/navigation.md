@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-22
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -11,7 +11,7 @@ In Work mode, expand a Node group in the left resource tree and open a registere
 
 Every Workspace uses the same activation path: its tab activates and restores cached content immediately, then refreshes in the background. An uncached target shows its own loading state without waiting for network responses before selection. A temporary network failure leaves the target selected so it can be retried. Confirmed missing or inaccessible Workspaces have their content cleared and follow tab removal and fallback rules. Newer selections take precedence over late responses.
 
-Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, first opens its first valid unread session. A successful open marks only that session read; unread indicators remain for other sessions, and another click opens the next unread session. With no unread sessions, the first active task takes priority; otherwise the tab restores its last selected session, or keeps the existing empty or draft behavior when none is available. Candidates follow their existing order, regardless of session-list pagination or search. A failed open does not clear unread state. Background notifications and task changes never switch sessions automatically, and navigation never starts or stops tasks. Tree navigation, shortcuts, and fallback after closing a tab keep their existing behavior.
+Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, first opens its first valid unread session. A successful open marks only that session read; unread indicators remain for other sessions, and another click opens the next unread session. With no unread sessions, active tasks take priority: if the Workspace's last selected session still has an active task, the tab keeps that session instead of switching to another active session. Otherwise, it opens the first active session. With no active tasks, the tab restores its last selected session, or keeps the existing empty or draft behavior when none is available. Other candidates follow their existing order, regardless of session-list pagination or search. A failed open does not clear unread state. Background notifications and task changes never switch sessions automatically, and navigation never starts or stops tasks. Tree navigation, shortcuts, and fallback after closing a tab keep their existing behavior.
 
 Workspace registration uses an explicit host target in a dialog; closing it leaves the active Workspace unchanged. Open Workspaces appear as tabs and retain their order in the current browser.
 
