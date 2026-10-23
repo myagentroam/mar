@@ -929,6 +929,8 @@ describe('asynchronous Compact', () => {
     'honors a %s blocking join admitted by request middleware before sampling its rebuilt context',
     async (api) => {
       const release = barrier();
+      const hookEntered = barrier();
+      const continueHook = barrier();
       const f = await fixture(
         (_request, index) => (index === 2 ? readCall('read', 8500) : response('answer', 100)),
         async () => {
@@ -942,16 +944,27 @@ describe('asynchronous Compact', () => {
       f.context().hooks.intercept('model.request', async (request, _call, next) => {
         if (f.generations() > 0 && !requested) {
           requested = true;
+          hookEntered.release();
+          await continueHook.promise;
           if (api === 'sdk') blocking = f.session.compact({ async: false });
           else await f.context().session!.compact({ async: false });
           release.release();
         }
         return next(request);
       });
+      const handle = f.session.run({ prompt: 'Read and finish' });
       try {
-        expect((await f.session.run({ prompt: 'Read and finish' }).result()).status).toBe(
-          'completed'
-        );
+        await Promise.race([
+          hookEntered.promise,
+          handle.result().then(() => {
+            throw new Error('Execution ended before request Hook.');
+          })
+        ]);
+        expect(f.requests).toHaveLength(2);
+        const before = await f.context().session.captureRequest();
+        expect(JSON.stringify(before!.request)).not.toContain('LATE_BLOCKING_HANDOFF');
+        continueHook.release();
+        expect((await handle.result()).status).toBe('completed');
         if (blocking) expect((await blocking.result()).status).toBe('completed');
         else
           expect(
@@ -966,8 +979,26 @@ describe('asynchronous Compact', () => {
           )
         ).toBe(true);
         expect(f.generations()).toBe(1);
+        const dispatched = await f.context().session.captureRequest();
+        expect(dispatched).not.toEqual(before);
+        expect(JSON.stringify(dispatched!.request)).toContain('LATE_BLOCKING_HANDOFF');
+        const store = await JsonlSessionStore.open(f.home);
+        try {
+          const records = await store.read(f.session.id);
+          expect(records.filter((record) => record.type === 'compact.completed')).toHaveLength(1);
+          const restored = await restoreMessages(store, f.session.id, records, {
+            includeImages: false
+          });
+          expect(
+            restored.messages.filter((message) => message.content.includes('LATE_BLOCKING_HANDOFF'))
+          ).toHaveLength(1);
+        } finally {
+          await store.close();
+        }
       } finally {
+        continueHook.release();
         release.release();
+        await handle.result();
       }
     }
   );
