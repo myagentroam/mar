@@ -8,6 +8,7 @@ import { createConversationImageService } from '../../service/ConversationImageS
 import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
 import {
   conversationActivityLabel,
+  conversationActivityBusy,
   conversationElapsedLabel
 } from '../../util/conversation-activity.js';
 import { sessionSubmissionContext } from '../../service/WorkbenchSubmissionService.js';
@@ -243,7 +244,9 @@ onBeforeUnmount(() => {
         :placeholder="translate('sessionShare.messagePlaceholder')"
         :working="clock.working.value"
         :working-label="workingLabel"
+        :working-busy="conversationActivityBusy(activeRun, turns)"
         :elapsed-label="elapsedLabel"
+        :connection-busy="!chat.connected.value || (!chat.watchReady.value && !initialLoadFailed)"
         :connection-label="
           !chat.connected.value
             ? translate('conversationActivity.reconnecting')

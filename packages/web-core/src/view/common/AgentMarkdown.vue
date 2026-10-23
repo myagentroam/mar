@@ -15,6 +15,7 @@ const props = defineProps<{
   readonly imageResourceUrl?: ((path: string) => string) | undefined;
 }>();
 const emit = defineEmits<{
+  'open-image': [source: string, name: string];
   'open-file': [
     path: string,
     line: number | undefined,
@@ -116,21 +117,32 @@ const defaultImageRenderer = renderer.renderer.rules.image;
 renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
   const token = tokens[index]!;
   const source = String(token.attrGet('src') ?? '');
-  if (/^https?:\/\//iu.test(source))
-    return defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
-  const fileTarget = workspaceFileTarget(source, props.workspaceRoot, window.location.origin);
   const label = self.renderInlineAsText(token.children ?? [], options, environment);
+  const renderImage = () => {
+    token.attrSet('loading', 'lazy');
+    const image = defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
+    // Preserve explicit image links rather than nesting a button inside an anchor.
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      if (tokens[previous]!.type === 'link_close') break;
+      if (tokens[previous]!.type === 'link_open') return image;
+    }
+    const name = label || translate('generated.conversationTimeline.imageAttachment');
+    const accessibleLabel = renderer.utils.escapeHtml(
+      translate('generated.conversationTimeline.enlarge', { value0: name })
+    );
+    return `<button type="button" class="agent-markdown-image" data-image-preview aria-label="${accessibleLabel}">${image}</button>`;
+  };
+  if (/^https?:\/\//iu.test(source)) return renderImage();
+  const fileTarget = workspaceFileTarget(source, props.workspaceRoot, window.location.origin);
   if (fileTarget === undefined) {
-    if (!/^sandbox:/iu.test(source))
-      return defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
+    if (!/^sandbox:/iu.test(source)) return renderImage();
     return renderer.utils.escapeHtml(label || source);
   }
   if (props.imageResourceUrl !== undefined) {
     token.attrSet('src', props.imageResourceUrl(fileTarget.path));
-    return defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
+    return renderImage();
   }
-  if (!/^sandbox:/iu.test(source))
-    return defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
+  if (!/^sandbox:/iu.test(source)) return renderImage();
   const lineAttribute =
     fileTarget.line === undefined
       ? ''
@@ -160,6 +172,7 @@ const html = computed(() => {
       'disabled',
       'data-code-block',
       'data-code-copy',
+      'data-image-preview',
       'data-workspace-file',
       'data-workspace-line',
       'data-workspace-column'
@@ -198,6 +211,19 @@ async function onCopyClick(event: MouseEvent): Promise<void> {
 }
 
 function onMarkdownClick(event: MouseEvent): void {
+  if (event.target instanceof Element) {
+    const image = event.target.closest('[data-image-preview]')?.querySelector('img');
+    const source = image?.getAttribute('src');
+    if (source) {
+      event.preventDefault();
+      emit(
+        'open-image',
+        source,
+        image?.alt || translate('generated.conversationTimeline.imageAttachment')
+      );
+      return;
+    }
+  }
   onLinkClick(event);
   void onCopyClick(event);
 }
@@ -241,6 +267,36 @@ function onLinkClick(event: MouseEvent): void {
 .agent-markdown :deep(:is(img, svg)) {
   max-width: 100%;
   height: auto;
+}
+
+.agent-markdown :deep(.agent-markdown-image) {
+  display: inline-flex;
+  max-width: min(160px, 100%);
+  max-height: 120px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.agent-markdown :deep(.agent-markdown-image:focus-visible) {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+.agent-markdown :deep(img) {
+  display: inline-block;
+  box-sizing: border-box;
+  width: auto;
+  height: auto;
+  max-width: min(160px, 100%);
+  max-height: 120px;
+  border: 1px solid color-mix(in srgb, var(--mar-color-brand) 26%, transparent);
+  border-radius: 6px;
+  object-fit: contain;
 }
 
 .agent-markdown :deep(> :last-child) {

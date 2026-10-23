@@ -138,8 +138,37 @@ const emit = defineEmits<{
 
 const timelineElement = ref<HTMLElement>();
 let focusedRecord: HTMLElement | undefined;
+let previousEntrySignature = '';
+let previousMotionVersion = props.initialRenderVersion;
+let previousMotionReady = (props.synchronized ?? props.nodeReady) && !props.initializing;
+let enteringAfter: Set<string> | undefined;
 onBeforeUpdate(() => {
   if (typeof document === 'undefined') return;
+  const signature = processBlocks.value
+    .flatMap((block) =>
+      block.entries.map(({ turn, displayItem }) => `${turn.sessionId}:${displayItem.id}`)
+    )
+    .join('\n');
+  enteringAfter = undefined;
+  if (
+    signature !== previousEntrySignature &&
+    !props.initializing &&
+    !progressiveRenderPending &&
+    synchronized.value &&
+    previousMotionReady &&
+    previousMotionVersion === props.initialRenderVersion &&
+    !document.hidden &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    enteringAfter = new Set(
+      [...(timelineElement.value?.querySelectorAll<HTMLElement>('[data-entry-key]') ?? [])].map(
+        (element) => element.dataset.entryKey!
+      )
+    );
+  }
+  previousEntrySignature = signature;
+  previousMotionVersion = props.initialRenderVersion;
+  previousMotionReady = synchronized.value && !props.initializing && !progressiveRenderPending;
   const active = document.activeElement;
   focusedRecord =
     active && active instanceof HTMLElement && timelineElement.value?.contains(active)
@@ -151,6 +180,27 @@ onUpdated(() => {
   if (focusedRecord?.isConnected && document.activeElement === document.body)
     focusedRecord.focus({ preventScroll: true });
   focusedRecord = undefined;
+  if (enteringAfter) {
+    const entries = [
+      ...(timelineElement.value?.querySelectorAll<HTMLElement>('[data-entry-key]') ?? [])
+    ];
+    const lastExisting = entries.findLastIndex((element) =>
+      enteringAfter!.has(element.dataset.entryKey!)
+    );
+    // Only animate appended identities, never prepended history or moved groups.
+    if (lastExisting >= 0 || enteringAfter.size === 0) {
+      for (const element of entries.slice(lastExisting + 1)) {
+        element.animate(
+          [
+            { opacity: 0, transform: 'translateY(3px)' },
+            { opacity: 1, transform: 'none' }
+          ],
+          { duration: 160, easing: 'ease-out' }
+        );
+      }
+    }
+  }
+  enteringAfter = undefined;
 });
 const renderedItemCount = ref(0);
 let renderFrame: number | undefined;
@@ -404,6 +454,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
       <article
         v-for="{ turn, displayItem } in block.entries"
         :key="`${turn.sessionId}:${displayItem.id}`"
+        :data-entry-key="`${turn.sessionId}:${displayItem.id}`"
         :class="[
           'conversation-item',
           {
@@ -890,6 +941,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
             v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
             :image-resource-url="imageResourceUrl"
+            @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
             @open-file="
               (path, line, column, external) => emit('openFile', path, line, column, external)
             "
@@ -1113,6 +1165,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
                     :content="task.text"
                     v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
                     :image-resource-url="imageResourceUrl"
+                    @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
                     @open-file="
                       (path, line, column, external) =>
                         emit('openFile', path, line, column, external)
@@ -1166,6 +1219,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
               v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
               :image-resource-url="imageResourceUrl"
+              @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
               @open-file="
                 (path, line, column, external) => emit('openFile', path, line, column, external)
               "
@@ -1177,6 +1231,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
                   :content="step.text"
                   v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
                   :image-resource-url="imageResourceUrl"
+                  @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
                   @open-file="
                     (path, line, column, external) => emit('openFile', path, line, column, external)
                   "

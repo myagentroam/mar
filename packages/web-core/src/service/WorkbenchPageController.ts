@@ -788,6 +788,7 @@ export function createWorkbenchPageController<
     composerWorking: authoritativeComposerWorking,
     sessionActivityClockNow,
     composerWorkingLabel: authoritativeComposerWorkingLabel,
+    composerWorkingBusy,
     workingElapsedLabel: composerElapsedLabel,
     interruptVisible,
     canInterruptTurn: authoritativeCanInterruptTurn,
@@ -3505,6 +3506,7 @@ export function createWorkbenchPageController<
     removeComposerFileReference: fileReferenceService.remove,
     composerWorking,
     composerWorkingLabel,
+    composerWorkingBusy,
     composerElapsedLabel,
     liveConnected: workbenchLiveConnection.connected,
     conversationSyncPending: computed(

@@ -85,6 +85,8 @@ describe('AgentMarkdown workspace images', () => {
     expect(html).toContain('src="/api/workspace-image?path=C%3A%2FUsers%2Frunner');
     expect(html).toContain('data-workspace-file="C:/Windows/Temp/note.txt"');
     expect(html).not.toContain('src="/home/runner/project');
+    expect(html.match(/data-image-preview/gu)).toHaveLength(6);
+    expect(html.match(/loading="lazy"/gu)).toHaveLength(6);
   });
 
   it('keeps external image URLs outside the workspace file response', async () => {
@@ -101,6 +103,17 @@ describe('AgentMarkdown workspace images', () => {
 
     expect(await renderToString(app)).toContain('src="https://example.com/chart.png"');
     expect(imageResourceUrl).not.toHaveBeenCalled();
+  });
+
+  it('preserves explicit image links without nesting preview buttons', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const html = await render(
+      '[![linked](https://example.com/linked.png)](https://example.com/article)\n\n![preview](https://example.com/preview.png)'
+    );
+    expect(html).toContain('href="https://example.com/article"');
+    expect(html.match(/data-image-preview/gu)).toHaveLength(1);
+    expect(html).toMatch(/<a[^>]*><img[^>]*alt="linked"[^>]*><\/a>/u);
+    expect(html).not.toMatch(/<a[^>]*><button/u);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 import { errorCode } from '../../util/api-error.js';
 import {
   conversationActivityLabel,
+  conversationActivityBusy,
   conversationElapsedLabel
 } from '../../util/conversation-activity.js';
 import ConversationComposer from '../composer/ConversationComposer.vue';
@@ -421,7 +422,11 @@ onBeforeUnmount(() => {
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
     :working-label="workingLabel"
+    :working-busy="!readonly && conversationActivityBusy(activeRun, workspace.turns.value)"
     :elapsed-label="elapsedLabel"
+    :connection-busy="
+      connected === false || (!workspace.watchReady.value && !workspace.watchFailureCode.value)
+    "
     :connection-label="
       connected === false
         ? translate('conversationActivity.reconnecting')

@@ -16,6 +16,85 @@ import {
 // Conversation rendering, history, and pagination
 const syntheticAbsoluteFile = `${process.cwd()}/mar-web-console/src/App.vue`;
 
+test('Assistant Markdown images use compact thumbnails and the conversation image preview', async ({
+  page
+}, testInfo) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
+    fulfillMockSessionWatch(
+      page,
+      route,
+      { id: 'session-1', workspaceId: 'workspace-1' },
+      watchedConversation([
+        {
+          id: 'markdown-images:segment:0',
+          turnId: 'markdown-images',
+          index: 0,
+          runId: null,
+          status: 'SUCCEEDED',
+          items: [
+            {
+              id: 'markdown-images-answer',
+              kind: 'assistant_message',
+              status: 'COMPLETED',
+              payload: {
+                text: '**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![External screenshot](https://images.example/screenshot.png)'
+              }
+            }
+          ]
+        }
+      ])
+    )
+  );
+  const image =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900"><rect width="1200" height="900" fill="#4b80bd"/></svg>';
+  await page.route('**/api/workspaces/workspace-1/files/content?**', (route) =>
+    route.fulfill({ contentType: 'image/svg+xml', body: image })
+  );
+  await page.route('https://images.example/screenshot.png', (route) =>
+    route.fulfill({ contentType: 'image/svg+xml', body: image })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.locator('.session-list .session-link').first().click();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.reload();
+    const thumbnails = page.locator('.agent-markdown [data-image-preview]');
+    await expect(thumbnails).toHaveCount(3);
+    for (let index = 0; index < 3; index += 1) {
+      const thumbnail = thumbnails.nth(index);
+      const img = thumbnail.locator('img');
+      await thumbnail.scrollIntoViewIfNeeded();
+      await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(1200);
+      const bounds = await img.boundingBox();
+      expect(bounds!.width).toBeLessThanOrEqual(160);
+      expect(bounds!.height).toBeLessThanOrEqual(120);
+      const source = await img.getAttribute('src');
+      const name = await img.getAttribute('alt');
+      if (index === 1) {
+        await thumbnail.focus();
+        await page.keyboard.press('Enter');
+      } else await thumbnail.click();
+      const dialog = page.getByRole('dialog', { name: name!, exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('img')).toHaveAttribute('src', source!);
+      await page.keyboard.press('Escape');
+      await expect(dialog).not.toBeVisible();
+    }
+    await testInfo.attach(`markdown-images-${width}`, {
+      body: await page.screenshot(),
+      contentType: 'image/png'
+    });
+  }
+});
+
 test('Ctrl-click attachment previews do not navigate Workspace directories or show spurious errors', async ({
   page
 }) => {
@@ -1202,15 +1281,15 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     await page
       .locator('.composer-working')
       .evaluate((el) => getComputedStyle(el, '::before').animationName)
-  ).toMatch(/mar-working-sweep/u);
+  ).toBe('none');
   await expect(page.locator('.composer-working > i')).toHaveCSS(
     'animation-name',
-    /mar-working-pulse/u
+    /busy-indicator-spin/u
   );
   const indicator = heading.locator('.process-activity-indicator');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(indicator).toBeVisible();
-  await expect(indicator).toHaveCSS('animation-name', /process-activity-spin/u);
+  await expect(indicator).toHaveCSS('animation-name', /busy-indicator-spin/u);
   await expect(indicator).toHaveAttribute('aria-hidden', 'true');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(indicator).toHaveCSS('animation-name', 'none');
@@ -1234,6 +1313,16 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await expect(indicator).toBeVisible();
 
   await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => {
+    const events: string[] = [];
+    Object.assign(window, { __entryAnimations: events });
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (...args: Parameters<Element['animate']>) {
+      const key = this.getAttribute('data-entry-key');
+      if (key) events.push(key);
+      return animate.apply(this, args);
+    };
+  });
   await emitMockSessionEvent(page, 'conversation', {
     sessionId: 'session-1',
     turn: {
@@ -1246,6 +1335,11 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     segments: segments(true)
   });
   await expect(processes).toHaveCount(2);
+  const entered = await page.evaluate(
+    () => (window as unknown as { __entryAnimations: string[] }).__entryAnimations
+  );
+  expect(entered).toContain('session-1:process-commentary');
+  expect(entered).not.toContain('session-1:reasoning-first');
   await expect(heading.locator('.process-duration')).toContainText('2s');
   const activeDuration = processes.last().locator('.process-duration');
   await expect(activeDuration).toContainText('4s');
@@ -2837,9 +2931,14 @@ test('Opening a session loads only the latest window without initial scroll back
   await expect(page.getByText('重新打开后读取的最新消息')).toBeVisible();
   expect(scrollTop).toBeGreaterThanOrEqual(0);
   let olderAttempts = 0;
+  let releaseOlder!: () => void;
+  const olderReady = new Promise<void>((resolve) => {
+    releaseOlder = resolve;
+  });
   await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
     olderAttempts += 1;
     if (olderAttempts === 1) {
+      await olderReady;
       await route.fulfill({
         status: 503,
         contentType: 'application/json',
@@ -2852,6 +2951,9 @@ test('Opening a session loads only the latest window without initial scroll back
     }
   });
   await page.getByRole('button', { name: '加载更早记录' }).click();
+  await expect(page.locator('.conversation-history-control .busy-indicator')).toBeVisible();
+  await expect(page.locator('button.conversation-load-older')).toHaveCount(0);
+  releaseOlder();
   await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
   await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
   await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
@@ -3553,6 +3655,60 @@ for (const recovery of ['切换会话', '断线重连', '可见性恢复'] as co
       ).toBeVisible();
     };
     await emitText('新回复第一段');
+    const streaming = await page.evaluate(
+      async ({ runId }) => {
+        const socket = (
+          window as unknown as {
+            __consoleMockWorkbenchWebSocket: {
+              emitSessionEvent(category: string, payload: unknown): boolean;
+            };
+          }
+        ).__consoleMockWorkbenchWebSocket;
+        const message = [...document.querySelectorAll('.assistant_message .agent-markdown')].at(
+          -1
+        )!;
+        const latencies: number[] = [];
+        let batchStarted = performance.now();
+        const observer = new MutationObserver(() =>
+          latencies.push(performance.now() - batchStarted)
+        );
+        observer.observe(message, { childList: true, subtree: true, characterData: true });
+        const chunk = ' Smooth frame-batched streaming.';
+        for (let batch = 0; batch < 8; batch++) {
+          batchStarted = performance.now();
+          for (let index = 0; index < 5; index++) {
+            if (
+              !socket.emitSessionEvent('conversation', {
+                sessionId: 'session-1',
+                delta: {
+                  runId,
+                  turnId: 'current-turn',
+                  segmentId: 'current-turn:segment:0',
+                  segmentIndex: 0,
+                  itemId: 'current-reply',
+                  text: chunk,
+                  createdAt: Date.now()
+                }
+              })
+            )
+              throw new Error('Mock Session Watch is not active');
+          }
+          await new Promise(requestAnimationFrame);
+          await new Promise(requestAnimationFrame);
+        }
+        observer.disconnect();
+        return { appended: chunk.repeat(40), latencies };
+      },
+      { runId: run.id }
+    );
+    reply += streaming.appended;
+    await expect(page.locator('.assistant_message .agent-markdown').last()).toContainText(reply);
+    expect(streaming.latencies.length).toBeGreaterThan(0);
+    expect(streaming.latencies.length).toBeLessThanOrEqual(8);
+    await testInfo.attach('streaming-frame-batching', {
+      body: JSON.stringify({ deltas: 40, ...streaming, appended: undefined }),
+      contentType: 'application/json'
+    });
     const order = async () => {
       const texts = await page.locator('.conversation-item').allTextContents();
       const before = texts.findIndex((value) => value.includes('先前 Agent 回复'));

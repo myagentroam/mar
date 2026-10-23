@@ -28,22 +28,36 @@ export function completedStepDuration(item: ConversationItem): number | undefine
     : undefined;
 }
 
-export function conversationActivityLabel(
+function conversationActivityState(
   run: Pick<AgentRun, 'id' | 'status'> | undefined,
   turns: readonly ConversationTurn[]
 ): string {
-  const label = (key: string) => translate(`conversationActivity.${key}`);
-  if (run === undefined) return label('running');
+  if (run === undefined) return 'running';
   if (isTerminalRunStatus(run.status)) return '';
-  if (run.status === 'CANCELLING') return label('stopping');
+  if (run.status === 'CANCELLING') return 'stopping';
   const latest = [...turns].reverse().find((turn) => turn.runId === run.id);
   if (latest !== undefined && !isTerminalRunStatus(latest.status)) {
     const items = latest.items;
     const pending = items.filter((item) => item.status === 'PENDING');
-    if (pending.some((item) => item.kind === 'approval_request')) return label('approval');
-    if (pending.some((item) => item.kind === 'user_input_request')) return label('answer');
+    if (pending.some((item) => item.kind === 'approval_request')) return 'approval';
+    if (pending.some((item) => item.kind === 'user_input_request')) return 'answer';
   }
-  return label(run.status === 'STARTING' ? 'preparing' : 'running');
+  return run.status === 'STARTING' ? 'preparing' : 'running';
+}
+
+export function conversationActivityLabel(
+  run: Pick<AgentRun, 'id' | 'status'> | undefined,
+  turns: readonly ConversationTurn[]
+): string {
+  const state = conversationActivityState(run, turns);
+  return state ? translate(`conversationActivity.${state}`) : '';
+}
+
+export function conversationActivityBusy(
+  run: Pick<AgentRun, 'id' | 'status'> | undefined,
+  turns: readonly ConversationTurn[]
+): boolean {
+  return ['running', 'preparing', 'stopping'].includes(conversationActivityState(run, turns));
 }
 
 export function conversationElapsedLabel(start: number | undefined, now: number): string {

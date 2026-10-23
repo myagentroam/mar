@@ -16,6 +16,7 @@ import { sessionActivity, sessionHasNativeIdentity } from '../util/session-prese
 import { createWorkbenchClockService } from './WorkbenchClockService.js';
 import {
   conversationActivityLabel,
+  conversationActivityBusy,
   conversationElapsedLabel
 } from '../util/conversation-activity.js';
 import type { SessionContextUsage } from './ConversationStateService.js';
@@ -267,6 +268,12 @@ export function createWorkbenchPresentationStateService(
         )
       : ''
   );
+  const composerWorkingBusy = computed(
+    () =>
+      composerWorking.value &&
+      nodeReady.value &&
+      conversationActivityBusy(activeComposerRun.value, options.turns.value)
+  );
   const interruptVisible = computed(
     () =>
       (activeComposerRun.value !== undefined ||
@@ -359,6 +366,7 @@ export function createWorkbenchPresentationStateService(
     sessionActivityClockNow,
     workingElapsedLabel,
     composerWorkingLabel,
+    composerWorkingBusy,
     interruptVisible,
     canInterruptTurn,
     canSendClaudeChannel,

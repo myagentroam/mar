@@ -126,7 +126,9 @@ for (const mode of ['workspace'] as const) {
           language === 'en-US' ? 'Generate' : '生成'
         );
         await expect(status).toHaveText(language === 'en-US' ? 'Composer Prediction' : '输入预测');
-        const indicator = page.locator('.completion-indicator');
+        const indicator = page.locator(
+          '.completion-status > .completion-indicator, .completion-status > .busy-indicator'
+        );
         await expect(indicator).toHaveCSS('width', '5px');
         await expect(indicator).toHaveCSS('height', '5px');
         const editor = page.locator('textarea.composer-input');
@@ -135,11 +137,11 @@ for (const mode of ['workspace'] as const) {
         await expect(page.locator('[data-completion-action]')).toHaveText(
           language === 'en-US' ? 'Cancel' : '取消'
         );
-        await expect(indicator).toHaveCSS('width', '10px');
+        await expect(indicator).toHaveCSS('width', '12px');
         const bar = page.locator('.completion-actions');
         await expect(page.locator('.completion-hint')).toBeHidden();
         await expect.poll(async () => (await bar.boundingBox())!.height).toBeLessThanOrEqual(28);
-        await expect(indicator).toHaveCSS('animation-name', /^prediction-spin/);
+        await expect(indicator).toHaveCSS('animation-name', /^busy-indicator-spin/);
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await expect(indicator).toHaveCSS('animation-name', 'none');
         await resolveRequest(page, 0, 'Check the recent changes.');

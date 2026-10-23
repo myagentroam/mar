@@ -682,8 +682,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loadingOlder).toContain(
       i18n.global.t('generated.conversationScroll.loadingEarlierMessages')
     );
-    expect(loadingOlder).toMatch(
-      /<button(?=[^>]*class="[^"]*\bconversation-load-older\b)(?=[^>]*disabled)[^>]*>/u
+    expect(loadingOlder).toContain('busy-indicator');
+    expect(loadingOlder).not.toMatch(
+      /<button(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
     );
     expect(loadingOlder).toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
     expect(loadingOlder).toMatch(
@@ -1179,7 +1180,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         name: 'Still running'
       })
     );
-    expect(activeHtml).toContain('class="process-activity-indicator" aria-hidden="true"');
+    expect(activeHtml).toContain('process-activity-indicator');
+    expect(activeHtml).toContain('busy-indicator');
     expect(activeHtml).not.toContain(i18n.global.t('conversationProcess.warning'));
 
     const disconnectedHtml = await render(ConversationWorkProcess, {
