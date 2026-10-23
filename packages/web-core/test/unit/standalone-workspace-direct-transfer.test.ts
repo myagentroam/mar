@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const direct = {
-    ensureTransport: vi.fn(async () => 'DIRECT_AVAILABLE' as const),
+    ensureTransport: vi.fn(
+      async (): Promise<'DIRECT_AVAILABLE' | 'RELAY_ONLY'> => 'DIRECT_AVAILABLE'
+    ),
     isConnected: vi.fn(() => true),
     download: vi.fn(
       async (input: {
@@ -94,6 +96,87 @@ afterEach(() => {
 });
 
 describe('Standalone Workspace direct transfer', () => {
+  it.each(['manifest-failure', 'transport-relay-only'] as const)(
+    'ignores obsolete %s while the replacement transport becomes ready',
+    async (phase) => {
+      let failObsolete!: (error: Error) => void;
+      const obsolete = new Promise<Response>((_resolve, reject) => {
+        failObsolete = reject;
+      });
+      let finishObsoleteTransport!: (value: 'RELAY_ONLY') => void;
+      const obsoleteTransport = new Promise<'RELAY_ONLY'>((resolve) => {
+        finishObsoleteTransport = resolve;
+      });
+      let connectCurrent!: (value: 'DIRECT_AVAILABLE') => void;
+      const current = new Promise<'DIRECT_AVAILABLE'>((resolve) => {
+        connectCurrent = resolve;
+      });
+      if (phase === 'transport-relay-only')
+        mocks.direct.ensureTransport.mockReturnValueOnce(obsoleteTransport);
+      mocks.direct.ensureTransport.mockReturnValueOnce(current);
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockReturnValueOnce(
+            phase === 'manifest-failure'
+              ? obsolete
+              : Promise.resolve(
+                  Response.json({
+                    manifest: {
+                      nodeGeneration: 'generation-1',
+                      directTransfer: { apiVersion: 3, transport: true, download: true }
+                    }
+                  })
+                )
+          )
+          .mockResolvedValueOnce(
+            Response.json({
+              manifest: {
+                nodeGeneration: 'generation-2',
+                directTransfer: { apiVersion: 3, transport: true, download: true }
+              }
+            })
+          )
+          .mockResolvedValue(Response.json({ file: { size: 3, revision: 'r2' } }))
+      );
+      const service = createStandaloneWorkspaceDirectTransferService({
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1'
+      });
+      try {
+        if (phase === 'transport-relay-only')
+          await vi.waitFor(() =>
+            expect(mocks.direct.ensureTransport).toHaveBeenCalledWith('node-1', 'generation-1')
+          );
+        mocks.createLive.mock.calls.at(-1)?.[0]?.['onReady']?.();
+        await vi.waitFor(() =>
+          expect(mocks.direct.ensureTransport).toHaveBeenCalledWith('node-1', 'generation-2')
+        );
+        if (phase === 'manifest-failure') {
+          failObsolete(new Error('OBSOLETE_CONNECTION_FAILED'));
+          await obsolete.catch(() => undefined);
+        } else {
+          finishObsoleteTransport('RELAY_ONLY');
+          await obsoleteTransport;
+        }
+        const preview = service.objectUrl('current.bin');
+        connectCurrent('DIRECT_AVAILABLE');
+        await expect(preview).resolves.toEqual({
+          url: 'blob:standalone-direct',
+          size: 3,
+          revision: 'r2'
+        });
+        expect(mocks.direct.download).toHaveBeenCalledWith(
+          expect.objectContaining({ nodeGeneration: 'generation-2' })
+        );
+      } finally {
+        connectCurrent('DIRECT_AVAILABLE');
+        service.close();
+      }
+    }
+  );
+
   it('discards metadata arriving after window close without allocating an output', async () => {
     let finish!: (value: Response) => void;
     const metadata = new Promise<Response>((resolve) => {

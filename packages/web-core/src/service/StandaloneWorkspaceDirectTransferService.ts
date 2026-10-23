@@ -82,9 +82,10 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
         return;
       }
       generation = manifest.nodeGeneration;
-      settle((await direct.ensureTransport(input.nodeId, generation)) === 'DIRECT_AVAILABLE');
+      const availability = await direct.ensureTransport(input.nodeId, generation);
+      if (active && requestId === initialization) settle(availability === 'DIRECT_AVAILABLE');
     } catch {
-      settle(false);
+      if (active && requestId === initialization) settle(false);
     }
   }
 
