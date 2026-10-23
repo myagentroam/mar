@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
@@ -311,6 +312,7 @@ function onKeydown(event: KeyboardEvent): void {
     :show-close="false"
     @close="emit('close')"
     @opened="input?.focus()"
+    :close-icon="marIcon('close')"
   >
     <div
       class="quick-open-tabs"
@@ -484,12 +486,13 @@ function onKeydown(event: KeyboardEvent): void {
 .quick-open-tabs button {
   flex: 0 0 auto;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--mar-radius-selection);
   padding: 0.24rem 0.5rem;
   background: transparent;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-muted);
   font: inherit;
   font-size: var(--mar-font-size-body);
+  font-weight: 400;
   cursor: pointer;
 }
 .quick-open-tabs button:hover {
@@ -497,9 +500,8 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--mar-text-primary);
 }
 .quick-open-tabs button[aria-selected='true'] {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
-  font-weight: 600;
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 .quick-open-tabs button:focus-visible {
   outline: 2px solid var(--mar-color-brand);

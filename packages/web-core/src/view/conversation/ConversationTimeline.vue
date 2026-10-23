@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import {
@@ -8,7 +10,6 @@ import {
 } from '../../util/tool-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { createWorkbenchSecondClock } from '../../service/WorkbenchClockService.js';
-import { Back, Check, CopyDocument, RefreshLeft } from '@element-plus/icons-vue';
 import {
   computed,
   nextTick,
@@ -17,14 +18,18 @@ import {
   onUpdated,
   reactive,
   ref,
-  watch
+  watch,
+  type ComponentPublicInstance
 } from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
-import { conversationWorkProcessBlocks } from '../../util/conversation-work-process.js';
+import {
+  conversationWorkProcessBlocks,
+  nextConversationRenderItemCount
+} from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
@@ -213,6 +218,12 @@ let renderGeneration = 0;
 let preparedInitialRenderVersion = 0;
 
 const renderedTurns = computed(() => latestConversationItems(props.turns, renderedItemCount.value));
+const renderBudgetBlocks = computed(() => conversationWorkProcessBlocks(props.turns, props.runs));
+const processViews = new Map<string, InstanceType<typeof ConversationWorkProcess>>();
+function setProcessView(id: string, instance: Element | ComponentPublicInstance | null): void {
+  if (instance) processViews.set(id, instance as InstanceType<typeof ConversationWorkProcess>);
+  else processViews.delete(id);
+}
 const copiedMessage = ref<string>();
 const copyResetTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -255,9 +266,12 @@ function scheduleProgressiveRender(): void {
       scroll === null ||
       scroll === undefined ||
       scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 28;
-    renderedItemCount.value = Math.min(
-      total,
-      renderedItemCount.value + CONVERSATION_RENDER_BATCH_ITEMS
+    renderedItemCount.value = nextConversationRenderItemCount(
+      props.turns,
+      renderedItemCount.value,
+      renderBudgetBlocks.value,
+      (id) => processViews.get(id)?.isOpen(),
+      CONVERSATION_RENDER_BATCH_ITEMS
     );
     await nextTick();
     if (generation !== renderGeneration) return;
@@ -512,6 +526,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     <ConversationWorkProcess
       v-for="block in processBlocks"
       :key="block.id"
+      :ref="(instance) => setProcessView(block.id, instance)"
       :block="block"
       :synchronized="synchronized"
       :now="block.active ? processNow : undefined"
@@ -705,7 +720,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               </span>
             </summary>
             <details
-              v-for="toolItem in displayItem.items"
+              v-for="toolItem in groupedItemDisclosure[`group:${displayItem.id}`]
+                ? displayItem.items
+                : []"
               :key="toolItem.id"
               class="conversation-tool-detail"
               :open="groupedItemDisclosure[toolItem.id] === true"
@@ -748,7 +765,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               </span>
             </summary>
             <details
-              v-for="commandItem in displayItem.items"
+              v-for="commandItem in groupedItemDisclosure[`group:${displayItem.id}`]
+                ? displayItem.items
+                : []"
               :key="commandItem.id"
               class="conversation-command-detail"
               :open="groupedItemDisclosure[commandItem.id] === true"
@@ -970,11 +989,11 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="copyItem(turn, displayItem.item)"
               >
-                <el-icon
-                  ><Check
-                    v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" /><CopyDocument
-                    v-else
-                /></el-icon></button
+                <MarIcon
+                  name="check"
+                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
+                />
+                <MarIcon name="copy" v-else /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -988,7 +1007,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rewind', turn, displayItem.item)"
               >
-                <el-icon><RefreshLeft /></el-icon></button
+                <MarIcon name="undo" /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -1003,7 +1022,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rollback', turn, displayItem.item)"
               >
-                <el-icon><Back /></el-icon></button
+                <MarIcon name="back" /></button
             ></el-tooltip>
           </div>
         </template>
@@ -1057,11 +1076,11 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="copyItem(turn, displayItem.item)"
               >
-                <el-icon
-                  ><Check
-                    v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" /><CopyDocument
-                    v-else
-                /></el-icon></button
+                <MarIcon
+                  name="check"
+                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
+                />
+                <MarIcon name="copy" v-else /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -1075,7 +1094,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rewind', turn, displayItem.item)"
               >
-                <el-icon><RefreshLeft /></el-icon></button
+                <MarIcon name="undo" /></button
             ></el-tooltip>
           </div>
         </template>
@@ -1183,6 +1202,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                   props.userInputSubmitted(displayItem.item.id)
                 "
                 @click="emit('submitInput', turn, displayItem.item)"
+                :loading-icon="marIcon('loading-action')"
                 >{{ translate('generated.conversationTimeline.submitAnswers') }}</el-button
               >
             </div>

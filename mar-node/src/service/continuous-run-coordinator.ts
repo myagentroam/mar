@@ -1,4 +1,5 @@
-import type { RunnerName, ComposerAttachmentFile } from '@myagentroam/protocol';
+import type { RunnerExecutionContext } from '../runner/execution-context.js';
+import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import type { NodeMcpInstallation, ResolvedMcpServer } from '../mcp/model.js';
 import type { NodeAgentRun, NodeMessageAttachmentInput, NodeQueueItem } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
@@ -18,7 +19,6 @@ export interface PreparedExecutionInput<TAttachment = unknown> {
   readonly runId: string;
   readonly sessionId: string;
   readonly workspaceId: string;
-  readonly runner: RunnerName;
   readonly input: string;
   readonly prepareSteerInput?: () => string;
   readonly steering?: boolean;
@@ -39,10 +39,7 @@ export interface PreparedExecutionInput<TAttachment = unknown> {
   readonly secretEnvironment: Readonly<Record<string, string>>;
   readonly personalInstructions?: string;
   readonly goal?: { readonly id: string; readonly revision: number; readonly epoch: number };
-  readonly marAgentModel?: unknown;
-  readonly marAgentModels?: unknown;
-  readonly marAgentCompact?: unknown;
-  readonly marAgentRuntimeScopeId?: unknown;
+  readonly executionContext: RunnerExecutionContext;
   readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
   readonly computerUse?: unknown;
 }
@@ -783,7 +780,7 @@ export class ContinuousRunCoordinator<TAttachment> {
         runId: executionId,
         sessionId: pending.sessionId,
         workspaceId: pending.workspaceId,
-        runner: pending.runner,
+        ...pending.executionContext,
         input: pending.input,
         ...(pending.clientMessageId === undefined
           ? {}
@@ -805,17 +802,9 @@ export class ContinuousRunCoordinator<TAttachment> {
           MAR_CTL_SESSION_ID:
             this.options.runtime.getAgentSession(pending.sessionId)?.id ?? pending.sessionId,
           MAR_CTL_RUN_ID: active.id,
-          MAR_CTL_RUNNER: pending.runner
+          MAR_CTL_RUNNER: pending.executionContext.runner
         },
         ...(personalInstructions === undefined ? {} : { personalInstructions }),
-        ...(pending.marAgentModel === undefined ? {} : { marAgentModel: pending.marAgentModel }),
-        ...(pending.marAgentModels === undefined ? {} : { marAgentModels: pending.marAgentModels }),
-        ...(pending.marAgentCompact === undefined
-          ? {}
-          : { marAgentCompact: pending.marAgentCompact }),
-        ...(pending.marAgentRuntimeScopeId === undefined
-          ? {}
-          : { marAgentRuntimeScopeId: pending.marAgentRuntimeScopeId }),
         ...(pending.computerUse === undefined ? {} : { computerUse: pending.computerUse }),
         mcpInstallations: this.options.mcps(pending.workspaceId),
         executionMcpServers: [goalMcp, scheduleMcp, notificationMcp].filter(

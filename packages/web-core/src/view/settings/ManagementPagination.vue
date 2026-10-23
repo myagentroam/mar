@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { MANAGEMENT_PAGE_SIZE } from '../../service/ManagementPaginationService.js';
@@ -88,6 +89,8 @@ onUnmounted(() => observer?.disconnect());
       :layout="cursorPagination ? 'prev, pager, next' : 'total, prev, pager, next'"
       background
       @current-change="emit('page', $event)"
+      :prev-icon="marIcon('chevron-left')"
+      :next-icon="marIcon('chevron-right')"
     />
     <div v-else-if="total > pageSize" class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
@@ -97,6 +100,7 @@ onUnmounted(() => observer?.disconnect());
         :loading="manualLoading"
         :disabled="loading || manualLoading"
         @click="loadManually"
+        :loading-icon="marIcon('loading-action')"
       >
         {{ translate('common.loadMore') }}
       </el-button>

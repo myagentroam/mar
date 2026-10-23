@@ -1,21 +1,9 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { ArrowDown, ArrowLeft, ArrowRight, Close, Link } from '@element-plus/icons-vue';
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-
-const WorkspacePinIcon = () =>
-  h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, [
-    h('path', {
-      d: 'M8 3h8M9 3v6l-3 4v2h12v-2l-3-4V3M12 15v6',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': '1.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round'
-    })
-  ]);
 
 const props = defineProps<{
   readonly placement: 'header' | 'body';
@@ -316,7 +304,7 @@ function activate(tab: WorkspaceTab): void {
       type="button"
       @click="scrollTabs(-1)"
     >
-      <el-icon><ArrowLeft /></el-icon>
+      <MarIcon name="chevron-left" />
     </button>
     <div
       ref="tabList"
@@ -378,9 +366,11 @@ function activate(tab: WorkspaceTab): void {
                   :aria-description="directDescription(tab.nodeId)"
                 >
                   <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
-                  <el-icon class="workspace-tab-direct-icon" aria-hidden="true"
-                    ><Link
-                  /></el-icon> </span
+                  <MarIcon
+                    name="link"
+                    class="workspace-tab-direct-icon"
+                    aria-hidden="true"
+                  /> </span
               ></el-tooltip>
               <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
               <el-tooltip
@@ -416,7 +406,7 @@ function activate(tab: WorkspaceTab): void {
             type="button"
             @click.stop="emit('pin', tab.id, false)"
           >
-            <el-icon><WorkspacePinIcon /></el-icon></button
+            <MarIcon name="pin" /></button
         ></el-tooltip>
         <button
           v-else
@@ -425,7 +415,7 @@ function activate(tab: WorkspaceTab): void {
           type="button"
           @click="emit('close', tab)"
         >
-          <el-icon><Close /></el-icon>
+          <MarIcon name="close" />
         </button>
       </div>
     </div>
@@ -437,7 +427,7 @@ function activate(tab: WorkspaceTab): void {
         type="button"
         @click="scrollTabs(1)"
       >
-        <el-icon><ArrowRight /></el-icon>
+        <MarIcon name="chevron-right" />
       </button>
       <el-dropdown trigger="click" @command="activateFromMenu">
         <button
@@ -445,7 +435,7 @@ function activate(tab: WorkspaceTab): void {
           :aria-label="translate('workspaceTabs.allOpenWorkspaces')"
           type="button"
         >
-          <el-icon><ArrowDown /></el-icon>
+          <MarIcon name="chevron-down" />
         </button>
         <template #dropdown>
           <el-dropdown-menu class="workspace-tab-menu-list">
@@ -466,9 +456,11 @@ function activate(tab: WorkspaceTab): void {
                     :aria-description="directDescription(tab.nodeId)"
                   >
                     <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
-                    <el-icon class="workspace-tab-direct-icon" aria-hidden="true"
-                      ><Link
-                    /></el-icon> </span
+                    <MarIcon
+                      name="link"
+                      class="workspace-tab-direct-icon"
+                      aria-hidden="true"
+                    /> </span
                 ></el-tooltip>
                 <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
                 <el-tooltip
@@ -517,20 +509,21 @@ function activate(tab: WorkspaceTab): void {
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="pin">
-              <el-icon><WorkspacePinIcon /></el-icon
-              >{{ translate(contextTabPinned ? 'workspaceTabs.unpin' : 'workspaceTabs.pin') }}
+              <MarIcon name="pin" />{{
+                translate(contextTabPinned ? 'workspaceTabs.unpin' : 'workspaceTabs.pin')
+              }}
             </el-dropdown-item>
             <el-dropdown-item command="previous" :disabled="contextTabIndex <= 0">
-              <el-icon><ArrowLeft /></el-icon>{{ translate('workspaceTabs.movePrevious') }}
+              <MarIcon name="chevron-left" />{{ translate('workspaceTabs.movePrevious') }}
             </el-dropdown-item>
             <el-dropdown-item
               command="next"
               :disabled="contextTabIndex < 0 || contextTabIndex >= tabs.length - 1"
             >
-              <el-icon><ArrowRight /></el-icon>{{ translate('workspaceTabs.moveNext') }}
+              <MarIcon name="chevron-right" />{{ translate('workspaceTabs.moveNext') }}
             </el-dropdown-item>
             <el-dropdown-item command="close" divided :disabled="contextTabPinned">
-              <el-icon><Close /></el-icon>{{ translate('workspaceTabs.close') }}
+              <MarIcon name="close" />{{ translate('workspaceTabs.close') }}
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -749,7 +742,7 @@ function activate(tab: WorkspaceTab): void {
   display: grid;
   min-width: 0;
   gap: 0;
-  line-height: 1.18;
+  line-height: normal;
 }
 
 .workspace-tab-content > span {
@@ -875,7 +868,6 @@ function activate(tab: WorkspaceTab): void {
   .workspace-tab-content {
     display: grid;
     gap: 1px;
-    line-height: 1.2;
   }
 }
 

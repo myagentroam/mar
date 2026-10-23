@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Delete, Edit, Key, Plus, Refresh } from '@element-plus/icons-vue';
 import {
   organizationCascaderOptions,
   organizationPath,
@@ -85,11 +86,13 @@ const usersPage = createUserManagementService<EnterpriseUser>({
     sortOrder: sortOrder.value
   }),
   reportError: (error) =>
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    )
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
+    })
 });
 const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
 const organizationsReady = ref(false);
@@ -180,11 +183,13 @@ async function load(): Promise<void> {
     organizations.value = organizationResult.organizations;
     organizationsReady.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
+    });
   } finally {
     organizationsLoading.value = false;
   }
@@ -225,11 +230,13 @@ async function createUser(): Promise<void> {
     userOpen.value = false;
     await load();
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToCreateUser')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToCreateUser')
+    });
   }
 }
 function openCreateUser(): void {
@@ -263,14 +270,19 @@ async function saveUser(): Promise<void> {
     });
     userOpen.value = false;
     editingUser.value = undefined;
-    ElMessage.success(translate('generated.organizationUserManagementPage.userUpdated'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.organizationUserManagementPage.userUpdated')
+    });
     await load();
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToUpdateUser')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToUpdateUser')
+    });
   }
 }
 async function resetPassword(user: EnterpriseUser): Promise<void> {
@@ -282,6 +294,8 @@ async function resetPassword(user: EnterpriseUser): Promise<void> {
       ),
       translate('generated.organizationUserManagementPage.resetPassword'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.resetPassword2'),
         cancelButtonText: translate('generated.organizationUserManagementPage.cancel')
@@ -297,7 +311,8 @@ async function resetPassword(user: EnterpriseUser): Promise<void> {
       password: result.temporaryPassword
     };
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 async function copyCredentials(): Promise<void> {
@@ -310,11 +325,17 @@ async function copyCredentials(): Promise<void> {
         value1: credentials.value.password
       })
     );
-    ElMessage.info(translate('generated.organizationUserManagementPage.usernameAndPasswordCopied'));
+    ElMessage.info({
+      icon: marIcon('info'),
+      message: translate('generated.organizationUserManagementPage.usernameAndPasswordCopied')
+    });
   } catch {
-    ElMessage.error(
-      translate('generated.organizationUserManagementPage.unableToAccessTheClipboardCopyThe')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate(
+        'generated.organizationUserManagementPage.unableToAccessTheClipboardCopyThe'
+      )
+    });
   }
 }
 async function removeUser(user: EnterpriseUser): Promise<void> {
@@ -336,6 +357,8 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
       ),
       translate('generated.organizationUserManagementPage.deleteUser'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.deleteUser2'),
         cancelButtonText: translate('generated.organizationUserManagementPage.cancel2')
@@ -344,7 +367,8 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
     await props.request(`/api/management/users/${user.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 onMounted(() => {
@@ -369,12 +393,15 @@ onUnmounted(() => usersPage.dispose());
           :placeholder="
             translate('generated.organizationUserManagementPage.enterAUsernameEmailOrDisplayName')
           "
+          :clear-icon="marIcon('clear-input')"
       /></label>
       <label class="filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.role') }}</span
         ><el-select
           v-model="roleFilter"
           :placeholder="translate('generated.organizationUserManagementPage.selectARole2')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.organizationUserManagementPage.allRoles')"
             value="" /><el-option
@@ -392,6 +419,7 @@ onUnmounted(() => usersPage.dispose());
           :placeholder="translate('generated.organizationUserManagementPage.selectAnOrganization2')"
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></label>
       <label class="filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.status') }}</span
@@ -399,6 +427,8 @@ onUnmounted(() => usersPage.dispose());
           v-model="enabledFilter"
           clearable
           :placeholder="translate('generated.organizationUserManagementPage.selectAStatus')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.organizationUserManagementPage.enabled')"
             :value="true" /><el-option
@@ -407,12 +437,20 @@ onUnmounted(() => usersPage.dispose());
       ></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
-        translate('generated.organizationUserManagementPage.refresh')
-      }}</el-button>
-      <el-button type="primary" :icon="Plus" :disabled="!writable" @click="openCreateUser">{{
-        translate('generated.organizationUserManagementPage.createUser')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && pageReady"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
+      >
+      <el-button
+        type="primary"
+        :icon="marIcon('plus')"
+        :disabled="!writable"
+        @click="openCreateUser"
+        >{{ translate('generated.organizationUserManagementPage.createUser') }}</el-button
+      >
     </div>
     <el-table
       v-loading="
@@ -471,21 +509,21 @@ onUnmounted(() => usersPage.dispose());
             <el-button
               link
               type="primary"
-              :icon="Edit"
+              :icon="marIcon('edit')"
               :disabled="!writable"
               @click="openEditUser(row)"
               >{{ translate('generated.organizationUserManagementPage.edit2') }}</el-button
             ><el-button
               link
               type="primary"
-              :icon="Key"
+              :icon="marIcon('key')"
               :disabled="!writable || row.fixedAdmin"
               @click="resetPassword(row)"
               >{{ translate('generated.organizationUserManagementPage.resetPassword3') }}</el-button
             ><el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable || row.fixedAdmin"
               @click="removeUser(row)"
               >{{ translate('generated.organizationUserManagementPage.delete2') }}</el-button
@@ -514,6 +552,7 @@ onUnmounted(() => usersPage.dispose());
           : translate('generated.organizationUserManagementPage.editUser')
       "
       width="min(480px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
       ><el-form ref="userFormRef" :model="userForm" :rules="userRules" label-position="top"
         ><el-form-item
           :label="translate('generated.organizationUserManagementPage.username')"
@@ -545,6 +584,8 @@ onUnmounted(() => usersPage.dispose());
             v-model="userForm.role"
             :disabled="editingUser?.fixedAdmin"
             :placeholder="translate('generated.organizationUserManagementPage.selectARole3')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="role in roles"
               :key="role"
@@ -562,7 +603,8 @@ onUnmounted(() => usersPage.dispose());
               translate('generated.organizationUserManagementPage.selectAnOrganization3')
             "
             :options="organizationOptions"
-            :props="{ checkStrictly: true, emitPath: false }" /></el-form-item></el-form
+            :props="{ checkStrictly: true, emitPath: false }"
+            :clear-icon="marIcon('clear-input')" /></el-form-item></el-form
       ><template #footer
         ><el-button @click="userOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel5')
@@ -580,6 +622,7 @@ onUnmounted(() => usersPage.dispose());
       :title="translate(credentials.titleKey)"
       width="min(440px, calc(100vw - 32px))"
       @update:model-value="credentials = undefined"
+      :close-icon="marIcon('close')"
       ><el-alert
         :title="
           translate(
@@ -589,7 +632,8 @@ onUnmounted(() => usersPage.dispose());
         type="warning"
         :closable="false"
         show-icon
-      />
+        ><template #icon><MarIcon name="warning" /></template
+      ></el-alert>
       <el-descriptions
         v-if="credentials"
         class="credential-details mar-detail-descriptions"
@@ -620,6 +664,7 @@ onUnmounted(() => usersPage.dispose());
       :title="translate('generated.organizationUserManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions class="mar-detail-descriptions" :column="1" border>
         <el-descriptions-item :label="translate('common.userId')">{{

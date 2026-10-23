@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Delete, Key, Link, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
@@ -87,7 +87,7 @@ function setTheme(value: ThemePreference): void {
   try {
     themeService.setTheme(value);
   } catch {
-    ElMessage.error(t('customThemes.storageFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
   }
 }
 const webVersion = props.webVersion;
@@ -126,7 +126,7 @@ async function updateLocale(value: AppLocale): Promise<void> {
     });
   } catch {
     localeService.setLocale(previous);
-    ElMessage.error(translate('common.localeUpdateFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: translate('common.localeUpdateFailed') });
   }
 }
 async function submitPasswordChange(): Promise<void> {
@@ -152,7 +152,7 @@ async function confirmLogoutSession(session: UserSessionSummary): Promise<void> 
     await ElMessageBox.confirm(
       translate('generated.settingsContent.confirmSignOutSession'),
       translate('generated.settingsContent.signOut'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -164,7 +164,7 @@ async function confirmLogout(): Promise<void> {
     await ElMessageBox.confirm(
       translate('generated.settingsContent.confirmSignOut'),
       translate('generated.settingsContent.signOut2'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -204,7 +204,7 @@ async function confirmLogout(): Promise<void> {
             :content="translate('generated.settingsContent.refreshSignInSessions')"
             ><el-button
               class="utility-control"
-              :icon="Refresh"
+              :icon="marIcon('refresh')"
               :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
               text
               @click="emit('refreshSessions')"
@@ -229,7 +229,12 @@ async function confirmLogout(): Promise<void> {
               {{ translate('generated.settingsContent.expires') }}
               {{ formatSessionTime(session.expiresAt) }}
             </small>
-            <el-button link type="danger" :icon="Delete" @click="confirmLogoutSession(session)">
+            <el-button
+              link
+              type="danger"
+              :icon="marIcon('delete')"
+              @click="confirmLogoutSession(session)"
+            >
               {{ translate('generated.settingsContent.signOut') }}
             </el-button>
           </li>
@@ -237,18 +242,24 @@ async function confirmLogout(): Promise<void> {
       </section>
       <slot name="account-identity" />
       <div class="account-actions">
-        <el-button type="primary" :icon="Key" @click="passwordDialogOpen = true">{{
+        <el-button type="primary" :icon="marIcon('key')" @click="passwordDialogOpen = true">{{
           translate('generated.settingsContent.changePassword')
         }}</el-button>
-        <el-button :loading="loading" plain :icon="SwitchButton" @click="confirmLogout">{{
-          translate('generated.settingsContent.signOut2')
-        }}</el-button>
+        <el-button
+          :loading="loading"
+          plain
+          :icon="marIcon('power')"
+          @click="confirmLogout"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('generated.settingsContent.signOut2') }}</el-button
+        >
       </div>
       <el-dialog
         v-if="passwordDialogOpen"
         v-model="passwordDialogOpen"
         :title="translate('generated.settingsContent.changePassword2')"
         width="min(420px, calc(100vw - 32px))"
+        :close-icon="marIcon('close')"
       >
         <el-form label-position="top" @submit.prevent="submitPasswordChange">
           <el-form-item :label="translate('generated.settingsContent.currentPassword')" required
@@ -290,6 +301,7 @@ async function confirmLogout(): Promise<void> {
             :loading="loading || passwordSubmitting"
             type="primary"
             @click="submitPasswordChange"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('generated.settingsContent.confirmChange') }}</el-button
           ></template
         >
@@ -303,7 +315,7 @@ async function confirmLogout(): Promise<void> {
       <p v-if="documentationAvailable" class="registration-guide">
         <el-link
           type="primary"
-          :icon="Link"
+          :icon="marIcon('link')"
           :underline="false"
           :href="localizedDocsPath(locale, 'deployment/node-installation')"
           target="_blank"
@@ -313,7 +325,12 @@ async function confirmLogout(): Promise<void> {
       </p>
       <div class="registration-action">
         <slot name="registration-owner" />
-        <el-button :loading="loading" type="primary" @click="emit('createRegistrationToken')">
+        <el-button
+          :loading="loading"
+          type="primary"
+          @click="emit('createRegistrationToken')"
+          :loading-icon="marIcon('loading-action')"
+        >
           {{ translate('generated.settingsContent.createOneTimeNodeRegistrationToken') }}
         </el-button>
       </div>
@@ -333,6 +350,8 @@ async function confirmLogout(): Promise<void> {
           class="theme-select"
           :aria-label="t('settings.theme')"
           @update:model-value="setTheme($event as ThemePreference)"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option :label="t('settings.light')" value="daylight" />
           <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
@@ -354,6 +373,8 @@ async function confirmLogout(): Promise<void> {
           class="theme-select"
           :aria-label="t('settings.defaultFileMode')"
           @update:model-value="fileEditorService.setMode($event as FileEditorDefaultMode)"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option :label="t('settings.fileModeEdit')" value="edit" />
           <el-option :label="t('settings.fileModeReadOnly')" value="read-only" />
@@ -367,6 +388,8 @@ async function confirmLogout(): Promise<void> {
           class="theme-select"
           :aria-label="t('settings.iconTheme')"
           @update:model-value="iconThemeService.setTheme($event as 'seti' | 'material')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in iconThemes"
@@ -384,6 +407,8 @@ async function confirmLogout(): Promise<void> {
           class="theme-select"
           :aria-label="t('common.language')"
           @update:model-value="updateLocale($event as AppLocale)"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in SUPPORTED_LOCALES"

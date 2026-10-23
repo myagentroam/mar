@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Bell, Delete, UploadFilled } from '@element-plus/icons-vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.js';
@@ -164,7 +164,7 @@ const emit = defineEmits<{
           :aria-expanded="open"
           @click="toggle"
         >
-          <el-icon aria-hidden="true"><Bell /></el-icon>
+          <MarIcon name="notification" aria-hidden="true" />
           <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
             triggerLabel
           }}</span>
@@ -204,7 +204,7 @@ const emit = defineEmits<{
                 :key="task.id"
                 class="workbench-notification-upload"
               >
-                <el-icon><UploadFilled /></el-icon>
+                <MarIcon name="upload" />
                 <div>
                   <el-tooltip v-bind="tooltipOptions" :content="task.name"
                     ><strong>{{ task.name }}</strong></el-tooltip
@@ -246,7 +246,7 @@ const emit = defineEmits<{
                     "
                     @click="emit('removeUpload', task)"
                   >
-                    <el-icon><Delete /></el-icon>
+                    <MarIcon name="delete" />
                   </button>
                   <button v-else type="button" @click="emit('cancelUpload', task)">
                     {{ translate('generated.workbenchNotificationCenter.cancel') }}
@@ -288,7 +288,7 @@ const emit = defineEmits<{
                   type="button"
                   @click="remove(notification.id)"
                 >
-                  <el-icon><Delete /></el-icon>
+                  <MarIcon name="delete" />
                 </button>
               </li>
             </ul>
@@ -332,7 +332,7 @@ const emit = defineEmits<{
   border-radius: var(--mar-radius-selection);
   padding: 2px 6px;
 }
-.mobile-mode .workbench-notification-trigger .el-icon {
+.mobile-mode .workbench-notification-trigger .mar-icon {
   width: 18px;
   height: 18px;
   font-size: 1.125rem;
@@ -448,7 +448,7 @@ const emit = defineEmits<{
   padding: 0.32rem 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
-.workbench-notification-upload > .el-icon {
+.workbench-notification-upload > .mar-icon {
   color: var(--mar-color-brand-text);
 }
 .workbench-notification-upload-actions {

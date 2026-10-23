@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
-import { ArrowDown, Document, Paperclip, Promotion } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
@@ -160,7 +162,10 @@ const attachmentInput = createComposerAttachmentInputService({
   addFiles: queueFiles,
   confirmDrop: confirmDroppedAttachments,
   rejectDirectory: () =>
-    ElMessage.warning(translate('hostedConversations.folderAttachmentUnsupported')),
+    ElMessage.warning({
+      icon: marIcon('warning'),
+      message: translate('hostedConversations.folderAttachmentUnsupported')
+    }),
   setDragging: (dragging) => (draggingAttachments.value = dragging)
 });
 
@@ -182,7 +187,10 @@ function selectedFiles(event: Event): void {
 function queueFiles(files: Iterable<File>): void {
   for (const file of files) {
     if (attachments.value.length >= 32) {
-      ElMessage.warning(translate('hostedConversations.attachmentLimit'));
+      ElMessage.warning({
+        icon: marIcon('warning'),
+        message: translate('hostedConversations.attachmentLimit')
+      });
       break;
     }
     const attachment: HostedAttachment = {
@@ -285,6 +293,8 @@ async function confirmDroppedAttachments(files: readonly File[]): Promise<boolea
       translate('hostedConversations.confirmDroppedAttachments', { count: files.length }),
       translate('hostedConversations.confirmDroppedAttachmentsTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.confirmUpload'),
         cancelButtonText: translate('hostedConversations.cancel')
@@ -332,7 +342,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   }
 }
 
@@ -368,7 +378,7 @@ async function updateModel(modelId: string): Promise<void> {
     await props.workspace.updateConfiguration({ modelId });
     messageIntent = undefined;
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     configurationUpdating.value = false;
   }
@@ -378,7 +388,7 @@ async function stop(): Promise<void> {
   try {
     await props.workspace.interrupt();
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   }
 }
 
@@ -490,7 +500,7 @@ onBeforeUnmount(() => {
             "
             @click="removeAttachment(attachment.id)"
           >
-            ×
+            <MarIcon name="close" />
           </button>
         </li>
       </ul>
@@ -515,7 +525,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.addAttachment')"
             @click="chooseFiles"
           >
-            <el-icon><Paperclip /></el-icon></button
+            <MarIcon name="attachment" /></button
         ></el-tooltip>
         <div class="hosted-model-slot">
           <el-dropdown
@@ -534,7 +544,7 @@ onBeforeUnmount(() => {
               <el-tooltip v-bind="tooltipOptions" :content="selectedModelLabel">
                 <span>{{ selectedModelLabel }}</span>
               </el-tooltip>
-              <el-icon aria-hidden="true"><ArrowDown /></el-icon>
+              <MarIcon name="chevron-down" aria-hidden="true" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -552,7 +562,7 @@ onBeforeUnmount(() => {
         </div>
         <el-tooltip v-bind="tooltipOptions" v-if="templateName" :content="loadedTemplateLabel"
           ><span class="hosted-template-name" :aria-label="loadedTemplateLabel">
-            <el-icon aria-hidden="true"><Document /></el-icon>
+            <MarIcon name="document" aria-hidden="true" />
             <span>{{ templateName }}</span>
           </span></el-tooltip
         >
@@ -591,7 +601,7 @@ onBeforeUnmount(() => {
           "
           :aria-label="translate('hostedConversations.send')"
         >
-          <el-icon><Promotion /></el-icon>
+          <MarIcon name="send" />
         </button>
       </div>
     </template>
@@ -748,7 +758,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.hosted-model-trigger > .el-icon {
+.hosted-model-trigger > .mar-icon {
   flex: none;
   color: var(--mar-text-tertiary);
 }
@@ -780,7 +790,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.hosted-template-name > .el-icon {
+.hosted-template-name > .mar-icon {
   flex: none;
   color: var(--mar-text-tertiary);
 }

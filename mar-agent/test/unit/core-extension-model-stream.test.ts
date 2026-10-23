@@ -90,6 +90,7 @@ describe('Extension model event boundary', () => {
     const item: ModelEvent = {
       type: 'response.item',
       provider: 'ANTHROPIC_MESSAGES',
+      contextKind: 'private',
       item: { signature: 'provider-private' }
     };
     const start = async function* (): AsyncIterable<ModelEvent> {

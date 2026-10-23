@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 
 import { defineAsyncComponent, h, type ShallowUnwrapRef } from 'vue';
@@ -88,7 +89,8 @@ defineProps<{ page: ShallowUnwrapRef<ReturnType<typeof createWorkbenchPageContro
                 'generated.workbenchSurface.theEnterpriseLicenseIsFrozenConfiguredResources2'
               )
         "
-      />
+        ><template #icon><MarIcon name="warning" /></template
+      ></el-alert>
     </template>
   </CoreSurface>
 </template>

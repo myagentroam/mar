@@ -1,0 +1,184 @@
+import { expect, test } from '@playwright/test';
+import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+
+let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+test.beforeAll(async () => {
+  fixture = await startCustomThemeFixture();
+});
+test.afterAll(async () => {
+  await fixture?.close();
+});
+
+test('Terminal close icons preserve accessible names and close only the selected terminal', async ({
+  page
+}) => {
+  const closed: string[] = [];
+  await page.route('**/api/terminals**', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      closed.push(new URL(route.request().url()).pathname);
+      await route.fulfill({ status: 204 });
+    } else if (route.request().method() === 'POST') {
+      await route.fulfill({
+        json: {
+          terminal: {
+            id: 'fixture-terminal',
+            workspaceId: 'project',
+            profileId: 'shell',
+            state: 'RUNNING',
+            latestSequence: 0
+          }
+        }
+      });
+    } else {
+      await route.fulfill({ json: { terminals: [] } });
+    }
+  });
+  await page.goto(`${fixture.url}icon-system.html?terminal=1`);
+  const close = page.getByRole('button', { name: 'Close terminal 1', exact: true });
+  await expect(close).toBeVisible();
+  await expect(close.locator('svg[data-mar-icon="close"][aria-hidden="true"]')).toBeVisible();
+  await close.focus();
+  await page.keyboard.press('Enter');
+  await expect(close).toHaveCount(0);
+  expect(closed).toEqual(['/api/terminals/fixture-terminal']);
+});
+
+test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {
+  await page.goto(`${fixture.url}icon-system.html?usage=1`);
+  const chart = page.locator('[data-testid="personal-usage"] svg[role="img"]');
+  await expect(chart).toBeVisible();
+  const chartSize = await chart.evaluate((svg) => ({
+    height: svg.getBoundingClientRect().height,
+    expected: 8 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+  }));
+  expect(chartSize.height).toBeCloseTo(chartSize.expected, 0);
+  await expect(page.locator('.mar-page-loading')).toBeHidden();
+  await page
+    .locator('.el-select')
+    .filter({
+      has: page.getByRole('combobox', { name: 'Time range', exact: true })
+    })
+    .click();
+  await page.getByRole('option', { name: 'Custom range', exact: true }).click();
+  await page.getByPlaceholder('Start time', { exact: true }).click();
+  const arrow = page
+    .locator('.el-picker-panel:visible [data-mar-icon="chevron-left"]:visible')
+    .first();
+  await expect(arrow).toBeVisible();
+  const height = await arrow.evaluate((svg) => Number.parseFloat(getComputedStyle(svg).height));
+  expect(height).toBeGreaterThan(0);
+  expect(height).toBeLessThanOrEqual(24);
+});
+
+test('Management errors render a MAR service icon outside the component tree', async ({ page }) => {
+  await page.goto(`${fixture.url}icon-system.html?failure=1`);
+  await page
+    .getByTestId('management')
+    .getByRole('button', { name: 'View email templates', exact: true })
+    .click();
+  const message = page.locator('.el-message');
+  await expect(message).toContainText('Template request failed');
+  await expect(message.locator('[data-mar-icon="error"]')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Email templates', exact: true })).toBeVisible();
+});
+
+test('Session search clear and busy guards preserve their behavior', async ({ page }) => {
+  await page.goto(`${fixture.url}icon-system.html`);
+  const search = page.locator('.session-search input');
+  await search.fill('review');
+  await search.press('Enter');
+  await expect(page.getByTestId('searched')).toHaveText('review');
+  await search.hover();
+  await page.locator('.session-search [data-mar-icon="clear-input"]').click();
+  await expect(search).toHaveValue('');
+  await expect(page.getByTestId('searched')).toHaveText('');
+  await page.goto(`${fixture.url}icon-system.html?busy=1`);
+  await expect(page.locator('.session-search button')).toBeDisabled();
+  await expect(page.locator('.session-search [data-mar-icon="loading-action"]')).toBeVisible();
+  await search.fill('busy');
+  await search.press('Enter');
+  await expect(page.getByTestId('searched')).toHaveText('');
+  await search.fill('');
+  await search.press('Enter');
+  await expect(page.getByTestId('searched')).toHaveText('');
+});
+
+for (const theme of ['dark', 'light'])
+  for (const mobile of [false, true]) {
+    test(`Shared SVGs preserve component behavior in ${theme}, ${mobile ? 'mobile' : 'desktop'}`, async ({
+      page
+    }, testInfo) => {
+      const errors: string[] = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.setViewportSize({ width: mobile ? 390 : 1440, height: 1000 });
+      await page.goto(`${fixture.url}icon-system.html?theme=${theme}`);
+      const tree = page.getByTestId('resource-tree');
+      await expect(tree.locator('[data-mar-icon="node"]')).toBeVisible();
+      await expect(tree.locator('[data-mar-icon="workspace"]')).toBeVisible();
+      await expect(tree.locator('[data-mar-icon="folder"]')).toBeVisible();
+      const folder = tree.locator('.workspace-group-toggle');
+      await folder.click();
+      await expect(folder.locator('[data-mar-icon="folder-open"]')).toBeVisible();
+      const create = page.locator('.new-session-button');
+      await expect(create.locator('[data-mar-icon="session-add"]')).toBeVisible();
+      const buttonGap = await create.evaluate((button) => {
+        const icon = button.querySelector('[data-mar-icon="session-add"]')!;
+        return (
+          icon.nextElementSibling!.getBoundingClientRect().left - icon.getBoundingClientRect().right
+        );
+      });
+      expect(buttonGap).toBeGreaterThanOrEqual(5);
+      await create.focus();
+      await create.press('Enter');
+      await expect(page.getByTestId('created')).toHaveText('1');
+      const search = page.locator('.session-search input');
+      await search.fill('review');
+      await search.press('Enter');
+      await expect(page.getByTestId('searched')).toHaveText('review');
+      await search.fill('');
+      await search.press('Enter');
+      await expect(page.getByTestId('searched')).toHaveText('refreshed');
+      await expect(page.locator('.agent-markdown-code-copy [data-mar-icon="copy"]')).toHaveCount(1);
+      const quantity = page.getByTestId('quantity');
+      await page.getByPlaceholder('Review date').click();
+      const calendar = page.locator('.el-date-picker:visible');
+      await expect(calendar.locator('[data-mar-icon="chevrons-left"]')).toBeVisible();
+      await calendar.locator('[data-mar-icon="chevron-right"]').click();
+      await expect(calendar.locator('[data-mar-icon="chevrons-right"]')).toBeVisible();
+      await page.getByPlaceholder('Review date').press('Escape');
+      await expect(quantity.locator('.el-input-number__decrease')).toHaveClass(/is-disabled/);
+      await quantity.locator('[data-mar-icon="plus"]').click();
+      await expect(quantity.locator('input')).toHaveValue('2');
+      await quantity.locator('[data-mar-icon="subtract"]').click();
+      await expect(quantity.locator('input')).toHaveValue('1');
+      await page
+        .getByTestId('management')
+        .getByRole('button', { name: 'View email templates', exact: true })
+        .click();
+      const dialog = page.getByRole('dialog', { name: 'Email templates', exact: true });
+      await expect(dialog).toBeVisible();
+      const close = dialog.locator('.el-dialog__headerbtn');
+      await expect(close.locator('[data-mar-icon="close"]')).toBeVisible();
+      await close.click();
+      await expect(dialog).toHaveCount(0);
+      const icon = tree.locator('[data-mar-icon="node"]');
+      const geometry = await icon.evaluate((el) => ({
+        width: el.getBoundingClientRect().width,
+        stroke: getComputedStyle(el).stroke,
+        color: getComputedStyle(el).color
+      }));
+      expect(geometry.width).toBeGreaterThanOrEqual(14);
+      expect(geometry.width).toBeLessThanOrEqual(24);
+      expect(geometry.stroke).toEqual(geometry.color);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(page.locator('.icon-review-grid [data-mar-icon="loading-action"]')).toHaveCSS(
+        'animation-name',
+        'none'
+      );
+      expect(errors).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`icons-${theme}-${mobile ? 'mobile' : 'desktop'}.png`),
+        fullPage: true
+      });
+    });
+  }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
 import { tooltipOptions } from '../../util/tooltip.js';
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -276,7 +278,7 @@ async function canCloseUnmountedTab(id: number): Promise<boolean> {
     await ElMessageBox.confirm(
       translate('fileEditor.unsavedMessage'),
       translate('fileEditor.unsavedTitle'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
     return true;
   } catch {

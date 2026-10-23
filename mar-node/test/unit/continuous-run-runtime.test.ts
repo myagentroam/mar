@@ -1,4 +1,5 @@
 import { withNonImageAttachmentPrompt } from '../../src/util/node-operation-parsers.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import {
@@ -1015,6 +1016,96 @@ describe('Node execution directory admission', () => {
 });
 
 describe('Node continuous Run lifecycle', () => {
+  it('retains independent Runner input snapshots while queued inputs wait for FIFO dispatch', async () => {
+    const { runtime, session } = fixture('mar-agent');
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      control,
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => []
+    });
+    const runner = new MarAgentRunner();
+    const wire = {
+      marAgentModel: { id: 'model-before' },
+      marAgentModels: [{ id: 'subagent-before' }],
+      marAgentCompact: { id: 'compact-before' },
+      marAgentRuntimeScopeId: 'scope-before'
+    };
+    runtime.pauseSessionQueue(session.id);
+    const first = runtime.createQueueItem({
+      sessionId: session.id,
+      clientMessageId: 'first-snapshot',
+      content: 'first'
+    }).item;
+    const firstContext = runner.prepareExecutionContext(wire);
+    coordinator.prepare(first.id, {
+      ...prepared(first.id, session.id),
+      executionContext: firstContext
+    });
+    wire.marAgentModel.id = 'model-after';
+    wire.marAgentModels[0]!.id = 'subagent-after';
+    wire.marAgentCompact.id = 'compact-after';
+    wire.marAgentRuntimeScopeId = 'scope-after';
+    const second = runtime.createQueueItem({
+      sessionId: session.id,
+      clientMessageId: 'second-snapshot',
+      content: 'second'
+    }).item;
+    const secondContext = runner.prepareExecutionContext(wire);
+    coordinator.prepare(second.id, {
+      ...prepared(second.id, session.id),
+      executionContext: secondContext
+    });
+    try {
+      expect(coordinator.pending(first.id)?.executionContext).toBe(firstContext);
+      await coordinator.resume(session.id);
+      await vi.waitFor(() => expect(control).toHaveBeenCalledOnce());
+      expect(control.mock.calls[0]).toMatchObject([
+        'run.start',
+        {
+          runner: 'mar-agent',
+          runnerInput: {
+            model: { id: 'model-before' },
+            models: [{ id: 'subagent-before' }],
+            compact: { id: 'compact-before' },
+            runtimeScopeId: 'scope-before'
+          }
+        }
+      ]);
+      const active = runtime.activeSessionRun(session.id)!;
+      const execution = runtime.currentExecutionId(active.id)!;
+      runtime.appendRunEvent({
+        runId: execution,
+        sequence: 1,
+        eventType: 'run.completed',
+        payload: {},
+        status: 'SUCCEEDED'
+      });
+      coordinator.remove(execution);
+      await coordinator.resume(session.id);
+      await vi.waitFor(() => expect(control).toHaveBeenCalledTimes(2));
+      expect(control.mock.calls[1]?.[1]).toMatchObject({
+        runnerInput: {
+          model: { id: 'model-after' },
+          models: [{ id: 'subagent-after' }],
+          compact: { id: 'compact-after' },
+          runtimeScopeId: 'scope-after'
+        }
+      });
+      expect(control.mock.calls[0]?.[1]).not.toHaveProperty('marAgentModel');
+    } finally {
+      coordinator.clear();
+    }
+  });
+
   it.each(['preparation', 'control'] as const)(
     'revokes prepared MCP capabilities when %s fails',
     async (phase) => {
@@ -2805,7 +2896,7 @@ function prepared(runId: string, sessionId: string) {
     runId,
     sessionId,
     workspaceId: 'workspace-1',
-    runner: 'codex' as const,
+    executionContext: { runner: 'codex' as const },
     input: 'message',
     attachments: [],
     attachmentPaths: [],

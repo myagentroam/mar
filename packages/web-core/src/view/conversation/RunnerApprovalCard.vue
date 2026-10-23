@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Close } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 
 defineProps<{
@@ -23,7 +23,7 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
       <el-button
         type="primary"
         size="small"
-        :icon="Check"
+        :icon="marIcon('check')"
         :disabled="disabled"
         @click="emit('decide', 'APPROVED')"
       >
@@ -31,7 +31,7 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
       </el-button>
       <el-button
         size="small"
-        :icon="Close"
+        :icon="marIcon('close')"
         :disabled="disabled"
         @click="emit('decide', 'REJECTED')"
       >

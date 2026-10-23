@@ -149,11 +149,14 @@ describe('OpenCode Session title recovery', () => {
     expect(
       await client.messagePage('/workspace', 'native', { limit: 100, before: 'older' })
     ).toEqual({ messages: [], nextCursor: 'opaque-before' });
-    expect(messages).toHaveBeenCalledWith({
-      directory: '/workspace',
-      sessionID: 'native',
-      limit: 100,
-      before: 'older'
-    });
+    expect(messages).toHaveBeenCalledWith(
+      {
+        directory: '/workspace',
+        sessionID: 'native',
+        limit: 100,
+        before: 'older'
+      },
+      { signal: null }
+    );
   });
 });

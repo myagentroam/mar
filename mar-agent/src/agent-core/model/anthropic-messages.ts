@@ -422,7 +422,12 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
             thinkingBytes += Buffer.byteLength(JSON.stringify(item));
             assertAnthropicThinkingBudget(thinkingBytes);
             yield observeModelStreamEvent(
-              { type: 'response.item', provider: 'ANTHROPIC_MESSAGES', item },
+              {
+                type: 'response.item',
+                provider: 'ANTHROPIC_MESSAGES',
+                contextKind: 'private',
+                item
+              },
               modelStreamEventObservedAt(raw)
             );
           }

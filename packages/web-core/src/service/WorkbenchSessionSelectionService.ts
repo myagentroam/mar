@@ -19,7 +19,8 @@ import {
 import { translate } from './LocalePreferenceService.js';
 import { ApiError } from '../util/api-error.js';
 
-interface OpenSessionOptions {
+export interface OpenSessionOptions {
+  readonly throwOnFailure?: boolean;
   readonly preserveMobileWorkspaceSurface?: boolean;
   readonly deferInitialScroll?: boolean;
   readonly skipSaveCurrent?: boolean;
@@ -222,6 +223,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       if (!isCurrent()) return;
       options.positioning.value = false;
       options.initialLoadFailed.value = true;
+      if (openOptions.throwOnFailure) throw error;
       options.notice(
         translate('generated.workbenchSessionSelectionService.unableToLoadConversationHistory', {
           value0: options.errorMessage(error)

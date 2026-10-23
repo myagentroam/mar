@@ -1,4 +1,5 @@
 import type { RunnerDefaultConfiguration } from '@myagentroam/protocol';
+import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
 import type { NodeAgentRun } from '../runtime-model.js';
@@ -318,12 +319,9 @@ export class SessionLifecycleService {
         ...(input.personalInstructions === undefined
           ? {}
           : { personalInstructions: input.personalInstructions }),
-        ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-        ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-        ...(input.marAgentCompact === undefined ? {} : { marAgentCompact: input.marAgentCompact }),
-        ...(input.marAgentRuntimeScopeId === undefined
-          ? {}
-          : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId }),
+        [RUNNER_EXECUTION_CONTEXT]: this.options.runners
+          .require(created.session.runner)
+          .prepareExecutionContext(input),
         ...(input.computerUse === undefined ? {} : { computerUse: input.computerUse }),
         ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
         ...(input.attachments === undefined ? {} : { attachments: input.attachments })

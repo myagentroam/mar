@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Check, Delete, Document } from '@element-plus/icons-vue';
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
@@ -108,7 +109,10 @@ async function load(): Promise<void> {
     formState.value.content = instructions.value[activeItem.value.property];
   } catch (error) {
     failed.value = true;
-    ElMessage.error(translate('personalInstructions.loadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('personalInstructions.loadFailed')
+    });
   } finally {
     loading.value = false;
   }
@@ -126,9 +130,15 @@ async function save(): Promise<void> {
       )
     ).instructions;
     formState.value.content = instructions.value[activeItem.value.property];
-    ElMessage.success(translate('personalInstructions.saved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('personalInstructions.saved')
+    });
   } catch (error) {
-    ElMessage.error(translate('personalInstructions.saveFailed', { value0: errorMessage(error) }));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('personalInstructions.saveFailed', { value0: errorMessage(error) })
+    });
   } finally {
     saving.value = false;
   }
@@ -139,7 +149,7 @@ async function clear(): Promise<void> {
     await ElMessageBox.confirm(
       translate('personalInstructions.clearConfirmation'),
       translate('personalInstructions.clear'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
     saving.value = true;
     instructions.value = (
@@ -150,12 +160,16 @@ async function clear(): Promise<void> {
     ).instructions;
     formState.value.content = '';
     void form.value?.clearValidate();
-    ElMessage.success(translate('personalInstructions.cleared'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('personalInstructions.cleared')
+    });
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(
-        translate('personalInstructions.clearFailed', { value0: errorMessage(error) })
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('personalInstructions.clearFailed', { value0: errorMessage(error) })
+      });
   } finally {
     saving.value = false;
   }
@@ -181,7 +195,7 @@ async function clear(): Promise<void> {
         role="tab"
         @change="select(item.id)"
       >
-        <el-icon v-if="item.logo === undefined"><Document /></el-icon>
+        <MarIcon name="document" v-if="item.logo === undefined" />
         <img
           v-else
           :src="item.logo"
@@ -214,12 +228,21 @@ async function clear(): Promise<void> {
         ></textarea>
       </el-form-item>
       <div class="instruction-actions">
-        <el-button :icon="Delete" :loading="saving" @click="clear">{{
-          translate('personalInstructions.clear')
-        }}</el-button>
-        <el-button :icon="Check" type="primary" :loading="saving" @click="save">{{
-          translate('common.save')
-        }}</el-button>
+        <el-button
+          :icon="marIcon('delete')"
+          :loading="saving"
+          @click="clear"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('personalInstructions.clear') }}</el-button
+        >
+        <el-button
+          :icon="marIcon('check')"
+          type="primary"
+          :loading="saving"
+          @click="save"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('common.save') }}</el-button
+        >
       </div>
     </el-form>
   </section>

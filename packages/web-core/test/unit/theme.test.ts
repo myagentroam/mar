@@ -330,7 +330,6 @@ describe('Web theme preference', () => {
     }
     expect(terminal).toContain('background: var(--mar-bg-chrome);');
     expect(terminal).toContain('class="terminal-tab-close icon-button utility-control"');
-    expect(terminal).toContain('<el-icon><Close /></el-icon>');
     expect(terminal).not.toContain('role="button"');
     expect(terminal).not.toContain('>×</span');
     expect(styleDeclarations(terminal, '.admin-terminal-header')).toContainEqual(

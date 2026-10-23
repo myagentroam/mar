@@ -1,3 +1,5 @@
+import type { RunnerExecutionContext } from '../runner/execution-context.js';
+import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
 import { randomUUID } from 'node:crypto';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
@@ -41,7 +43,9 @@ import {
 const INTERNAL_GOAL = Symbol('internalGoal');
 const INTERNAL_SCHEDULE = Symbol('internalSchedule');
 const INTERNAL_RESTORE = Symbol('internalRestore');
-type MessageInput = Record<string | symbol, unknown>;
+type MessageInput = Record<string | symbol, unknown> & {
+  readonly [RUNNER_EXECUTION_CONTEXT]?: RunnerExecutionContext;
+};
 
 interface SessionMessageServiceOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
@@ -121,10 +125,7 @@ export class SessionMessageService {
     readonly suppressNotifications?: boolean;
     readonly secretEnvironment?: Readonly<Record<string, string>>;
     readonly personalInstructions?: string;
-    readonly marAgentModel?: unknown;
-    readonly marAgentModels?: unknown;
-    readonly marAgentCompact?: unknown;
-    readonly marAgentRuntimeScopeId?: unknown;
+    readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
     readonly restoreQueued?: boolean;
   }): Promise<unknown> {
@@ -149,11 +150,8 @@ export class SessionMessageService {
       deliveryIntent: input.deliveryIntent,
       secretEnvironment: input.secretEnvironment,
       personalInstructions: input.personalInstructions,
-      marAgentModel: input.marAgentModel,
-      marAgentModels: input.marAgentModels,
-      marAgentCompact: input.marAgentCompact,
       __usageGrant: input.usageGrant,
-      marAgentRuntimeScopeId: input.marAgentRuntimeScopeId
+      [RUNNER_EXECUTION_CONTEXT]: input.executionContext
     });
   }
 
@@ -164,10 +162,7 @@ export class SessionMessageService {
     readonly initiatedByUserId: number;
     readonly secretEnvironment: Readonly<Record<string, string>>;
     readonly personalInstructions?: unknown;
-    readonly marAgentModel?: unknown;
-    readonly marAgentModels?: unknown;
-    readonly marAgentCompact?: unknown;
-    readonly marAgentRuntimeScopeId?: unknown;
+    readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
   }): Promise<unknown> {
     return this.message({
@@ -180,11 +175,8 @@ export class SessionMessageService {
       deliveryIntent: 'SEND',
       secretEnvironment: input.secretEnvironment,
       personalInstructions: input.personalInstructions,
-      marAgentModel: input.marAgentModel,
-      marAgentModels: input.marAgentModels,
-      marAgentCompact: input.marAgentCompact,
       __usageGrant: input.usageGrant,
-      marAgentRuntimeScopeId: input.marAgentRuntimeScopeId
+      [RUNNER_EXECUTION_CONTEXT]: input.executionContext
     });
   }
 
@@ -259,6 +251,9 @@ export class SessionMessageService {
           existing.kind === 'queue' ? existing.item.id : undefined
         )
       };
+    const executionContext =
+      input[RUNNER_EXECUTION_CONTEXT] ??
+      this.options.runners.require(session.runner).prepareExecutionContext(input);
     const sourceContent = withSessionMessageOrigin(content, input.__marctlOrigin);
     const goalMessage =
       internalGoal || internalSchedule || internalRestore
@@ -426,7 +421,7 @@ export class SessionMessageService {
             runId,
             sessionId: currentSession.id,
             workspaceId: currentSession.workspaceId,
-            runner: currentSession.runner,
+            executionContext,
             input: runner.prepareMessageInput(runnerInput, planActive ? 'plan' : 'default'),
             ...(userMessage
               ? {
@@ -450,14 +445,6 @@ export class SessionMessageService {
             collaborationMode: planActive ? 'plan' : 'default',
             secretEnvironment,
             ...(personalInstructions === undefined ? {} : { personalInstructions }),
-            ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-            ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-            ...(input.marAgentCompact === undefined
-              ? {}
-              : { marAgentCompact: input.marAgentCompact }),
-            ...(input.marAgentRuntimeScopeId === undefined
-              ? {}
-              : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId }),
             ...(input.computerUse === undefined ? {} : { computerUse: input.computerUse }),
             ...(goalMessage !== undefined
               ? { goal: goalMessage.goal }
@@ -513,7 +500,9 @@ export class SessionMessageService {
       };
       const delivery = await prepare();
       return {
-        session: this.options.present(sessionForPresentation),
+        session: this.options.present(
+          this.options.runtime.getAgentSession(session.id) ?? sessionForPresentation
+        ),
         run: created.run,
         ...(created.queueItem === undefined ? {} : { queueItemId: created.queueItem.id }),
         delivery,

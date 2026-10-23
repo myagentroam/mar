@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
+import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Delete, Key } from '@element-plus/icons-vue';
 import { translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
 import { createUserManagementService } from '@/service/UserManagementService';
@@ -33,7 +34,7 @@ const usersPage = createUserManagementService<ManagedUser>({
   request: props.request,
   endpoint: '/api/management/users',
   query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value }),
-  reportError: (error) => ElMessage.error(errorMessage(error))
+  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
 });
 const pageReady = ref(false);
 watch(usersPage.result, (result) => {
@@ -71,11 +72,13 @@ async function create(): Promise<void> {
     createOpen.value = false;
     await load();
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.userManagementPage.unableToCreateUser')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.userManagementPage.unableToCreateUser')
+    });
   }
 }
 async function reset(user: ManagedUser): Promise<void> {
@@ -90,11 +93,13 @@ async function reset(user: ManagedUser): Promise<void> {
       password: result.temporaryPassword
     };
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.userManagementPage.unableToResetPassword')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.userManagementPage.unableToResetPassword')
+    });
   }
 }
 async function confirmReset(user: ManagedUser): Promise<void> {
@@ -105,6 +110,8 @@ async function confirmReset(user: ManagedUser): Promise<void> {
       }),
       translate('generated.userManagementPage.resetPassword'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.resetPassword2'),
         cancelButtonText: translate('generated.userManagementPage.cancel'),
         type: 'warning'
@@ -120,11 +127,13 @@ async function remove(user: ManagedUser): Promise<void> {
     await props.request(`/api/management/users/${user.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.userManagementPage.unableToDeleteUser')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.userManagementPage.unableToDeleteUser')
+    });
   }
 }
 async function confirmRemove(user: ManagedUser): Promise<void> {
@@ -135,6 +144,8 @@ async function confirmRemove(user: ManagedUser): Promise<void> {
       }),
       translate('generated.userManagementPage.deleteUser'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.deleteUser2'),
         cancelButtonText: translate('generated.userManagementPage.cancel2'),
         type: 'warning'
@@ -209,14 +220,14 @@ onUnmounted(() => usersPage.dispose());
               v-if="!row.isAdmin"
               link
               type="primary"
-              :icon="Key"
+              :icon="marIcon('key')"
               @click="confirmReset(row)"
               >{{ translate('generated.userManagementPage.resetPassword3') }}</el-button
             ><el-button
               v-if="!row.isAdmin"
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               @click="confirmRemove(row)"
               >{{ translate('generated.userManagementPage.delete') }}</el-button
             >
@@ -239,6 +250,7 @@ onUnmounted(() => usersPage.dispose());
       v-model="createOpen"
       :title="translate('generated.userManagementPage.createUser2')"
       width="420"
+      :close-icon="marIcon('close')"
       ><el-form label-position="top"
         ><el-form-item :label="translate('generated.userManagementPage.username2')" required
           ><el-input v-model="form.username" /></el-form-item
@@ -261,6 +273,7 @@ onUnmounted(() => usersPage.dispose());
       width="420"
       class="credential-result-dialog"
       @close="credentialResult = undefined"
+      :close-icon="marIcon('close')"
       ><el-alert
         :title="
           translate('generated.userManagementPage.copyAndSecurelyDeliverTheseCredentials', {
@@ -270,7 +283,8 @@ onUnmounted(() => usersPage.dispose());
         type="success"
         :closable="false"
         show-icon
-      />
+        ><template #icon><MarIcon name="success" /></template
+      ></el-alert>
       <dl class="credential-result">
         <div>
           <dt>{{ translate('generated.userManagementPage.username3') }}</dt>
@@ -296,6 +310,7 @@ onUnmounted(() => usersPage.dispose());
       :title="translate('generated.userManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions class="mar-detail-descriptions" :column="1" border>
         <el-descriptions-item :label="translate('common.userId')">{{

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Close, Download } from '@element-plus/icons-vue';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
@@ -127,8 +128,9 @@ defineExpose({
           circle
           size="small"
           @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
         >
-          <el-icon><Download /></el-icon> </el-button
+          <MarIcon name="download" /> </el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -141,7 +143,7 @@ defineExpose({
           type="primary"
           @click="emit('close')"
         >
-          <el-icon><Close /></el-icon> </el-button
+          <MarIcon name="close" /> </el-button
       ></el-tooltip>
     </template>
     <template #mobile-actions>
@@ -154,8 +156,9 @@ defineExpose({
           circle
           size="small"
           @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
         >
-          <el-icon><Download /></el-icon> </el-button
+          <MarIcon name="download" /> </el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -168,7 +171,7 @@ defineExpose({
           type="primary"
           @click="emit('close')"
         >
-          <el-icon><Close /></el-icon> </el-button
+          <MarIcon name="close" /> </el-button
       ></el-tooltip>
     </template>
     <main class="file-preview-content">

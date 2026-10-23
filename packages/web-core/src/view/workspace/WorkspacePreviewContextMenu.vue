@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CopyDocument, DocumentCopy, Refresh } from '@element-plus/icons-vue';
+import MarIcon from '../common/MarIcon.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 
@@ -48,13 +48,13 @@ defineExpose({ open, close: () => (visible.value = false) });
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item command="copy">
-            <el-icon><CopyDocument /></el-icon>{{ translate('filePreviewContext.copy') }}
+            <MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}
           </el-dropdown-item>
           <el-dropdown-item command="paste" :disabled="!props.pasteEnabled">
-            <el-icon><DocumentCopy /></el-icon>{{ translate('filePreviewContext.paste') }}
+            <MarIcon name="paste" />{{ translate('filePreviewContext.paste') }}
           </el-dropdown-item>
           <el-dropdown-item command="reload">
-            <el-icon><Refresh /></el-icon>{{ translate('filePreviewContext.reload') }}
+            <MarIcon name="refresh" />{{ translate('filePreviewContext.reload') }}
           </el-dropdown-item>
         </el-dropdown-menu>
       </template>

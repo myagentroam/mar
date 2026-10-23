@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, onBeforeUnmount } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Share } from '@element-plus/icons-vue';
 import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue';
 import type { NodeSummary } from '@/model/workbench';
 import {
@@ -80,7 +80,10 @@ async function openGrants(row: AdminConversationTemplateSummary): Promise<void> 
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(grantRequestContext, context)) return;
     grantDialogOpen.value = false;
-    ElMessage.error(templateError(error, 'conversationTemplates.grantsLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.grantsLoadFailed')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(grantRequestContext, context))
       grantLoading.value = false;
@@ -110,10 +113,16 @@ async function createGrant(): Promise<void> {
     )
       return;
     grants.value = nextGrants;
-    ElMessage.success(translate('conversationTemplates.grantCreated'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('conversationTemplates.grantCreated')
+    });
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(grantRequestContext, context)) return;
-    ElMessage.error(templateError(error, 'conversationTemplates.grantCreateFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.grantCreateFailed')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(grantRequestContext, context))
       grantSaving.value = false;
@@ -128,7 +137,7 @@ async function removeGrant(grant: ConversationTemplateGrant): Promise<void> {
     await ElMessageBox.confirm(
       translate('conversationTemplates.revokeConfirmation'),
       translate('conversationTemplates.revoke'),
-      confirmationOptions('conversationTemplates.revoke')
+      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.revoke') }
     );
     if (
       disposed ||
@@ -145,14 +154,20 @@ async function removeGrant(grant: ConversationTemplateGrant): Promise<void> {
     )
       return;
     grants.value = nextGrants;
-    ElMessage.success(translate('conversationTemplates.grantRemoved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('conversationTemplates.grantRemoved')
+    });
   } catch (error) {
     if (
       !disposed &&
       error !== 'cancel' &&
       sameConversationTemplateRequestContext(grantRequestContext, context)
     )
-      ElMessage.error(templateError(error, 'conversationTemplates.grantRemoveFailed'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: templateError(error, 'conversationTemplates.grantRemoveFailed')
+      });
   }
 }
 
@@ -239,7 +254,7 @@ onBeforeUnmount(() => {
         v-if="edition !== 'COMMUNITY'"
         link
         type="primary"
-        :icon="Share"
+        :icon="marIcon('share')"
         @click="openGrants(row)"
         >{{ translate('common.grant') }}</el-button
       >
@@ -251,6 +266,7 @@ onBeforeUnmount(() => {
     :title="translate('conversationTemplates.accessDialogTitle', { name: selectedTemplate.name })"
     width="min(720px, calc(100vw - 32px))"
     @closed="closeGrantDialog"
+    :close-icon="marIcon('close')"
   >
     <div v-loading="grantLoading" class="grant-dialog">
       <el-alert
@@ -267,10 +283,15 @@ onBeforeUnmount(() => {
           :aria-label="translate('conversationTemplates.organization')"
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
         />
-        <el-button type="primary" :loading="grantSaving" @click="createGrant">{{
-          translate('common.grant')
-        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="grantSaving"
+          @click="createGrant"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('common.grant') }}</el-button
+        >
       </div>
       <el-table :data="grants" empty-text="">
         <el-table-column :label="translate('conversationTemplates.target')" min-width="220">

@@ -10,6 +10,7 @@ import {
 } from '../../src/index.js';
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
 import type {
   ModelAdapter,
   ModelEvent,
@@ -134,7 +135,8 @@ class Adapter implements ModelAdapter {
 async function fixture(
   codeMode = false,
   catalogOptions?: Parameters<typeof catalog>[0],
-  overrides: Partial<MarAgentModelConfiguration> = {}
+  overrides: Partial<MarAgentModelConfiguration> = {},
+  runtimeExtensions: readonly CoreRuntimeExtension[] = []
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-discovery-'));
   directories.push(home);
@@ -160,6 +162,7 @@ async function fixture(
     host,
     models: [configuration],
     defaultModelId: model.id,
+    runtimeExtensions,
     adapterFactory: () => adapter
   });
   const session = await agent.createSession({ workspace: home, title: 'Discovery test' });
@@ -178,6 +181,82 @@ async function fixture(
 }
 
 describe('MCP discovery runtime', () => {
+  it.each([
+    ['OPENAI_RESPONSES', true, false],
+    ['OPENAI_RESPONSES', true, true],
+    ['OPENAI_RESPONSES', false, false],
+    ['OPENAI_RESPONSES', false, true],
+    ['ANTHROPIC_MESSAGES', false, false],
+    ['ANTHROPIC_MESSAGES', false, true]
+  ] as const)(
+    'projects %s discovery before request hooks with native tools=%s and reinstatement=%s without losing execution bindings',
+    async (protocol, nativeTools, reinstateDiscovered) => {
+      const hookTools: string[][] = [];
+      const f = await fixture(
+        false,
+        undefined,
+        {
+          protocol,
+          responsesOptionalParameters: { nativeTools }
+        },
+        [
+          {
+            id: 'inspect-discovery',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.hooks.intercept('model.request', (request, _call, next) => {
+                hookTools.push(request.tools.map((tool) => tool.name));
+                const tools = request.tools.map((tool) => ({
+                  ...tool,
+                  description: 'Hook description'
+                }));
+                if (
+                  reinstateDiscovered &&
+                  hookTools.length > 1 &&
+                  !tools.some((tool) => tool.name === externalName)
+                )
+                  tools.push(
+                    catalog().tools.find((tool) => tool.definition.name === externalName)!
+                      .definition
+                  );
+                return next({ ...request, tools });
+              });
+            }
+          }
+        ]
+      );
+      try {
+        f.adapter.batches.push(
+          [{ name: 'tool_search', arguments: { query: externalName } }],
+          [{ name: externalName, arguments: { record: 'record' } }]
+        );
+        expect(
+          await f.session.run({ prompt: 'Discover and call the deferred tool.' }).result()
+        ).toMatchObject({ status: 'completed' });
+        expect(hookTools).toHaveLength(3);
+        expect(hookTools[0]).toContain(internalName);
+        expect(hookTools[0]).not.toContain(externalName);
+        for (const index of [1, 2]) {
+          expect(hookTools[index]).toContain(internalName);
+          expect(hookTools[index]!.includes(externalName)).toBe(protocol === 'ANTHROPIC_MESSAGES');
+          const expectedNames = [...hookTools[index]!];
+          if (reinstateDiscovered && !expectedNames.includes(externalName))
+            expectedNames.push(externalName);
+          expect(f.adapter.requests[index]!.tools.map((tool) => tool.name)).toEqual(expectedNames);
+          expect(
+            f.adapter.requests[index]!.tools.find((tool) => tool.name === internalName)?.description
+          ).toBe('Hook description');
+          expect(
+            f.adapter.requests[index]!.messages.flatMap((message) => message.toolSearchTools ?? [])
+          ).toContainEqual(expect.objectContaining({ name: externalName }));
+        }
+        expect(f.calls).toEqual([externalName]);
+      } finally {
+        await f.agent.dispose();
+      }
+    }
+  );
+
   it.each([false, true])(
     'does not inherit execution-scoped discovery on a later Execution with Code Mode=%s',
     async (codeMode) => {

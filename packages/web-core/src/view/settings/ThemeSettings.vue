@@ -1,19 +1,10 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import {
-  Check,
-  CopyDocument,
-  Delete,
-  Download,
-  MoreFilled,
-  RefreshLeft,
-  SetUp,
-  Upload,
-  ZoomIn
-} from '@element-plus/icons-vue';
 import {
   type BuiltinTheme,
   type CustomTheme,
@@ -87,6 +78,8 @@ async function confirmDiscard(): Promise<boolean> {
   if (!unsaved.value) return true;
   try {
     await ElMessageBox.confirm(t('customThemes.discard'), t('customThemes.title'), {
+      closeIcon: marIcon('close'),
+      icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.discardAction'),
       cancelButtonText: t('customThemes.cancel')
@@ -115,13 +108,15 @@ async function selectTheme(item: ThemeRow): Promise<void> {
       item.builtin ? (item.id as BuiltinTheme) : undefined
     );
   } catch {
-    ElMessage.error(t('customThemes.paletteFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.paletteFailed') });
   }
 }
 async function reset(): Promise<void> {
   if (!dirty.value) return;
   try {
     await ElMessageBox.confirm(t('customThemes.resetConfirm'), t('customThemes.title'), {
+      closeIcon: marIcon('close'),
+      icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.reset'),
       cancelButtonText: t('customThemes.cancel')
@@ -136,7 +131,7 @@ function applyTheme(item: ThemeRow): void {
   try {
     service.setTheme(item.id);
   } catch {
-    ElMessage.error(t('customThemes.storageFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
   }
 }
 function themeAction(item: ThemeRow, command: string): void {
@@ -150,14 +145,16 @@ async function save(): Promise<void> {
     const item = service.saveCustomTheme(draft.source, selectedId.value);
     selectedId.value = item.id;
     baseline.value = draft.source;
-    ElMessage.success(t('customThemes.saved'));
+    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.saved') });
   } catch {
-    ElMessage.error(t('customThemes.storageFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
   }
 }
 async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
   try {
     await ElMessageBox.confirm(t('customThemes.deleteConfirm'), t('customThemes.title'), {
+      closeIcon: marIcon('close'),
+      icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.remove'),
       cancelButtonText: t('customThemes.cancel')
@@ -171,9 +168,9 @@ async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
       selectedId.value = undefined;
       baseline.value = draft.source;
     }
-    ElMessage.success(t('customThemes.deleted'));
+    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.deleted') });
   } catch {
-    ElMessage.error(t('customThemes.storageFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
   }
 }
 function duplicate(item: ThemeRow): void {
@@ -182,7 +179,7 @@ function duplicate(item: ThemeRow): void {
       service.duplicateSource(rowSource(item), t('customThemes.copyName', { name: item.name }))
     );
   } catch {
-    ElMessage.error(t('customThemes.paletteFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.paletteFailed') });
   }
 }
 async function importFile(event: Event): Promise<void> {
@@ -193,15 +190,15 @@ async function importFile(event: Event): Promise<void> {
   try {
     await load(await file.text());
   } catch {
-    ElMessage.error(t('customThemes.importFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.importFailed') });
   }
 }
 async function copy(): Promise<void> {
   try {
     await navigator.clipboard.writeText(draft.source);
-    ElMessage.success(t('customThemes.copied'));
+    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.copied') });
   } catch {
-    ElMessage.error(t('customThemes.copyFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.copyFailed') });
   }
 }
 async function exportFile(): Promise<void> {
@@ -237,7 +234,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
     <h2>{{ t('customThemes.title') }}</h2>
     <p class="summary">{{ t('customThemes.summary') }}</p>
     <div class="actions">
-      <el-button :icon="Upload" @click="fileInput?.click()">{{
+      <el-button :icon="marIcon('upload')" @click="fileInput?.click()">{{
         t('customThemes.import')
       }}</el-button>
       <input
@@ -280,7 +277,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           <el-button
             link
             type="primary"
-            :icon="Check"
+            :icon="marIcon('check')"
             :disabled="service.theme.value === item.id"
             @click="applyTheme(item)"
           >
@@ -296,17 +293,21 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
                 v-bind="tooltipOptions"
                 :content="t('customThemes.moreActions', { name: item.name })"
               >
-                <el-icon><MoreFilled /></el-icon>
+                <MarIcon name="more" />
               </el-tooltip>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="duplicate" :icon="CopyDocument">{{
+                <el-dropdown-item command="duplicate" :icon="marIcon('copy')">{{
                   t('customThemes.duplicate')
                 }}</el-dropdown-item>
-                <el-dropdown-item v-if="!item.builtin" command="remove" :icon="Delete" divided>{{
-                  t('customThemes.remove')
-                }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="!item.builtin"
+                  command="remove"
+                  :icon="marIcon('delete')"
+                  divided
+                  >{{ t('customThemes.remove') }}</el-dropdown-item
+                >
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -328,17 +329,25 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
     <div class="editor-layout">
       <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <div class="actions">
-          <el-button v-if="!isBuiltin" :icon="Check" type="primary" native-type="submit">{{
-            t('customThemes.save')
-          }}</el-button>
-          <el-button v-if="!isBuiltin" :icon="SetUp" @click="format">{{
+          <el-button
+            v-if="!isBuiltin"
+            :icon="marIcon('check')"
+            type="primary"
+            native-type="submit"
+            >{{ t('customThemes.save') }}</el-button
+          >
+          <el-button v-if="!isBuiltin" :icon="marIcon('administration')" @click="format">{{
             t('customThemes.format')
           }}</el-button>
-          <el-button v-if="!isBuiltin" :icon="RefreshLeft" :disabled="!dirty" @click="reset">{{
+          <el-button v-if="!isBuiltin" :icon="marIcon('undo')" :disabled="!dirty" @click="reset">{{
             t('customThemes.reset')
           }}</el-button>
-          <el-button :icon="CopyDocument" @click="copy">{{ t('customThemes.copyJson') }}</el-button>
-          <el-button :icon="Download" @click="exportFile">{{ t('customThemes.export') }}</el-button>
+          <el-button :icon="marIcon('copy')" @click="copy">{{
+            t('customThemes.copyJson')
+          }}</el-button>
+          <el-button :icon="marIcon('download')" @click="exportFile">{{
+            t('customThemes.export')
+          }}</el-button>
         </div>
         <el-form-item :label="t('customThemes.json')" prop="source">
           <template #label>
@@ -365,21 +374,24 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
             :closable="false"
             show-icon
             :title="t('customThemes.invalidJson')"
-          />
+            ><template #icon><MarIcon name="error" /></template
+          ></el-alert>
           <el-alert
             v-else-if="analysis.warnings.length"
             type="warning"
             :closable="false"
             show-icon
             :title="t('customThemes.warningSummary', { count: analysis.warnings.length })"
-          />
+            ><template #icon><MarIcon name="warning" /></template
+          ></el-alert>
           <el-alert
             v-else
             type="success"
             :closable="false"
             show-icon
             :title="t('customThemes.valid')"
-          />
+            ><template #icon><MarIcon name="success" /></template
+          ></el-alert>
           <ul v-if="analysis.warnings.length" class="warnings">
             <li v-for="(warning, index) in analysis.warnings" :key="index">
               {{ t(`customThemes.warnings.${warning.code}`, { field: warning.field }) }}
@@ -388,7 +400,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         </div>
         <div class="preview-heading">
           <h3>{{ t('customThemes.preview') }}</h3>
-          <el-button :icon="ZoomIn" @click="expandedPreview = true">{{
+          <el-button :icon="marIcon('zoom-in')" @click="expandedPreview = true">{{
             t('customThemes.expandPreview')
           }}</el-button>
         </div>
@@ -402,6 +414,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       :title="t('customThemes.preview')"
       width="min(54rem, calc(100vw - 32px))"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <ThemePreview
         :name="analysis.name ?? t('customThemes.untitled')"

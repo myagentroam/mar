@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { ArrowDown, ArrowUp } from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { RunnerCommandState, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -327,6 +328,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           :title="translate('goal.detailsTitle')"
           width="min(560px, calc(100vw - 32px))"
           append-to-body
+          :close-icon="marIcon('close')"
         >
           <dl class="goal-details">
             <div>
@@ -478,13 +480,13 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="up" :disabled="contextMenuIndex <= 0">
-              <el-icon><ArrowUp /></el-icon>{{ translate('generated.composerQueue.moveUp') }}
+              <MarIcon name="chevron-up" />{{ translate('generated.composerQueue.moveUp') }}
             </el-dropdown-item>
             <el-dropdown-item
               command="down"
               :disabled="contextMenuIndex < 0 || contextMenuIndex >= items.length - 1"
             >
-              <el-icon><ArrowDown /></el-icon>{{ translate('generated.composerQueue.moveDown') }}
+              <MarIcon name="chevron-down" />{{ translate('generated.composerQueue.moveDown') }}
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { ChatDotRound, ChatLineSquare } from '@element-plus/icons-vue';
 import type { HostedConversationSnapshot } from '@myagentroam/protocol';
 import { createHostedConversationEntryService } from '../../service/HostedConversationEntryService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -50,9 +51,11 @@ async function load(): Promise<void> {
     formRef.value?.clearValidate();
   } catch (error) {
     if (sequence !== loadSequence) return;
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed')
+    });
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -79,9 +82,11 @@ async function create(): Promise<void> {
     service.selectTemplate(form.templateId);
     emit('created', await service.create());
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed')
+    });
   } finally {
     creating.value = false;
   }
@@ -99,7 +104,7 @@ onMounted(load);
   >
     <div class="conversation-create-panel">
       <div class="conversation-create-heading">
-        <el-icon class="conversation-create-icon" aria-hidden="true"><ChatDotRound /></el-icon>
+        <MarIcon name="conversation" class="conversation-create-icon" aria-hidden="true" />
         <h2>{{ translate('hostedConversations.temporaryTitle') }}</h2>
       </div>
 
@@ -129,6 +134,8 @@ onMounted(load);
             :disabled="creating"
             @change="selectTemplate"
             @visible-change="refreshTemplatesOnOpen"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="template in templates"
@@ -148,8 +155,9 @@ onMounted(load);
           type="primary"
           :loading="creating"
           :disabled="createDisabled"
+          :loading-icon="marIcon('loading-action')"
         >
-          <el-icon><ChatLineSquare /></el-icon>
+          <MarIcon name="session-add" />
           <span>{{ translate('hostedConversations.start') }}</span>
         </el-button>
       </el-form>

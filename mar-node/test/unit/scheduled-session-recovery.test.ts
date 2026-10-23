@@ -71,7 +71,10 @@ describe('scheduled session restart recovery', () => {
     const coordinator = new ScheduledSessionCoordinator({
       store: () => f.store,
       busy: () => false,
-      authorize: async () => ({ secretEnvironment: {} }),
+      authorize: async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }),
       submit: async () => ({ runId: 'run-1' }),
       emitNotification: notify,
       sessionTitle: (id) => id
@@ -219,7 +222,10 @@ describe('scheduled session restart recovery', () => {
       const database = new NodeDatabase(f.path, 'node-a', f.clock);
       const store = new ScheduledSessionStore(database.raw, f.clock);
       const notify = vi.fn();
-      const authorize = vi.fn(async () => ({ secretEnvironment: {} }));
+      const authorize = vi.fn(async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }));
       const submit = vi.fn(async (_task: ScheduledSessionTask, id: string) => {
         sideEffects.push(id);
         return { runId: 'next-run' };
@@ -391,11 +397,36 @@ describe('scheduled session restart recovery', () => {
     const occurrenceId = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
     f.store.finish(occurrenceId, 'SUBMITTED', undefined, 'existing-run');
     f.database.close();
-    const raw = new DatabaseSync(f.path);
+    const legacyPath = f.path + '.v19';
+    const raw = new DatabaseSync(legacyPath);
     try {
-      raw.exec(
-        'DROP INDEX IF EXISTS scheduled_session_occurrences_unfinished; DELETE FROM node_schema_migrations WHERE version=20'
+      // Build the actual legacy schema; changing only the latest ledger is not a downgrade.
+      migrate(
+        raw,
+        NODE_SCHEMA_MIGRATIONS.filter((entry) => entry.version < 20)
       );
+      raw.prepare('ATTACH DATABASE ? AS source').run(f.path);
+      for (const table of [
+        'workspaces',
+        'agent_sessions',
+        'scheduled_session_tasks',
+        'scheduled_session_occurrences'
+      ]) {
+        const sourceColumns = new Set(
+          raw
+            .prepare(`PRAGMA source.table_info('${table}')`)
+            .all()
+            .map((column) => column.name)
+        );
+        const columns = raw
+          .prepare(`PRAGMA table_info('${table}')`)
+          .all()
+          .map((column) => String(column.name))
+          .filter((name) => sourceColumns.has(name))
+          .join(',');
+        raw.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM source.${table}`);
+      }
+      raw.exec('DETACH DATABASE source');
       const migration = NODE_SCHEMA_MIGRATIONS.find((entry) => entry.version === 20)!;
       expect(migration).toBeDefined();
       expect(() =>
@@ -426,7 +457,7 @@ describe('scheduled session restart recovery', () => {
     } finally {
       raw.close();
     }
-    const reopened = new NodeDatabase(f.path, 'node-a', f.clock);
+    const reopened = new NodeDatabase(legacyPath, 'node-a', f.clock);
     try {
       expect(new ScheduledSessionStore(reopened.raw).recent(task.id)[0]).toMatchObject({
         id: occurrenceId,
@@ -435,7 +466,7 @@ describe('scheduled session restart recovery', () => {
       });
       expect(
         reopened.raw.prepare('SELECT MAX(version) AS version FROM node_schema_migrations').get()
-      ).toMatchObject({ version: 20 });
+      ).toMatchObject({ version: NODE_SCHEMA_MIGRATIONS.at(-1)!.version });
       expect(
         reopened.raw.prepare("PRAGMA index_list('scheduled_session_occurrences')").all()
       ).toContainEqual(
