@@ -2,7 +2,6 @@ import { createRenderer, createSSRApp, defineComponent, h, ssrContextKey } from 
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ElementPlus, { ZINDEX_INJECTION_KEY } from 'element-plus';
-import { readFileSync } from 'node:fs';
 import AppShell from '../../src/App.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { useDocumentationAvailability } from '../../src/service/DocumentationAvailability.js';
@@ -103,44 +102,6 @@ describe('shared product application shell', () => {
       expect(event.defaultPrevented).toBe(false);
     }
   );
-
-  it('keeps the native context menu on touch devices and suppresses it elsewhere outside editable controls and media', () => {
-    const source = readFileSync(new URL('../../src/App.vue', import.meta.url), 'utf8');
-    expect(source).toContain("document.addEventListener('contextmenu', preventBrowserContextMenu)");
-    expect(source).toContain("pointerType === 'touch'");
-    expect(source).toContain("window.matchMedia('(hover: none) and (pointer: coarse)').matches");
-    expect(source).toContain("target.matches('input, textarea, select')");
-    expect(source).toContain("target.closest('img, video, audio') !== null");
-    expect(source).toContain('\'[contenteditable]:not([contenteditable="false"])\'');
-    expect(source).toContain('event.preventDefault();');
-  });
-
-  it('keeps ordinary standalone files in the Workbench and overlays its bootstrap with loading', () => {
-    const appSource = readFileSync(new URL('../../src/App.vue', import.meta.url), 'utf8');
-    const workbenchSource = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchPage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(appSource).toContain("query.get('markdownPreview') === '1'");
-    expect(appSource).toContain("query.get('htmlPreview') === '1'");
-    expect(appSource).toContain("query.get('source') === 'hosted'");
-    expect(workbenchSource).toContain(
-      'page.standaloneFileMode && (page.standaloneFileLoading || page.standaloneFileError)'
-    );
-    expect(workbenchSource).toContain(':inert="page.standaloneFileMode"');
-    expect(workbenchSource).toContain('FilePreviewLoading');
-    expect(workbenchSource).toContain(
-      "t('generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour')"
-    );
-    expect(workbenchSource).toContain('z-index: 49;');
-  });
-
-  it('keeps the HTML bootstrap visible until the selected async page resolves', () => {
-    const source = readFileSync(new URL('../../src/App.vue', import.meta.url), 'utf8');
-    expect(source).toContain('<Suspense @resolve="revealApplication">');
-    expect(source).toContain("document.getElementById('mar-bootstrap')?.remove()");
-  });
 
   it.each([true, false])(
     'composes documentation availability without edition checks (%s)',

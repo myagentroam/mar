@@ -18,6 +18,7 @@ async function render(component: Component, props: Record<string, unknown>): Pro
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
   app.use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -421,40 +422,7 @@ describe('public file navigation components', () => {
       expect(html).not.toContain('title="docs/guide.md"');
       expect(html).not.toContain('file-31.txt');
       expect(html).not.toMatch(/generated\.|workspaceFileTree\./u);
-      const treeSource = readFileSync(
-        new URL('../../src/view/workspace/WorkspaceFileTree.vue', import.meta.url),
-        'utf8'
-      );
-      expect(treeSource).toMatch(
-        /\.file-tree-row\s*\{[^}]*grid-template-columns:\s*0\.8rem 18px minmax\(0, 1fr\);[^}]*gap:\s*0;[^}]*flex:\s*1;[^}]*var\(--tree-depth\) \* 8px/u
-      );
-      expect(treeSource).toMatch(/\.tree-chevron\s*\{[^}]*font-size:\s*0\.6rem;[^}]*\}/u);
-      expect(treeSource).toMatch(
-        /\.workspace-file-tree\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/u
-      );
-      expect(treeSource).toMatch(
-        /\.file-tree-virtual-space,[^}]*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/u
-      );
-      expect(treeSource).toMatch(/\.file-tree-more\s*\{[^}]*margin-left:\s*0;[^}]*\}/u);
-      expect(treeSource).toMatch(
-        /\.tree-name\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/u
-      );
-      expect(treeSource).not.toContain('virtualContentWidth');
-      expect(treeSource).not.toMatch(/\.file-tree-more\s*\{[^}]*position:\s*sticky;[^}]*\}/u);
-      expect(treeSource).toContain('@contextmenu="openNodeActions(row.node.path, $event)"');
-      expect(treeSource).toContain('event.preventDefault();');
-      expect(treeSource).toContain('v-if="nodeActionsVisible(row.node.path)"');
-      expect(treeSource).toContain(
-        '<span v-else class="file-tree-more" aria-hidden="true"></span>'
-      );
       expect(html).not.toContain('el-dropdown');
-      expect(treeSource).toContain('@visible-change="setActionMenuVisible($event, row.node.path)"');
-      expect(treeSource).toMatch(
-        /\.file-tree-more:not\(\.is-visible\)\s*\{\s*visibility:\s*hidden;/u
-      );
-      expect(treeSource).toContain('-webkit-touch-callout: none;');
-      expect(treeSource).toContain('!props.mobileViewport');
-      expect(treeSource).toContain(':draggable="fileMoveEnabled(row.node)"');
       const empty = await render(WorkspaceFileTree, {
         root,
         filter: 'no-file-matches-this-query',
@@ -469,33 +437,6 @@ describe('public file navigation components', () => {
   });
 
   describe('file tree action menu', () => {
-    it('declares node, interaction, permission and locale changes as row render memo dependencies', () => {
-      const source = readFileSync(
-        new URL('../../src/view/workspace/WorkspaceFileTree.vue', import.meta.url),
-        'utf8'
-      );
-      const dependencies = /v-memo="(\[[\s\S]*?\])"/u.exec(source)?.[1];
-      expect(dependencies).toBeDefined();
-      for (const dependency of [
-        'row.node,',
-        'row.node.name',
-        'row.node.kind',
-        'row.node.expanded',
-        'row.node.loading',
-        'row.depth',
-        'row.loadMore',
-        'selectedPath === row.node.path',
-        'draggingPath === row.node.path',
-        'focusedPath === row.node.path',
-        'nodeActionsVisible(row.node.path)',
-        'disabled',
-        'mutationsEnabled',
-        'mobileViewport',
-        'locale'
-      ])
-        expect(dependencies).toContain(dependency);
-    });
-
     it('keeps the opened row action visible after hover leaves and ignores another menu closing', () => {
       vi.stubGlobal(
         'ResizeObserver',

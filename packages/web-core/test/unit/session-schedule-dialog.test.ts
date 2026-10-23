@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage } from 'element-plus';
 import SessionScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue';
+import RenderedScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue?unit-render';
+import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn(), success: vi.fn() } }));
@@ -210,17 +211,42 @@ describe('scheduled session configuration status', () => {
 });
 
 describe('scheduled session history pagination', () => {
-  it('wires a controlled ten-record pager to the occurrence page loader', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/SessionScheduleDialog.vue', import.meta.url),
-      'utf8'
-    );
-    const pager = source.match(/<el-pagination\b[\s\S]*?\/>/u)?.[0];
-    expect(pager).toContain(':current-page="occurrencePage"');
-    expect(pager).toContain(':page-size="10"');
-    expect(pager).toContain(':total="occurrenceTotal"');
-    expect(pager).toContain(':disabled="loading || saving"');
-    expect(pager).toContain('@current-change="changeOccurrencePage"');
+  it('loads the selected ten-record history page and disables paging during its request', async () => {
+    const request = vi.fn(async (_url: string) => page(1));
+    const view = renderComponent(RenderedScheduleDialog, {
+      modelValue: true,
+      session: { id: 'one' },
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      request
+    });
+    try {
+      await flushComponent();
+      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+        'current-page': 1,
+        'page-size': 10,
+        total: 25,
+        disabled: false
+      });
+      let release!: (value: ReturnType<typeof page>) => void;
+      request.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      await trigger(view.findAll('ElPagination')[0]!, 'onCurrentChange', 2);
+      expect(request.mock.calls.at(-1)?.[0]).toContain('occurrencePage=2');
+      expect(view.findAll('ElPagination')[0]!.props.disabled).toBe(true);
+      release(page(2));
+      await flushComponent();
+      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+        'current-page': 2,
+        disabled: false
+      });
+    } finally {
+      view.unmount();
+    }
   });
 
   it.each(['zh-CN', 'en-US'] as const)(

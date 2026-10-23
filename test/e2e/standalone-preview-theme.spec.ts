@@ -61,6 +61,9 @@ for (const theme of ['daylight', 'dark', 'custom']) {
     }
     await expect(page.locator('.markdown-body')).toContainText('Readable text.');
     await expect(page.locator('.markdown-body')).toHaveCSS('color', 'rgb(31, 35, 40)');
+    await expect(root).toHaveCSS('overflow-y', 'auto');
+    await expect(page.locator('.markdown-body')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(page.locator('.markdown-body > :first-child')).toHaveCSS('margin-top', '0px');
     await expect(loading).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath(`${theme}-desktop.png`) });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -77,6 +80,47 @@ test('Standalone preview errors remain readable on the light surface', async ({ 
     'background-color',
     'rgb(255, 255, 255)'
   );
+});
+
+test('Standalone Markdown prints complete pages without the console viewport clipping', async ({
+  page
+}) => {
+  await page.route('**/api/workspaces/workspace/files/read?**', (route) =>
+    route.fulfill({
+      json: {
+        file: {
+          path: 'guide.md',
+          size: 12000,
+          encoding: 'utf-8',
+          content: '# Print preview\n\n' + 'Long readable paragraph.\n\n'.repeat(150),
+          truncated: false,
+          nextOffset: null
+        }
+      }
+    })
+  );
+  await page.goto(
+    `${fixture.url}standalone-preview.html?markdownPreview=1&nodeId=node&workspaceId=workspace&path=guide.md`
+  );
+  const body = page.locator('.markdown-body');
+  await expect(body).toContainText('Print preview');
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('#app')).toHaveCSS('overflow', 'visible');
+  await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(page.locator('.standalone-file-preview')).toHaveCSS('display', 'block');
+  await expect(page.locator('.standalone-markdown-header')).toBeHidden();
+  const geometry = await page.locator('.markdown-preview-page').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      width: element.getBoundingClientRect().width,
+      padding: parseFloat(style.paddingTop),
+      height: element.getBoundingClientRect().height,
+      viewport: innerHeight
+    };
+  });
+  expect(geometry.width).toBeCloseTo((210 * 96) / 25.4, 0);
+  expect(geometry.padding).toBeCloseTo((18 * 96) / 25.4, 0);
+  expect(geometry.height).toBeGreaterThan(geometry.viewport);
 });
 
 test('Standalone HTML keeps a light shell without recoloring the document', async ({ page }) => {

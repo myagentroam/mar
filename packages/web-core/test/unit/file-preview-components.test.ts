@@ -700,34 +700,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
 });
 
 describe('standalone Markdown preview', () => {
-  it('uses an explicit light scroll surface instead of inheriting the console theme', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/StandaloneFilePreviewPage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain('github-markdown-css/github-markdown-light.css?url');
-    expect(source).toMatch(
-      /\.standalone-file-preview\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*auto;[^}]*background:\s*#fff;[^}]*color-scheme:\s*light;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /\.markdown-preview-page\s+:deep\(\.markdown-body\)\s*\{[^}]*background-color:\s*transparent;[^}]*color-scheme:\s*light;[^}]*\}/u
-    );
-    expect(source).toMatch(/\.markdown-preview-page\s*\{[^}]*padding:\s*6mm 18mm 18mm;[^}]*\}/u);
-    expect(source).toMatch(
-      /\.markdown-preview-page\s+:deep\(\.markdown-body > :first-child\)\s*\{[^}]*margin-top:\s*0;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?\.standalone-file-preview\s*\{[^}]*display:\s*block;[^}]*min-height:\s*0;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?:global\(#app\)\s*\{[^}]*height:\s*auto\s*!important;[^}]*overflow:\s*visible\s*!important;[^}]*background:\s*#fff\s*!important;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?@page\s*\{[^}]*margin:\s*0;[^}]*\}[\s\S]*?\.markdown-preview-page\s*\{[^}]*width:\s*210mm;[^}]*min-height:\s*297mm;[^}]*padding:\s*18mm;[^}]*\}/u
-    );
-  });
-
   it('keeps unavailable edit shortcuts native and gives format previews mobile actions', () => {
     const standalone = readFileSync(
       new URL('../../src/view/workspace/StandaloneFilePreviewPage.vue', import.meta.url),
