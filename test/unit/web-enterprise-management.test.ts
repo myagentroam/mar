@@ -78,7 +78,14 @@ describe('Web enterprise management domain', () => {
   it.each(['PERSONAL', 'ENTERPRISE', 'ORGANIZATION'] as const)(
     'Skill favorite ownership %s includes an organization ID only for organization scope',
     async (scope) => {
-      const request = vi.fn(async () => ({ favorites: [], sources: [] }));
+      const request = vi.fn(async () => ({
+        favorites: [],
+        sources: [],
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        hasMore: false
+      }));
       const service = createSkillCenterService(request as never);
       service.selectedSourceId.value = 'source';
       await service.favorite(
@@ -196,59 +203,14 @@ describe('Web enterprise management domain', () => {
     i18n.global.locale.value = 'en-US';
     expect(i18n.global.t('common.grant')).toBe('Grant');
   });
-  it('MAR Agent model pages use management action layouts and readable protocol, status, and test feedback', async () => {
+  it('retains model action spacing until browser layout coverage replaces its declaration check', async () => {
     const source = await readFile(
       resolve(process.cwd(), 'packages/web-core/src/view/settings/MarAgentModelManagementPage.vue'),
       'utf8'
     );
-
-    const extension = await readFile(
-      resolve(process.cwd(), 'ee/web/src/view/settings/MarAgentModelManagementPage.vue'),
-      'utf8'
-    );
-    const grants = await readFile(
-      resolve(process.cwd(), 'ee/web/src/view/settings/ModelGrantExtension.vue'),
-      'utf8'
-    );
-    const ownership = await readFile(
-      resolve(process.cwd(), 'ee/web/src/service/ModelCredentialOwnershipService.ts'),
-      'utf8'
-    );
-    expect(source).toContain('class="table-actions"');
-    expect(source).toContain('class="row-actions"');
-    expect(source).toContain(':loading="testingIds.has(row.id)"');
-    expect(source).toContain("translate('marAgentModels.protocolOpenAI')");
-    expect(source).toContain("translate('marAgentModels.protocolAnthropic')");
-    expect(source).toContain("'marAgentModels.testAuthFailed'");
-    expect(source).toContain('class="model-enabled"');
-    expect(source).toContain("translate('marAgentModels.adjustOrder')");
-    expect(source).toContain("'/api/admin/mar-agent/models/order'");
-    expect(source).toContain("translate('marAgentModels.adjustPersonalOrder')");
-    expect(source).toContain("'/api/mar-agent/models/order'");
-    expect(grants).toContain("resourceType: 'MODEL'");
-    expect(grants).toContain('modelId: row.id');
-    expect(extension).toContain("'marAgentModels.public'");
-    expect(extension).toContain("'marAgentModels.restricted'");
-    expect(grants).toContain('/api/resource-grants');
-    expect(source).toContain(':draggable="sorting"');
-    expect(source).toContain('CodexLoginAttemptPoller');
-    expect(source).toContain('createCodexCredentialManagementService');
-    expect(source).toContain('eligibleMarAgentTransportTestNodes');
-    expect(source).toContain('defaultReasoningEffort: ReasoningEffort');
-    expect(source).toContain("defaultReasoningEffort: 'medium'");
-    expect(source).toContain('defaultReasoningEffort: model.defaultReasoningEffort');
-    expect(source).toContain('defaultReasoningEffort: draft.defaultReasoningEffort');
-    expect(source).toContain(
-      'draft.defaultReasoningEffort = resolveMarAgentDefaultReasoningEffort('
-    );
-    expect(source).toContain('v-model="draft.defaultReasoningEffort"');
-    expect(source).toContain('v-model="draft.titleGeneration"');
-    expect(source).toContain("translate('marAgentModels.titleGeneration')");
-    expect(source).toContain('v-model="draft.codeMode"');
-    expect(source).toContain("translate('marAgentModels.codeMode')");
-    expect(source).toContain("translate('marAgentModels.defaultReasoningEffort')");
-    expect(source).toContain('{{ row.defaultReasoningEffort }}');
-    expect(source).toContain("translate('marAgentModels.codexCatalogReasoningDefault')");
+    expect(source).toMatch(/\.table-actions\s*\{[^}]*margin-bottom:\s*\d+px;/u);
+  });
+  it('provides bilingual model purpose and default reasoning labels', () => {
     expect(i18n.global.t('marAgentModels.defaultReasoningEffort')).toBe('默认思考强度');
     expect(i18n.global.t('marAgentModels.titleGeneration')).toBe('会话标题命名');
     expect(i18n.global.t('marAgentModels.codeMode')).toBe('Code Mode');
@@ -260,202 +222,6 @@ describe('Web enterprise management domain', () => {
     expect(i18n.global.t('marAgentModels.codexCatalogReasoningDefault')).toBe(
       'Default reasoning effort'
     );
-    expect(source).toContain('name="models"');
-    expect(source).toContain('name="codexCredentials"');
-    expect(source).toContain('const canManageModels = computed(() =>');
-    expect(source).toContain('v-if="canManageModels"');
-    expect(extension).toContain('edition:');
-    expect(extension).toContain('role:');
-    expect(extension).toContain('organizationId:');
-    expect(extension).toContain('credentialDraft.ownerType');
-    expect(source).toContain("translate('marAgentModels.codexCredentialScope')");
-    expect(source).toContain("translate('marAgentModels.codexCredentialScopePersonal')");
-    expect(ownership).toContain(
-      "return translate('marAgentModels.codexCredentialScopeOrganization', {"
-    );
-    expect(extension).toContain(
-      "translate('marAgentModels.codexCredentialScopeOrganizationOption')"
-    );
-    expect(extension).toContain("translate('marAgentModels.organization')");
-    expect(source).toContain('type ProtocolChoice = ReturnType<typeof modelProtocolChoice>');
-    expect(source).toContain("translate('marAgentModels.protocolCodex')");
-    expect(source).toContain('value="CODEX"');
-    expect(source).toContain('isOAuthProtocol(draft.protocol)');
-    expect(source).toContain('draft.responsesTransport');
-    expect(source).not.toContain('responsesEncoding');
-    expect(source).toContain("serviceTier: 'default'");
-    expect(source).toContain(
-      "serviceTier: model.serviceTier ?? (model.fastMode === true ? 'priority' : 'default')"
-    );
-    expect(source).toContain('...(codex ? { serviceTier: draft.serviceTier } : {})');
-    const fastModeLabel = source.indexOf(':label="translate(\'marAgentModels.serviceTier\')"');
-    const fastModeFieldStart = source.lastIndexOf('<el-form-item', fastModeLabel);
-    const fastModeField = source.slice(
-      fastModeFieldStart,
-      source.indexOf('</el-form-item>', fastModeLabel)
-    );
-    expect(fastModeField).toContain('v-if="isOAuthProtocol(draft.protocol)"');
-    expect(fastModeField).toContain('v-model="draft.serviceTier"');
-    const transportLabel = source.indexOf(':label="translate(\'marAgentModels.transport\')"');
-    const transportFieldStart = source.lastIndexOf('<el-form-item', transportLabel);
-    const transportField = source.slice(
-      transportFieldStart,
-      source.indexOf('</el-form-item>', transportLabel)
-    );
-    expect(transportLabel).toBeGreaterThan(transportFieldStart);
-    expect(transportField).toContain('v-if="isOAuthProtocol(draft.protocol)"');
-    expect(source).toContain(
-      "draft.responsesTransport = isOAuthProtocol(protocol) ? { transport: 'WEBSOCKET' } : undefined"
-    );
-    expect(source).toContain('...(codex && draft.responsesTransport !== undefined');
-    expect(source).toContain('credentialService.credentialDetails(');
-    expect(source).toContain('credentialService.credentialUsage(');
-    expect(source).toContain('credentialService.testModel(');
-    expect(source).toContain("result.message ?? translate('marAgentModels.testConnectionFailed')");
-    expect(source).not.toContain("result.code === 'MAR_AGENT_MODEL_AUTH_FAILED'");
-    expect(source).toContain('credentialService.loadCatalog(');
-    expect(source).toContain('credentialService.importModels(');
-    expect(source).toContain(':label="credential.name"');
-    expect(source).toContain("translate('marAgentModels.codexCatalogReasoningSupported')");
-    expect(source).toContain("translate('marAgentModels.codexCatalogReasoningUnsupported')");
-    expect(source).not.toContain('v-model="draft.credentialType"');
-    expect(source).not.toContain('catalogTransportChoice(');
-    expect(source).not.toContain('setCatalogTransport(');
-    expect(source).not.toContain(
-      ':label="`${credential.name} · ${credentialStatusLabel(credential.status)}`"'
-    );
-    expect(source).not.toContain('allowPrimary');
-    expect(source).not.toContain('allowSubagent');
-    expect(source).not.toContain('>{{ scope.row.protocol }}</');
-    const modelDataBinding = source.indexOf(':data="models"');
-    const modelTableStart = source.lastIndexOf('<el-table', modelDataBinding);
-    expect(modelDataBinding).toBeGreaterThanOrEqual(0);
-    const modelTable = source.slice(
-      modelTableStart,
-      source.indexOf('</el-table>', modelTableStart)
-    );
-    expect(modelTable).not.toContain("translate('marAgentModels.credential')");
-    expect(modelTable).not.toContain("translate('marAgentModels.transport')");
-
-    const credentialDataBinding = source.indexOf(':data="credentials"');
-    const credentialTableStart = source.lastIndexOf('<el-table', credentialDataBinding);
-    expect(credentialDataBinding).toBeGreaterThanOrEqual(0);
-    expect(credentialTableStart).toBeGreaterThanOrEqual(0);
-    const credentialTable = source.slice(
-      credentialTableStart,
-      source.indexOf('</el-table>', credentialTableStart)
-    );
-    expect(credentialTable).not.toContain("translate('marAgentModels.codexProxy')");
-    expect(credentialTable).not.toContain("translate('marAgentModels.codexImportedModels')");
-    expect(credentialTable).toContain("translate('marAgentModels.codexCredentialScope')");
-    expect(credentialTable).toContain('@row-click="openCredentialDetails"');
-    expect(credentialTable).toContain('testCredential(row)');
-    expect(credentialTable).toContain('openCredentialEdit(row)');
-    expect(credentialTable).not.toContain('openCredentialLogin(row)');
-    expect(credentialTable).not.toContain('openCatalog(row)');
-    expect(credentialTable).toContain('removeCredential(row)');
-    expect(credentialTable).toContain(`:loading="credentialActionIs(row.id, 'EDIT')"`);
-    expect(credentialTable).toContain(`:loading="credentialActionIs(row.id, 'TEST')"`);
-    expect(credentialTable).toContain(`:loading="credentialActionIs(row.id, 'REMOVE')"`);
-    expect(credentialTable).toContain(':disabled="credentialActionBusy(row.id)"');
-    expect(credentialTable).not.toContain(':loading="credentialActionIds.has(row.id)"');
-
-    const credentialEditStart = source.indexOf('v-if="credentialDialog"');
-    const credentialEditDialog = source.slice(
-      credentialEditStart,
-      source.indexOf('</el-dialog>', credentialEditStart)
-    );
-    expect(extension).toContain(
-      `v-if="edition === 'ENTERPRISE' && (role === 'ADMIN' || role === 'ORG_ADMIN')"`
-    );
-    expect(extension).toContain(
-      `v-if="canSelectOrganization || modelOwnership.draft.ownerType === 'ORGANIZATION'"`
-    );
-    const credentialEdit = source.slice(
-      source.indexOf('async function openCredentialEdit'),
-      source.indexOf('async function submitCredentialLogin')
-    );
-    const submitCredential = source.slice(
-      source.indexOf('async function submitCredentialLogin'),
-      source.indexOf('function resetCredentialDialog')
-    );
-    expect(source).toContain(
-      "type ActiveTab = 'modelOrder' | 'models' | 'codexCredentials' | 'imageGeneration'"
-    );
-    expect(source).toContain('ImageGenerationManagement');
-    expect(credentialEdit).not.toContain('imageModelId');
-    expect(submitCredential).not.toContain('imageModelId');
-    expect(submitCredential).toContain(
-      'ownership: props.credentialOwnership?.() ?? credentialOwnershipValue.value'
-    );
-    expect(credentialEditDialog).not.toContain('v-model="credentialDraft.imageModelId"');
-    expect(source).toContain('name="imageGeneration"');
-
-    const credentialDetailsStart = source.indexOf('v-if="credentialDetailOpen"');
-    const credentialDetails = source.slice(
-      credentialDetailsStart,
-      source.indexOf('</el-dialog>', credentialDetailsStart)
-    );
-    expect(source).toContain('const selectedCredentialDetails = ref<CodexCredentialDetails>();');
-    expect(source).toContain('const selectedCredentialUsage = ref<CodexCredentialUsage>();');
-    expect(source).toContain('function formatUsageStatsTimeZone');
-    expect(source).toContain('const loginAttemptRefreshing = ref(false);');
-    expect(source).toContain('async function openCredentialDetails');
-    expect(source).toContain('async function refreshLoginAttempt');
-    expect(source).toContain('await loginPoller.refresh();');
-    expect(credentialDetails).toContain('selectedCredentialDetails.socks5Url');
-    expect(credentialDetails).toContain('selectedCredentialUsage.windows');
-    expect(credentialDetails).toContain('selectedCredentialUsage.profile.lifetimeTokens');
-    expect(credentialDetails).toContain('selectedCredentialUsage.profile.currentDayTokens');
-    expect(credentialDetails).toContain('selectedCredentialUsage.profile.lastSevenDaysTokens');
-    expect(credentialDetails).toContain('selectedCredentialUsage.profile.statsAsOf');
-    expect(credentialDetails).toContain(
-      'formatUsageStatsTimeZone(selectedCredentialUsage.profile.statsAsOf)'
-    );
-    expect(credentialDetails).not.toContain('selectedCredentialUsage.profile.generatedAt');
-    expect(credentialDetails).not.toContain('dailyUsageBuckets');
-    expect(credentialDetails).toContain('runnerUsageWindowLabel(window)');
-    expect(credentialDetails).toContain('loadCredentialUsage(');
-    expect(credentialDetails).toContain(':icon="DataAnalysis"');
-    expect(credentialDetails).toContain(':icon="Key"');
-    expect(credentialDetails).not.toContain('openCredentialEdit(');
-    expect(credentialDetails).toContain('refreshCredential(');
-    expect(credentialDetails).not.toContain('testCredential(');
-    expect(credentialDetails).toContain('openCredentialLogin(');
-    expect(credentialDetails).toContain('openCatalog(');
-    expect(credentialDetails).not.toContain('removeCredential(');
-    expect(credentialDetails).not.toContain('codexImportedModels');
-    expect(credentialDetails).not.toContain('codexMetadata');
-    expect(source).not.toContain('customJson');
-    expect(source).not.toContain('parseCustomMetadata');
-    expect(source).not.toContain('marAgentModels.codexFedramp');
-
-    const loginAttemptDialogStart = source.indexOf('v-if="loginAttemptDialog && loginAttempt"');
-    const loginAttemptDialog = source.slice(
-      loginAttemptDialogStart,
-      source.indexOf('</el-dialog>', loginAttemptDialogStart)
-    );
-    expect(loginAttemptDialog).toContain('@click="refreshLoginAttempt"');
-    expect(loginAttemptDialog).toContain(':loading="loginAttemptRefreshing"');
-    expect(loginAttemptDialog).toContain("translate('marAgentModels.codexRefreshLoginStatus')");
-
-    const refreshCredential = source.slice(
-      source.indexOf('async function refreshCredential'),
-      source.indexOf('async function testCredential')
-    );
-    expect(refreshCredential).toContain(
-      'const refreshed = await credentialService.refreshCredential(credential.id);'
-    );
-    expect(refreshCredential).toContain('credential: refreshed');
-
-    const catalogTableStart = source.indexOf('<el-table :data="catalogRows"');
-    const catalogTable = source.slice(
-      catalogTableStart,
-      source.indexOf('</el-table>', catalogTableStart)
-    );
-    expect(catalogTable).not.toContain("translate('marAgentModels.availability')");
-    expect(catalogTable).not.toContain('v-model="row.enabled"');
-    expect(source).toMatch(/\.table-actions\s*\{[^}]*margin-bottom:\s*\d+px;/u);
   });
   it('Node detail actions share the Codex credential action-area and close-button layout', async () => {
     const [nodeDetails, credentialDetails] = await Promise.all([
@@ -491,15 +257,6 @@ describe('Web enterprise management domain', () => {
     );
     expect(nodeDialog).not.toContain('class="node-detail-footer"');
     expect(nodeDialog).toMatch(/<\/div>\s*<el-button\s+@click="emit\('update:nodeOpen', false\)"/u);
-    const nodeActionsStart = nodeDialog.indexOf('class="node-detail-actions"');
-    const nodeActions = nodeDialog.slice(
-      nodeActionsStart,
-      nodeDialog.indexOf('</div>', nodeActionsStart)
-    );
-    expect(nodeActions).toMatch(/<el-button\s+v-if="upgrade\?\.canUpgrade"\s+:icon="Upload"/u);
-    expect(nodeActions).not.toMatch(/<el-button\s+v-if="upgrade\?\.canUpgrade"\s+type="primary"/u);
-    expect(nodeActions).toMatch(/<el-button\s+v-if="upgrade\?\.waitingForRuns"\s+:icon="Close"/u);
-    expect(nodeActions).not.toContain('type="primary"');
     expect(nodeDetails).toMatch(/\.node-detail-actions\s*\{[^}]*margin-bottom:\s*12px;/u);
     expect(nodeDetails).not.toContain('.node-detail-footer');
   });
@@ -512,57 +269,11 @@ describe('Web enterprise management domain', () => {
       readFile(resolve(process.cwd(), 'ee/web/src/service/ResourceHostingService.ts'), 'utf8')
     ] as const);
     expect(nodeDetails).toContain('ConversationHostingMaintenanceCard');
-    expect(nodeDetails).toContain('hosting.enabled');
     expect(enterpriseResourceHosting).toContain(
       "import { createResourceHostingService as createCore } from '@myagentroam/web-core/resource-hosting'"
     );
-    expect(enterpriseResourceHosting).toContain("context().edition === 'COMMUNITY' ||");
-    expect(enterpriseResourceHosting).toContain("row.ownership.ownerType === 'ORGANIZATION'");
   });
-  it('MAR Agent model pages ignore stale responses for closed or switched credential dialogs', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'packages/web-core/src/view/settings/MarAgentModelManagementPage.vue'),
-      'utf8'
-    );
-    const credentialEdit = source.slice(
-      source.indexOf('async function openCredentialEdit'),
-      source.indexOf('async function submitCredentialLogin')
-    );
-    const credentialDetails = source.slice(
-      source.indexOf('async function openCredentialDetails'),
-      source.indexOf('function openCredentialLogin')
-    );
-    const openCredentialDetails = source.slice(
-      source.indexOf('async function openCredentialDetails'),
-      source.indexOf('async function loadCredentialUsage')
-    );
-    const credentialUsage = source.slice(
-      source.indexOf('async function loadCredentialUsage'),
-      source.indexOf('function resetCredentialDetails')
-    );
-    const catalogLoad = source.slice(
-      source.indexOf('async function openCatalog'),
-      source.indexOf('async function importCatalogModels')
-    );
 
-    expect(source).toContain('let credentialEditSequence = 0;');
-    expect(credentialEdit).toContain('const sequence = ++credentialEditSequence;');
-    expect(credentialEdit).toContain('if (sequence !== credentialEditSequence) return;');
-    expect(source).toContain('credentialEditSequence += 1;');
-    expect(source).toContain('let credentialDetailSequence = 0;');
-    expect(credentialDetails).toContain('const sequence = ++credentialDetailSequence;');
-    expect(credentialDetails).toContain('if (sequence !== credentialDetailSequence');
-    expect(credentialDetails).toContain('credentialDetailSequence += 1;');
-    expect(openCredentialDetails).toContain('credentialUsageLoading.value = false;');
-    expect(source).toContain('watch(credentialDetailOpen');
-    expect(credentialUsage).toContain('const sequence = credentialDetailSequence;');
-    expect(credentialUsage).toContain('if (sequence !== credentialDetailSequence');
-    expect(credentialDetails).toContain('selectedCredentialUsage.value = undefined;');
-    expect(source).toContain('let catalogSequence = 0;');
-    expect(catalogLoad).toContain('const sequence = ++catalogSequence;');
-    expect(catalogLoad).toContain('if (sequence !== catalogSequence) return;');
-    expect(source).toContain('catalogSequence += 1;');
-  });
   it('Workbench supplies live Node lists to MAR Agent model management', () => {
     const context = managementContext(managementStates[0]!);
     const page = createEnterpriseManagementComposition().resolve('mar-agent-models', context.admin);
@@ -571,7 +282,7 @@ describe('Web enterprise management domain', () => {
     expect(refreshed.nodes).not.toBe(context.nodes);
     expect(page.props(refreshed).nodes).toBe(refreshed.nodes);
   });
-  it('Enterprise members and organization administrators enter only the Codex credential view', () => {
+  it('Enterprise management descriptors preserve the current role and organization context', () => {
     const composition = createEnterpriseManagementComposition();
     for (const admin of managementStates) {
       expect(composition.items(admin).filter((item) => item.id === 'mar-agent-models')).toEqual([
@@ -611,8 +322,6 @@ describe('Web enterprise management domain', () => {
     expect(source).toContain('row.publishedVersion');
     expect(source).not.toContain('detail.publishJobs');
     expect(source).not.toContain('r{{ row.draftRevision }}');
-    expect(source).toContain('createManagementPaginationService');
-    expect(source).toContain('managementPageItems');
     expect(source).toContain('<ManagementPagination');
     expect(source).toContain('class="clickable-rows"');
     expect(source).toContain('@row-click="openDetail"');

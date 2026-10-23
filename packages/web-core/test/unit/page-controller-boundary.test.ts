@@ -8,9 +8,6 @@ describe('public Workbench page controller', () => {
       new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
       'utf8'
     );
-    expect(source).toContain('createWorkbenchSessionHistoryMutationService(');
-    expect(source).toContain('readWorkspaceDirectFileMetadata(');
-    expect(source).toContain('readGitDirectFileMetadata(');
     expect(source).not.toContain('/files/direct-metadata');
     expect(source).not.toContain('/git/file-metadata');
     expect(source).not.toContain('createWorkspaceDirectObjectUrlSink(');

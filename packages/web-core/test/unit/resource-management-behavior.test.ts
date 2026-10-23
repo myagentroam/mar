@@ -81,7 +81,7 @@ describe('Public resource operation behavior', () => {
       const confirmation = vi
         .spyOn(ElMessageBox, 'confirm')
         .mockRejectedValueOnce('cancel')
-        .mockResolvedValue('confirm');
+        .mockResolvedValue('confirm' as never);
       const validate = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
       const changed = vi.fn();
       const view = renderComponent(
@@ -146,6 +146,7 @@ describe('Public resource operation behavior', () => {
         return { nodes: [node()] };
       }
       if (path.startsWith('/api/runner-usage/status')) return { statuses: [] };
+      if (path.startsWith('/api/environment-secrets?')) return { secrets: [] };
       if (path === '/api/nodes/node-1/upgrade' && init?.method === 'POST') {
         waiting = true;
         return {};
@@ -159,7 +160,7 @@ describe('Public resource operation behavior', () => {
     const confirmation = vi
       .spyOn(ElMessageBox, 'confirm')
       .mockRejectedValueOnce('cancel')
-      .mockResolvedValue('confirm');
+      .mockResolvedValue('confirm' as never);
     const view = renderComponent(NodePage, { request, writable: true });
     const button = (label: string) =>
       view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
@@ -173,18 +174,24 @@ describe('Public resource operation behavior', () => {
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
       failRefresh = true;
       await trigger(button(refreshLabel), 'onClick');
-      expect(ElMessage.error).toHaveBeenCalledWith('Fixture capability refresh unavailable');
+      expect(ElMessage.error).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Fixture capability refresh unavailable' })
+      );
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
       failRefresh = false;
       version = '0.10.40';
       await trigger(button(refreshLabel), 'onClick');
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.40');
+      expect(button(messages.pushUpgrade2).props['icon']).toBeTruthy();
+      expect(button(messages.pushUpgrade2).props['type']).not.toBe('primary');
       await trigger(button(messages.pushUpgrade2), 'onClick');
       expect(request.mock.calls.some(([path]) => path.endsWith('/upgrade'))).toBe(false);
       await trigger(button(messages.pushUpgrade2), 'onClick');
       expect(confirmation).toHaveBeenCalledTimes(2);
       expect(request).toHaveBeenCalledWith('/api/nodes/node-1/upgrade', { method: 'POST' });
       expect(button(messages.cancelUpgrade)).toBeDefined();
+      expect(button(messages.cancelUpgrade).props['icon']).toBeTruthy();
+      expect(button(messages.cancelUpgrade).props['type']).not.toBe('primary');
       await trigger(button(messages.cancelUpgrade), 'onClick');
       expect(request).toHaveBeenCalledWith('/api/nodes/node-1/upgrade/cancel', { method: 'POST' });
       expect(button(messages.cancelUpgrade)).toBeUndefined();

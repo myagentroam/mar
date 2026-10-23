@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { CircleCheck, CircleClose } from '@element-plus/icons-vue';
-import { defineComponent, h, ref } from 'vue';
+import { createSSRApp, defineComponent, h, ref, type Component } from 'vue';
+import { renderToString } from 'vue/server-renderer';
 import { createResourceHostingService } from '../../../../ee/web/src/service/ResourceHostingService.js';
 import ResourceGrantExtension from '../../../../ee/web/src/view/settings/ResourceGrantExtension.vue?unit-render';
 import ModelGrantExtension from '../../../../ee/web/src/view/settings/ModelGrantExtension.vue?unit-render';
@@ -9,6 +9,8 @@ import EnvironmentSecretManager from '../../../../ee/web/src/view/settings/Envir
 import OAuthManagementPage from '../../../../ee/web/src/view/settings/OAuthManagementPage.vue?unit-render';
 import EnterpriseNodeDetails from '../../../../ee/web/src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import EnterpriseUserManagementPage from '../../../../ee/web/src/view/settings/EnterpriseUserManagementPage.vue?unit-render';
+import OrganizationManagementPage from '../../../../ee/web/src/view/settings/OrganizationManagementPage.vue?unit-render';
+import EnterpriseModels from '../../../../ee/web/src/view/settings/MarAgentModelManagementPage.vue?unit-render';
 import ResourceManagementFilters from '../../../../ee/web/src/view/settings/ResourceManagementFilters.vue?unit-render';
 import WorkspaceRegistrationPicker from '../../../../ee/web/src/view/workspace/WorkspaceRegistrationPicker.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
@@ -56,7 +58,121 @@ function button(view: ReturnType<typeof renderComponent>, label: string) {
 }
 
 describe('Enterprise management components', () => {
+  it.each(['ADMIN', 'ORG_ADMIN', 'MEMBER'] as const)(
+    'projects personal model management and scoped ownership for enterprise %s',
+    async (role) => {
+      const request = vi.fn(async (path: string) => {
+        if (path === '/api/organizations')
+          return {
+            organizations: [{ id: 2, name: 'Fixture organization', parentOrganizationId: null }]
+          };
+        if (path === '/api/admin/mar-agent/models' || path === '/api/mar-agent/models')
+          return {
+            models: [
+              {
+                id: 'visible-model',
+                name: 'Scoped fixture model',
+                protocol: 'OPENAI_RESPONSES',
+                baseUrl: 'https://models.invalid/v1',
+                modelId: 'fixture-model',
+                contextWindowTokens: 128_000,
+                maxOutputTokens: 16_000,
+                inputCapabilities: ['TEXT'],
+                outputCapabilities: ['TEXT'],
+                reasoningEfforts: ['medium', 'high'],
+                conversationModel: true,
+                hostedWebSearch: false,
+                responsesTransport: 'HTTP2',
+                defaultReasoningEffort: 'medium',
+                titleGeneration: false,
+                codeMode: false,
+                enabled: true,
+                sortOrder: 0,
+                ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 2 },
+                access: 'PUBLIC'
+              }
+            ]
+          };
+        if (path === '/api/admin/mar-agent/codex-credentials') return { credentials: [] };
+        throw new Error(`Unexpected fixture request: ${path}`);
+      });
+      const view = renderComponent(EnterpriseModels, {
+        request,
+        writable: true,
+        nodes: [],
+        edition: 'ENTERPRISE',
+        role,
+        organizationId: 2
+      });
+      try {
+        await flushComponent();
+        if (role === 'MEMBER') expect(request).not.toHaveBeenCalledWith('/api/organizations');
+        else expect(request).toHaveBeenCalledWith('/api/organizations');
+        const modelTable = view
+          .findAll('ElTable')
+          .find((node) => (node.props['data'] as unknown[])?.length === 1)!;
+        await trigger(modelTable, 'onRowClick', (modelTable.props['data'] as unknown[])[0]);
+        expect(textContent(view.findAll('ElDialog')[0]!)).toContain(
+          i18n.global.t('marAgentModels.codexCredentialScopeOrganization', {
+            value0: role === 'MEMBER' ? '2' : 'Fixture organization'
+          })
+        );
+        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+        const tabs = view.findAll('ElTabPane').map((node) => node.props['name']);
+        expect(tabs).toEqual(
+          expect.arrayContaining(['modelOrder', 'models', 'codexCredentials', 'imageGeneration'])
+        );
+        await trigger(button(view, i18n.global.t('marAgentModels.add')), 'onClick');
+        const ownership = view
+          .findAll('ElFormItem')
+          .find((node) => node.props['label'] === i18n.global.t('marAgentModels.modelOwnership'))!;
+        const options = ownership.children
+          .flatMap((node) => node.children)
+          .filter((node) => node.type === 'ElOption');
+        expect(options[0]?.props['label']).toBe(
+          i18n.global.t('marAgentModels.codexCredentialScopePersonal')
+        );
+        const values = options.map((node) => node.props['value']);
+        expect(values).toEqual(role === 'MEMBER' ? ['PERSONAL'] : ['PERSONAL', 'ORGANIZATION']);
+        await trigger(button(view, i18n.global.t('marAgentModels.cancel')), 'onClick');
+        expect(request.mock.calls.some(([path]) => path.includes('/models/load'))).toBe(false);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it('restores the organization page keyword without consuming the user page filter', async () => {
+    window.location.search = '?organizations.keyword=Research&users.keyword=unrelated-user';
+    window.location.href = `https://console.example.test/console${window.location.search}`;
+    const request = vi.fn(async () => ({ organizations }));
+    const view = renderComponent(OrganizationManagementPage, {
+      request: request as never,
+      writable: true
+    });
+    try {
+      await flushComponent();
+      expect(request).toHaveBeenCalledWith('/api/organizations');
+      const keyword = view
+        .findAll('ElInput')
+        .find((node) => node.props['modelValue'] === 'Research');
+      expect(keyword).toBeDefined();
+      await trigger(keyword!, 'onUpdate:modelValue', 'Platform');
+      const updated = new URL(
+        String(vi.mocked(window.history.replaceState).mock.calls.at(-1)?.[2]),
+        window.location.href
+      );
+      expect(updated.searchParams.get('organizations.keyword')).toBe('Platform');
+      expect(updated.searchParams.get('users.keyword')).toBe('unrelated-user');
+    } finally {
+      view.unmount();
+    }
+  });
+
   it('uses scalar organization selections in user management and the resource owner filter', async () => {
+    window.location.search =
+      '?users.organization=9&users.keyword=fixture-user&organizations.keyword=Research';
+    window.location.href = `https://console.example.test/console${window.location.search}`;
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/organizations') return { organizations };
       if (path.startsWith('/api/enterprise/users') && init?.method === 'POST')
@@ -73,9 +189,19 @@ describe('Enterprise management components', () => {
     try {
       await flushComponent();
       const filter = view.findAll('el-cascader')[0]!;
+      expect(filter.props['modelValue']).toBe(9);
+      expect(
+        view.findAll('ElInput').some((node) => node.props['modelValue'] === 'fixture-user')
+      ).toBe(true);
       expect(filter.props).toHaveProperty('filterable');
       expect(filter.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(filter, 'onUpdate:modelValue', 3);
+      const updated = new URL(
+        String(vi.mocked(window.history.replaceState).mock.calls.at(-1)?.[2]),
+        window.location.href
+      );
+      expect(updated.searchParams.get('users.organization')).toBe('3');
+      expect(updated.searchParams.get('organizations.keyword')).toBe('Research');
       expect(request.mock.calls.some(([path]) => path.includes('organizationId=3'))).toBe(true);
       const create = view
         .findAll('ElButton')
@@ -147,7 +273,7 @@ describe('Enterprise management components', () => {
     } as const;
     const request = vi.fn(async () => ({ capability: enabled }));
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirmed' as never);
-    const context = { role: 'ADMIN', writable: true, edition: 'ENTERPRISE' as const };
+    const context = { role: 'ADMIN' as const, writable: true, edition: 'ENTERPRISE' as const };
     const service = createResourceHostingService(request as never, () => context);
     const organizationNode = {
       resourceType: 'NODE',
@@ -157,7 +283,7 @@ describe('Enterprise management components', () => {
       disabled: false,
       ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 },
       capabilities: { conversationHosting: disabled }
-    } as never;
+    } as Parameters<typeof service.describe>[0];
     const personalNode = {
       ...organizationNode,
       nodeId: 'personal-node',
@@ -225,7 +351,10 @@ describe('Enterprise management components', () => {
     );
     try {
       const enable = button(enableView, 'Enable hosted conversations');
-      expect(enable.props).toMatchObject({ icon: CircleCheck, type: 'primary' });
+      expect(enable.props['type']).toBe('primary');
+      expect(await renderToString(createSSRApp(enable.props['icon'] as Component))).toContain(
+        'data-mar-icon="success"'
+      );
       await trigger(enable, 'onClick');
       expect(enableHosting).toHaveBeenCalledOnce();
     } finally {
@@ -259,7 +388,10 @@ describe('Enterprise management components', () => {
     );
     try {
       const disable = button(disableView, 'Disable hosted conversations');
-      expect(disable.props).toMatchObject({ icon: CircleClose, type: 'warning' });
+      expect(disable.props['type']).toBe('warning');
+      expect(await renderToString(createSSRApp(disable.props['icon'] as Component))).toContain(
+        'data-mar-icon="error"'
+      );
       await trigger(disable, 'onClick');
       expect(disableHosting).toHaveBeenCalledOnce();
     } finally {

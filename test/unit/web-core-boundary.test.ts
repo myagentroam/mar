@@ -31,8 +31,6 @@ describe('single shared Web implementation', () => {
     expect(adapter).toContain('@myagentroam/web-core/MarAgentModelManagementPage.vue');
     expect(adapter).toContain('ModelGrantExtension');
     expect(adapter).toContain('createModelCredentialOwnershipService');
-    expect(adapter).toMatch(/onMounted\(\(\) => \{\s*void ownership\.loadOrganizations\(\);/u);
-    expect(adapter).toContain('ownership.label(model.ownership)');
     expect(adapter).not.toMatch(/CodexLoginAttemptPoller|\/api\/admin\/mar-agent/u);
     expect(existsSync('ee/web/src/view/settings/ImageGenerationManagement.vue')).toBe(false);
     expect(read('ee/web/src/service/CodexCredentialManagementService.ts')).toBe(

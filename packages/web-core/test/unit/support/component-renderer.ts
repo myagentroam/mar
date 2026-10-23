@@ -128,7 +128,11 @@ export function renderComponent(
                   (row) =>
                     controlSlots.default?.({ row }) ?? String(row[String(controlProps.prop)] ?? '')
                 )
-              : Object.values(controlSlots).map((slot) => slot?.());
+              : Object.entries(controlSlots).map(([slotName, slot]) =>
+                  name === 'ElInput' && slotName === 'password-icon'
+                    ? slot?.({ visible: false })
+                    : slot?.()
+                );
             return h(name, { ...attrs, ...controlProps }, children);
           };
         }

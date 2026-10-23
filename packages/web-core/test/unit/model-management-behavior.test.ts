@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import Page from '../../src/view/settings/MarAgentModelManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
@@ -205,6 +205,11 @@ describe('Model management component behavior', () => {
       await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'ANTHROPIC_MESSAGES');
       expect(control(view, messages.transport, 'ElSelect')).toBeUndefined();
       await trigger(control(view, messages.enabled, 'ElSwitch'), 'onUpdate:modelValue', false);
+      await trigger(
+        control(view, messages.defaultReasoningEffort, 'ElSelect'),
+        'onUpdate:modelValue',
+        'high'
+      );
       for (const label of [messages.titleGeneration, messages.codeMode])
         await trigger(
           view.findAll('ElCheckbox').find((node) => textContent(node).trim() === label)!,
@@ -232,7 +237,7 @@ describe('Model management component behavior', () => {
         enabled: false,
         titleGeneration: true,
         codeMode: true,
-        defaultReasoningEffort: 'medium',
+        defaultReasoningEffort: 'high',
         hostedWebSearch: false,
         responsesPreviousResponseId: false,
         ownership: { ownerType: 'PERSONAL', ownerUserId: 37 }
@@ -404,7 +409,9 @@ describe('Model management component behavior', () => {
         nodeId: 'ready',
         name: 'Fixture login'
       });
-      expect(ElMessage.error).toHaveBeenCalledWith('Fixture login unavailable');
+      expect(ElMessage.error).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Fixture login unavailable' })
+      );
       await trigger(button(view, messages.cancel), 'onClick');
       await trigger(button(view, messages.add), 'onClick');
       await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'GROK');
@@ -559,11 +566,16 @@ describe('Model management component behavior', () => {
         );
         if (outcome === 'DEFERRED')
           expect(ElMessage.info).toHaveBeenCalledWith(
-            i18n.global.t('marAgentModels.chatgptRefreshDeferred', {
-              time: managementDateTime(credential.earliestRefreshAt)
+            expect.objectContaining({
+              message: i18n.global.t('marAgentModels.chatgptRefreshDeferred', {
+                time: managementDateTime(credential.earliestRefreshAt)
+              })
             })
           );
-        else expect(ElMessage.warning).toHaveBeenCalledWith(messages.codexRefreshDegraded);
+        else
+          expect(ElMessage.warning).toHaveBeenCalledWith(
+            expect.objectContaining({ message: messages.codexRefreshDegraded })
+          );
         expect(ElMessage.success).not.toHaveBeenCalled();
       } finally {
         view.unmount();
@@ -593,7 +605,19 @@ describe('Model management component behavior', () => {
               ]
             }
           }
-        : base(path, init)
+        : path.endsWith('/models/import')
+          ? {
+              result: {
+                items: [
+                  {
+                    upstreamModelId: 'upstream-fixture',
+                    status: 'CREATED',
+                    modelId: 'imported-model'
+                  }
+                ]
+              }
+            }
+          : base(path, init)
     );
     const prepareCatalog = vi.fn();
     const view = renderComponent(
@@ -619,8 +643,240 @@ describe('Model management component behavior', () => {
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Host catalogue ownership');
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('upstream-fixture');
       expect(view.findAll('ElInputNumber')[0]?.props['modelValue']).toBe(256_000);
+      await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
+      await trigger(button(view, messages.codexImport), 'onClick');
+      const imported = request.mock.calls.find(([path]) => path.endsWith('/models/import'))!;
+      expect(imported[0]).toBe('/api/admin/mar-agent/codex-credentials/credential-0/models/import');
+      expect(JSON.parse(String(imported[1]?.body))).toMatchObject({
+        catalogHash: 'a'.repeat(64),
+        models: [{ upstreamModelId: 'upstream-fixture', name: 'Catalogue fixture' }]
+      });
     } finally {
       view.unmount();
+    }
+  });
+
+  it.each(['edit', 'catalog'] as const)(
+    'preserves the newest credential %s dialog when an older request resolves',
+    async (operation) => {
+      const late = deferred<unknown>();
+      const base = requestFixture([]);
+      const catalog = (name: string) => ({
+        catalog: {
+          catalogHash: 'a'.repeat(64),
+          fetchedAt: 1_000,
+          models: [
+            {
+              upstreamModelId: name,
+              displayName: name,
+              reasoningEfforts: [],
+              unsupportedReasoningEfforts: [],
+              inputCapabilities: ['TEXT'],
+              hostedWebSearch: false,
+              warnings: [],
+              requiredInputs: ['contextWindowTokens']
+            }
+          ]
+        }
+      });
+      const request = vi.fn(async (path: string, init?: RequestInit) => {
+        if (path === '/api/admin/mar-agent/codex-credentials')
+          return { credentials: credentials.slice(0, 2) };
+        if (
+          path ===
+          `/api/admin/mar-agent/codex-credentials/credential-0${operation === 'catalog' ? '/models/load' : ''}`
+        )
+          return late.promise;
+        if (path.endsWith('/models/load')) return catalog('Current catalogue');
+        return base(path, init);
+      });
+      const view = renderComponent(Page, {
+        request,
+        canManageModels: true,
+        writable: true,
+        nodes: []
+      });
+      try {
+        await flushComponent();
+        await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+        const table = view
+          .findAll('ElTable')
+          .find((node) =>
+            (node.props['data'] as { id: string }[]).some((row) => row.id === credentials[0]!.id)
+          )!;
+        if (operation === 'edit') {
+          const opening = trigger(
+            view
+              .findAll('ElButton')
+              .filter((node) => textContent(node).trim() === messages.edit)[0]!,
+            'onClick'
+          );
+          await flushComponent();
+          await trigger(
+            view
+              .findAll('ElButton')
+              .filter((node) => textContent(node).trim() === messages.edit)[1]!,
+            'onClick'
+          );
+          expect(control(view, messages.credentialName, 'ElInput').props['modelValue']).toBe(
+            credentials[1]!.name
+          );
+          late.resolve({
+            details: { credential: credentials[0], socks5Url: 'socks5://fixture.invalid:1080' }
+          });
+          await opening;
+        } else {
+          await trigger(table, 'onRowClick', credentials[0]);
+          const loading = trigger(button(view, messages.codexLoadCatalog), 'onClick');
+          await flushComponent();
+          await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+          await trigger(table, 'onRowClick', credentials[1]);
+          await trigger(button(view, messages.codexLoadCatalog), 'onClick');
+          expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Current catalogue');
+          late.resolve(catalog('Obsolete catalogue'));
+          await loading;
+        }
+        await flushComponent();
+        if (operation === 'edit')
+          expect(control(view, messages.credentialName, 'ElInput').props['modelValue']).toBe(
+            credentials[1]!.name
+          );
+        else {
+          expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Current catalogue');
+          expect(textContent(view.root)).not.toContain('Obsolete catalogue');
+        }
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it('edits, tests and confirms removal of a credential through its row actions', async () => {
+    let credential = credentials[0]!;
+    let removed = false;
+    const testResult = deferred<unknown>();
+    const base = requestFixture([]);
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/admin/mar-agent/codex-credentials')
+        return { credentials: removed ? [] : [credential] };
+      if (path.endsWith('/credential-0/test')) return testResult.promise;
+      if (path.endsWith('/credential-0') && init?.method === 'PATCH') {
+        credential = { ...credential, name: JSON.parse(String(init.body)).name };
+        return { credential };
+      }
+      if (path.endsWith('/credential-0') && init?.method === 'DELETE') {
+        removed = true;
+        return {};
+      }
+      if (path.endsWith('/credential-0'))
+        return { details: { credential, socks5Url: 'socks5://fixture.invalid:1080' } };
+      return base(path, init);
+    });
+    const confirmation = vi
+      .spyOn(ElMessageBox, 'confirm')
+      .mockRejectedValueOnce('cancel')
+      .mockResolvedValue('confirm' as never);
+    const view = renderComponent(Page, {
+      request,
+      canManageModels: false,
+      writable: true,
+      nodes: []
+    });
+    try {
+      await flushComponent();
+      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(button(view, messages.edit), 'onClick');
+      await trigger(
+        control(view, messages.credentialName, 'ElInput'),
+        'onUpdate:modelValue',
+        'Renamed fixture'
+      );
+      await trigger(button(view, messages.save), 'onClick');
+      expect(credential.name).toBe('Renamed fixture');
+      const patch = request.mock.calls.find(([, init]) => init?.method === 'PATCH')!;
+      expect(JSON.parse(String(patch[1]?.body))).toMatchObject({ name: 'Renamed fixture' });
+      const testing = trigger(button(view, messages.test), 'onClick');
+      await flushComponent();
+      expect(button(view, messages.test).props['loading']).toBe(true);
+      expect(button(view, messages.edit).props['disabled']).toBe(true);
+      expect(button(view, messages.remove).props['disabled']).toBe(true);
+      testResult.resolve({ result: { success: true, code: null } });
+      await testing;
+      expect(button(view, messages.test).props['loading']).toBe(false);
+      expect(ElMessage.success).toHaveBeenCalledWith(messages.codexTestSucceeded);
+      await trigger(button(view, messages.remove), 'onClick');
+      expect(removed).toBe(false);
+      await trigger(button(view, messages.remove), 'onClick');
+      expect(confirmation).toHaveBeenCalledTimes(2);
+      expect(request).toHaveBeenCalledWith('/api/admin/mar-agent/codex-credentials/credential-0', {
+        method: 'DELETE'
+      });
+      expect(removed).toBe(true);
+      expect(
+        view.findAll('ElTable').some((node) => (node.props['data'] as unknown[]).length > 0)
+      ).toBe(false);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('refreshes a pending device login manually without starting another login', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const pending = {
+      id: 'fixture-attempt',
+      status: 'PENDING',
+      type: 'CODEX_OAUTH',
+      userCode: 'FIXTURE-CODE',
+      verificationUri: 'https://fixture.invalid/device',
+      expiresAt: Date.now() + 60_000,
+      pollIntervalMs: 60_000
+    };
+    const refresh = deferred<unknown>();
+    const base = requestFixture([]);
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/admin/mar-agent/codex-login-attempts') return { attempt: pending };
+      if (path.endsWith('/fixture-attempt')) return refresh.promise;
+      return base(path, init);
+    });
+    const view = renderComponent(Page, {
+      request,
+      canManageModels: false,
+      writable: true,
+      nodes: []
+    });
+    try {
+      await flushComponent();
+      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(button(view, messages.codexAddCredential), 'onClick');
+      await trigger(
+        control(view, messages.credentialName, 'ElInput'),
+        'onUpdate:modelValue',
+        'Device fixture'
+      );
+      await trigger(button(view, messages.codexStartLogin), 'onClick');
+      expect(textContent(view.root)).toContain('FIXTURE-CODE');
+      const refreshing = trigger(button(view, messages.codexRefreshLoginStatus), 'onClick');
+      await flushComponent();
+      expect(button(view, messages.codexRefreshLoginStatus).props['loading']).toBe(true);
+      refresh.resolve({
+        attempt: {
+          id: pending.id,
+          status: 'FAILED',
+          code: 'FIXTURE_LOGIN_REJECTED',
+          message: 'Fixture login rejected'
+        }
+      });
+      await refreshing;
+      expect(request).toHaveBeenCalledWith(
+        '/api/admin/mar-agent/codex-login-attempts/fixture-attempt'
+      );
+      expect(
+        request.mock.calls.filter(([path]) => path === '/api/admin/mar-agent/codex-login-attempts')
+      ).toHaveLength(1);
+      expect(textContent(view.root)).not.toContain('FIXTURE-CODE');
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
     }
   });
 
