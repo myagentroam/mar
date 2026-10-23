@@ -1,6 +1,6 @@
 ---
 title: Nodes and Workspaces
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-22
 ---
 
 # Nodes and Workspaces
@@ -16,7 +16,7 @@ A Node is the Windows, Linux, or macOS host where Agents run. A Workspace is one
 
 Files, Git operations, sessions, and terminals are bounded by the Workspace. Deleting a Node registration or unregistering a Workspace does not delete host files.
 
-Workspace tabs show a green dot and an **Unread** label beside the Node name. The dot means that the Workspace has a starting, running, or stopping task in your account's recent tasks; **Unread** means that session notifications remain unread. Both can appear together, including on inactive tabs. They follow the [notification center](../workbench/conversation.md): opening a session from the session list marks that session's notifications read without clearing other sessions, while clicking one notification marks only that item. List refreshes and connection recovery synchronize the indicators; a short task may finish before its dot appears.
+Workspace tabs show a green dot and an **Unread** label beside the Node name. The dot means that the Workspace has a starting, running, or stopping task in your account's recent sessions; **Unread** means that session notifications remain unread. Both can appear together, including on inactive tabs. They follow the [notification center](../workbench/conversation.md): opening a session from the session list marks that session's notifications read without clearing other sessions, while clicking one notification marks only that item. List refreshes and connection recovery synchronize the indicators; a short task may finish before its dot appears.
 
 An underlined Node name on the active tab means that the peer-to-peer connection is connected. Hover over it for connection details. This does not indicate Node availability or session activity.
 

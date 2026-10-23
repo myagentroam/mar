@@ -2016,10 +2016,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     notificationsEnUS.generated.workbenchNotificationCenter.cancel,
   'workbenchNotificationCenter.noNotifications':
     notificationsEnUS.generated.workbenchNotificationCenter.noNotifications,
-  'workbenchNotificationCenter.recentTasks':
-    notificationsEnUS.generated.workbenchNotificationCenter.recentTasks,
-  'workbenchNotificationCenter.noRecentTasks':
-    notificationsEnUS.generated.workbenchNotificationCenter.noRecentTasks,
   'workbenchNotificationCenter.unread':
     notificationsEnUS.generated.workbenchNotificationCenter.unread,
   'workbenchNotificationCenter.deleteNotification':

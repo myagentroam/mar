@@ -78,7 +78,7 @@ If a rule should apply to every user and conversation created from the template,
 
 The conversation page reuses the page's single Workbench WebSocket and subscribes only to the current conversation. Switching conversations, leaving the page, or replacing the browser connection releases the old subscription. After reconnecting, the page obtains a new authoritative Node snapshot instead of inferring a Run result from missing events.
 
-After a Run succeeds, fails, or ends because of an unexpected interruption, Notification Center retains a notification for that hosted conversation for 24 hours. Explicitly selecting **Stop**, or deleting the conversation while it is running, cancels the Run without creating a terminal notification. Selecting a notification switches to Conversation mode and opens the matching conversation. Hosted conversations do not appear in the **Recent tasks** section.
+After a Run succeeds, fails, or ends because of an unexpected interruption, Notification Center retains a notification for that hosted conversation for 24 hours. Explicitly selecting **Stop**, or deleting the conversation while it is running, cancels the Run without creating a terminal notification. Selecting a notification switches to Conversation mode and opens the matching conversation. Hosted conversations do not appear in the **Recent Sessions** list.
 
 The page shows an action message in these cases:
 
