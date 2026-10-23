@@ -874,6 +874,10 @@ function rawContentUrl(
 
 <style scoped>
 .standalone-file-preview {
+  /* Rendered previews keep their light appearance independently of the console. */
+  --mar-color-brand-text: #0969da;
+  --mar-color-danger-text: #cf222e;
+  --mar-scrollbar-thumb: #afb8c1;
   display: flex;
   height: 100dvh;
   min-height: 0;
@@ -906,7 +910,7 @@ function rawContentUrl(
 }
 
 .standalone-preview-body :deep(.file-preview-loading.is-overlay) {
-  background: var(--mar-bg-panel);
+  background: #fff;
 }
 
 .standalone-markdown-header {
@@ -916,9 +920,9 @@ function rawContentUrl(
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-chrome);
-  color: var(--mar-text-secondary);
+  border-bottom: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #57606a;
   font-size: var(--mar-font-size-meta);
 }
 .standalone-markdown-header code {
