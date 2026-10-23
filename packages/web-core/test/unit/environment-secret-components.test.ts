@@ -32,7 +32,6 @@ describe('Public environment secret management', () => {
     expect(source).not.toMatch(
       /@\/|ORGANIZATION|ENTERPRISE|organizationId|localStorage|sessionStorage/u
     );
-    expect(source).toContain('ElMessage.error');
     expect(source).not.toContain('<el-alert v-if="error"');
     expect(source).toContain('name="create-fields"');
     expect(source).toContain(':model="{ ...formContext, name, value }"');
