@@ -1056,7 +1056,7 @@ onMounted(() => {
 .conversation-template-management h3 {
   margin: 22px 0 8px;
   color: var(--mar-text-primary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-title);
 }
 
 @media (max-width: 767px) {

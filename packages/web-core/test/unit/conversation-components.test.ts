@@ -18,9 +18,11 @@ import type { ConversationItem, ConversationTurn, Session } from '../../src/mode
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
+import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
@@ -105,7 +107,14 @@ function conversationItem(
   payload: unknown,
   status = 'COMPLETED'
 ): ConversationItem {
-  return { id, kind, payload, status };
+  const itemPayload =
+    kind === 'reasoning' &&
+    typeof payload === 'object' &&
+    payload !== null &&
+    !Array.isArray(payload)
+      ? { representation: 'unspecified', ...payload }
+      : payload;
+  return { id, kind, payload: itemPayload, status };
 }
 
 function conversationTurn(
@@ -384,9 +393,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain('channel-origin');
   });
 
-  it('renders subagent groups with the latest operation, no running badge, and persistent call errors', async () => {
-    const control = (id: string, operation: string, status = 'COMPLETED') =>
-      conversationItem(
+  it('renders individual subagent operations with persistent call errors and no running badge', async () => {
+    const control = (id: string, operation: string, status = 'COMPLETED') => ({
+      ...conversationItem(
         id,
         'tool_call',
         {
@@ -397,7 +406,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
           inputSummary: id
         },
         status
-      );
+      ),
+      processGroup: { id: 'process-child', ...(id === 'start' ? { isStart: true as const } : {}) }
+    });
     const html = await render(ConversationTimeline, {
       ...timelineProps,
       turns: [
@@ -408,11 +419,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         ])
       ]
     });
-    expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(1);
-    expect(html).toContain(
-      `Review integration · ${i18n.global.t('presentation.subagentOperation.MESSAGE')} · ${i18n.global.t('presentation.subagentOperationCount', { count: 3 })}`
-    );
-    expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
+    expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(3);
+    for (const operation of ['START', 'STATUS', 'MESSAGE'])
+      expect(html).toContain(
+        `Review integration · ${i18n.global.t(`presentation.subagentOperation.${operation}`)}`
+      );
+    expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
+    expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
     expect(html).toContain(i18n.global.t('presentation.subagentCallFailed'));
     expect(html).not.toContain(i18n.global.t('generated.conversationPresentation.running'));
     expect(html).not.toContain('conversation-tool-detail');
@@ -431,6 +444,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       'ConversationHeader.vue',
       'ConversationScroll.vue',
       'ConversationTimeline.vue',
+      'ConversationWorkProcess.vue',
       'ImagePreviewDialogs.vue'
     ].map((name) =>
       readFileSync(new URL(`../../src/view/conversation/${name}`, import.meta.url), 'utf8')
@@ -438,9 +452,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     const keys = [
       ...new Set(
         sources.flatMap((source) =>
-          [...source.matchAll(/'((?:generated|presentation|nodeMessages)\.[\w.-]+)'/gu)].map(
-            (match) => match[1]!
-          )
+          [
+            ...source.matchAll(
+              /'((?:generated|presentation|nodeMessages|conversationProcess|conversationActivity)\.[\w.-]+)'/gu
+            )
+          ].map((match) => match[1]!)
         )
       )
     ];
@@ -674,6 +690,44 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       /<button(?=[^>]*class="[^"]*\bel-button\b)(?=[^>]*class="[^"]*\bis-round\b)(?=[^>]*class="[^"]*\bconversation-latest\b)[^>]*>/u
     );
     expect(following).not.toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
+    expect(following).toContain(i18n.global.t('conversationActivity.historyStart'));
+  });
+
+  it('renders older-page retry inline without confusing it with initial loading', async () => {
+    const html = await render(ConversationScroll, {
+      hasOlder: true,
+      loadingInitial: false,
+      initialLoadFailed: false,
+      loadingOlder: false,
+      hasTurns: true,
+      following: false,
+      olderError: 'PAGE_FAILED <details>'
+    });
+    expect(html).toContain('PAGE_FAILED &lt;details&gt;');
+    expect(html).toContain(i18n.global.t('conversationActivity.retry'));
+    expect(html).not.toContain(
+      i18n.global.t('generated.conversationScroll.reloadConversationHistory')
+    );
+    expect(html).not.toContain(i18n.global.t('conversationActivity.historyStart'));
+  });
+
+  it('renders the completed Run duration once at its last segment and never guesses historical time', async () => {
+    const turns = ['first', 'last'].map((id) =>
+      conversationTurn([conversationItem(id, 'assistant_message', { text: id })], {
+        id,
+        runId: 'run',
+        status: 'SUCCEEDED'
+      })
+    );
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns,
+      runs: [{ id: 'run', status: 'SUCCEEDED', startedAt: 1_000, completedAt: 21_000 }]
+    });
+    expect(html.match(/class="conversation-run-duration"/gu)).toHaveLength(1);
+    expect(html).toContain(i18n.global.t('conversationActivity.total', { value: '20s' }));
+    const historical = await render(ConversationTimeline, { ...timelineProps, turns });
+    expect(historical).not.toContain('class="conversation-run-duration"');
   });
 
   it('leaves the jump-to-latest highlight to Element Plus', () => {
@@ -1025,350 +1079,378 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   });
 
-  it('moves aggregate cards after new members without merging neighboring segments', async () => {
+  it('renders authoritative process groups without collecting items by kind', async () => {
+    const firstGroup = 'process-one';
+    const secondGroup = 'process-two';
     const items = [
-      conversationItem('reasoning-1', 'reasoning_summary', { sections: [{ text: 'First check' }] }),
-      conversationItem('tool-1', 'tool_call', { toolName: 'read' }),
-      conversationItem('command-1', 'command_execution', { command: 'pwd' })
-    ];
-    const renderItems = (currentItems: readonly ConversationItem[]) =>
-      render(ConversationTimeline, {
-        ...timelineProps,
-        turns: [
-          conversationTurn(currentItems, {
-            id: 'segment-1',
-            turnId: 'turn-1',
-            segmentIndex: 0,
-            status: 'RUNNING'
-          }),
-          conversationTurn(
-            [
-              conversationItem('reasoning-3', 'reasoning_summary', {
-                sections: [{ text: 'Separate segment' }]
-              })
-            ],
-            { id: 'segment-2', turnId: 'turn-1', segmentIndex: 1, status: 'RUNNING' }
-          )
-        ]
-      });
-    const cardTypes = (html: string) =>
-      [...html.matchAll(/<article[^>]*class="([^"]+)"/gu)].map(
-        (match) => match[1]?.match(/reasoning-group|tool-group|command-group/u)?.[0]
-      );
-
-    expect(cardTypes(await renderItems(items))).toEqual([
-      'reasoning-group',
-      'tool-group',
-      'command-group',
-      'reasoning-group'
-    ]);
-    items.push(
-      conversationItem('reasoning-2', 'reasoning_summary', {
-        sections: [{ text: 'Latest check' }]
-      })
-    );
-    const appended = await renderItems(items);
-    expect(cardTypes(appended)).toEqual([
-      'tool-group',
-      'command-group',
-      'reasoning-group',
-      'reasoning-group'
-    ]);
-    expect(appended).toContain('Latest check');
-    expect(appended).toContain('Separate segment');
-  });
-
-  it('previews appended reasoning while running and shows completion afterward', async () => {
-    const reasoning = conversationItem(
-      'reasoning-1',
-      'reasoning_summary',
-      { sections: [{ text: 'First summary' }, { text: 'then detailed thinking\nFurther detail' }] },
-      'IN_PROGRESS'
-    );
-    const running = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [conversationTurn([reasoning], { status: 'RUNNING' })]
-    });
-    const boldSummary = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [
-        conversationTurn(
-          [
-            conversationItem(
-              'reasoning-2',
-              'reasoning_summary',
-              { sections: [{ text: '**First summary**\n\nthen detailed thinking' }] },
-              'IN_PROGRESS'
-            )
-          ],
-          { status: 'RUNNING' }
-        )
-      ]
-    });
-    const alreadyEllipsized = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [
-        conversationTurn(
-          [
-            conversationItem(
-              'reasoning-ellipsis',
-              'reasoning_summary',
-              { sections: [{ text: 'Narrowing the search...' }] },
-              'IN_PROGRESS'
-            )
-          ],
-          { status: 'RUNNING' }
-        )
-      ]
-    });
-    const completedReasoning = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [
-        conversationTurn(
-          [{ ...reasoning, status: 'COMPLETED' }, conversationItem('tool-1', 'tool_call', {})],
-          { status: 'RUNNING' }
-        )
-      ]
-    });
-    const appendedItems = [
-      { ...reasoning, status: 'COMPLETED' },
-      conversationItem('tool-1', 'tool_call', {}),
-      conversationItem(
-        'reasoning-2',
-        'reasoning_summary',
-        { sections: [{ text: '**Next check**' }] },
-        'COMPLETED'
-      )
-    ];
-    const appendedReasoning = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [conversationTurn(appendedItems, { status: 'RUNNING' })]
-    });
-    const completed = await render(ConversationTimeline, {
-      ...timelineProps,
-      turns: [conversationTurn(appendedItems)]
-    });
-
-    expect(running).toMatch(/<span class="reasoning-preview"[^>]*>then detailed thinking<\/span>/u);
-    expect(boldSummary).toMatch(/<span class="reasoning-preview"[^>]*>First summary<\/span>/u);
-    expect(alreadyEllipsized).toMatch(
-      /<span class="reasoning-preview"[^>]*>Narrowing the search\.\.\.<\/span>/u
-    );
-    expect(alreadyEllipsized).not.toContain('Narrowing the search......');
-    expect(running).not.toContain('reasoning-progress');
-    expect(boldSummary).not.toContain('**First summary**</span>');
-    expect(running).not.toMatch(/<details[^>]*\sopen(?:\s|>|=)/su);
-    expect(completedReasoning).toContain('then detailed thinking</span>');
-    expect(completedReasoning).not.toContain(
-      i18n.global.t('generated.conversationTimeline.thoughtCompleted')
-    );
-    expect(appendedReasoning).toMatch(/<span class="reasoning-preview"[^>]*>Next check<\/span>/u);
-    expect(appendedReasoning).not.toContain(
-      i18n.global.t('generated.conversationTimeline.thoughtCompleted')
-    );
-    expect(
-      appendedReasoning.match(/class="conversation-item reasoning_summary reasoning-group"/gu)
-    ).toHaveLength(1);
-    expect(completed).toContain(i18n.global.t('generated.conversationTimeline.thoughtCompleted'));
-    expect(completed).not.toContain('reasoning-progress');
-    const source = readFileSync(
-      new URL('../../src/view/conversation/ConversationTimeline.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toMatch(
-      /\.conversation-item\.reasoning-group > details:not\(\[open\]\) \.reasoning-preview\s*\{\s*color:\s*var\(--mar-conversation-text\);/u
-    );
-    expect(source).toMatch(
-      /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.conversation-item\.reasoning-group > details:not\(\[open\]\) \.reasoning-preview\s*\{[^}]*background:\s*linear-gradient\([^;]*;[^}]*background-clip:\s*text;[^}]*animation:\s*reasoning-preview-sweep 1\.75s linear infinite;/u
-    );
-    expect(source).toContain(
-      'color-mix(in srgb, var(--mar-conversation-text) 60%, var(--mar-color-brand-text))'
-    );
-    expect(source).not.toContain('reasoning-preview-breathe');
-  });
-
-  it('completes pre-compaction reasoning without ending the running Turn', async () => {
-    for (const text of ['Before compact', '']) {
-      const reasoning = conversationItem('reasoning-before', 'reasoning_summary', {
-        sections: text ? [{ text }] : []
-      });
-      for (const status of ['IN_PROGRESS', 'COMPLETED', 'FAILED']) {
-        const compact = conversationItem(
-          'compact',
-          'context_compaction',
-          {
-            phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED'
-          },
-          status
-        );
-        const compacting = await render(ConversationTimeline, {
-          ...timelineProps,
-          turns: [conversationTurn([reasoning, compact], { status: 'RUNNING' })]
-        });
-        expect(compacting).toContain('data-status="RUNNING"');
-        expect(compacting).toContain(
-          i18n.global.t('generated.conversationTimeline.thoughtCompleted')
-        );
-        expect(compacting).not.toContain('class="reasoning-preview"');
-        expect(compacting).not.toContain(i18n.global.t('generated.conversationTimeline.thinking2'));
-        const resumed = await render(ConversationTimeline, {
-          ...timelineProps,
-          turns: [
-            conversationTurn(
-              [
-                reasoning,
-                compact,
-                conversationItem('reasoning-after', 'reasoning_summary', {
-                  sections: [{ text: 'After compact' }]
-                })
-              ],
-              { status: 'RUNNING' }
-            )
-          ]
-        });
-        expect(
-          resumed.match(/class="conversation-item reasoning_summary reasoning-group"/gu)
-        ).toHaveLength(2);
-        expect(resumed).toContain(i18n.global.t('generated.conversationTimeline.thoughtCompleted'));
-        expect(resumed).toMatch(/<span class="reasoning-preview"[^>]*>After compact<\/span>/u);
+      {
+        ...conversationItem('reasoning-1', 'reasoning', {
+          representation: 'summary',
+          sections: [{ text: 'First process reasoning marker' }]
+        }),
+        processGroup: { id: firstGroup, isStart: true as const }
+      },
+      {
+        ...conversationItem('tool-1', 'tool_call', { toolName: 'First process tool marker' }),
+        processGroup: { id: firstGroup }
+      },
+      {
+        ...conversationItem('command-1', 'command_execution', {
+          command: 'First process command marker'
+        }),
+        processGroup: { id: firstGroup }
       }
-    }
-  });
-
-  it('uses the same reasoning completion rule for a post-reply phase in an unsplit Segment', async () => {
+    ];
     const html = await render(ConversationTimeline, {
       ...timelineProps,
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
       turns: [
+        conversationTurn(items, {
+          id: 'segment-1',
+          turnId: 'turn-1',
+          segmentIndex: 0,
+          status: 'RUNNING'
+        }),
         conversationTurn(
           [
-            conversationItem('reasoning-before', 'reasoning_summary', {
-              sections: [{ text: 'Before reply' }]
-            }),
-            conversationItem('reply', 'assistant_message', {
-              text: 'Continue with the next phase'
-            }),
-            conversationItem('reasoning-after', 'reasoning_summary', {
-              sections: [{ text: 'After reply' }]
-            })
+            {
+              ...conversationItem('reasoning-2', 'reasoning', {
+                representation: 'visible_thinking',
+                sections: [{ text: 'Second process marker' }]
+              }),
+              processGroup: { id: secondGroup, isStart: true as const }
+            }
           ],
-          { status: 'RUNNING' }
+          { id: 'segment-2', turnId: 'turn-1', segmentIndex: 1, status: 'RUNNING' }
         )
       ]
     });
-    expect(html).toContain(i18n.global.t('generated.conversationTimeline.thoughtCompleted'));
-    expect(html).not.toContain('Before reply');
-    expect(html).toMatch(/<span class="reasoning-preview"[^>]*>After reply<\/span>/u);
-    expect(html).toContain('data-status="RUNNING"');
+
+    expect(html.match(/class="process-heading"/gu)).toHaveLength(2);
+    expect(html).toContain('data-process-id="process-one"');
+    expect(html).toContain('data-process-id="process-two"');
+    const markers = [
+      'First process reasoning marker',
+      'First process tool marker',
+      'First process command marker',
+      'Second process marker'
+    ];
+    const positions = markers.map((marker) => html.indexOf(marker));
+    expect(markers.filter((_, index) => positions[index] < 0)).toEqual([]);
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
   });
 
-  it('collapses each reasoning phase on live compaction and preserves manual reopening', async () => {
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn(() => 1)
+  it('uses authoritative Run activity for process disclosure without warning aggregation', async () => {
+    const groupId = 'process-live';
+    const segment = conversationTurn(
+      [
+        {
+          ...conversationItem(
+            'tool-running',
+            'tool_call',
+            { toolName: 'Still running' },
+            'IN_PROGRESS'
+          ),
+          processGroup: { id: groupId, isStart: true as const }
+        },
+        {
+          ...conversationItem('warning-1', 'warning', { message: 'A visible warning' }),
+          processGroup: { id: groupId }
+        },
+        conversationItem('assistant-reply', 'assistant_message', { text: 'The reply arrived.' })
+      ],
+      { status: 'SUCCEEDED' }
     );
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const active = conversationWorkProcessBlocks(
+      [segment],
+      [{ id: 'run-1', status: 'RUNNING' }]
+    )[0]!;
+    expect(active).toMatchObject({ sealed: true, active: true, status: 'executing' });
+    const activeHtml = await render(
+      ConversationWorkProcess,
+      { block: active, synchronized: true },
+      { default: () => h('span', 'Process details') }
+    );
+    expect(activeHtml).toMatch(/class="process-heading"[^>]*aria-expanded="true"/u);
+    expect(activeHtml).toContain(
+      i18n.global.t('conversationProcess.namedActivity', {
+        activity: i18n.global.t('conversationProcess.activity.tool'),
+        name: 'Still running'
+      })
+    );
+    expect(activeHtml).toContain('class="process-activity-indicator" aria-hidden="true"');
+    expect(activeHtml).not.toContain(i18n.global.t('conversationProcess.warning'));
+
+    const disconnectedHtml = await render(ConversationWorkProcess, {
+      block: active,
+      synchronized: false
+    });
+    expect(disconnectedHtml).not.toContain('process-activity-indicator');
+
+    const ended = conversationWorkProcessBlocks(
+      [segment],
+      [{ id: 'run-1', status: 'SUCCEEDED' }]
+    )[0]!;
+    expect(ended).toMatchObject({ sealed: true, active: false, status: 'completed' });
+    const endedHtml = await render(
+      ConversationWorkProcess,
+      { block: ended, synchronized: true },
+      { default: () => h('span', 'Process details') }
+    );
+    expect(endedHtml).toMatch(/class="process-heading"[^>]*aria-expanded="false"/u);
+    expect(endedHtml).toContain('aria-hidden="true"');
+    expect(endedHtml).not.toContain(i18n.global.t('conversationActivity.running'));
+    expect(endedHtml).not.toContain('process-activity-indicator');
+
+    const partial = conversationWorkProcessBlocks([
+      conversationTurn(
+        [
+          {
+            ...conversationItem('tool-partial', 'tool_call', { toolName: 'Loaded suffix' }),
+            processGroup: { id: 'process-partial' }
+          }
+        ],
+        { runId: null }
+      )
+    ])[0]!;
+    const partialHtml = await render(
+      ConversationWorkProcess,
+      { block: partial, synchronized: false },
+      { default: () => h('span', 'Partial details') }
+    );
+    expect(partial.partial).toBe(true);
+    expect(partialHtml).toContain(i18n.global.t('conversationProcess.partial'));
+    expect(partialHtml).not.toContain('process-activity-indicator');
+  });
+
+  it.each([
+    ['command_execution', { command: 'echo test' }],
+    ['tool_call', { toolName: 'lookup' }],
+    ['tool_call', { toolName: 'read', toolPresentation: { kind: 'READ', paths: ['a.ts'] } }]
+  ])('keeps a single %s record inside a persistent collapsed group (%j)', async (kind, payload) => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([conversationItem('single', kind as string, payload)])]
+    });
+    expect(html).toMatch(/<details class="conversation-record-group"[^>]*>/u);
+    expect(html).not.toMatch(/<details class="conversation-record-group"[^>]*\bopen\b/u);
+    expect(html).not.toContain('<div class="conversation-record-group"');
+    expect(html).toContain(i18n.global.t('toolPresentation.calls', { count: 1 }));
+  });
+
+  it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(
+    'keeps Node-assigned process IDs around a %s compaction item',
+    async (status) => {
+      const before = {
+        ...conversationItem('reasoning-before', 'reasoning', {
+          representation: 'summary',
+          sections: [{ text: 'Before compact' }]
+        }),
+        processGroup: { id: 'process-before', isStart: true as const }
+      };
+      const compact = conversationItem(
+        'compact',
+        'context_compaction',
+        { phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED' },
+        status
+      );
+      const after = {
+        ...conversationItem('reasoning-after', 'reasoning', {
+          representation: 'visible_thinking',
+          sections: [{ text: 'After compact' }]
+        }),
+        processGroup: { id: 'process-after', isStart: true as const }
+      };
+      const html = await render(ConversationTimeline, {
+        ...timelineProps,
+        synchronized: true,
+        runs: [{ id: 'run-1', status: 'RUNNING' }],
+        turns: [conversationTurn([before, compact, after], { status: 'RUNNING' })]
+      });
+
+      expect(html).toContain('data-process-id="process-before"');
+      expect(html).toContain('data-process-id="process-after"');
+      expect(html).toContain('Before compact');
+      expect(html).toContain('After compact');
+      expect(html.indexOf('Before compact')).toBeLessThan(html.indexOf('After compact'));
+    }
+  );
+
+  it('hides empty reasoning and renders public sections without a separate summary', async () => {
+    const empty = conversationItem('reasoning-restored', 'reasoning', {
+      sections: [{ text: ' \n\t' }]
+    });
+    const hidden = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([empty], { status: 'RUNNING' })]
+    });
+    expect(hidden).not.toContain('conversation-item reasoning reasoning-group');
+
+    const payload = {
+      representation: 'summary',
+      sections: [{ text: 'Public reasoning without a separate summary' }]
+    };
+    expect(payload).not.toHaveProperty('summary');
+    const restored = { ...empty, payload };
+    const shown = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([restored], { status: 'RUNNING' })]
+    });
+    expect(restored.id).toBe(empty.id);
+    expect(shown).toMatch(/class="conversation-item reasoning reasoning-group"/u);
+    expect(shown).toContain('Public reasoning without a separate summary');
+  });
+
+  it('renders separate Node process IDs around a visible Agent reply', async () => {
+    const before = {
+      ...conversationItem('reasoning-before', 'reasoning', {
+        representation: 'summary',
+        sections: [{ text: 'Before reply process marker' }]
+      }),
+      processGroup: { id: 'process-before-reply', isStart: true as const }
+    };
+    const reply = conversationItem('reply', 'assistant_message', {
+      text: 'The reply establishes a process boundary.'
+    });
+    const after = {
+      ...conversationItem('reasoning-after', 'reasoning', {
+        representation: 'unspecified',
+        sections: [{ text: 'After reply process marker' }]
+      }),
+      processGroup: { id: 'process-after-reply', isStart: true as const }
+    };
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
+      turns: [conversationTurn([before, reply, after], { status: 'RUNNING' })]
+    });
+
+    expect(html).toContain('data-process-id="process-before-reply"');
+    expect(html).toContain('data-process-id="process-after-reply"');
+    const positions = [
+      'Before reply process marker',
+      'The reply establishes a process boundary.',
+      'After reply process marker'
+    ].map((marker) => html.indexOf(marker));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+  });
+
+  it('preserves manual process disclosure across Run activity updates', async () => {
     class HostNode {
+      readonly props: Record<string, unknown> = {};
+      readonly children: HostNode[] = [];
+      parent: HostNode | null = null;
       constructor(readonly type: string) {}
     }
     const renderer = createRenderer<HostNode, HostNode>({
-      patchProp() {},
-      insert() {},
-      remove() {},
+      patchProp: (node, key, _previous, next) => {
+        node.props[key] = next;
+      },
+      insert: (node, parent, anchor) => {
+        node.parent = parent;
+        const index = anchor === null ? -1 : parent.children.indexOf(anchor);
+        if (index < 0) parent.children.push(node);
+        else parent.children.splice(index, 0, node);
+      },
+      remove: (node) => {
+        if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1);
+        node.parent = null;
+      },
       createElement: (type) => new HostNode(type),
       createText: () => new HostNode('#text'),
       createComment: () => new HostNode('#comment'),
       setText() {},
       setElementText() {},
-      parentNode: () => null,
-      nextSibling: () => null
+      parentNode: (node) => node.parent,
+      nextSibling: (node) => {
+        if (!node.parent) return null;
+        const index = node.parent.children.indexOf(node);
+        return node.parent.children[index + 1] ?? null;
+      }
     });
-    const reasoning = (id: string) =>
-      conversationItem(id, 'reasoning_summary', {
-        sections: [{ text: id }]
-      });
-    const compact = conversationItem(
-      'compact',
-      'context_compaction',
-      { phase: 'STARTED' },
-      'IN_PROGRESS'
-    );
-    const turns = shallowRef([conversationTurn([reasoning('first')], { status: 'RUNNING' })]);
+    const groupId = 'process-manual';
+    const segment = conversationTurn([
+      {
+        ...conversationItem('tool-active', 'tool_call', { toolName: 'read' }, 'IN_PROGRESS'),
+        processGroup: { id: groupId, isStart: true as const }
+      }
+    ]);
+    const active = conversationWorkProcessBlocks(
+      [segment],
+      [{ id: 'run-1', status: 'RUNNING' }]
+    )[0]!;
+    const ended = conversationWorkProcessBlocks(
+      [segment],
+      [{ id: 'run-1', status: 'SUCCEEDED' }]
+    )[0]!;
+    const block = shallowRef(active);
     let setupState: Record<string, unknown> | undefined;
     const app = renderer.createApp({
       render: () =>
-        h(ConversationTimeline, {
-          ...timelineProps,
-          turns: turns.value,
+        h(ConversationWorkProcess, {
+          block: block.value,
+          synchronized: true,
           onVnodeMounted: (vnode) => {
-            setupState = (vnode.component as unknown as { setupState: Record<string, unknown> })
-              .setupState;
+            setupState = (
+              vnode.component as unknown as { readonly setupState: Record<string, unknown> } | null
+            )?.setupState;
           }
         })
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
     app.config.warnHandler = () => {};
-    app.mount(new HostNode('container'));
+    const root = new HostNode('root');
+    app.mount(root);
+    const open = () => setupState?.['open'];
     try {
-      const disclosure = setupState?.['reasoningDisclosure'] as Record<string, boolean>;
-      expect(disclosure['first']).toBe(false);
-      disclosure['first'] = true;
-      turns.value = [conversationTurn([reasoning('first'), compact], { status: 'RUNNING' })];
+      expect(open()).toBe(true);
+      if (setupState === undefined) throw new Error('Missing process component state');
+      setupState['manualOpen'] = false;
       await nextTick();
-      expect(disclosure['first']).toBe(false);
-      disclosure['first'] = true;
-      turns.value = [
-        conversationTurn(
-          [reasoning('first'), { ...compact, status: 'COMPLETED' }, reasoning('second')],
-          { status: 'RUNNING' }
-        )
-      ];
+      expect(open()).toBe(false);
+
+      block.value = ended;
       await nextTick();
-      expect(disclosure['first']).toBe(true);
-      expect(disclosure['second']).toBe(false);
-      disclosure['second'] = true;
-      turns.value = [
-        conversationTurn([...turns.value[0]!.items, { ...compact, id: 'compact-second' }], {
-          status: 'RUNNING'
-        })
-      ];
+      expect(open()).toBe(false);
+
+      setupState['manualOpen'] = true;
       await nextTick();
-      expect(disclosure['first']).toBe(true);
-      expect(disclosure['second']).toBe(false);
+      expect(open()).toBe(true);
+      block.value = active;
+      await nextTick();
+      expect(open()).toBe(true);
     } finally {
       app.unmount();
     }
   });
 
-  it('renders a full long reasoning first line with native disclosure and container ellipsis', async () => {
-    const firstLine = 'Inspecting source and tests '.repeat(12).trimEnd();
-    const content = await render(ConversationTimeline, {
+  it('renders public reasoning text in its Node-assigned process without a progress animation', async () => {
+    const reasoning = {
+      ...conversationItem(
+        'reasoning-visible',
+        'reasoning',
+        {
+          representation: 'visible_thinking',
+          sections: [{ text: 'Public reasoning content marker.' }]
+        },
+        'IN_PROGRESS'
+      ),
+      processGroup: { id: 'process-reasoning', isStart: true as const }
+    };
+    const html = await render(ConversationTimeline, {
       ...timelineProps,
-      turns: [
-        conversationTurn(
-          [
-            conversationItem(
-              'reasoning-long',
-              'reasoning_summary',
-              { sections: [{ text: `${firstLine}\nFurther reasoning` }] },
-              'IN_PROGRESS'
-            )
-          ],
-          { status: 'RUNNING' }
-        )
-      ]
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
+      turns: [conversationTurn([reasoning], { status: 'RUNNING' })]
     });
-    expect(content).toContain(`>${firstLine}</span>`);
-    expect(content).not.toContain('Further reasoning');
-    expect(content).not.toContain('reasoning-disclosure-icon');
-    const source = readFileSync(
-      new URL('../../src/view/conversation/ConversationTimeline.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toMatch(
-      /\.conversation-item\.reasoning-group > details > summary\s*\{\s*overflow:\s*hidden;\s*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap;/u
-    );
-    expect(source).not.toContain('CaretRight');
+
+    expect(html).toContain('data-process-id="process-reasoning"');
+    expect(html).toContain('Public reasoning content marker.');
+    expect(html).not.toContain('reasoning-progress');
   });
 
   it('renders approval details and gates approval decisions on the supplied Node readiness', async () => {

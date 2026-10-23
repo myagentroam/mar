@@ -90,6 +90,15 @@ for (const device of ['desktop', 'mobile'] as const) {
         })
       ).toBeVisible();
       await expect(online.getByRole('status').first()).toHaveText(language.enabled);
+      await expect(online.getByRole('status').first().locator('.el-tag')).toHaveClass(
+        /el-tag--success/
+      );
+      await expect(online.getByRole('button').first()).toHaveClass(/el-button--primary/);
+      await online.getByRole('button').first().hover();
+      await expect(online.getByRole('button').first()).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)'
+      );
       if (device === 'desktop') {
         await expect(
           online.getByRole('button', { name: language.disable, exact: true })

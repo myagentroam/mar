@@ -12,8 +12,7 @@ describe('Built-in color serialization', () => {
 });
 
 it('documents every canonical token in both languages without duplicate keys', async () => {
-  const { CUSTOM_THEME_TOKENS, LEGACY_THEME_TOKENS } =
-    await import('../../src/model/custom-theme.js');
+  const { CUSTOM_THEME_TOKENS } = await import('../../src/model/custom-theme.js');
   const { THEME_TOKEN_HELP } = await import('../../src/model/theme-token-help.js');
   const { personalSettingsEnUS: en } = await import('../../src/i18n/personal-settings.en-US.js');
   const { personalSettingsZhCN: zh } = await import('../../src/i18n/personal-settings.zh-CN.js');
@@ -24,6 +23,10 @@ it('documents every canonical token in both languages without duplicate keys', a
     expect(en.customThemes.tokenDescriptions[description]).toBeTruthy();
     expect(zh.customThemes.tokenDescriptions[description]).toBeTruthy();
   }
-  for (const target of Object.values(LEGACY_THEME_TOKENS))
-    expect(CUSTOM_THEME_TOKENS).toContain(target);
+  expect(Object.keys(THEME_TOKEN_HELP).sort()).toEqual([...CUSTOM_THEME_TOKENS].sort());
+  const descriptions = Object.values(THEME_TOKEN_HELP)
+    .map((item) => item.description)
+    .sort();
+  expect(Object.keys(en.customThemes.tokenDescriptions).sort()).toEqual(descriptions);
+  expect(Object.keys(zh.customThemes.tokenDescriptions).sort()).toEqual(descriptions);
 });

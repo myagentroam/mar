@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ShallowUnwrapRef } from 'vue';
+import { defineAsyncComponent, type ShallowUnwrapRef } from 'vue';
 import type { createWorkbenchPageController } from '@/service/WorkbenchPageController';
 import CoreSurface from '@myagentroam/web-core/WorkbenchSurface.vue';
 import WorkspaceRegistrationPicker from '@/view/workspace/WorkspaceRegistrationPicker.vue';
-import SettingsContent from '@/view/settings/SettingsContent.vue';
 import { translate } from '@/service/LocalePreferenceService';
+const SettingsContent = defineAsyncComponent(() => import('@/view/settings/SettingsContent.vue'));
 defineProps<{ page: ShallowUnwrapRef<ReturnType<typeof createWorkbenchPageController>> }>();
 </script>
 <template>

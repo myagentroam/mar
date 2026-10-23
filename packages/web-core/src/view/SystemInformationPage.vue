@@ -96,12 +96,12 @@ const emit = defineEmits<{ extensionChanged: [] }>();
   gap: 5px;
 }
 .system-brand strong {
-  font-size: 24px;
+  font-size: var(--mar-font-size-page-title);
   letter-spacing: -0.02em;
 }
 .system-brand code {
   color: var(--mar-text-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .system-status {
   padding-top: 0.65rem;

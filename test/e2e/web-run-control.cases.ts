@@ -851,7 +851,7 @@ test('Official and realtime questions with the same requestId share one card and
     response.url().includes('/user-input/same-request')
   );
   await page.getByRole('button', { name: '提交回答' }).click();
-  await expect(page.locator('.composer-working')).toContainText('发送中...');
+  await expect(page.locator('.composer-submitting')).toContainText('发送中...');
   await expect(page.getByRole('button', { name: '提交回答' })).toBeDisabled();
   releaseAnswer?.();
   await answerResponse;

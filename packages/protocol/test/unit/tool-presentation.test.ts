@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { conversationItemSchema, toolPresentationSchema } from '../../src/index.js';
 
 describe('tool presentation protocol', () => {
-  it.each(['WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'] as const)(
+  it('bounds Read paths without treating them as successful file changes', () => {
+    expect(
+      toolPresentationSchema.parse({ kind: 'READ', paths: ['src/a.ts', '目录/b.ts'] })
+    ).toEqual({ kind: 'READ', paths: ['src/a.ts', '目录/b.ts'] });
+    for (const paths of [[''], ['x'.repeat(4097)], Array(17).fill('a'), [1]])
+      expect(toolPresentationSchema.safeParse({ kind: 'READ', paths }).success).toBe(false);
+  });
+  it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'] as const)(
     'preserves optional %s facts on ordinary tool_call items',
     (kind) => {
       const item = {

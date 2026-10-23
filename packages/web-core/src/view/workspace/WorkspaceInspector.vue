@@ -3560,7 +3560,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
             v-for="repository in visibleChangeRepositories"
             :key="repositoryKey(repository)"
           >
-            <li class="change-repository-heading">
+            <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
               <div class="repository-heading-content">
                 <div class="repository-title-row">
                   <strong :title="repository.physicalPath || repository.repositoryPath">
@@ -3588,7 +3588,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
                   </button>
                 </div>
                 <div class="repository-tags-row">
-                  <el-tag class="repository-kind" effect="plain" size="small">
+                  <el-tag class="repository-kind" type="info" effect="plain" size="small">
                     {{ repositoryKindLabel(repository.source) }}
                   </el-tag>
                   <el-tag v-if="repository.current" effect="plain" size="small">
@@ -3624,6 +3624,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
                     >
                   </el-tag>
                 </div>
+                <code
+                  v-if="repository.source === 'SUBMODULE' && repository.repositoryPath"
+                  class="repository-relative-path"
+                  :title="repository.repositoryPath"
+                >
+                  {{ repository.repositoryPath }}
+                </code>
                 <code
                   v-if="
                     (repository.source === 'WORKTREE' || repository.source === 'ROOT') &&
@@ -4119,8 +4126,10 @@ onBeforeUnmount(revokePreviewObjectUrl);
 
 .workspace-inspector > .section-heading h2 {
   margin-bottom: 0;
-  font-size: 13px;
-  line-height: 18px;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 @media (max-width: 1180px) {
@@ -4152,8 +4161,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
   overflow-x: auto;
   overflow-y: hidden;
   margin: 0.45rem 0 0;
-  border-bottom: 1px solid var(--mar-border-subtle);
   padding: 0 0.35rem 0.35rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
 }
 
 .watch-status {
@@ -4171,11 +4180,11 @@ onBeforeUnmount(revokePreviewObjectUrl);
   flex-shrink: 0;
   min-height: var(--mar-compact-control-size);
   border: 0;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-tertiary);
   padding: 0.3rem 0.55rem;
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 500;
 }
 
@@ -4209,13 +4218,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
 
 .content-search-options :deep(.el-checkbox) {
   height: 1.2rem;
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .content-search-warning {
   margin: 0.35rem 0 0;
   color: var(--mar-color-warning-text);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .content-search-results {
@@ -4226,19 +4235,25 @@ onBeforeUnmount(revokePreviewObjectUrl);
   overflow: auto;
 }
 
+.content-search-results > li + li {
+  margin-top: 2px;
+}
+
 .content-search-results button {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) max-content;
   gap: 0.18rem 0.5rem;
   border: 0;
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   padding: 0.35rem 0.25rem;
   text-align: left;
   cursor: pointer;
 }
 
-.content-search-results button:hover {
+.content-search-results button:hover,
+.content-search-results button:focus-visible {
   background: var(--mar-color-brand-subtle);
 }
 
@@ -4250,7 +4265,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
 }
 
 .content-search-results strong {
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 600;
   line-height: 1.25;
 }
@@ -4274,13 +4289,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
 
 .content-search-results small {
   color: var(--mar-text-muted);
-  font-size: 0.65rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .content-search-results code {
   grid-column: 1 / -1;
   color: var(--mar-text-secondary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-explorer {
@@ -4312,7 +4327,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
 .upload-dialog-target {
   margin-bottom: 0.65rem;
   color: var(--mar-text-secondary);
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .upload-dialog-list {
@@ -4349,7 +4364,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
 .upload-dialog-list span > small,
 .upload-dialog-list > small {
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .git-worktrees {
@@ -4364,12 +4379,12 @@ onBeforeUnmount(revokePreviewObjectUrl);
   align-items: baseline;
   justify-content: space-between;
   color: var(--mar-text-primary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .git-worktree-heading small {
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
 
@@ -4402,13 +4417,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
 
 .git-worktree-name {
   color: var(--mar-text-primary);
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
 }
 
 .git-worktree-list code {
   color: var(--mar-text-secondary);
-  font-size: 0.65rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .git-worktree-statuses {
@@ -4421,7 +4436,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
 .git-worktree-statuses :deep(.el-tag) {
   height: 1.25rem;
   padding-inline: 0.3rem;
-  font-size: 0.6rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .git-worktrees-truncated {
@@ -4429,7 +4444,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
   border-bottom: 1px solid var(--mar-border-strong);
   padding: 0.25rem 2px 0.4rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .change-list {
@@ -4450,12 +4465,12 @@ onBeforeUnmount(revokePreviewObjectUrl);
 .change-list .change-repository-heading {
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr);
-  margin-top: 0.2rem;
-  border-top: 1px solid var(--mar-border-strong);
-  padding: 0.25rem 2px 0.2rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--mar-border-default);
+  padding: 0.5rem 0.25rem 0.35rem;
   color: var(--mar-text-secondary);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-body);
+  font-weight: 600;
 }
 
 .change-list > .change-repository-heading:first-child {
@@ -4469,7 +4484,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
   border-top: 0;
   padding: 0.2rem 2px 0.25rem;
   color: var(--mar-text-faint);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .change-repository-heading strong {
@@ -4515,9 +4530,9 @@ onBeforeUnmount(revokePreviewObjectUrl);
 }
 
 .repository-tags-row :deep(.el-tag) {
-  height: 1.2rem;
+  height: 1.3rem;
   padding-inline: 0.28rem;
-  font-size: 0.58rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 500;
 }
 
@@ -4528,7 +4543,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
 .change-repository-heading code {
   margin-left: 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
 
@@ -4539,12 +4554,13 @@ onBeforeUnmount(revokePreviewObjectUrl);
   min-width: 0;
   max-width: min(46vw, 20rem);
   color: var(--mar-text-secondary);
-  font-size: 0.65rem;
+  font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.repository-physical-path {
+.repository-physical-path,
+.repository-relative-path {
   display: block;
   overflow-wrap: anywhere;
   color: var(--mar-text-faint);
@@ -4559,10 +4575,22 @@ onBeforeUnmount(revokePreviewObjectUrl);
   height: auto;
   padding: 0;
   color: var(--mar-text-primary);
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 0.72rem;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.change-list .change-entry,
+.change-list .change-path,
+.history-commit-row,
+.history-files :deep(.el-button) {
+  border-radius: var(--mar-radius-selection);
+}
+
+.change-list .change-entry:hover,
+.change-list .change-entry:focus-within {
+  background: var(--mar-fill-row-hover);
 }
 
 .change-list .change-path:not(.is-disabled):hover {
@@ -4576,12 +4604,12 @@ onBeforeUnmount(revokePreviewObjectUrl);
 
 .change-list > li > span {
   color: var(--mar-color-brand-text);
-  font-size: 0.65rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .change-list small {
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .current-changes {
@@ -4642,7 +4670,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
   background: transparent;
   padding-inline: 0.35rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-body);
 }
 
 :global(.explorer-toolbar .el-button + .el-button) {
@@ -4686,7 +4714,7 @@ button.file-explorer-utility-button:disabled {
 }
 
 :global(.explorer-toolbar .el-input__inner) {
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-input);
 }
 
 :global(.explorer-toolbar .el-input__wrapper.is-focus),
@@ -4773,7 +4801,7 @@ button.changes-refresh-button {
 }
 .change-list > li > small {
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1;
 }
 .change-entry > span {
@@ -4907,27 +4935,27 @@ button.history-refresh {
 }
 
 .history-graph-color-0 {
-  color: #4f8cff;
+  color: var(--mar-color-brand-text);
 }
 
 .history-graph-color-1 {
-  color: #d56be3;
+  color: var(--mar-color-success-text);
 }
 
 .history-graph-color-2 {
-  color: #28a99e;
+  color: var(--mar-color-accent);
 }
 
 .history-graph-color-3 {
-  color: #e58a3a;
+  color: var(--mar-color-warning-text);
 }
 
 .history-graph-color-4 {
-  color: #8b7be8;
+  color: var(--mar-text-secondary);
 }
 
 .history-graph-color-5 {
-  color: #d65d73;
+  color: var(--mar-color-danger-text);
 }
 
 .history-context-menu {
@@ -4966,7 +4994,7 @@ button.history-refresh {
 }
 
 .history-commit-row:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
 }
 
 .history-content,
@@ -5026,7 +5054,7 @@ button.history-refresh {
 
 .history-files > .empty {
   padding: 1px 2px;
-  font-size: 10px;
+  font-size: var(--mar-font-size-meta);
   line-height: 18px;
 }
 
@@ -5038,7 +5066,7 @@ button.history-refresh {
   gap: 4px;
   overflow: hidden;
   color: var(--mar-text-secondary);
-  font-size: 10px;
+  font-size: var(--mar-font-size-meta);
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5068,7 +5096,7 @@ button.history-refresh {
   min-height: 20px;
   overflow: hidden;
   padding: 1px 2px;
-  font-size: 10px;
+  font-size: var(--mar-font-size-body);
   line-height: 18px;
 }
 
@@ -5097,7 +5125,7 @@ button.history-refresh {
   flex-basis: 12px;
   margin-right: 3px;
   overflow: visible;
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 
 .history-load-more {
@@ -5116,15 +5144,6 @@ button.history-refresh {
   color: var(--mar-text-faint);
   cursor: default;
   text-decoration: none;
-}
-
-@media (max-width: 767px) {
-  button.file-explorer-utility-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-  }
 }
 
 @media (max-width: 760px) {

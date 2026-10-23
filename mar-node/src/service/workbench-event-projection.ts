@@ -127,6 +127,8 @@ export function projectWorkbenchPayload(
           payload: item.payload,
           startedAt: item.startedAt,
           completedAt: item.completedAt,
+          parentItemId: item.parentItemId,
+          ...(item.processGroup === undefined ? {} : { processGroup: item.processGroup }),
           segmentId: segment.id,
           segmentIndex: segment.index
         }

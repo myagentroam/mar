@@ -57,9 +57,8 @@ export const personalGitZhCN = {
   passphraseInvalid: '请输入有效的私钥口令。',
   workspaceTitle: '工作区 Git 配置',
   includeParent: '使用父级 Git 仓库',
-  includeParentHint:
-    '默认开启。Git 视图与还原操作包含所属仓库的全部文件，包括工作区外文件；Files 与会话目录保持不变。',
+  includeParentHint: '启用后，Git 查看与还原包含工作区外文件，文件浏览和工作目录不变。',
   preserve: '不覆盖 Git 参数',
-  preserveHint: '勾选后，该工作区所有用户新建的终端和 Agent 执行保留当前环境与仓库 Git 配置。',
+  preserveHint: '勾选后，新终端和 Agent 执行沿用现有 Git 配置。',
   offline: '请连接 Node 后读取或修改此设置。'
 };

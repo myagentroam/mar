@@ -150,7 +150,7 @@ function statusText(): string {
   overflow: auto;
   border: 1px solid var(--mar-border-strong);
   border-radius: 5px;
-  background: var(--mar-bg-panel);
+  background: var(--mar-control-bg-color-overlay);
   box-shadow: 0 4px 12px var(--mar-shadow-soft);
 }
 
@@ -158,18 +158,21 @@ function statusText(): string {
   margin: 0;
   padding: 0.35rem 0.65rem 0.15rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.66rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
 }
 
 .command-picker button {
+  font-family: inherit;
+  font-size: var(--mar-font-size-body);
+  line-height: 1.4;
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 0.55rem;
   border: 0;
   border-bottom: 1px solid var(--mar-fill-hover);
   border-radius: 0;
-  background: var(--mar-bg-panel);
+  background: var(--mar-control-bg-color-overlay);
   color: var(--mar-text-primary);
   cursor: pointer;
   padding: 0.55rem 0.65rem;
@@ -178,13 +181,17 @@ function statusText(): string {
 
 .command-picker button:hover,
 .command-picker button.active {
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-color-brand-selected);
+}
+
+.command-picker button strong {
+  font-weight: 600;
 }
 
 .command-picker button span,
 .command-picker p {
   color: var(--mar-text-tertiary);
-  font-size: 0.69rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .command-picker button span {
@@ -195,7 +202,12 @@ function statusText(): string {
 }
 
 .quick-prompt-content {
-  color: var(--mar-text-tertiary) !important;
+  color: var(--mar-text-tertiary);
+}
+
+.command-picker button:is(:hover, .active),
+.command-picker button:is(:hover, .active) span {
+  color: var(--mar-color-brand-text);
 }
 
 .command-picker > p:last-child {

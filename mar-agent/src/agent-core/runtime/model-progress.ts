@@ -75,7 +75,7 @@ function isGenerationProgress(event: ModelEvent, hostedStates: Map<string, strin
     case 'text.delta':
       return event.delta.length > 0;
     case 'text.completed':
-    case 'reasoning.summary':
+    case 'reasoning.completed':
       return event.text.length > 0;
     case 'hosted_tool': {
       const previous = hostedStates.get(event.itemId);

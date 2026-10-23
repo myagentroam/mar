@@ -246,7 +246,7 @@ export const workbenchShellEnUS = {
     management: 'Admin',
     settings: 'Settings',
     home: 'Back to MyAgentRoam home',
-    brandSummary: 'Manage your Agent workspaces',
+    brandSummary: 'Your agents. Wherever you roam.',
     main: 'Main navigation',
     help: 'Help',
     nodeWorkspace: 'Nodes and workspaces',

@@ -1,4 +1,5 @@
 import type { NodeCapabilities } from '@myagentroam/protocol';
+import { projectConversationWorkProcesses } from './conversation-work-process.js';
 import type { NodeAgentSession } from '../database.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { discoverNativeSessions, readNativeSession } from '../native-session-history.js';
@@ -720,7 +721,7 @@ export class ConversationHistoryService {
   ): ConversationHistoryPage {
     return {
       ...metadata,
-      turns,
+      turns: turns.map(projectConversationWorkProcesses),
       nextCursor,
       latestVisibleAt: Math.max(
         0,

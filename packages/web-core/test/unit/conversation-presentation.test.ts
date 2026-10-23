@@ -12,7 +12,6 @@ import {
   subagentGroupText,
   subagentOperationText,
   taskListItems,
-  reasoningDisclosureOpen,
   reasoningPreview,
   approvalDetail,
   approvalReason,
@@ -30,9 +29,23 @@ function item(
   id: string,
   kind: string,
   payload: unknown = {},
-  status: ConversationItem['status'] = 'COMPLETED'
+  status: ConversationItem['status'] = 'COMPLETED',
+  processGroup?: ConversationItem['processGroup']
 ): ConversationItem {
-  return { id, kind, status, payload };
+  const itemPayload =
+    kind === 'reasoning' &&
+    typeof payload === 'object' &&
+    payload !== null &&
+    !Array.isArray(payload)
+      ? { representation: 'unspecified', ...payload }
+      : payload;
+  return {
+    id,
+    kind,
+    status,
+    payload: itemPayload,
+    ...(processGroup === undefined ? {} : { processGroup })
+  };
 }
 
 const originalLocale = localePreferenceService().locale.value;
@@ -152,29 +165,6 @@ describe('Conversation Show Aggregation', () => {
     }
   });
 
-  it('Aggregate grouping mounts details only after expansion', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/view/conversation/ConversationTimeline.vue'),
-      'utf8'
-    );
-
-    expect(source).toContain(
-      'v-if="groupedItemDisclosure[displayItem.id]" class="conversation-tool-list"'
-    );
-    expect(source).toContain(
-      'v-if="groupedItemDisclosure[displayItem.id]" class="conversation-command-list"'
-    );
-    expect(source).toContain('v-if="reasoningDisclosure[displayItem.id]">{{ displayItem.text }}');
-    expect(source).toMatch(
-      /v-if="groupedItemDisclosure\[displayItem\.id\]"\s+class="conversation-file-change-list"/u
-    );
-    expect(
-      source.match(
-        /conversationItemText\(\s*displayItem\.item\.kind,\s*displayItem\.item\.payload,\s*displayItem\.item\.status\s*\)/gu
-      )
-    ).toHaveLength(5);
-  });
-
   it('Render image-generation results in standalone cards with their generated attachments', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/view/conversation/ConversationTimeline.vue'),
@@ -183,7 +173,7 @@ describe('Conversation Show Aggregation', () => {
     const start = source.indexOf(
       '<template v-else-if="displayItem.type === \'image_generation\'">'
     );
-    const end = source.indexOf('<template v-else-if="displayItem.type === \'tool_group\'">');
+    const end = source.indexOf('<template v-else-if="displayItem.type === \'subagent_group\'">');
     const imageGeneration = source.slice(start, end);
 
     expect(start).toBeGreaterThanOrEqual(0);
@@ -268,7 +258,7 @@ describe('Conversation Show Aggregation', () => {
 
   it('uses English labels when the interface locale is English', () => {
     localePreferenceService().setLocale('en-US');
-    expect(conversationItemLabel('reasoning_summary')).toBe('Reasoning');
+    expect(conversationItemLabel('reasoning')).toBe('Reasoning');
     expect(conversationItemText('command_execution', { outputPreview: 'done' })).toBe(
       'Command execution'
     );
@@ -281,9 +271,9 @@ describe('Conversation Show Aggregation', () => {
     expect(conversationItemText('user_message', { text: runnerInput })).toBe(runnerInput);
   });
 
-  it('moves reasoning, tool, and command groups to their latest appended member', () => {
+  it('keeps reasoning, tool, and command records in their original positions', () => {
     const items = [
-      item('reasoning-1', 'reasoning_summary', { sections: [{ text: 'First check' }] }),
+      item('reasoning-1', 'reasoning', { sections: [{ text: 'First check' }] }),
       item('tool-1', 'tool_call', { toolName: 'read' }),
       item('command-1', 'command_execution', { command: 'pwd' })
     ];
@@ -293,80 +283,95 @@ describe('Conversation Show Aggregation', () => {
       'command-1'
     ]);
 
-    items.push(item('reasoning-2', 'reasoning_summary', { sections: [{ text: 'Next check' }] }));
+    items.push(item('reasoning-2', 'reasoning', { sections: [{ text: 'Next check' }] }));
     const afterReasoning = conversationDisplayItems(items);
-    expect(afterReasoning.map((entry) => entry.id)).toEqual(['tool-1', 'command-1', 'reasoning-1']);
-    expect(afterReasoning.at(-1)).toMatchObject({
+    expect(afterReasoning.map((entry) => entry.id)).toEqual([
+      'reasoning-1',
+      'tool-1',
+      'command-1',
+      'reasoning-2'
+    ]);
+    expect(afterReasoning[0]).toMatchObject({
       type: 'reasoning_group',
       id: 'reasoning-1',
-      items: [{ id: 'reasoning-1' }, { id: 'reasoning-2' }],
-      text: 'First check\n\nNext check'
+      items: [{ id: 'reasoning-1' }],
+      text: 'First check'
     });
 
     items.push(item('tool-2', 'tool_call', { toolName: 'write' }));
     expect(conversationDisplayItems(items).map((entry) => entry.id)).toEqual([
-      'command-1',
       'reasoning-1',
-      'tool-1'
+      'tool-1',
+      'command-1',
+      'reasoning-2',
+      'tool-2'
     ]);
     items.push(item('command-2', 'command_execution', { command: 'git status' }));
     expect(conversationDisplayItems(items).map((entry) => entry.id)).toEqual([
       'reasoning-1',
       'tool-1',
-      'command-1'
+      'command-1',
+      'reasoning-2',
+      'tool-2',
+      'command-2'
     ]);
-    expect(afterReasoning.at(-1)).toMatchObject({
-      items: [{ id: 'reasoning-1' }, { id: 'reasoning-2' }]
+    expect(afterReasoning[3]).toMatchObject({
+      id: 'reasoning-2',
+      items: [{ id: 'reasoning-2' }],
+      text: 'Next check'
     });
   });
 
   it.each([
-    ['reasoning_summary', 'reasoning_group'],
+    ['reasoning', 'reasoning_group'],
     ['tool_call', 'tool_group'],
     ['command_execution', 'command_group'],
     ['file_change', 'file_change_group']
-  ])('places %s groups at their last member while preserving independent cards', (kind, type) => {
+  ])('preserves %s item order alongside independent cards', (kind, type) => {
+    const groupedItem = (id: string) =>
+      item(id, kind, kind === 'reasoning' ? { sections: [{ text: id }] } : undefined);
     const items = [
-      item('first', kind),
+      groupedItem('first'),
       item('warning', 'warning', { message: 'A notice' }),
       item('plan', 'plan'),
       item('approval', 'approval_request'),
       item('question', 'user_input_request'),
       item('subagent', 'tool_call', { subagentOperation: 'START', subagentId: 'child' }),
       item('image', 'tool_call', { toolCategory: 'IMAGE_GENERATION' }),
-      item('last', kind),
+      groupedItem('last'),
       item('assistant', 'assistant_message', { text: 'Done' })
     ];
     const original = structuredClone(items);
     const displayItems = conversationDisplayItems(items);
 
     expect(displayItems.map((entry) => entry.id)).toEqual([
+      'first',
       'warning',
       'plan',
       'approval',
       'question',
       'subagent',
       'image',
-      'first',
+      'last',
       'assistant'
     ]);
-    expect(displayItems.at(-2)).toMatchObject({
+    expect(displayItems[0]).toMatchObject({
       type,
       id: 'first',
-      items: [{ id: 'first' }, { id: 'last' }]
+      items: [{ id: 'first' }]
+    });
+    expect(displayItems[7]).toMatchObject({
+      type,
+      id: 'last',
+      items: [{ id: 'last' }]
     });
     expect(items).toEqual(original);
     expect(conversationDisplayItems(structuredClone(items))).toEqual(displayItems);
   });
 
-  it('does not reorder groups for content, status, or timestamp updates to existing members', () => {
+  it('preserves item identity and position for content, status, or timestamp updates', () => {
     const items = [
-      item(
-        'reasoning',
-        'reasoning_summary',
-        { sections: [{ text: 'First check' }] },
-        'IN_PROGRESS'
-      ),
+      item('reasoning', 'reasoning', { sections: [{ text: 'First check' }] }, 'IN_PROGRESS'),
       item('tool', 'tool_call', { toolName: 'read' }, 'IN_PROGRESS'),
       item('command', 'command_execution', { command: 'pwd' }, 'IN_PROGRESS')
     ];
@@ -384,7 +389,7 @@ describe('Conversation Show Aggregation', () => {
     expect(displayItems[0]).toMatchObject({ text: 'Updated check' });
   });
 
-  it('Merge consecutive commands within the same Turn with a stable group ID', () => {
+  it('keeps consecutive command records independently in the same Turn', () => {
     const displayItems = conversationDisplayItems([
       item('user', 'user_message', { text: 'Check the status' }),
       item('command-1', 'command_execution', { command: 'pwd' }),
@@ -395,35 +400,73 @@ describe('Conversation Show Aggregation', () => {
     expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
       'item',
       'command_group',
+      'command_group',
       'item'
     ]);
     const commandGroup = displayItems[1];
     expect(commandGroup?.type).toBe('command_group');
     if (commandGroup?.type === 'command_group') {
       expect(commandGroup.id).toBe('command-1');
-      expect(commandGroup.items.map((candidate) => candidate.id)).toEqual([
-        'command-1',
-        'command-2'
-      ]);
+      expect(commandGroup.items.map((candidate) => candidate.id)).toEqual(['command-1']);
     }
+    expect(displayItems[2]).toMatchObject({
+      type: 'command_group',
+      id: 'command-2',
+      items: [{ id: 'command-2' }]
+    });
   });
 
-  it('Aggregate consecutive Agent bodies within the same Segment into one message card', () => {
+  it('keeps consecutive Agent bodies as separate message items', () => {
     const displayItems = conversationDisplayItems([
       item('assistant-1', 'assistant_message', { text: 'Although this is a product rule,' }),
       item('assistant-2', 'assistant_message', { text: 'the code has no single decision point' })
     ]);
 
-    expect(displayItems).toHaveLength(1);
-    expect(displayItems[0]).toMatchObject({
-      type: 'item',
-      id: 'assistant-1',
-      item: {
+    expect(displayItems).toMatchObject([
+      {
+        type: 'item',
         id: 'assistant-1',
-        kind: 'assistant_message',
-        payload: {
-          text: 'Although this is a product rule,\n\nthe code has no single decision point'
+        item: {
+          id: 'assistant-1',
+          kind: 'assistant_message',
+          payload: { text: 'Although this is a product rule,' }
         }
+      },
+      {
+        type: 'item',
+        id: 'assistant-2',
+        item: {
+          id: 'assistant-2',
+          kind: 'assistant_message',
+          payload: { text: 'the code has no single decision point' }
+        }
+      }
+    ]);
+  });
+
+  it('does not create a card for an empty Agent body and keeps its position when content arrives', () => {
+    const before = item('tool-before', 'tool_call', { toolName: 'read-before' });
+    const started = item('assistant-started', 'assistant_message', { text: '' }, 'IN_PROGRESS');
+    const after = item('tool-after', 'tool_call', { toolName: 'read-after' });
+
+    expect(conversationDisplayItems([before, started, after]).map(({ id }) => id)).toEqual([
+      'tool-before',
+      'tool-after'
+    ]);
+
+    const completedBody = { ...started, payload: { text: 'The body arrived.' } };
+    expect(conversationDisplayItems([before, completedBody, after]).map(({ id }) => id)).toEqual([
+      'tool-before',
+      'assistant-started',
+      'tool-after'
+    ]);
+    expect(conversationDisplayItems([before, completedBody, after])[1]).toMatchObject({
+      type: 'item',
+      id: 'assistant-started',
+      item: {
+        id: 'assistant-started',
+        kind: 'assistant_message',
+        payload: { text: 'The body arrived.' }
       }
     });
   });
@@ -442,27 +485,29 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
-  it('Do not move activity after an Agent message into earlier aggregate cards', () => {
+  it('keeps each process record in source order across Agent replies', () => {
     const displayItems = conversationDisplayItems([
       item('assistant-1', 'assistant_message', { text: 'Phase one starts' }),
       item('command-1', 'command_execution', { command: 'pwd' }),
-      item('reasoning-1', 'reasoning_summary', { sections: [{ text: 'First check' }] }),
+      item('reasoning-1', 'reasoning', { sections: [{ text: 'First check' }] }),
       item('command-2', 'command_execution', { command: 'git status' }),
       item('assistant-2', 'assistant_message', { text: 'Phase two starts' }),
       item('command-3', 'command_execution', { command: 'git diff' }),
-      item('reasoning-2', 'reasoning_summary', { sections: [{ text: 'Second check' }] }),
+      item('reasoning-2', 'reasoning', { sections: [{ text: 'Second check' }] }),
       item('command-4', 'command_execution', { command: 'git log -1' }),
       item('assistant-3', 'assistant_message', { text: 'Done' })
     ]);
 
-    expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
-      'item',
-      'reasoning_group',
-      'command_group',
-      'item',
-      'reasoning_group',
-      'command_group',
-      'item'
+    expect(displayItems.map((displayItem) => displayItem.id)).toEqual([
+      'assistant-1',
+      'command-1',
+      'reasoning-1',
+      'command-2',
+      'assistant-2',
+      'command-3',
+      'reasoning-2',
+      'command-4',
+      'assistant-3'
     ]);
     expect(
       displayItems
@@ -481,21 +526,18 @@ describe('Conversation Show Aggregation', () => {
             ? displayItem.items.map((candidate) => candidate.id)
             : []
         )
-    ).toEqual([
-      ['command-1', 'command-2'],
-      ['command-3', 'command-4']
-    ]);
+    ).toEqual([['command-1'], ['command-2'], ['command-3'], ['command-4']]);
   });
 
   it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(
-    'ends the reasoning phase at %s context compaction',
+    'keeps reasoning presentation independent of %s compaction status',
     (status) => {
       const items = [
-        item('reasoning-before', 'reasoning_summary', { sections: [{ text: 'Before compact' }] }),
+        item('reasoning-before', 'reasoning', { sections: [{ text: 'Before compact' }] }),
         item('command-before', 'command_execution', { command: 'pwd' }),
         item('compact', 'context_compaction', { phase: 'STARTED' }, status),
         item('command-after', 'command_execution', { command: 'git status' }),
-        item('reasoning-after', 'reasoning_summary', { sections: [{ text: 'After compact' }] })
+        item('reasoning-after', 'reasoning', { sections: [{ text: 'After compact' }] })
       ];
       const displayItems = conversationDisplayItems(items);
       expect(displayItems.map((entry) => entry.id)).toEqual([
@@ -506,19 +548,19 @@ describe('Conversation Show Aggregation', () => {
         'reasoning-after'
       ]);
       expect(displayItems.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-        { id: 'reasoning-before', completed: true, text: 'Before compact' },
-        { id: 'reasoning-after', completed: false, text: 'After compact' }
+        { id: 'reasoning-before', items: [{ id: 'reasoning-before' }], text: 'Before compact' },
+        { id: 'reasoning-after', items: [{ id: 'reasoning-after' }], text: 'After compact' }
       ]);
       expect(items[0]?.status).toBe('COMPLETED');
       expect(conversationDisplayItems(items.slice(3))).toMatchObject([
         { id: 'command-after' },
-        { id: 'reasoning-after', completed: false }
+        { id: 'reasoning-after', items: [{ id: 'reasoning-after' }], text: 'After compact' }
       ]);
     }
   );
 
-  it('keeps background compaction from completing reasoning until the anchored prefix is installed', () => {
-    const before = item('reasoning-before', 'reasoning_summary', {
+  it('keeps background compaction and reasoning records in supplied order', () => {
+    const before = item('reasoning-before', 'reasoning', {
       sections: [{ text: 'Before compact' }]
     });
     const anchor = item('anchor-message', 'assistant_message', {
@@ -526,7 +568,7 @@ describe('Conversation Show Aggregation', () => {
       format: 'markdown',
       model: null
     });
-    const after = item('reasoning-after', 'reasoning_summary', {
+    const after = item('reasoning-after', 'reasoning', {
       sections: [{ text: 'Continued work' }]
     });
     const background = item(
@@ -541,12 +583,12 @@ describe('Conversation Show Aggregation', () => {
     expect(generating.map((entry) => entry.id)).toEqual([
       'reasoning-before',
       'anchor-message',
-      'compact',
-      'reasoning-after'
+      'reasoning-after',
+      'compact'
     ]);
     expect(generating.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-      { completed: false, text: 'Before compact' },
-      { completed: false, text: 'Continued work' }
+      { id: 'reasoning-before', items: [{ id: 'reasoning-before' }], text: 'Before compact' },
+      { id: 'reasoning-after', items: [{ id: 'reasoning-after' }], text: 'Continued work' }
     ]);
 
     const waiting = {
@@ -571,10 +613,8 @@ describe('Conversation Show Aggregation', () => {
     };
     for (const state of [waiting, failed])
       expect(
-        conversationDisplayItems([before, anchor, state, after])
-          .filter((entry) => entry.type === 'reasoning_group')
-          .every((entry) => entry.type !== 'reasoning_group' || !entry.completed)
-      ).toBe(true);
+        conversationDisplayItems([before, anchor, state, after]).map((entry) => entry.id)
+      ).toEqual(['reasoning-before', 'anchor-message', 'compact', 'reasoning-after']);
 
     const installed = {
       ...background,
@@ -587,10 +627,8 @@ describe('Conversation Show Aggregation', () => {
       }
     };
     expect(
-      conversationDisplayItems([before, anchor, after, installed]).filter(
-        (entry) => entry.type === 'reasoning_group'
-      )
-    ).toMatchObject([{ completed: true }, { completed: false }]);
+      conversationDisplayItems([before, anchor, after, installed]).map((entry) => entry.id)
+    ).toEqual(['reasoning-before', 'anchor-message', 'reasoning-after', 'compact']);
 
     const unresolved = {
       ...installed,
@@ -603,20 +641,20 @@ describe('Conversation Show Aggregation', () => {
       'reasoning-after'
     ]);
     expect(unresolvedDisplay.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-      { completed: false },
-      { completed: false }
+      { id: 'reasoning-before', text: 'Before compact' },
+      { id: 'reasoning-after', text: 'Continued work' }
     ]);
   });
 
   it('places background compaction after its anchored tool item', () => {
-    const before = item('reasoning-before', 'reasoning_summary', {
+    const before = item('reasoning-before', 'reasoning', {
       sections: [{ text: 'Compacted prefix' }]
     });
     const anchor = item('snapshot-tool', 'tool_call', {
       namespace: 'mar-agent',
       toolName: 'read'
     });
-    const after = item('reasoning-after', 'reasoning_summary', {
+    const after = item('reasoning-after', 'reasoning', {
       sections: [{ text: 'Continued after snapshot' }]
     });
     const compact = item(
@@ -630,7 +668,7 @@ describe('Conversation Show Aggregation', () => {
       'COMPLETED'
     );
 
-    const displayItems = conversationDisplayItems([before, anchor, after, compact]);
+    const displayItems = conversationDisplayItems([before, anchor, compact, after]);
     expect(displayItems.map((entry) => entry.id)).toEqual([
       'reasoning-before',
       'snapshot-tool',
@@ -638,13 +676,13 @@ describe('Conversation Show Aggregation', () => {
       'reasoning-after'
     ]);
     expect(displayItems.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-      { completed: true, text: 'Compacted prefix' },
-      { completed: false, text: 'Continued after snapshot' }
+      { id: 'reasoning-before', text: 'Compacted prefix' },
+      { id: 'reasoning-after', text: 'Continued after snapshot' }
     ]);
   });
 
-  it('keeps an explicitly blocking wait at its anchor without completing reasoning until installation', () => {
-    const before = item('reasoning-before', 'reasoning_summary', {
+  it('keeps an explicitly blocking wait at its Node-provided anchor position', () => {
+    const before = item('reasoning-before', 'reasoning', {
       sections: [{ text: 'Compacted prefix' }]
     });
     const anchor = item('snapshot-anchor', 'assistant_message', {
@@ -652,7 +690,7 @@ describe('Conversation Show Aggregation', () => {
       format: 'markdown',
       model: null
     });
-    const after = item('reasoning-after', 'reasoning_summary', {
+    const after = item('reasoning-after', 'reasoning', {
       sections: [{ text: 'Continued after snapshot' }]
     });
     const compact = (mode: string, stage: string, phase = 'STARTED', status = 'IN_PROGRESS') =>
@@ -665,73 +703,87 @@ describe('Conversation Show Aggregation', () => {
     const ids = ['reasoning-before', 'snapshot-anchor', 'compact', 'reasoning-after'];
 
     for (const state of [compact('BACKGROUND', 'GENERATING'), compact('BLOCKING', 'WAITING')]) {
-      const display = conversationDisplayItems([before, anchor, after, state]);
+      const display = conversationDisplayItems([before, anchor, state, after]);
       expect(display.map((entry) => entry.id)).toEqual(ids);
       expect(display.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-        { completed: false, text: 'Compacted prefix' },
-        { completed: false, text: 'Continued after snapshot' }
+        { id: 'reasoning-before', text: 'Compacted prefix' },
+        { id: 'reasoning-after', text: 'Continued after snapshot' }
       ]);
     }
 
     const installed = compact('BACKGROUND', 'GENERATING', 'COMPLETED', 'COMPLETED');
-    const display = conversationDisplayItems([before, anchor, after, installed]);
+    const display = conversationDisplayItems([before, anchor, installed, after]);
     expect(display.map((entry) => entry.id)).toEqual(ids);
     expect(display.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-      { completed: true, text: 'Compacted prefix' },
-      { completed: false, text: 'Continued after snapshot' }
+      { id: 'reasoning-before', text: 'Compacted prefix' },
+      { id: 'reasoning-after', text: 'Continued after snapshot' }
     ]);
   });
 
   it.each(['assistant_message', 'context_compaction'])(
-    'completes reasoning when %s separates phases in an unsplit Segment',
+    'keeps reasoning records separate when %s occurs in an unsplit Segment',
     (kind) => {
       const displayItems = conversationDisplayItems([
-        item('reasoning-before', 'reasoning_summary', { sections: [{ text: 'Before boundary' }] }),
+        item('reasoning-before', 'reasoning', { sections: [{ text: 'Before boundary' }] }),
         item('boundary', kind, { text: 'Phase complete' }),
-        item('reasoning-after', 'reasoning_summary', { sections: [{ text: 'After boundary' }] })
+        item('reasoning-after', 'reasoning', { sections: [{ text: 'After boundary' }] })
+      ]);
+      expect(displayItems.map((entry) => entry.id)).toEqual([
+        'reasoning-before',
+        'boundary',
+        'reasoning-after'
       ]);
       expect(displayItems.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
-        { id: 'reasoning-before', completed: true },
-        { id: 'reasoning-after', completed: false }
+        { id: 'reasoning-before', items: [{ id: 'reasoning-before' }], text: 'Before boundary' },
+        { id: 'reasoning-after', items: [{ id: 'reasoning-after' }], text: 'After boundary' }
       ]);
     }
   );
 
-  it.each(['reasoning_summary', 'tool_call', 'command_execution', 'file_change'])(
-    'keeps %s groups separate across consecutive compactions and preserves member updates',
+  it.each(['reasoning', 'tool_call', 'command_execution', 'file_change'])(
+    'keeps each %s item separate across consecutive compactions and preserves updates',
     (kind) => {
+      const groupedItem = (id: string) =>
+        item(id, kind, kind === 'reasoning' ? { sections: [{ text: id }] } : undefined);
       const items = [
-        item('before-1', kind),
-        item('before-2', kind),
+        groupedItem('before-1'),
+        groupedItem('before-2'),
         item('compact-1', 'context_compaction', { phase: 'STARTED' }, 'IN_PROGRESS'),
         item('compact-2', 'context_compaction', { phase: 'STARTED' }, 'IN_PROGRESS'),
-        item('after-1', kind),
-        item('after-2', kind)
+        groupedItem('after-1'),
+        groupedItem('after-2')
       ];
       const before = conversationDisplayItems(items);
       expect(before.map((entry) => entry.id)).toEqual([
         'before-1',
+        'before-2',
         'compact-1',
         'compact-2',
-        'after-1'
+        'after-1',
+        'after-2'
       ]);
       expect(
         before
           .filter((entry) => 'items' in entry)
           .map((entry) => ('items' in entry ? entry.items.map((member) => member.id) : []))
-      ).toEqual([
-        ['before-1', 'before-2'],
-        ['after-1', 'after-2']
-      ]);
-      items[1] = { ...items[1]!, status: 'FAILED', completedAt: 999, payload: { text: 'Updated' } };
+      ).toEqual([['before-1'], ['before-2'], ['after-1'], ['after-2']]);
+      items[1] = {
+        ...items[1]!,
+        status: 'FAILED',
+        completedAt: 999,
+        payload: kind === 'reasoning' ? { sections: [{ text: 'Updated' }] } : { text: 'Updated' }
+      };
       items[2] = { ...items[2]!, status: 'COMPLETED', payload: { phase: 'COMPLETED' } };
-      expect(conversationDisplayItems(items).map((entry) => entry.id)).toEqual(
-        before.map((entry) => entry.id)
-      );
+      const updated = conversationDisplayItems(items);
+      expect(updated.map((entry) => entry.id)).toEqual(before.map((entry) => entry.id));
+      expect(updated.find((entry) => entry.id === 'before-2')).toMatchObject({
+        ...(kind === 'reasoning' ? { text: 'Updated' } : {}),
+        items: [{ id: 'before-2', status: 'FAILED' }]
+      });
     }
   );
 
-  it('Non-adjacent command and file changes within the same Segment are still merged separately', () => {
+  it('keeps non-adjacent command and file-change items in their source order', () => {
     const displayItems = conversationDisplayItems([
       item('command-1', 'command_execution', { command: 'one' }),
       item('warning', 'warning', { message: 'A notice in between' }),
@@ -744,66 +796,215 @@ describe('Conversation Show Aggregation', () => {
       })
     ]);
 
-    expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
-      'item',
-      'command_group',
-      'file_change_group'
+    expect(displayItems.map((displayItem) => displayItem.id)).toEqual([
+      'command-1',
+      'warning',
+      'command-2',
+      'change-1',
+      'change-2'
     ]);
     expect(
       displayItems
         .filter((displayItem) => displayItem.type === 'command_group')
         .map((displayItem) => (displayItem.type === 'command_group' ? displayItem.items.length : 0))
-    ).toEqual([2]);
+    ).toEqual([1, 1]);
   });
 
-  it('Merge thinking within segments and let the same kind of items separated by thinking naturally aggregate', () => {
+  it('keeps thinking and command records interleaved in their source order', () => {
     const displayItems = conversationDisplayItems([
       item('user', 'user_message', { text: 'Run the check' }),
       item('command-1', 'command_execution', { command: 'pwd' }),
-      item('reasoning-1', 'reasoning_summary', { sections: [{ text: 'Check the catalog first' }] }),
+      item('reasoning-1', 'reasoning', { sections: [{ text: 'Check the catalog first' }] }),
       item('command-2', 'command_execution', { command: 'git status' }),
-      item('reasoning-2', 'reasoning_summary', { sections: [{ text: 'Then check the status' }] }),
+      item('reasoning-2', 'reasoning', { sections: [{ text: 'Then check the status' }] }),
       item('command-3', 'command_execution', { command: 'git diff' }),
       item('assistant', 'assistant_message', { text: 'The results look normal' })
     ]);
 
-    expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
-      'item',
-      'reasoning_group',
-      'command_group',
-      'item'
+    expect(displayItems.map((displayItem) => displayItem.id)).toEqual([
+      'user',
+      'command-1',
+      'reasoning-1',
+      'command-2',
+      'reasoning-2',
+      'command-3',
+      'assistant'
     ]);
-    const commandGroups = displayItems.filter(
-      (displayItem) => displayItem.type === 'command_group'
+    expect(displayItems.filter((displayItem) => displayItem.type === 'command_group')).toHaveLength(
+      3
     );
-    expect(commandGroups).toHaveLength(1);
     expect(
-      commandGroups.map((displayItem) =>
-        displayItem.type === 'command_group' ? displayItem.items.length : 0
-      )
-    ).toEqual([3]);
-    const reasoningGroup = displayItems.find(
-      (displayItem) => displayItem.type === 'reasoning_group'
-    );
-    expect(reasoningGroup?.type).toBe('reasoning_group');
-    if (reasoningGroup?.type === 'reasoning_group') {
-      expect(reasoningGroup.id).toBe('reasoning-1');
-      expect(reasoningGroup.items.map((candidate) => candidate.id)).toEqual([
-        'reasoning-1',
-        'reasoning-2'
+      displayItems.filter((displayItem) => displayItem.type === 'reasoning_group')
+    ).toMatchObject([
+      {
+        id: 'reasoning-1',
+        items: [{ id: 'reasoning-1' }],
+        text: 'Check the catalog first'
+      },
+      {
+        id: 'reasoning-2',
+        items: [{ id: 'reasoning-2' }],
+        text: 'Then check the status'
+      }
+    ]);
+  });
+
+  it('aggregates eligible categories only within explicit process groups at the first anchor', () => {
+    const firstProcess = { id: 'process-1' } as const;
+    const secondProcess = { id: 'process-2' } as const;
+    const tool = (id: string, processGroup?: ConversationItem['processGroup']) =>
+      item(id, 'tool_call', { toolName: id }, 'COMPLETED', processGroup);
+    const read = (id: string) =>
+      item(
+        id,
+        'tool_call',
+        { toolName: 'read', toolPresentation: { kind: 'READ', paths: [id] } },
+        'COMPLETED',
+        firstProcess
+      );
+    const inFirstProcess = (id: string, kind: string, payload: unknown) =>
+      item(id, kind, payload, 'COMPLETED', firstProcess);
+    const displayItems = conversationDisplayItems([
+      tool('tool-1', firstProcess),
+      inFirstProcess('command-1', 'command_execution', { command: 'one' }),
+      read('read-1'),
+      inFirstProcess('summary-1', 'reasoning', {
+        representation: 'summary',
+        sections: [{ text: 'Summary one' }]
+      }),
+      inFirstProcess('thinking-1', 'reasoning', {
+        representation: 'visible_thinking',
+        sections: [{ text: 'Thinking one' }]
+      }),
+      inFirstProcess('file-1', 'file_change', {
+        changes: [{ path: 'src/one.ts', change: 'MODIFIED' }]
+      }),
+      tool('tool-2', firstProcess),
+      inFirstProcess('command-2', 'command_execution', { command: 'two' }),
+      read('read-2'),
+      inFirstProcess('summary-2', 'reasoning', {
+        representation: 'summary',
+        sections: [{ text: 'Summary two' }]
+      }),
+      inFirstProcess('thinking-2', 'reasoning', {
+        representation: 'visible_thinking',
+        sections: [{ text: 'Thinking two' }]
+      }),
+      inFirstProcess('file-2', 'file_change', {
+        changes: [{ path: 'src/two.ts', change: 'ADDED' }]
+      }),
+      tool('other-process-1', secondProcess),
+      tool('other-process-2', secondProcess),
+      tool('unassigned-1'),
+      tool('unassigned-2')
+    ]);
+
+    expect(displayItems.map(({ id, type }) => [id, type])).toEqual([
+      ['tool-1', 'tool_group'],
+      ['command-1', 'command_group'],
+      ['read-1', 'read_group'],
+      ['summary-1', 'reasoning_group'],
+      ['thinking-1', 'reasoning_group'],
+      ['file-1', 'file_change_group'],
+      ['other-process-1', 'tool_group'],
+      ['unassigned-1', 'tool_group'],
+      ['unassigned-2', 'tool_group']
+    ]);
+    expect(
+      displayItems.map((entry) => ('items' in entry ? entry.items.map(({ id }) => id) : [entry.id]))
+    ).toEqual([
+      ['tool-1', 'tool-2'],
+      ['command-1', 'command-2'],
+      ['read-1', 'read-2'],
+      ['summary-1', 'summary-2'],
+      ['thinking-1', 'thinking-2'],
+      ['file-1', 'file-2'],
+      ['other-process-1', 'other-process-2'],
+      ['unassigned-1'],
+      ['unassigned-2']
+    ]);
+    expect(displayItems.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
+      { text: 'Summary one\n\nSummary two' },
+      { text: 'Thinking one\n\nThinking two' }
+    ]);
+  });
+
+  it('does not aggregate ordinary tools across special card, permission, or subagent boundaries', () => {
+    const processGroup = { id: 'process-boundaries' } as const;
+    const permissionStop = {
+      ...item('permission-stop', 'tool_call', { toolName: 'write' }, 'COMPLETED', processGroup),
+      permissionStop: {
+        action: 'ask' as const,
+        reason: 'Confirm target.',
+        source: {
+          sessionId: 'session',
+          executionId: 'execution',
+          callId: 'call',
+          toolName: 'write'
+        }
+      }
+    };
+    const boundaries = [
+      {
+        item: item(
+          'image-card',
+          'tool_call',
+          {
+            toolCategory: 'IMAGE_GENERATION',
+            attachments: [
+              { name: 'generated.png', mime: 'image/png', runId: 'run-1', imageIndex: 0 }
+            ]
+          },
+          'COMPLETED',
+          processGroup
+        ),
+        type: 'image_generation'
+      },
+      { item: permissionStop, type: 'item' },
+      {
+        item: item(
+          'subagent',
+          'tool_call',
+          {
+            namespace: 'collaboration',
+            toolName: 'spawn_agent',
+            subagentOperation: 'START',
+            subagentId: 'child'
+          },
+          'COMPLETED',
+          processGroup
+        ),
+        type: 'subagent_group'
+      }
+    ];
+
+    for (const { item: boundary, type } of boundaries) {
+      const displayItems = conversationDisplayItems([
+        item('before', 'tool_call', { toolName: 'read' }, 'COMPLETED', processGroup),
+        boundary,
+        item('after', 'tool_call', { toolName: 'write' }, 'COMPLETED', processGroup)
       ]);
-      expect(reasoningGroup.text).toBe('Check the catalog first\n\nThen check the status');
+      expect(displayItems.map(({ id, type: displayType }) => [id, displayType])).toEqual([
+        ['before', 'tool_group'],
+        [boundary.id, type],
+        ['after', 'tool_group']
+      ]);
+      expect(
+        displayItems
+          .filter((entry) => entry.type === 'tool_group')
+          .map((entry) => (entry.type === 'tool_group' ? entry.items.map(({ id }) => id) : []))
+      ).toEqual([['before'], ['after']]);
     }
   });
 
-  it('Aggregate ordinary tools across reasoning while preserving subagent and other item boundaries', () => {
+  it('keeps ordinary tools separate and preserves subagent and other item boundaries', () => {
     const ordinaryTool = (id: string) =>
       item(id, 'tool_call', { namespace: 'codex', toolName: 'read', title: 'read' });
     const displayItems = conversationDisplayItems([
       ordinaryTool('tool-1'),
-      item('reasoning-1', 'reasoning_summary', { sections: [{ text: 'Keep reading' }] }),
+      item('reasoning-1', 'reasoning', { sections: [{ text: 'Keep reading' }] }),
       ordinaryTool('tool-2'),
-      item('reasoning-2', 'reasoning_summary', { sections: [{ text: 'Keep checking' }] }),
+      item('reasoning-2', 'reasoning', { sections: [{ text: 'Keep checking' }] }),
       ordinaryTool('tool-3'),
       item('subagent', 'tool_call', {
         namespace: 'collaboration',
@@ -817,20 +1018,29 @@ describe('Conversation Show Aggregation', () => {
       ordinaryTool('tool-5')
     ]);
 
-    expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
-      'reasoning_group',
-      'subagent_group',
-      'item',
-      'tool_group'
+    expect(displayItems.map((displayItem) => displayItem.id)).toEqual([
+      'tool-1',
+      'reasoning-1',
+      'tool-2',
+      'reasoning-2',
+      'tool-3',
+      'subagent',
+      'tool-4',
+      'plan',
+      'tool-5'
     ]);
     expect(
       displayItems
         .filter((displayItem) => displayItem.type === 'tool_group')
         .map((displayItem) => (displayItem.type === 'tool_group' ? displayItem.items.length : 0))
-    ).toEqual([5]);
+    ).toEqual([1, 1, 1, 1, 1]);
+    expect(displayItems.find((displayItem) => displayItem.id === 'subagent')).toMatchObject({
+      type: 'subagent_group',
+      items: [{ id: 'subagent' }]
+    });
   });
 
-  it('Keep image-generation items separate from ordinary tool groups', () => {
+  it('keeps image-generation records distinct from ordinary tool records', () => {
     const displayItems = conversationDisplayItems([
       item('tool-1', 'tool_call', {
         namespace: 'workspace',
@@ -858,19 +1068,34 @@ describe('Conversation Show Aggregation', () => {
       })
     ]);
 
+    expect(displayItems.map((displayItem) => displayItem.id)).toEqual([
+      'tool-1',
+      'image',
+      'tool-2'
+    ]);
     expect(displayItems.map((displayItem) => displayItem.type)).toEqual([
+      'tool_group',
       'image_generation',
       'tool_group'
     ]);
-    expect(displayItems[1]).toMatchObject({
+    expect(displayItems[0]).toMatchObject({
       type: 'tool_group',
-      items: [{ id: 'tool-1' }, { id: 'tool-2' }]
+      id: 'tool-1',
+      items: [{ id: 'tool-1' }]
     });
     expect(displayItems[0]).toMatchObject({
+      type: 'tool_group',
+      items: [{ id: 'tool-1' }]
+    });
+    expect(displayItems[1]).toMatchObject({
       type: 'image_generation',
       item: { id: 'image' }
     });
-    const imageGeneration = displayItems[0];
+    expect(displayItems[2]).toMatchObject({
+      type: 'tool_group',
+      items: [{ id: 'tool-2' }]
+    });
+    const imageGeneration = displayItems[1];
     expect(
       conversationItemLabel(
         'tool_call',
@@ -943,7 +1168,7 @@ describe('Conversation Show Aggregation', () => {
     ).toBe(zhNodeMessages.generatingImage);
   });
 
-  it('Preserve file names, statuses, and order when merging file changes', () => {
+  it('preserves file names, statuses, and order for file changes', () => {
     const entries = conversationFileChangeEntries([
       item('change-1', 'file_change', {
         changes: [{ path: 'src/a.ts', change: 'MODIFIED' }]
@@ -978,21 +1203,40 @@ describe('Conversation Show Aggregation', () => {
     );
   });
 
-  it('Use a quantity-free reasoning title and consistent running and completed labels', () => {
-    expect(conversationItemLabel('reasoning_summary')).toBe(zhGeneratedPresentation.reasoning);
-    expect(
-      conversationItemText(
-        'reasoning_summary',
-        { sections: [{ text: 'The check is complete' }] },
-        'COMPLETED'
-      )
-    ).toBe(zhGeneratedPresentation.thoughtCompleted);
-    expect(conversationItemText('reasoning_summary', { sections: [] }, 'IN_PROGRESS')).toBe(
-      zhGeneratedPresentation.thinking
+  it('keeps public reasoning text and identity independent of Item status', () => {
+    expect(conversationItemLabel('reasoning')).toBe(zhGeneratedPresentation.reasoning);
+    const inProgress = item(
+      'reasoning-running',
+      'reasoning',
+      {
+        representation: 'summary',
+        sections: [{ text: 'The public check is continuing.' }]
+      },
+      'IN_PROGRESS'
     );
-    expect(conversationItemText('reasoning_summary', { sections: [] }, 'COMPLETED')).toBe(
-      zhGeneratedPresentation.thoughtCompleted
+    const completed = item(
+      'reasoning-completed',
+      'reasoning',
+      {
+        representation: 'visible_thinking',
+        sections: [{ text: 'The public check is complete.' }]
+      },
+      'COMPLETED'
     );
+    expect(conversationDisplayItems([inProgress, completed])).toMatchObject([
+      {
+        type: 'reasoning_group',
+        id: 'reasoning-running',
+        text: 'The public check is continuing.',
+        items: [{ id: 'reasoning-running', status: 'IN_PROGRESS' }]
+      },
+      {
+        type: 'reasoning_group',
+        id: 'reasoning-completed',
+        text: 'The public check is complete.',
+        items: [{ id: 'reasoning-completed', status: 'COMPLETED' }]
+      }
+    ]);
   });
 
   it('Uses the item status for context-compaction labels', () => {
@@ -1119,13 +1363,33 @@ describe('Conversation Show Aggregation', () => {
     ).toBe('Context compressed');
   });
 
-  it('Keep reasoning collapsed by default, collapse on completion, and preserve user toggles', () => {
-    expect(reasoningDisclosureOpen(undefined, true, undefined)).toBe(false);
-    expect(reasoningDisclosureOpen(undefined, false, undefined)).toBe(false);
-    expect(reasoningDisclosureOpen(true, true, false)).toBe(false);
-    expect(reasoningDisclosureOpen(true, true, true)).toBe(true);
-    expect(reasoningDisclosureOpen(true, false, true)).toBe(false);
-    expect(reasoningDisclosureOpen(false, false, true)).toBe(true);
+  it('hides empty public reasoning without changing its identity or underlying items', () => {
+    const empty = item('empty', 'reasoning', { sections: [{ text: '  ' }] });
+    const reply = item('reply', 'assistant_message', { text: 'Reply' });
+    const source = [empty, reply];
+    const original = structuredClone(source);
+    expect(conversationDisplayItems(source).map((value) => value.id)).toEqual(['reply']);
+    expect(source).toEqual(original);
+
+    const restored = { ...empty, payload: { sections: [{ text: 'Public thought' }] } };
+    expect(conversationDisplayItems([restored, reply])[0]).toMatchObject({
+      type: 'reasoning_group',
+      id: empty.id,
+      items: [{ id: empty.id }],
+      text: 'Public thought'
+    });
+
+    const continuation = item('continuation', 'reasoning', {
+      sections: [{ text: 'Continued public thought' }]
+    });
+    expect(conversationDisplayItems([empty, continuation])).toMatchObject([
+      {
+        type: 'reasoning_group',
+        id: 'continuation',
+        items: [{ id: 'continuation' }],
+        text: 'Continued public thought'
+      }
+    ]);
   });
 
   it('Preview the latest heading or paragraph first line without synthetic truncation', () => {
@@ -1328,7 +1592,7 @@ describe('Conversation Show Aggregation', () => {
     ).toBe(`${zhPresentation.subagentOperation.STATUS} task-1`);
   });
 
-  it('groups subagent calls by identity at the last call without merging same-name tasks', () => {
+  it('preserves each subagent operation and its explicit identity', () => {
     const call = (id: string, agentId: string | null, operation: string) =>
       item(id, 'tool_call', {
         toolName: 'control',
@@ -1346,15 +1610,25 @@ describe('Conversation Show Aggregation', () => {
       wait,
       item('tool', 'tool_call', { toolName: 'read' })
     ]);
-    expect(display.map(({ id }) => id)).toEqual(['other', 'unknown', 'many', 'start', 'tool']);
-    expect(display[3]).toMatchObject({ type: 'subagent_group', id: 'start', items: [start, wait] });
+    expect(display.map(({ id }) => id)).toEqual([
+      'start',
+      'other',
+      'unknown',
+      'many',
+      'wait',
+      'tool'
+    ]);
+    expect(display[0]).toMatchObject({ type: 'subagent_group', id: 'start', items: [start] });
+    expect(display[4]).toMatchObject({ type: 'subagent_group', id: 'wait', items: [wait] });
     expect(subagentGroupText([start, wait])).toBe(
       `Review · ${zhPresentation.subagentOperation.STATUS}`
     );
-    expect(conversationDisplayItems([start, { ...wait, status: 'FAILED' }])[0]?.id).toBe('start');
+    expect(
+      conversationDisplayItems([start, { ...wait, status: 'FAILED' }]).map(({ id }) => id)
+    ).toEqual(['start', 'wait']);
   });
 
-  it('does not group subagent calls across assistant replies or compaction', () => {
+  it('keeps subagent operation order across replies and compaction', () => {
     const call = (id: string) =>
       item(id, 'tool_call', { subagentOperation: 'STATUS', subagentId: 'child' });
     const display = conversationDisplayItems([
@@ -1364,6 +1638,7 @@ describe('Conversation Show Aggregation', () => {
       item('compact', 'context_compaction'),
       call('c')
     ]);
+    expect(display.map(({ id }) => id)).toEqual(['a', 'reply', 'b', 'compact', 'c']);
     expect(display.filter((entry) => entry.type === 'subagent_group').map(({ id }) => id)).toEqual([
       'a',
       'b',
@@ -1371,7 +1646,7 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
-  it('joins a newly identified start and preserves a known title when later calls have only IDs', () => {
+  it('retains explicit identity when later subagent calls provide an ID', () => {
     const start = item('start', 'tool_call', {
       toolName: 'agent_start',
       title: 'Review',
@@ -1387,7 +1662,8 @@ describe('Conversation Show Aggregation', () => {
     expect(conversationDisplayItems([start, wait])).toHaveLength(2);
     const identified = { ...start, payload: { ...(start.payload as object), subagentId: 'child' } };
     expect(conversationDisplayItems([identified, wait])).toMatchObject([
-      { type: 'subagent_group', id: 'start', items: [identified, wait] }
+      { type: 'subagent_group', id: 'start', items: [identified] },
+      { type: 'subagent_group', id: 'wait', items: [wait] }
     ]);
     expect(subagentGroupText([identified, wait])).toBe(
       `Review · ${zhPresentation.subagentOperation.STATUS}`
@@ -1438,7 +1714,7 @@ describe('Conversation Show Aggregation', () => {
     );
   });
 
-  it('Keep subagent lifecycle operations separate from ordinary tool aggregation', () => {
+  it('keeps subagent operations and ordinary tool calls independently displayed', () => {
     const displayItems = conversationDisplayItems([
       item('read-1', 'tool_call', { namespace: 'codex', toolName: 'read', title: 'read' }),
       item('status', 'tool_call', {
@@ -1451,12 +1727,21 @@ describe('Conversation Show Aggregation', () => {
       item('read-2', 'tool_call', { namespace: 'codex', toolName: 'read', title: 'read' })
     ]);
 
-    expect(displayItems.map((entry) => entry.type)).toEqual(['subagent_group', 'tool_group']);
-    expect(displayItems[1]).toMatchObject({
+    expect(displayItems.map((entry) => entry.id)).toEqual(['read-1', 'status', 'read-2']);
+    expect(displayItems.map((entry) => entry.type)).toEqual([
+      'tool_group',
+      'subagent_group',
+      'tool_group'
+    ]);
+    expect(displayItems[0]).toMatchObject({
       type: 'tool_group',
-      items: [{ id: 'read-1' }, { id: 'read-2' }]
+      items: [{ id: 'read-1' }]
     });
-    expect(displayItems[0]).toMatchObject({ type: 'subagent_group', items: [{ id: 'status' }] });
+    expect(displayItems[1]).toMatchObject({ type: 'subagent_group', items: [{ id: 'status' }] });
+    expect(displayItems[2]).toMatchObject({
+      type: 'tool_group',
+      items: [{ id: 'read-2' }]
+    });
   });
 
   it('Use only Node-normalized public fields for subagent titles', () => {

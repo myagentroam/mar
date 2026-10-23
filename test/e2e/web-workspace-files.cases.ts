@@ -8,6 +8,134 @@ import {
 
 // Files, Git, uploads, and the resource tree
 
+test('File navigation uses rounded selection and the editor fills its surface with themed text selection', async ({
+  page
+}, testInfo) => {
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    [],
+    'GIT_WORKSPACE',
+    true,
+    undefined,
+    undefined,
+    '0.9.12'
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
+    json(route, {
+      file: {
+        path: 'src/main.ts',
+        encoding: 'utf-8',
+        size: 25,
+        content: 'export const answer = 42;',
+        truncated: false,
+        nextOffset: null,
+        revision: 'a'.repeat(64)
+      }
+    })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  const file = page.getByRole('treeitem', { name: 'main.ts', exact: true });
+  await expect(page.locator('.workspace-tree .tree-node').first()).toHaveCSS('font-weight', '400');
+  const workspaceName = page.locator('.workspace-tree .workspace-branch-button').first();
+  await expect(workspaceName).toHaveCSS('font-weight', '400');
+  await expect(workspaceName).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.workspace-tab-content > span').first()).toHaveCSS(
+    'font-weight',
+    '400'
+  );
+  await expect(page.locator('.workspace-tab-content > span').first()).toHaveCSS(
+    'font-size',
+    '13px'
+  );
+  await expect(page.locator('.workspace-tab small').first()).toHaveCSS('font-size', '11px');
+  await expect(page.locator('.workbench-brand')).toHaveCSS('height', '44px');
+  const brandFits = await page.locator('.workbench-brand').evaluate((element) => {
+    const header = element.getBoundingClientRect();
+    const copy = element.querySelector('.brand-copy')!.getBoundingClientRect();
+    return copy.top >= header.top && copy.bottom <= header.bottom;
+  });
+  expect(brandFits).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('aligned-workbench-header.png') });
+  await file.click();
+  await expect(page.locator('.file-tree-row-shell.selected').first()).toHaveCSS(
+    'border-radius',
+    '6px'
+  );
+  const preview = page.getByRole('dialog', { name: 'main.ts 文件预览' });
+  const editor = preview.locator('.cm-content');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('export const answer = 42;');
+  for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-theme', value),
+      theme
+    );
+    await editor.click();
+    await editor.press('Control+a');
+    const selection = preview.locator('.cm-selectionBackground').first();
+    await expect(selection).toBeVisible();
+    await expect(selection).toHaveCSS('box-shadow', 'none');
+    const before = await selection.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(before).not.toBe('rgb(168, 82, 0)');
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty('--mar-color-brand', '#805ad5')
+    );
+    await expect
+      .poll(() => selection.evaluate((element) => getComputedStyle(element).backgroundColor))
+      .not.toBe(before);
+    await page.evaluate(() => document.documentElement.style.removeProperty('--mar-color-brand'));
+  }
+  for (const width of [1365, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const titleFits = await preview
+      .locator('.workspace-file-page-frame-title')
+      .evaluate((element) => {
+        const header = element.parentElement!.getBoundingClientRect();
+        return [element, ...element.children].every((child) => {
+          const bounds = child.getBoundingClientRect();
+          return bounds.top >= header.top && bounds.bottom <= header.bottom;
+        });
+      });
+    expect(titleFits).toBe(true);
+    if (width >= 768) {
+      await expect(preview.locator('.workspace-file-page-frame-header')).toHaveCSS(
+        'height',
+        '44px'
+      );
+      const controls = preview.locator('.file-preview-desktop-actions .el-button.is-circle');
+      expect(await controls.count()).toBeGreaterThan(0);
+      for (const button of await controls.all()) {
+        await expect(button).toHaveAttribute('title', (await button.getAttribute('aria-label'))!);
+        await expect(button).toHaveCSS('height', '26px');
+        await expect(button).toHaveCSS('width', '26px');
+      }
+    } else {
+      await expect(page.locator('.workbench-brand')).toHaveCSS('height', '46px');
+      await expect(preview.locator('.file-preview-desktop-actions')).toBeHidden();
+      await expect(preview.locator('.workspace-file-mobile-actions')).toBeVisible();
+    }
+    await expect(preview.locator('.file-preview-content')).toHaveCSS('padding', '0px');
+    const edges = await preview.locator('.code-file-editor').evaluate((element) => {
+      const editorBounds = element.getBoundingClientRect();
+      const parentBounds = element.parentElement!.getBoundingClientRect();
+      return (['top', 'right', 'bottom', 'left'] as const).map((edge) =>
+        Math.abs(editorBounds[edge] - parentBounds[edge])
+      );
+    });
+    expect(edges.every((distance) => distance < 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`editor-${width}.png`) });
+  }
+});
+
 test('Unknown-extension binaries use bounded detection and offer download without reading the full body', async ({
   page
 }) => {
@@ -759,6 +887,11 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   await search.press('Enter');
   await expect.poll(() => contentSearchUrl?.searchParams.get('regex')).toBe('true');
   await expect(page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ })).toBeVisible();
+  const searchResult = page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ });
+  await searchResult.hover();
+  await expect(searchResult).toHaveCSS('border-radius', '6px');
+  await searchResult.focus();
+  await expect(searchResult).toHaveCSS('border-radius', '6px');
   await page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ }).click();
   const preview = page.getByRole('dialog', { name: 'main.ts 文件预览' });
   await expect(preview).toBeVisible();
@@ -830,6 +963,9 @@ test('Text files default to editing and support saving, replacement, symbols, an
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await expect(preview.locator('.file-preview-eyebrow')).toContainText('正在编辑');
   const editor = preview.locator('.cm-content');
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'vscode-light-2026')
+  );
   await expect(preview.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await page.evaluate(() =>
     document.documentElement.setAttribute('data-theme', 'vscode-dark-2026')
@@ -959,6 +1095,20 @@ test('Large text previews disable expensive syntax trees and symbol scans', asyn
     .toContain('const item = 1;');
   await page.keyboard.press('Alt+m');
   await expect(preview.getByPlaceholder('搜索符号')).toHaveCount(0);
+  for (const width of [1365, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const contentArea = preview.locator('.file-preview-content');
+    await expect(contentArea).toHaveCSS('overflow-y', 'auto');
+    const notice = contentArea.locator('.empty');
+    await notice.scrollIntoViewIfNeeded();
+    const bounds = await notice.evaluate((element) => {
+      const notice = element.getBoundingClientRect();
+      const container = element.parentElement!.getBoundingClientRect();
+      return { top: notice.top - container.top, bottom: container.bottom - notice.bottom };
+    });
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeGreaterThanOrEqual(-1);
+  }
 });
 
 test('File tree More menus remain open while the pointer enters the menu', async ({ page }) => {
@@ -1003,6 +1153,26 @@ test('Files filtering affects only loaded tree entries and clearing restores the
   const tree = page.getByRole('tree', { name: '文件树' });
   const filter = page.getByRole('textbox', { name: '显示过滤' });
   await expect(tree.getByRole('treeitem', { name: /main\.ts/ })).toBeVisible();
+  await tree.getByRole('treeitem', { name: /main\.ts/ }).hover();
+  const rows = tree.locator('.file-tree-row-shell');
+  expect(await rows.count()).toBeGreaterThan(1);
+  await expect(rows.first()).toHaveCSS('background-clip', 'padding-box');
+  await expect(rows.first()).toHaveCSS('border-top-width', '1px');
+  await expect(rows.first()).toHaveCSS('border-bottom-width', '1px');
+  const geometry = await rows.evaluateAll((elements) => {
+    const height = Number.parseFloat(
+      getComputedStyle(elements[0]!).getPropertyValue('--mar-compact-row-size')
+    );
+    return elements.every((element, index) => {
+      const bounds = element.getBoundingClientRect();
+      return (
+        Math.abs(bounds.height - height) < 0.1 &&
+        (index === 0 ||
+          Math.abs(bounds.top - elements[index - 1]!.getBoundingClientRect().bottom) < 0.1)
+      );
+    });
+  });
+  expect(geometry).toBe(true);
   await filter.fill('missing');
   await expect(tree.getByRole('treeitem', { name: /main\.ts/ })).toHaveCount(0);
   await expect(tree.getByText('没有匹配的文件或目录。')).toBeVisible();

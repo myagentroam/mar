@@ -2,6 +2,14 @@
 :root,
 html.console-ui,
 .theme-preview {
+  --el-border-radius-base: var(--mar-radius-control);
+  --el-font-family: var(--mar-font-sans);
+  --el-font-size-base: var(--mar-font-size-body);
+  --el-font-size-small: var(--mar-font-size-body);
+  --el-font-size-extra-small: var(--mar-font-size-meta);
+  --el-font-size-medium: var(--mar-font-size-title);
+  --el-font-size-large: var(--mar-font-size-page-title);
+  --el-font-size-extra-large: var(--mar-font-size-page-title);
   --el-color-primary: var(--mar-color-brand);
   --el-color-primary-light-3: var(--mar-control-color-primary-light-3);
   --el-color-primary-light-5: var(--mar-control-color-primary-light-5);
@@ -12,6 +20,98 @@ html.console-ui,
   --el-color-success: var(--mar-control-color-success);
   --el-color-warning: var(--mar-control-color-warning);
   --el-color-danger: var(--mar-control-color-danger);
+  --el-color-info: var(--mar-text-secondary);
+  --el-color-success-light-3: color-mix(
+    in srgb,
+    var(--mar-control-color-success) 70%,
+    var(--mar-bg-panel)
+  );
+  --el-color-success-light-5: color-mix(
+    in srgb,
+    var(--mar-control-color-success) 50%,
+    var(--mar-bg-panel)
+  );
+  --el-color-success-light-7: color-mix(
+    in srgb,
+    var(--mar-control-color-success) 30%,
+    var(--mar-bg-panel)
+  );
+  --el-color-success-light-8: color-mix(
+    in srgb,
+    var(--mar-control-color-success) 20%,
+    var(--mar-bg-panel)
+  );
+  --el-color-success-light-9: var(--mar-color-success-bg);
+  --el-color-success-dark-2: color-mix(
+    in srgb,
+    var(--mar-control-color-success) 80%,
+    var(--mar-bg-page)
+  );
+  --el-color-warning-light-3: color-mix(
+    in srgb,
+    var(--mar-control-color-warning) 70%,
+    var(--mar-bg-panel)
+  );
+  --el-color-warning-light-5: color-mix(
+    in srgb,
+    var(--mar-control-color-warning) 50%,
+    var(--mar-bg-panel)
+  );
+  --el-color-warning-light-7: color-mix(
+    in srgb,
+    var(--mar-control-color-warning) 30%,
+    var(--mar-bg-panel)
+  );
+  --el-color-warning-light-8: color-mix(
+    in srgb,
+    var(--mar-control-color-warning) 20%,
+    var(--mar-bg-panel)
+  );
+  --el-color-warning-light-9: var(--mar-color-warning-bg);
+  --el-color-warning-dark-2: color-mix(
+    in srgb,
+    var(--mar-control-color-warning) 80%,
+    var(--mar-bg-page)
+  );
+  --el-color-danger-light-3: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 70%,
+    var(--mar-bg-panel)
+  );
+  --el-color-danger-light-5: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 50%,
+    var(--mar-bg-panel)
+  );
+  --el-color-danger-light-7: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 30%,
+    var(--mar-bg-panel)
+  );
+  --el-color-danger-light-8: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 20%,
+    var(--mar-bg-panel)
+  );
+  --el-color-danger-light-9: var(--mar-color-danger-bg);
+  --el-color-danger-dark-2: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 80%,
+    var(--mar-bg-page)
+  );
+  --el-color-error: var(--el-color-danger);
+  --el-color-error-light-3: var(--el-color-danger-light-3);
+  --el-color-error-light-5: var(--el-color-danger-light-5);
+  --el-color-error-light-7: var(--el-color-danger-light-7);
+  --el-color-error-light-8: var(--el-color-danger-light-8);
+  --el-color-error-light-9: var(--el-color-danger-light-9);
+  --el-color-error-dark-2: var(--el-color-danger-dark-2);
+  --el-color-info-light-3: color-mix(in srgb, var(--mar-text-secondary) 70%, var(--mar-bg-panel));
+  --el-color-info-light-5: color-mix(in srgb, var(--mar-text-secondary) 50%, var(--mar-bg-panel));
+  --el-color-info-light-7: color-mix(in srgb, var(--mar-text-secondary) 30%, var(--mar-bg-panel));
+  --el-color-info-light-8: color-mix(in srgb, var(--mar-text-secondary) 20%, var(--mar-bg-panel));
+  --el-color-info-light-9: var(--mar-fill-subtle);
+  --el-color-info-dark-2: color-mix(in srgb, var(--mar-text-secondary) 80%, var(--mar-bg-page));
   --el-bg-color: var(--mar-bg-panel);
   --el-bg-color-page: var(--mar-bg-page);
   --el-bg-color-overlay: var(--mar-control-bg-color-overlay);
@@ -30,98 +130,114 @@ html.console-ui,
   --el-border-color-extra-light: var(--mar-control-border-color-extra-light);
   --el-border-color-dark: var(--mar-control-border-color-dark);
   --el-border-color-darker: var(--mar-control-border-color-darker);
+  --el-disabled-bg-color: var(--mar-fill-soft);
+  --el-disabled-text-color: var(--mar-text-faint);
+  --el-disabled-border-color: var(--mar-border-subtle);
+  --el-mask-color: var(--mar-overlay-scrim);
+  --el-mask-color-extra-light: var(--mar-overlay-scrim);
+  --el-overlay-color: var(--mar-overlay-scrim);
+  --el-overlay-color-light: var(--mar-overlay-scrim);
+  --el-overlay-color-lighter: var(--mar-overlay-scrim);
+  --el-box-shadow: 0 0.75rem 2rem var(--mar-shadow-medium);
+  --el-box-shadow-light: 0 0.375rem 1rem var(--mar-shadow-soft);
+  --el-box-shadow-lighter: 0 0.125rem 0.5rem var(--mar-shadow-soft);
+  --el-box-shadow-dark: 0 1rem 3rem var(--mar-shadow-medium);
 }
 
 :root,
 .theme-preview {
-  font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mar-font-sans: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--mar-font-sans);
   color-scheme: light;
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
   font-synthesis: none;
-  --mar-bg-page: #f3f6f9;
+  --mar-bg-page: #f7f8fa;
   --mar-bg-panel: #ffffff;
-  --mar-bg-subtle: #f7f9fb;
-  --mar-bg-tab-inactive: #f1f4f7;
-  --mar-fill-subtle: #f7f9fb;
-  --mar-fill-muted: #f1f4f7;
-  --mar-fill-row-hover: #edf2f7;
-  --mar-fill-soft: #edf1f5;
-  --mar-fill-hover: #e8eef5;
-  --mar-table-header-bg: var(--mar-bg-page);
-  --mar-table-row-hover-bg: var(--mar-fill-row-hover);
-  --mar-border-default: #dce3ea;
-  --mar-border-subtle: #e7ecf2;
-  --mar-border-medium: #ccd6e0;
-  --mar-border-strong: #b9c5d1;
-  --mar-text-primary: #1c2733;
-  --mar-text-secondary: #47586a;
-  --mar-text-tertiary: #5f7082;
-  --mar-text-faint: #8c9bab;
-  --mar-text-muted: #627386;
-  --mar-conversation-canvas: #f3f6f9;
+  --mar-bg-chrome: #ecf0f4;
+  --mar-bg-subtle: #f5f7fa;
+  --mar-bg-tab-inactive: #e7ecf2;
+  --mar-fill-subtle: #f5f7fa;
+  --mar-fill-muted: #eaf0f6;
+  --mar-fill-row-hover: #e4eaf1;
+  --mar-fill-soft: #f0f4f8;
+  --mar-fill-hover: #e4eaf1;
+  --mar-table-header-bg: #ecf0f4;
+  --mar-table-row-hover-bg: #e4eaf1;
+  --mar-border-default: #c7d1dd;
+  --mar-border-subtle: #d9e0e8;
+  --mar-border-medium: #7b8da3;
+  --mar-border-strong: #7b8da3;
+  --mar-text-primary: #202b3b;
+  --mar-text-secondary: #4f6073;
+  --mar-text-tertiary: #5d6d80;
+  --mar-text-faint: #5d6d80;
+  --mar-text-muted: #5d6d80;
+  --mar-conversation-canvas: #f7f8fa;
   --mar-conversation-surface: #ffffff;
-  --mar-conversation-process: #f6f8fa;
-  --mar-conversation-border: #dce3ea;
-  --mar-conversation-process-border: #e5eaf0;
-  --mar-conversation-text: #1c2733;
-  --mar-conversation-muted: #526476;
-  --mar-conversation-code: #f0f3f6;
-  --mar-scrollbar-thumb: color-mix(in srgb, var(--mar-text-tertiary) 52%, transparent);
-  --mar-scrollbar-thumb-hover: color-mix(in srgb, var(--mar-text-secondary) 68%, transparent);
-  --mar-color-brand: #0a6fd8;
-  --mar-control-color-primary-light-3: #549ae4;
-  --mar-control-color-primary-light-5: #84b7ec;
-  --mar-control-color-primary-light-7: #b6d4f3;
-  --mar-control-color-primary-light-8: #cee2f7;
-  --mar-control-color-primary-light-9: #e6f1fb;
-  --mar-control-color-primary-dark-2: #085bb4;
-  --mar-color-brand-text: #135fa8;
-  --mar-color-on-accent: #fff;
+  --mar-conversation-process: #f1f4f7;
+  --mar-conversation-border: #dee5ed;
+  --mar-conversation-process-border: #d9e1eb;
+  --mar-conversation-text: #202b3b;
+  --mar-conversation-muted: #4f6073;
+  --mar-conversation-code: #f1f4f7;
+  --mar-scrollbar-thumb: #8c9cb266;
+  --mar-scrollbar-thumb-hover: #6b7f9ab3;
+  --mar-color-brand: #245fa8;
+  --mar-control-color-primary-light-3: #638ab9;
+  --mar-control-color-primary-light-5: #91aed0;
+  --mar-control-color-primary-light-7: #bdcee3;
+  --mar-control-color-primary-light-8: #d3dfee;
+  --mar-control-color-primary-light-9: #eaf0f8;
+  --mar-control-color-primary-dark-2: #184780;
+  --mar-color-brand-text: #245994;
+  --mar-color-on-accent: #ffffff;
   --mar-control-disabled-on-accent: var(--mar-color-on-accent);
-  --mar-color-brand-hover: #0966c8;
-  --mar-color-brand-disabled: var(--mar-control-color-primary-light-5);
-  --mar-control-link-text: var(--mar-color-brand);
-  --mar-control-link-hover: var(--mar-control-color-primary-light-3);
-  --mar-color-brand-active: #085bb4;
-  --mar-color-brand-subtle: #f1f6fc;
-  --mar-color-brand-selected: #e4effb;
-  --mar-color-brand-border: #c5d9ee;
-  --mar-control-color-success: #17803d;
-  --mar-control-color-warning: #946200;
-  --mar-control-color-danger: #c83b3b;
-  --mar-color-success-text: #17803d;
-  --mar-color-success-bg: #eaf7ef;
-  --mar-color-warning-text: #946200;
-  --mar-color-warning-accent: #f2b01e;
-  --mar-color-warning-bg: #fff6d6;
-  --mar-color-danger-text: #c83b3b;
-  --mar-color-danger-bg: #fff0ee;
-  --mar-color-accent: #14778a;
-  --mar-color-accent-bg: #e8f5f7;
-  --mar-color-diff-add-text: #116329;
-  --mar-color-diff-del-text: #82071e;
-  --el-border-radius-base: 6px;
+  --mar-color-brand-hover: #1e5396;
+  --mar-color-brand-disabled: #8198b5;
+  --mar-control-link-text: #245994;
+  --mar-control-link-hover: #184780;
+  --mar-color-brand-subtle: #e8eff8;
+  --mar-color-brand-selected: #dce8f7;
+  --mar-color-brand-border: #9eb9db;
+  --mar-control-color-success: #21694f;
+  --mar-control-color-warning: #835615;
+  --mar-control-color-danger: #ab3c4b;
+  --mar-color-success-text: #21694f;
+  --mar-color-success-bg: #e5f2eb;
+  --mar-color-warning-text: #835615;
+  --mar-color-warning-accent: #835615;
+  --mar-color-warning-bg: #fbf0db;
+  --mar-color-danger-text: #ab3c4b;
+  --mar-color-danger-bg: #f9e9ec;
+  --mar-color-accent: #386b80;
+  --mar-color-accent-bg: #e6f0f4;
+  --mar-color-diff-add-text: #21694f;
+  --mar-color-diff-del-text: #ab3c4b;
+  --mar-radius-marker: 4px;
+  --mar-radius-control: 6px;
+  --mar-radius-selection: 6px;
+  --mar-radius-surface: 12px;
 
-  --mar-control-border-color-lighter: var(--mar-border-subtle);
-  --mar-control-border-color-extra-light: var(--mar-fill-subtle);
-  --mar-control-border-color-dark: var(--mar-border-medium);
-  --mar-control-border-color-darker: var(--mar-border-strong);
-  --mar-control-fill-color: var(--mar-fill-muted);
-  --mar-control-fill-color-light: var(--mar-fill-soft);
-  --mar-control-fill-color-lighter: var(--mar-fill-subtle);
-  --mar-control-fill-color-extra-light: var(--mar-bg-subtle);
+  --mar-control-border-color-lighter: #d9e0e8;
+  --mar-control-border-color-extra-light: #d9e0e8;
+  --mar-control-border-color-dark: #7b8da3;
+  --mar-control-border-color-darker: #7b8da3;
+  --mar-control-fill-color: #e8edf3;
+  --mar-control-fill-color-light: #eef2f7;
+  --mar-control-fill-color-lighter: #f3f6f9;
+  --mar-control-fill-color-extra-light: #f8fafc;
 
-  --mar-control-bg-color-overlay: var(--mar-bg-panel);
+  --mar-control-bg-color-overlay: #ffffff;
 
-  --el-font-size-base: 13px;
-  --el-font-size-small: 13px;
-  --el-font-size-extra-small: 12px;
   --el-component-size-small: 24px;
   --mar-font-size-body: 13px;
   --mar-font-size-meta: 11px;
   --mar-font-size-nano: 9px;
   --mar-font-size-title: 14px;
+  --mar-font-size-input: var(--mar-font-size-body);
+  --mar-font-size-page-title: 1.35rem;
+  --mar-font-size-display: 1.5rem;
   --mar-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --mar-compact-control-size: 24px;
   --mar-primary-control-size: 28px;
@@ -146,12 +262,11 @@ html.console-ui,
   --mar-terminal-surface: #131922;
   --mar-terminal-foreground: #e8eef8;
   --mar-terminal-cursor: #37c8ff;
-  --mar-shadow-soft: rgb(27 31 36 / 12%);
-  --mar-shadow-medium: rgb(31 35 40 / 18%);
-  --mar-shadow-strong: rgb(31 35 40 / 28%);
-  --mar-overlay-scrim: rgb(31 35 40 / 28%);
-  --mar-overlay-border: rgb(255 255 255 / 18%);
-  --mar-text-neutral-control: var(--mar-text-faint);
+  --mar-shadow-soft: #24364b0a;
+  --mar-shadow-medium: #24364b1f;
+  --mar-overlay-scrim: #18293d40;
+  --mar-overlay-border: #c7d1dd;
+  --mar-text-neutral-control: #5d6d80;
 }
 
 html.console-ui[data-theme='vscode-dark-2026'],
@@ -160,91 +275,102 @@ html.console-ui[data-theme='vscode-dark-2026'],
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
   --mar-bg-page: #0e1116;
-  --mar-bg-panel: #131922;
+  --mar-bg-panel: #161d28;
+  --mar-bg-chrome: #131922;
   --mar-bg-subtle: #161d28;
-  --mar-bg-tab-inactive: #1a2230;
+  --mar-bg-tab-inactive: #111720;
   --mar-fill-subtle: #161d28;
-  --mar-fill-muted: #1a2230;
-  --mar-fill-row-hover: #202b3a;
-  --mar-fill-soft: #18202c;
-  --mar-fill-hover: #222d3d;
-  --mar-table-header-bg: #161d28;
+  --mar-fill-muted: #182739;
+  --mar-fill-row-hover: #26364a;
+  --mar-fill-soft: #152334;
+  --mar-fill-hover: #202b3a;
+  --mar-table-header-bg: #131922;
   --mar-table-row-hover-bg: #202b3a;
   --mar-border-default: #273142;
   --mar-border-subtle: #202a39;
   --mar-border-medium: #313d50;
-  --mar-border-strong: #3a485d;
+  --mar-border-strong: #313d50;
   --mar-text-primary: #e8eef8;
   --mar-text-secondary: #9fb0c7;
   --mar-text-tertiary: #8799b1;
-  --mar-text-faint: #6d7c92;
-  --mar-text-muted: #6d7c92;
+  --mar-text-faint: #8799b1;
+  --mar-text-muted: #8799b1;
   --mar-conversation-canvas: #0e1116;
   --mar-conversation-surface: #131922;
   --mar-conversation-process: #111720;
-  --mar-conversation-border: #273142;
+  --mar-conversation-border: #313d50;
   --mar-conversation-process-border: #202a39;
   --mar-conversation-text: #e8eef8;
   --mar-conversation-muted: #9fb0c7;
-  --mar-conversation-code: #1a2230;
-  --mar-color-brand: #3093ff;
-  --mar-control-color-primary-light-3: #4aa3ff;
-  --mar-control-color-primary-light-5: rgb(48 147 255 / 0.5);
-  --mar-control-color-primary-light-7: rgb(48 147 255 / 0.34);
-  --mar-control-color-primary-light-8: rgb(48 147 255 / 0.24);
-  --mar-control-color-primary-light-9: rgb(48 147 255 / 0.14);
-  --mar-control-color-primary-dark-2: #2478d6;
+  --mar-conversation-code: #111720;
+  --mar-color-brand: #1f73cf;
+  --mar-control-color-primary-light-3: #2477d1;
+  --mar-control-color-primary-light-5: #1f73cf80;
+  --mar-control-color-primary-light-7: #1f73cf57;
+  --mar-control-color-primary-light-8: #1f73cf3d;
+  --mar-control-color-primary-light-9: #1f73cf24;
+  --mar-control-color-primary-dark-2: #195fac;
   --mar-color-brand-text: #3093ff;
-  --mar-color-on-accent: #fff;
+  --mar-color-on-accent: #ffffff;
   --mar-control-disabled-on-accent: color-mix(in srgb, var(--mar-color-on-accent) 50%, transparent);
-  --mar-color-brand-hover: #4aa3ff;
-  --mar-color-brand-disabled: rgb(55 148 255 / 0.45);
-  --mar-control-link-text: var(--mar-color-brand-text);
-  --mar-control-link-hover: var(--mar-color-brand-hover);
-  --mar-color-brand-active: color-mix(in srgb, var(--mar-color-brand) 82%, #fff);
-  --mar-color-brand-subtle: color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
-  --mar-color-brand-selected: color-mix(in srgb, var(--mar-color-brand) 8%, transparent);
-  --mar-color-brand-border: color-mix(in srgb, var(--mar-color-brand) 48%, transparent);
-  --mar-control-color-success: #22c55e;
-  --mar-control-color-warning: #d29922;
-  --mar-control-color-danger: #e06c75;
+  --mar-color-brand-hover: #2477d1;
+  --mar-color-brand-disabled: #3093ff73;
+  --mar-control-link-text: #3093ff;
+  --mar-control-link-hover: #e8eef8;
+  --mar-color-brand-subtle: #3093ff24;
+  --mar-color-brand-selected: #162c44;
+  --mar-color-brand-border: #1f73cf7a;
+  --mar-control-color-success: #62d6a4;
+  --mar-control-color-warning: #f1c56e;
+  --mar-control-color-danger: #ff8d9c;
   --mar-color-success-text: #22c55e;
-  --mar-color-success-bg: rgb(34 197 94 / 0.14);
+  --mar-color-success-bg: #62d6a424;
   --mar-color-warning-text: #d29922;
-  --mar-color-warning-accent: #e3b341;
-  --mar-color-warning-bg: rgb(210 153 34 / 0.14);
+  --mar-color-warning-accent: #f1c56e;
+  --mar-color-warning-bg: #f1c56e24;
   --mar-color-danger-text: #f85149;
-  --mar-color-danger-bg: rgb(248 81 73 / 0.14);
-  --mar-color-accent: #37c8ff;
-  --mar-color-accent-bg: rgb(55 200 255 / 0.14);
-  --mar-color-diff-add-text: #7ee787;
-  --mar-color-diff-del-text: #ffa198;
-  --mar-shadow-soft: rgb(0 0 0 / 18%);
-  --mar-shadow-medium: rgb(0 0 0 / 28%);
-  --mar-shadow-strong: rgb(0 0 0 / 42%);
-  --mar-overlay-scrim: rgb(0 0 0 / 48%);
-  --mar-overlay-border: rgb(232 238 248 / 18%);
-  --mar-text-neutral-control: var(--mar-text-faint);
+  --mar-color-danger-bg: #ff8d9c24;
+  --mar-color-accent: #5edcec;
+  --mar-color-accent-bg: #5edcec24;
+  --mar-color-diff-add-text: #93e9b5;
+  --mar-color-diff-del-text: #ffabb8;
+  --mar-shadow-soft: #0000002e;
+  --mar-shadow-medium: #00000047;
+  --mar-overlay-scrim: #0000007a;
+  --mar-overlay-border: #313d50;
+  --mar-text-neutral-control: #8799b1;
 
   --mar-control-bg-color-overlay: #1a2230;
-  --mar-control-fill-color: #1e2836;
-  --mar-control-fill-color-light: #222d3d;
-  --mar-control-fill-color-lighter: #18202c;
+  --mar-control-fill-color: #131922;
+  --mar-control-fill-color-light: #202b3a;
+  --mar-control-fill-color-lighter: #111720;
   --mar-control-fill-color-extra-light: #161d28;
 
   --mar-control-border-color-lighter: #202a39;
-  --mar-control-border-color-extra-light: #1b2431;
+  --mar-control-border-color-extra-light: #202a39;
   --mar-control-border-color-dark: #313d50;
-  --mar-control-border-color-darker: #3a485d;
+  --mar-control-border-color-darker: #313d50;
+  --mar-scrollbar-thumb: #8799b185;
+  --mar-scrollbar-thumb-hover: #9fb0c7ad;
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] body {
   background: var(--mar-bg-page);
 }
 
+html.console-ui .el-dialog {
+  --el-dialog-border-radius: var(--mar-radius-surface);
+}
+
+html.console-ui .el-popover {
+  --el-popover-border-radius: var(--mar-radius-surface);
+}
+
 html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-text-color: var(--mar-color-on-accent);
   --el-button-hover-text-color: var(--mar-color-on-accent);
+  --el-button-hover-bg-color: var(--mar-color-brand-hover);
+  --el-button-hover-border-color: var(--mar-color-brand-hover);
   --el-button-active-text-color: var(--mar-color-on-accent);
   --el-button-disabled-text-color: var(--mar-control-disabled-on-accent);
 }
@@ -342,8 +468,6 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
 @media (min-width: 768px) {
   html.console-ui {
     font-size: 17.6px;
-    --el-font-size-base: 14px;
-    --el-font-size-small: 14px;
     --el-component-size-small: 26px;
     --mar-font-size-body: 14px;
     --mar-font-size-meta: 12px;
@@ -358,7 +482,7 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-brand-logo-size: 35px;
     --mar-rail-item-height: 51px;
     --mar-settings-row-height: 37px;
-    --sidebar-header-height: 68px;
+    --sidebar-header-height: var(--mar-workbench-header-height);
     --mar-activity-rail-width: 52px;
     --mar-workbench-sidebar-width: 244px;
     --mar-workbench-sidebar-total-width: 296px;
@@ -411,6 +535,7 @@ body {
   min-height: 100vh;
   margin: 0;
   background: var(--mar-bg-page);
+  font-size: var(--mar-font-size-body);
 }
 
 *::-webkit-scrollbar {
@@ -443,6 +568,49 @@ body.file-preview-open {
 .el-input,
 .el-select {
   font-family: inherit;
+}
+
+html.console-ui :where(button, select, input, textarea) {
+  font-family: inherit;
+}
+
+html.console-ui
+  :where(
+    input:not(
+      [type='checkbox'],
+      [type='radio'],
+      [type='file'],
+      [type='range'],
+      [type='color'],
+      [type='button'],
+      [type='submit'],
+      [type='reset']
+    ),
+    textarea
+  ),
+.theme-preview
+  :where(
+    input:not(
+      [type='checkbox'],
+      [type='radio'],
+      [type='file'],
+      [type='range'],
+      [type='color'],
+      [type='button'],
+      [type='submit'],
+      [type='reset']
+    ),
+    textarea
+  ) {
+  font-size: var(--mar-font-size-input);
+  font-weight: 400;
+  color: var(--mar-text-primary);
+  caret-color: var(--mar-text-primary);
+}
+
+html.console-ui :where(input, textarea)::placeholder {
+  color: var(--mar-text-tertiary);
+  opacity: 1;
 }
 
 .el-select-dropdown__item {
@@ -495,21 +663,23 @@ p {
   margin-top: 0;
 }
 h1 {
-  font-size: 1.35rem;
+  font-size: var(--mar-font-size-page-title);
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 h2 {
   margin-bottom: 0.35rem;
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-title);
   font-weight: 600;
 }
 h3 {
   margin-bottom: 0.45rem;
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
+  font-weight: 600;
 }
 code,
 pre {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: var(--mar-font-mono);
 }
 
 .public-node-guide {
@@ -533,7 +703,7 @@ pre {
 }
 code {
   color: var(--mar-color-brand-text);
-  font-size: 0.74rem;
+  font-size: var(--mar-font-size-meta);
   word-break: break-all;
 }
 
@@ -541,8 +711,8 @@ label {
   display: grid;
   gap: 0.3rem;
   color: var(--mar-text-secondary);
-  font-size: 0.71rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-body);
+  font-weight: 600;
 }
 pre {
   overflow: auto;
@@ -552,7 +722,7 @@ pre {
   background: var(--mar-fill-subtle);
   color: var(--mar-text-primary);
   padding: 0.65rem;
-  font-size: 0.71rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -560,7 +730,7 @@ pre {
 
 .empty {
   color: var(--mar-text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 
@@ -734,18 +904,6 @@ pre {
     padding: 12px;
   }
 
-  .management-page .el-button:not(.is-link),
-  .settings-content .el-button:not(.is-link),
-  .el-dialog .el-button:not(.is-link),
-  .management-page .el-input__wrapper,
-  .management-page .el-select__wrapper,
-  .settings-content .el-input__wrapper,
-  .settings-content .el-select__wrapper,
-  .el-dialog .el-input__wrapper,
-  .el-dialog .el-select__wrapper {
-    min-height: 36px;
-  }
-
   .management-page > header {
     flex-wrap: wrap;
   }
@@ -814,8 +972,7 @@ pre {
 }
 
 .section-heading,
-.sidebar-heading,
-.conversation-header {
+.sidebar-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -824,68 +981,20 @@ pre {
 .section-heading span,
 .sidebar-heading span {
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
-.conversation-sidebar,
-.inspector-column {
-  min-width: 0;
-  min-height: 0;
-  background: var(--mar-bg-page);
-}
-.sidebar-heading h2,
-.conversation-header h2 {
+.sidebar-heading h2 {
   margin: 0;
 }
 .section-heading h2,
 .sidebar-heading h2 {
   font-weight: 500;
 }
-.sidebar-heading p,
-.conversation-header p {
+.sidebar-heading p {
   margin: 0.18rem 0 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.67rem;
-}
-.session-link {
-  display: grid;
-  min-width: 0;
-  flex: 1 1 auto;
-  width: 100%;
-  gap: 2px;
-  border: 0;
-  min-height: var(--mar-session-row-min-height);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--mar-text-primary);
-  padding: var(--mar-session-row-padding-block) 0.65rem;
-  text-align: left;
-  cursor: pointer;
-}
-.session-link:disabled {
-  cursor: not-allowed;
-}
-.session-title-row,
-.conversation-title-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.4rem;
-}
-.session-link:hover:not(:disabled),
-.session-link.selected {
-  color: var(--mar-color-brand-text);
-}
-.session-link strong {
-  display: block;
-  min-width: 0;
-  flex: 1;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--mar-font-size-meta);
 }
 .runner-brand-icon {
   width: 0.82rem;
@@ -919,14 +1028,14 @@ pre {
 @keyframes mar-run-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(26 127 55 / 0%);
+    box-shadow: 0 0 0 0 transparent;
     opacity: 0.86;
     transform: scale(1);
   }
   50% {
     box-shadow:
-      0 0 0 3px rgb(26 127 55 / 14%),
-      0 0 8px 1px rgb(26 127 55 / 35%);
+      0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
+      0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
     opacity: 1;
     transform: scale(1.08);
   }
@@ -935,44 +1044,12 @@ pre {
   background: var(--mar-text-faint);
 }
 
-.file-preview-overlay {
-  position: fixed;
-  z-index: 50;
-  inset: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  background: var(--mar-bg-page);
-  color: var(--mar-text-primary);
-}
-.file-preview-overlay.has-preview-tabs {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-.file-preview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border-bottom: 1px solid var(--mar-border-strong);
-  background: var(--mar-bg-panel);
-  padding: 0.6rem 1rem;
-}
-.file-preview-header h2 {
-  overflow: hidden;
-  max-width: min(68vw, 860px);
-  margin: 0;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 0.82rem;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .file-preview-eyebrow {
   display: block;
   margin-bottom: 0.12rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.62rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.05em;
 }
 .file-preview-size {
@@ -983,9 +1060,6 @@ pre {
   display: flex;
   flex: none;
   gap: 0.4rem;
-}
-.mobile-preview-actions {
-  display: none;
 }
 .file-preview-content {
   min-height: 0;
@@ -1023,6 +1097,7 @@ pre {
     --mar-font-size-meta: 11px;
     --mar-font-size-nano: 9px;
     --mar-font-size-title: 14px;
+    --mar-font-size-input: 0.875rem;
     --mar-compact-control-size: 24px;
     --mar-primary-control-size: 28px;
     --mar-utility-control-size: 28px;
@@ -1033,43 +1108,5 @@ pre {
     --mar-rail-item-height: 46px;
     --mar-settings-row-height: 34px;
     --mar-terminal-font-size: 12;
-  }
-  .file-preview-overlay {
-    inset: 0;
-  }
-  .file-preview-header > .file-preview-desktop-actions {
-    display: none;
-  }
-  .mobile-preview-actions {
-    position: fixed;
-    z-index: 3;
-    right: max(0.75rem, env(safe-area-inset-right));
-    bottom: calc(0.75rem + env(safe-area-inset-bottom));
-    display: flex;
-    gap: 0.35rem;
-    border: 1px solid var(--mar-border-default);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--mar-bg-panel) 96%, transparent);
-    box-shadow: 0 4px 14px var(--mar-shadow-medium);
-    padding: 0.25rem;
-  }
-  .mobile-preview-actions .el-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-  }
-  .node-tree-actions .icon-button,
-  .workspace-tab .tab-close,
-  .new-session-form .refresh-sessions-button,
-  .session-more-button,
-  .explorer-toolbar .el-button,
-  .composer-icon-button,
-  .composer-send-button,
-  .composer-stop-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
   }
 }

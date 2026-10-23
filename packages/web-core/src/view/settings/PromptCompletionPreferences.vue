@@ -35,7 +35,7 @@ function setEnabled(value: boolean) {
 <style scoped>
 .theme-label {
   color: var(--mar-text-primary);
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-body);
   font-weight: 600;
 }
 .theme-select {

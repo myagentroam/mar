@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Delete, Document, QuestionFilled } from '@element-plus/icons-vue';
+import { Check, Delete, Document } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
@@ -170,12 +170,8 @@ async function clear(): Promise<void> {
     :aria-busy="loading"
   >
     <header>
-      <div class="title-row">
-        <h2>{{ translate('personalInstructions.title') }}</h2>
-        <el-tooltip :content="translate('personalInstructions.scopeHelp')" placement="right">
-          <el-icon class="help-icon"><QuestionFilled /></el-icon>
-        </el-tooltip>
-      </div>
+      <h2>{{ translate('personalInstructions.title') }}</h2>
+      <p>{{ translate('personalInstructions.scopeHelp') }}</p>
     </header>
     <div class="instruction-scopes" role="tablist">
       <el-check-tag
@@ -210,6 +206,7 @@ async function clear(): Promise<void> {
       <el-form-item :label="translate('personalInstructions.prompt')" prop="content">
         <textarea
           v-model="formState.content"
+          :aria-label="translate('personalInstructions.prompt')"
           :disabled="loading"
           :maxlength="20000"
           :placeholder="translate('personalInstructions.placeholder')"
@@ -236,15 +233,10 @@ async function clear(): Promise<void> {
   padding-bottom: 0.9rem;
 }
 
-.title-row,
 .instruction-scopes,
 .instruction-actions {
   display: flex;
   align-items: center;
-}
-
-.title-row {
-  gap: 0.45rem;
 }
 
 h2 {
@@ -253,9 +245,11 @@ h2 {
   line-height: 1.4;
 }
 
-.help-icon {
+.personal-instructions > header p {
+  margin: 0.35rem 0 0;
   color: var(--mar-text-muted);
-  cursor: help;
+  font-size: var(--mar-font-size-body);
+  line-height: 1.5;
 }
 
 .instruction-scopes {
@@ -269,9 +263,9 @@ h2 {
   align-items: center;
   gap: 0.35rem;
   min-height: 30px;
-  border: 1px solid var(--mar-border-default);
-  border-radius: 6px;
-  background: var(--mar-bg-panel);
+  border: 1px solid transparent;
+  border-radius: var(--mar-radius-selection);
+  background: transparent;
   color: var(--mar-text-secondary);
   font-weight: 500;
   padding: 0 0.65rem;
@@ -282,19 +276,16 @@ h2 {
 }
 
 .instruction-scopes :deep(.el-check-tag:hover) {
-  border-color: var(--mar-border-medium);
   background: var(--mar-fill-muted);
   color: var(--mar-text-primary);
 }
 
 .instruction-scopes :deep(.el-check-tag.is-checked) {
-  border-color: var(--mar-color-brand-border);
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-color-brand-selected);
   color: var(--mar-color-brand-text);
 }
 
 .instruction-scopes :deep(.el-check-tag.is-checked:hover) {
-  border-color: var(--mar-color-brand);
   background: var(--mar-color-brand-selected);
 }
 
@@ -304,34 +295,18 @@ h2 {
   object-fit: contain;
 }
 .personal-instructions {
-  display: grid;
+  box-sizing: border-box;
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-.personal-instructions :deep(.el-form) {
-  display: grid;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-.personal-instructions :deep(.el-form-item),
-.personal-instructions :deep(.el-form-item__content) {
-  min-height: 0;
+  align-self: flex-start;
 }
 .personal-instructions :deep(.el-form-item) {
-  display: grid;
-  margin-bottom: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.personal-instructions :deep(.el-form-item__content) {
-  display: grid;
+  margin-bottom: 1.5rem;
 }
 .personal-instructions textarea {
   box-sizing: border-box;
   width: 100%;
-  min-height: 0;
-  height: 100%;
+  min-height: 12rem;
+  height: clamp(12rem, 40vh, 28rem);
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
   outline: none;
@@ -339,7 +314,7 @@ h2 {
   color: var(--el-text-color-regular);
   padding: 0.5rem 0.7rem;
   font-family: inherit;
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-input);
   line-height: 1.5;
   resize: vertical;
 }
@@ -359,8 +334,11 @@ h2 {
   font-size: var(--mar-font-size-body);
 }
 .instruction-actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 0.75rem;
+}
+.instruction-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 </style>

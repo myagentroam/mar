@@ -8,6 +8,12 @@ import { NodeConnector } from '../../src/connector.js';
 import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
 import { NodeDatabase } from '../../src/database.js';
 
+const pngImage = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC',
+  'base64'
+);
+const pngBase64 = pngImage.toString('base64');
+
 describe('Node Workbench Codex tool history projection', () => {
   it('restores local and inline user images through controlled references without JSONL', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-official-user-images-'));
@@ -20,8 +26,8 @@ describe('Node Workbench Codex tool history projection', () => {
       await mkdir(workspace);
       const picture = join(workspace, 'picture.png');
       const outside = join(home, 'outside.png');
-      await writeFile(picture, Buffer.from('local-image'));
-      await writeFile(outside, Buffer.from('outside-image'));
+      await writeFile(picture, pngImage);
+      await writeFile(outside, pngImage);
       const saved = database.saveWorkspace({
         path: workspace,
         kind: 'DIRECTORY',
@@ -42,7 +48,7 @@ describe('Node Workbench Codex tool history projection', () => {
               {
                 id: 'inline-user',
                 type: 'userMessage',
-                content: [{ type: 'image', url: 'data:image/png;base64,aW5saW5lLWltYWdl' }]
+                content: [{ type: 'image', url: `data:image/png;base64,${pngBase64}` }]
               }
             ]
           },
@@ -97,7 +103,10 @@ describe('Node Workbench Codex tool history projection', () => {
           rewind: { before: string | null; after: string };
           items: {
             kind: string;
-            payload: { text: string; attachments: { runId?: string; imageIndex?: number }[] };
+            payload: {
+              text: string;
+              attachments: { runId?: string; imageIndex?: number; imageRef?: string }[];
+            };
           }[];
         }[];
       };
@@ -114,20 +123,23 @@ describe('Node Workbench Codex tool history projection', () => {
       const inline = page.turns[1]!.items[0]!.payload.attachments[0]!;
       expect(local[1]).not.toHaveProperty('runId');
       expect(local[1]).not.toHaveProperty('imageIndex');
+      expect(local[1]).not.toHaveProperty('imageRef');
+      expect(local[0]).toMatchObject({ imageRef: expect.stringMatching(/^file:/) });
+      expect(inline).toMatchObject({ imageRef: expect.stringMatching(/^reader:/) });
       for (const [attachment, dataBase64] of [
-        [local[0]!, Buffer.from('local-image').toString('base64')],
-        [inline, 'aW5saW5lLWltYWdl']
+        [local[0]!, pngBase64],
+        [inline, pngBase64]
       ] as const) {
         await expect(
           operation(connector, 'run.image.read', {
             runId: attachment.runId,
-            imageIndex: attachment.imageIndex
+            imageRef: attachment.imageRef
           })
         ).resolves.toMatchObject({ image: { mime: 'image/png', dataBase64 } });
       }
       const publicPage = JSON.stringify(page);
       expect(publicPage).not.toContain(home);
-      expect(publicPage).not.toContain('aW5saW5lLWltYWdl');
+      expect(publicPage).not.toContain(pngBase64);
       expect(native).not.toHaveBeenCalled();
     } finally {
       if (connector !== undefined) await connector.stop();
@@ -154,11 +166,11 @@ describe('Node Workbench Codex tool history projection', () => {
     try {
       await mkdir(dirname(generatedImagePath), { recursive: true });
       await mkdir(workspacePath, { recursive: true });
-      await writeFile(generatedImagePath, Buffer.from('native-image'));
+      await writeFile(generatedImagePath, pngImage);
       const viewedImagePath = join(workspacePath, 'logo.png');
       const escapedImagePath = join(home, 'outside.png');
-      await writeFile(viewedImagePath, Buffer.from('workspace-image'));
-      await writeFile(escapedImagePath, Buffer.from('outside-image'));
+      await writeFile(viewedImagePath, pngImage);
+      await writeFile(escapedImagePath, pngImage);
       const client = new CodexAppServerClient({ command: 'unused' });
       vi.spyOn(client, 'start').mockResolvedValue(undefined);
       vi.spyOn(client, 'listThreadTurns').mockResolvedValue({
@@ -260,7 +272,12 @@ describe('Node Workbench Codex tool history projection', () => {
               toolCategory?: string;
               command?: string;
               cwd?: string | null;
-              attachments?: { name?: string; runId?: string; imageIndex?: number }[];
+              attachments?: {
+                name?: string;
+                runId?: string;
+                imageIndex?: number;
+                imageRef?: string;
+              }[];
             };
           }[];
         }[];
@@ -303,7 +320,11 @@ describe('Node Workbench Codex tool history projection', () => {
             toolName: 'imagegen',
             toolCategory: 'IMAGE_GENERATION',
             attachments: [
-              expect.objectContaining({ name: 'image.png', mime: 'image/png', imageIndex: 0 })
+              expect.objectContaining({
+                name: 'image.png',
+                mime: 'image/png',
+                imageRef: expect.stringMatching(/^file:/)
+              })
             ]
           })
         })
@@ -316,15 +337,15 @@ describe('Node Workbench Codex tool history projection', () => {
       expect(viewedImageAttachment).toMatchObject({
         name: 'logo.png',
         runId: `native-history:${session.id}`,
-        imageIndex: 1
+        imageRef: expect.stringMatching(/^file:/)
       });
       await expect(
         operation(connector, 'run.image.read', {
           runId: viewedImageAttachment?.runId,
-          imageIndex: viewedImageAttachment?.imageIndex
+          imageRef: viewedImageAttachment?.imageRef
         })
       ).resolves.toMatchObject({
-        image: { dataBase64: Buffer.from('workspace-image').toString('base64') }
+        image: { dataBase64: pngBase64 }
       });
       const escapedImage = items.find(
         (item) => item.payload.attachments?.[0]?.name === 'outside.png'
@@ -332,9 +353,12 @@ describe('Node Workbench Codex tool history projection', () => {
       expect(escapedImage).toEqual({ name: 'outside.png', mime: 'image/png' });
       const attachment = items.find((item) => item.payload.attachments)?.payload.attachments?.[0];
       await expect(
-        operation(connector, 'run.image.read', { runId: attachment?.runId, imageIndex: 0 })
+        operation(connector, 'run.image.read', {
+          runId: attachment?.runId,
+          imageRef: attachment?.imageRef
+        })
       ).resolves.toMatchObject({
-        image: { name: 'image.png', mime: 'image/png', dataBase64: 'bmF0aXZlLWltYWdl' }
+        image: { name: 'image.png', mime: 'image/png', dataBase64: pngBase64 }
       });
     } finally {
       if (connector !== undefined) await connector.stop();

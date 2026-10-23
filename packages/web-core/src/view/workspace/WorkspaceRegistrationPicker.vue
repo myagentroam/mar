@@ -405,7 +405,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 .workspace-picker-empty {
   margin: 0;
   color: var(--mar-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .workspace-picker-toolbar {
@@ -460,7 +460,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   border-bottom: 0;
   color: var(--mar-text-muted);
   padding: 0.65rem;
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .workspace-directory-list > li {
@@ -509,7 +509,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 .workspace-directory-list small {
   margin-left: auto;
   color: var(--mar-text-tertiary);
-  font-size: 0.66rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .workspace-directory-list .el-tag {
@@ -583,7 +583,6 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   }
 
   .workspace-picker-toolbar-actions :deep(.el-button) {
-    min-height: 36px;
     padding-inline: 0.65rem;
   }
 }

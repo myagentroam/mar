@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { MarAgentError } from '../error.js';
 import type { MarAgentModelConfiguration } from '../model/configuration.js';
 import type {
@@ -90,6 +91,10 @@ export class ExecutionLoop {
       const pendingTools: ClientToolCall[] = [];
       let incompleteToolCall = false;
       const round = await input.prepareRound(pendingOutputContinuation);
+      const reasoningScope = randomUUID();
+      const publishedReasoning = new Set<string>();
+      const startedMessages = new Set<string>();
+      const leadingMessageWhitespace = new Map<string, string>();
       let sawModelSemanticEvent = false;
       let requestStartedAt: number;
       let firstModelResponseAt: number | undefined;
@@ -202,6 +207,20 @@ export class ExecutionLoop {
               delta = prefix.push(delta);
             }
             if (mode !== 'compact' && delta) {
+              if (!startedMessages.has(event.itemId)) {
+                delta = (leadingMessageWhitespace.get(event.itemId) ?? '') + delta;
+                if (!delta.trim()) {
+                  leadingMessageWhitespace.set(event.itemId, delta);
+                  continue;
+                }
+                leadingMessageWhitespace.delete(event.itemId);
+                startedMessages.add(event.itemId);
+                await input.publish({
+                  type: 'message.started',
+                  itemId: event.itemId,
+                  phase: event.phase
+                });
+              }
               await input.publish({
                 type: 'message.delta',
                 itemId: event.itemId,
@@ -210,6 +229,7 @@ export class ExecutionLoop {
               });
             }
           } else if (event.type === 'text.completed') {
+            leadingMessageWhitespace.delete(event.itemId);
             const phase = event.phase ?? 'final_answer';
             if (phase === 'final_answer') this.finalAnswer = event.text;
             this.planOutputPrefixes.delete(event.itemId);
@@ -272,9 +292,16 @@ export class ExecutionLoop {
               };
             }
             await input.publish({ type: 'usage.updated', ...publicModelUsage(event.usage) });
-          } else if (event.type === 'reasoning.summary') {
-            if (mode !== 'compact')
-              await input.publish({ type: 'reasoning.summary', text: event.text });
+          } else if (event.type === 'reasoning.completed') {
+            if (mode !== 'compact' && event.text.trim() && !publishedReasoning.has(event.itemId)) {
+              await input.publish({
+                type: 'reasoning.completed',
+                itemId: `${reasoningScope}:${event.itemId}`,
+                representation: event.representation,
+                text: event.text
+              });
+              publishedReasoning.add(event.itemId);
+            }
           } else if (event.type === 'hosted_tool') {
             if (mode !== 'compact')
               for (const toolEvent of publicHostedToolEvents(event)) await input.publish(toolEvent);
@@ -470,7 +497,7 @@ export class ExecutionLoop {
 
 function isModelResponseEvent(event: ModelEvent): boolean {
   if (event.type === 'text.delta') return event.delta.length > 0;
-  if (event.type === 'text.completed' || event.type === 'reasoning.summary')
+  if (event.type === 'text.completed' || event.type === 'reasoning.completed')
     return event.text.length > 0;
   return (
     event.type === 'response.item' ||

@@ -42,6 +42,8 @@ const props = withDefaults(
     placeholder: string;
     working: boolean;
     workingLabel: string;
+    elapsedLabel?: string;
+    connectionLabel?: string;
     readonly: boolean;
     dropTarget: boolean;
     mobileViewport: boolean;
@@ -145,16 +147,23 @@ const emit = defineEmits<{
     @submit.prevent="emit('submit')"
   >
     <div ref="composerElement" class="composer">
-      <span v-if="working" class="composer-working" role="status" aria-live="polite">
-        <i aria-hidden="true" />
-        <span>{{ workingLabel }}</span>
+      <span
+        v-if="working || connectionLabel"
+        class="composer-working"
+        :class="{ 'is-active': working && !connectionLabel }"
+      >
+        <i v-if="working && !connectionLabel" aria-hidden="true" />
+        <span role="status" aria-live="polite">{{ connectionLabel || workingLabel }}</span>
+        <span v-if="elapsedLabel && !connectionLabel" class="composer-elapsed">{{
+          elapsedLabel
+        }}</span>
       </span>
       <div
         :class="[
           'composer-shell',
           {
             readonly,
-            'has-working': working,
+            'has-working': working || Boolean(connectionLabel),
             'composer-drop-target': dropTarget
           }
         ]"
@@ -262,7 +271,16 @@ const emit = defineEmits<{
   z-index: 3;
   border-top: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-body);
   padding: 0.4rem 0.8rem 0.75rem;
+}
+
+.composer :deep(button),
+.composer :deep(input),
+.composer :deep(select),
+.composer :deep(textarea) {
+  font-family: inherit;
 }
 
 .composer-input {
@@ -277,8 +295,15 @@ const emit = defineEmits<{
   padding: 0.55rem 0.7rem;
   color: var(--mar-text-primary);
   font: inherit;
+  font-size: var(--mar-font-size-input);
+  caret-color: var(--mar-text-primary);
   line-height: 1.55;
   resize: none;
+}
+
+.composer-input::placeholder {
+  color: var(--mar-text-tertiary);
+  opacity: 1;
 }
 
 .composer-working {
@@ -293,15 +318,15 @@ const emit = defineEmits<{
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
   border-bottom-color: var(--mar-bg-panel);
-  border-radius: 7px 7px 0 0;
+  border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
   background: var(--mar-bg-panel);
   color: var(--mar-color-brand-text);
   padding: 0.08rem 0.5rem 0.08rem 0.42rem;
   pointer-events: none;
   white-space: nowrap;
   isolation: isolate;
-  font-size: 0.66rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -344,10 +369,9 @@ const emit = defineEmits<{
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .composer-working::before {
+  .composer-working.is-active::before {
     animation: mar-working-sweep 1.75s linear infinite;
   }
-
   .composer-working > i {
     animation: mar-working-pulse 1.2s ease-in-out infinite;
   }
@@ -371,7 +395,7 @@ const emit = defineEmits<{
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-bg-panel);
   box-shadow: none;
 }
@@ -405,11 +429,11 @@ const emit = defineEmits<{
 
 .composer-shell .composer-input {
   min-height: 96px !important;
-  border-radius: 7px 7px 0 0;
+  border-radius: calc(var(--mar-radius-surface) - 1px) calc(var(--mar-radius-surface) - 1px) 0 0;
   box-shadow: none;
   color: var(--mar-text-primary);
-  font-size: 0.8125rem;
-  line-height: 1.65;
+  font-size: var(--mar-font-size-input);
+  line-height: 1.55;
   padding: 0.75rem 0.8rem 0.25rem;
 }
 
@@ -433,7 +457,7 @@ const emit = defineEmits<{
   background: var(--mar-color-brand-subtle);
   color: var(--mar-color-brand-text);
   padding: 0.2rem 0.5rem;
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .composer-command-state:not(:disabled) {
@@ -445,19 +469,19 @@ const emit = defineEmits<{
 }
 
 .composer-skill-state {
-  border-color: var(--el-color-success);
-  background: color-mix(in srgb, var(--el-color-success) 10%, var(--mar-bg-panel));
-  color: var(--el-color-success);
+  border-color: var(--mar-color-success-text);
+  background: var(--mar-color-success-bg);
+  color: var(--mar-color-success-text);
 }
 
 .composer-skill-state:not(:disabled):hover {
-  background: color-mix(in srgb, var(--el-color-success) 16%, var(--mar-bg-panel));
+  background: var(--mar-fill-row-hover);
 }
 
 .composer-skill-state.unavailable {
-  border-color: var(--el-color-warning);
-  background: color-mix(in srgb, var(--el-color-warning) 10%, var(--mar-bg-panel));
-  color: var(--el-color-warning);
+  border-color: var(--mar-color-warning-accent);
+  background: var(--mar-color-warning-bg);
+  color: var(--mar-color-warning-text);
 }
 </style>
 

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
-import { CopyDocument, InfoFilled } from '@element-plus/icons-vue';
+import { CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
+import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{
   readonly diagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;
@@ -82,7 +83,7 @@ onBeforeUnmount(props.diagnostics.dispose);
         :aria-label="t('performanceDiagnostics.title')"
         :title="t('performanceDiagnostics.title')"
       >
-        <el-icon aria-hidden="true"><InfoFilled /></el-icon>
+        <el-icon aria-hidden="true"><MarIcon name="info" /></el-icon>
       </button>
     </template>
     <section class="web-performance-panel" :aria-label="t('performanceDiagnostics.title')">
@@ -204,7 +205,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 }
 .web-performance-panel {
   color: var(--mar-text-primary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 .web-performance-panel header {
   display: flex;

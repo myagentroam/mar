@@ -741,17 +741,18 @@ describe('Web Conversation Projection State', () => {
         'run-1',
         {
           itemId: 'reasoning-1',
-          kind: 'reasoning_summary',
+          kind: 'reasoning',
           status: 'IN_PROGRESS',
           merge: true,
           append: 'sections',
-          payload: { sections: [{ index, text }] }
+          payload: { representation: 'summary', sections: [{ index, text }] }
         },
         sequence
       );
     }
 
     expect(turns.value[0]?.items[0]?.payload).toEqual({
+      representation: 'summary',
       sections: [
         { index: 0, text: 'First segment' },
         { index: 1, text: 'Second segment' }
@@ -766,11 +767,11 @@ describe('Web Conversation Projection State', () => {
       'run-1',
       {
         itemId: 'reasoning-1',
-        kind: 'reasoning_summary',
+        kind: 'reasoning',
         status: 'COMPLETED',
         merge: true,
         append: 'sections',
-        payload: { sections: [{ index: 1, text: ' finished' }] }
+        payload: { representation: 'summary', sections: [{ index: 1, text: ' finished' }] }
       },
       5
     );

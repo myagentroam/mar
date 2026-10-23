@@ -88,6 +88,8 @@ export const commonMessages = {
     },
     permissionStop: conversationUiEnUS.permissionStop,
     toolPresentation: conversationUiEnUS.toolPresentation,
+    conversationProcess: conversationUiEnUS.conversationProcess,
+    conversationActivity: conversationUiEnUS.conversationActivity,
     presentation: {
       ...workbenchCompositionEnUS.presentation,
       ...conversationUiEnUS.presentation,
@@ -207,6 +209,8 @@ export const commonMessages = {
     },
     permissionStop: conversationUiZhCN.permissionStop,
     toolPresentation: conversationUiZhCN.toolPresentation,
+    conversationProcess: conversationUiZhCN.conversationProcess,
+    conversationActivity: conversationUiZhCN.conversationActivity,
     presentation: {
       ...workbenchCompositionZhCN.presentation,
       ...conversationUiZhCN.presentation,

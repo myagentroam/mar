@@ -195,6 +195,17 @@ export function normalizeClaudeTool(
       progressLabel: null,
       errorCode: failed ? 'TOOL_EXECUTION_FAILED' : null,
       truncated: outputTruncated,
+      ...(toolName === 'Read'
+        ? {
+            toolPresentation: {
+              kind: 'READ',
+              paths:
+                typeof values?.file_path === 'string' && values.file_path.length > 0
+                  ? [compactRunnerText(values.file_path, 4096)]
+                  : []
+            }
+          }
+        : {}),
       ...subagent
     }
   };

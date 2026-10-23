@@ -154,7 +154,12 @@ export type ModelEvent =
       phase?: 'commentary' | 'final_answer';
       text: string;
     }
-  | { type: 'reasoning.summary'; itemId: string; text: string }
+  | {
+      type: 'reasoning.completed';
+      itemId: string;
+      representation: 'summary' | 'visible_thinking' | 'unspecified';
+      text: string;
+    }
   | {
       type: 'client_tool.call';
       callId: string;

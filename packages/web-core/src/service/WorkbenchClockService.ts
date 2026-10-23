@@ -1,104 +1,48 @@
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import type { AgentRun } from '../model/workbench.js';
 
-const WORKING_HANDOFF_GRACE_MS = 250;
-
-export function shouldDelayWorkingReset(
-  previousSessionId: string | undefined,
-  nextSessionId: string | undefined
-): boolean {
-  return nextSessionId === previousSessionId && nextSessionId !== undefined;
-}
-
-export function resolveWorkingStartedAt(input: {
-  readonly previousSessionId: string | undefined;
-  readonly nextSessionId: string | undefined;
-  readonly busy: boolean;
-  readonly currentStartedAt: number | undefined;
-  readonly knownSessionStartedAt?: number | undefined;
-  readonly runCreatedAt: number | undefined;
-  readonly now: number;
-}): number | undefined {
-  if (!input.busy || input.nextSessionId === undefined) return undefined;
-  if (input.nextSessionId === input.previousSessionId && input.currentStartedAt !== undefined)
-    return typeof input.runCreatedAt === 'number' && Number.isFinite(input.runCreatedAt)
-      ? Math.min(input.currentStartedAt, input.runCreatedAt)
-      : input.currentStartedAt;
-  if (input.knownSessionStartedAt !== undefined)
-    return typeof input.runCreatedAt === 'number' && Number.isFinite(input.runCreatedAt)
-      ? input.runCreatedAt
-      : input.knownSessionStartedAt;
-  return typeof input.runCreatedAt === 'number' && Number.isFinite(input.runCreatedAt)
-    ? input.runCreatedAt
-    : input.now;
+export function resolveWorkingStartedAt(
+  sessionId: string | undefined,
+  busy: boolean,
+  run: Pick<AgentRun, 'sessionId' | 'startedAt'> | undefined
+): number | undefined {
+  if (!busy || sessionId === undefined || run === undefined) return undefined;
+  if (run.sessionId !== undefined && run.sessionId !== sessionId) return undefined;
+  const start = run.startedAt;
+  return typeof start === 'number' && Number.isFinite(start) && start >= 0 ? start : undefined;
 }
 
 export function createWorkbenchClockService(
   sessionId: Readonly<Ref<string | undefined>>,
   busy: Readonly<Ref<boolean>>,
-  activeRun: Readonly<Ref<AgentRun | undefined>>
+  activeRun: Readonly<Ref<Pick<AgentRun, 'sessionId' | 'startedAt'> | undefined>>
 ) {
   const workingNow = ref(Date.now());
-  const workingStartedAt = ref<number>();
-  const working = ref(false);
+  const workingStartedAt = computed(() =>
+    resolveWorkingStartedAt(sessionId.value, busy.value, activeRun.value)
+  );
+  const working = computed(() => sessionId.value !== undefined && busy.value);
   const sessionActivityNow = ref(Date.now());
   let workingTimer: ReturnType<typeof setInterval> | undefined;
-  let workingResetTimer: ReturnType<typeof setTimeout> | undefined;
-  const sessionStartedAt = new Map<string, number>();
   const sessionActivityTimer = setInterval(() => {
     sessionActivityNow.value = Date.now();
   }, 30_000);
-
   watch(
-    [sessionId, busy, () => activeRun.value?.createdAt] as const,
-    ([nextSessionId, nextBusy, runCreatedAt], [previousSessionId, previousBusy]) => {
-      if (workingResetTimer !== undefined) clearTimeout(workingResetTimer);
-      workingResetTimer = undefined;
-      if (previousSessionId !== undefined && previousBusy && workingStartedAt.value !== undefined)
-        sessionStartedAt.set(previousSessionId, workingStartedAt.value);
-      if (nextSessionId !== undefined && !nextBusy) sessionStartedAt.delete(nextSessionId);
-      const nextStartedAt = resolveWorkingStartedAt({
-        previousSessionId,
-        nextSessionId,
-        busy: nextBusy,
-        currentStartedAt: workingStartedAt.value,
-        knownSessionStartedAt:
-          nextSessionId === undefined ? undefined : sessionStartedAt.get(nextSessionId),
-        runCreatedAt,
-        now: Date.now()
-      });
-      if (nextStartedAt === undefined) {
-        const reset = () => {
-          if (workingTimer !== undefined) clearInterval(workingTimer);
-          workingTimer = undefined;
-          workingStartedAt.value = undefined;
-          working.value = false;
-        };
-        // A brief idle may arrive while the same continuous Run hands off to its next queued Turn.
-        // Keep a short window so Working does not disappear and restart timing from zero.
-        if (shouldDelayWorkingReset(previousSessionId, nextSessionId))
-          workingResetTimer = setTimeout(reset, WORKING_HANDOFF_GRACE_MS);
-        else reset();
-        return;
-      }
-      if (nextSessionId === undefined) return;
-      workingStartedAt.value = nextStartedAt;
-      sessionStartedAt.set(nextSessionId, nextStartedAt);
-      working.value = true;
+    [working, workingStartedAt],
+    ([active, start]) => {
+      if (workingTimer !== undefined) clearInterval(workingTimer);
+      workingTimer = undefined;
       workingNow.value = Date.now();
-      if (workingTimer === undefined)
+      if (active && start !== undefined)
         workingTimer = setInterval(() => {
           workingNow.value = Date.now();
         }, 1_000);
     },
     { immediate: true }
   );
-
   onBeforeUnmount(() => {
     if (workingTimer !== undefined) clearInterval(workingTimer);
-    if (workingResetTimer !== undefined) clearTimeout(workingResetTimer);
     clearInterval(sessionActivityTimer);
   });
-
   return { working, workingNow, workingStartedAt, sessionActivityNow };
 }

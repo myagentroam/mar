@@ -5,6 +5,33 @@ import { normalizeClaudeTool } from '../../src/runner/claude/tool-normalizer.js'
 import { normalizeOpenCodeTool } from '../../src/runner/opencode/tool-normalizer.js';
 
 describe('tool presentation runner compatibility', () => {
+  it('projects native reads but never guesses read semantics from a command or MCP tool name', () => {
+    const claude = normalizeClaudeTool(
+      'Read',
+      { file_path: 'src/a.ts', offset: 2 },
+      'content',
+      false,
+      false
+    );
+    const opencode = normalizeOpenCodeTool('read', {
+      status: 'completed',
+      input: { filePath: 'src/b.ts' },
+      output: 'content'
+    });
+    expect(claude.payload.toolPresentation).toEqual({ kind: 'READ', paths: ['src/a.ts'] });
+    expect(opencode.payload.toolPresentation).toEqual({ kind: 'READ', paths: ['src/b.ts'] });
+    expect(claude.payload.outputSummary).toBe('content');
+    expect(opencode.payload.outputSummary).toBe('content');
+    expect(
+      normalizeCodexTool({ name: 'exec_command', rawInput: { cmd: 'cat src/a.ts' } }).kind
+    ).toBe('command_execution');
+    expect(
+      normalizeCodexTool({ name: 'read', namespace: 'mcp', rawInput: { path: 'a' } }).payload
+    ).not.toHaveProperty('toolPresentation');
+    expect(
+      normalizeClaudeTool('mcp__custom__Read', {}, '', false, false).payload
+    ).not.toHaveProperty('toolPresentation');
+  });
   it.each([
     {
       runner: 'codex',

@@ -424,14 +424,14 @@ function usagePercentageLabel(value: number): string {
 
 .runner-usage-window strong {
   color: var(--mar-color-brand-text);
-  font-size: 0.82rem;
+  font-size: var(--mar-font-size-body);
   font-variant-numeric: tabular-nums;
 }
 
 .runner-usage-window span {
   grid-column: 1 / -1;
   color: var(--mar-text-tertiary);
-  font-size: 0.73rem;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 </style>

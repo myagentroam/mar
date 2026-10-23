@@ -112,7 +112,7 @@ const emit = defineEmits<{
   border-bottom: 1px solid var(--mar-fill-hover);
   background: var(--mar-bg-panel);
   padding: 0.25rem 0.7rem;
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .attachment-list li.attachment-with-preview {
@@ -139,6 +139,7 @@ const emit = defineEmits<{
 
 .attachment-list small {
   color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
 }
 
 .composer-attachment-preview {

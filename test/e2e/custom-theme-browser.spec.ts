@@ -4,6 +4,26 @@ import { readFile } from 'node:fs/promises';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { CUSTOM_THEME_TOKENS } from '../../packages/web-core/src/model/custom-theme.js';
 
+async function componentAliases(): Promise<Record<string, string>> {
+  const css = await readFile(
+    new URL('../../packages/web-core/src/styles.css', import.meta.url),
+    'utf8'
+  );
+  const bridge = css.slice(0, css.indexOf('}'));
+  const registered = new Set<string>(CUSTOM_THEME_TOKENS);
+  const aliases = Object.fromEntries(
+    [...bridge.matchAll(/(--el-[\w-]+):\s*var\((--mar-[\w-]+)\);/gu)]
+      .filter((match) => registered.has(match[2]!))
+      .map((match) => [match[1]!, match[2]!])
+  );
+  expect(aliases).toMatchObject({
+    '--el-color-primary': '--mar-color-brand',
+    '--el-text-color-primary': '--mar-text-primary',
+    '--el-bg-color': '--mar-bg-panel'
+  });
+  return aliases;
+}
+
 async function useThemeMenu(page: Page, option: Locator, action: string): Promise<void> {
   await option.getByRole('button', { name: /^More actions for / }).click();
   await page.getByRole('menuitem', { name: action, exact: true }).click();
@@ -44,7 +64,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
         '--mar-bg-page': '#ffffff',
         '--mar-bg-panel': '#ddeeff',
         '--mar-text-primary': '#112233',
-        '--el-color-primary': '#2155bb',
+        '--mar-color-brand': '#2155bb',
         '--mar-font-size-body': '100px',
         '--mar-fill-hover': 'url(https://invalid.test/image)'
       },
@@ -155,10 +175,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
     rows.nth(1).getByRole('button', { name: 'Inspect Light', exact: true })
   ).toBeVisible();
   await expect(editor).toHaveAttribute('readonly', '');
-  // The original white-on-blue palette is preserved; its real contrast warning is advisory.
-  await expect(page.locator('.validation')).toContainText(
-    '--mar-color-on-accent / --mar-color-brand'
-  );
+  await expect(page.locator('.validation')).toContainText('No detected warnings.');
   const validation = await page.locator('.validation').boundingBox();
   const preview = await page.locator('.preview-heading').boundingBox();
   expect(validation!.y + validation!.height).toBeLessThanOrEqual(preview!.y);
@@ -182,6 +199,13 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   await useThemeMenu(page, rows.nth(1), 'Duplicate');
   const copied = await editor.inputValue();
   expect(JSON.parse(copied).colors).toEqual(light.colors);
+  const lowContrast = JSON.parse(copied);
+  lowContrast.colors['--mar-color-on-accent'] = lowContrast.colors['--mar-color-brand'];
+  await editor.fill(JSON.stringify(lowContrast));
+  await expect(page.locator('.validation')).toContainText(
+    '--mar-color-on-accent / --mar-color-brand'
+  );
+  await editor.fill(copied);
   await expect(page.locator('.validation')).toContainText('No detected warnings.');
   await expect(editor).not.toHaveAttribute('readonly', '');
   for (const name of ['Save theme', 'Format JSON', 'Reset']) {
@@ -242,6 +266,64 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   }
 });
 
+for (const scheme of ['Light', 'Dark']) {
+  test(
+    'theme helper and action controls share standard hover states in ' + scheme,
+    async ({ page }, testInfo) => {
+      const options = page.locator('.theme-option');
+      if (scheme === 'Light')
+        await options.nth(1).getByRole('button', { name: 'Apply theme', exact: true }).click();
+      const palette = await page.locator('html').evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          utility: style.getPropertyValue('--mar-color-brand-text').trim(),
+          link: style.getPropertyValue('--mar-control-link-hover').trim()
+        };
+      });
+      const help = page.getByRole('button', { name: 'Theme color reference', exact: true });
+      const more = options.first().getByRole('button', { name: /^More actions for / });
+      for (const control of [help, more]) {
+        await expect(control).toHaveAttribute(
+          'title',
+          (await control.getAttribute('aria-label')) ?? ''
+        );
+        await control.hover();
+        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+        await expect
+          .poll(async () =>
+            resolvedColorToHex(await control.evaluate((element) => getComputedStyle(element).color))
+          )
+          .toBe(palette.utility);
+      }
+      const apply = options
+        .nth(scheme === 'Light' ? 0 : 1)
+        .getByRole('button', { name: 'Apply theme', exact: true });
+      await apply.hover();
+      await expect(apply).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect
+        .poll(async () =>
+          resolvedColorToHex(await apply.evaluate((element) => getComputedStyle(element).color))
+        )
+        .toBe(palette.link);
+      await help.focus();
+      await help.press('Enter');
+      const dialog = page.getByRole('dialog', { name: 'Theme color reference', exact: true });
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await more.focus();
+      await more.press('Enter');
+      await expect(page.getByRole('menuitem', { name: 'Duplicate', exact: true })).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath('theme-actions-' + scheme + '.png'),
+        animations: 'disabled'
+      });
+      await page.keyboard.press('Escape');
+    }
+  );
+}
+
 test('theme choices apply immediately without replacing an unsaved draft', async ({
   page
 }, testInfo) => {
@@ -261,7 +343,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   const saved = JSON.stringify({
     version: 1,
     name: 'Violet',
-    colors: { '--el-color-primary': '#c792ea' }
+    colors: { '--mar-color-brand': '#c792ea' }
   });
   await editor.fill(saved);
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
@@ -298,12 +380,11 @@ test('filled primary controls use the same foreground as the theme preview', asy
     version: 1,
     name: 'Palenight sample',
     colors: {
-      '--el-color-primary': '#c792ea',
+      '--mar-color-brand': '#c792ea',
       '--mar-color-on-accent': '#202331',
       '--mar-control-color-primary-light-3': '#112233',
       '--mar-control-color-primary-dark-2': '#223344',
-      '--mar-color-brand-hover': '#abcdef',
-      '--mar-color-brand-active': '#fedcba'
+      '--mar-color-brand-hover': '#abcdef'
     }
   });
   await editor.fill(custom);
@@ -315,16 +396,16 @@ test('filled primary controls use the same foreground as the theme preview', asy
   await expect(sample).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
   await sample.hover();
-  await expect(sample).toHaveCSS('background-color', 'rgb(17, 34, 51)');
-  await expect(sample).toHaveCSS('border-color', 'rgb(17, 34, 51)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(171, 205, 239)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(171, 205, 239)');
   await page.mouse.down();
   await expect(sample).toHaveCSS('background-color', 'rgb(34, 51, 68)');
   await expect(sample).toHaveCSS('border-color', 'rgb(34, 51, 68)');
   await page.mouse.up();
   await save.hover();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
-  await expect(save).toHaveCSS('background-color', 'rgb(17, 34, 51)');
-  await expect(save).toHaveCSS('border-color', 'rgb(17, 34, 51)');
+  await expect(save).toHaveCSS('background-color', 'rgb(171, 205, 239)');
+  await expect(save).toHaveCSS('border-color', 'rgb(171, 205, 239)');
   await page.mouse.down();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('background-color', 'rgb(34, 51, 68)');
@@ -340,15 +421,29 @@ test('expanded and compact previews share the applied palette without changing g
   const source = JSON.stringify({
     version: 1,
     name: 'Preview',
-    colors: { '--el-color-primary': '#ff00ff', '--mar-color-diff-add-text': '#123456' }
+    colors: {
+      '--mar-color-brand': '#ff00ff',
+      '--mar-color-diff-add-text': '#123456',
+      '--mar-conversation-surface': '#16324f',
+      '--mar-conversation-text': '#f8eedd'
+    }
   });
   await editor.fill(source);
   const preview = page.locator('.theme-preview');
   await expect(preview.locator('.user-message')).toHaveText('This is a sample message.');
   await expect(preview.locator('.assistant-message strong')).toHaveText('Sample heading');
+  await expect(preview.locator('.user-message')).toHaveCSS('color', 'rgb(248, 238, 221)');
+  await expect(preview.locator('.assistant-message')).toHaveCSS(
+    'background-color',
+    'rgb(22, 50, 79)'
+  );
+  for (const selector of ['.user-message', '.assistant-message', '.process'])
+    await expect(preview.locator(selector)).toHaveCSS('border-radius', '12px');
+  await expect(preview.locator('.status').first()).toHaveCSS('border-radius', '4px');
+  await expect(preview.locator('.preview-button.primary')).toHaveCSS('border-radius', '6px');
   await expect(preview.locator('.preview-toolbar')).toHaveCSS(
     'background-color',
-    'rgb(19, 25, 34)'
+    'rgb(22, 29, 40)'
   );
   await expect(preview.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
   await expect(preview.getByRole('button', { name: 'Disabled', exact: true })).toBeDisabled();
@@ -361,6 +456,11 @@ test('expanded and compact previews share the applied palette without changing g
   const dialog = page.getByRole('dialog');
   const expanded = dialog.locator('.theme-preview');
   await expect(expanded).toBeVisible();
+  const dialogPanel = dialog.locator('.el-dialog');
+  await expect(dialogPanel).toHaveCSS('border-radius', '12px');
+  await dialogPanel.evaluate((element) => element.classList.add('is-fullscreen'));
+  await expect(dialogPanel).toHaveCSS('border-radius', '0px');
+  await dialogPanel.evaluate((element) => element.classList.remove('is-fullscreen'));
   expect(
     await expanded.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
   ).toBeGreaterThan(compactFont);
@@ -425,8 +525,7 @@ for (const locale of ['en-US', 'zh-CN']) {
 
 for (const scheme of ['Light', 'Dark']) {
   test('MAR variables drive every component alias in ' + scheme + ' palettes', async ({ page }) => {
-    const { LEGACY_THEME_TOKENS } =
-      await import('../../packages/web-core/src/model/custom-theme.js');
+    const aliases = await componentAliases();
     const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
     const row = page
       .locator('.theme-option')
@@ -434,7 +533,7 @@ for (const scheme of ['Light', 'Dark']) {
     await useThemeMenu(page, row, 'Duplicate');
     const source = JSON.parse(await editor.inputValue());
     expect(Object.keys(source.colors).every((key) => key.startsWith('--mar-'))).toBe(true);
-    for (const [index, token] of [...new Set(Object.values(LEGACY_THEME_TOKENS))].entries())
+    for (const [index, token] of [...new Set(Object.values(aliases))].entries())
       source.colors[token] = '#' + (0x203040 + index * 0x030507).toString(16).padStart(6, '0');
     source.colors['--mar-color-brand'] = '#654321';
     source.colors['--mar-control-bg-color-overlay'] = '#345678';
@@ -450,9 +549,7 @@ for (const scheme of ['Light', 'Dark']) {
         expected: style.getPropertyValue(target).trim()
       }));
     };
-    for (const result of await page
-      .locator('.theme-preview')
-      .evaluate(inspectAliases, LEGACY_THEME_TOKENS)) {
+    for (const result of await page.locator('.theme-preview').evaluate(inspectAliases, aliases)) {
       expect(result.actual, result.alias).toBe(result.expected);
       expect(result.actual, result.alias).toBe(source.colors[result.target]);
       expect(result.actual).not.toBe('');
@@ -463,7 +560,7 @@ for (const scheme of ['Light', 'Dark']) {
       .filter({ has: page.getByRole('button', { name: 'Inspect ' + source.name, exact: true }) })
       .getByRole('button', { name: 'Apply theme', exact: true })
       .click();
-    for (const result of await page.locator('html').evaluate(inspectAliases, LEGACY_THEME_TOKENS)) {
+    for (const result of await page.locator('html').evaluate(inspectAliases, aliases)) {
       expect(result.actual, result.alias).toBe(result.expected);
       expect(result.actual, result.alias).toBe(source.colors[result.target]);
     }
@@ -561,7 +658,7 @@ for (const scheme of ['Light', 'Dark']) {
       if (scheme === 'Light')
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
-      const panel = scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(255, 255, 255)';
+      const panel = scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
       await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
       await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
@@ -575,7 +672,7 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(10, 111, 216)'
+        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(36, 95, 168)'
       );
       expect(
         resolvedColorToHex(
@@ -586,17 +683,17 @@ for (const scheme of ['Light', 'Dark']) {
       ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(243, 246, 249)'
+        scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(236, 240, 244)'
       );
       await controls.locator('.el-table__body tr').first().hover();
       await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(237, 242, 247)'
+        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(228, 234, 241)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(84, 154, 228)'
+        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(24, 71, 128)'
       );
 
       await useThemeMenu(page, row, 'Duplicate');
@@ -679,8 +776,7 @@ for (const scheme of ['Light', 'Dark']) {
           })
           .getByRole('button', { name: 'Apply theme', exact: true })
           .click();
-      const { LEGACY_THEME_TOKENS } =
-        await import('../../packages/web-core/src/model/custom-theme.js');
+      const aliases = await componentAliases();
       // Include both breakpoint edges and resize back to mobile to catch stale overrides.
       for (const width of [390, 767, 768, 860, 861, 1440, 420]) {
         await page.setViewportSize({ width, height: 900 });
@@ -701,15 +797,15 @@ for (const scheme of ['Light', 'Dark']) {
           );
         }, Object.keys(expected));
         expect(actual, scheme + ' at ' + width).toEqual(expected);
-        const aliases = await page.locator('html').evaluate((element, mapping) => {
+        const resolvedAliases = await page.locator('html').evaluate((element, mapping) => {
           const style = getComputedStyle(element);
           return Object.entries(mapping).map(([alias, token]) => ({
             alias,
             actual: style.getPropertyValue(alias).trim(),
             expected: style.getPropertyValue(token).trim()
           }));
-        }, LEGACY_THEME_TOKENS);
-        for (const alias of aliases)
+        }, aliases);
+        for (const alias of resolvedAliases)
           expect(alias.actual, alias.alias + ' at ' + width).toBe(alias.expected);
       }
     }

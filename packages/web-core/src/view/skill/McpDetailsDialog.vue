@@ -98,7 +98,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 .mcp-details > p {
   margin: 0;
   color: var(--mar-text-secondary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
   line-height: 1.7;
   white-space: pre-wrap;
 }

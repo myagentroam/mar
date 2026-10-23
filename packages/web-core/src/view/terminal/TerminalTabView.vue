@@ -6,7 +6,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/ScopedHttpService.js';
 import { createTerminalService } from '../../service/TerminalService.js';
 import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
@@ -167,7 +167,7 @@ function terminalFontSize(): number {
 function terminalThemeColor(property: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(property).trim() || fallback;
 }
-void nextTick().then(() => {
+onMounted(() => {
   if (host.value === undefined) return;
   xterm = new Terminal({
     allowProposedApi: true,
@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--mar-terminal-surface) 90%, transparent);
   color: var(--mar-terminal-foreground);
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   pointer-events: none;
 }
 

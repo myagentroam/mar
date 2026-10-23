@@ -97,8 +97,7 @@ const vscodeEditorTheme = EditorView.theme({
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--mar-editor-cursor)' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground':
     {
-      background: 'var(--mar-editor-selection) !important',
-      boxShadow: 'inset 0 0 0 1px var(--mar-editor-selection-border) !important'
+      background: 'var(--mar-editor-selection) !important'
     },
   '.cm-content ::selection': { backgroundColor: 'transparent' },
   '.cm-activeLine': {
@@ -616,8 +615,11 @@ onBeforeUnmount(() => {
   --mar-editor-background: #ffffff;
   --mar-editor-foreground: #1f1f1f;
   --mar-editor-cursor: #000000;
-  --mar-editor-selection: #add6ff;
-  --mar-editor-selection-border: #5a9fd4;
+  --mar-editor-selection: color-mix(
+    in srgb,
+    var(--mar-color-brand) 30%,
+    var(--mar-editor-background)
+  );
   --mar-editor-selection-match: #f8eec7;
   --mar-editor-selection-match-border: #d6bd58;
   --mar-editor-selection-match-main: #7aa9d8;
@@ -655,12 +657,10 @@ onBeforeUnmount(() => {
   --mar-editor-background: #1e1e1e;
   --mar-editor-foreground: #d4d4d4;
   --mar-editor-cursor: #aeafad;
-  --mar-editor-selection: #a85200;
-  --mar-editor-selection-border: #ffd08a;
   --mar-editor-selection-match: #91c85b;
   --mar-editor-selection-match-border: #d9ff9f;
-  --mar-editor-selection-match-main: #a85200;
-  --mar-editor-selection-match-main-border: #ffd08a;
+  --mar-editor-selection-match-main: var(--mar-editor-selection);
+  --mar-editor-selection-match-main-border: var(--mar-color-brand);
   --mar-editor-selection-match-main-foreground: #ffffff;
   --mar-editor-active-line: rgb(45 51 61 / 58%);
   --mar-editor-active-line-indicator: #4e83ac;

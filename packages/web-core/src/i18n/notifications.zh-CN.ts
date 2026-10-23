@@ -1,5 +1,8 @@
 export const notificationsZhCN = {
   workbenchNotificationCenter: {
+    recentSessions: '最近会话',
+    noRecentSessions: '暂无最近会话',
+    recentSessionsCount: '{count} 个进行中的会话',
     webPush: {
       title: '离线推送',
       summary: '所有设备上的工作台都离线时，向当前设备发送通知。实际送达受浏览器和系统限制。',
@@ -87,8 +90,6 @@ export const notificationsZhCN = {
       delete: '删除 {value0}',
       cancel: '取消',
       noNotifications: '暂无通知',
-      recentTasks: '最近任务',
-      noRecentTasks: '暂无最近任务',
       unread: '未读',
       deleteNotification: '删除通知 {value0}'
     }

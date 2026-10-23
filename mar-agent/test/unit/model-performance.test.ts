@@ -28,12 +28,17 @@ const model: MarAgentModelConfiguration = {
   outputCapabilities: ['TEXT'],
   reasoningEfforts: [],
   defaultReasoningEffort: 'medium',
+  titleGeneration: false,
+  codeMode: false,
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   enabled: true
 };
 
-async function measure(schedule: readonly (readonly [number, ModelEvent, number?])[]) {
+async function measure(
+  schedule: readonly (readonly [number, ModelEvent, number?])[],
+  options: { readonly cancelAfterUsage?: boolean } = {}
+) {
   const home = await mkdtemp(join(tmpdir(), 'mar-model-performance-'));
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
@@ -58,8 +63,22 @@ async function measure(schedule: readonly (readonly [number, ModelEvent, number?
     const session = await agent.createSession({ workspace, title: 'Performance' });
     const execution = session.run({ prompt: 'Measure without estimating tokens.' });
     const events = [];
-    for await (const event of execution) events.push(event);
-    await execution.result();
+    let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      for await (const event of execution) {
+        events.push(event);
+        if (
+          options.cancelAfterUsage &&
+          cancellationTimer === undefined &&
+          event.type === 'usage.updated'
+        )
+          cancellationTimer = setTimeout(() => execution.cancel(), 0);
+      }
+      const result = await execution.result();
+      if (options.cancelAfterUsage) expect(result.status).toBe('cancelled');
+    } finally {
+      if (cancellationTimer !== undefined) clearTimeout(cancellationTimer);
+    }
     const persisted = await readFile(
       join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
       'utf8'
@@ -115,12 +134,15 @@ describe('Model output TPS evidence', () => {
   );
 
   it('does not publish private-only TPS below one second', async () => {
-    const result = await measure([
-      [100, { type: 'output.started' }],
-      [1_099.999, { type: 'output.completed' }],
-      [5_000, { type: 'usage', final: true, usage: { outputTokens: 302 } }],
-      [10_000, complete]
-    ]);
+    const result = await measure(
+      [
+        [100, { type: 'output.started' }],
+        [1_099.999, { type: 'output.completed' }],
+        [5_000, { type: 'usage', final: true, usage: { outputTokens: 302 } }],
+        [10_000, complete]
+      ],
+      { cancelAfterUsage: true }
+    );
     expect(result.metrics).toEqual([]);
     expect(result.events).toContainEqual(
       expect.objectContaining({ type: 'usage.updated', outputTokens: 302 })
@@ -151,12 +173,15 @@ describe('Model output TPS evidence', () => {
   );
 
   it('publishes TPS from private generation boundaries without requiring a Latency response', async () => {
-    const result = await measure([
-      [100, { type: 'output.started' }],
-      [1_100, { type: 'output.completed' }],
-      [1_500, { type: 'usage', final: true, usage: { outputTokens: 100 } }],
-      [3_000, complete]
-    ]);
+    const result = await measure(
+      [
+        [100, { type: 'output.started' }],
+        [1_100, { type: 'output.completed' }],
+        [1_500, { type: 'usage', final: true, usage: { outputTokens: 100 } }],
+        [3_000, complete]
+      ],
+      { cancelAfterUsage: true }
+    );
     expect(result.metrics).toHaveLength(1);
     expect(result.metrics[0]).toMatchObject({
       outputTokens: 100,
@@ -171,7 +196,15 @@ describe('Model output TPS evidence', () => {
     const result = await measure([
       [100, { type: 'output.delta' }],
       [2_000, { type: 'output.delta' }],
-      [3_900, { type: 'reasoning.summary', itemId: 'thinking', text: 'Public summary.' }],
+      [
+        3_900,
+        {
+          type: 'reasoning.completed',
+          representation: 'summary',
+          itemId: 'thinking',
+          text: 'Public summary.'
+        }
+      ],
       [4_000, answer],
       [4_000, usage(1_000)],
       [4_000, complete]
@@ -206,14 +239,25 @@ describe('Model output TPS evidence', () => {
   );
 
   it('includes hidden generation before the first public reasoning summary', async () => {
-    const result = await measure([
-      [100, { type: 'output.started' }],
-      [29_900, { type: 'reasoning.summary', itemId: 'thinking', text: 'Summary.' }],
-      [30_000, delta('A')],
-      [30_050, delta('B')],
-      [30_100, usage(5_100)],
-      [30_100, complete]
-    ]);
+    const result = await measure(
+      [
+        [100, { type: 'output.started' }],
+        [
+          29_900,
+          {
+            type: 'reasoning.completed',
+            representation: 'summary',
+            itemId: 'thinking',
+            text: 'Summary.'
+          }
+        ],
+        [30_000, delta('A')],
+        [30_050, delta('B')],
+        [30_100, usage(5_100)],
+        [30_100, complete]
+      ],
+      { cancelAfterUsage: true }
+    );
     expect(result.metrics.at(-1)).toMatchObject({
       latencyMs: 29_900,
       outputTokens: 5_100,
@@ -272,6 +316,7 @@ describe('Model output TPS evidence', () => {
       [1_500, delta('A')],
       [2_000, { type: 'output.completed' }],
       [2_100, usage(100)],
+      [2_500, answer],
       [3_000, complete]
     ]);
     expect(result.metrics.at(-1)).toMatchObject({ outputDurationMs: 1_000, tokensPerSecond: 100 });
@@ -622,7 +667,7 @@ describe('Native generation timing normalization', () => {
     expect(JSON.stringify(progress)).not.toContain('Private reasoning');
     expect(JSON.stringify(progress)).not.toContain('private-signature');
     expect(events.findIndex((event) => event.type === 'output.delta')).toBeLessThan(
-      events.findIndex((event) => event.type === 'reasoning.summary')
+      events.findIndex((event) => event.type === 'reasoning.completed')
     );
     expect(events.find((event) => event.type === 'client_tool.call')).toMatchObject({
       callId: 'tool',

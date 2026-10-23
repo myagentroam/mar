@@ -38,14 +38,14 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <el-tooltip :content="t('customThemes.tokenHelp')" :trigger-keys="[]">
-    <el-button
-      link
-      :icon="QuestionFilled"
-      :aria-label="t('customThemes.tokenHelp')"
-      @click="show"
-    />
-  </el-tooltip>
+  <el-button
+    class="utility-control"
+    text
+    :icon="QuestionFilled"
+    :aria-label="t('customThemes.tokenHelp')"
+    :title="t('customThemes.tokenHelp')"
+    @click="show"
+  />
   <el-dialog
     v-if="open"
     v-model="open"
@@ -75,9 +75,11 @@ async function copy(token: string): Promise<void> {
               />
               <code>{{ item.token }}</code>
               <el-button
+                class="utility-control"
                 link
                 :icon="CopyDocument"
                 :aria-label="t('customThemes.tokenCopy', { token: item.token })"
+                :title="t('customThemes.tokenCopy', { token: item.token })"
                 @click="copy(item.token)"
               />
             </dt>
@@ -103,7 +105,7 @@ async function copy(token: string): Promise<void> {
 }
 h3 {
   margin: 1rem 0 0.25rem;
-  font-size: 1rem;
+  font-size: var(--mar-font-size-title);
 }
 dl {
   margin: 0;
@@ -122,12 +124,12 @@ code {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--mar-font-mono);
-  font-size: 0.857rem;
+  font-size: var(--mar-font-size-body);
 }
 dd {
   margin: 0.25rem 0 0 1.5rem;
   color: var(--mar-text-secondary);
-  font-size: 0.929rem;
+  font-size: var(--mar-font-size-body);
 }
 .swatch {
   width: 1rem;

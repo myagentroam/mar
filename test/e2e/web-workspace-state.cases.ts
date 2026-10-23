@@ -131,6 +131,9 @@ test('Workspace tab status width changes update pinned offsets and overflow cont
   const second = tabs.nth(1);
   await expect(first).toHaveClass(/sticky-pinned/);
   await expect(second).toHaveClass(/sticky-pinned/);
+  await expect(first.locator('.workspace-tab-content > span')).toHaveCSS('font-size', '13px');
+  await expect(first.locator('.workspace-tab-content > span')).toHaveCSS('font-weight', '400');
+  await expect(first.locator('small')).toHaveCSS('font-size', '11px');
   const initialWidth = (await first.boundingBox())!.width;
   const pinnedGap = () =>
     tabs.evaluateAll(([first, second]) => {
@@ -2026,7 +2029,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
 
 for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
   test(`Pinned Workspace Tabs use ordinary colors without dividers: ${theme}`, async ({ page }) => {
-    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
     await mockEmptyWorkspaceFiles(page, ['workspace-2', 'workspace-3']);
     await page.route('**/api/workspaces?nodeId=node-1', (route) =>
       json(route, {
@@ -2045,7 +2048,7 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
     for (let index = 1; index <= 3; index++)
       await tree.getByRole('button', { name: `project-${index}`, exact: true }).click();
     const tab = (index: number) =>
-      page.getByRole('tab', { name: new RegExp(`^project-${index}\\s`) });
+      page.getByRole('tab', { name: `project-${index} node-1`, exact: true });
     const colors = (index: number) =>
       tab(index)
         .locator('..')
@@ -2077,6 +2080,29 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
     await tab(1).click({ button: 'right' });
     await page.getByRole('menuitem', { name: '固定', exact: true }).click();
     await page.mouse.move(0, 0);
+    const tabList = page.locator('.workspace-tabs');
+    await expect(tabList).toHaveCSS('padding-left', '2px');
+    await expect(page.locator('.workbench-tree-toggle')).toHaveCSS('width', '26px');
+    await tabList.evaluate((element) => {
+      element.style.maxWidth = '340px';
+      element.scrollLeft = 40;
+    });
+    await expect.poll(() => tabList.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await tab(2).hover();
+    const mask = await pin.evaluate((element) => {
+      const style = getComputedStyle(element, '::before');
+      return {
+        width: style.borderRightWidth,
+        color: style.borderRightColor,
+        backdrop: getComputedStyle(document.querySelector('.workbench-header')!).backgroundColor,
+        radius: style.borderTopRightRadius,
+        pointerEvents: style.pointerEvents
+      };
+    });
+    expect(mask.width).toBe('3px');
+    expect(mask.color).toBe(mask.backdrop);
+    expect(mask.radius).toBe('9px');
+    expect(mask.pointerEvents).toBe('none');
     await page.locator('.workspace-tabs').screenshot({
       path: test.info().outputPath(`uniform-pinned-tabs-${theme}.png`),
       animations: 'disabled'

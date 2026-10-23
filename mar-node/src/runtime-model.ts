@@ -71,6 +71,9 @@ export interface ConversationItemPage {
 }
 
 export interface NodeConversationItem {
+  /** Runner-owned canonical source identity; internal, not a transport or storage field. */
+  readonly sourceItemId?: string;
+  readonly processGroup?: { readonly id: string; readonly isStart?: true };
   /** Time of the latest observed public update, not a polling heartbeat. */
   readonly updatedAt?: number;
   readonly permissionStop?: PermissionStop;

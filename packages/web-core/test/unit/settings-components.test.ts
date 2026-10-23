@@ -204,6 +204,7 @@ describe('Shared personal settings components', () => {
       expect(prompts.html).toContain(commonMessages[locale].quickPrompts.title);
       const instructions = await render('personal-instructions');
       expect(instructions.html).toContain('MAR Agent');
+      expect(instructions.html).toContain(commonMessages[locale].personalInstructions.scopeHelp);
       expect(instructions.html).not.toContain('personalInstructions.title');
     }
   );

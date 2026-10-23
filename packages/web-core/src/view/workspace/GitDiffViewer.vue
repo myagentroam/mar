@@ -698,6 +698,7 @@ defineExpose({
           size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
+          :title="translate('generated.gitDiffViewer.previousFile')"
           @click="emit('moveFile', -1)"
           ><el-icon><ArrowLeft /></el-icon
         ></el-button>
@@ -706,6 +707,7 @@ defineExpose({
           size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
+          :title="translate('generated.gitDiffViewer.previousChange')"
           @click="moveDiff(-1)"
           ><el-icon><ArrowUp /></el-icon
         ></el-button>
@@ -714,6 +716,7 @@ defineExpose({
           size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
+          :title="translate('generated.gitDiffViewer.nextChange')"
           @click="moveDiff(1)"
           ><el-icon><ArrowDown /></el-icon
         ></el-button>
@@ -722,6 +725,7 @@ defineExpose({
           size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
+          :title="translate('generated.gitDiffViewer.nextFile')"
           @click="emit('moveFile', 1)"
           ><el-icon><ArrowRight /></el-icon
         ></el-button>
@@ -740,11 +744,13 @@ defineExpose({
           circle
           size="small"
           :aria-label="translate('inlineFind.label')"
+          :title="translate('inlineFind.label')"
           @click="openInternalFind"
           ><el-icon><Search /></el-icon
         ></el-button>
         <el-button
           :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
+          :title="translate('generated.gitDiffViewer.downloadDiff')"
           circle
           size="small"
           @click="emit('download')"
@@ -754,6 +760,7 @@ defineExpose({
         <el-button
           v-if="!embedded"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
+          :title="translate('generated.gitDiffViewer.closeDiffPreview2')"
           circle
           size="small"
           type="primary"
@@ -833,6 +840,7 @@ defineExpose({
           v-if="!embedded"
           class="diff-close-button"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
+          :title="translate('generated.gitDiffViewer.closeDiffPreview')"
           circle
           size="small"
           type="primary"
@@ -982,13 +990,13 @@ defineExpose({
   background: var(--mar-fill-subtle);
   padding: 0.55rem 0.75rem;
   color: var(--mar-text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--mar-font-size-body);
 }
 .diff-toolbar-count {
   min-width: 2.65rem;
   color: var(--mar-text-secondary);
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 0.72rem;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
   text-align: center;
   white-space: nowrap;
 }
@@ -1056,7 +1064,7 @@ defineExpose({
   background: var(--mar-bg-panel);
   padding: 0.2rem 0.4rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.66rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 500;
 }
 .file-preview-content pre.unified-diff-code {
@@ -1110,13 +1118,17 @@ defineExpose({
   white-space: pre;
 }
 .diff-minimap-row.is-added {
-  background: rgb(46 160 67 / 52%);
+  background: color-mix(in srgb, var(--mar-color-diff-add-text) 52%, transparent);
 }
 .diff-minimap-row.is-deleted {
-  background: rgb(248 81 73 / 48%);
+  background: color-mix(in srgb, var(--mar-color-diff-del-text) 48%, transparent);
 }
 .diff-minimap-row.is-mixed {
-  background: linear-gradient(to bottom, rgb(248 81 73 / 48%) 0 50%, rgb(46 160 67 / 52%) 50% 100%);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--mar-color-diff-del-text) 48%, transparent) 0 50%,
+    color-mix(in srgb, var(--mar-color-diff-add-text) 52%, transparent) 50% 100%
+  );
 }
 .diff-minimap-row > span {
   display: block;
@@ -1129,8 +1141,8 @@ defineExpose({
   right: 0;
   left: 0;
   border: 1px solid var(--mar-text-secondary);
-  background: rgb(87 96 106 / 48%);
-  box-shadow: 0 0 0 1px rgb(27 31 36 / 34%);
+  background: color-mix(in srgb, var(--mar-text-secondary) 48%, transparent);
+  box-shadow: 0 0 0 1px var(--mar-border-medium);
   pointer-events: none;
 }
 .unified-diff-code code {
@@ -1200,8 +1212,8 @@ defineExpose({
     gap: 0.55rem;
     margin-top: 0.2rem;
     color: var(--mar-text-secondary);
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-    font-size: 0.62rem;
+    font-family: var(--mar-font-mono);
+    font-size: var(--mar-font-size-meta);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }

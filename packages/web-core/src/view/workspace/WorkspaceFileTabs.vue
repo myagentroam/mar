@@ -324,7 +324,7 @@ defineExpose({
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: inherit;
 }

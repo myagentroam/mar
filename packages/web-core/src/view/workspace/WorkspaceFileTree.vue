@@ -567,7 +567,7 @@ defineExpose({ reveal });
   margin: 0;
   color: var(--mar-text-muted);
   padding: 0.45rem 0.65rem;
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-tree-row,
@@ -581,19 +581,21 @@ defineExpose({ reveal });
   border: 0;
   background: transparent;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.25;
   text-align: left;
   white-space: nowrap;
 }
 
 .file-tree-row {
+  min-height: calc(var(--mar-compact-row-size) - 2px);
+  height: calc(var(--mar-compact-row-size) - 2px);
   grid-template-columns: 0.8rem 18px minmax(0, 1fr);
   gap: 0;
   width: auto;
   flex: 1;
   align-items: center;
-  padding: 3px 6px 3px calc(4px + var(--tree-depth) * 8px);
+  padding: 2px 6px 2px calc(4px + var(--tree-depth) * 8px);
   cursor: pointer;
 }
 
@@ -602,6 +604,11 @@ defineExpose({ reveal });
   display: flex;
   width: 100%;
   min-width: 0;
+  height: var(--mar-compact-row-size);
+  box-sizing: border-box;
+  border-block: 1px solid transparent;
+  border-radius: var(--mar-radius-selection);
+  background-clip: padding-box;
   overflow: hidden;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -610,7 +617,7 @@ defineExpose({ reveal });
 
 .file-tree-row-shell:hover,
 .file-tree-row-shell:focus-within {
-  background: var(--mar-fill-muted);
+  background-color: var(--mar-fill-muted);
 }
 
 .file-tree-row:hover:not(:disabled),
@@ -619,11 +626,15 @@ defineExpose({ reveal });
 }
 
 .file-tree-row-shell.selected {
-  background: var(--mar-color-brand-subtle);
+  background-color: var(--mar-color-brand-selected);
+}
+
+.file-tree-row-shell.selected .file-tree-row {
+  color: var(--mar-color-brand-text);
 }
 
 .file-tree-row-shell.drop-target {
-  background: var(--mar-color-brand-subtle);
+  background-color: var(--mar-color-brand-subtle);
   outline: 1px solid var(--mar-color-brand);
   outline-offset: -1px;
 }

@@ -19,6 +19,7 @@ export const THEME_TOKEN_HELP = {
 
   '--mar-bg-page': { group: 'surfaces', description: 'bg-page' },
   '--mar-bg-panel': { group: 'surfaces', description: 'bg-panel' },
+  '--mar-bg-chrome': { group: 'surfaces', description: 'bg-chrome' },
   '--mar-bg-subtle': { group: 'surfaces', description: 'bg-subtle' },
   '--mar-bg-tab-inactive': { group: 'surfaces', description: 'bg-tab-inactive' },
   '--mar-fill-subtle': { group: 'surfaces', description: 'fill-subtle' },
@@ -107,7 +108,6 @@ export const THEME_TOKEN_HELP = {
   '--mar-color-brand-text': { group: 'interaction', description: 'color-brand-text' },
   '--mar-color-on-accent': { group: 'interaction', description: 'color-on-accent' },
   '--mar-color-brand-hover': { group: 'interaction', description: 'color-brand-hover' },
-  '--mar-color-brand-active': { group: 'interaction', description: 'color-brand-active' },
   '--mar-color-brand-subtle': { group: 'interaction', description: 'color-brand-subtle' },
   '--mar-color-brand-selected': { group: 'interaction', description: 'color-brand-selected' },
   '--mar-color-brand-border': { group: 'interaction', description: 'color-brand-border' },
@@ -124,7 +124,6 @@ export const THEME_TOKEN_HELP = {
   '--mar-color-diff-del-text': { group: 'status', description: 'color-diff-del-text' },
   '--mar-shadow-soft': { group: 'overlays', description: 'shadow-soft' },
   '--mar-shadow-medium': { group: 'overlays', description: 'shadow-medium' },
-  '--mar-shadow-strong': { group: 'overlays', description: 'shadow-strong' },
   '--mar-overlay-scrim': { group: 'overlays', description: 'overlay-scrim' },
   '--mar-overlay-border': { group: 'overlays', description: 'overlay-border' }
 } as const satisfies Record<

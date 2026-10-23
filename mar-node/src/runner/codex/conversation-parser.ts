@@ -164,10 +164,11 @@ const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
 const MAX_ASSISTANT_MESSAGE_CHARACTERS = 64 * 1024;
 
 export type PublicConversationItem = {
+  readonly sourceItemId?: string;
   readonly itemId: string;
   readonly kind:
     | 'assistant_message'
-    | 'reasoning_summary'
+    | 'reasoning'
     | 'tool_call'
     | 'command_execution'
     | 'user_input_request'
@@ -779,6 +780,27 @@ export function codexPlanText(value: Record<string, unknown>): string | undefine
  * A final Claude tagged Plan Mode plan is fully wrapped in `<proposed_plan>` tags;
  * text with missing or unclosed tags remains a regular assistant message.
  */
+export function codexSourceItemId(nativeTurnId: string, itemId: string): string {
+  return JSON.stringify([nativeTurnId, itemId]);
+}
+
+export function codexTranscriptSourceItemId(
+  record: Record<string, unknown>,
+  nativeTurnId: string | undefined
+): string | undefined {
+  if (
+    nativeTurnId === undefined ||
+    record.type !== 'response_item' ||
+    !isPlainRecord(record.payload)
+  )
+    return undefined;
+  const payload = record.payload;
+  const id = typeof payload.call_id === 'string' ? payload.call_id : payload.id;
+  return typeof id === 'string'
+    ? codexSourceItemId(nativeTurnId, boundedConversationItemId('codex', id))
+    : undefined;
+}
+
 export function codexOfficialItem(
   session: NodeAgentSession,
   nativeTurnId: string,
@@ -804,6 +826,7 @@ export function codexOfficialItem(
           : `${nativeTurnId}:${itemSequence}`;
   const base = {
     id: `${session.id}:official:${nativeTurnId}:${id}`,
+    sourceItemId: codexSourceItemId(nativeTurnId, boundedConversationItemId('codex', id)),
     sessionId: session.id,
     turnId: `${session.id}:official:${nativeTurnId}`,
     runId: null,
@@ -856,7 +879,7 @@ export function codexOfficialItem(
             : []
         )
       : [];
-    return { ...base, kind: 'reasoning_summary', payload: { sections } };
+    return { ...base, kind: 'reasoning', payload: { representation: 'summary', sections } };
   }
   if (value.type === 'commandExecution') {
     const output = typeof value.aggregatedOutput === 'string' ? value.aggregatedOutput : '';
@@ -1016,9 +1039,9 @@ export function codexLiveConversationItem(
       : [];
     return {
       itemId,
-      kind: 'reasoning_summary',
+      kind: 'reasoning',
       status: completed ? 'COMPLETED' : 'IN_PROGRESS',
-      payload: { sections }
+      payload: { representation: 'summary', sections }
     };
   }
   const planText = codexPlanText(value);

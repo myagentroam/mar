@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-22
 ---
 
 # Start a Conversation from a Template
@@ -39,6 +39,8 @@ Mobile does not show the global **Expand/Fold** control or three tabs. Select **
 
 After an explicit request error, correct the input and retry. If the network disconnects while the result is unknown, the page keeps the same send intent to avoid duplicate execution.
 
+History loading, inline retry, and Run duration follow the [session reading behavior](sessions.md). Sending appears beside the send controls without replacing an active Run's status. Connection hints use the page connection state; they do not mean the Agent failed or restarted.
+
 ## Roll back conversation history
 
 When the hosting Node supports hosted-conversation Rollback, a **Rollback conversation** action appears beside terminal user messages. Hosted conversations do not provide a Rewind branch action. After confirmation, the system permanently deletes that user message and all later history in the current conversation's original Session, then restores the message text to the composer so you can edit and send it again.
@@ -76,7 +78,7 @@ If a rule should apply to every user and conversation created from the template,
 
 The conversation page reuses the page's single Workbench WebSocket and subscribes only to the current conversation. Switching conversations, leaving the page, or replacing the browser connection releases the old subscription. After reconnecting, the page obtains a new authoritative Node snapshot instead of inferring a Run result from missing events.
 
-After a Run succeeds, fails, or ends because of an unexpected interruption, Notification Center retains a notification for that hosted conversation for 24 hours. Explicitly selecting **Stop**, or deleting the conversation while it is running, cancels the Run without creating a terminal notification. Selecting a notification switches to Conversation mode and opens the matching conversation. Hosted conversations do not appear in the **Recent tasks** section.
+After a Run succeeds, fails, or ends because of an unexpected interruption, Notification Center retains a notification for that hosted conversation for 24 hours. Explicitly selecting **Stop**, or deleting the conversation while it is running, cancels the Run without creating a terminal notification. Selecting a notification switches to Conversation mode and opens the matching conversation. Hosted conversations do not appear in the **Recent Sessions** list.
 
 The page shows an action message in these cases:
 

@@ -6,6 +6,7 @@ import type {
 import type { NodeAgentSession } from '../database.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../runtime-model.js';
 import type { ConversationHistoryPage } from '../util/runner-native-session-parsers.js';
+import { projectConversationWorkProcesses } from './conversation-work-process.js';
 
 const MAX_INITIAL_TURN_PAGE_SIZE = 30;
 
@@ -29,6 +30,7 @@ interface SegmentCursor {
 }
 
 export function conversationSegments(turn: NodeConversationTurn): ConversationSegment[] {
+  turn = projectConversationWorkProcesses(turn);
   const prefix = conversationSegmentPrefix(turn);
   const groups: NodeConversationItem[][] = [];
   let current: NodeConversationItem[] = [];
@@ -43,7 +45,7 @@ export function conversationSegments(turn: NodeConversationTurn): ConversationSe
   return groups.map((items, index) => {
     const id = `${prefix}:segment:${index}`;
     const latest = index === groups.length - 1;
-    const projectedItems = items.map((item) => ({
+    const projectedItems = items.map(({ sourceItemId: _sourceItemId, ...item }) => ({
       ...item,
       runId: turn.runId,
       segmentId: id,

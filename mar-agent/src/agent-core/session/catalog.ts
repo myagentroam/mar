@@ -162,8 +162,10 @@ export async function openMarAgentSessionCatalog(input: {
             }
           }));
         }
-        if (isMarAgentEvent(record.payload))
-          return [{ kind: 'event', sequence: record.sequence, event: record.payload }];
+        if (isMarAgentEvent(record.payload)) {
+          const event = record.payload;
+          return [{ kind: 'event', sequence: record.sequence, event }];
+        }
         return [];
       });
       return {
@@ -258,6 +260,7 @@ function isMarAgentEvent(value: unknown): value is MarAgentEvent {
   return (
     isRecord(value) &&
     typeof value.type === 'string' &&
+    value.type !== 'reasoning.summary' &&
     typeof value.eventId === 'string' &&
     typeof value.sequence === 'number' &&
     typeof value.timestamp === 'string' &&

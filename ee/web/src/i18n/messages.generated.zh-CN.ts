@@ -1997,10 +1997,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     notificationsZhCN.generated.workbenchNotificationCenter.cancel,
   'workbenchNotificationCenter.noNotifications':
     notificationsZhCN.generated.workbenchNotificationCenter.noNotifications,
-  'workbenchNotificationCenter.recentTasks':
-    notificationsZhCN.generated.workbenchNotificationCenter.recentTasks,
-  'workbenchNotificationCenter.noRecentTasks':
-    notificationsZhCN.generated.workbenchNotificationCenter.noRecentTasks,
   'workbenchNotificationCenter.unread':
     notificationsZhCN.generated.workbenchNotificationCenter.unread,
   'workbenchNotificationCenter.deleteNotification':

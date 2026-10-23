@@ -23,6 +23,7 @@ import type { Session, Workspace } from '../../model/workbench.js';
 import { createEffectiveWorkspaceSkillService } from '../../service/EffectiveWorkspaceSkillService.js';
 import { createMcpCenterService } from '../../service/McpCenterService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
+import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
@@ -77,6 +78,21 @@ const emit = defineEmits<{
 }>();
 
 const draggingPinnedSessionId = ref<string>();
+const sessionReorderSnapshot = computed(() => ({
+  context: JSON.stringify([props.nodeId, props.workspaceId, props.searchQuery]),
+  ready:
+    props.watchStatus === 'ready' &&
+    !props.loading &&
+    !props.searching &&
+    !props.refreshing &&
+    !props.loadingMore &&
+    draggingPinnedSessionId.value === undefined,
+  items: props.sessions.map((session) => ({
+    key: session.id,
+    lastActivityAt: session.lastActivityAt,
+    pin: session.pinOrder ?? null
+  }))
+}));
 const promptSession = ref<Session>();
 const shareSession = ref<Session>();
 watch(
@@ -359,10 +375,15 @@ function submitSessionSearch(): void {
     <p v-else-if="watchStatus === 'failed'" class="watch-status failed">
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>
-    <ul v-if="sessions.length" class="session-list">
+    <ul
+      v-if="sessions.length"
+      v-session-reorder-motion="sessionReorderSnapshot"
+      class="session-list"
+    >
       <li
         v-for="session in sessions"
         :key="session.id"
+        class="mar-session-reorder-item"
         :class="{
           'dragging-pinned': draggingPinnedSessionId === session.id,
           'drag-over-pinned': dragOverPinnedSessionId === session.id
@@ -701,8 +722,11 @@ function submitSessionSearch(): void {
 <style scoped>
 .conversation-sidebar {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--mar-border-default);
+  border-right: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
   padding: 0.7rem;
 }
 
@@ -737,16 +761,21 @@ function submitSessionSearch(): void {
 
 .session-heading-meta h2 {
   flex: none;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .workspace-kind-tag {
-  --el-tag-bg-color: rgb(240 136 62 / 0.15);
-  --el-tag-border-color: rgb(240 136 62 / 0.55);
-  --el-tag-text-color: #9a4d13;
-  height: 18px;
-  border-radius: 3px;
-  font-size: 0.6rem;
-  line-height: 16px;
+  --el-tag-bg-color: var(--mar-color-warning-bg);
+  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
+  --el-tag-text-color: var(--mar-color-warning-text);
+  min-height: 1.5em;
+  height: auto;
+  border-radius: var(--mar-radius-marker);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.2;
   padding: 0 5px;
 }
 
@@ -754,10 +783,11 @@ function submitSessionSearch(): void {
   --el-tag-bg-color: var(--mar-bg-page);
   --el-tag-border-color: var(--mar-border-subtle);
   --el-tag-text-color: var(--mar-text-tertiary);
-  height: 18px;
-  border-radius: 3px;
-  font-size: 0.6rem;
-  line-height: 16px;
+  min-height: 1.5em;
+  height: auto;
+  border-radius: var(--mar-radius-marker);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.2;
   max-width: 10rem;
   overflow: hidden;
   padding: 0 5px;
@@ -766,9 +796,9 @@ function submitSessionSearch(): void {
 }
 
 .workspace-branch-tag.branch-main {
-  --el-tag-bg-color: rgb(167 139 250 / 0.15);
-  --el-tag-border-color: rgb(167 139 250 / 0.55);
-  --el-tag-text-color: #6d28d9;
+  --el-tag-bg-color: var(--mar-color-accent-bg);
+  --el-tag-border-color: color-mix(in srgb, var(--mar-color-accent) 55%, transparent);
+  --el-tag-text-color: var(--mar-color-accent);
 }
 
 .workspace-branch-tag.branch-develop {
@@ -795,48 +825,6 @@ function submitSessionSearch(): void {
   --el-tag-text-color: var(--mar-color-danger-text);
 }
 
-:global(html[data-theme='vscode-dark-2026']) .workspace-kind-tag {
-  --el-tag-bg-color: rgb(199 118 50 / 0.1);
-  --el-tag-border-color: rgb(209 134 74 / 0.38);
-  --el-tag-text-color: #d1864a;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-main {
-  --el-tag-bg-color: rgb(167 139 250 / 0.14);
-  --el-tag-border-color: rgb(167 139 250 / 0.45);
-  --el-tag-text-color: #c4b5fd;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-develop {
-  --el-tag-bg-color: rgb(56 139 253 / 0.14);
-  --el-tag-border-color: rgb(56 139 253 / 0.45);
-  --el-tag-text-color: #58a6ff;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-feature {
-  --el-tag-bg-color: rgb(46 160 67 / 0.14);
-  --el-tag-border-color: rgb(46 160 67 / 0.45);
-  --el-tag-text-color: #56d364;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-release {
-  --el-tag-bg-color: rgb(210 153 34 / 0.14);
-  --el-tag-border-color: rgb(210 153 34 / 0.45);
-  --el-tag-text-color: #e3b341;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-fix {
-  --el-tag-bg-color: rgb(248 81 73 / 0.14);
-  --el-tag-border-color: rgb(248 81 73 / 0.45);
-  --el-tag-text-color: #ff7b72;
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-branch-tag.branch-other {
-  --el-tag-bg-color: rgb(157 157 157 / 0.09);
-  --el-tag-border-color: rgb(157 157 157 / 0.32);
-  --el-tag-text-color: #aab2bf;
-}
-
 .new-session-form {
   display: flex;
   align-items: center;
@@ -858,7 +846,7 @@ function submitSessionSearch(): void {
 .new-session-form select {
   min-width: 0;
   padding: 0.37rem;
-  font-size: 0.73rem;
+  font-size: var(--mar-font-size-input);
 }
 
 .session-search .session-search-button,
@@ -903,7 +891,7 @@ function submitSessionSearch(): void {
 }
 
 :global(.workspace-tool-menu .el-dropdown-menu__item) {
-  font-size: 0.73rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .session-row {
@@ -911,12 +899,56 @@ function submitSessionSearch(): void {
   min-width: 0;
   align-items: stretch;
   overflow: hidden;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   transition: background-color 120ms ease;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.session-link {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  gap: 2px;
+  border: 0;
+  min-height: var(--mar-session-row-min-height);
+  border-radius: inherit;
+  background: transparent;
+  color: var(--mar-text-primary);
+  padding: var(--mar-session-row-padding-block) 0.65rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-link:disabled {
+  cursor: not-allowed;
+}
+
+.session-link:hover:not(:disabled),
+.session-link.selected {
+  color: var(--mar-color-brand-text);
+}
+
+.session-link strong {
+  display: block;
+  min-width: 0;
+  flex: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--mar-font-size-body);
+  font-weight: 500;
+}
+
+.session-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .session-link-content {
@@ -965,7 +997,7 @@ function submitSessionSearch(): void {
 .session-relative-time {
   flex: none;
   color: var(--mar-text-faint);
-  font-size: 0.6875rem;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -985,7 +1017,7 @@ function submitSessionSearch(): void {
   border-radius: 0.22rem;
   background: transparent;
   border-color: transparent;
-  font-size: 0.69rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.25rem;
   padding: 0 0.4rem;
 }
@@ -1005,20 +1037,12 @@ function submitSessionSearch(): void {
 
 .sidebar-empty {
   margin: 0.9rem 0;
-  font-size: 0.73rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 @media (max-width: 767px) {
   .conversation-sidebar {
-    background: var(--mar-bg-page);
-  }
-
-  .session-search .session-search-button,
-  .new-session-form .workspace-more-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
+    background: var(--mar-bg-chrome);
   }
 }
 </style>
@@ -1036,12 +1060,16 @@ function submitSessionSearch(): void {
 
 .session-list li {
   border-bottom: 0;
-  padding: 1px 6px;
+  padding: 2px 6px;
+}
+
+.session-list li:first-child {
+  padding-top: 4px;
 }
 
 @media (min-width: 768px) {
   .session-link strong {
-    font-size: 0.75rem;
+    font-size: var(--mar-font-size-body);
   }
 }
 
@@ -1059,7 +1087,7 @@ function submitSessionSearch(): void {
   border-radius: 3px;
   background: var(--mar-bg-page);
   color: var(--mar-text-tertiary);
-  font-size: 0.56rem;
+  font-size: var(--mar-font-size-nano);
   font-weight: 600;
   line-height: 1;
   padding: 2px 3px;

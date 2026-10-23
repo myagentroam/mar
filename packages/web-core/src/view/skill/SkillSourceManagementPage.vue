@@ -1005,7 +1005,7 @@ function scopeLabel(scope: string): string {
   color: var(--mar-text-tertiary);
   padding: 5px 12px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
   cursor: pointer;
 }
 .skill-category-strip button:hover {
@@ -1043,7 +1043,7 @@ function scopeLabel(scope: string): string {
   background: var(--mar-bg-subtle);
   padding: 20px;
   color: var(--mar-text-tertiary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
   text-align: center;
 }
 .clickable-rows :deep(.el-table__row) {

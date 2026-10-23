@@ -499,7 +499,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 
 .composer-queue-heading strong {
   color: var(--mar-text-primary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
 }
 
 .composer-queue-paused {
@@ -604,9 +604,10 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
   border-radius: 6px;
   background: var(--mar-bg-panel);
   box-shadow: none;
-  font-size: var(--mar-font-size-meta);
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-input);
   padding: 0.42rem 0.5rem;
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
 .goal-objective-input :deep(.el-textarea__inner:focus) {
@@ -652,7 +653,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 .goal-details dt {
   background: var(--mar-fill-subtle);
   color: var(--mar-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .goal-details dd {
@@ -757,9 +758,11 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 .composer-queue-input :deep(.el-textarea__inner) {
   min-height: 28px !important;
   resize: none;
-  font-size: var(--mar-font-size-meta);
+  color: var(--mar-text-primary);
+  background: var(--mar-bg-panel);
+  font-size: var(--mar-font-size-input);
   padding: 4px 6px;
-  line-height: 1.2;
+  line-height: 1.55;
 }
 
 .composer-queue small {
@@ -813,6 +816,10 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 @media (max-width: 767px) {
   .composer-queue {
     max-height: 180px;
+  }
+
+  .composer-queue-input :deep(.el-textarea__inner) {
+    padding-block: 2px;
   }
 
   .work-item {

@@ -115,7 +115,7 @@ async function copySessionId(sessionId: string): Promise<void> {
 .conversation-header p {
   margin: 0;
   color: var(--mar-text-tertiary);
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-title-runner-icon {
@@ -124,6 +124,10 @@ async function copySessionId(sessionId: string): Promise<void> {
 }
 
 .conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   min-height: 49px;
   border-bottom: 1px solid var(--mar-border-subtle);
   padding: 0.42rem 0.8rem;
@@ -139,17 +143,27 @@ async function copySessionId(sessionId: string): Promise<void> {
 }
 
 .conversation-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   gap: 0.32rem;
 }
 
+.conversation-header p {
+  margin: 0.18rem 0 0;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
+}
+
 .conversation-header h2 {
+  margin: 0;
   min-width: 0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-body);
 }
 
 .conversation-title-row h2 {
@@ -178,8 +192,8 @@ async function copySessionId(sessionId: string): Promise<void> {
 
 :global(.conversation-session-id code) {
   color: var(--mar-text-muted);
-  font-family: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 0.6875rem;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
   line-height: 1rem;
   white-space: nowrap;
 }
@@ -255,7 +269,7 @@ async function copySessionId(sessionId: string): Promise<void> {
     color: var(--mar-text-secondary);
     padding: 0.25rem 0.42rem;
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--mar-font-size-body);
   }
 }
 

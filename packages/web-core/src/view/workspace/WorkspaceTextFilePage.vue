@@ -993,7 +993,14 @@ defineExpose({
       @next="moveFallbackFind(1)"
       @close="closeFallbackFind"
     />
-    <main class="file-preview-content" @click="!editing && focus()">
+    <main
+      class="file-preview-content"
+      :class="{
+        'file-preview-content-code':
+          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing)
+      }"
+      @click="!editing && focus()"
+    >
       <template v-if="!loading">
         <MarkdownFilePreview
           v-if="markdown && renderMarkdown && markdownResourceUrl && !editing && codeEditorEnabled"
@@ -1093,6 +1100,11 @@ defineExpose({
   flex: 1;
 }
 
+.file-preview-content-code {
+  overflow: hidden;
+  padding: 0;
+}
+
 .file-symbol-list {
   max-height: min(22rem, 50vh);
   margin-top: 0.5rem;
@@ -1137,8 +1149,8 @@ defineExpose({
 .file-navigation-group-title {
   margin: 0 0 0.2rem;
   color: var(--mar-text-secondary);
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1206,7 +1218,7 @@ defineExpose({
   margin-top: 0.2rem;
   color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;

@@ -35,6 +35,7 @@ const props = defineProps<{
   readonly inputHasContent: boolean;
   readonly hasSelectedCommand: boolean;
   readonly loading: boolean;
+  readonly submitting?: boolean;
   readonly attachmentsPending: boolean;
   readonly effortLabel: (effort: string) => string;
 }>();
@@ -238,6 +239,9 @@ function selectFiles(event: Event): void {
         ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
         : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
     }}</span>
+    <span v-if="submitting" class="composer-submitting" role="status">{{
+      translate('workbench.sending')
+    }}</span>
     <button
       v-if="interruptVisible"
       class="composer-stop-button"
@@ -271,6 +275,12 @@ function selectFiles(event: Event): void {
 </template>
 
 <style scoped>
+.composer-submitting {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  flex-shrink: 0;
+}
+
 .attachment-file-input {
   display: none;
 }
@@ -318,8 +328,8 @@ function selectFiles(event: Event): void {
   background: var(--mar-color-warning-bg);
   color: var(--mar-color-warning-text);
   padding: 0.05rem 0.28rem;
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -333,7 +343,7 @@ function selectFiles(event: Event): void {
   visibility: hidden;
   overflow: hidden;
   padding: 1px 1.55rem 1px 0.35rem;
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-meta);
   line-height: calc(var(--mar-compact-control-size) - 2px);
   white-space: nowrap;
 }
@@ -356,7 +366,7 @@ function selectFiles(event: Event): void {
 .composer-config,
 .composer-hint {
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .composer-hint {
@@ -374,7 +384,7 @@ function selectFiles(event: Event): void {
   background: transparent;
   color: var(--mar-text-tertiary);
   padding: 0.1rem 0.3rem;
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1;
   cursor: pointer;
 }
@@ -478,7 +488,7 @@ function selectFiles(event: Event): void {
   cursor: not-allowed;
   border-color: var(--mar-border-default);
   background: var(--mar-fill-soft);
-  color: var(--mar-border-strong);
+  color: var(--mar-text-faint);
 }
 
 .composer-stop-square {
@@ -746,7 +756,7 @@ function selectFiles(event: Event): void {
 :global(.composer-access-select .el-select__placeholder),
 :global(.composer-model-effort-select .el-select__placeholder) {
   color: var(--mar-text-primary);
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-meta);
   opacity: 1;
 }
 
@@ -769,14 +779,14 @@ function selectFiles(event: Event): void {
 :global(.composer-model-effort-popper .el-select-dropdown__item) {
   height: var(--mar-compact-control-size);
   color: var(--mar-text-primary);
-  font-size: 0.76rem;
+  font-size: var(--mar-font-size-body);
   line-height: var(--mar-compact-control-size);
 }
 
 :global(.composer-mini-popper .el-select-dropdown__item.composer-model-effort-option-selected) {
-  background: var(--el-fill-color-light);
-  color: var(--el-text-color-regular);
-  font-weight: 700;
+  background: var(--mar-color-brand-selected);
+  color: var(--mar-color-brand-text);
+  font-weight: 600;
 }
 
 :global(.composer-model-effort-popper .el-select-dropdown__wrap),
@@ -788,7 +798,7 @@ function selectFiles(event: Event): void {
   display: block;
   height: var(--mar-compact-control-size);
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
   line-height: var(--mar-compact-control-size);
 }
 

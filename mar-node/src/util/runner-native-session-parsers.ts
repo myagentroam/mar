@@ -381,7 +381,10 @@ function nativeTranscriptTurnIds(
       ({ entry }) => entry.kind === 'message' && entry.role === 'USER'
     )?.entry;
     const first = user ?? entries[0]?.entry;
-    const base = first?.nativeId ?? nativeTranscriptItemFingerprint(first);
+    const base =
+      first?.nativeId ??
+      nativeTranscriptSourceIdentity(first) ??
+      nativeTranscriptItemFingerprint(first);
     const occurrence = occurrences.get(base) ?? 0;
     occurrences.set(base, occurrence + 1);
     return `${sessionId}:native:${base}${occurrence === 0 ? '' : `:${occurrence}`}`;
@@ -398,13 +401,22 @@ function nativeTranscriptItemIdentities(
   const occurrences = new Map<string, number>();
   return entries.map(({ entry }) => {
     const base =
-      entry.nativeId !== undefined && nativeIdCounts.get(entry.nativeId) === 1
+      nativeTranscriptSourceIdentity(entry) ??
+      (entry.nativeId !== undefined && nativeIdCounts.get(entry.nativeId) === 1
         ? entry.nativeId
-        : `${entry.nativeId === undefined ? '' : `${entry.nativeId}:`}${nativeTranscriptItemFingerprint(entry)}`;
+        : `${entry.nativeId === undefined ? '' : `${entry.nativeId}:`}${nativeTranscriptItemFingerprint(entry)}`);
     const occurrence = occurrences.get(base) ?? 0;
     occurrences.set(base, occurrence + 1);
     return occurrence === 0 ? base : `${base}:${occurrence}`;
   });
+}
+
+function nativeTranscriptSourceIdentity(
+  entry: NativeTranscriptItem | undefined
+): string | undefined {
+  return entry?.sourceItemId === undefined
+    ? undefined
+    : `source:${createHash('sha256').update(entry.sourceItemId).digest('base64url').slice(0, 24)}`;
 }
 
 function nativeTranscriptItemFingerprint(entry: NativeTranscriptItem | undefined): string {
@@ -503,6 +515,7 @@ function nativeTranscriptConversationItem(
     entry.kind === 'message' && entry.role !== 'USER' ? claudePlanText(entryText) : undefined;
   const item: NodeConversationItem = {
     id: `${turnId}:item:${itemIdentity}`,
+    ...(entry.sourceItemId === undefined ? {} : { sourceItemId: entry.sourceItemId }),
     sessionId: session.id,
     turnId,
     runId: null,
@@ -512,7 +525,7 @@ function nativeTranscriptConversationItem(
     kind: isUserInputRequest
       ? 'user_input_request'
       : isReasoning
-        ? 'reasoning_summary'
+        ? 'reasoning'
         : isContextCompaction
           ? 'context_compaction'
           : isToolCall
@@ -531,7 +544,7 @@ function nativeTranscriptConversationItem(
           questions: userInputQuestions
         }
       : isReasoning
-        ? { sections: entry.sections }
+        ? { representation: entry.representation ?? 'unspecified', sections: entry.sections }
         : isContextCompaction
           ? { phase: entry.phase, summary: entry.summary }
           : isToolCall

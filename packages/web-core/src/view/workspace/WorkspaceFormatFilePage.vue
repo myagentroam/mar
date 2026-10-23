@@ -120,6 +120,7 @@ defineExpose({
       <el-button
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
+        :title="translate('generated.filePreviewDialog.downloadFile')"
         circle
         size="small"
         @click="emit('download')"
@@ -129,6 +130,7 @@ defineExpose({
       <el-button
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
+        :title="translate('generated.filePreviewDialog.closePreview')"
         circle
         size="small"
         type="primary"
@@ -141,6 +143,7 @@ defineExpose({
       <el-button
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
+        :title="translate('generated.filePreviewDialog.downloadFile2')"
         circle
         size="small"
         @click="emit('download')"
@@ -150,6 +153,7 @@ defineExpose({
       <el-button
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
+        :title="translate('generated.filePreviewDialog.closePreview2')"
         circle
         size="small"
         type="primary"

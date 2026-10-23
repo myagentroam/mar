@@ -113,7 +113,7 @@ it('does not let empty content, lifecycle, heartbeat or usage events keep a requ
     { type: 'response.started', responseId: 'pending' },
     { type: 'usage', usage: { outputTokens: 0 } },
     { type: 'text.delta', itemId: 'empty', phase: 'commentary', delta: '' },
-    { type: 'reasoning.summary', itemId: 'empty', text: '' },
+    { type: 'reasoning.completed', representation: 'summary', itemId: 'empty', text: '' },
     { type: 'text.completed', itemId: 'empty', text: '' },
     { type: 'response.item', provider: 'OPENAI_RESPONSES', item: { type: 'reasoning' } },
     { type: 'output.started' },
@@ -137,7 +137,7 @@ it('does not let empty content, lifecycle, heartbeat or usage events keep a requ
 it.each<ModelEvent>([
   { type: 'text.delta', itemId: 'text', phase: 'commentary', delta: 'Working.' },
   { type: 'output.delta' },
-  { type: 'reasoning.summary', itemId: 'thinking', text: 'Summary.' },
+  { type: 'reasoning.completed', representation: 'summary', itemId: 'thinking', text: 'Summary.' },
   { type: 'text.completed', itemId: 'text', text: 'Working.' },
   { type: 'client_tool.call', callId: 'call', name: 'read', arguments: {} }
 ])(

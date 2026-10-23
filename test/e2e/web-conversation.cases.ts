@@ -668,27 +668,43 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
             },
             {
               id: 'visual-reasoning',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
+              processGroup: { id: 'visual-process', isStart: true },
               status: 'COMPLETED',
-              payload: { sections: [{ text: '检查正文、过程和操作层级。' }] }
+              payload: {
+                representation: 'summary',
+                sections: [{ index: 0, text: '检查正文、过程和操作层级。' }]
+              }
             },
             {
               id: 'visual-command',
+              processGroup: { id: 'visual-process' },
               kind: 'command_execution',
               status: 'COMPLETED',
               payload: { command: 'git status', exitCode: 0 }
             },
             {
               id: 'visual-tool',
+              processGroup: { id: 'visual-process' },
               kind: 'tool_call',
               status: 'COMPLETED',
               payload: { toolName: 'read', input: { path: 'src/main.ts' } }
             },
             {
               id: 'visual-file-change',
+              processGroup: { id: 'visual-process' },
               kind: 'file_change',
               status: 'COMPLETED',
-              payload: { changes: [{ path: 'src/main.ts', change: 'MODIFIED' }] }
+              payload: {
+                changes: [
+                  {
+                    path: 'my-agent-roam/packages/web-core/src/view/workspace/WorkspaceFileTree.vue',
+                    change: 'MODIFIED',
+                    additions: 6,
+                    deletions: 1
+                  }
+                ]
+              }
             },
             {
               id: 'visual-answer',
@@ -712,9 +728,10 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
+  await page.locator('.conversation-process.is-group .process-heading').first().click();
   const reasoning = page.locator('.conversation-item.reasoning-group details');
   await expect(reasoning).not.toHaveAttribute('open', '');
-  await expect(reasoning.locator('summary')).toContainText('已完成思考');
+  await expect(reasoning.locator('summary > strong')).toHaveText('思考');
   await reasoning.locator('summary').click();
   await expect(reasoning).toHaveAttribute('open', '');
   await expect(reasoning.locator('p')).toContainText('检查正文、过程和操作层级。');
@@ -727,7 +744,7 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
   await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
-    'Thought completed'
+    'Reasoning'
   );
   await expect(page.locator('.conversation-item.reasoning-group details')).not.toHaveAttribute(
     'open',
@@ -736,7 +753,275 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
   await verifyConversationThemes(page, testInfo, 'workspace-mobile-en');
 });
 
-test('Completed reasoning items accept further content and finish only when the turn ends', async ({
+for (const locale of ['zh-CN', 'en-US'] as const) {
+  test(`Read projections aggregate within a work process with accessible details (${locale})`, async ({
+    page
+  }, testInfo) => {
+    await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    const normalizer = new MarAgentConversationNormalizer();
+    const reads = ['src/first.ts', '目录/second.ts'].map((path, index) => {
+      const base = {
+        eventId: `event-${index}`,
+        sequence: index,
+        timestamp: '2026-10-23T00:00:00.000Z',
+        sessionId: 'session-1',
+        executionId: 'execution',
+        turnId: 'read-turn',
+        callId: `read-${index}`,
+        toolName: 'read',
+        parentCallId: 'cell'
+      };
+      normalizer.normalize({
+        ...base,
+        type: 'tool.started',
+        input: { reads: [{ path }] }
+      } as MarAgentEvent);
+      const [result] = normalizer.normalize({
+        ...base,
+        type: 'tool.completed',
+        summary: `Content for ${path}`
+      } as MarAgentEvent);
+      return {
+        id: result!.itemId,
+        kind: result!.kind,
+        status: result!.status,
+        payload: result!.payload
+      };
+    });
+    const items = [
+      {
+        id: 'thinking-a',
+        kind: 'reasoning',
+        status: 'COMPLETED',
+        payload: { representation: 'visible_thinking', sections: [{ text: 'Inspect files' }] }
+      },
+      reads[0]!,
+      {
+        id: 'command-a',
+        kind: 'command_execution',
+        status: 'COMPLETED',
+        payload: {
+          command:
+            'node -e "console.log(\'Long command preview with enough arguments to wrap across several lines on a mobile viewport without returning to the disclosure arrow\')"',
+          outputPreview: 'first',
+          durationMs: 1500
+        }
+      },
+      reads[1]!,
+      {
+        id: 'thinking-b',
+        kind: 'reasoning',
+        status: 'COMPLETED',
+        payload: { representation: 'visible_thinking', sections: [{ text: 'Verify files' }] }
+      },
+      {
+        id: 'command-b',
+        kind: 'command_execution',
+        status: 'FAILED',
+        payload: { command: 'echo second', outputPreview: 'second', exitCode: 1 }
+      }
+    ].map((item, index) => ({
+      ...item,
+      startedAt: 1000 + index * 1000,
+      completedAt: 1500 + index * 1000,
+      processGroup: { id: 'read-process', ...(index === 0 ? { isStart: true } : {}) }
+    }));
+    await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
+      fulfillMockSessionWatch(
+        page,
+        route,
+        { id: 'session-1', workspaceId: 'workspace-1' },
+        watchedConversation([
+          {
+            id: 'read-turn:segment:0',
+            turnId: 'read-turn',
+            index: 0,
+            runId: null,
+            status: 'SUCCEEDED',
+            items: items.filter((item) => item.id !== reads[1]!.id)
+          }
+        ])
+      )
+    );
+    await page.goto('/console');
+    await page
+      .getByRole('button', { name: locale === 'zh-CN' ? '进入控制台' : 'Open console' })
+      .click();
+    await page
+      .getByRole('button', { name: locale === 'zh-CN' ? '工作' : 'Work', exact: true })
+      .click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await page.locator('.session-list .session-link').first().click();
+    const process = page.locator('.conversation-process.is-group');
+    await expect(process.locator('.process-heading')).toContainText(
+      locale === 'zh-CN' ? '已完成' : 'Completed'
+    );
+    await expect(process.locator('.process-heading')).not.toContainText(
+      locale === 'zh-CN' ? '查看记录' : 'View details'
+    );
+    await process.locator('.process-heading').click();
+    await expect(process.locator('.reasoning-group')).toHaveCount(1);
+    await expect(process.locator('.command-group')).toHaveCount(1);
+    await expect(process.locator('.process-activity + .process-duration')).toHaveText(
+      locale === 'zh-CN' ? '· 耗时 5s' : '· Duration 5s'
+    );
+    await process.locator('.command-group > details > summary').click();
+    const command = process.locator('.conversation-command-detail').first();
+    await expect(
+      command.locator('.conversation-command-status + .conversation-step-duration')
+    ).toContainText('1');
+    await expect(command.locator('summary')).toHaveCSS('list-style-type', 'none');
+    await expect(process.locator('.process-activity')).toHaveCSS(
+      'font-size',
+      await command.locator('summary').evaluate((el) => getComputedStyle(el).fontSize)
+    );
+    expect(
+      await command.locator('summary').evaluate((el) => getComputedStyle(el, '::before').maskImage)
+    ).not.toBe('none');
+    const read = process.locator('[data-tool-presentation="READ"]');
+    await expect(read).toHaveCount(1);
+    await expect(read.locator(':scope > summary')).toContainText(
+      locale === 'zh-CN' ? '1 次调用' : '1 call'
+    );
+    await expect(read).not.toHaveAttribute('open', '');
+    await read.evaluate((element) => {
+      element.setAttribute('data-stable-group', 'initial');
+    });
+    await read.locator(':scope > summary').click();
+    await read.locator('.conversation-tool-detail > summary').click();
+    await expect(read.locator('.conversation-tool-detail p')).toContainText(
+      'Content for src/first.ts'
+    );
+    await emitMockSessionEvent(page, 'conversation', {
+      sessionId: 'session-1',
+      turn: {
+        id: 'read-turn',
+        sessionId: 'session-1',
+        runId: null,
+        status: 'SUCCEEDED',
+        items: []
+      },
+      segments: (
+        watchedConversation([
+          {
+            id: 'read-turn:segment:0',
+            turnId: 'read-turn',
+            index: 0,
+            runId: null,
+            status: 'SUCCEEDED',
+            items
+          }
+        ]).conversation as { segments: Record<string, unknown>[] }
+      ).segments
+    });
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read).toHaveAttribute('data-stable-group', 'initial');
+    await expect(read.locator('.conversation-tool-detail').first().locator('p')).toContainText(
+      'Content for src/first.ts'
+    );
+    await expect(read.locator(':scope > summary > strong')).toHaveText(
+      locale === 'zh-CN' ? '读取文件' : 'Read'
+    );
+    await expect(read.locator(':scope > summary')).toContainText(
+      locale === 'zh-CN' ? '2 次调用' : '2 calls'
+    );
+    await expect(process.locator('.command-group > details > summary')).not.toContainText(
+      locale === 'zh-CN' ? '失败' : 'Failed'
+    );
+    await expect(process.locator('.conversation-command-status').last()).toHaveText(
+      locale === 'zh-CN' ? '失败' : 'Failed'
+    );
+    await read.locator(':scope > summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(read).not.toHaveAttribute('open', '');
+    await emitMockSessionEvent(page, 'conversation', {
+      sessionId: 'session-1',
+      turn: {
+        id: 'read-turn',
+        sessionId: 'session-1',
+        runId: null,
+        status: 'SUCCEEDED',
+        items: []
+      },
+      segments: (
+        watchedConversation([
+          {
+            id: 'read-turn:segment:0',
+            turnId: 'read-turn',
+            index: 0,
+            runId: null,
+            status: 'SUCCEEDED',
+            items: [
+              ...items,
+              {
+                ...reads[1],
+                id: 'read-third',
+                startedAt: 7000,
+                completedAt: 8000,
+                processGroup: { id: 'read-process' }
+              }
+            ]
+          }
+        ]).conversation as { segments: Record<string, unknown>[] }
+      ).segments
+    });
+    await expect(read.locator(':scope > summary')).toContainText(
+      locale === 'zh-CN' ? '3 次调用' : '3 calls'
+    );
+    await expect(read).not.toHaveAttribute('open', '');
+    await page.keyboard.press('Enter');
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText(
+      'Content for src/first.ts'
+    );
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      for (const dark of [false, true]) {
+        await page.evaluate((enabled) => {
+          document.documentElement.classList.toggle('dark', enabled);
+          if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
+          else delete document.documentElement.dataset.theme;
+        }, dark);
+        const icon = read.locator(':scope > summary .conversation-record-icon');
+        await expect(icon).toBeVisible();
+        const commandLayout = await process.locator('.command-group').evaluate((group) => {
+          const parent = group.querySelector(
+            ':scope > details > summary .conversation-record-icon'
+          )!;
+          const summary = group.querySelector('.conversation-command-detail > summary')!;
+          const child = summary.querySelector('.conversation-record-icon')!;
+          const preview = summary.querySelector('.conversation-command-preview')!;
+          const range = document.createRange();
+          range.selectNodeContents(preview);
+          return {
+            indent: child.getBoundingClientRect().left - parent.getBoundingClientRect().left,
+            textLeft: preview.getBoundingClientRect().left,
+            lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
+          };
+        });
+        expect(commandLayout.indent).toBeGreaterThanOrEqual(12);
+        expect(commandLayout.indent).toBeLessThanOrEqual(20);
+        if (width === 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
+        for (const left of commandLayout.lineLefts)
+          expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
+        expect(await process.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        await process.screenshot({
+          path: testInfo.outputPath(`read-${locale}-${width}-${dark ? 'dark' : 'light'}.png`),
+          animations: 'disabled'
+        });
+      }
+    }
+  });
+}
+
+test('Work processes preserve manual disclosure, static reasoning and authoritative Run completion', async ({
   page
 }, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -748,7 +1033,8 @@ test('Completed reasoning items accept further content and finish only when the 
     workspaceId: 'workspace-1',
     status: 'RUNNING',
     recoveryState: 'ACTIVE',
-    clientMessageId: 'message-reasoning'
+    clientMessageId: 'message-reasoning',
+    startedAt: Date.now() - 10_000
   };
   const segments = (append: boolean) =>
     (
@@ -762,9 +1048,11 @@ test('Completed reasoning items accept further content and finish only when the 
           items: [
             {
               id: 'reasoning-first',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
+              processGroup: { id: 'process-reading', ...(append ? { isStart: true } : {}) },
               status: 'COMPLETED',
               payload: {
+                representation: 'summary',
                 sections: [
                   { index: 0, text: 'Inspecting patch ordering\nFurther reasoning detail' }
                 ]
@@ -774,12 +1062,31 @@ test('Completed reasoning items accept further content and finish only when the 
               ? [
                   {
                     id: 'reasoning-second',
-                    kind: 'reasoning_summary',
+                    kind: 'reasoning',
+                    processGroup: { id: 'process-reading' },
                     status: 'COMPLETED',
                     payload: {
+                      representation: 'visible_thinking',
                       sections: [
                         { index: 0, text: `**${latestSummary}**\nFurther appended detail` }
                       ]
+                    }
+                  },
+                  {
+                    id: 'process-commentary',
+                    kind: 'assistant_message',
+                    status: 'COMPLETED',
+                    payload: { text: 'Starting verification.' }
+                  },
+                  {
+                    id: 'process-tool',
+                    kind: 'tool_call',
+                    status: 'FAILED',
+                    processGroup: { id: 'process-verification', isStart: true },
+                    payload: {
+                      toolName: 'read',
+                      input: {},
+                      outputSummary: 'Verification fixture failure.'
                     }
                   }
                 ]
@@ -806,10 +1113,47 @@ test('Completed reasoning items accept further content and finish only when the 
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  const card = page.locator('.conversation-item.reasoning-group');
-  const subtitle = card.locator('.reasoning-subtitle');
-  await expect(card.locator('.reasoning-preview')).toHaveText('Inspecting patch ordering');
-  await expect(card.locator('details')).not.toHaveAttribute('open', '');
+  const processes = page.locator('.conversation-process.is-group');
+  const heading = processes.first().locator('.process-heading');
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await expect(heading).not.toContainText('工作过程');
+  await expect(heading).not.toContainText('条记录');
+  await expect(processes.first().locator('.reasoning-subtitle')).toHaveCount(0);
+  await expect(page.locator('.composer-working')).not.toContainText('已运行');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  expect(
+    await page
+      .locator('.composer-working')
+      .evaluate((el) => getComputedStyle(el, '::before').animationName)
+  ).toMatch(/mar-working-sweep/u);
+  await expect(page.locator('.composer-working > i')).toHaveCSS(
+    'animation-name',
+    /mar-working-pulse/u
+  );
+  const indicator = heading.locator('.process-activity-indicator');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveCSS('animation-name', /process-activity-spin/u);
+  await expect(indicator).toHaveAttribute('aria-hidden', 'true');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(indicator).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('.composer-working > i')).toHaveCSS('animation-name', 'none');
+  expect(
+    await page
+      .locator('.composer-working')
+      .evaluate((el) => getComputedStyle(el, '::before').animationName)
+  ).toBe('none');
+  await expect(heading).toContainText('正在思考中');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await processes.first().screenshot({ path: testInfo.outputPath('process-active.png') });
+  await expect(heading).toContainText('部分记录');
+  await expect(processes.first().locator('.process-summary')).toHaveText(
+    'Inspecting patch ordering'
+  );
+  await expect(processes.first().locator('.process-summary')).toHaveCSS('animation-name', 'none');
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
+  await expect(indicator).toBeVisible();
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await emitMockSessionEvent(page, 'conversation', {
@@ -823,9 +1167,25 @@ test('Completed reasoning items accept further content and finish only when the 
     },
     segments: segments(true)
   });
-  await expect(card).toHaveCount(1);
-  await expect(card.locator('.reasoning-preview')).toHaveText(latestSummary);
-  await expect(card.locator('.reasoning-preview')).not.toContainText('Further appended detail');
+  await expect(processes).toHaveCount(2);
+  await expect(heading.locator('.process-activity-indicator')).toHaveCount(0);
+  await expect(processes.last().locator('.process-activity-indicator')).toBeVisible();
+  await expect(processes.last().locator('.process-activity-label')).toHaveText(
+    '正在调用工具：read'
+  );
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
+  await expect(heading).not.toContainText('部分记录');
+  await expect(processes.last().locator('.process-heading')).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+  await expect(processes.last().locator('.process-heading')).not.toContainText('有需关注的记录');
+  await heading.click();
+  const cards = processes.first().locator('.conversation-item.reasoning-group');
+  await expect(cards).toHaveCount(2);
+  const card = cards.last();
+  await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
+  await expect(card.locator('.reasoning-subtitle')).not.toContainText('Further appended detail');
   const desktopPreviewBounds = await card.locator('summary').evaluate((element) => ({
     clipped: element.scrollWidth > element.clientWidth,
     singleLine: getComputedStyle(element).whiteSpace === 'nowrap'
@@ -848,9 +1208,9 @@ test('Completed reasoning items accept further content and finish only when the 
   expect(previewBounds.right).toBeLessThanOrEqual(previewBounds.cardRight);
   expect(previewBounds.display).toBe('list-item');
   expect(previewBounds.textOverflow).toBe('ellipsis');
-  await expect(card.locator('.reasoning-preview')).toHaveText(latestSummary);
+  await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
   await expect(card.locator('summary > strong')).toBeVisible();
-  await expect(card.locator('summary svg')).toHaveCount(0);
+  await expect(card.locator('summary svg')).toHaveCount(1);
   await card.screenshot({
     path: testInfo.outputPath('reasoning-live-mobile.png'),
     animations: 'disabled'
@@ -860,7 +1220,8 @@ test('Completed reasoning items accept further content and finish only when the 
   );
   await card.locator('summary').click();
   await expect(card.locator('details p')).toContainText(latestSummary);
-  await expect(card.locator('details p')).toContainText('Further reasoning detail');
+  await cards.first().locator('summary').click();
+  await expect(cards.first().locator('details p')).toContainText('Further reasoning detail');
   await expect(card.locator('details p')).toContainText('Further appended detail');
   await card.locator('summary').focus();
   await page.keyboard.press('Space');
@@ -868,9 +1229,19 @@ test('Completed reasoning items accept further content and finish only when the 
   await page.keyboard.press('Enter');
   await expect(card.locator('details')).toHaveAttribute('open', '');
 
-  await emitMockSessionEvent(page, 'run', { run: { ...run, status: 'SUCCEEDED' } });
-  await expect(subtitle).toHaveText('已完成思考');
-  await expect(card.locator('details')).not.toHaveAttribute('open', '');
+  await emitMockSessionEvent(page, 'run', {
+    run: { ...run, status: 'SUCCEEDED', completedAt: run.startedAt + 20_000 }
+  });
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await expect(processes.last().locator('.process-heading')).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  );
+  await expect(processes.last().locator('.process-heading')).not.toContainText('有需关注的记录');
+  await expect(card.locator('details')).toHaveAttribute('open', '');
+  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 20s');
+  await expect(processes.locator('.process-activity-indicator')).toHaveCount(0);
+  await expect(processes.last().locator('.process-heading')).toContainText('已完成');
   await expect(card.locator('.reasoning-progress')).toHaveCount(0);
 });
 
@@ -2344,6 +2715,47 @@ test('Opening a session loads only the latest window without initial scroll back
   expect(watchReads).toBe(reopenedWatchReads);
   await expect(page.getByText('重新打开后读取的最新消息')).toBeVisible();
   expect(scrollTop).toBeGreaterThanOrEqual(0);
+  let olderAttempts = 0;
+  await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
+    olderAttempts += 1;
+    if (olderAttempts === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'TEMPORARILY_UNAVAILABLE', message: 'History unavailable' }
+        })
+      });
+    } else {
+      await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
+    }
+  });
+  await page.getByRole('button', { name: '加载更早记录' }).click();
+  await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
+  await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  expect(olderAttempts).toBe(1);
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(page.getByText('已到最早消息', { exact: true })).toBeVisible();
+  expect(olderAttempts).toBe(2);
+  await expect(page.locator('.conversation-history-error')).toHaveCount(0);
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    await page.emulateMedia({ reducedMotion });
+    await conversationScroll.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    const latest = page.locator('.conversation-latest');
+    await expect(latest).toBeVisible();
+    const leave = await latest.evaluate(async (button: HTMLButtonElement) => {
+      button.click();
+      await Promise.resolve();
+      return { className: button.className, duration: getComputedStyle(button).transitionDuration };
+    });
+    expect(leave.className).toContain('conversation-latest-leave-active');
+    expect(leave.duration).toBe(reducedMotion === 'reduce' ? '0s' : '0.16s, 0.16s');
+    await expect(latest).toHaveCount(0);
+  }
 });
 
 test('Switching from a paginated session to a new draft hides history backfill', async ({

@@ -38,6 +38,7 @@ import { errorCode } from '../../util/api-error.js';
 import type { ConversationItem, ConversationTurn } from '../../model/workbench.js';
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
+import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
@@ -55,6 +56,7 @@ import WorkspaceTextFilePage from '../workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../workspace/WorkspaceFormatFilePage.vue';
 
 const props = defineProps<{
+  readonly connected?: boolean;
   readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly mobileViewport: boolean;
@@ -129,6 +131,18 @@ const filteredConversations = computed(() => {
     hostedConversationTitle(conversation).toLocaleLowerCase().includes(query)
   );
 });
+const historyReorderSnapshot = computed(() => ({
+  context: filter.value.trim().toLocaleLowerCase(),
+  ready:
+    props.connected !== false &&
+    !loadingDirectory.value &&
+    !props.workspace.loadingMoreConversations.value,
+  items: filteredConversations.value.map((conversation) => ({
+    key: conversationKey(conversation),
+    lastActivityAt: conversation.lastActivityAt,
+    pin: conversation.pinnedAt
+  }))
+}));
 const selectedSummary = computed(
   () =>
     props.workspace.snapshot.value?.conversation ??
@@ -245,7 +259,9 @@ function fileDirectoryActionLabel(
 }
 
 function handleConversationScroll(): void {
-  conversationScrollService.handleScroll(() => void loadOlderConversationHistory());
+  conversationScrollService.handleScroll(() => {
+    if (props.workspace.olderHistoryError.value === undefined) void loadOlderConversationHistory();
+  });
 }
 
 function setConversationScrollElement(element: HTMLElement | undefined): void {
@@ -262,13 +278,16 @@ function setConversationScrollElement(element: HTMLElement | undefined): void {
 async function loadOlderConversationHistory(): Promise<void> {
   const element = conversationScrollElement.value;
   const previousHeight = element?.scrollHeight ?? 0;
-  try {
-    await props.workspace.loadOlderHistory();
-    await nextTick();
-    if (element !== undefined) element.scrollTop += element.scrollHeight - previousHeight;
-  } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
-  }
+  const target = selectedConversationKey.value;
+  await props.workspace.loadOlderHistory();
+  await nextTick();
+  if (
+    target === selectedConversationKey.value &&
+    element === conversationScrollElement.value &&
+    element !== undefined &&
+    props.workspace.olderHistoryError.value === undefined
+  )
+    element.scrollTop += element.scrollHeight - previousHeight;
 }
 
 async function initialize(): Promise<void> {
@@ -878,7 +897,11 @@ onBeforeUnmount(() => {
           </el-button>
         </div>
       </div>
-      <div v-loading="loadingDirectory" class="history-list">
+      <div
+        v-loading="loadingDirectory"
+        v-session-reorder-motion="historyReorderSnapshot"
+        class="history-list"
+      >
         <p
           v-if="!loadingDirectory && filteredConversations.length === 0"
           class="history-empty-text"
@@ -888,6 +911,7 @@ onBeforeUnmount(() => {
         <article
           v-for="conversation in filteredConversations"
           :key="conversationKey(conversation)"
+          class="mar-session-reorder-item"
           :class="{
             selected:
               conversation.nodeId === workspace.selectedNodeId.value &&
@@ -1049,6 +1073,11 @@ onBeforeUnmount(() => {
           :loading-initial="false"
           :initial-load-failed="false"
           :loading-older="workspace.loadingOlderHistory.value"
+          :older-error="
+            workspace.olderHistoryError.value === undefined
+              ? ''
+              : hostedErrorMessage(workspace.olderHistoryError.value)
+          "
           :has-turns="timelineTurns.length > 0"
           :following="conversationScrollService.following.value"
           @scroll-element="setConversationScrollElement"
@@ -1057,6 +1086,7 @@ onBeforeUnmount(() => {
           @latest="conversationScrollService.scrollToLatest"
         >
           <ConversationTimeline
+            :runs="workspace.snapshot.value?.run ? [workspace.snapshot.value.run] : []"
             :turns="timelineTurns"
             workspace-root="/workspace"
             :loading="rollbackPending"
@@ -1068,6 +1098,7 @@ onBeforeUnmount(() => {
             :user-input-submitted="() => false"
             :plan-continuation="undefined"
             :node-ready="interactionReady"
+            :synchronized="connected !== false && workspace.watchReady.value"
             :tool-change-enabled="toolChangeEnabled"
             :rewind-enabled="false"
             :rollback-enabled="rollbackEnabled"
@@ -1080,6 +1111,7 @@ onBeforeUnmount(() => {
           />
         </ConversationScroll>
         <HostedConversationComposer
+          :connected="connected"
           ref="composer"
           :key="selectedConversationKey"
           :workspace="workspace"
@@ -1299,8 +1331,8 @@ onBeforeUnmount(() => {
 
 .pane-header span {
   color: var(--mar-text-tertiary);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1310,7 +1342,7 @@ onBeforeUnmount(() => {
   margin: 3px 0 0;
   overflow: hidden;
   color: var(--mar-text-primary);
-  font-size: 16px;
+  font-size: var(--mar-font-size-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1337,7 +1369,7 @@ onBeforeUnmount(() => {
 
 .history-header h2 {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--mar-font-size-title);
 }
 
 .history-controls {
@@ -1389,7 +1421,7 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 34px 12px;
   color: var(--mar-text-faint);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.6;
   text-align: center;
 }
@@ -1452,12 +1484,12 @@ onBeforeUnmount(() => {
 
 .history-title-row strong {
   color: var(--mar-text-primary);
-  font-size: 13px;
+  font-size: var(--mar-font-size-body);
 }
 
 .history-open time {
   color: var(--mar-text-tertiary);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1619,7 +1651,7 @@ onBeforeUnmount(() => {
   background: transparent;
   padding: 10px 12px;
   color: var(--mar-text-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   text-align: left;
   cursor: pointer;
@@ -1664,7 +1696,7 @@ onBeforeUnmount(() => {
 .files-list h3 {
   margin: 0 0 6px;
   color: var(--mar-text-secondary);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1672,7 +1704,7 @@ onBeforeUnmount(() => {
 .files-list p {
   margin: 0;
   color: var(--mar-text-faint);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
 }
 
 .file-row {

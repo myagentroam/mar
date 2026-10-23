@@ -207,6 +207,7 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
     // Block completion precedes the stop reason, which determines commentary vs final answer.
     const pendingTextBlocks = new Set<number>();
     let responseId = `anthropic-${randomUUID()}`;
+    const completedThinking = new Set<number>();
     let terminal: ModelStopReason | undefined;
     let latestInputUsage: AnthropicInputUsage | undefined;
     let thinkingBytes = 0;
@@ -405,6 +406,8 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         const block = blocks.get(index);
         if (block?.type === 'text') pendingTextBlocks.add(index);
         else if (block?.type === 'thinking' || block?.type === 'redacted_thinking') {
+          if (completedThinking.has(index)) continue;
+          completedThinking.add(index);
           if (block.type === 'redacted_thinking' || block.signature) {
             const item = anthropicThinkingBlock(
               block.type === 'thinking'
@@ -423,9 +426,14 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
               modelStreamEventObservedAt(raw)
             );
           }
-          if (block.type === 'thinking' && block.text)
+          if (block.type === 'thinking' && block.text.trim())
             yield observeModelStreamEvent(
-              { type: 'reasoning.summary', itemId: block.id, text: block.text },
+              {
+                type: 'reasoning.completed',
+                itemId: block.id,
+                representation: 'visible_thinking',
+                text: block.text
+              },
               modelStreamEventObservedAt(raw)
             );
         } else if (block?.type === 'server_tool_use') {

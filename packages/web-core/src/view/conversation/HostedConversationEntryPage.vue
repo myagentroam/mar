@@ -192,14 +192,14 @@ onMounted(load);
 .conversation-create-heading h2 {
   margin: 0;
   color: var(--mar-text-primary);
-  font-size: 18px;
+  font-size: var(--mar-font-size-title);
   line-height: 1.35;
 }
 
 .conversation-template-empty {
   margin: 8px 0 0;
   color: var(--mar-text-secondary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 

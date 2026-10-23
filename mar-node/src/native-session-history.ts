@@ -15,6 +15,11 @@ import { nodeLog } from './operational.js';
 import { stripClaudePlanTag } from './runner-command-engine.js';
 import { stripGoalStartPrompt } from './service/goal-runtime.js';
 import { parseCodexComposerImageMarkers } from './runner/codex/composer-image-markers.js';
+import { codexTranscriptSourceItemId } from './runner/codex/conversation-parser.js';
+import {
+  claudeAssistantBlocks,
+  extractClaudeThinkingText
+} from './runner/claude/conversation-parser.js';
 import {
   extractClaudeToolResults,
   type ClaudeToolResultMetadata
@@ -102,6 +107,7 @@ export interface NativeTranscriptUnknown {
 
 export interface NativeTranscriptReasoningSummary {
   readonly kind: 'reasoning_summary';
+  readonly representation?: 'summary' | 'visible_thinking' | 'unspecified';
   readonly sections: readonly { readonly index: number; readonly text: string }[];
   readonly createdAt: number | null;
   readonly nativeId?: string;
@@ -129,12 +135,13 @@ export interface NativeTranscriptImageAttachment {
   >;
 }
 
-export type NativeTranscriptItem =
+export type NativeTranscriptItem = (
   | NativeTranscriptMessage
   | NativeTranscriptToolCall
   | NativeTranscriptReasoningSummary
   | NativeTranscriptContextCompaction
-  | NativeTranscriptUnknown;
+  | NativeTranscriptUnknown
+) & { readonly sourceItemId?: string };
 
 export interface NativeSessionHistory {
   readonly runner: RunnerName;
@@ -705,9 +712,12 @@ async function readTranscript(
     }
     const generatedImage = codexGeneratedImageEvent(value);
     if (generatedImage !== undefined) items.push(generatedImage);
+    const sourceItemId =
+      runner === 'codex' ? codexTranscriptSourceItemId(value, codexTurnId) : undefined;
     for (const parsedItem of transcriptItems(runner, value)) {
       const item = {
         ...parsedItem,
+        ...(sourceItemId === undefined ? {} : { sourceItemId }),
         ...(recordId === undefined ? {} : { nativeId: recordId }),
         ...(runner === 'codex' &&
         parsedItem.kind === 'message' &&
@@ -875,6 +885,38 @@ function transcriptItems(
   runner: RunnerName,
   record: Record<string, unknown>
 ): readonly (NativeTranscriptItem | NativeToolResult)[] {
+  if (runner === 'claude-code' && record.type === 'assistant') {
+    return claudeAssistantBlocks(record).flatMap(
+      ({ record: blockRecord, blockIndex, sourceItemId }) => {
+        const block = contentBlocks(blockRecord)[0];
+        if (block?.type === 'thinking') {
+          const text = extractClaudeThinkingText(blockRecord)[0] ?? '';
+          return text.length === 0
+            ? []
+            : [
+                {
+                  kind: 'reasoning_summary' as const,
+                  representation: 'visible_thinking' as const,
+                  sections: [{ index: blockIndex, text }],
+                  createdAt: timestampOf(record),
+                  ...(sourceItemId === undefined ? {} : { sourceItemId })
+                }
+              ];
+        }
+        return transcriptRecordItems(runner, blockRecord).map((item) => ({
+          ...item,
+          ...(sourceItemId === undefined ? {} : { sourceItemId })
+        }));
+      }
+    );
+  }
+  return transcriptRecordItems(runner, record);
+}
+
+function transcriptRecordItems(
+  runner: RunnerName,
+  record: Record<string, unknown>
+): readonly (NativeTranscriptItem | NativeToolResult)[] {
   const createdAt = timestampOf(record);
   const results = [...toolResultsOf(record, createdAt), ...codexToolResultsOf(record, createdAt)];
   if (results.length > 0) return results;
@@ -954,7 +996,7 @@ function codexReasoningSummariesOf(
         return text.length === 0 ? [] : [{ index, text }];
       })
     : [];
-  return [{ kind: 'reasoning_summary', sections, createdAt }];
+  return [{ kind: 'reasoning_summary', representation: 'summary', sections, createdAt }];
 }
 
 function unsupportedTranscriptItems(

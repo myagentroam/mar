@@ -75,8 +75,8 @@ const emit = defineEmits<{
   flex: 0 0 var(--mar-workbench-header-height);
   align-items: center;
   gap: 0.35rem;
-  border-bottom: 1px solid var(--mar-border-default);
-  background: var(--mar-bg-panel);
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
   padding: 0 42px 0 4px;
 }
 
@@ -91,6 +91,8 @@ const emit = defineEmits<{
   flex: 0 0 auto;
   width: var(--mar-compact-control-size);
   height: var(--mar-compact-control-size);
+  min-width: var(--mar-compact-control-size);
+  min-height: var(--mar-compact-control-size);
   place-items: center;
   line-height: 1;
 }
@@ -119,7 +121,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: 0.5rem;
   color: var(--mar-text-muted);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .breadcrumb span + span::before,

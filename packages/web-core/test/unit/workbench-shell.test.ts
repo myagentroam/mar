@@ -1,6 +1,6 @@
-import { createSSRApp, h } from 'vue';
+import { createSSRApp, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -48,7 +48,7 @@ describe('Shared workbench shell', () => {
     const textStyle = surface.match(/\.workspace-offline-message p \{([^}]+)\}/u)?.[1];
     expect(messageStyle).toContain('gap: 0.5rem;');
     expect(iconStyle).toContain('font-size: 1.75rem;');
-    expect(textStyle).toContain('font-size: 0.75rem;');
+    expect(textStyle).toContain('font-size: var(--mar-font-size-meta);');
     expect(textStyle).toContain('line-height: 1.5;');
     expect(surface).toContain(
       '@media (max-width: 767px) {\n  .workspace-offline-icon {\n    font-size: 1.5rem;\n  }\n\n  .workspace-offline-message p {\n    font-size: var(--mar-font-size-body);\n  }\n}'
@@ -128,7 +128,12 @@ describe('Shared workbench shell', () => {
           h(WorkbenchNavigation, {
             webVersion: 'test',
             view: 'conversations',
-            navigationItems: [{ id: 'conversations', label }],
+            navigationItems: [
+              { id: 'nodes', label: 'Work' },
+              { id: 'conversations', label },
+              { id: 'management', label: 'Management' },
+              { id: 'settings', label: 'Settings' }
+            ],
             settingsSection: 'account',
             settingsItems: [],
             managementSection: 'overview',
@@ -138,21 +143,25 @@ describe('Shared workbench shell', () => {
             sidebarContentVisible: false,
             nodes: [],
             expandedNodeIds: [],
-            selectedNodeId: undefined,
-            selectedWorkspaceId: undefined,
+            workspaceTarget: undefined,
             draggingWorkspace: undefined,
             loading: false,
             nodeLabel: () => '',
             workspaceLabel: () => '',
             workspaces: () => [],
             mobileViewport: true,
-            notificationService: {} as unknown as WorkbenchNotificationService,
+            notificationService: {
+              recentRuns: ref([]),
+              load: async () => undefined
+            } as unknown as WorkbenchNotificationService,
             performanceDiagnostics: {} as ReturnType<typeof createWebPerformanceDiagnostics>,
             uploads: [],
             uploadStatusLabel: () => ''
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
       const html = await renderToString(app);
       const source = readFileSync(
@@ -166,6 +175,22 @@ describe('Shared workbench shell', () => {
 
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).toContain(`title="${label}"`);
+      const navigationButtons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gsu)].filter(
+        (match) => match[1]!.includes('nav-menu-button')
+      );
+      expect(navigationButtons).toHaveLength(4);
+      expect(navigationButtons.map((match) => match[1]!.includes('utility'))).toEqual([
+        false,
+        false,
+        true,
+        true
+      ]);
+      expect(navigationButtons[1]![1]).toContain('aria-current="page"');
+      for (const button of navigationButtons) {
+        expect(button[1]).toMatch(/aria-label="[^"]+"/u);
+        expect(button[1]).toMatch(/title="[^"]+"/u);
+        expect(button[2]).not.toContain('rail-label');
+      }
       expect(html).toContain('documentation-icon');
       expect(html).toContain('aria-hidden="true"');
       expect(html).toContain('viewbox="0 0 24 24"');
@@ -181,14 +206,19 @@ describe('Shared workbench shell', () => {
       expect(source).not.toContain('<Help />');
       expect(source).not.toContain('<circle cx="12" cy="12" r="10" />');
       expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .nav-item-content {\n    height: 32px;\n    grid-template-rows: 18px 12px;'
+        '.activity-rail nav .nav-menu-button .nav-item-content {\n    min-height: 18px;\n    grid-template-rows: 18px;'
       );
-      expect(source).toContain('flex: 0 0 auto;\n    min-height: 36px;\n    min-width: 44px;');
+      expect(source).toContain('flex: 0 0 auto;\n    min-height: 0;\n    min-width: 0;');
+      expect(source).not.toContain('min-height: 44px;');
+      expect(source).not.toContain('min-width: 44px;');
+      expect(source).toContain('padding: 4px 0 5px;');
+      expect(source).toContain('margin: 0 1px;');
+      expect(source).not.toContain('margin: 5px 1px;');
       expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .el-icon {\n    display: grid;\n    width: 18px;\n    height: 18px;\n    place-items: center;\n    font-size: 18px;\n    line-height: 18px;'
+        '.activity-rail nav .nav-menu-button .el-icon {\n    display: grid;\n    width: 18px;\n    height: 18px;\n    place-items: center;\n    font-size: 1.125rem;\n    line-height: 18px;'
       );
       expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .rail-label {\n    height: 12px;\n    font-size: 0.55rem;\n    line-height: 12px;'
+        '.activity-rail nav .nav-menu-button .rail-label {\n    display: none;'
       );
       expect(source).toContain('class="nav-menu-button documentation-link"');
       expect(source).not.toContain('class="nav-menu-button documentation-link utility-control"');
@@ -325,7 +355,7 @@ describe('Shared workbench shell', () => {
     expect(source).toContain(':icon="Check"');
     expect(source).toContain('@media (max-width: 767px)');
     expect(source).toContain('flex-basis: 100%');
-    expect(source).toContain('min-height: 36px');
+    expect(source).not.toContain('min-height: 36px');
   });
 
   it('uses the Workspace search action to refresh when empty and search when populated', () => {
@@ -388,18 +418,23 @@ describe('Shared workbench shell', () => {
     );
     expect(source).toContain('v-if="workspaceKind === \'GIT_WORKSPACE\'"');
     expect(source).toContain('>{{ workspaceKindLabel }}</el-tag');
-    expect(source).toContain("html[data-theme='vscode-dark-2026']) .workspace-kind-tag");
-    for (const tone of [
-      'branch-main',
-      'branch-develop',
-      'branch-feature',
-      'branch-release',
-      'branch-fix',
-      'branch-other'
-    ])
-      expect(source).toContain(`.workspace-branch-tag.${tone}`);
-    for (const color of ['#d1864a', '#c4b5fd', '#58a6ff', '#56d364', '#e3b341', '#ff7b72'])
-      expect(source).toContain(`--el-tag-text-color: ${color};`);
+    expect(source).not.toContain("html[data-theme='vscode-dark-2026']) .workspace-kind-tag");
+    for (const [tone, token] of [
+      ['branch-main', '--mar-color-accent'],
+      ['branch-develop', '--mar-color-brand-text'],
+      ['branch-feature', '--mar-color-success-text'],
+      ['branch-release', '--mar-color-warning-text'],
+      ['branch-fix', '--mar-color-danger-text']
+    ]) {
+      const rule = source.split(`.workspace-branch-tag.${tone} {`)[1]?.split('}')[0];
+      expect(rule).toContain(`--el-tag-text-color: var(${token});`);
+    }
+    expect(source.split('.workspace-branch-tag {')[1]?.split('}')[0]).toContain(
+      '--el-tag-text-color: var(--mar-text-tertiary);'
+    );
+    expect(source.split('.workspace-kind-tag {')[1]?.split('}')[0]).toContain(
+      '--el-tag-text-color: var(--mar-color-warning-text);'
+    );
   });
 
   it('uses a fixed Workspace tree indent for each nested level', () => {
@@ -414,10 +449,15 @@ describe('Shared workbench shell', () => {
       'var(--workspace-tree-control) + var(--workspace-tree-arrow-content-gap)'
     );
     expect(source).toContain('.workspace-group-toggle.expanded .tree-chevron');
+    const groupStyle = source.match(/\.workspace-group-toggle \{([^}]+)\}/u)?.[1];
+    expect(groupStyle).toContain('width: calc(100% - 12px);');
+    expect(groupStyle).toContain('margin: 2px 6px;');
+    expect(groupStyle).toContain('border-radius: var(--mar-radius-selection);');
     expect(source).not.toContain('.workspace-group-toggle.expanded :deep(.el-icon)');
     expect(source).toContain('.workspace-branch-button:focus-visible');
-    expect(source).toContain('min-height: 36px;');
-    expect(source).toContain('font-weight: 500;');
+    expect(source).not.toContain('min-height: 36px;');
+    expect(source).toMatch(/\.tree-node\s*\{[^}]*font-weight:\s*400;/u);
+    expect(source).not.toContain('font-weight: 500;');
     expect(source).not.toContain('font-weight: 650;');
     expect(source).toContain('@contextmenu="openNodeActions($event, result.node.id)"');
     expect(source).toContain(
@@ -526,6 +566,8 @@ describe('Shared workbench shell', () => {
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain('Visible node');
       expect(html).toContain('Visible workspace');

@@ -46,6 +46,40 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
+  it.each(['summary', 'visible_thinking', 'unspecified'] as const)(
+    'preserves reasoning source %s and authoritative process identity',
+    (representation) => {
+      const item = {
+        id: 'reasoning-one',
+        sessionId: 'session',
+        turnId: 'turn',
+        runId: null,
+        parentItemId: null,
+        sourceSequence: null,
+        revision: 0,
+        status: 'COMPLETED',
+        startedAt: null,
+        completedAt: null,
+        kind: 'reasoning',
+        processGroup: { id: 'process-one', isStart: true },
+        payload: { representation, sections: [{ index: 0, text: 'Public reasoning.' }] }
+      };
+      expect(conversationItemSchema.parse(item)).toEqual(item);
+      expect(conversationItemSchema.safeParse({ ...item, kind: 'reasoning_summary' }).success).toBe(
+        false
+      );
+      expect(conversationItemSchema.safeParse({ ...item, payload: { sections: [] } }).success).toBe(
+        false
+      );
+      expect(
+        conversationItemSchema.safeParse({ ...item, processGroup: { id: 'x'.repeat(129) } }).success
+      ).toBe(false);
+      expect(
+        conversationItemSchema.safeParse({ ...item, processGroup: { id: 'p', isStart: false } })
+          .success
+      ).toBe(false);
+    }
+  );
   it('preserves optional bounded command titles without changing existing command payloads', () => {
     const item = {
       id: 'command',
@@ -650,7 +684,7 @@ describe('Workbench protocol contracts', () => {
     const capability = {
       workbenchProtocolVersion: 1,
       serverVersion: '0.1.4',
-      conversationItemVersions: [1],
+      conversationItemVersions: [2],
       supportsSessionDetailStream: true,
       supportsTerminalBrowserRelay: true,
       supportsTerminalNodeDataChannel: true,
@@ -719,7 +753,7 @@ describe('Workbench protocol contracts', () => {
       serverWorkbenchCapabilitiesSchema.safeParse({
         workbenchProtocolVersion: 1,
         serverVersion: '0.1.4',
-        conversationItemVersions: [1],
+        conversationItemVersions: [2],
         supportsSessionDetailStream: false,
         supportsTerminalBrowserRelay: true,
         supportsTerminalNodeDataChannel: true,

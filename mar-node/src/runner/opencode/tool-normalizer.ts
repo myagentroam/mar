@@ -49,6 +49,17 @@ export function normalizeOpenCodeTool(
       progressLabel: null,
       errorCode: status === 'FAILED' ? 'OPENCODE_TOOL_FAILED' : null,
       truncated: false,
+      ...(normalizedName === 'read'
+        ? {
+            toolPresentation: {
+              kind: 'READ',
+              paths:
+                typeof input?.filePath === 'string' && input.filePath.length > 0
+                  ? [compactRunnerText(input.filePath, 4096)]
+                  : []
+            }
+          }
+        : {}),
       ...subagent
     }
   };

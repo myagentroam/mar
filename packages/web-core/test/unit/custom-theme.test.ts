@@ -13,13 +13,17 @@ import {
 const source = (colors: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ version: 1, name: 'Ocean', colors, ...extra });
 const darkPalette = {
-  '--mar-bg-page': '#0e1116',
-  '--mar-bg-panel': '#131922',
-  '--mar-text-primary': '#e8eef8'
+  '--mar-bg-page': '#141619',
+  '--mar-bg-panel': '#1e2836',
+  '--mar-bg-chrome': '#18263b',
+  '--mar-color-brand': '#3071d1',
+  '--mar-text-primary': '#e7eaf0'
 };
 const lightPalette = {
   '--mar-bg-page': '#f3f6f9',
   '--mar-bg-panel': '#ffffff',
+  '--mar-bg-chrome': '#f5f6f8',
+  '--mar-color-brand': '#0a6fd8',
   '--mar-text-primary': '#1c2733'
 };
 const createThemePreferenceService = () =>
@@ -55,6 +59,35 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Custom theme validation', () => {
+  it('resolves chrome independently and defaults missing or invalid chrome colors', () => {
+    const service = createThemePreferenceService();
+    expect(service.resolveColors(source())['--mar-bg-chrome']).toBe(darkPalette['--mar-bg-chrome']);
+    expect(service.resolveColors(source({ '--mar-bg-panel': '#28312b' }))['--mar-bg-chrome']).toBe(
+      darkPalette['--mar-bg-chrome']
+    );
+    expect(
+      service.resolveColors(source({ '--mar-bg-panel': '#28312b', '--mar-bg-chrome': '#202428' }))[
+        '--mar-bg-chrome'
+      ]
+    ).toBe('#202428');
+    expect(
+      service.resolveColors(source({ '--mar-bg-panel': '#28312b', '--mar-bg-chrome': 'invalid' }))[
+        '--mar-bg-chrome'
+      ]
+    ).toBe(darkPalette['--mar-bg-chrome']);
+  });
+
+  it('warns about low-contrast chrome text without rejecting a custom theme', () => {
+    const result = analyzeCustomTheme(
+      source({ '--mar-bg-chrome': '#777777', '--mar-text-primary': '#777777' })
+    );
+    expect(result.validJson).toBe(true);
+    expect(result.warnings).toContainEqual({
+      code: 'contrast',
+      field: '--mar-text-primary / --mar-bg-chrome'
+    });
+  });
+
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {
     expect(analyzeCustomTheme('{').validJson).toBe(false);
     for (const text of ['null', 'true', '42', '[]', '{}']) {
@@ -85,7 +118,14 @@ describe('Custom theme validation', () => {
       '--mar-text-primary': '#abcdef88',
       '--mar-color-brand': '#abc'
     });
-    expect(result.warnings.filter((item) => item.code === 'unknown')).toHaveLength(3);
+    expect(
+      result.warnings.filter((item) => item.code === 'unknown').map((item) => item.field)
+    ).toEqual([
+      '--el-color-primary',
+      '--mar-terminal-background',
+      '--mar-font-size-body',
+      '--unknown'
+    ]);
     expect(result.warnings.filter((item) => item.code === 'color')).toHaveLength(3);
   });
   it('reports unknown metadata, invalid structure and low contrast without rejecting the document', () => {
@@ -117,7 +157,10 @@ describe('Custom theme persistence and application', () => {
     expect(builtin).toEqual({ version: 1, name: 'Light', colors: lightPalette });
     expect(storage.size).toBe(0);
     const partial = source({ '--mar-bg-panel': '#aabbcc' }, { base: 'daylight', extension: true });
-    expect(service.resolveColors(partial)).toEqual({ ...darkPalette, '--mar-bg-panel': '#aabbcc' });
+    expect(service.resolveColors(partial)).toEqual({
+      ...darkPalette,
+      '--mar-bg-panel': '#aabbcc'
+    });
     const copy = JSON.parse(service.duplicateSource(partial, 'Copy'));
     expect(copy).toEqual({
       version: 1,
@@ -227,10 +270,10 @@ describe('Custom theme persistence and application', () => {
 });
 
 describe('Canonical theme tokens', () => {
-  it('reads legacy colors without applying library variables and gives explicit MAR keys precedence', () => {
-    expect(analyzeCustomTheme(source({ '--el-color-primary': '#123456' })).colors).toEqual({
-      '--mar-color-brand': '#123456'
-    });
+  it('ignores unregistered library keys and copies only current canonical colors', () => {
+    const analysis = analyzeCustomTheme(source({ '--el-color-primary': '#123456' }));
+    expect(analysis.colors).toEqual({});
+    expect(analysis.warnings).toContainEqual({ code: 'unknown', field: '--el-color-primary' });
     for (const colors of [
       { '--el-color-primary': '#123456', '--mar-color-brand': '#abcdef' },
       { '--mar-color-brand': '#abcdef', '--el-color-primary': '#123456' }
@@ -244,11 +287,11 @@ describe('Canonical theme tokens', () => {
     const legacy = source({ '--el-color-primary': '#123456' });
     const item = service.saveCustomTheme(legacy);
     service.setTheme(item.id);
-    expect(styles.get('--mar-color-brand')).toBe('#123456');
+    expect(styles.get('--mar-color-brand')).toBe(darkPalette['--mar-color-brand']);
     expect(styles.has('--el-color-primary')).toBe(false);
     expect(item.source).toBe(legacy);
     const copy = JSON.parse(service.duplicateSource(legacy, 'Copy'));
-    expect(copy.colors['--mar-color-brand']).toBe('#123456');
+    expect(copy.colors['--mar-color-brand']).toBe(darkPalette['--mar-color-brand']);
     expect(copy.colors).not.toHaveProperty('--el-color-primary');
   });
 });

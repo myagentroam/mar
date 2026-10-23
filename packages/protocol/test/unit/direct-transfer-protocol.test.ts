@@ -112,7 +112,7 @@ describe('workspace direct transfer protocol', () => {
         conversation: {
           available: false,
           reasonCode: 'UNAVAILABLE',
-          itemVersions: [1],
+          itemVersions: [2],
           supportsSessionCursor: false,
           supportsHistoryPaging: false,
           supportsItemFinalSnapshots: false,

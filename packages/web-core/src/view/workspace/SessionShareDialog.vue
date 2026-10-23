@@ -200,7 +200,7 @@ async function copyRecord(id: string): Promise<void> {
   white-space: pre-wrap;
 }
 h3 {
-  font-size: 1rem;
+  font-size: var(--mar-font-size-title);
   margin: 1.5rem 0 0.5rem;
 }
 </style>

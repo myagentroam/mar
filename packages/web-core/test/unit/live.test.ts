@@ -285,6 +285,7 @@ describe('Public Workbench Real-Time Connection', () => {
     });
 
     service.connect();
+    expect(service.connected.value).toBe(false);
     FakeWebSocket.instances[0]?.dispatchEvent(new Event('open'));
     FakeWebSocket.instances[0]?.dispatchEvent(
       new MessageEvent('message', {
@@ -296,6 +297,7 @@ describe('Public Workbench Real-Time Connection', () => {
         })
       })
     );
+    expect(service.connected.value).toBe(true);
     FakeWebSocket.instances[0]?.dispatchEvent(
       new MessageEvent('message', {
         data: JSON.stringify({
@@ -305,9 +307,11 @@ describe('Public Workbench Real-Time Connection', () => {
       })
     );
     FakeWebSocket.instances[0]?.dispatchEvent(new CloseEvent('close'));
+    expect(service.connected.value).toBe(false);
     expect(onDisconnected).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(500);
     FakeWebSocket.instances[1]?.dispatchEvent(new Event('open'));
+    expect(service.connected.value).toBe(false);
     FakeWebSocket.instances[1]?.dispatchEvent(
       new MessageEvent('message', {
         data: JSON.stringify({
@@ -318,6 +322,7 @@ describe('Public Workbench Real-Time Connection', () => {
         })
       })
     );
+    expect(service.connected.value).toBe(true);
     FakeWebSocket.instances[1]?.dispatchEvent(
       new MessageEvent('message', {
         data: JSON.stringify({
@@ -331,6 +336,7 @@ describe('Public Workbench Real-Time Connection', () => {
     expect(onConnectionRestored).toHaveBeenCalledExactlyOnceWith(true);
     expect(onEvent).toHaveBeenCalledTimes(2);
     service.close();
+    expect(service.connected.value).toBe(false);
   });
 
   it('Replace a possibly half-open live connection when the page becomes visible again', () => {

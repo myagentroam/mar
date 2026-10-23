@@ -23,7 +23,6 @@ import {
   runnerLabel,
   sessionActivityDateTime,
   tokenCountLabel as formatTokenCount,
-  workingElapsedLabel as formatWorkingElapsed,
   preciseElapsedDurationLabel as formatGoalDuration,
   workspaceBranchLabel,
   workspaceKindLabel,
@@ -789,6 +788,7 @@ export function createWorkbenchPageController<
     composerWorking: authoritativeComposerWorking,
     sessionActivityClockNow,
     composerWorkingLabel: authoritativeComposerWorkingLabel,
+    workingElapsedLabel: composerElapsedLabel,
     interruptVisible,
     canInterruptTurn: authoritativeCanInterruptTurn,
     selectedWorkspace,
@@ -829,8 +829,7 @@ export function createWorkbenchPageController<
     shouldDisplayItem: (item, runId) => shouldDisplayConversationItem(item, runId),
     runService,
     formatTokenCount,
-    formatPercentage: formatContextPercentage,
-    formatWorkingElapsed
+    formatPercentage: formatContextPercentage
   });
 
   const contentSearchReady = computed(() => filesReady.value);
@@ -1860,15 +1859,28 @@ export function createWorkbenchPageController<
       : loadMoreWorkspaceSessions();
   }
 
-  async function handleAuthenticated(): Promise<void> {
-    await startWorkbenchNotifications();
-    startWebVersionUpdateCheck();
-    await Promise.all([refreshNodes(), refreshServerCapabilities()]);
+  let authenticationRestoreGeneration = 0;
+
+  async function restoreAuthenticatedRoute(generation: number): Promise<void> {
+    await refreshNodes();
+    if (generation !== authenticationRestoreGeneration) return;
     connectWorkbenchLive();
     await restoreWorkbenchRoute();
+    if (generation !== authenticationRestoreGeneration) return;
     await restoreHostedConversationRoute();
+  }
+
+  async function handleAuthenticated(): Promise<void> {
+    const generation = ++authenticationRestoreGeneration;
+    startWebVersionUpdateCheck();
+    void refreshServerCapabilities();
+    // Notification snapshots and version display must not delay the active session.
+    // Keep notification navigation/read reconciliation after both initial reads finish.
+    await Promise.all([startWorkbenchNotifications(), restoreAuthenticatedRoute(generation)]);
+    if (generation !== authenticationRestoreGeneration) return;
     const openedSystemNotification =
       await workbenchNotificationService.openPendingSystemNotification();
+    if (generation !== authenticationRestoreGeneration) return;
     if (
       !openedSystemNotification &&
       view.value === 'nodes' &&
@@ -1884,6 +1896,7 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
+    authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
     removeWebVersionFocusListener?.();
@@ -3214,7 +3227,7 @@ export function createWorkbenchPageController<
     notice,
     errorMessage: message
   });
-  const { loadOlderConversationTurns } = conversationPagingService;
+  const { loadOlderConversationTurns, olderHistoryError } = conversationPagingService;
   refreshRecentConversationWindow = conversationPagingService.refreshRecentConversationTurns;
 
   const { decideApproval } = createWorkbenchApprovalService({
@@ -3246,14 +3259,8 @@ export function createWorkbenchPageController<
     () =>
       submissionPending.value && submissionService.context.value === selectedSubmissionContext.value
   );
-  const composerWorking = computed(
-    () => composerSubmitting.value || authoritativeComposerWorking.value
-  );
-  const composerWorkingLabel = computed(() =>
-    composerSubmitting.value
-      ? translate('workbench.sending')
-      : authoritativeComposerWorkingLabel.value
-  );
+  const composerWorking = authoritativeComposerWorking;
+  const composerWorkingLabel = authoritativeComposerWorkingLabel;
   const canInterruptTurn = computed(
     () => authoritativeCanInterruptTurn.value && !composerSubmitting.value
   );
@@ -3340,7 +3347,10 @@ export function createWorkbenchPageController<
         contentOverride
       ),
     loadOlderConversationTurns,
-    handleConversationScroll: (loadOlder) => conversationScrollService.handleScroll(loadOlder),
+    handleConversationScroll: (loadOlder) =>
+      conversationScrollService.handleScroll(() => {
+        if (!olderHistoryError.value) loadOlder();
+      }),
     scrollToLatest: conversationScrollService.scrollToLatest,
     scrollToLatestAfterLayout: conversationScrollService.scrollToLatestAfterLayout,
     focusInputAt: (cursor) => focusComposerInputAt(cursor)
@@ -3495,6 +3505,19 @@ export function createWorkbenchPageController<
     removeComposerFileReference: fileReferenceService.remove,
     composerWorking,
     composerWorkingLabel,
+    composerElapsedLabel,
+    liveConnected: workbenchLiveConnection.connected,
+    conversationSyncPending: computed(
+      () =>
+        selectedSession.value !== undefined &&
+        !initialConversationLoadFailed.value &&
+        sessionWatchController.canWatchSessionHistory(selectedSession.value) &&
+        !sessionWatchController.hasInitialSessionSnapshot(selectedSession.value.id)
+    ),
+    olderHistoryError,
+    conversationRuns: computed(() =>
+      runs.value.filter((run) => run.sessionId === selectedSessionId.value)
+    ),
     contextUsageLabel,
     conversationImagePreview,
     conversationImagePreviewOpen,

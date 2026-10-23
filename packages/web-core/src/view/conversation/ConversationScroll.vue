@@ -8,6 +8,7 @@ defineProps<{
   readonly loadingInitial: boolean;
   readonly initialLoadFailed: boolean;
   readonly loadingOlder: boolean;
+  readonly olderError?: string;
   readonly hasTurns: boolean;
   readonly following: boolean;
 }>();
@@ -48,35 +49,48 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
       >
         {{ translate('generated.conversationScroll.reloadConversationHistory') }}
       </el-button>
-      <el-button
+      <div
         v-else-if="hasOlder && hasTurns"
-        class="conversation-load-older"
-        link
-        type="primary"
-        size="small"
-        native-type="button"
-        :disabled="loadingOlder"
-        @click="emit('loadOlder')"
+        class="conversation-history-control"
+        :aria-busy="loadingOlder"
       >
-        {{
-          loadingOlder
-            ? translate('generated.conversationScroll.loadingEarlierMessages')
-            : translate('generated.conversationScroll.loadEarlierMessages')
-        }}
-      </el-button>
+        <p v-if="olderError" class="conversation-history-error" role="status">{{ olderError }}</p>
+        <el-button
+          class="conversation-load-older"
+          link
+          type="primary"
+          size="small"
+          native-type="button"
+          :disabled="loadingOlder"
+          @click="emit('loadOlder')"
+        >
+          {{
+            loadingOlder
+              ? translate('generated.conversationScroll.loadingEarlierMessages')
+              : olderError
+                ? translate('conversationActivity.retry')
+                : translate('generated.conversationScroll.loadEarlierMessages')
+          }}
+        </el-button>
+      </div>
+      <p v-else-if="hasTurns" class="conversation-history-start">
+        {{ translate('conversationActivity.historyStart') }}
+      </p>
       <slot />
     </div>
-    <el-button
-      v-if="!following && hasTurns"
-      class="conversation-latest"
-      size="small"
-      round
-      native-type="button"
-      @click="emit('latest')"
-    >
-      <el-icon aria-hidden="true"><Bottom /></el-icon>
-      {{ translate('generated.conversationScroll.jumpToLatest') }}
-    </el-button>
+    <Transition name="conversation-latest">
+      <el-button
+        v-if="!following && hasTurns"
+        class="conversation-latest"
+        size="small"
+        round
+        native-type="button"
+        @click="emit('latest')"
+      >
+        <el-icon aria-hidden="true"><Bottom /></el-icon>
+        {{ translate('generated.conversationScroll.jumpToLatest') }}
+      </el-button>
+    </Transition>
     <div
       v-if="$slots.status"
       class="conversation-status"
@@ -88,6 +102,18 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
 </template>
 
 <style scoped>
+.conversation-history-control,
+.conversation-history-start {
+  text-align: center;
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
+}
+.conversation-history-error {
+  color: var(--mar-color-danger-text);
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
 .conversation-scroll-region {
   position: relative;
   flex: 1;
@@ -113,7 +139,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
 
 .conversation-loading-initial {
   color: var(--mar-text-faint);
-  font-size: 0.7rem;
+  font-size: var(--mar-font-size-meta);
   text-align: center;
 }
 
@@ -125,6 +151,30 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
   min-height: 28px;
   margin: 0;
   box-shadow: 0 2px 8px var(--mar-shadow-soft);
+}
+
+.conversation-latest-enter-active,
+.conversation-latest-leave-active {
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.conversation-latest-enter-from,
+.conversation-latest-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.conversation-latest-leave-active {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-latest-enter-active,
+  .conversation-latest-leave-active {
+    transition: none;
+  }
 }
 
 .conversation-status {

@@ -638,7 +638,7 @@ onUnmounted(() => usersPage.dispose());
   margin-top: 12px;
 }
 .credential-details code {
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   overflow-wrap: anywhere;
 }
 .clickable-rows :deep(.el-table__row) {

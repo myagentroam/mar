@@ -1,12 +1,28 @@
 <script setup lang="ts">
 import { managementDateTime } from '../../util/time-presentation.js';
-import { toolPresentation, toolPresentationSources } from '../../util/tool-presentation.js';
+import {
+  toolPresentation,
+  toolPresentationSources,
+  toolPresentationStatus
+} from '../../util/tool-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Back, Check, CopyDocument, RefreshLeft } from '@element-plus/icons-vue';
+import {
+  Back,
+  Check,
+  CopyDocument,
+  RefreshLeft,
+  Document,
+  Cpu,
+  Monitor,
+  Tools,
+  EditPen
+} from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
+import ConversationWorkProcess from './ConversationWorkProcess.vue';
+import { conversationWorkProcessBlocks } from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
@@ -34,7 +50,6 @@ import {
   conversationErrorPresentation,
   planSteps,
   taskListItems,
-  reasoningDisclosureOpen,
   reasoningPreview,
   approvalDetail,
   approvalStatusLabel,
@@ -49,6 +64,10 @@ import type {
 } from '../../model/workbench.js';
 import { userInputOtherAnswerId } from '../../service/ConversationUserInputService.js';
 import { absoluteMessageTime } from '../../util/conversation-presentation.js';
+import type { AgentRun } from '../../model/workbench.js';
+import { completedStepDuration, runDuration } from '../../util/conversation-activity.js';
+import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
+import { isTerminalRunStatus } from '../../service/RunService.js';
 
 interface ImageAttachment {
   readonly name: string;
@@ -76,6 +95,7 @@ function messageHeading(payload: unknown) {
 
 const props = defineProps<{
   readonly turns: readonly ConversationTurn[];
+  readonly runs?: readonly Pick<AgentRun, 'id' | 'status' | 'startedAt' | 'completedAt'>[];
   readonly sharerName?: string;
   readonly workspaceRoot: string | undefined;
   readonly imageResourceUrl?: ((path: string) => string) | undefined;
@@ -88,6 +108,7 @@ const props = defineProps<{
   readonly userInputSubmitted: (itemId: string) => boolean;
   readonly planContinuation: RunnerCommandState | undefined;
   readonly nodeReady: boolean;
+  readonly synchronized?: boolean;
   readonly toolChangeEnabled?: boolean;
   readonly rewindEnabled: boolean;
   readonly rollbackEnabled: boolean;
@@ -236,43 +257,12 @@ const latestPlanItemId = computed(
 );
 
 const reasoningDisclosure = reactive<Record<string, boolean>>({});
-const reasoningGroupActivity = new Map<string, boolean>();
 const groupedItemDisclosure = reactive<Record<string, boolean>>({});
-
-watch(
-  () =>
-    props.turns.flatMap((turn) =>
-      conversationDisplayItems(turn.items).flatMap((group) =>
-        group.type === 'reasoning_group'
-          ? [{ id: group.id, active: reasoningActive(turn, group) }]
-          : []
-      )
-    ),
-  (groups) => {
-    const currentIds = new Set<string>();
-    for (const group of groups) {
-      currentIds.add(group.id);
-      const previousActivity = reasoningGroupActivity.get(group.id);
-      reasoningDisclosure[group.id] = reasoningDisclosureOpen(
-        previousActivity,
-        group.active,
-        reasoningDisclosure[group.id]
-      );
-      reasoningGroupActivity.set(group.id, group.active);
-    }
-    for (const id of reasoningGroupActivity.keys()) {
-      if (currentIds.has(id)) continue;
-      reasoningGroupActivity.delete(id);
-      delete reasoningDisclosure[id];
-    }
-  },
-  { immediate: true }
-);
 
 watch(
   () => props.turns.flatMap((turn) => turn.items.map((item) => item.id)),
   (itemIds) => {
-    const currentIds = new Set(itemIds);
+    const currentIds = new Set(itemIds.flatMap((id) => [id, `group:${id}`]));
     for (const id of Object.keys(groupedItemDisclosure)) {
       if (!currentIds.has(id)) delete groupedItemDisclosure[id];
     }
@@ -284,22 +274,7 @@ function updateReasoningDisclosure(id: string, event: Event): void {
 }
 
 function updateGroupedItemDisclosure(id: string, event: Event): void {
-  if ((event.currentTarget as HTMLDetailsElement).open) {
-    groupedItemDisclosure[id] = true;
-    return;
-  }
-  delete groupedItemDisclosure[id];
-}
-
-function turnActive(turn: ConversationTurn): boolean {
-  return ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL'].includes(turn.status);
-}
-
-function reasoningActive(
-  turn: ConversationTurn,
-  group: Extract<ConversationDisplayItem, { readonly type: 'reasoning_group' }>
-): boolean {
-  return turnActive(turn) && !group.completed;
+  groupedItemDisclosure[id] = (event.currentTarget as HTMLDetailsElement).open;
 }
 
 function rollbackTarget(turn: ConversationTurn, item: ConversationItem): boolean {
@@ -308,6 +283,12 @@ function rollbackTarget(turn: ConversationTurn, item: ConversationItem): boolean
     item.status === 'COMPLETED' &&
     ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(turn.status)
   );
+}
+function turnActive(turn: ConversationTurn): boolean {
+  const run = props.runs?.find((entry) => entry.id === turn.runId);
+  return run
+    ? !isTerminalRunStatus(run.status)
+    : ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL'].includes(turn.status);
 }
 
 function hasConversationDetail(item: ConversationItem): boolean {
@@ -339,19 +320,58 @@ function messageTimeLabel(timestamp: number): string {
 function messageTimeTitle(timestamp: number): string {
   return absoluteMessageTime(timestamp);
 }
+
+const runDurations = computed(() => {
+  const labels = new Map<string, string>();
+  for (const run of props.runs ?? []) {
+    if (!isTerminalRunStatus(run.status)) continue;
+    const duration = runDuration(run);
+    const last = [...props.turns].reverse().find((turn) => turn.runId === run.id);
+    if (duration !== undefined && last !== undefined)
+      labels.set(
+        last.id,
+        translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
+      );
+  }
+  return labels;
+});
+const processBlocks = computed(() =>
+  conversationWorkProcessBlocks(renderedTurns.value, props.runs, new Set(runDurations.value.keys()))
+);
+
+function stepDuration(item: ConversationItem): string | undefined {
+  const duration = completedStepDuration(item);
+  return duration === undefined
+    ? undefined
+    : translate('conversationActivity.step', { value: preciseElapsedDurationLabel(duration) });
+}
+
+function aggregateStatus(items: readonly ConversationItem[]): string {
+  const statuses = new Set(items.map((item) => item.status));
+  const visible = [
+    'FAILED',
+    'DECLINED',
+    'IN_PROGRESS',
+    'PENDING',
+    'INTERRUPTED',
+    'CANCELLED'
+  ].filter((status) => statuses.has(status));
+  return [...new Set(visible.map(toolPresentationStatus))].join(' · ');
+}
 </script>
 
 <template>
   <div v-if="renderedTurns.length" ref="timelineElement" class="conversation-timeline">
-    <section
-      v-for="turn in renderedTurns"
-      :key="turn.id"
-      :data-status="turn.status"
+    <ConversationWorkProcess
+      v-for="block in processBlocks"
+      :key="block.id"
+      :block="block"
+      :synchronized="props.synchronized ?? (props.nodeReady && !props.initializing)"
       class="conversation-turn"
     >
       <article
-        v-for="displayItem in conversationDisplayItems(turn.items)"
-        :key="displayItem.id"
+        v-for="{ turn, displayItem } in block.entries"
+        :key="`${turn.sessionId}:${displayItem.id}`"
         :class="[
           'conversation-item',
           {
@@ -362,12 +382,12 @@ function messageTimeTitle(timestamp: number): string {
           displayItem.type === 'item'
             ? displayItem.item.kind
             : displayItem.type === 'reasoning_group'
-              ? 'reasoning_summary reasoning-group'
+              ? 'reasoning reasoning-group'
               : displayItem.type === 'image_generation'
                 ? 'tool_call image-generation'
                 : displayItem.type === 'subagent_group'
                   ? 'tool_call subagent-group'
-                  : displayItem.type === 'tool_group'
+                  : displayItem.type === 'tool_group' || displayItem.type === 'read_group'
                     ? 'tool_call tool-group'
                     : displayItem.type === 'command_group'
                       ? 'command_execution command-group'
@@ -408,24 +428,19 @@ function messageTimeTitle(timestamp: number): string {
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
           >
             <summary>
-              <strong>{{ conversationItemLabel('reasoning_summary') }}</strong>
-              <span v-if="reasoningActive(turn, displayItem)" class="reasoning-preview">{{
-                reasoningPreview(displayItem.text)
-              }}</span>
-              <span v-else class="reasoning-subtitle">{{
-                translate('generated.conversationTimeline.thoughtCompleted')
-              }}</span>
+              <Cpu class="conversation-record-icon" aria-hidden="true" />
+              <strong>{{ conversationItemLabel('reasoning') }}</strong>
+              <span
+                v-if="
+                  !reasoningDisclosure[displayItem.id] &&
+                  !displayItem.items.some((item) => item.id === block.summary?.id)
+                "
+                class="reasoning-subtitle"
+                >{{ reasoningPreview(displayItem.text) }}</span
+              >
             </summary>
             <p v-if="reasoningDisclosure[displayItem.id]">{{ displayItem.text }}</p>
           </details>
-          <div v-else class="conversation-reasoning-status">
-            <strong>{{ conversationItemLabel('reasoning_summary') }}</strong>
-            <span>{{
-              reasoningActive(turn, displayItem)
-                ? translate('generated.conversationTimeline.thinking2')
-                : translate('generated.conversationTimeline.thoughtCompleted2')
-            }}</span>
-          </div>
         </template>
         <template v-else-if="displayItem.type === 'image_generation'">
           <details v-if="hasConversationDetail(displayItem.item)">
@@ -515,56 +530,116 @@ function messageTimeTitle(timestamp: number): string {
             </div>
           </details>
         </template>
-        <template v-else-if="displayItem.type === 'tool_group'">
-          <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
+        <template
+          v-else-if="displayItem.type === 'tool_group' || displayItem.type === 'read_group'"
+        >
+          <details
+            class="conversation-record-group"
+            :data-tool-presentation="displayItem.type === 'read_group' ? 'READ' : undefined"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+          >
             <summary>
-              <strong>{{ conversationItemLabel('tool_call') }}</strong>
-              <span
-                >{{ displayItem.items.length }}
-                {{ translate('generated.conversationTimeline.items') }}</span
-              >
+              <component
+                :is="displayItem.type === 'read_group' ? Document : Tools"
+                class="conversation-record-icon"
+                aria-hidden="true"
+              />
+              <strong>{{
+                displayItem.type === 'read_group'
+                  ? translate('toolPresentation.title.READ')
+                  : conversationItemLabel('tool_call')
+              }}</strong>
+              <span>{{
+                translate('toolPresentation.calls', { count: displayItem.items.length })
+              }}</span>
+              <span v-if="aggregateStatus(displayItem.items)">{{
+                aggregateStatus(displayItem.items)
+              }}</span>
             </summary>
-            <div v-if="groupedItemDisclosure[displayItem.id]" class="conversation-tool-list">
-              <details
-                v-for="toolItem in displayItem.items"
-                :key="toolItem.id"
-                class="conversation-tool-detail"
+            <details
+              v-for="toolItem in displayItem.items"
+              :key="toolItem.id"
+              class="conversation-tool-detail"
+              :open="groupedItemDisclosure[toolItem.id] === true"
+              @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
+            >
+              <summary>
+                <component
+                  :is="displayItem.type === 'read_group' ? Document : Tools"
+                  class="conversation-record-icon"
+                  aria-hidden="true"
+                />
+                <strong>{{ conversationItemLabel(toolItem.kind, toolItem.payload) }}</strong>
+                <span>{{
+                  conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)
+                }}</span>
+              </summary>
+              <p
+                v-if="
+                  groupedItemDisclosure[toolItem.id] &&
+                  conversationItemDetail(toolItem.kind, toolItem.payload)
+                "
               >
-                <summary>
-                  <strong>{{ conversationItemLabel(toolItem.kind, toolItem.payload) }}</strong>
-                  <span>{{ conversationItemText(toolItem.kind, toolItem.payload) }}</span>
-                </summary>
-                <p v-if="conversationItemDetail(toolItem.kind, toolItem.payload)">
-                  {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
-                </p>
-              </details>
-            </div>
+                {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
+              </p>
+            </details>
           </details>
         </template>
         <template v-else-if="displayItem.type === 'command_group'">
-          <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
+          <details
+            class="conversation-record-group"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+          >
             <summary>
+              <Monitor class="conversation-record-icon" aria-hidden="true" />
               <strong>{{ conversationItemLabel('command_execution') }}</strong>
+              <span>{{
+                translate('toolPresentation.calls', { count: displayItem.items.length })
+              }}</span>
               <span
-                >{{ displayItem.items.length }}
-                {{ translate('generated.conversationTimeline.items2') }}</span
+                v-if="
+                  !displayItem.items.some((item) => item.status === 'FAILED') &&
+                  aggregateStatus(displayItem.items)
+                "
+                >{{ aggregateStatus(displayItem.items) }}</span
               >
             </summary>
-            <div v-if="groupedItemDisclosure[displayItem.id]" class="conversation-command-list">
-              <details
-                v-for="commandItem in displayItem.items"
-                :key="commandItem.id"
-                class="conversation-command-detail"
+            <details
+              v-for="commandItem in displayItem.items"
+              :key="commandItem.id"
+              class="conversation-command-detail"
+              :open="groupedItemDisclosure[commandItem.id] === true"
+              @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
+            >
+              <summary>
+                <Monitor class="conversation-record-icon" aria-hidden="true" />
+                <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
+                <span class="conversation-command-preview">{{
+                  conversationItemText(commandItem.kind, commandItem.payload)
+                }}</span>
+                <span
+                  v-if="toolPresentationStatus(commandItem.status) || stepDuration(commandItem)"
+                  class="conversation-command-meta"
+                >
+                  <span class="conversation-command-status">{{
+                    toolPresentationStatus(commandItem.status)
+                  }}</span>
+                  <span v-if="stepDuration(commandItem)" class="conversation-step-duration">{{
+                    stepDuration(commandItem)
+                  }}</span>
+                </span>
+              </summary>
+              <p
+                v-if="
+                  groupedItemDisclosure[commandItem.id] &&
+                  conversationItemDetail(commandItem.kind, commandItem.payload)
+                "
               >
-                <summary>
-                  <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
-                  <span>{{ conversationItemText(commandItem.kind, commandItem.payload) }}</span>
-                </summary>
-                <p v-if="conversationItemDetail(commandItem.kind, commandItem.payload)">
-                  {{ conversationItemDetail(commandItem.kind, commandItem.payload) }}
-                </p>
-              </details>
-            </div>
+                {{ conversationItemDetail(commandItem.kind, commandItem.payload) }}
+              </p>
+            </details>
           </details>
         </template>
         <template v-else-if="displayItem.type === 'file_change_group'">
@@ -574,6 +649,7 @@ function messageTimeTitle(timestamp: number): string {
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
           >
             <summary>
+              <EditPen class="conversation-record-icon" aria-hidden="true" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
               <span
                 >{{ conversationFileChangeEntries(displayItem.items).length }}
@@ -1190,11 +1266,20 @@ function messageTimeTitle(timestamp: number): string {
           </div>
         </template>
       </article>
-    </section>
+      <p v-if="block.footerTurnId" class="conversation-run-duration">
+        {{ runDurations.get(block.footerTurnId) }}
+      </p>
+    </ConversationWorkProcess>
   </div>
 </template>
 
 <style scoped>
+.conversation-run-duration,
+.conversation-step-duration {
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
+}
+
 .conversation-tool-sources {
   padding-left: 1.25rem;
   overflow-wrap: anywhere;
@@ -1207,7 +1292,7 @@ function messageTimeTitle(timestamp: number): string {
 .conversation-tool-source-host {
   margin-left: 0.5rem;
   color: var(--mar-conversation-muted);
-  font-size: var(--mar-font-size-caption);
+  font-size: var(--mar-font-size-meta);
 }
 
 .permission-stop-card {
@@ -1231,8 +1316,8 @@ function messageTimeTitle(timestamp: number): string {
   display: inline-block;
   margin-bottom: 0.2rem;
   color: var(--mar-text-secondary);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
 }
 
 .task-list {
@@ -1249,7 +1334,7 @@ function messageTimeTitle(timestamp: number): string {
 .task-list-items {
   display: grid;
   margin: 0;
-  border-top: 1px solid var(--mar-border-medium);
+  border-top: 1px solid var(--mar-conversation-process-border);
   padding: 0;
   list-style: none;
 }
@@ -1260,7 +1345,7 @@ function messageTimeTitle(timestamp: number): string {
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: start;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--mar-border-medium);
+  border-bottom: 1px solid var(--mar-conversation-process-border);
   padding: 0.42rem 0;
 }
 
@@ -1286,15 +1371,17 @@ function messageTimeTitle(timestamp: number): string {
 }
 
 .conversation-timeline {
+  --conversation-record-gap: 8px;
+  --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: var(--conversation-record-gap);
 }
 
 .conversation-turn {
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: 0;
 }
 
 .conversation-item {
@@ -1304,7 +1391,7 @@ function messageTimeTitle(timestamp: number): string {
   min-width: 0;
   box-sizing: border-box;
   border: 1px solid var(--mar-conversation-border);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-surface);
   color: var(--mar-conversation-text);
   padding: 12px 14px;
@@ -1321,13 +1408,26 @@ function messageTimeTitle(timestamp: number): string {
 
 .conversation-item.assistant_message {
   justify-self: start;
+  border: 0;
+  background: transparent;
 }
 
 .conversation-item:where(:not(.user_message):not(.assistant_message)) {
   justify-self: start;
-  border-color: var(--mar-conversation-process-border);
-  background: var(--mar-conversation-process);
+  border: 0;
+  background: transparent;
   padding: 8px 14px;
+}
+
+.conversation-item:where(.approval_request, .user_input_request, .error) {
+  border: 1px solid var(--mar-conversation-process-border);
+  background: var(--mar-conversation-process);
+}
+
+.conversation-item > details[open] {
+  display: flow-root;
+  border-radius: var(--mar-radius-surface);
+  background: var(--mar-conversation-process);
 }
 
 .conversation-item.error {
@@ -1339,11 +1439,23 @@ function messageTimeTitle(timestamp: number): string {
   border-left-color: var(--mar-color-warning-accent);
 }
 
-.conversation-item:where(.reasoning-group, .tool-group, .subagent-group, .command-group) {
+.conversation-item:where(
+  .reasoning-group,
+  .tool-group,
+  .subagent-group,
+  .command-group,
+  .file-change-group
+) {
   padding: 0;
 }
 
-.conversation-item:where(.reasoning-group, .tool-group, .subagent-group, .command-group)
+.conversation-item:where(
+    .reasoning-group,
+    .tool-group,
+    .subagent-group,
+    .command-group,
+    .file-change-group
+  )
   > details
   > summary,
 .conversation-reasoning-status {
@@ -1352,7 +1464,13 @@ function messageTimeTitle(timestamp: number): string {
   box-sizing: border-box;
 }
 
-.conversation-item:where(.reasoning-group, .tool-group, .subagent-group, .command-group)
+.conversation-item:where(
+    .reasoning-group,
+    .tool-group,
+    .subagent-group,
+    .command-group,
+    .file-change-group
+  )
   > details
   > :not(summary) {
   margin: 0 14px 12px;
@@ -1369,32 +1487,6 @@ function messageTimeTitle(timestamp: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.conversation-item.reasoning-group > details:not([open]) .reasoning-preview {
-  color: var(--mar-conversation-text);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .conversation-item.reasoning-group > details:not([open]) .reasoning-preview {
-    background: linear-gradient(
-      90deg,
-      var(--mar-conversation-text) 42%,
-      color-mix(in srgb, var(--mar-conversation-text) 60%, var(--mar-color-brand-text)) 50%,
-      var(--mar-conversation-text) 58%
-    );
-    background-size: 280% 100%;
-    background-position: 100% 0;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: reasoning-preview-sweep 1.75s linear infinite;
-  }
-}
-
-@keyframes reasoning-preview-sweep {
-  to {
-    background-position: 0% 0;
-  }
 }
 
 .conversation-item.reasoning-group > details,
@@ -1436,12 +1528,12 @@ function messageTimeTitle(timestamp: number): string {
 .conversation-error-http-status,
 .conversation-error-code {
   border: 1px solid color-mix(in srgb, var(--el-color-danger) 52%, transparent);
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--el-color-danger) 12%, transparent);
   padding: 0 0.3rem;
   color: var(--el-color-danger);
-  font-size: 0.625rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -1450,7 +1542,7 @@ function messageTimeTitle(timestamp: number): string {
   border-color: var(--mar-border-medium);
   background: var(--mar-fill-soft);
   color: var(--mar-text-secondary);
-  font-family: var(--el-font-family-mono);
+  font-family: var(--mar-font-mono);
   overflow-wrap: anywhere;
 }
 
@@ -1466,21 +1558,79 @@ function messageTimeTitle(timestamp: number): string {
   display: grid;
   gap: 0.45rem;
   margin: 0.45rem 0 0 0.65rem;
-  border-left: 2px solid var(--mar-border-medium);
+  border-left: 2px solid var(--mar-conversation-process-border);
   padding-left: 0.7rem;
 }
 
 .conversation-tool-detail,
 .conversation-command-detail {
-  border-top: 1px solid var(--mar-border-medium);
+  border-top: 1px solid var(--mar-conversation-process-border);
   padding-top: 0.45rem;
 }
 
-.conversation-tool-detail summary,
-.conversation-command-detail summary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.conversation-record-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.4rem;
+  vertical-align: -0.12em;
+  color: var(--mar-conversation-muted);
+}
+
+.conversation-record-group > .conversation-tool-detail,
+.conversation-record-group > .conversation-command-detail {
+  border-top: 0;
+  padding: 0;
+}
+
+.conversation-record-group > details + details {
+  margin-top: var(--conversation-record-gap);
+}
+
+details.conversation-record-group[open] > details:last-child {
+  margin-bottom: var(--conversation-record-gap);
+}
+
+.conversation-record-group > summary {
+  padding: 0.5rem 0.875rem;
+}
+
+details.conversation-record-group > details {
+  margin-inline: calc(0.875rem + 1rem) 0.875rem;
+}
+
+.conversation-record-group > summary > span + span {
+  margin-inline-start: 0.4em;
+}
+
+.conversation-record-group > details > summary {
+  display: grid;
+  grid-template-columns: 1em 1em max-content minmax(0, 1fr);
+  column-gap: 0.4rem;
+  align-items: start;
+  white-space: normal;
+}
+
+.conversation-record-group > details > summary::before,
+.conversation-record-group > details > summary > .conversation-record-icon,
+.conversation-record-group > details > summary > strong {
+  margin-inline: 0;
+}
+
+.conversation-record-group > details > summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-command-meta {
+  grid-column: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.conversation-command-meta > span {
+  margin-inline: 0;
 }
 
 .conversation-file-change-list {
@@ -1491,19 +1641,21 @@ function messageTimeTitle(timestamp: number): string {
   list-style: none;
   color: var(--mar-text-primary);
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.65;
   word-break: break-all;
 }
 
 .conversation-file-change-list li {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: baseline;
   gap: 0.35rem;
   min-width: 0;
 }
 
 .conversation-file-change-stats {
+  grid-column: 3;
   display: inline-flex;
   flex: 0 0 auto;
   gap: 0.4rem;
@@ -1519,25 +1671,26 @@ function messageTimeTitle(timestamp: number): string {
 }
 .conversation-file-change-note {
   color: var(--el-text-color-secondary);
-  font-size: var(--mar-font-size-small, 0.75rem);
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-file-change-status,
 .task-list-status {
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--el-color-info) 48%, transparent);
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--el-color-info) 12%, transparent);
   padding: 0 0.3rem;
   color: var(--mar-text-secondary);
-  font-size: 0.625rem;
-  font-weight: 650;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
   line-height: 1.3;
   text-align: center;
   white-space: nowrap;
 }
 
 .conversation-file-change-status {
+  grid-column: 1;
   min-width: 2.75rem;
   line-height: 1.3;
 }
@@ -1587,6 +1740,8 @@ function messageTimeTitle(timestamp: number): string {
 }
 
 .conversation-file-change-button {
+  grid-column: 2;
+  min-width: 0;
   max-width: 100%;
   border: 0;
   border-radius: 4px;
@@ -1599,7 +1754,8 @@ function messageTimeTitle(timestamp: number): string {
   text-decoration: underline;
   text-decoration-color: transparent;
   text-underline-offset: 2px;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .conversation-file-change-button:hover,
@@ -1629,7 +1785,7 @@ function messageTimeTitle(timestamp: number): string {
 
 .conversation-item strong {
   color: var(--mar-conversation-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-body);
 }
 
 .conversation-item-heading {
@@ -1648,7 +1804,7 @@ function messageTimeTitle(timestamp: number): string {
   align-self: center;
   margin-right: auto;
   color: var(--mar-conversation-muted);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -1697,7 +1853,7 @@ function messageTimeTitle(timestamp: number): string {
   border-radius: 6px;
   padding: 0.3rem 0.5rem;
   color: var(--mar-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-item details {
@@ -1709,6 +1865,31 @@ function messageTimeTitle(timestamp: number): string {
   cursor: pointer;
   color: var(--mar-conversation-text);
   line-height: 20px;
+  list-style: none;
+}
+
+.conversation-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-item summary::before {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5rem;
+  vertical-align: -0.12em;
+  background: currentColor;
+  mask: var(--conversation-chevron) center / contain no-repeat;
+}
+
+.conversation-item details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.conversation-command-status,
+.conversation-step-duration {
+  margin-inline-start: 0.5rem;
 }
 
 .conversation-item summary:focus-visible {
@@ -1722,6 +1903,26 @@ function messageTimeTitle(timestamp: number): string {
 }
 
 @media (max-width: 767px) {
+  .conversation-file-change-list li {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: 2px;
+  }
+
+  .conversation-file-change-status {
+    justify-self: start;
+    grid-row: 1;
+  }
+
+  .conversation-file-change-stats {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .conversation-file-change-button {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
   .conversation-message-action {
     width: 36px;
     height: 36px;
@@ -1769,7 +1970,7 @@ function messageTimeTitle(timestamp: number): string {
   background: var(--mar-conversation-code);
   padding: 0.45rem 0.55rem;
   color: var(--mar-conversation-text);
-  font-family: var(--el-font-family-mono, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace);
+  font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
   white-space: pre-wrap;

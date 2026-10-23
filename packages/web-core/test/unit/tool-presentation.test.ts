@@ -57,7 +57,7 @@ describe('independent tool presentation', () => {
     );
     expect(toolPresentationStatus('INTERRUPTED')).toBe(states[3]);
   });
-  it('keeps every specialized call independent while ordinary tools still aggregate', () => {
+  it('keeps calls without explicit process membership independent', () => {
     const items = [
       'ordinary-a',
       'WEB_SEARCH',
@@ -75,13 +75,26 @@ describe('independent tool presentation', () => {
     const displayed = conversationDisplayItems(items);
     expect(displayed.filter((item) => item.type === 'item')).toHaveLength(5);
     const groups = displayed.filter((item) => item.type === 'tool_group');
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.items.map((item) => item.id)).toEqual(['item-0', 'item-6']);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((item) => item.items.map((entry) => entry.id))).toEqual([
+      ['item-0'],
+      ['item-6']
+    ]);
     expect(
       conversationDisplayItems([
         { id: 'legacy', kind: 'tool_call', status: 'COMPLETED', payload: { toolName: 'sleep' } }
       ])[0]?.type
     ).toBe('tool_group');
+  });
+  it.each([
+    ['zh-CN', '读取文件', '工具: native-tool\n输入: Original input\n输出: Original output'],
+    ['en-US', 'Read', 'Tool: native-tool\nInput: Original input\nOutput: Original output']
+  ] as const)('localizes Read while preserving raw details in %s', (locale, title, details) => {
+    localePreferenceService().setLocale(locale);
+    const read = payload({ kind: 'READ', paths: ['src/example.ts'] });
+
+    expect(conversationItemLabel('tool_call', read)).toBe(title);
+    expect(toolPresentationDetails(read)).toBe(details);
   });
   it.each(['zh-CN', 'en-US'] as const)(
     'preserves free text and distinguishes unknown and empty sources in %s',

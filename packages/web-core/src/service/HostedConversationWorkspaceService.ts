@@ -97,6 +97,8 @@ export function createHostedConversationWorkspaceService(
   const selectedConversationId = options.selectedConversationId ?? ref<string>();
   const snapshot = ref<HostedConversationSnapshot>();
   const loadingOlderHistory = ref(false);
+  const olderHistoryError = ref<unknown>();
+  const watchReady = ref(false);
   const watchFailureCode = ref<string>();
   const projectedTurns = ref<WorkbenchConversationTurn[]>([]);
   const projectionNextCursor = ref<string | null>(null);
@@ -105,6 +107,7 @@ export function createHostedConversationWorkspaceService(
     nextCursor: projectionNextCursor,
     onRecentWindowOverflow: () => {
       historyWindowRevision += 1;
+      olderHistoryError.value = undefined;
       loadingOlderHistory.value = false;
       historyExpanded = false;
       recentHistoryRefresh = undefined;
@@ -341,6 +344,7 @@ export function createHostedConversationWorkspaceService(
     )
       return;
     if (mode === 'initial') {
+      watchReady.value = false;
       acceptingWatchEvents = true;
       watchId = randomWatchId();
       watchedNodeId = nodeId;
@@ -471,6 +475,7 @@ export function createHostedConversationWorkspaceService(
     loadingOlderHistory.value = false;
     historyExpanded = false;
     historyWindowRevision += 1;
+    olderHistoryError.value = undefined;
     recentHistoryRefresh = undefined;
     conversationProjection.resetHistory();
     watchFailureCode.value = undefined;
@@ -487,12 +492,14 @@ export function createHostedConversationWorkspaceService(
     loadingOlderHistory.value = false;
     historyExpanded = false;
     historyWindowRevision += 1;
+    olderHistoryError.value = undefined;
     recentHistoryRefresh = undefined;
     conversationProjection.resetHistory();
     watchFailureCode.value = undefined;
   }
 
   function stopSelectedConversationWatch(): void {
+    watchReady.value = false;
     cancelPendingInitial();
     watchLifecycle.stop();
     const nodeId = watchedNodeId;
@@ -534,6 +541,7 @@ export function createHostedConversationWorkspaceService(
   }
 
   function pauseSelectedConversationWatch(): void {
+    watchReady.value = false;
     watchLifecycle.pause();
   }
 
@@ -569,6 +577,7 @@ export function createHostedConversationWorkspaceService(
       }
       lastSnapshotSequence = value.snapshotSequence as number;
       installSnapshot(watchedNodeId!, watchedConversationId!, parsed.data);
+      watchReady.value = true;
       watchFailureCode.value = undefined;
       const pending = pendingInitial;
       if (
@@ -652,6 +661,8 @@ export function createHostedConversationWorkspaceService(
     };
     if (replaceHistory) {
       historyWindowRevision += 1;
+      loadingOlderHistory.value = false;
+      olderHistoryError.value = undefined;
       historyExpanded = false;
       conversationProjection.replaceAuthoritative(page);
     } else
@@ -673,6 +684,7 @@ export function createHostedConversationWorkspaceService(
     const revision = historyWindowRevision;
     if (cursor === null || loadingOlderHistory.value) return;
     loadingOlderHistory.value = true;
+    olderHistoryError.value = undefined;
     try {
       const parsed = hostedConversationHistoryPageSchema.safeParse(
         await options.request<unknown>(
@@ -701,6 +713,13 @@ export function createHostedConversationWorkspaceService(
         null,
         0
       );
+    } catch (error) {
+      if (
+        sameSelectedContext(context) &&
+        historyWindowRevision === revision &&
+        projectionNextCursor.value === cursor
+      )
+        olderHistoryError.value = error;
     } finally {
       if (historyWindowRevision === revision) loadingOlderHistory.value = false;
     }
@@ -1551,6 +1570,8 @@ export function createHostedConversationWorkspaceService(
     turns: projectedTurns,
     historyNextCursor: projectionNextCursor,
     loadingOlderHistory,
+    olderHistoryError,
+    watchReady,
     watchFailureCode,
     messageSubmitting: messageSubmission.pending,
     messageSubmissionContext: messageSubmission.context,
@@ -1657,6 +1678,7 @@ function projectHostedTurns(
         payload: item.payload,
         startedAt: item.startedAt,
         completedAt: item.completedAt,
+        ...(item.processGroup === undefined ? {} : { processGroup: item.processGroup }),
         ...(item.segmentId === undefined ? {} : { segmentId: item.segmentId }),
         ...(item.segmentIndex === undefined ? {} : { segmentIndex: item.segmentIndex })
       };

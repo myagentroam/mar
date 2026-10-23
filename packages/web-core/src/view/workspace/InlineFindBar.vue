@@ -56,6 +56,7 @@ onMounted(focus);
         text
         :disabled="total === 0"
         :aria-label="translate('inlineFind.previous')"
+        :title="translate('inlineFind.previous')"
         @click="emit('previous')"
         ><el-icon><ArrowUp /></el-icon
       ></el-button>
@@ -63,10 +64,15 @@ onMounted(focus);
         text
         :disabled="total === 0"
         :aria-label="translate('inlineFind.next')"
+        :title="translate('inlineFind.next')"
         @click="emit('next')"
         ><el-icon><ArrowDown /></el-icon
       ></el-button>
-      <el-button text :aria-label="translate('inlineFind.close')" @click="emit('close')"
+      <el-button
+        text
+        :aria-label="translate('inlineFind.close')"
+        :title="translate('inlineFind.close')"
+        @click="emit('close')"
         ><el-icon><Close /></el-icon
       ></el-button>
     </div>
@@ -97,7 +103,7 @@ onMounted(focus);
 .inline-find-count {
   min-width: 3.4rem;
   color: var(--mar-text-tertiary);
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
   text-align: center;
   white-space: nowrap;
 }

@@ -712,6 +712,38 @@ for (const mode of ['workspace'] as const) {
       await expect.poll(() => submissionCount(page)).toBe(0);
     });
 
+    test('mobile Composer uses one compact size for placeholder, preview and editable text', async ({
+      page
+    }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            getComputedStyle(document.documentElement)
+              .getPropertyValue('--mar-font-size-input')
+              .trim()
+          )
+        )
+        .toBe('0.875rem');
+      const editor = page.locator('textarea.composer-input');
+      const placeholderSize = () =>
+        editor.evaluate((element) => getComputedStyle(element, '::placeholder').fontSize);
+      await setDraft(editor, '', 0);
+      await expect(editor).toHaveCSS('font-size', '14px');
+      await expect.poll(placeholderSize).toBe('14px');
+      await editor.press('Tab');
+      await editor.press('Tab');
+      await expect.poll(() => requestCount(page)).toBe(1);
+      await resolveRequest(page, 0, 'Next step');
+      await expect(editor).toHaveAttribute('placeholder', 'Next step');
+      await expect.poll(placeholderSize).toBe('14px');
+      await editor.press('Tab');
+      await expect(editor).toHaveValue('Next step');
+      await expect(editor).toHaveCSS('font-size', '14px');
+      await expect(editor).toHaveAttribute('placeholder', 'Fixture message placeholder');
+      await expect.poll(placeholderSize).toBe('14px');
+    });
+
     test('Escape cancels a pending request without reaching Composer stop handling', async ({
       page
     }) => {

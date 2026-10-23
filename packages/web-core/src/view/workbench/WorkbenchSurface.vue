@@ -3,7 +3,7 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
-import { computed, onBeforeUnmount, ref, type ShallowUnwrapRef } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, type ShallowUnwrapRef } from 'vue';
 import { Connection } from '@element-plus/icons-vue';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -27,7 +27,6 @@ import ComposerToolbar from '../../view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../view/composer/ComposerCommandPicker.vue';
 import ComposerFileReferencePicker from '../../view/composer/ComposerFileReferencePicker.vue';
-import SettingsContent from '../settings/SettingsContent.vue';
 import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
 import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
@@ -36,6 +35,8 @@ import { translate } from '../../service/LocalePreferenceService.js';
 import { useManagementComposition } from '../../service/ManagementComposition.js';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/WorkbenchLayoutService.js';
+
+const SettingsContent = defineAsyncComponent(() => import('../settings/SettingsContent.vue'));
 
 const props = defineProps<{
   page: ShallowUnwrapRef<
@@ -359,6 +360,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 :loading-initial="page.loadingInitialConversation"
                 :initial-load-failed="page.initialConversationLoadFailed"
                 :loading-older="page.loadingOlderConversation"
+                :older-error="page.olderHistoryError"
                 :has-turns="page.conversationTurns.length > 0"
                 :following="page.followConversation"
                 @scroll-element="page.conversationScroll = $event"
@@ -368,6 +370,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 @reload="page.reloadSelectedSession"
               >
                 <ConversationTimeline
+                  :runs="page.conversationRuns"
                   :turns="page.displayedConversationTurns"
                   :initializing="page.loadingInitialConversation"
                   :initial-render-version="page.conversationInitialRenderVersion"
@@ -380,6 +383,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                   :user-input-submitted="page.userInputSubmitted"
                   :plan-continuation="page.activePlanContinuation"
                   :node-ready="page.nodeReady"
+                  :synchronized="page.liveConnected && !page.conversationSyncPending"
                   :tool-change-enabled="
                     page.nodeReady &&
                     supportsNodeFeature(
@@ -433,6 +437,14 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 "
                 :working="page.composerWorking"
                 :working-label="page.composerWorkingLabel"
+                :elapsed-label="page.composerElapsedLabel"
+                :connection-label="
+                  !page.liveConnected
+                    ? translate('conversationActivity.reconnecting')
+                    : page.conversationSyncPending
+                      ? translate('conversationActivity.syncing')
+                      : ''
+                "
                 :readonly="page.composerInputDisabled"
                 :drop-target="page.draggingComposerAttachments"
                 :mobile-viewport="page.mobileViewport"
@@ -483,6 +495,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 </template>
                 <template #toolbar>
                   <ComposerToolbar
+                    :submitting="page.composerSubmitting"
                     v-if="page.canUseComposer"
                     ref="composerToolbar"
                     :draft-session-open="page.draftSessionOpen"
@@ -686,6 +699,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     </section>
     <HostedConversationWorkspacePage
       v-else-if="page.view === 'conversations'"
+      :connected="page.liveConnected"
       :workspace="page.hostedConversationWorkspace"
       :request="page.request"
       :mobile-viewport="page.mobileViewport"
@@ -770,7 +784,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
   max-width: 430px;
   margin-bottom: 0.8rem;
   color: var(--mar-text-secondary);
-  font-size: 0.82rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
 
@@ -790,7 +804,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 }
 
 .workspace-selection-panel > h1 {
-  font-size: 1.22rem;
+  font-size: var(--mar-font-size-page-title);
 }
 
 .workspace-selection-panel > p {
@@ -800,7 +814,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .workspace-selection-hint {
   color: var(--mar-text-tertiary) !important;
-  font-size: 0.74rem !important;
+  font-size: var(--mar-font-size-meta) !important;
 }
 
 .readonly-banner {
@@ -845,7 +859,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .workspace-offline-message p {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -892,7 +906,8 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .inspector-column {
   position: relative;
-  border-left: 1px solid var(--mar-border-default);
+  border-left: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-chrome);
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -960,7 +975,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 @media (max-width: 767px) {
   .inspector-column {
     max-height: none;
-    background: var(--mar-bg-panel);
+    background: var(--mar-bg-chrome);
   }
 }
 
@@ -987,7 +1002,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     display: flex;
     min-height: 0;
     flex-direction: column;
-    background: var(--mar-bg-panel);
+    background: var(--mar-bg-chrome);
   }
 }
 

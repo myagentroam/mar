@@ -153,7 +153,8 @@ export function projectMarAgentHistory(
           projected.status,
           attachments.length === 0 ? projected.payload : { ...projected.payload, attachments },
           at,
-          projected.permissionStop
+          projected.permissionStop,
+          projected.parentItemId
         )
       );
     }
@@ -195,14 +196,15 @@ function historyItem(
   status: string,
   payload: unknown,
   at: number,
-  permissionStop?: MarAgentPermissionStop
+  permissionStop?: MarAgentPermissionStop,
+  parentItemId?: string
 ): MarAgentHistoryItem {
   return {
     id,
     sessionId: session.id,
     turnId: turn.id,
     runId: turn.runId,
-    parentItemId: null,
+    parentItemId: parentItemId ?? null,
     sourceSequence: null,
     revision: 0,
     kind,

@@ -278,19 +278,19 @@ async function sendTest(): Promise<void> {
 .template-choice__meta,
 .template-choice__subject {
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .template-choice__meta {
   display: flex;
   align-items: center;
   gap: 7px;
   color: var(--el-color-primary);
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   font-weight: 600;
   letter-spacing: 0.035em;
 }
 .template-choice strong {
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
   line-height: 1.45;
 }
 .template-choice__subject {
@@ -309,10 +309,10 @@ async function sendTest(): Promise<void> {
   justify-content: space-between;
   min-height: 25px;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .template-preview__locale {
-  font-size: 11px;
+  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .template-preview__document {
@@ -333,7 +333,7 @@ async function sendTest(): Promise<void> {
 }
 .template-preview__fallback span {
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--mar-font-size-meta);
 }
 .template-preview__fallback p {
   margin: 0;

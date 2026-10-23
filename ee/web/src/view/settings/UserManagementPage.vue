@@ -354,7 +354,7 @@ onUnmounted(() => usersPage.dispose());
   background: var(--el-fill-color-light);
   padding: 10px 12px;
   color: var(--el-text-color-primary);
-  font-size: 14px;
+  font-size: var(--mar-font-size-body);
   line-height: 1.45;
 }
 

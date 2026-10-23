@@ -15,6 +15,7 @@ import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.j
 import type { RecentRun } from '../../service/WorkbenchNotificationService.js';
 import MarIcon from '../common/MarIcon.vue';
 import WorkbenchNotificationCenter from './WorkbenchNotificationCenter.vue';
+import WorkbenchRecentSessions from './WorkbenchRecentSessions.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
@@ -153,25 +154,37 @@ function openBlankMenu(event: MouseEvent): void {
   </header>
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
-      <button
-        v-for="item in navigationItems"
-        :key="item.id"
-        :class="['nav-menu-button', { active: view === item.id }]"
-        :aria-label="item.label"
-        :title="item.label"
-        type="button"
-        @click="emit('selectNavigation', item.id)"
-      >
-        <span class="nav-item-content">
-          <el-icon aria-hidden="true">
-            <Monitor v-if="item.id === 'nodes'" />
-            <ChatDotRound v-else-if="item.id === 'conversations'" />
-            <Setting v-else-if="item.id === 'settings'" />
-            <SetUp v-else />
-          </el-icon>
-          <span class="rail-label">{{ item.label }}</span>
-        </span>
-      </button>
+      <template v-for="item in navigationItems" :key="item.id">
+        <button
+          :class="[
+            'nav-menu-button',
+            {
+              active: view === item.id,
+              utility: item.id === 'management' || item.id === 'settings'
+            }
+          ]"
+          :aria-label="item.label"
+          :aria-current="view === item.id ? 'page' : undefined"
+          :title="item.label"
+          type="button"
+          @click="emit('selectNavigation', item.id)"
+        >
+          <span class="nav-item-content">
+            <el-icon aria-hidden="true">
+              <Monitor v-if="item.id === 'nodes'" />
+              <ChatDotRound v-else-if="item.id === 'conversations'" />
+              <Setting v-else-if="item.id === 'settings'" />
+              <SetUp v-else />
+            </el-icon>
+          </span>
+        </button>
+        <WorkbenchRecentSessions
+          v-if="item.id === 'conversations'"
+          :service="notificationService"
+          :mobile-mode="mobileViewport"
+          @open-recent-run="emit('openRecentRun', $event)"
+        />
+      </template>
       <el-link
         v-if="documentationAvailable"
         class="nav-menu-button documentation-link"
@@ -196,7 +209,6 @@ function openBlankMenu(event: MouseEvent): void {
         :status-label="uploadStatusLabel"
         :mobile-mode="mobileViewport"
         @open-notification="emit('openNotification', $event)"
-        @open-recent-run="emit('openRecentRun', $event)"
         @retry-upload="emit('retryUpload', $event)"
         @cancel-upload="emit('cancelUpload', $event)"
         @remove-upload="emit('removeUpload', $event)"
@@ -317,8 +329,7 @@ function openBlankMenu(event: MouseEvent): void {
   width: var(--mar-activity-rail-width);
   flex-direction: column;
   align-items: center;
-  border-right: 1px solid var(--mar-border-medium);
-  background: var(--mar-fill-subtle);
+  background: var(--mar-bg-chrome);
 }
 
 .workbench-brand {
@@ -330,9 +341,7 @@ function openBlankMenu(event: MouseEvent): void {
   height: var(--sidebar-header-height);
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--mar-border-strong);
-  border-right: 1px solid var(--mar-border-medium);
-  background: var(--mar-bg-panel);
+  background: var(--mar-bg-chrome);
   padding: 0 18px;
   transition: padding 0.16s ease;
 }
@@ -370,38 +379,46 @@ function openBlankMenu(event: MouseEvent): void {
 .brand-copy {
   display: grid;
   min-width: 0;
-  gap: 1px;
+  gap: 0.25rem;
 }
 
 .brand-heading {
   display: flex;
   align-items: baseline;
   gap: 0.3rem;
+  line-height: 1.2;
 }
 
 .brand-heading strong {
   color: var(--mar-text-primary);
-  font-size: 0.94rem;
+  font-size: var(--mar-font-size-title);
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .brand-copy .brand-version {
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
   font-weight: 400;
+  line-height: 1.2;
   letter-spacing: normal;
 }
 
 .brand-copy span {
   color: var(--mar-text-tertiary);
-  font-size: 0.68rem;
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.2;
 }
 
 .activity-rail nav {
-  display: grid;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
   width: 100%;
-  gap: 2px;
-  padding: 6px 0;
+  gap: 0.25rem;
+  padding: 0.5rem 0 52px;
 }
 
 .global-notification-center {
@@ -420,7 +437,7 @@ function openBlankMenu(event: MouseEvent): void {
   place-items: center;
   gap: 2px;
   border: 0;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
   margin: 0 2px;
@@ -441,13 +458,13 @@ function openBlankMenu(event: MouseEvent): void {
   --el-link-hover-text-color: var(--mar-color-brand-text);
   padding: 0 8px;
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: var(--mar-font-size-meta);
   text-decoration: none;
 }
 
 .activity-rail nav button:hover:not(:disabled) {
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
 }
 
 .documentation-icon {
@@ -482,11 +499,15 @@ function openBlankMenu(event: MouseEvent): void {
   width: 100%;
 }
 
+.activity-rail nav button .el-icon {
+  font-size: 1.25rem;
+}
+
 .rail-label {
   width: 100%;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   text-align: center;
-  font-size: 0.55rem;
+  font-size: var(--mar-font-size-meta);
   line-height: 1.1;
 }
 
@@ -496,8 +517,31 @@ function openBlankMenu(event: MouseEvent): void {
   inset: var(--sidebar-header-height) auto 0 var(--mar-activity-rail-width);
   width: var(--mar-workbench-sidebar-width);
   overflow: auto;
-  border-right: 1px solid var(--mar-border-medium);
-  background: var(--mar-bg-subtle);
+  border-right: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-panel);
+}
+
+@media (min-width: 768px) {
+  .activity-rail nav .nav-menu-button.utility {
+    margin-top: auto;
+  }
+
+  .activity-rail nav .nav-menu-button.utility ~ .nav-menu-button.utility {
+    margin-top: 0;
+  }
+
+  .activity-rail nav .nav-menu-button {
+    flex-shrink: 0;
+  }
+
+  .activity-rail {
+    border-right: 1px solid var(--mar-border-subtle);
+  }
+
+  .workbench-brand {
+    border-right: 1px solid var(--mar-border-subtle);
+    border-bottom: 1px solid var(--mar-border-subtle);
+  }
 }
 
 .workspace-tree-resize {
@@ -545,7 +589,7 @@ function openBlankMenu(event: MouseEvent): void {
   padding: 7px 10px;
   text-align: left;
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--mar-font-size-body);
   line-height: 1.35;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -602,7 +646,7 @@ function openBlankMenu(event: MouseEvent): void {
     bottom: auto;
     left: calc(12px + var(--mar-brand-logo-size) + 8px);
     width: auto;
-    height: 46px;
+    height: var(--sidebar-header-height);
     flex-direction: row;
     border: 0;
     background: transparent;
@@ -612,12 +656,15 @@ function openBlankMenu(event: MouseEvent): void {
 @media (max-width: 767px) {
   .activity-rail nav {
     display: flex;
+    flex-direction: row;
+    box-sizing: border-box;
+    align-items: center;
     min-width: 0;
     width: 100%;
     max-width: 100%;
     height: 100%;
     flex: 1 1 auto;
-    padding: 0;
+    padding: 4px 0 5px;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-inline: contain;
@@ -637,8 +684,8 @@ function openBlankMenu(event: MouseEvent): void {
     top: 0;
     right: 0;
     display: block;
-    height: 46px;
-    flex: 0 0 46px;
+    height: var(--sidebar-header-height);
+    flex: 0 0 var(--sidebar-header-height);
     margin-left: 0;
   }
 }
@@ -649,26 +696,26 @@ function openBlankMenu(event: MouseEvent): void {
     box-sizing: border-box;
     display: grid;
     flex: 0 0 auto;
-    min-height: 36px;
-    min-width: 44px;
-    width: auto;
+    min-height: 0;
+    min-width: 0;
+    width: 36px;
     height: 36px;
     place-items: center;
     border: 0;
-    border-radius: var(--el-border-radius-base);
+    border-radius: var(--mar-radius-selection);
     background: transparent;
     color: var(--mar-text-secondary);
     border-left: 0;
-    margin: 5px 1px;
-    padding: 2px;
+    margin: 0 1px;
+    padding: 2px 6px;
     font: inherit;
     line-height: normal;
     text-decoration: none;
   }
 
   .activity-rail nav .nav-menu-button .nav-item-content {
-    height: 32px;
-    grid-template-rows: 18px 12px;
+    min-height: 18px;
+    grid-template-rows: 18px;
     align-content: center;
     gap: 2px;
   }
@@ -678,7 +725,7 @@ function openBlankMenu(event: MouseEvent): void {
     width: 18px;
     height: 18px;
     place-items: center;
-    font-size: 18px;
+    font-size: 1.125rem;
     line-height: 18px;
   }
 
@@ -693,9 +740,7 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail nav .nav-menu-button .rail-label {
-    height: 12px;
-    font-size: 0.55rem;
-    line-height: 12px;
+    display: none;
   }
 
   .documentation-link {

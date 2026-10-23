@@ -16,7 +16,51 @@ function event(payload: Record<string, unknown>): MarAgentEvent {
 }
 
 describe('MAR tool presentation projection', () => {
+  it.each([undefined, 'cell'])(
+    'retains Read paths, status and details on direct/nested replay (%s)',
+    (parentCallId) => {
+      const events = [
+        event({
+          type: 'tool.started',
+          callId: 'read',
+          toolName: 'read',
+          parentCallId,
+          input: { reads: [{ path: '目录/a.ts', offset: 2, limit: 8 }, { path: 'src/b.ts' }] }
+        }),
+        event({
+          type: 'tool.failed',
+          callId: 'read',
+          toolName: 'read',
+          parentCallId,
+          code: 'READ_FAILED',
+          message: 'File unavailable'
+        })
+      ];
+      const replay = () => {
+        const normalizer = new MarAgentConversationNormalizer();
+        return events.flatMap((entry) => normalizer.normalize(entry));
+      };
+      const projected = replay();
+      expect(projected).toHaveLength(2);
+      expect(replay()).toEqual(projected);
+      expect(projected.map((item) => item.status)).toEqual(['IN_PROGRESS', 'FAILED']);
+      expect(projected[1]?.itemId).toBe(projected[0]?.itemId);
+      for (const item of projected) {
+        expect(item.payload.toolPresentation).toEqual({
+          kind: 'READ',
+          paths: ['目录/a.ts', 'src/b.ts']
+        });
+        expect(item.payload.inputSummary).toContain('offset');
+      }
+    }
+  );
   it.each([
+    [
+      'read',
+      { reads: [{ path: 'src/a.ts', offset: 3, limit: 20 }, { path: '目录/b.ts' }] },
+      { results: [] },
+      'READ'
+    ],
     [
       'web_search',
       { query: '原始 query' },
@@ -223,8 +267,8 @@ describe('MAR tool presentation projection', () => {
         normalizer.normalize(
           event({
             type: 'tool.started',
-            toolName: 'read',
-            callId: 'nested-read',
+            toolName: 'exec',
+            callId: 'nested-exec',
             parentCallId: 'cell',
             input: {}
           })

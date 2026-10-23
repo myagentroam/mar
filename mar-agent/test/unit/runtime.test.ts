@@ -220,7 +220,8 @@ class HistoryAdapter implements ModelAdapter {
     if (this.requests.length === 3) {
       yield { type: 'text.delta', itemId: 'answer', phase: 'final_answer', delta: 'answer-' };
       yield {
-        type: 'reasoning.summary',
+        type: 'reasoning.completed',
+        representation: 'summary',
         itemId: 'reasoning',
         text: 'Compaction reasoning must remain internal.'
       };
@@ -2102,7 +2103,12 @@ describe('agent runtime', () => {
         now = 50;
         yield { type: 'usage', usage: { outputTokens: 12 } };
         now = 120;
-        yield { type: 'reasoning.summary', itemId: 'reasoning', text: 'Checking.' };
+        yield {
+          type: 'reasoning.completed',
+          representation: 'summary',
+          itemId: 'reasoning',
+          text: 'Checking.'
+        };
         now = 200;
         yield { type: 'text.delta', itemId: 'answer', phase: 'final_answer', delta: 'Do' };
         now = 1_500;
@@ -2123,7 +2129,7 @@ describe('agent runtime', () => {
       const events = [];
       for await (const event of handle) events.push(event);
       await handle.result();
-      const reasoning = events.find((event) => event.type === 'reasoning.summary');
+      const reasoning = events.find((event) => event.type === 'reasoning.completed');
       const measurements = events.filter((event) => event.type === 'model.performance');
       expect(measurements).toHaveLength(2);
       expect(measurements[0]).toMatchObject({ latencyMs: 120 });
@@ -2659,7 +2665,7 @@ describe('agent runtime', () => {
         (event) =>
           event.type === 'message.delta' ||
           event.type === 'message.completed' ||
-          event.type === 'reasoning.summary'
+          event.type === 'reasoning.completed'
       )
     ).toBe(false);
     expect(adapter.requests[2]?.system).toBe(adapter.requests[1]?.system);

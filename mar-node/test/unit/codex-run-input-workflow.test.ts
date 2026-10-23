@@ -3,7 +3,7 @@ import { withNonImageAttachmentPrompt } from '../../src/util/node-operation-pars
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createEnvelope, steerComposerMessage } from '../../../packages/protocol/src/index.js';
 import { CodexAppServerClient } from '../../src/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
@@ -16,11 +16,19 @@ async function primeCodexProfile(connector: NodeConnector): Promise<void> {
     }
   ).executeNodeOperation('runner.profiles.list', {});
 }
+
+async function createTestWorkspacePath(): Promise<string> {
+  const workspacePath = await mkdtemp(join(tmpdir(), 'mar-codex-run-input-workflow-'));
+  onTestFinished(() => rm(workspacePath, { recursive: true, force: true }));
+  return workspacePath;
+}
+
 describe('Codex input, commands, and event projection', () => {
   it('completes only a current MAR Goal when the bound native Codex Goal completes in its managed Turn', async () => {
     const database = new NodeDatabase(':memory:', 'node-codex-native-goal');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
-      path: '/workspace/native-goal',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -209,9 +217,10 @@ describe('Codex input, commands, and event projection', () => {
     const steerTurn = vi.fn(async () => undefined);
     const interruptTurn = vi.fn(async () => undefined);
     const database = new NodeDatabase(':memory:', 'node-plan-access');
+    const workspacePath = await createTestWorkspacePath();
     const workspace = database.saveWorkspace({
       id: 'workspace-plan-access',
-      path: '/workspace/plan-access',
+      path: workspacePath,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -312,6 +321,7 @@ describe('Codex input, commands, and event projection', () => {
     if ((queued as { delivery: string }).delivery === 'QUEUED')
       await expect(
         internals.executeNodeOperation('workspace.queue.message.execute', {
+          workspaceId: workspace.id,
           queueItemId: (queued as { queueItemId: string }).queueItemId
         })
       ).resolves.toMatchObject({ delivery: 'ACCEPTED', run: { id: expect.any(String) } });
@@ -1134,8 +1144,11 @@ describe('Codex input, commands, and event projection', () => {
           })
         }),
         expect.objectContaining({
-          kind: 'reasoning_summary',
-          payload: { sections: [{ index: 0, text: 'Check the current directory first.' }] }
+          kind: 'reasoning',
+          payload: {
+            representation: 'summary',
+            sections: [{ index: 0, text: 'Check the current directory first.' }]
+          }
         }),
         expect.objectContaining({
           kind: 'tool_call',

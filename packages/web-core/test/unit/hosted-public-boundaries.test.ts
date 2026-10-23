@@ -150,14 +150,14 @@ describe('Public Hosted Conversation Boundaries', () => {
     expect(markdownSource).toContain("token.attrSet('src', props.resourceUrl(path))");
   });
 
-  it('Loads older hosted conversation history when scrolling near the top', () => {
+  it('Loads older hosted history on scroll unless a failure requires manual retry', () => {
     const source = readFileSync(
       new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
       'utf8'
     );
 
-    expect(source).toContain(
-      'conversationScrollService.handleScroll(() => void loadOlderConversationHistory())'
+    expect(source).toMatch(
+      /conversationScrollService\.handleScroll\(\(\) => \{\s*if \(props\.workspace\.olderHistoryError\.value === undefined\) void loadOlderConversationHistory\(\);/u
     );
   });
 
