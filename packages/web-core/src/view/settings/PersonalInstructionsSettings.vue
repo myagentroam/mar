@@ -97,6 +97,34 @@ function select(scope: Scope): void {
   void form.value?.clearValidate();
 }
 
+function navigateScopes(event: KeyboardEvent, index: number): void {
+  let next = index;
+  switch (event.key) {
+    case 'ArrowRight':
+      next = (index + 1) % scopeItems.length;
+      break;
+    case 'ArrowLeft':
+      next = (index + scopeItems.length - 1) % scopeItems.length;
+      break;
+    case 'Home':
+      next = 0;
+      break;
+    case 'End':
+      next = scopeItems.length - 1;
+      break;
+    case 'Enter':
+    case ' ':
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
+  select(scopeItems[next]!.id);
+  (event.currentTarget as HTMLElement).parentElement
+    ?.querySelectorAll<HTMLElement>('[role="tab"]')
+    [next]?.focus();
+}
+
 function validateContent(): void {
   void form.value?.validateField('content').catch(() => undefined);
 }
@@ -182,13 +210,22 @@ async function clear(): Promise<void> {
       <h2>{{ translate('personalInstructions.title') }}</h2>
       <p>{{ translate('personalInstructions.scopeHelp') }}</p>
     </header>
-    <div class="instruction-scopes" role="tablist">
+    <div
+      class="instruction-scopes"
+      role="tablist"
+      :aria-label="translate('personalInstructions.title')"
+    >
       <el-check-tag
-        v-for="item in scopeItems"
+        v-for="(item, index) in scopeItems"
         :key="item.id"
+        :id="`instruction-scope-${item.id}`"
         :checked="activeScope === item.id"
+        :aria-selected="activeScope === item.id"
+        :tabindex="activeScope === item.id ? 0 : -1"
+        aria-controls="personal-instructions-panel"
         role="tab"
         @change="select(item.id)"
+        @keydown="navigateScopes($event, index)"
       >
         <MarIcon name="document" v-if="item.logo === undefined" />
         <img
@@ -201,11 +238,20 @@ async function clear(): Promise<void> {
         <span>{{ translate(item.label) }}</span>
       </el-check-tag>
     </div>
-    <p v-if="!loading && failed" class="instruction-state">
+    <p
+      v-if="!loading && failed"
+      id="personal-instructions-panel"
+      role="tabpanel"
+      :aria-labelledby="`instruction-scope-${activeScope}`"
+      class="instruction-state"
+    >
       {{ translate('personalInstructions.loadFailed') }}
     </p>
     <el-form
       v-else
+      id="personal-instructions-panel"
+      role="tabpanel"
+      :aria-labelledby="`instruction-scope-${activeScope}`"
       ref="form"
       :model="formState"
       :rules="rules"
@@ -294,17 +340,22 @@ h2 {
 }
 
 .instruction-scopes :deep(.el-check-tag:hover) {
-  background: var(--mar-fill-muted);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
 .instruction-scopes :deep(.el-check-tag.is-checked) {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .instruction-scopes :deep(.el-check-tag.is-checked:hover) {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
+}
+
+.instruction-scopes :deep(.el-check-tag:focus-visible) {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: 2px;
 }
 
 .instruction-scopes img {

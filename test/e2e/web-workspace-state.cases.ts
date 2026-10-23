@@ -2683,7 +2683,10 @@ test('Workspace registration uses an independent action target and cancellation 
         parentPath: null,
         browseRoots: ['/home/node'],
         selectable: true,
-        entries: [],
+        entries: [
+          { name: 'candidate', path: '/home/node/candidate', selectable: true },
+          { name: 'other', path: '/home/node/other', selectable: true }
+        ],
         truncated: false
       }
     });
@@ -2701,6 +2704,38 @@ test('Workspace registration uses an independent action target and cancellation 
   const dialog = page.getByRole('dialog', { name: '登记工作区' });
   await expect(dialog).toBeVisible();
   await expect.poll(() => directoryTarget).toBe('node-2');
+  const candidate = dialog.getByRole('button', { name: 'candidate', exact: true });
+  const other = dialog.getByRole('button', { name: 'other', exact: true });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const theme of ['daylight', 'vscode-dark-2026']) {
+      await page.evaluate((theme) => {
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.toggle('dark', theme !== 'daylight');
+      }, theme);
+      await candidate.click();
+      const colors = await candidate.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-selection)';
+        probe.style.color = 'var(--mar-text-primary)';
+        element.append(probe);
+        const style = getComputedStyle(probe);
+        const selected = style.backgroundColor;
+        const color = style.color;
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        const hover = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { selected, color, hover };
+      });
+      await expect(candidate).toHaveCSS('background-color', colors.selected);
+      await expect(candidate).toHaveCSS('color', colors.color);
+      await expect(candidate).toHaveCSS('border-radius', '6px');
+      await candidate.hover();
+      await expect(candidate).toHaveCSS('background-color', colors.selected);
+      await other.hover();
+      await expect(other).toHaveCSS('background-color', colors.hover);
+    }
+  }
   const selection = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}')
   );

@@ -482,7 +482,7 @@ h3 {
   background: var(--mar-bg-panel);
 }
 .theme-option.selected {
-  border-color: var(--mar-color-brand);
+  background: var(--mar-fill-selection);
 }
 .theme-choice {
   display: flex;
@@ -501,6 +501,9 @@ h3 {
 }
 .theme-choice:hover {
   background: var(--mar-fill-row-hover);
+}
+.theme-option.selected .theme-choice:hover {
+  background: transparent;
 }
 .theme-choice:focus-visible {
   outline: 2px solid var(--mar-color-brand);

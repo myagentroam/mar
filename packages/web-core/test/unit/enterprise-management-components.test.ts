@@ -11,6 +11,7 @@ import EnterpriseNodeDetails from '../../../../ee/web/src/view/settings/NodeDeta
 import EnterpriseUserManagementPage from '../../../../ee/web/src/view/settings/EnterpriseUserManagementPage.vue?unit-render';
 import OrganizationManagementPage from '../../../../ee/web/src/view/settings/OrganizationManagementPage.vue?unit-render';
 import EnterpriseModels from '../../../../ee/web/src/view/settings/MarAgentModelManagementPage.vue?unit-render';
+import EnterpriseResources from '../../../../ee/web/src/view/settings/ResourceManagementPanel.vue?unit-render';
 import ResourceManagementFilters from '../../../../ee/web/src/view/settings/ResourceManagementFilters.vue?unit-render';
 import WorkspaceRegistrationPicker from '../../../../ee/web/src/view/workspace/WorkspaceRegistrationPicker.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
@@ -58,6 +59,74 @@ function button(view: ReturnType<typeof renderComponent>, label: string) {
 }
 
 describe('Enterprise management components', () => {
+  it.each([
+    ['NODE', true],
+    ['NODE', false],
+    ['WORKSPACE', true],
+    ['WORKSPACE', false]
+  ] as const)(
+    'keeps %s removal after organization grants when writable=%s',
+    async (resourceType, writable) => {
+      const rows = [
+        {
+          id: 'organization-node',
+          nodeId: 'organization-node',
+          workspaceId: 'organization-workspace',
+          displayName: 'Organization resource',
+          ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 2 }
+        },
+        {
+          id: 'personal-node',
+          nodeId: 'personal-node',
+          workspaceId: 'personal-workspace',
+          displayName: 'Personal resource',
+          ownership: { ownerType: 'PERSONAL', ownerUserId: 7 }
+        }
+      ];
+      const request = vi.fn(async (path: string) => {
+        if (path === '/api/organizations') return { organizations };
+        if (path === '/api/enterprise/users') return { users: [] };
+        if (path.startsWith('/api/resources?'))
+          return {
+            nodes: resourceType === 'NODE' ? rows : [],
+            workspaces: resourceType === 'WORKSPACE' ? rows : [],
+            page: 1,
+            pageSize: 20,
+            total: rows.length,
+            hasMore: false
+          };
+        throw new Error(`Unexpected fixture request: ${path}`);
+      });
+      const view = renderComponent(EnterpriseResources, {
+        request,
+        writable,
+        resourceType,
+        edition: 'ENTERPRISE',
+        role: 'ADMIN'
+      });
+      try {
+        await flushComponent();
+        const actionRows = view
+          .findAll('div')
+          .filter((node) => node.props['class'] === 'row-actions');
+        expect(actionRows).toHaveLength(2);
+        for (const [index, actionRow] of actionRows.entries()) {
+          const actions = actionRow.children.filter((node) => node.type === 'ElButton');
+          expect(actions.map((node) => textContent(node).trim())).toEqual(
+            index === 0 ? ['Edit', 'Grant', 'Delete'] : ['Edit', 'Delete']
+          );
+          expect(actions.every((node) => node.props['disabled'] === !writable)).toBe(true);
+          expect(actions.at(-1)?.props['type']).toBe('danger');
+        }
+        expect(request.mock.calls.every(([path]) => !path.startsWith('/api/resource-grants'))).toBe(
+          true
+        );
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it.each(['ADMIN', 'ORG_ADMIN', 'MEMBER'] as const)(
     'projects personal model management and scoped ownership for enterprise %s',
     async (role) => {

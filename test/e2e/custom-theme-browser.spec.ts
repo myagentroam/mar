@@ -462,6 +462,29 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
   await expect(page.locator('.theme-settings').getByRole('table')).toHaveCount(0);
   await expect(options.first().getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const option of [options.nth(1), options.first()]) {
+      const choice = option.getByRole('button', { name: /^Inspect /u });
+      await choice.click();
+      await expect(choice).toHaveAttribute('aria-pressed', 'true');
+      const reference = await option.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-selection)';
+        probe.style.borderColor = 'var(--mar-border-default)';
+        element.append(probe);
+        const style = getComputedStyle(probe);
+        const result = { background: style.backgroundColor, border: style.borderColor };
+        probe.remove();
+        return result;
+      });
+      await expect(option).toHaveCSS('background-color', reference.background);
+      await expect(option).toHaveCSS('border-color', reference.border);
+      await choice.hover();
+      await expect(choice).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(option).toHaveCSS('background-color', reference.background);
+    }
+  }
   await options
     .nth(1)
     .getByRole('button', { name: /^Inspect /u })
