@@ -19,6 +19,15 @@ test('Table overflow hints share the theme without template-ref warnings', async
   await expect(page.locator('.mar-tooltip:visible')).toContainText(
     'A complete long table cell description'
   );
+  const hint = page.locator('.mar-tooltip:visible');
+  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await expect(hint).toHaveCSS('pointer-events', 'auto');
+  await hint.hover();
+  await expect(hint).toBeVisible();
+  await hint.click({ clickCount: 3, position: { x: 24, y: 12 } });
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain(
+    'A complete long table cell description'
+  );
   expect(warnings.filter((message) => /ref owner|Missing ref|unmounted/i.test(message))).toEqual(
     []
   );

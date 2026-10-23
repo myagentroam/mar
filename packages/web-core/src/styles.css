@@ -17,6 +17,15 @@
   overflow-wrap: anywhere;
 }
 
+.el-popper.mar-tooltip .el-popper__arrow::before {
+  background: var(--mar-control-bg-color-overlay);
+  border-color: var(--mar-border-default);
+}
+
+.el-popper.mar-tooltip-passive {
+  pointer-events: none;
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,

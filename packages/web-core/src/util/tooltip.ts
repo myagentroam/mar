@@ -20,7 +20,7 @@ function bindEscape(value: Element | ComponentPublicInstance | null): void {
   });
 }
 
-// Keep hover/focus hints passive: Enter and Space belong to the underlying control.
+// Hover/focus hints leave Enter and Space to the underlying control.
 export const tableTooltipOptions = {
   effect: 'light',
   popperClass: 'mar-tooltip',
@@ -28,11 +28,15 @@ export const tableTooltipOptions = {
   triggerKeys: [],
   showAfter: 350,
   hideAfter: 100,
-  showArrow: false
+  showArrow: true,
+  enterable: true
 } satisfies Partial<ElTooltipProps>;
 
 // Table overflow hints are created outside a Vue render owner and cannot take a template ref.
+// Action hints must not capture the pointer while the user moves to an adjacent control.
 export const tooltipOptions = {
   ...tableTooltipOptions,
+  popperClass: 'mar-tooltip mar-tooltip-passive',
+  enterable: false,
   ref: bindEscape
 } satisfies Partial<ElTooltipProps> & VNodeProps;

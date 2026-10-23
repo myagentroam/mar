@@ -156,7 +156,10 @@ function openBlankMenu(event: MouseEvent): void {
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
       <template v-for="item in navigationItems" :key="item.id">
-        <el-tooltip v-bind="tooltipOptions" :content="item.label"
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="item.label"
+          :placement="mobileViewport ? 'bottom' : 'right'"
           ><button
             :class="[
               'nav-menu-button',

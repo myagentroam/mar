@@ -90,29 +90,32 @@ function runTime(run: RecentRun): string {
       popper-class="recent-sessions-popover"
     >
       <template #reference>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('workbenchNotificationCenter.recentSessions')"
-          ><span class="mar-tooltip-control"
-            ><button
-              type="button"
-              :class="['recent-sessions-trigger', { active: open }]"
-              :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-              :aria-description="
-                translate('workbenchNotificationCenter.recentSessionsCount', {
-                  count: activeSessionCount
-                })
-              "
-              :aria-expanded="open"
-              @keydown.esc.stop="open = false"
-            >
-              <MarIcon name="recent-sessions" aria-hidden="true" />
-              <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
-                activeSessionCount
-              }}</span>
-            </button></span
-          ></el-tooltip
-        >
+        <span class="recent-sessions-reference">
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :placement="mobileMode ? 'bottom' : 'right'"
+            :content="translate('workbenchNotificationCenter.recentSessions')"
+            ><span class="mar-tooltip-control"
+              ><button
+                type="button"
+                :class="['recent-sessions-trigger', { active: open }]"
+                :aria-label="translate('workbenchNotificationCenter.recentSessions')"
+                :aria-description="
+                  translate('workbenchNotificationCenter.recentSessionsCount', {
+                    count: activeSessionCount
+                  })
+                "
+                :aria-expanded="open"
+                @keydown.esc.stop="open = false"
+              >
+                <MarIcon name="recent-sessions" aria-hidden="true" />
+                <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
+                  activeSessionCount
+                }}</span>
+              </button></span
+            ></el-tooltip
+          >
+        </span>
       </template>
       <section
         class="recent-sessions-panel"
@@ -163,13 +166,21 @@ function runTime(run: RecentRun): string {
   flex: none;
   width: 100%;
 }
+.recent-sessions-reference {
+  display: flex;
+  width: calc(100% - 4px);
+  margin: 0 2px;
+}
+.recent-sessions-reference > .mar-tooltip-control {
+  width: 100%;
+}
 .recent-sessions-trigger {
   position: relative;
   display: grid;
   place-items: center;
-  width: calc(100% - 4px);
+  width: 100%;
   min-height: var(--mar-rail-item-height);
-  margin: 0 2px;
+  margin: 0;
   padding: 3px 0;
   border: 0;
   border-radius: var(--mar-radius-selection);
@@ -208,11 +219,15 @@ function runTime(run: RecentRun): string {
 .mobile-mode {
   width: 36px;
 }
+.mobile-mode .recent-sessions-reference {
+  width: 100%;
+  margin: 0;
+}
 .mobile-mode .recent-sessions-trigger {
   width: 36px;
   min-height: 0;
   height: 36px;
-  margin: 0 1px;
+  margin: 0;
   padding: 2px 6px;
 }
 .mobile-mode .recent-sessions-trigger .mar-icon {
