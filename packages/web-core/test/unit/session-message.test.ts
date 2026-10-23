@@ -172,6 +172,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     sessions.value = sessions.value.filter((candidate) => candidate.id !== previousId).concat(next);
     if (wasSelected) selectedSessionId.value = next.id;
   });
+  const runs = { value: [] as import('../../src/model/workbench.js').AgentRun[] };
   const submission = createWorkbenchSubmissionService();
   const service = createWorkbenchSessionMessageService({
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
@@ -180,7 +181,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     selectedSession: { value: selectedSession },
     selectedRunId: { value: undefined },
     sessions,
-    runs: { value: [] },
+    runs,
     input: inputValue,
     skillTokens,
     attachments,
@@ -237,6 +238,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
   } as never);
   return {
     service,
+    runs,
     submission,
     resolveRequest,
     rejectRequest,
@@ -284,6 +286,26 @@ const acceptedResult = {
 };
 
 describe('Workbench Message Submission Status', () => {
+  it.each(['SUCCEEDED', 'FAILED', 'INTERRUPTED'])(
+    'accepts a terminal %s receipt without opening the old Run or restarting observation',
+    async (status) => {
+      const fixture = pendingRequestHarness();
+      const active = { ...acceptedResult.run, id: 'newer-run', status: 'RUNNING' };
+      fixture.runs.value = [active as never];
+      const pending = fixture.service.send();
+      fixture.resolveRequest({
+        ...acceptedResult,
+        run: { ...acceptedResult.run, status },
+        idempotent: true
+      });
+      await pending;
+      expect(fixture.inputValue.value).toBe('');
+      expect(fixture.openRun).not.toHaveBeenCalled();
+      expect(fixture.beginSessionWatch).not.toHaveBeenCalled();
+      expect(fixture.appendUserMessage).not.toHaveBeenCalled();
+      expect(fixture.runs.value.find((run) => run.id === active.id)).toEqual(active);
+    }
+  );
   it('does not send ordinary input during a pending session mutation, even after the submission gate expires', async () => {
     const harness = pendingRequestHarness();
     harness.submissionAvailable.mockReturnValue(false);

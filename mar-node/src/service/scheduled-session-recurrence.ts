@@ -48,16 +48,44 @@ export function nextScheduledAt(cron: string, timezone: string, after: number): 
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23'
   });
-  const previousKey = localKey(formatter, after);
-  let candidate = Math.floor(after / 60_000) * 60_000 + 60_000;
-  for (let index = 0; index < 8 * 366 * 24 * 60; index++, candidate += 60_000) {
-    const local = localParts(formatter, candidate);
-    if (matches(schedule, local) && local.key !== previousKey) return candidate;
+  const start = localParts(formatter, after);
+  const dayMs = 24 * 60 * 60_000;
+  const limit = Math.floor(after / 60_000) * 60_000 + 8 * 366 * dayMs;
+  const firstDay = Date.UTC(start.year, start.month - 1, start.day);
+  const hours = [...schedule.hour].sort((a, b) => a - b);
+  const minutes = [...schedule.minute].sort((a, b) => a - b);
+  // These are calendar dates represented in UTC, not fixed-length local days.
+  for (let day = firstDay; day <= limit + dayMs; day += dayMs) {
+    const date = new Date(day);
+    if (!matchesDate(schedule, date)) continue;
+    // Sample both sides of this date to include offsets on either side of a
+    // transition, including half-hour folds and whole-day calendar jumps.
+    const offsets = new Set(
+      [day - dayMs, day, day + 2 * dayMs].map(
+        (time) => localParts(formatter, time).timestamp - time
+      )
+    );
+    for (const hour of hours) {
+      if (day === firstDay && hour < start.hour) continue;
+      for (const minute of minutes) {
+        if (day === firstDay && hour === start.hour && minute < start.minute) continue;
+        const localTime = day + (hour * 60 + minute) * 60_000;
+        let earliest = Infinity;
+        for (const offset of offsets) {
+          const candidate = localTime - offset;
+          if (localParts(formatter, candidate).timestamp === localTime) {
+            earliest = Math.min(earliest, candidate);
+          }
+        }
+        // Resolve an ambiguous minute before filtering by after: the second
+        // physical occurrence must never become a replacement for the first.
+        if (earliest > after && earliest <= limit) return earliest;
+      }
+    }
   }
   throw new Error('SCHEDULE_NEXT_TIME_UNAVAILABLE');
 }
@@ -163,37 +191,21 @@ function localParts(formatter: Intl.DateTimeFormat, time: number) {
   const minute = Number(fields['minute']);
   const day = Number(fields['day']);
   const month = Number(fields['month']);
-  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(
-    fields['weekday'] ?? ''
-  );
+  const year = Number(fields['year']);
   return {
+    year,
     hour,
     minute,
     day,
     month,
-    weekday,
-    key: `${fields['year']}-${fields['month']}-${fields['day']}T${fields['hour']}:${fields['minute']}`
+    timestamp: Date.UTC(year, month - 1, day, hour, minute)
   };
 }
 
-function matches(
-  schedule: ParsedCronExpression,
-  local: {
-    readonly hour: number;
-    readonly minute: number;
-    readonly day: number;
-    readonly month: number;
-    readonly weekday: number;
-  }
-): boolean {
-  if (
-    !schedule.minute.has(local.minute) ||
-    !schedule.hour.has(local.hour) ||
-    !schedule.month.has(local.month)
-  )
-    return false;
-  const dayOfMonthMatches = schedule.dayOfMonth.has(local.day);
-  const dayOfWeekMatches = schedule.dayOfWeek.has(local.weekday);
+function matchesDate(schedule: ParsedCronExpression, date: Date): boolean {
+  if (!schedule.month.has(date.getUTCMonth() + 1)) return false;
+  const dayOfMonthMatches = schedule.dayOfMonth.has(date.getUTCDate());
+  const dayOfWeekMatches = schedule.dayOfWeek.has(date.getUTCDay());
   const dayMatches =
     schedule.dayOfMonthWildcard && schedule.dayOfWeekWildcard
       ? true
@@ -203,8 +215,4 @@ function matches(
           ? dayOfMonthMatches
           : dayOfMonthMatches || dayOfWeekMatches;
   return dayMatches;
-}
-
-function localKey(formatter: Intl.DateTimeFormat, time: number): string {
-  return localParts(formatter, time).key;
 }

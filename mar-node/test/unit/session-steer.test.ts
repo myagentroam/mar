@@ -134,6 +134,13 @@ describe('Node steering delivery', () => {
       'conversation.item',
       expect.objectContaining({ itemId: 'canonical-record' })
     );
+    f.runtime.finishRun(run.id, 'SUCCEEDED');
+    f.runtime.removeTerminalRun(run.id);
+    expect(f.runtime.findMessageSubmission(f.session.id, 'target')).toMatchObject({
+      kind: 'run',
+      run: { id: run.id, status: 'SUCCEEDED' }
+    });
+    expect(f.runtime.findMessageRun(f.session.id, 'target')).toBeUndefined();
   });
 
   it.each(['conversation', 'queue', 'continuation'] as const)(
@@ -312,12 +319,12 @@ describe('Node steering delivery', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('prepares queue steering before changing queue state or interrupting work', () => {
+  it('prepares queue steering before changing queue state or interrupting work', async () => {
     const f = fixture();
     f.start();
     const item = f.queue('oversized', '字'.repeat(50_000));
     const before = f.runtime.sessionQueue(f.session.id);
-    expect(() => f.coordinator.executeQueueItem(item.id)).toThrow('COMPOSER_TAG_INVALID');
+    await expect(f.coordinator.executeQueueItem(item.id)).rejects.toThrow('COMPOSER_TAG_INVALID');
     expect(f.runtime.sessionQueue(f.session.id)).toEqual(before);
     expect(f.coordinator.isImmediate(item.id)).toBe(false);
     expect(f.control).not.toHaveBeenCalled();
@@ -364,13 +371,13 @@ describe('Node steering delivery', () => {
     expect(composerVisibleText(pending.input)).toBe('Original task\n\nCorrected context');
   });
 
-  it('uses ordinary SEND behavior when idle, including a paused existing queue', () => {
+  it('uses ordinary SEND behavior when idle, including a paused existing queue', async () => {
     const f = fixture();
     const old = f.queue('old', 'Older queued input');
     f.runtime.pauseSessionQueue(f.session.id);
     const item = f.queue('new');
     expect(
-      f.coordinator.settle({
+      await f.coordinator.settle({
         submissionId: item.id,
         intent: 'REPLACE_CURRENT',
         queueBefore: item.queueBefore,

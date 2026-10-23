@@ -385,15 +385,16 @@ export class ScheduledSessionStore {
     status: Exclude<ScheduledOccurrenceStatus, 'CLAIMED'>,
     code?: string,
     runId?: string
-  ): void {
+  ): boolean {
     const result = this.database
       .prepare(
         `UPDATE scheduled_session_occurrences SET status=?,code=?,run_id=?,updated_at=?
         WHERE id=? AND status IN ('CLAIMED','SUBMITTED')`
       )
       .run(status, code ?? null, runId ?? null, this.now(), occurrenceId);
-    if (result.changes === 0 || status === 'SUBMITTED') return;
-    this.pruneTerminal(occurrenceId);
+    if (result.changes !== 1) return false;
+    if (status !== 'SUBMITTED') this.pruneTerminal(occurrenceId);
+    return true;
   }
 
   private pruneTerminal(occurrenceId: string): void {

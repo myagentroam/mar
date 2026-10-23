@@ -50,12 +50,13 @@ export class ScheduledSessionCoordinator {
   ): void {
     if (run.source !== 'SCHEDULED') return;
     const store = this.options.store();
-    store.finish(
+    const finished = store.finish(
       run.clientMessageId,
       status === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED',
       status === 'SUCCEEDED' ? undefined : `SCHEDULE_RUN_${status}`,
       run.id
     );
+    if (!finished) return;
     const task = store.getById(run.clientMessageId.split(':', 1)[0]!);
     if (task !== undefined)
       this.publishTaskNotification(task, run.clientMessageId, {
@@ -218,8 +219,8 @@ export class ScheduledSessionCoordinator {
       }
       if (failureCode !== undefined) {
         const status = submitting && failureCode !== 'SCHEDULE_SESSION_BUSY' ? 'FAILED' : 'SKIPPED';
-        this.options.store().finish(occurrenceId, status, failureCode);
-        this.notify(task, occurrenceId, failureCode, status);
+        if (this.options.store().finish(occurrenceId, status, failureCode))
+          this.notify(task, occurrenceId, failureCode, status);
       }
     }
   }

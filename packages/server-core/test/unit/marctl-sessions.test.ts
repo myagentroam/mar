@@ -1090,6 +1090,34 @@ describe('Workspace-bound marctl sessions', () => {
     expect(message).not.toHaveProperty('marAgentModels');
   });
 
+  it('relays a terminal idempotent message receipt through marctl unchanged', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const original = requestNode.getMockImplementation()!;
+    const receipt = {
+      session: { id: 'target' },
+      run: { id: 'original-run', status: 'FAILED' },
+      delivery: 'STARTED',
+      idempotent: true
+    };
+    requestNode.mockImplementation(async (...args) =>
+      args[1] === 'session.message' ? receipt : original(...args)
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        clientMessageId: 'original-message',
+        content: 'Retry',
+        deliveryIntent: 'SEND'
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject(receipt);
+  });
+
   it('forwards Node-issued accepted receipts through the marctl audit observer once', async () => {
     const recordSharedConversation = vi.fn().mockResolvedValue(undefined);
     const { app, headers, requestNode } = await fixture(true, true, {

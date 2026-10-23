@@ -13,6 +13,7 @@ import { translate } from './LocalePreferenceService.js';
 import { hasUnavailableSkillToken, serializeComposerMessage } from './ComposerSkillTokenService.js';
 import { sessionSubmissionContext } from './WorkbenchSubmissionService.js';
 import { errorCode } from '../util/api-error.js';
+import { isTerminalRunStatus } from './RunService.js';
 
 type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 
@@ -372,7 +373,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           latest,
           ...options.runs.value.filter((candidate) => candidate.id !== result.run.id)
         ];
-        if (result.delivery === undefined || result.delivery === 'STARTED')
+        if (
+          (result.delivery === undefined || result.delivery === 'STARTED') &&
+          !isTerminalRunStatus(latest.status)
+        )
           options.openRun(result.run.id);
       } else {
         options.cacheRun(submissionNodeId, session.workspaceId, {
