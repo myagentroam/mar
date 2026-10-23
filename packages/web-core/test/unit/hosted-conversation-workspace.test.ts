@@ -37,6 +37,24 @@ const template = {
   updatedAt: 1
 } as const;
 
+it('Retains the ready hosted directory and its cursor when refresh fails', async () => {
+  const failure = new Error('Directory temporarily unavailable');
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({ items: [conversation], nextCursor: 'retained-cursor' })
+    .mockRejectedValueOnce(failure)
+    .mockResolvedValueOnce({ items: [], nextCursor: null });
+  const workspace = service(request as HostedConversationRequest);
+  await workspace.loadConversations();
+  await expect(workspace.loadConversations()).rejects.toBe(failure);
+  expect(workspace.conversationsLoaded.value).toBe(true);
+  expect(workspace.conversations.value).toHaveLength(1);
+  expect(workspace.hasMoreConversations.value).toBe(true);
+  await workspace.loadMoreConversations();
+  expect(request.mock.calls[2]?.[0]).toContain('cursor=retained-cursor');
+  expect(workspace.hasMoreConversations.value).toBe(false);
+});
+
 const snapshot = {
   conversation,
   template,
@@ -106,10 +124,12 @@ function hostedTurn(id: string, at: number, text: string) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((accept) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((accept, fail) => {
     resolve = accept;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function service(request: HostedConversationRequest) {
@@ -704,6 +724,56 @@ describe('Web Hosted Conversation Workspace Service', () => {
     );
   });
 
+  it('Retains hosted conversations and cursor on append failure or no progress, then retries', async () => {
+    const error = new TypeError('Hosted conversation page unavailable');
+    const added = { ...conversation, id: 'conversation-2', sessionId: 'session-2' };
+    let pageAttempt = 0;
+    const appendRequests: string[] = [];
+    const workspace = service(async (path) => {
+      if (!path.includes('cursor='))
+        return { items: [conversation], nextCursor: 'directory-cursor' } as never;
+      appendRequests.push(path);
+      pageAttempt += 1;
+      if (pageAttempt === 1) throw error;
+      if (pageAttempt === 2) return { items: [added], nextCursor: 'directory-cursor' } as never;
+      return { items: [added], nextCursor: null } as never;
+    });
+
+    await workspace.loadConversations();
+    await workspace.loadMoreConversations();
+
+    expect(workspace.conversations.value.map((item) => item.id)).toEqual([conversation.id]);
+    expect(workspace.loadMoreConversationsError.value).toBe(error);
+    expect(workspace.hasMoreConversations.value).toBe(true);
+    expect(workspace.loadingMoreConversations.value).toBe(false);
+
+    const nonAdvancingPage = workspace.loadMoreConversations();
+    expect(workspace.loadMoreConversationsError.value).toBeUndefined();
+    expect(workspace.loadingMoreConversations.value).toBe(true);
+    await nonAdvancingPage;
+    expect(workspace.conversations.value.map((item) => item.id)).toEqual([conversation.id]);
+    expect(workspace.loadMoreConversationsError.value).toMatchObject({
+      message: 'SESSION_PAGINATION_NO_PROGRESS'
+    });
+    expect(workspace.hasMoreConversations.value).toBe(true);
+
+    const retry = workspace.loadMoreConversations();
+    expect(workspace.loadMoreConversationsError.value).toBeUndefined();
+    await retry;
+    expect(workspace.conversations.value.map((item) => item.id)).toEqual([
+      conversation.id,
+      added.id
+    ]);
+    expect(workspace.loadMoreConversationsError.value).toBeUndefined();
+    expect(workspace.hasMoreConversations.value).toBe(false);
+    expect(workspace.loadingMoreConversations.value).toBe(false);
+    expect(appendRequests).toEqual([
+      '/api/hosted-conversations?limit=20&cursor=directory-cursor',
+      '/api/hosted-conversations?limit=20&cursor=directory-cursor',
+      '/api/hosted-conversations?limit=20&cursor=directory-cursor'
+    ]);
+  });
+
   it('Merge independent runtime projections by version, and the active state does not depend on ordinary Node directories', async () => {
     const page = deferred<unknown>();
     const workspace = service(async () => page.promise as never);
@@ -839,34 +909,39 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(workspace).not.toHaveProperty('directoryFailureNodeIds');
   });
 
-  it('Directory refresh expires old paging requests and does not permanently block new directories to continue paging', async () => {
-    const stalePage = deferred<unknown>();
-    const requests: string[] = [];
-    let firstPageCount = 0;
-    const workspace = service(async (path) => {
-      requests.push(path);
-      if (!path.includes('cursor=')) {
-        firstPageCount += 1;
-        return {
-          items: [conversation],
-          nextCursor: firstPageCount === 1 ? 'cursor-stale' : 'cursor-current'
-        } as never;
-      }
-      if (path.includes('cursor=cursor-stale')) return stalePage.promise as never;
-      return { items: [], nextCursor: null } as never;
-    });
+  it.each(['resolve', 'reject'] as const)(
+    'Directory refresh expires an old paging request when it later %s and does not block the current cursor',
+    async (completion) => {
+      const stalePage = deferred<unknown>();
+      const requests: string[] = [];
+      let firstPageCount = 0;
+      const workspace = service(async (path) => {
+        requests.push(path);
+        if (!path.includes('cursor=')) {
+          firstPageCount += 1;
+          return {
+            items: [conversation],
+            nextCursor: firstPageCount === 1 ? 'cursor-stale' : 'cursor-current'
+          } as never;
+        }
+        if (path.includes('cursor=cursor-stale')) return stalePage.promise as never;
+        return { items: [], nextCursor: null } as never;
+      });
 
-    await workspace.loadConversations();
-    const staleLoadMore = workspace.loadMoreConversations();
-    await workspace.loadConversations();
-    stalePage.resolve({ items: [], nextCursor: null });
-    await staleLoadMore;
-    await workspace.loadMoreConversations();
+      await workspace.loadConversations();
+      const staleLoadMore = workspace.loadMoreConversations();
+      await workspace.loadConversations();
+      if (completion === 'resolve') stalePage.resolve({ items: [], nextCursor: null });
+      else stalePage.reject(new Error('Stale page failed'));
+      await staleLoadMore;
+      await workspace.loadMoreConversations();
 
-    expect(requests.at(-1)).toContain('cursor=cursor-current');
-    expect(workspace.loadingMoreConversations.value).toBe(false);
-    expect(workspace.hasMoreConversations.value).toBe(false);
-  });
+      expect(requests.at(-1)).toContain('cursor=cursor-current');
+      expect(workspace.loadMoreConversationsError.value).toBeUndefined();
+      expect(workspace.loadingMoreConversations.value).toBe(false);
+      expect(workspace.hasMoreConversations.value).toBe(false);
+    }
+  );
 
   it('Keep selected follow-up page conversations when refreshing the first screen to avoid misjudging pagination absences as deleted', async () => {
     const selected = {

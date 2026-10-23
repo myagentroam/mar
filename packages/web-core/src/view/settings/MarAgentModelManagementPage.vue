@@ -161,6 +161,17 @@ const loading = ref(false);
 const personalOrderLoading = ref(false);
 const credentialLoading = ref(false);
 const credentialsLoaded = ref(false);
+const modelsReady = ref(false);
+const personalOrderReady = ref(false);
+const initialLoading = computed(() =>
+  activeTab.value === 'models'
+    ? loading.value && !modelsReady.value
+    : activeTab.value === 'modelOrder'
+      ? personalOrderLoading.value && !personalOrderReady.value
+      : activeTab.value === 'codexCredentials'
+        ? credentialLoading.value && !credentialsLoaded.value
+        : false
+);
 const saving = ref(false);
 const savingOrder = ref(false);
 const savingPersonalOrder = ref(false);
@@ -523,6 +534,7 @@ async function load(showLoading = true) {
         model.reasoningEfforts
       )
     }));
+    modelsReady.value = true;
   } catch (error) {
     ElMessage.error(
       error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
@@ -546,6 +558,7 @@ async function loadPersonalModels(showLoading = true) {
         model.reasoningEfforts
       )
     }));
+    personalOrderReady.value = true;
   } catch (error) {
     ElMessage.error(
       error instanceof Error
@@ -1422,15 +1435,8 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    v-loading="
-      activeTab === 'models'
-        ? loading
-        : activeTab === 'modelOrder'
-          ? personalOrderLoading
-          : activeTab === 'codexCredentials'
-            ? credentialLoading
-            : false
-    "
+    v-loading="initialLoading"
+    element-loading-custom-class="mar-page-loading"
     class="management-page mar-agent-model-management"
   >
     <el-tabs v-model="activeTab" class="management-tabs">
@@ -1440,9 +1446,13 @@ onBeforeUnmount(() => {
         name="models"
       >
         <div class="table-actions">
-          <el-button :icon="Refresh" :disabled="sorting" @click="load()">{{
-            translate('marAgentModels.refresh')
-          }}</el-button>
+          <el-button
+            :icon="Refresh"
+            :loading="loading && modelsReady"
+            :disabled="sorting"
+            @click="load()"
+            >{{ translate('marAgentModels.refresh') }}</el-button
+          >
           <el-button v-if="writable && !sorting" :icon="Rank" @click="startSorting">{{
             translate('marAgentModels.adjustOrder')
           }}</el-button>
@@ -1562,9 +1572,12 @@ onBeforeUnmount(() => {
       </el-tab-pane>
       <el-tab-pane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
         <div class="table-actions">
-          <el-button :icon="Refresh" @click="loadCredentials()">{{
-            translate('marAgentModels.refresh')
-          }}</el-button>
+          <el-button
+            :icon="Refresh"
+            :loading="credentialLoading && credentialsLoaded"
+            @click="loadCredentials()"
+            >{{ translate('marAgentModels.refresh') }}</el-button
+          >
           <el-button v-if="writable" type="primary" :icon="Plus" @click="openCredentialLogin()">{{
             translate('marAgentModels.codexAddCredential')
           }}</el-button>
@@ -1686,9 +1699,13 @@ onBeforeUnmount(() => {
       <el-tab-pane :label="translate('marAgentModels.personalOrderTab')" name="modelOrder">
         <p class="selection-rule">{{ translate('marAgentModels.personalOrderHint') }}</p>
         <div class="table-actions">
-          <el-button :icon="Refresh" :disabled="personalSorting" @click="loadPersonalModels()">{{
-            translate('marAgentModels.refresh')
-          }}</el-button>
+          <el-button
+            :icon="Refresh"
+            :loading="personalOrderLoading && personalOrderReady"
+            :disabled="personalSorting"
+            @click="loadPersonalModels()"
+            >{{ translate('marAgentModels.refresh') }}</el-button
+          >
           <el-button
             v-if="writable && !personalSorting"
             :icon="Rank"

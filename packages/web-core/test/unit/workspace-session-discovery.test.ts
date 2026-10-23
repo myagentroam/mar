@@ -12,6 +12,7 @@ function state(
   const selectedNodeId = ref('node-1');
   const selectedWorkspaceId = ref('workspace-1');
   const paging = createWorkspaceSessionPagingService(10);
+  const notice = vi.fn();
   const controller = createWorkspaceSessionService({
     sessions: sessions as never,
     runs: { value: runs } as never,
@@ -21,7 +22,7 @@ function state(
     pageSize: 10,
     tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
     request: request as never,
-    notice: vi.fn(),
+    notice,
     errorMessage: String
   });
   return {
@@ -29,6 +30,7 @@ function state(
     selectedNodeId,
     selectedWorkspaceId,
     paging,
+    notice,
     controller
   };
 }
@@ -152,6 +154,144 @@ describe('Web Workspace Session Discovery', () => {
     expect(sessions.value.some((session) => session.id === 'second-9')).toBe(true);
   });
 
+  it('Retains existing sessions and the cursor after a page failure, then retries successfully', async () => {
+    const error = new TypeError('Session page unavailable');
+    let resolveRetry!: (page: unknown) => void;
+    const retryPage = new Promise((resolve) => (resolveRetry = resolve));
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockImplementationOnce(() => retryPage);
+    const { controller, notice, paging, sessions } = state([], request);
+    const existing = { id: 'existing', workspaceId: 'workspace-1', runner: 'codex' };
+    sessions.value = [existing];
+    paging.nextCursors.value.set('node-1:workspace-1', 'cursor-one');
+
+    await controller.loadMore();
+
+    expect(sessions.value).toEqual([existing]);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('cursor-one');
+    expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toBe(error);
+    expect(paging.loadingMore.value).toBe(false);
+    expect(notice).not.toHaveBeenCalled();
+
+    const retry = controller.loadMore();
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(paging.loadingMore.value).toBe(true);
+    resolveRetry({
+      sessions: [{ id: 'added', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: 'cursor-two'
+    });
+    await retry;
+
+    expect(sessions.value.map((session) => session.id)).toEqual(['existing', 'added']);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('cursor-two');
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(paging.loadingMore.value).toBe(false);
+  });
+
+  it('Treats a non-advancing ordinary session cursor as a page failure without merging the page', async () => {
+    const existing = { id: 'existing', workspaceId: 'workspace-1', runner: 'codex' };
+    const { controller, notice, paging, sessions } = state(
+      [],
+      vi.fn().mockResolvedValue({
+        sessions: [{ id: 'duplicate-page', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: 'cursor-one'
+      })
+    );
+    sessions.value = [existing];
+    paging.nextCursors.value.set('node-1:workspace-1', 'cursor-one');
+
+    await controller.loadMore();
+
+    expect(sessions.value).toEqual([existing]);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('cursor-one');
+    expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toMatchObject({
+      message: 'SESSION_PAGINATION_NO_PROGRESS'
+    });
+    expect(paging.loadingMore.value).toBe(false);
+    expect(notice).not.toHaveBeenCalled();
+  });
+
+  it('Does not publish a late append failure after an authoritative same-size Watch page replaces the directory', async () => {
+    const initialError = new Error('Initial page failed');
+    let rejectLatePage!: (error: unknown) => void;
+    const latePage = new Promise((_, reject) => (rejectLatePage = reject));
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(initialError)
+      .mockImplementationOnce(() => latePage)
+      .mockResolvedValueOnce({
+        sessions: [{ id: 'fresh-page', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: null
+      });
+    const { controller, paging, sessions } = state([], request);
+    sessions.value = [
+      { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', title: 'old' }
+    ];
+    paging.nextCursors.value.set('node-1:workspace-1', 'old-cursor');
+
+    await controller.loadMore();
+    expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toBe(initialError);
+
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: [
+        { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', title: 'authoritative' }
+      ] as never,
+      nextCursor: 'snapshot-cursor'
+    });
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+
+    const staleLoad = controller.loadMore();
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: [
+        {
+          id: 'session-1',
+          workspaceId: 'workspace-1',
+          runner: 'codex',
+          title: 'latest authoritative'
+        }
+      ] as never,
+      nextCursor: 'latest-snapshot-cursor'
+    });
+    const loadingMoreAfterSnapshot = paging.loadingMore.value;
+    const freshLoad = controller.loadMore();
+    rejectLatePage(new Error('Stale page failed'));
+    await Promise.all([staleLoad, freshLoad]);
+
+    expect(loadingMoreAfterSnapshot).toBe(false);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(sessions.value).toMatchObject([
+      { id: 'session-1', title: 'latest authoritative' },
+      { id: 'fresh-page' }
+    ]);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBeNull();
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(paging.loadingMore.value).toBe(false);
+  });
+
+  it('Discards an append failure from a Workspace after the selected target changes', async () => {
+    let rejectPage!: (error: unknown) => void;
+    const pendingPage = new Promise((_, reject) => (rejectPage = reject));
+    const { controller, paging, selectedWorkspaceId } = state(
+      [],
+      vi.fn(() => pendingPage)
+    );
+    paging.nextCursors.value.set('node-1:workspace-1', 'workspace-one-cursor');
+
+    const loading = controller.loadMore();
+    selectedWorkspaceId.value = 'workspace-2';
+    await nextTick();
+    const loadingMoreAfterTargetChange = paging.loadingMore.value;
+    rejectPage(new TypeError('Old Workspace page failed'));
+    await loading;
+
+    expect(loadingMoreAfterTargetChange).toBe(false);
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('workspace-one-cursor');
+    expect(paging.loadingMore.value).toBe(false);
+  });
+
   it('Shows a newly created MAR Agent session in Node page order after refreshing the first page', async () => {
     const older = Array.from({ length: 10 }, (_, index) => ({
       id: `older-${index}`,
@@ -240,6 +380,116 @@ describe('Web Workspace Session Discovery', () => {
     expect(sessions.value.map((session) => session.id)).toEqual(['loaded-only']);
   });
 
+  it('Retains search results and cursor after an append failure, then retries successfully', async () => {
+    const error = new TypeError('Search page unavailable');
+    let resolveRetry!: (page: unknown) => void;
+    const retryPage = new Promise((resolve) => (resolveRetry = resolve));
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [{ id: 'match', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: 'search-cursor-one'
+      })
+      .mockRejectedValueOnce(error)
+      .mockImplementationOnce(() => retryPage);
+    const { controller } = state([], request);
+
+    await controller.search('release');
+    await controller.loadMoreSearchResults();
+
+    expect(controller.searchResults.value.map((session) => session.id)).toEqual(['match']);
+    expect(controller.searchNextCursor.value).toBe('search-cursor-one');
+    expect(controller.loadMoreSearchResultsError.value).toBe(error);
+    expect(controller.loadingMoreSearchResults.value).toBe(false);
+
+    const retry = controller.loadMoreSearchResults();
+    expect(controller.loadMoreSearchResultsError.value).toBeUndefined();
+    expect(controller.loadingMoreSearchResults.value).toBe(true);
+    resolveRetry({
+      sessions: [
+        { id: 'match', workspaceId: 'workspace-1', runner: 'codex', runnerTitle: 'updated' },
+        { id: 'match-two', workspaceId: 'workspace-1', runner: 'codex' }
+      ],
+      nextCursor: null
+    });
+    await retry;
+
+    expect(controller.searchResults.value.map((session) => session.id)).toEqual([
+      'match',
+      'match-two'
+    ]);
+    expect(controller.searchResults.value[0]?.runnerTitle).toBe('updated');
+    expect(controller.searchNextCursor.value).toBeNull();
+    expect(controller.loadMoreSearchResultsError.value).toBeUndefined();
+    expect(controller.loadingMoreSearchResults.value).toBe(false);
+  });
+
+  it('Treats a non-advancing search cursor as a page failure without merging its page', async () => {
+    const { controller } = state(
+      [],
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          sessions: [{ id: 'match', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'search-cursor'
+        })
+        .mockResolvedValueOnce({
+          sessions: [{ id: 'duplicate-page', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'search-cursor'
+        })
+    );
+
+    await controller.search('release');
+    await controller.loadMoreSearchResults();
+
+    expect(controller.searchResults.value.map((session) => session.id)).toEqual(['match']);
+    expect(controller.searchNextCursor.value).toBe('search-cursor');
+    expect(controller.loadMoreSearchResultsError.value).toMatchObject({
+      message: 'SESSION_PAGINATION_NO_PROGRESS'
+    });
+    expect(controller.loadingMoreSearchResults.value).toBe(false);
+  });
+
+  it.each(['cleared', 'changed'] as const)(
+    'Does not publish an old search append failure after the query is %s',
+    async (action) => {
+      const error = new TypeError('Stale search page failed');
+      let rejectAppend!: (error: unknown) => void;
+      const appendPage = new Promise((_, reject) => (rejectAppend = reject));
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce({
+          sessions: [{ id: 'old-match', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'old-cursor'
+        })
+        .mockImplementationOnce(() => appendPage)
+        .mockResolvedValueOnce({
+          sessions: [{ id: 'new-match', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'new-cursor'
+        });
+      const { controller } = state([], request);
+
+      await controller.search('old query');
+      const staleAppend = controller.loadMoreSearchResults();
+      if (action === 'cleared') controller.clearSearch();
+      else await controller.search('new query');
+      rejectAppend(error);
+      await staleAppend;
+
+      expect(controller.loadMoreSearchResultsError.value).toBeUndefined();
+      expect(controller.loadingMoreSearchResults.value).toBe(false);
+      if (action === 'cleared') {
+        expect(controller.searchQuery.value).toBe('');
+        expect(controller.searchResults.value).toEqual([]);
+        expect(controller.searchNextCursor.value).toBeNull();
+      } else {
+        expect(controller.searchQuery.value).toBe('new query');
+        expect(controller.searchResults.value.map((session) => session.id)).toEqual(['new-match']);
+        expect(controller.searchNextCursor.value).toBe('new-cursor');
+      }
+    }
+  );
+
   it('Clears search and invalidates in-flight results when the Node or Workspace changes', async () => {
     let resolveSearch!: (value: {
       sessions: Record<string, unknown>[];
@@ -268,6 +518,29 @@ describe('Web Workspace Session Discovery', () => {
     expect(controller.searchResults.value).toEqual([]);
     expect(controller.searchNextCursor.value).toBeNull();
     expect(controller.searching.value).toBe(false);
+  });
+
+  it('Stops showing search busy state when an empty query supersedes an in-flight search', async () => {
+    let resolveSearch!: (page: unknown) => void;
+    const pendingSearch = new Promise((resolve) => (resolveSearch = resolve));
+    const { controller } = state(
+      [],
+      vi.fn(() => pendingSearch)
+    );
+
+    const oldSearch = controller.search('old query');
+    await controller.search('');
+    const searchingAfterClear = controller.searching.value;
+    resolveSearch({
+      sessions: [{ id: 'stale-result', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: null
+    });
+    await oldSearch;
+
+    expect(searchingAfterClear).toBe(false);
+    expect(controller.searching.value).toBe(false);
+    expect(controller.searchQuery.value).toBe('');
+    expect(controller.searchResults.value).toEqual([]);
   });
 
   it('Preserves current command state when a weaker snapshot omits it', () => {
@@ -485,6 +758,7 @@ describe('Web Workspace Session Discovery', () => {
       selectedSessionId: { value: undefined } as never,
       paging: {
         nextCursors: { value: new Map() } as never,
+        loadMoreErrors: ref(new Map()),
         loadingMore: { value: false } as never,
         initialize: vi.fn(),
         reset: vi.fn(),
@@ -532,20 +806,16 @@ describe('Web Workspace Session Discovery', () => {
     const sessions = {
       value: [{ id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }]
     };
-    const nextCursors = { value: new Map([['node-1:workspace-1', 'existing-cursor']]) };
-    const reset = vi.fn(() => nextCursors.value.delete('node-1:workspace-1'));
+    const paging = createWorkspaceSessionPagingService(10);
+    paging.initialize('node-1:workspace-1');
+    paging.nextCursors.value.set('node-1:workspace-1', 'existing-cursor');
+    const reset = vi.spyOn(paging, 'reset');
     const controller = createWorkspaceSessionService({
       sessions: sessions as never,
       runs: { value: [] } as never,
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: { value: undefined } as never,
-      paging: {
-        nextCursors: nextCursors as never,
-        loadingMore: { value: false } as never,
-        initialize: vi.fn(),
-        reset,
-        append: vi.fn()
-      },
+      paging,
       pageSize: 10,
       tabId: () => 'node-1:workspace-1',
       request: vi.fn().mockRejectedValue(new Error('session list failed')) as never,
@@ -558,7 +828,7 @@ describe('Web Workspace Session Discovery', () => {
     expect(sessions.value).toEqual([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }
     ]);
-    expect(nextCursors.value.get('node-1:workspace-1')).toBe('existing-cursor');
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('existing-cursor');
     expect(reset).not.toHaveBeenCalled();
     expect(controller.refreshing.value).toBe(false);
   });
@@ -580,6 +850,7 @@ describe('Web Workspace Session Discovery', () => {
       selectedSessionId: { value: undefined } as never,
       paging: {
         nextCursors: nextCursors as never,
+        loadMoreErrors: ref(new Map()),
         loadingMore: { value: false } as never,
         initialize: vi.fn(),
         reset: vi.fn(),

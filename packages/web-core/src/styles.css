@@ -1021,6 +1021,83 @@ pre {
   border-radius: 50%;
   background: var(--mar-text-faint);
 }
+.busy-indicator,
+.mar-page-loading .el-loading-spinner::before {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: none;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+}
+
+.mar-page-loading .el-loading-spinner::before {
+  content: '';
+}
+
+.mar-page-loading .el-loading-spinner {
+  margin-top: -0.625rem;
+  color: var(--mar-color-brand-text);
+  line-height: 0;
+}
+
+.mar-page-loading .el-loading-spinner .circular {
+  display: none;
+}
+
+.mar-page-loading .el-loading-spinner::before,
+.page-loading-state > .busy-indicator {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.page-loading-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  align-self: stretch;
+  color: var(--mar-color-brand-text);
+}
+
+.list-append-state {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .busy-indicator,
+  .mar-page-loading .el-loading-spinner::before {
+    animation: busy-indicator-spin 1.2s linear infinite;
+  }
+}
+
+@keyframes busy-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-ui .is-loading,
+  .console-ui .el-loading-spinner .circular,
+  .console-ui .el-loading-spinner .path {
+    animation: none !important;
+  }
+}
+
 .session-activity.managed_active i {
   background: var(--mar-color-success-text);
 }

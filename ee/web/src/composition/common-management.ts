@@ -1,4 +1,6 @@
-import { defineAsyncComponent, type Component } from 'vue';
+import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
+import { translate } from '@myagentroam/web-core/locale';
+import { defineAsyncComponent, h, type Component } from 'vue';
 import type { AdminState } from '../service/AdminAuthService.js';
 import type { ManagementPageDefinition } from '../service/ManagementComposition.js';
 import {
@@ -6,6 +8,11 @@ import {
   type CommonManagementSection
 } from '@myagentroam/web-core/common-management';
 import logoUrl from '@myagentroam/web-core/assets/logo-icon.png';
+
+const loadingComponent = {
+  render: () =>
+    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+};
 
 function resourceManagementVisible(admin: AdminState): boolean {
   return admin.edition !== 'ENTERPRISE' || admin.role === 'ADMIN' || admin.role === 'ORG_ADMIN';
@@ -19,9 +26,11 @@ export function createCommonManagementPages(
     Pick<ManagementPageDefinition, 'component' | 'visible' | 'props'>
   > = {
     'conversation-templates': {
-      component: defineAsyncComponent(
-        () => import('../view/settings/ConversationTemplateManagementPage.vue')
-      ),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/ConversationTemplateManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: (admin) => admin.edition !== 'ENTERPRISE' || admin.role === 'ADMIN',
       props: ({ request, nodes, admin }) => ({
         request,
@@ -31,7 +40,11 @@ export function createCommonManagementPages(
       })
     },
     'resource-nodes': {
-      component: defineAsyncComponent(() => import('../view/settings/NodeManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/NodeManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: resourceManagementVisible,
       props: ({ request, admin }) => ({
         request,
@@ -41,7 +54,11 @@ export function createCommonManagementPages(
       })
     },
     'resource-workspaces': {
-      component: defineAsyncComponent(() => import('../view/settings/WorkspaceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/WorkspaceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: resourceManagementVisible,
       props: ({ request, admin }) => ({
         request,
@@ -51,12 +68,20 @@ export function createCommonManagementPages(
       })
     },
     'skill-config': {
-      component: defineAsyncComponent(() => import('../view/skill/SkillCenterPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/SkillCenterPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes }) => ({ request, nodes })
     },
     'skill-sources': {
-      component: defineAsyncComponent(() => import('../view/skill/SkillSourceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/SkillSourceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({
         request,
@@ -66,7 +91,11 @@ export function createCommonManagementPages(
       })
     },
     'mcp-sources': {
-      component: defineAsyncComponent(() => import('../view/skill/McpSourceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/McpSourceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({
         request,
@@ -76,7 +105,11 @@ export function createCommonManagementPages(
       })
     },
     secrets: {
-      component: defineAsyncComponent(() => import('../view/settings/SecretManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/SecretManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({
         request,
@@ -86,9 +119,11 @@ export function createCommonManagementPages(
       })
     },
     'mar-agent-models': {
-      component: defineAsyncComponent(
-        () => import('../view/settings/MarAgentModelManagementPage.vue')
-      ),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/MarAgentModelManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes, admin }) => ({
         request,
@@ -100,7 +135,11 @@ export function createCommonManagementPages(
       })
     },
     configuration: {
-      component: defineAsyncComponent(() => import('../view/settings/SystemConfigurationPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/SystemConfigurationPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: (admin) => admin.edition !== 'ENTERPRISE' || admin.role === 'ADMIN',
       props: ({ request, admin }) => ({
         request,
@@ -108,9 +147,11 @@ export function createCommonManagementPages(
       })
     },
     system: {
-      component: defineAsyncComponent(
-        () => import('@myagentroam/web-core/SystemInformationPage.vue')
-      ),
+      component: defineAsyncComponent({
+        loader: () => import('@myagentroam/web-core/SystemInformationPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes, admin, onlineNodeCount, serverVersion }) => ({
         request,

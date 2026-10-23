@@ -30,6 +30,7 @@
     "./node-model": "./src/model/node.ts",
     "./auth-messages": "./src/i18n/authentication.ts",
     "./system-messages": "./src/i18n/system-information.ts",
+    "./LoadingPanel.vue": "./src/view/common/LoadingPanel.vue",
     "./SystemInformationPage.vue": "./src/view/SystemInformationPage.vue",
     "./LoginPage.vue": "./src/view/LoginPage.vue",
     "./PasswordGate.vue": "./src/view/PasswordGate.vue",

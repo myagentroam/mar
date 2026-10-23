@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import {
   ArrowRight,
   CopyDocument,
@@ -7,7 +8,6 @@ import {
   Download,
   Edit,
   FolderAdd,
-  Loading,
   More,
   TopRight,
   Upload,
@@ -429,9 +429,13 @@ defineExpose({ reveal });
                 <ArrowRight :class="{ expanded: row.node.expanded }" />
               </el-icon>
               <span v-else class="tree-chevron"></span>
-              <el-icon v-if="row.node.loading" class="tree-kind"
-                ><Loading class="is-loading"
-              /></el-icon>
+              <span
+                v-if="row.node.loading"
+                class="tree-kind"
+                role="status"
+                :aria-label="translate('generated.workspaceFileTree.loading')"
+                ><BusyIndicator
+              /></span>
               <FileTypeIcon v-else class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
               <span class="tree-name">{{ row.node.name }}</span>
             </button>

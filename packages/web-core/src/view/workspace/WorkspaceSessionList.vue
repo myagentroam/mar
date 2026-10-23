@@ -18,12 +18,14 @@ import {
   Top
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
 import { createEffectiveWorkspaceSkillService } from '../../service/EffectiveWorkspaceSkillService.js';
 import { createMcpCenterService } from '../../service/McpCenterService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
+import BusyIndicator from '../common/BusyIndicator.vue';
+import { errorMessage } from '../../util/error-presentation.js';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
@@ -34,6 +36,8 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly canLoadMore: boolean;
   readonly loadingMore: boolean;
+  readonly loadMoreError?: unknown;
+  readonly active?: boolean;
   readonly watchStatus: 'idle' | 'loading' | 'ready' | 'failed';
   readonly nodeReady: boolean;
   readonly loading: boolean;
@@ -78,6 +82,72 @@ const emit = defineEmits<{
 }>();
 
 const draggingPinnedSessionId = ref<string>();
+const sessionListElement = ref<HTMLElement>();
+const appendMarker = ref<HTMLElement>();
+const retryingAppend = ref(false);
+let appendObserver: IntersectionObserver | undefined;
+function canAppend(): boolean {
+  return (
+    props.active !== false &&
+    props.nodeReady &&
+    props.watchStatus === 'ready' &&
+    props.canLoadMore &&
+    !props.loading &&
+    !props.searching &&
+    !props.refreshing &&
+    !props.loadingMore &&
+    props.loadMoreError === undefined
+  );
+}
+watch(
+  () => [
+    sessionListElement.value,
+    appendMarker.value,
+    props.active,
+    props.sessions,
+    props.canLoadMore,
+    props.loading,
+    props.searching,
+    props.refreshing,
+    props.loadingMore,
+    props.loadMoreError,
+    props.watchStatus,
+    props.nodeReady,
+    props.searchQuery
+  ],
+  () => {
+    appendObserver?.disconnect();
+    if (!props.loadingMore && props.loadMoreError === undefined) retryingAppend.value = false;
+    const root = sessionListElement.value;
+    const marker = appendMarker.value;
+    if (
+      !canAppend() ||
+      root === undefined ||
+      marker === undefined ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return;
+    appendObserver = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries.some((entry) => entry.isIntersecting) &&
+          canAppend() &&
+          root.getClientRects().length > 0
+        )
+          emit('loadMore');
+      },
+      { root, rootMargin: '0px 0px 96px 0px' }
+    );
+    appendObserver.observe(marker);
+  },
+  { flush: 'post' }
+);
+function retryAppend(): void {
+  if (props.loadingMore || !props.canLoadMore) return;
+  retryingAppend.value = true;
+  emit('loadMore');
+}
+onBeforeUnmount(() => appendObserver?.disconnect());
 const sessionReorderSnapshot = computed(() => ({
   context: JSON.stringify([props.nodeId, props.workspaceId, props.searchQuery]),
   ready:
@@ -376,8 +446,9 @@ function submitSessionSearch(): void {
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>
     <ul
-      v-if="sessions.length"
+      v-if="sessions.length || canLoadMore || loadMoreError !== undefined"
       v-session-reorder-motion="sessionReorderSnapshot"
+      ref="sessionListElement"
       class="session-list"
     >
       <li
@@ -561,19 +632,26 @@ function submitSessionSearch(): void {
           </el-dropdown>
         </div>
       </li>
-      <li v-if="canLoadMore" class="session-load-more-row">
+      <li
+        v-if="canLoadMore || loadMoreError !== undefined"
+        ref="appendMarker"
+        class="list-append-state"
+        :aria-busy="loadingMore"
+      >
+        <span
+          v-if="loadingMore"
+          role="status"
+          :aria-label="translate('generated.workspaceSessionList.loading')"
+          ><BusyIndicator
+        /></span>
+        <span v-if="loadMoreError !== undefined">{{ errorMessage(loadMoreError) }}</span>
         <el-button
-          class="session-load-more"
+          v-if="loadMoreError !== undefined || retryingAppend"
           link
-          :aria-label="translate('generated.workspaceSessionList.loadMoreSessions')"
-          :disabled="loadingMore"
-          @click="emit('loadMore')"
+          :aria-disabled="loadingMore"
+          @click="retryAppend"
         >
-          {{
-            loadingMore
-              ? translate('generated.workspaceSessionList.loading')
-              : translate('generated.workspaceSessionList.loadMore')
-          }}
+          {{ translate('common.retry') }}
         </el-button>
       </li>
     </ul>
@@ -1005,38 +1083,6 @@ function submitSessionSearch(): void {
 
 .session-row.selected .session-relative-time {
   color: var(--mar-text-secondary);
-}
-
-.session-load-more-row {
-  display: flex;
-  justify-content: center;
-  padding: 0.34rem 0.5rem 0.42rem;
-}
-
-.session-load-more.el-button.is-link {
-  --el-button-text-color: var(--mar-text-secondary);
-  --el-button-hover-link-text-color: var(--mar-color-brand-text);
-  --el-button-active-color: var(--mar-color-brand-text);
-  --el-button-disabled-text-color: var(--mar-text-faint);
-  border-radius: 0.22rem;
-  background: transparent;
-  border-color: transparent;
-  font-size: var(--mar-font-size-body);
-  line-height: 1.25rem;
-  padding: 0 0.4rem;
-}
-
-.session-load-more.el-button.is-link:hover:not(:disabled),
-.session-load-more.el-button.is-link:active:not(:disabled) {
-  background: transparent;
-  border-color: transparent;
-}
-
-.session-load-more.el-button.is-link:focus-visible {
-  background: transparent;
-  border-color: transparent;
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
 }
 
 .sidebar-empty {

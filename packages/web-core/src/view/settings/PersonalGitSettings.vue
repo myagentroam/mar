@@ -21,6 +21,7 @@ const props = defineProps<{
 const service = new PersonalGitService(props.request);
 const summary = ref<PersonalGitSummary>({ credentials: [] });
 const loading = ref(true);
+const ready = ref(false);
 const failed = ref(false);
 const saving = ref(false);
 const dialogOpen = ref(false);
@@ -68,6 +69,7 @@ onUnmounted(() => {
 function apply(value: PersonalGitSummary): void {
   if (!alive) return;
   summary.value = value;
+  ready.value = true;
 }
 async function load(): Promise<void> {
   loading.value = true;
@@ -232,7 +234,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 </script>
 
 <template>
-  <LoadingPanel class="personal-git-settings" :loading="loading">
+  <LoadingPanel class="personal-git-settings" :loading="loading && !ready" variant="page">
     <div class="management-page">
       <header>
         <div>

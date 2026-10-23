@@ -146,7 +146,7 @@ async function submit(): Promise<void> {
         <el-button :disabled="loading" @click="close">{{
           translate('generated.workspaceSessionCleanupDialog.cancel')
         }}</el-button>
-        <el-button type="danger" :loading="loading" @click="submit">{{
+        <el-button type="danger" :disabled="loading" @click="submit">{{
           loading
             ? translate('generated.workspaceSessionCleanupDialog.cleaning')
             : translate('generated.workspaceSessionCleanupDialog.cleanup')

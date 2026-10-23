@@ -1,9 +1,14 @@
 <script setup lang="ts">
-defineProps<{ readonly loading: boolean }>();
+defineProps<{ readonly loading: boolean; readonly variant: 'page' | 'region' }>();
 </script>
 
 <template>
-  <section v-loading="loading" class="page-loading-panel" :aria-busy="loading">
+  <section
+    v-loading="loading"
+    class="page-loading-panel"
+    :element-loading-custom-class="variant === 'page' ? 'mar-page-loading' : undefined"
+    :aria-busy="loading"
+  >
     <div class="page-loading-content">
       <slot />
     </div>

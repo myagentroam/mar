@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Delete, Key } from '@element-plus/icons-vue';
 import { translate } from '@/service/LocalePreferenceService';
@@ -34,6 +34,10 @@ const usersPage = createUserManagementService<ManagedUser>({
   endpoint: '/api/management/users',
   query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value }),
   reportError: (error) => ElMessage.error(errorMessage(error))
+});
+const pageReady = ref(false);
+watch(usersPage.result, (result) => {
+  if (result !== undefined) pageReady.value = true;
 });
 const canCreate = () => form.value.username.trim().length > 0;
 const formatTime = (value: number) => managementDateTime(value);
@@ -160,13 +164,18 @@ onMounted(() => {
 onUnmounted(() => usersPage.dispose());
 </script>
 <template>
-  <section v-loading="usersPage.loading.value" class="management-page">
+  <section
+    v-loading="usersPage.loading.value && !pageReady"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page"
+  >
     <div class="table-actions">
       <el-button type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
       }}</el-button>
     </div>
     <el-table
+      v-loading="usersPage.loading.value && pageReady && !usersPage.loadingMore.value"
       class="clickable-rows"
       :data="usersPage.items.value"
       row-key="id"
@@ -219,6 +228,7 @@ onUnmounted(() => usersPage.dispose());
       :total="usersPage.total.value"
       :has-more="usersPage.hasMore.value"
       :loading="usersPage.loading.value"
+      :loading-more="usersPage.loadingMore.value"
       :page="usersPage.page.value"
       :mobile="usersPage.mobileViewport.value"
       :mobile-visible-count="usersPage.mobileVisibleCount.value"

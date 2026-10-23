@@ -11,11 +11,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileSpecifierParser } from '@myagentroam/code-navigation';
 import { filePreviewEnUS, filePreviewZhCN } from '../../src/i18n/file-preview.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import {
+  i18n,
+  localePreferenceService,
+  translate
+} from '../../src/service/LocalePreferenceService.js';
 import WorkspaceFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import InlineFindBar from '../../src/view/workspace/InlineFindBar.vue';
+import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -25,6 +30,21 @@ async function render(component: Component, props: Record<string, unknown>): Pro
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
+
+it.each(['page', 'region'] as const)(
+  'keeps an accessible preview wait with the %s visual role',
+  async (variant) => {
+    const html = await render(FilePreviewLoading, { variant, overlay: true });
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('aria-label=');
+    expect(html).toContain('busy-indicator');
+    expect(html.includes('page-loading-state')).toBe(variant === 'page');
+    expect(html.replace(/<[^>]*>/gu, '').trim()).toBe(
+      variant === 'region' ? translate('generated.filePreviewDialog.loadingPreview') : ''
+    );
+  }
+);
 
 function buttonTag(html: string, label: string): string {
   const button = html
@@ -761,7 +781,10 @@ describe('standalone Markdown preview', () => {
       'utf8'
     );
     expect(loading).toContain("translate('generated.filePreviewDialog.loadingPreview')");
-    expect(loading).toContain('prefers-reduced-motion');
+    expect(loading).toContain('<BusyIndicator />');
+    const sharedStyles = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    expect(sharedStyles).toContain('prefers-reduced-motion: no-preference');
+    expect(sharedStyles).toContain('busy-indicator-spin');
     const textPage = readFileSync(
       new URL('../../src/view/workspace/WorkspaceTextFilePage.vue', import.meta.url),
       'utf8'

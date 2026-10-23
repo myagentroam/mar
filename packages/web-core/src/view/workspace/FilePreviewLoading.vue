@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { Loading } from '@element-plus/icons-vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 
-withDefaults(defineProps<{ readonly overlay?: boolean }>(), { overlay: false });
+withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page' | 'region' }>(), {
+  overlay: false,
+  variant: 'region'
+});
 </script>
 
 <template>
   <div
     class="file-preview-loading"
-    :class="{ 'is-overlay': overlay }"
+    :class="{ 'is-overlay': overlay, 'page-loading-state': variant === 'page' }"
     role="status"
     aria-live="polite"
     aria-busy="true"
+    :aria-label="translate('generated.filePreviewDialog.loadingPreview')"
   >
-    <el-icon class="is-loading" aria-hidden="true"><Loading /></el-icon>
-    <span>{{ translate('generated.filePreviewDialog.loadingPreview') }}</span>
+    <BusyIndicator />
+    <span v-if="variant === 'region'">{{
+      translate('generated.filePreviewDialog.loadingPreview')
+    }}</span>
   </div>
 </template>
 
@@ -26,7 +32,6 @@ withDefaults(defineProps<{ readonly overlay?: boolean }>(), { overlay: false });
   justify-content: center;
   gap: 0.5rem;
   margin: 0;
-  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   text-align: center;
 }
@@ -38,13 +43,7 @@ withDefaults(defineProps<{ readonly overlay?: boolean }>(), { overlay: false });
   background: var(--mar-bg-page);
 }
 
-.file-preview-loading .el-icon {
-  font-size: 1.25rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .file-preview-loading :deep(.is-loading) {
-    animation: none;
-  }
+.file-preview-loading:not(.page-loading-state) {
+  color: var(--mar-text-secondary);
 }
 </style>

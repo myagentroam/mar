@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import {
   Close,
   DocumentChecked,
@@ -901,7 +902,8 @@ defineExpose({
       class="file-symbol-dropdown file-navigation-dropdown"
       @pointerdown.stop
     >
-      <p v-if="navigationLoading" class="file-navigation-loading">
+      <p v-if="navigationLoading" class="file-navigation-loading" role="status">
+        <BusyIndicator />
         {{ translate('fileEditor.preparingNavigation') }}
       </p>
       <template v-else>

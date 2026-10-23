@@ -91,7 +91,12 @@ onMounted(load);
 </script>
 
 <template>
-  <section v-loading="loading && !loaded" class="hosted-entry-page" :aria-busy="loading">
+  <section
+    v-loading="loading && !loaded"
+    element-loading-custom-class="mar-page-loading"
+    class="hosted-entry-page"
+    :aria-busy="loading"
+  >
     <div class="conversation-create-panel">
       <div class="conversation-create-heading">
         <el-icon class="conversation-create-icon" aria-hidden="true"><ChatDotRound /></el-icon>

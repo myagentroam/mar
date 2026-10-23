@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import {
   ArrowRight,
@@ -3848,7 +3849,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
                 />
               </svg>
               <ul class="history-files">
-                <li v-if="historyFilesLoading === commit.hash" class="empty">
+                <li v-if="historyFilesLoading === commit.hash" class="empty" role="status">
+                  <BusyIndicator />
                   {{ translate('generated.workspaceInspector.loadingCommitFiles') }}
                 </li>
                 <li
@@ -3919,19 +3921,16 @@ onBeforeUnmount(revokePreviewObjectUrl);
             </button>
           </div>
         </Teleport>
-        <a
+        <el-button
           v-if="historyNextCursor !== null"
           class="history-load-more"
-          href="#"
-          :aria-disabled="historyLoading"
-          @click.prevent="!historyLoading && loadHistory(false)"
+          link
+          :loading="historyLoading"
+          :disabled="historyLoading"
+          @click="loadHistory(false)"
         >
-          {{
-            historyLoading
-              ? translate('generated.workspaceInspector.loading')
-              : translate('generated.workspaceInspector.loadMore')
-          }}
-        </a>
+          {{ translate('generated.workspaceInspector.loadMore') }}
+        </el-button>
       </section>
     </template>
   </article>

@@ -92,6 +92,13 @@ const usersPage = createUserManagementService<EnterpriseUser>({
     )
 });
 const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
+const organizationsReady = ref(false);
+const usersReady = ref(false);
+const pageReady = computed(() => organizationsReady.value && usersReady.value);
+const refreshLoading = ref(false);
+watch(usersPage.result, (result) => {
+  if (result !== undefined) usersReady.value = true;
+});
 watch([keyword, roleFilter, organizationFilter, enabledFilter], () => {
   replaceManagementUrlValues('users', {
     keyword: keyword.value,
@@ -171,6 +178,7 @@ async function load(): Promise<void> {
       organizations: readonly OrganizationSummary[];
     }>('/api/organizations');
     organizations.value = organizationResult.organizations;
+    organizationsReady.value = true;
   } catch (error) {
     ElMessage.error(
       error instanceof Error
@@ -181,6 +189,14 @@ async function load(): Promise<void> {
     organizationsLoading.value = false;
   }
   await usersPage.load(true);
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
+  }
 }
 function changeSort(input: { readonly prop?: string; readonly order?: string | null }): void {
   sortBy.value = input.order ? input.prop : undefined;
@@ -339,7 +355,11 @@ onUnmounted(() => usersPage.dispose());
 </script>
 
 <template>
-  <section v-loading="loading" class="management-page">
+  <section
+    v-loading="loading && !pageReady"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page"
+  >
     <div class="filter-row">
       <label class="filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.user') }}</span
@@ -387,7 +407,7 @@ onUnmounted(() => usersPage.dispose());
       ></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
         translate('generated.organizationUserManagementPage.refresh')
       }}</el-button>
       <el-button type="primary" :icon="Plus" :disabled="!writable" @click="openCreateUser">{{
@@ -395,6 +415,9 @@ onUnmounted(() => usersPage.dispose());
       }}</el-button>
     </div>
     <el-table
+      v-loading="
+        usersPage.loading.value && pageReady && !usersPage.loadingMore.value && !refreshLoading
+      "
       class="clickable-rows"
       :data="usersPage.items.value"
       row-key="id"
@@ -475,6 +498,7 @@ onUnmounted(() => usersPage.dispose());
       :total="usersPage.total.value"
       :has-more="usersPage.hasMore.value"
       :loading="usersPage.loading.value"
+      :loading-more="usersPage.loadingMore.value"
       :page="usersPage.page.value"
       :mobile="usersPage.mobileViewport.value"
       :mobile-visible-count="usersPage.mobileVisibleCount.value"

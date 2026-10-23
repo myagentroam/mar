@@ -19,6 +19,8 @@ const props = defineProps<{
 }>();
 const organizations = ref<readonly Organization[]>([]);
 const loading = ref(false);
+const ready = ref(false);
+const refreshLoading = ref(false);
 const organizationOpen = ref(false);
 const editingOrganizationId = ref<number>();
 const organizationDetail = ref<Organization>();
@@ -97,6 +99,7 @@ async function load(): Promise<void> {
     organizations.value = (
       await props.request<{ organizations: readonly Organization[] }>('/api/organizations')
     ).organizations;
+    ready.value = true;
   } catch (error) {
     ElMessage.error(
       error instanceof Error
@@ -105,6 +108,14 @@ async function load(): Promise<void> {
     );
   } finally {
     loading.value = false;
+  }
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
   }
 }
 async function saveOrganization(): Promise<void> {
@@ -160,7 +171,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <section v-loading="loading" class="management-page organization-management">
+  <section
+    v-loading="loading && !ready"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page organization-management"
+  >
     <div class="filter-row">
       <label class="filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization') }}</span
@@ -173,11 +188,12 @@ onMounted(() => {
       /></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && ready" @click="refresh">{{
         translate('generated.organizationUserManagementPage.refresh')
       }}</el-button>
     </div>
     <el-table
+      v-loading="loading && ready && !refreshLoading"
       class="organization-tree-table clickable-rows"
       :data="organizationTree"
       row-key="id"

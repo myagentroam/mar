@@ -44,6 +44,7 @@ import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
 import ConversationScroll from './ConversationScroll.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import ConversationTimeline from './ConversationTimeline.vue';
 import ToolChangeReviewWindow from '../workspace/ToolChangeReviewWindow.vue';
 import { createToolChangeReviewService } from '../../service/ToolChangeReviewService.js';
@@ -104,7 +105,75 @@ const emit = defineEmits<{
 
 const filter = ref('');
 const loadingDirectory = ref(false);
+const historyList = ref<HTMLElement>();
+const historyAppendMarker = ref<HTMLElement>();
+const retryingDirectory = ref(false);
+let historyAppendObserver: IntersectionObserver | undefined;
+function canAppendHistory(): boolean {
+  return (
+    !props.workspace.loadingConversations.value &&
+    !props.workspace.loadingMoreConversations.value &&
+    props.workspace.loadMoreConversationsError.value === undefined &&
+    props.workspace.hasMoreConversations.value &&
+    props.connected !== false &&
+    filter.value.trim() === '' &&
+    (props.mobileViewport ? props.mobileHistoryOpen : !props.sidebarCollapsed)
+  );
+}
+watch(
+  () => [
+    historyList.value,
+    historyAppendMarker.value,
+    props.workspace.conversations.value,
+    props.workspace.loadingMoreConversations.value,
+    props.workspace.loadMoreConversationsError.value,
+    props.workspace.hasMoreConversations.value,
+    props.connected,
+    props.mobileViewport,
+    props.mobileHistoryOpen,
+    props.sidebarCollapsed,
+    props.workspace.loadingConversations.value,
+    filter.value
+  ],
+  () => {
+    historyAppendObserver?.disconnect();
+    if (!props.workspace.loadingMoreConversations.value) retryingDirectory.value = false;
+    if (
+      !historyList.value ||
+      !historyAppendMarker.value ||
+      !canAppendHistory() ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return;
+    historyAppendObserver = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries.some((entry) => entry.isIntersecting) &&
+          canAppendHistory() &&
+          (historyList.value?.getClientRects().length ?? 0) > 0
+        ) {
+          historyAppendObserver?.disconnect();
+          void loadMoreHistory();
+        }
+      },
+      { root: historyList.value, rootMargin: '0px 0px 120px 0px' }
+    );
+    historyAppendObserver.observe(historyAppendMarker.value);
+  },
+  { flush: 'post' }
+);
+function retryDirectoryAppend(): void {
+  if (props.workspace.loadingMoreConversations.value) return;
+  retryingDirectory.value = true;
+  void loadMoreHistory();
+}
 const openingConversationKey = ref<string>();
+const waitingForSnapshot = computed(
+  () =>
+    props.connected !== false &&
+    props.workspace.watchFailureCode.value === undefined &&
+    (openingConversationKey.value !== undefined || props.restoringRoute)
+);
 const mutatingConversationKey = ref<string>();
 const actionConversationKey = ref<string>();
 const actionMenuVisible = ref(false);
@@ -339,8 +408,8 @@ async function refreshDirectory(): Promise<void> {
 async function loadMoreHistory(): Promise<void> {
   try {
     await props.workspace.loadMoreConversations();
-  } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+  } catch {
+    // The directory footer owns pagination failures and explicit retry.
   }
 }
 
@@ -841,6 +910,7 @@ watch(
 
 onMounted(initialize);
 onBeforeUnmount(() => {
+  historyAppendObserver?.disconnect();
   conversationResizeObserver?.disconnect();
   filePreview.dispose();
 });
@@ -889,6 +959,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.refreshHistory')"
             :title="translate('hostedConversations.refreshHistory')"
             :disabled="loadingDirectory"
+            :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
             size="small"
             text
             @click="refreshDirectory"
@@ -898,7 +969,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div
-        v-loading="loadingDirectory"
+        ref="historyList"
+        v-loading="workspace.loadingConversations.value && !workspace.conversationsLoaded.value"
         v-session-reorder-motion="historyReorderSnapshot"
         class="history-list"
       >
@@ -906,7 +978,13 @@ onBeforeUnmount(() => {
           v-if="!loadingDirectory && filteredConversations.length === 0"
           class="history-empty-text"
         >
-          {{ translate('hostedConversations.noHistory') }}
+          {{
+            translate(
+              filter.trim()
+                ? 'hostedConversations.noLoadedHistoryMatches'
+                : 'hostedConversations.noHistory'
+            )
+          }}
         </p>
         <article
           v-for="conversation in filteredConversations"
@@ -1017,14 +1095,33 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </article>
-        <el-button
+        <p v-if="filter.trim()" class="history-filter-note">
+          {{ translate('hostedConversations.filterLoadedOnly') }}
+        </p>
+        <div
           v-if="workspace.hasMoreConversations.value"
-          text
-          :loading="workspace.loadingMoreConversations.value"
-          @click="loadMoreHistory"
+          ref="historyAppendMarker"
+          class="list-append-state"
+          :aria-busy="workspace.loadingMoreConversations.value"
         >
-          {{ translate('hostedConversations.loadMore') }}
-        </el-button>
+          <span
+            v-if="workspace.loadingMoreConversations.value"
+            role="status"
+            :aria-label="translate('common.loading')"
+            ><BusyIndicator
+          /></span>
+          <span v-if="workspace.loadMoreConversationsError.value" role="status">{{
+            hostedErrorMessage(workspace.loadMoreConversationsError.value)
+          }}</span>
+          <el-button
+            v-if="workspace.loadMoreConversationsError.value || retryingDirectory"
+            link
+            :aria-disabled="workspace.loadingMoreConversations.value"
+            @click="retryDirectoryAppend"
+          >
+            {{ translate('common.retry') }}
+          </el-button>
+        </div>
       </div>
     </aside>
 
@@ -1061,10 +1158,16 @@ onBeforeUnmount(() => {
       >
         <HostedConversationEntryPage :request="request" @created="created" />
       </section>
-      <section v-else-if="workspace.snapshot.value === undefined" class="conversation-empty">
-        <el-icon><ChatDotRound /></el-icon>
-        <h2>{{ hostedConversationTitle(selectedSummary) }}</h2>
-        <p>{{ translate('hostedConversations.loadingConversation') }}</p>
+      <section
+        v-else-if="workspace.snapshot.value === undefined"
+        class="page-loading-state"
+        :aria-busy="waitingForSnapshot"
+        :role="waitingForSnapshot ? 'status' : undefined"
+        :aria-label="
+          waitingForSnapshot ? translate('hostedConversations.loadingConversation') : undefined
+        "
+      >
+        <BusyIndicator v-if="waitingForSnapshot" />
       </section>
       <template v-else>
         <ConversationScroll
@@ -1415,6 +1518,13 @@ onBeforeUnmount(() => {
 
 .history-list {
   padding: 8px;
+}
+
+.history-filter-note {
+  margin: 0;
+  padding: 0.5rem;
+  color: var(--mar-text-faint);
+  font-size: var(--mar-font-size-meta);
 }
 
 .history-empty-text {

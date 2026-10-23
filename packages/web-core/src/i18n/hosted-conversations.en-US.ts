@@ -42,6 +42,9 @@ export const hostedConversationsEnUS = {
     hostNode: 'Hosting Node',
     offline: 'Offline',
     searchHistory: 'Search chat titles',
+    noLoadedHistoryMatches: 'No matching conversations in loaded history.',
+    filterLoadedOnly:
+      'Searches loaded conversations only. Clear the filter to continue loading history.',
     noHistory: 'No conversations yet.',
     historyTemplateNode: '{template} · {node}',
     refreshHistory: 'Refresh history',

@@ -24,6 +24,8 @@ const service = new PersonalUsageService(props.request, (error) =>
 );
 const state = service.state;
 const busy = computed(() => state.loading || state.loadingPage);
+const initialized = ref(false);
+const pageLoading = computed(() => busy.value && !initialized.value);
 const pagination = createManagementPaginationService(20);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
@@ -87,6 +89,7 @@ async function refresh(reset = false, purpose?: (typeof purposes)[number]): Prom
   if (reset) recordsSorted = false;
   const loaded = await service.load(query(), { reset, rolling: draft.period !== 'custom' });
   if (loaded) {
+    initialized.value = true;
     expandedRecords.value = [];
     service.setRecordsInteracting(recordsSorted);
   }
@@ -205,8 +208,8 @@ onUnmounted(() => {
 
 <template>
   <LoadingPanel
-    :loading="busy"
-    :element-loading-text="t('common.loading')"
+    :loading="pageLoading"
+    variant="page"
     class="usage settings-panel"
     data-testid="personal-usage"
   >
@@ -214,20 +217,22 @@ onUnmounted(() => {
       <header>
         <h2>{{ t('modelUsage.title') }}</h2>
         <div class="refresh-actions">
-          <span class="metadata" :class="{ 'loading-status': busy }" role="status">
+          <span class="metadata" role="status">
             {{
-              busy
-                ? t('common.loading')
-                : state.refreshFailed
-                  ? t('modelUsage.refreshDelayed')
-                  : state.lastRefreshedAt
-                    ? t('modelUsage.refreshed', { time: time(state.lastRefreshedAt) })
-                    : ''
+              state.refreshFailed
+                ? t('modelUsage.refreshDelayed')
+                : state.lastRefreshedAt
+                  ? t('modelUsage.refreshed', { time: time(state.lastRefreshedAt) })
+                  : ''
             }}
           </span>
-          <el-button :icon="Refresh" :loading="state.loading" @click="refresh()">{{
-            t('modelUsage.refresh')
-          }}</el-button>
+          <el-button
+            :icon="Refresh"
+            :loading="state.loading && !pageLoading"
+            :disabled="pageLoading"
+            @click="refresh()"
+            >{{ t('modelUsage.refresh') }}</el-button
+          >
         </div>
       </header>
       <nav class="usage-purposes" :aria-label="t('modelUsage.purpose')">
@@ -716,6 +721,7 @@ onUnmounted(() => {
           :mobile-visible-count="state.records.length"
           :has-more="state.page < Math.ceil(Number(state.total) / 20)"
           :loading="state.loading || state.loadingPage"
+          :loading-more="state.loadingPage"
           :aria-label="t('modelUsage.pagination')"
           @page="service.goToPage($event)"
           @load-more="service.loadMore($event)"

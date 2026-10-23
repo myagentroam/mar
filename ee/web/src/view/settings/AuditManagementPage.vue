@@ -70,6 +70,9 @@ const nextCursor = ref<string>();
 const selected = ref<AuditEventDetail>();
 const detailLoading = ref(false);
 const loading = ref(false);
+const pageReady = ref(false);
+const appendLoading = ref(false);
+const refreshLoading = ref(false);
 const pagination = createManagementPaginationService();
 let loadGeneration = 0;
 watch(
@@ -312,6 +315,7 @@ async function load(page = 1, append = false): Promise<void> {
   if (append && nextCursor.value === undefined) return;
   const generation = ++loadGeneration;
   loading.value = true;
+  appendLoading.value = append;
   try {
     const params = new URLSearchParams(query.value);
     if (append) params.set('cursor', nextCursor.value ?? '');
@@ -332,6 +336,7 @@ async function load(page = 1, append = false): Promise<void> {
       if (result.page !== undefined) pagination.setPage(result.page);
     }
     nextCursor.value = result.nextCursor;
+    pageReady.value = true;
   } catch (error) {
     if (generation !== loadGeneration) return;
     ElMessage.error(
@@ -342,11 +347,20 @@ async function load(page = 1, append = false): Promise<void> {
   } finally {
     if (generation !== loadGeneration) return;
     loading.value = false;
+    appendLoading.value = false;
   }
 }
 function loadMore(): void {
   if (loading.value || nextCursor.value === undefined) return;
   void load(pagination.page.value, true);
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
+  }
 }
 function changePage(value: number): void {
   if (value === pagination.page.value || loading.value) return;
@@ -360,7 +374,11 @@ onUnmounted(() => pagination.dispose());
 </script>
 
 <template>
-  <section v-loading="loading" class="management-page audit-management">
+  <section
+    v-loading="loading && !pageReady"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page audit-management"
+  >
     <div class="filter-row">
       <label class="filter-field"
         ><span>{{ translate('generated.auditManagementPage.timeRange') }}</span
@@ -376,14 +394,20 @@ onUnmounted(() => pagination.dispose());
       /></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load()">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
         translate('generated.auditManagementPage.refresh')
       }}</el-button>
       <el-button tag="a" :icon="Download" :href="exportUrl">{{
         translate('generated.auditManagementPage.exportCSV')
       }}</el-button>
     </div>
-    <el-table class="clickable-rows" :data="events" row-key="id" @row-click="openDetail">
+    <el-table
+      v-loading="loading && pageReady && !appendLoading && !refreshLoading"
+      class="clickable-rows"
+      :data="events"
+      row-key="id"
+      @row-click="openDetail"
+    >
       <el-table-column :label="translate('generated.auditManagementPage.time')" min-width="180"
         ><template #default="{ row }">{{
           auditTimestamp(row.occurredAt)
@@ -412,6 +436,7 @@ onUnmounted(() => pagination.dispose());
       :mobile-visible-count="events.length"
       :has-more="nextCursor !== undefined"
       :loading="loading"
+      :loading-more="appendLoading"
       @page="changePage"
       @load-more="loadMore"
     />

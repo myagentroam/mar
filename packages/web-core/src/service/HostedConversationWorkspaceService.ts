@@ -93,6 +93,8 @@ export function createHostedConversationWorkspaceService(
   const hasMoreConversations = ref(false);
   const loadingConversations = ref(false);
   const loadingMoreConversations = ref(false);
+  const loadMoreConversationsError = ref<unknown>();
+  const conversationsLoaded = ref(false);
   const selectedNodeId = options.selectedNodeId ?? ref<string>();
   const selectedConversationId = options.selectedConversationId ?? ref<string>();
   const snapshot = ref<HostedConversationSnapshot>();
@@ -207,10 +209,9 @@ export function createHostedConversationWorkspaceService(
     const sequence = ++listSequence;
     const requestActivityRevision = activityMessageRevision;
     loadMoreOperation += 1;
-    directoryCursor = null;
-    hasMoreConversations.value = false;
     loadingConversations.value = true;
     loadingMoreConversations.value = false;
+    loadMoreConversationsError.value = undefined;
     try {
       const page = parseListPage(
         await options.request<unknown>(`/api/hosted-conversations?limit=${pageSize}`)
@@ -250,6 +251,7 @@ export function createHostedConversationWorkspaceService(
       conversations.value = deduplicateConversations(items);
       directoryCursor = page.nextCursor;
       hasMoreConversations.value = directoryCursor !== null;
+      conversationsLoaded.value = true;
     } finally {
       if (sequence === listSequence) loadingConversations.value = false;
     }
@@ -257,11 +259,12 @@ export function createHostedConversationWorkspaceService(
 
   async function loadMoreConversations(): Promise<void> {
     const cursor = directoryCursor;
-    if (cursor === null || loadingMoreConversations.value) return;
+    if (cursor === null || loadingMoreConversations.value || loadingConversations.value) return;
     const sequence = listSequence;
     const operation = ++loadMoreOperation;
     const requestActivityRevision = activityMessageRevision;
     loadingMoreConversations.value = true;
+    loadMoreConversationsError.value = undefined;
     try {
       const page = parseListPage(
         await options.request<unknown>(
@@ -269,6 +272,7 @@ export function createHostedConversationWorkspaceService(
         )
       );
       if (sequence !== listSequence) return;
+      if (page.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
       conversations.value = deduplicateConversations([
         ...conversations.value,
         ...page.items.map((conversation) =>
@@ -277,6 +281,8 @@ export function createHostedConversationWorkspaceService(
       ]);
       directoryCursor = page.nextCursor;
       hasMoreConversations.value = directoryCursor !== null;
+    } catch (error) {
+      if (sequence === listSequence) loadMoreConversationsError.value = error;
     } finally {
       if (operation === loadMoreOperation) loadingMoreConversations.value = false;
     }
@@ -1564,6 +1570,8 @@ export function createHostedConversationWorkspaceService(
     hasMoreConversations,
     loadingConversations,
     loadingMoreConversations,
+    loadMoreConversationsError,
+    conversationsLoaded,
     selectedNodeId,
     selectedConversationId,
     snapshot,

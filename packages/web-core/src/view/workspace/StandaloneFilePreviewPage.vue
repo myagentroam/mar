@@ -773,7 +773,11 @@ function rawContentUrl(
         }}</small>
       </header>
       <div class="standalone-preview-body">
-        <FilePreviewLoading v-if="loading || (htmlUrl && !htmlFrameLoaded)" overlay />
+        <FilePreviewLoading
+          v-if="loading || (htmlUrl && !htmlFrameLoaded)"
+          variant="page"
+          overlay
+        />
         <iframe
           v-if="htmlUrl"
           class="html-preview-frame"
@@ -793,7 +797,7 @@ function rawContentUrl(
         ><small v-if="file?.size !== undefined">{{ fileSizeLabel(file.size ?? 0) }}</small>
       </header>
       <div class="standalone-preview-body">
-        <FilePreviewLoading v-if="loading" overlay />
+        <FilePreviewLoading v-if="loading" variant="page" overlay />
         <main v-else-if="file && isMarkdownFile(file.path)" class="markdown-preview-page">
           <MarkdownFilePreview
             :content="file.content"
@@ -895,10 +899,6 @@ function rawContentUrl(
   flex: 1;
   flex-direction: column;
   align-self: stretch;
-}
-
-.standalone-preview-body :deep(.file-preview-loading) {
-  color: var(--mar-text-secondary);
 }
 
 .standalone-preview-body :deep(.file-preview-loading.is-overlay) {

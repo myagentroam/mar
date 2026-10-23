@@ -44,6 +44,7 @@ export function createManagementPageService<T>(input: {
   const items = shallowRef<readonly T[]>([]);
   const result = shallowRef<ManagementPage<T>>();
   const loading = ref(false);
+  const loadingMore = ref(false);
   const page = ref(1);
   let generation = 0;
   let context = input.context();
@@ -59,21 +60,21 @@ export function createManagementPageService<T>(input: {
     autoFailed = false;
   }
 
-  async function request(nextPage: number, append: boolean, reset: boolean): Promise<void> {
+  async function request(nextPage: number, append: boolean): Promise<void> {
     if (disposed) return;
     const key = input.context();
-    if (reset || context !== key) {
+    if (context !== key) {
       clear();
       context = key;
     }
     const current = ++generation;
     loading.value = true;
+    loadingMore.value = append;
     autoFailed = false;
     try {
       let response = await input.read(nextPage);
       if (current !== generation || key !== input.context() || disposed) return;
       if (append && response.page <= page.value) {
-        clear();
         response = await input.read(1);
         if (current !== generation || key !== input.context() || disposed) return;
         append = false;
@@ -95,21 +96,24 @@ export function createManagementPageService<T>(input: {
         input.reportError(error);
       }
     } finally {
-      if (current === generation && key === input.context() && !disposed) loading.value = false;
+      if (current === generation && key === input.context() && !disposed) {
+        loading.value = false;
+        loadingMore.value = false;
+      }
     }
   }
 
   function load(reset = false): Promise<void> {
-    return request(reset || viewport.mobileViewport.value ? 1 : page.value, false, reset);
+    return request(reset || viewport.mobileViewport.value ? 1 : page.value, false);
   }
   function setPage(nextPage: number): Promise<void> {
     if (nextPage === page.value || !Number.isSafeInteger(nextPage) || nextPage < 1)
       return Promise.resolve();
-    return request(nextPage, false, false);
+    return request(nextPage, false);
   }
   function loadMore(automatic = false): Promise<void> {
     if (loading.value || !hasMore.value || (automatic && autoFailed)) return Promise.resolve();
-    return request(page.value + 1, true, false);
+    return request(page.value + 1, true);
   }
   const stop = watch(viewport.mobileViewport, () => {
     void load(true);
@@ -128,6 +132,7 @@ export function createManagementPageService<T>(input: {
     total,
     hasMore,
     loading,
+    loadingMore,
     mobileViewport: viewport.mobileViewport,
     mobileVisibleCount: computed(() => items.value.length),
     load,

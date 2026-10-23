@@ -4,7 +4,7 @@ export const workbenchPageZhCN = {
     closeSidebar: '关闭侧滑菜单',
     closeWorkspaceTools: '关闭工作区工具'
   },
-  common: { webReady: 'Web Console 已就绪' },
+  common: { loading: '加载中…', retry: '重试', webReady: 'Web Console 已就绪' },
   navigation: {
     nodeManagement: '节点管理',
     workspaceManagement: '工作区管理',

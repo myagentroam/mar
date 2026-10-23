@@ -1,5 +1,7 @@
 export const errorPresentationEnUS = {
   errors: {
+    SESSION_PAGINATION_NO_PROGRESS:
+      'Could not load more sessions because the page did not advance. Retry to continue.',
     SESSION_SHARE_CREDENTIAL_INVALID:
       'The password or saved share credential is invalid. Enter the password again.',
     SESSION_SHARE_RATE_LIMITED: 'Too many password attempts. Try again later.',

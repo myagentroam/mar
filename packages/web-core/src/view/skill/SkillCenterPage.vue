@@ -37,6 +37,7 @@ const skillQuery = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const availablePagination = service.catalogPage;
+const catalogReady = ref(false);
 const detailsOpen = ref(false);
 const skillDetails = ref<SkillDetails>();
 const capabilityTab = ref<'skill' | 'mcp'>('skill');
@@ -78,6 +79,9 @@ onMounted(() => {
 });
 onUnmounted(() => {
   availablePagination.dispose();
+});
+watch(availablePagination.result, (result) => {
+  if (result !== undefined) catalogReady.value = true;
 });
 watch(
   [targetNodeId, targetWorkspaceId, targetKind],
@@ -542,8 +546,8 @@ function scopeLabel(scope: string): string {
         </el-select>
         <el-button
           :icon="Refresh"
-          :disabled="!targetReady"
-          :loading="service.targetLoading.value"
+          :disabled="!targetReady || service.targetLoading.value"
+          :loading="service.targetLoading.value && activeConfigTab !== 'installed'"
           @click="checkEnvironment"
           >{{ translate('generated.skillCenterPage.checkEnvironment') }}</el-button
         >
@@ -596,7 +600,15 @@ function scopeLabel(scope: string): string {
               </button>
             </div>
           </div>
-          <div v-loading="service.loading.value" class="skill-table-section">
+          <div
+            v-loading="
+              catalogReady
+                ? availablePagination.loading.value && !availablePagination.loadingMore.value
+                : service.loading.value
+            "
+            :element-loading-custom-class="catalogReady ? undefined : 'mar-page-loading'"
+            class="skill-table-section"
+          >
             <template v-if="filteredFavorites.length > 0">
               <el-table
                 class="clickable-rows available-skill-table"
@@ -667,7 +679,15 @@ function scopeLabel(scope: string): string {
                             'generated.skillCenterPage.installingAndValidatingTheSkillOnThe'
                           )
                         }}</span>
-                        <el-progress :percentage="50" indeterminate :show-text="false" />
+                        <div
+                          class="skill-install-progress__indicator"
+                          role="progressbar"
+                          :aria-label="
+                            translate(
+                              'generated.skillCenterPage.installingAndValidatingTheSkillOnThe'
+                            )
+                          "
+                        />
                       </div>
                     </div>
                   </template>
@@ -680,6 +700,7 @@ function scopeLabel(scope: string): string {
                 :mobile="availablePagination.mobileViewport.value"
                 :mobile-visible-count="availablePagination.mobileVisibleCount.value"
                 :loading="availablePagination.loading.value"
+                :loading-more="availablePagination.loadingMore.value"
                 @page="availablePagination.setPage"
                 @load-more="availablePagination.loadMore"
               />
@@ -784,7 +805,15 @@ function scopeLabel(scope: string): string {
                             'generated.skillCenterPage.installingAndValidatingTheSkillOnThe2'
                           )
                         }}</span>
-                        <el-progress :percentage="50" indeterminate :show-text="false" />
+                        <div
+                          class="skill-install-progress__indicator"
+                          role="progressbar"
+                          :aria-label="
+                            translate(
+                              'generated.skillCenterPage.installingAndValidatingTheSkillOnThe2'
+                            )
+                          "
+                        />
                       </div>
                     </div>
                   </template>
@@ -893,6 +922,37 @@ function scopeLabel(scope: string): string {
   min-width: 180px;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+}
+.skill-install-progress__indicator {
+  position: relative;
+  overflow: hidden;
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--el-fill-color-light);
+}
+.skill-install-progress__indicator::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--el-color-primary);
+  content: '';
+  animation: skill-install-progress 1.4s ease-in-out infinite;
+}
+@keyframes skill-install-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skill-install-progress__indicator::after {
+    width: 100%;
+    opacity: 0.6;
+    animation: none;
+    transform: none;
+  }
 }
 .skill-table-section {
   min-height: 180px;

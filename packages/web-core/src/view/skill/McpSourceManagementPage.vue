@@ -83,6 +83,7 @@ const sourceId = ref('');
 const query = ref('');
 const activeMcpTab = ref<'source' | 'catalog'>('source');
 const loading = ref(false);
+const sourcesReady = ref(false);
 const sourceDialog = ref(false);
 const catalogDialog = ref(false);
 const editDialog = ref(false);
@@ -175,6 +176,7 @@ async function loadCatalog(): Promise<void> {
 }
 async function loadSources(): Promise<void> {
   sources.value = (await props.request<{ sources: Source[] }>('/api/mcp-sources')).sources;
+  sourcesReady.value = true;
   if (!sources.value.some((source) => source.id === sourceId.value && source.enabled))
     sourceId.value = sources.value.find((source) => source.enabled)?.id ?? '';
 }
@@ -439,7 +441,11 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <main v-loading="loading || pagination.loading.value" class="management-page mcp-source-page">
+  <main
+    v-loading="loading && !sourcesReady"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page mcp-source-page"
+  >
     <div class="table-actions">
       <el-button type="primary" :icon="Plus" :disabled="!writable" @click="openSourceDialog">{{
         translate('generated.mcpSourceManagementPage.addMCPSource')
@@ -630,7 +636,10 @@ function scopeLabel(scope: string): string {
             <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
         </div>
-        <div v-loading="pagination.loading.value" class="mcp-table-section">
+        <div
+          v-loading="sourcesReady && pagination.loading.value && !pagination.loadingMore.value"
+          class="mcp-table-section"
+        >
           <el-table
             v-if="catalog.length > 0"
             class="clickable-rows catalog-mcp-table"
@@ -741,6 +750,7 @@ function scopeLabel(scope: string): string {
             :mobile="pagination.mobileViewport.value"
             :mobile-visible-count="pagination.mobileVisibleCount.value"
             :loading="pagination.loading.value"
+            :loading-more="pagination.loadingMore.value"
             :has-more="pagination.hasMore.value"
             @page="pagination.setPage"
             @load-more="pagination.loadMore"
