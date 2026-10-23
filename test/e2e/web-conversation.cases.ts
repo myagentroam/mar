@@ -881,6 +881,7 @@ for (const hasTouch of [false, true]) {
         .click();
       await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
       await page.locator('.session-list .session-link').first().click();
+      await expect(page.locator('.conversation-process.is-group .process-content')).toHaveCount(0);
       await page.locator('.conversation-process.is-group .process-heading').first().click();
       const reasoning = page.locator('.conversation-item.reasoning-group details');
       await expect(reasoning).not.toHaveAttribute('open', '');
@@ -924,6 +925,7 @@ for (const hasTouch of [false, true]) {
               .evaluate((element) => element.getBoundingClientRect().height)
           )
           .toBe(0);
+        await expect(process.locator('.process-content')).toHaveCount(0);
         await process.locator('.process-heading').click();
         await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'true');
       };
@@ -935,6 +937,7 @@ for (const hasTouch of [false, true]) {
       await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
       await page.reload();
       await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
+      await page.locator('.conversation-process.is-group .process-heading').first().click();
       await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
         'Reasoning'
       );
@@ -1119,6 +1122,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       locale === 'zh-CN' ? '1 次调用' : '1 call'
     );
     await expect(read).not.toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(0);
     await expect(process.locator('.process-content > article').last()).toHaveClass(/command-group/);
     await read.evaluate((element) => {
       element.setAttribute('data-stable-group', 'initial');
@@ -1221,6 +1225,24 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(read.locator('.conversation-tool-detail').first()).toContainText(
       'Content for src/first.ts'
     );
+    await process.locator('.process-heading').click();
+    await expect(process.locator('.process-content')).toHaveCount(0);
+    await process.locator('.process-heading').click();
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText(
+      'Content for src/first.ts'
+    );
+    // Reopen before the leave transition finishes: do not duplicate or lose the subtree.
+    await process.locator('.process-heading').evaluate(async (heading) => {
+      for (let index = 0; index < 4; index += 1) {
+        (heading as HTMLButtonElement).click();
+        await new Promise(requestAnimationFrame);
+      }
+    });
+    await expect(process.locator('.process-content')).toHaveCount(1);
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 });
       for (const dark of [false, true]) {

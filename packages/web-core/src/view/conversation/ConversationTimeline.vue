@@ -705,7 +705,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               </span>
             </summary>
             <details
-              v-for="toolItem in displayItem.items"
+              v-for="toolItem in groupedItemDisclosure[`group:${displayItem.id}`]
+                ? displayItem.items
+                : []"
               :key="toolItem.id"
               class="conversation-tool-detail"
               :open="groupedItemDisclosure[toolItem.id] === true"
@@ -748,7 +750,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               </span>
             </summary>
             <details
-              v-for="commandItem in displayItem.items"
+              v-for="commandItem in groupedItemDisclosure[`group:${displayItem.id}`]
+                ? displayItem.items
+                : []"
               :key="commandItem.id"
               class="conversation-command-detail"
               :open="groupedItemDisclosure[commandItem.id] === true"

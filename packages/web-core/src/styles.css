@@ -1119,6 +1119,9 @@ pre {
 
 .session-activity.managed_active i {
   background: var(--mar-color-success-text);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
+    0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .session-activity.managed_active i {
@@ -1128,14 +1131,10 @@ pre {
 @keyframes mar-run-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
     opacity: 0.86;
     transform: scale(1);
   }
   50% {
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
-      0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
     opacity: 1;
     transform: scale(1.08);
   }

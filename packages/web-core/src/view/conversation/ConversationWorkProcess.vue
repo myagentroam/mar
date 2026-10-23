@@ -92,7 +92,9 @@ watch(open, async () => {
       :aria-hidden="!open"
       :inert="!open"
     >
-      <div class="process-content"><slot /></div>
+      <Transition name="process-content">
+        <div v-if="open" class="process-content"><slot /></div>
+      </Transition>
     </div>
   </section>
 </template>
@@ -192,6 +194,14 @@ watch(open, async () => {
   gap: var(--conversation-record-gap, 8px);
   min-height: 0;
 }
+.process-content-enter-active,
+.process-content-leave-active {
+  transition: opacity var(--el-transition-duration-fast);
+}
+.process-content-enter-from,
+.process-content-leave-to {
+  opacity: 0;
+}
 .is-group .process-content {
   overflow: hidden;
   padding-inline-start: 8px;
@@ -203,7 +213,9 @@ watch(open, async () => {
 }
 @media (prefers-reduced-motion: reduce) {
   .process-body,
-  .process-chevron {
+  .process-chevron,
+  .process-content-enter-active,
+  .process-content-leave-active {
     transition: none;
   }
 }
