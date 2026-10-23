@@ -479,7 +479,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain('channel-origin');
   });
 
-  it('renders individual subagent operations with persistent call errors and no running badge', async () => {
+  it('renders same-agent operations as one lazy group without implying task completion', async () => {
     const control = (id: string, operation: string, status = 'COMPLETED') => ({
       ...conversationItem(
         id,
@@ -507,15 +507,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       synchronized: true,
       runs: [{ id: 'run-1', status: 'RUNNING' }]
     });
-    expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(3);
-    for (const operation of ['START', 'STATUS', 'MESSAGE'])
-      expect(html).toContain(
-        `Review integration · ${i18n.global.t(`presentation.subagentOperation.${operation}`)}`
-      );
+    expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(1);
+    expect(html).toContain('Review integration');
     expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
-    expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
+    expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
     for (const status of ['running', 'failed', 'completed'])
-      expect(html).toContain(i18n.global.t(`toolPresentation.status.${status}`));
+      expect(html).not.toContain(i18n.global.t(`toolPresentation.status.${status}`));
     expect(html).not.toContain('conversation-tool-detail');
     const separate = await render(ConversationTimeline, {
       ...timelineProps,
@@ -523,7 +520,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       runs: [{ id: 'run-1', status: 'RUNNING' }],
       turns: [
         conversationTurn([control('start', 'START', 'IN_PROGRESS')], { id: 'segment-1' }),
-        conversationTurn([control('message', 'MESSAGE')], { id: 'segment-2' })
+        conversationTurn(
+          [{ ...control('message', 'MESSAGE'), processGroup: { id: 'other-process' } }],
+          { id: 'segment-2' }
+        )
       ]
     });
     expect(separate.match(/class="[^"]*subagent-group/gu)).toHaveLength(2);

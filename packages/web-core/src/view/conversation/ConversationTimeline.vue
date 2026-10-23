@@ -663,7 +663,11 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.type === 'subagent_group'">
-          <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
+          <details
+            class="conversation-record-group"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+          >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
@@ -671,20 +675,22 @@ function stepDuration(item: ConversationItem): string | undefined {
               <span class="conversation-record-preview">{{
                 subagentGroupText(displayItem.items)
               }}</span>
-              <span v-if="displayItem.items.length === 1" class="conversation-record-meta">{{
-                toolPresentationStatus(displayItem.items[0]!.status)
-              }}</span>
-              <span v-else class="conversation-group-meta">{{
+              <span class="conversation-group-meta">{{
                 translate('presentation.subagentOperationCount', {
                   count: displayItem.items.length
                 })
               }}</span>
             </summary>
-            <div v-if="groupedItemDisclosure[displayItem.id]" class="conversation-tool-list">
+            <div
+              v-if="groupedItemDisclosure[`group:${displayItem.id}`]"
+              class="conversation-tool-list"
+            >
               <details
                 v-for="toolItem in displayItem.items"
                 :key="toolItem.id"
                 class="conversation-tool-detail"
+                :open="groupedItemDisclosure[toolItem.id] === true"
+                @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
               >
                 <summary class="mar-disclosure-summary">
                   <MarIcon class="mar-disclosure-icon" name="chevron-right" />
