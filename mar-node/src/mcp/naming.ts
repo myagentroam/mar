@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { ResolvedMcpServer } from './model.js';
 
 export const NODE_MCP = {
+  cli: { name: 'mar_cli', tools: { load: 'load_guide' } },
   goal: { name: 'mar_goal', tools: { get: 'get_goal', update: 'update_goal' } },
   schedule: {
     name: 'mar_schedule',

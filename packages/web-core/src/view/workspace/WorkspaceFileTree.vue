@@ -1,18 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import {
-  ArrowRight,
-  CopyDocument,
-  Delete,
-  DocumentAdd,
-  Download,
-  Edit,
-  FolderAdd,
-  More,
-  TopRight,
-  Upload,
-  View
-} from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   visibleWorkspaceFileTreeRows,
@@ -408,6 +398,7 @@ defineExpose({ reveal });
             @contextmenu="openNodeActions(row.node.path, $event)"
           >
             <button
+              :aria-label="row.node.path === '.' ? row.node.name : row.node.path"
               class="file-tree-row"
               type="button"
               role="treeitem"
@@ -418,16 +409,18 @@ defineExpose({ reveal });
               :disabled="disabled"
               :tabindex="focusedPath === row.node.path ? 0 : -1"
               :style="{ '--tree-depth': row.depth }"
-              :title="row.node.path === '.' ? row.node.name : row.node.path"
               :draggable="fileMoveEnabled(row.node)"
               @click="activate(row.node, $event)"
               @keydown="onKeydown($event, row)"
               @dragstart="startMove($event, row.node)"
               @dragend="endDrag"
             >
-              <el-icon v-if="row.node.kind === 'DIRECTORY'" class="tree-chevron">
-                <ArrowRight :class="{ expanded: row.node.expanded }" />
-              </el-icon>
+              <MarIcon
+                name="chevron-right"
+                v-if="row.node.kind === 'DIRECTORY'"
+                class="tree-chevron"
+                :class="{ expanded: row.node.expanded }"
+              />
               <span v-else class="tree-chevron"></span>
               <span
                 v-if="row.node.loading"
@@ -437,7 +430,11 @@ defineExpose({ reveal });
                 ><BusyIndicator
               /></span>
               <FileTypeIcon v-else class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
-              <span class="tree-name">{{ row.node.name }}</span>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="row.node.path === '.' ? row.node.name : row.node.path"
+                ><span class="tree-name">{{ row.node.name }}</span></el-tooltip
+              >
             </button>
             <el-dropdown
               v-if="nodeActionsVisible(row.node.path)"
@@ -458,58 +455,63 @@ defineExpose({ reveal });
                 :tabindex="nodeActionsVisible(row.node.path) ? 0 : -1"
                 @click.stop
               >
-                <el-icon><More /></el-icon>
+                <MarIcon name="more" />
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item v-if="row.node.kind === 'FILE'" command="OPEN"
-                    ><el-icon><View /></el-icon
-                    >{{ translate('generated.workspaceFileTree.open') }}</el-dropdown-item
+                    ><MarIcon name="view" />{{
+                      translate('generated.workspaceFileTree.open')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item v-if="row.node.kind === 'FILE'" command="OPEN_EXTERNAL"
-                    ><el-icon><TopRight /></el-icon
-                    >{{
+                    ><MarIcon name="external-link" />{{
                       translate('generated.workspaceFileTree.openInNewWindow')
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item v-if="row.node.kind === 'FILE'" command="DOWNLOAD"
-                    ><el-icon><Download /></el-icon
-                    >{{ translate('generated.workspaceFileTree.download') }}</el-dropdown-item
+                    ><MarIcon name="download" />{{
+                      translate('generated.workspaceFileTree.download')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     v-if="mutationsEnabled && row.node.kind === 'DIRECTORY'"
                     command="CREATE_FILE"
-                    ><el-icon><DocumentAdd /></el-icon
-                    >{{ translate('generated.workspaceFileTree.newFile') }}</el-dropdown-item
+                    ><MarIcon name="document-add" />{{
+                      translate('generated.workspaceFileTree.newFile')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     v-if="mutationsEnabled && row.node.kind === 'DIRECTORY'"
                     command="CREATE_DIRECTORY"
-                    ><el-icon><FolderAdd /></el-icon
-                    >{{ translate('generated.workspaceFileTree.newFolder') }}</el-dropdown-item
+                    ><MarIcon name="folder-add" />{{
+                      translate('generated.workspaceFileTree.newFolder')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item v-if="row.node.kind === 'DIRECTORY'" command="UPLOAD"
-                    ><el-icon><Upload /></el-icon
-                    >{{ translate('generated.workspaceFileTree.uploadFiles') }}</el-dropdown-item
+                    ><MarIcon name="upload" />{{
+                      translate('generated.workspaceFileTree.uploadFiles')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item command="COPY_PATH"
-                    ><el-icon><CopyDocument /></el-icon
-                    >{{
+                    ><MarIcon name="copy" />{{
                       translate('generated.workspaceFileTree.copyRelativePath')
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     v-if="mutationsEnabled && row.node.path !== '.'"
                     command="RENAME"
-                    ><el-icon><Edit /></el-icon
-                    >{{ translate('generated.workspaceFileTree.rename') }}</el-dropdown-item
+                    ><MarIcon name="edit" />{{
+                      translate('generated.workspaceFileTree.rename')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     v-if="mutationsEnabled && row.node.path !== '.'"
                     command="DELETE"
                     divided
-                    ><el-icon><Delete /></el-icon
-                    >{{ translate('generated.workspaceFileTree.delete') }}</el-dropdown-item
+                    ><MarIcon name="delete" />{{
+                      translate('generated.workspaceFileTree.delete')
+                    }}</el-dropdown-item
                   >
                 </el-dropdown-menu>
               </template>

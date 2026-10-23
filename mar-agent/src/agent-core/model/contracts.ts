@@ -145,6 +145,7 @@ export type ModelEvent =
   | {
       type: 'response.item';
       provider: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES';
+      contextKind?: ModelMessage['contextKind'];
       item: Record<string, unknown>;
     }
   | { type: 'text.delta'; itemId: string; phase: 'commentary' | 'final_answer'; delta: string }

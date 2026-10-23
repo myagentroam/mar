@@ -11,6 +11,7 @@ import {
   type ConversationHistoryPage
 } from '../util/runner-native-session-parsers.js';
 import { isPlainRecord } from '../util/node-operation-parsers.js';
+import { conversationClientMessageId } from '../util/conversation-identity.js';
 import type { RunAttachmentService } from './run-attachment-service.js';
 import type { ExternalSessionActivationState } from './session-domain-state.js';
 import { nodeLog } from '../operational.js';
@@ -615,41 +616,28 @@ export class ConversationHistoryService {
     readAt: number
   ): Promise<ConversationHistoryPage> {
     const page = await this.readManagedActive(session, input, cursor, snapshotSequence, readAt);
-    const codexActive = session.runner === 'codex' && this.options.hasManagedActiveRun(session);
-    if (
-      input.cursor !== undefined ||
-      session.externalSessionId === null ||
-      !codexActive ||
-      !page.turns.some(
-        (turn) =>
-          turn.rewind === undefined &&
-          terminalConversationTurn(turn.status) &&
-          conversationClientMessageId(turn) !== null
-      )
-    )
+    try {
+      const supplements = await this.options.runners
+        .require(session.runner)
+        .readConversationRewind({
+          session,
+          turns: page.turns,
+          managedActive: this.options.hasManagedActiveRun(session),
+          firstPage: input.cursor === undefined,
+          readHistory: async (historyInput) =>
+            (await this.readRunnerHistory(session, historyInput)).page
+        });
+      if (supplements.size === 0) return page;
+      return {
+        ...page,
+        turns: page.turns.map((turn) => {
+          const rewind = supplements.get(turn.id);
+          return turn.rewind !== undefined || rewind === undefined ? turn : { ...turn, rewind };
+        })
+      };
+    } catch {
       return page;
-    // A completed managed Turn keeps its live items and Run identity until Runtime cleanup.
-    // Only its matched native Turn may supply a Rewind boundary.
-    const historyInput = { limit: Math.min(500, Math.max(30, page.turns.length + 1)) };
-    const authoritative = (
-      await this.readRunnerHistory(session, historyInput).catch(() => undefined)
-    )?.page;
-    if (authoritative === undefined) return page;
-    return {
-      ...page,
-      turns: page.turns.map((turn) => {
-        if (turn.rewind !== undefined || !terminalConversationTurn(turn.status)) return turn;
-        const messageId = conversationClientMessageId(turn);
-        if (messageId === null) return turn;
-        const native = authoritative.turns.find(
-          (candidate) =>
-            candidate.rewind !== undefined &&
-            candidate.userItemId !== null &&
-            conversationClientMessageId(candidate) === messageId
-        );
-        return native?.rewind === undefined ? turn : { ...turn, rewind: native.rewind };
-      })
-    };
+    }
   }
 
   async refreshExternalActivity(session: NodeAgentSession): Promise<void> {
@@ -998,19 +986,6 @@ function sameConversationTurn(left: NodeConversationTurn, right: NodeConversatio
         ((native.userItemId === null && local.userItemId === null) || item.kind === 'error')
     )
   );
-}
-
-function terminalConversationTurn(status: string): boolean {
-  return ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(status);
-}
-
-function conversationClientMessageId(turn: NodeConversationTurn): string | null {
-  for (const item of turn.items) {
-    if (item.kind !== 'user_message' || !isPlainRecord(item.payload)) continue;
-    const value = item.payload.clientMessageId;
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return null;
 }
 
 function sourceRank(source: ConversationHistoryPage['source']): number {

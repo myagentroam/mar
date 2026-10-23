@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, Close, Search } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, onMounted, ref } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 
@@ -44,37 +46,33 @@ onMounted(focus);
         @update:model-value="emit('update:modelValue', $event)"
         @keydown.enter.stop.prevent="onEnter"
         @keydown.esc.stop.prevent="emit('close')"
+        :clear-icon="marIcon('clear-input')"
       >
-        <template #prefix
-          ><el-icon><Search /></el-icon
-        ></template>
+        <template #prefix><MarIcon name="search" /></template>
       </el-input>
       <span class="inline-find-count" aria-live="polite"
         >{{ current }} / {{ total }}{{ truncated ? '+' : '' }}</span
       >
-      <el-button
-        text
-        :disabled="total === 0"
-        :aria-label="translate('inlineFind.previous')"
-        :title="translate('inlineFind.previous')"
-        @click="emit('previous')"
-        ><el-icon><ArrowUp /></el-icon
-      ></el-button>
-      <el-button
-        text
-        :disabled="total === 0"
-        :aria-label="translate('inlineFind.next')"
-        :title="translate('inlineFind.next')"
-        @click="emit('next')"
-        ><el-icon><ArrowDown /></el-icon
-      ></el-button>
-      <el-button
-        text
-        :aria-label="translate('inlineFind.close')"
-        :title="translate('inlineFind.close')"
-        @click="emit('close')"
-        ><el-icon><Close /></el-icon
-      ></el-button>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.previous')"
+        ><el-button
+          text
+          :disabled="total === 0"
+          :aria-label="translate('inlineFind.previous')"
+          @click="emit('previous')"
+          ><MarIcon name="chevron-up" /></el-button
+      ></el-tooltip>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.next')"
+        ><el-button
+          text
+          :disabled="total === 0"
+          :aria-label="translate('inlineFind.next')"
+          @click="emit('next')"
+          ><MarIcon name="chevron-down" /></el-button
+      ></el-tooltip>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.close')"
+        ><el-button text :aria-label="translate('inlineFind.close')" @click="emit('close')"
+          ><MarIcon name="close" /></el-button
+      ></el-tooltip>
     </div>
   </div>
 </template>

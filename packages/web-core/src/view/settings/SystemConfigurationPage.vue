@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { Check, Close, Edit, Refresh } from '@element-plus/icons-vue';
 import { translate } from '../../service/LocalePreferenceService';
 import {
   createSystemConfigurationService,
@@ -155,11 +156,13 @@ async function load(): Promise<void> {
     await service.load();
     initialized.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.systemConfigurationPage.unableToLoadSystemConfiguration')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.systemConfigurationPage.unableToLoadSystemConfiguration')
+    });
   }
 }
 
@@ -181,7 +184,10 @@ async function save(key: string): Promise<void> {
       }
       const config = JSON.stringify({ ...smtpModel });
       if (!service.validValue(smtpSetting, config)) {
-        ElMessage.error(translate('generated.systemConfigurationPage.smtpInvalid'));
+        ElMessage.error({
+          icon: marIcon('error'),
+          message: translate('generated.systemConfigurationPage.smtpInvalid')
+        });
         return;
       }
       service.setDraft(key, config);
@@ -192,6 +198,8 @@ async function save(key: string): Promise<void> {
             translate('generated.systemConfigurationPage.smtpDisableConfirmation'),
             translate('generated.systemConfigurationPage.smtpDisableTitle'),
             {
+              closeIcon: marIcon('close'),
+              icon: marIcon('warning'),
               type: 'warning',
               confirmButtonText: translate('generated.systemConfigurationPage.smtpDisableTitle'),
               cancelButtonText: translate('common.cancel')
@@ -199,11 +207,13 @@ async function save(key: string): Promise<void> {
           );
         } catch (error) {
           if (error === 'cancel' || error === 'close') return;
-          ElMessage.error(
-            error instanceof Error
-              ? errorMessage(error)
-              : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
-          );
+          ElMessage.error({
+            icon: marIcon('error'),
+            message:
+              error instanceof Error
+                ? errorMessage(error)
+                : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
+          });
           return;
         }
       }
@@ -214,14 +224,19 @@ async function save(key: string): Promise<void> {
   try {
     if (await service.save(key)) {
       if (key === 'mail-smtp') smtpDialogOpen.value = false;
-      ElMessage.success(translate('generated.systemConfigurationPage.systemConfigurationSaved'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('generated.systemConfigurationPage.systemConfigurationSaved')
+      });
     }
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
+    });
   }
 }
 
@@ -236,9 +251,13 @@ onMounted(() => {
     class="management-page"
   >
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="loading && initialized" @click="load">{{
-        translate('generated.systemConfigurationPage.refresh')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="loading && initialized"
+        @click="load"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.systemConfigurationPage.refresh') }}</el-button
+      >
     </div>
     <el-table :data="rows" row-key="key">
       <el-table-column
@@ -266,7 +285,9 @@ onMounted(() => {
             :max="row.max"
             :disabled="savingKey !== null"
             @update:model-value="service.setDraft(row.key, $event)"
-          />
+            ><template #decrease-icon><MarIcon name="subtract" /></template
+            ><template #increase-icon><MarIcon name="plus" /></template
+          ></el-input-number>
           <span v-else-if="row.type === 'number'">{{ snapshot[row.field] }}</span>
           <el-form
             v-else-if="row.type === 'origin' && editingKey === row.key"
@@ -305,7 +326,7 @@ onMounted(() => {
             v-if="editingKey !== row.key || row.type === 'json'"
             link
             type="primary"
-            :icon="Edit"
+            :icon="marIcon('edit')"
             :disabled="!writable || editingKey !== null"
             @click="row.type === 'json' ? openSmtpDialog() : beginEdit(row.key)"
           >
@@ -315,16 +336,17 @@ onMounted(() => {
             <el-button
               link
               type="primary"
-              :icon="Check"
+              :icon="marIcon('check')"
               :loading="savingKey === row.key"
               :disabled="!writable || savingKey !== null"
               @click="save(row.key)"
+              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('generated.systemConfigurationPage.save') }}
             </el-button>
             <el-button
               link
-              :icon="Close"
+              :icon="marIcon('close')"
               :disabled="savingKey !== null"
               @click="cancelEdit(row.key)"
             >
@@ -343,6 +365,7 @@ onMounted(() => {
       :close-on-press-escape="savingKey === null"
       :show-close="savingKey === null"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <div class="smtp-toggle">
         <span>{{ translate('generated.systemConfigurationPage.smtpEnable') }}</span>
@@ -382,7 +405,12 @@ onMounted(() => {
             />
           </el-form-item>
           <el-form-item :label="translate('generated.systemConfigurationPage.smtpTls')" prop="tls">
-            <el-select v-model="smtpModel.tls" :disabled="savingKey !== null">
+            <el-select
+              v-model="smtpModel.tls"
+              :disabled="savingKey !== null"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+            >
               <el-option label="STARTTLS" value="STARTTLS" />
               <el-option label="TLS" value="TLS" />
             </el-select>
@@ -447,7 +475,12 @@ onMounted(() => {
           <el-button :disabled="savingKey !== null" @click="smtpDialogOpen = false">
             {{ translate('common.cancel') }}
           </el-button>
-          <el-button type="primary" :loading="savingKey === 'mail-smtp'" @click="save('mail-smtp')">
+          <el-button
+            type="primary"
+            :loading="savingKey === 'mail-smtp'"
+            @click="save('mail-smtp')"
+            :loading-icon="marIcon('loading-action')"
+          >
             {{ translate('generated.systemConfigurationPage.save') }}
           </el-button>
         </div>

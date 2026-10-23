@@ -804,6 +804,7 @@ describe('Core Session active message views', () => {
                 {
                   type: 'response.item',
                   provider: protocol,
+                  ...(protocol === 'ANTHROPIC_MESSAGES' ? { contextKind: 'private' as const } : {}),
                   item:
                     protocol === 'OPENAI_RESPONSES'
                       ? { type: 'reasoning', encrypted_content: 'hidden-provider-state' }

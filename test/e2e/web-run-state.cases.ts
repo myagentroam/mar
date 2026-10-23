@@ -171,6 +171,11 @@ test('Composer send and stop share submission state without speculative business
   const stopRequest = new Promise<void>((resolve) => {
     releaseStopRequest = resolve;
   });
+  let releaseWorkspaceRequest!: () => void;
+  let workspacePending = false;
+  const workspaceRequest = new Promise<void>((resolve) => {
+    releaseWorkspaceRequest = resolve;
+  });
   await mockConsoleApi(
     page,
     'MANAGED',
@@ -191,6 +196,13 @@ test('Composer send and stop share submission state without speculative business
       ]
     })
   );
+  await page.route('**/api/workspaces/workspace-1?nodeId=node-1', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    workspacePending = true;
+    await workspaceRequest;
+    workspacePending = false;
+    await json(route, {});
+  });
   await page.route('**/api/agent-sessions/session-1/messages', async (route) => {
     writes.push({
       url: route.request().url(),
@@ -230,17 +242,33 @@ test('Composer send and stop share submission state without speculative business
   await expect(page.getByLabel('待执行工作').getByText('无需等待回显')).toHaveCount(0);
   await expect(page.locator('.composer-submitting')).toContainText('发送中...');
   await expect(page.locator('.composer-working')).not.toContainText('发送中');
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeDisabled();
   releaseMessageRequest?.();
   await expect(input).toHaveValue('无需等待回显');
   await expect(page.getByLabel('待执行工作').getByText('无需等待回显')).toHaveCount(0);
 
   await expect(page.locator('.composer-working')).toBeVisible();
+  const workspaceRow = page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .locator('xpath=ancestor::li[1]');
+  await workspaceRow.hover();
+  await workspaceRow.getByRole('button', { name: '工作区操作' }).click();
+  await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  const rename = page.getByRole('dialog');
+  await rename.getByRole('textbox').fill('renamed-project');
+  await rename.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => workspacePending).toBe(true);
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeEnabled();
   await page.getByRole('button', { name: '停止运行' }).click();
   await expect(page.locator('.composer-submitting')).toContainText('发送中...');
   await expect(page.getByRole('button', { name: '停止运行' })).toBeDisabled();
   releaseStopRequest?.();
   await expect(page.locator('.composer-working')).toBeVisible();
   await expect(page.getByRole('button', { name: '停止运行' })).toBeEnabled();
+  expect(workspacePending).toBe(true);
+  releaseWorkspaceRequest();
+  await expect.poll(() => workspacePending).toBe(false);
   expect(writes).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ url: expect.stringContaining('/messages') }),

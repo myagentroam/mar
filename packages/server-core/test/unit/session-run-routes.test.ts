@@ -69,6 +69,29 @@ function fixture(
 }
 
 describe('shared ordinary Session and Run routes', () => {
+  it('relays a terminal idempotent message receipt without replacing its Run identity', async () => {
+    const { app, requestNode, headers } = fixture();
+    const receipt = {
+      session: { id: 'session-one' },
+      run: { id: 'original-run', status: 'SUCCEEDED' },
+      delivery: 'STARTED',
+      idempotent: true
+    };
+    requestNode.mockResolvedValue(receipt);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/agent-sessions/session-one/messages',
+      headers,
+      payload: {
+        nodeId: 'node-one',
+        workspaceId: 'workspace-one',
+        clientMessageId: 'original-message',
+        content: 'Retry'
+      }
+    });
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject(receipt);
+  });
   it('forwards Session Prompt partial updates only after the Node confirms support', async () => {
     const { app, requestNode, headers } = fixture();
     const url = '/api/agent-sessions/session-one/metadata';

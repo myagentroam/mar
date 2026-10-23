@@ -189,9 +189,7 @@ export class ExecutionLoop {
               content: '',
               provider: event.provider,
               providerModelId: input.model.id,
-              ...(event.provider === 'ANTHROPIC_MESSAGES'
-                ? { contextKind: 'private' as const }
-                : {}),
+              ...(event.contextKind === undefined ? {} : { contextKind: event.contextKind }),
               item: event.item
             };
             messages.push(message);

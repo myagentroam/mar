@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-23
 ---
 
 # Messages and Composer
@@ -16,6 +16,8 @@ Create a phrase and prompt in **Settings → Quick Prompts**. Type `#phrase` to 
 Pasting regular text keeps plain text only and remains undoable as one native edit with `Ctrl/Command+Z`. Text reaching either 100 lines or 10,000 characters is converted to a TXT attachment before it enters the editor, preventing large logs or code blocks from freezing the page. Conversion preserves the existing draft, and a message body is still required before sending.
 
 Uploaded attachments that have not been sent remain available for one hour. Add them again after they expire.
+
+In an existing ordinary session, a timeout or unknown network outcome preserves the draft. Sending the unchanged draft again reuses the original message identity. Within its bounded in-process retention window, Node returns the original acceptance result without executing again, even if that Run has ended. After a Node restart, record eviction, or explicit history clearing/session deletion, a manual retry can still execute twice; check the session history and actual outcome first. This guarantee does not cover the first request that creates a session and is not permanent deduplication.
 
 On desktop, drag a queued message to change its order. On mobile, press and hold a queue item, then choose Move up or Move down.
 

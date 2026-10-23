@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { Close, Plus } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/ScopedHttpService.js';
 import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
@@ -354,6 +356,8 @@ defineExpose({ release, toggle: toggleTerminal });
             :aria-label="translate('generated.terminalDock.terminalProfile2')"
             size="small"
             :disabled="!canUseTerminal || creating"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="profile in profiles"
@@ -363,27 +367,30 @@ defineExpose({ release, toggle: toggleTerminal });
             />
           </el-select>
         </label>
-        <el-button
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="!mobileMode"
-          size="small"
-          :aria-label="
-            expanded
-              ? translate('generated.terminalDock.collapseTerminal')
-              : translate('generated.terminalDock.expandTerminal')
-          "
-          :title="
+          :content="
             expanded
               ? translate('generated.terminalDock.collapseTerminal2')
               : translate('generated.terminalDock.expandTerminal2')
           "
-          @click="toggleExpanded"
+          ><el-button
+            size="small"
+            :aria-label="
+              expanded
+                ? translate('generated.terminalDock.collapseTerminal')
+                : translate('generated.terminalDock.expandTerminal')
+            "
+            @click="toggleExpanded"
+          >
+            <span>{{
+              expanded
+                ? translate('generated.terminalDock.collapseTerminal3')
+                : translate('generated.terminalDock.expandTerminal3')
+            }}</span>
+          </el-button></el-tooltip
         >
-          <span>{{
-            expanded
-              ? translate('generated.terminalDock.collapseTerminal3')
-              : translate('generated.terminalDock.expandTerminal3')
-          }}</span>
-        </el-button>
       </div>
     </header>
     <div v-if="hasOpened" v-show="expanded">
@@ -414,19 +421,19 @@ defineExpose({ release, toggle: toggleTerminal });
             :disabled="closingId === item.id"
             @click="closeTerminal(item.id)"
           >
-            <el-icon><Close /></el-icon>
+            <MarIcon name="close" />
           </button>
         </div>
-        <button
-          class="terminal-tab terminal-tab-add"
-          type="button"
-          :aria-label="translate('generated.terminalDock.newTerminal2')"
-          :disabled="!canUseTerminal || creating"
-          :title="terminalActionTitle"
-          @click="openTerminal"
-        >
-          <el-icon><Plus /></el-icon>
-        </button>
+        <el-tooltip v-bind="tooltipOptions" :content="terminalActionTitle"
+          ><button
+            class="terminal-tab terminal-tab-add"
+            type="button"
+            :aria-label="translate('generated.terminalDock.newTerminal2')"
+            :disabled="!canUseTerminal || creating"
+            @click="openTerminal"
+          >
+            <MarIcon name="plus" /></button
+        ></el-tooltip>
       </div>
       <div class="terminal-context-cache">
         <TerminalTabView

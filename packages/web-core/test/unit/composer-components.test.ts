@@ -387,7 +387,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).not.toContain('mar_attachments');
     const actionLabel = locale === 'zh-CN' ? '执行' : 'Steer';
     expect(html).toContain(`aria-label="${actionLabel}"`);
-    expect(html).toContain(`title="${actionLabel}"`);
+    expect(html).not.toContain(`title="${actionLabel}"`);
+    expect(html).toContain('el-tooltip__trigger');
     expect(html).toContain(`>${actionLabel}</span>`);
   });
 
@@ -562,14 +563,21 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain('disabled');
   });
 
-  it.each([false, true])(
-    'preserves attachment and stop controls when model metadata is hidden: %s',
-    async (hidden) => {
-      const html = await render(ComposerToolbar, {
-        draftSessionOpen: false,
+  it.each(
+    [false, true].flatMap((hidden) =>
+      [false, true].flatMap((loading) =>
+        [false, true].map((canInterrupt) => ({ hidden, loading, canInterrupt }))
+      )
+    )
+  )(
+    'preserves stop eligibility independently of global loading: %j',
+    async ({ hidden, loading, canInterrupt }) => {
+      const props = {
+        draftSessionOpen: true,
         runner: 'mar-agent',
         runnerOptions: [],
         runnerLoading: false,
+        runnerDisabled: false,
         runnerLabel: 'MAR Agent',
         modelEffortSelection: undefined,
         modelEffortLabel: 'Original model',
@@ -589,20 +597,28 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         canCompactContext: false,
         mobileViewport: false,
         activeRun: { status: 'RUNNING' },
-        canInterrupt: true,
+        canInterrupt,
         interruptVisible: true,
         inputHasContent: true,
         hasSelectedCommand: false,
-        loading: false,
+        loading,
         attachmentsPending: true,
         effortLabel: (value: string) => value
-      });
+      };
+      const html = await render(ComposerToolbar, props);
+      const runnerInputPattern = new RegExp(
+        `<input\\b(?=[^>]*aria-label="${i18n.global.t('common.runner')}")[^>]*>`,
+        'u'
+      );
+      const runnerInput = runnerInputPattern.exec(html)?.[0];
+      expect(runnerInput).toBeDefined();
+      expect(runnerInput).not.toMatch(/\sdisabled(?:[\s=>])/u);
       const send = /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)[^>]*>/u.exec(html)?.[0];
       const stop = /<button\b(?=[^>]*class="[^"]*\bcomposer-stop-button\b)[^>]*>/u.exec(html)?.[0];
       expect(send).toBeDefined();
       expect(send).toMatch(/\sdisabled(?:[\s=>])/u);
       expect(stop).toBeDefined();
-      expect(stop).not.toMatch(/\sdisabled(?:[\s=>])/u);
+      expect(/\sdisabled(?:[\s=>])/u.test(stop!)).toBe(!canInterrupt);
       expect(html).toContain('composer-attachment-button');
       if (hidden) {
         expect(html).not.toContain('composer-model-slot');
@@ -624,6 +640,22 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
           ? 'Enter 发送 · Shift/Alt + Enter 换行'
           : 'Enter to send · Shift/Alt + Enter for a new line'
       );
+      const submitting = await render(ComposerToolbar, {
+        ...props,
+        submitting: true,
+        runnerDisabled: true
+      });
+      expect(runnerInputPattern.exec(submitting)?.[0]).toMatch(/\sdisabled(?:[\s=>])/u);
+      expect(submitting).toMatch(/class="composer-submitting"[^>]*role="status"/u);
+      expect(submitting).toContain(locale === 'zh-CN' ? '发送中...' : 'Sending...');
+      expect(submitting).toMatch(
+        /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)(?=[^>]*aria-busy="true")(?=[^>]*\sdisabled)[^>]*>/u
+      );
+      const sendButton =
+        /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)[^>]*>([\s\S]*?)<\/button>/u.exec(
+          submitting
+        );
+      expect(sendButton?.[1]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
   );
 

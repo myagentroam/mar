@@ -1,23 +1,12 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import type {
   ConversationFileProjection,
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import {
-  ArrowRight,
-  ChatLineSquare,
-  ChatDotRound,
-  Delete,
-  Edit,
-  FolderOpened,
-  More,
-  Refresh,
-  Search,
-  StarFilled,
-  Top,
-  UploadFilled
-} from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createConversationImageService } from '../../service/ConversationImageService.js';
@@ -93,7 +82,10 @@ function openFileChange(entry: FileChangeEntry): void {
 async function openChangeSourceFile(path: string): Promise<void> {
   const file = hostedConversationFileForPath(props.workspace.snapshot.value?.files ?? [], path);
   if (!file) {
-    ElMessage.error(translate('presentation.currentFileUnavailable'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('presentation.currentFileUnavailable')
+    });
     return;
   }
   await filePreview.openFile(file);
@@ -279,7 +271,8 @@ const conversationImages = createConversationImageService(props.workspace.select
 });
 const filePreview = createHostedConversationFilePreviewService({
   source: props.workspace,
-  onError: (error) => ElMessage.error(hostedErrorMessage(error))
+  onError: (error) =>
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) })
 });
 
 function closeMobileHistory(): void {
@@ -395,7 +388,8 @@ async function loadDirectory(): Promise<void> {
       draftingNewConversation.value = true;
     }
   } catch (error) {
-    if (sequence === directorySequence) ElMessage.error(hostedErrorMessage(error));
+    if (sequence === directorySequence)
+      ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (sequence === directorySequence) loadingDirectory.value = false;
   }
@@ -417,7 +411,7 @@ async function openConversation(
   try {
     await props.selectConversation(conversation);
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (openingConversationKey.value === key) openingConversationKey.value = undefined;
   }
@@ -435,7 +429,7 @@ async function created(snapshot: HostedConversationSnapshot): Promise<void> {
   try {
     await props.selectConversation(snapshot.conversation, snapshot);
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     void loadDirectory().catch(() => undefined);
   }
@@ -450,6 +444,7 @@ async function editConversationTitle(conversation: HostedConversationSummary): P
         translate('hostedConversations.titlePrompt'),
         translate('hostedConversations.editTitle'),
         {
+          closeIcon: marIcon('close'),
           inputValue: hostedConversationTitle(conversation),
           inputPlaceholder: translate('hostedConversations.titlePlaceholder'),
           inputValidator: (candidate) => {
@@ -473,9 +468,12 @@ async function editConversationTitle(conversation: HostedConversationSummary): P
       conversation.nodeId,
       conversation.id
     );
-    ElMessage.success(translate('hostedConversations.titleUpdated'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('hostedConversations.titleUpdated')
+    });
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -490,13 +488,14 @@ async function setConversationPinned(
   mutatingConversationKey.value = key;
   try {
     await props.workspace.updateMetadata({ pinned }, conversation.nodeId, conversation.id);
-    ElMessage.success(
-      translate(pinned ? 'hostedConversations.pinned' : 'hostedConversations.unpinned', {
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate(pinned ? 'hostedConversations.pinned' : 'hostedConversations.unpinned', {
         title: hostedConversationTitle(conversation)
       })
-    );
+    });
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -511,6 +510,8 @@ async function deleteConversation(conversation: HostedConversationSummary): Prom
       }),
       translate('hostedConversations.deleteTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.delete'),
         cancelButtonText: translate('hostedConversations.cancel')
@@ -535,9 +536,12 @@ async function deleteConversation(conversation: HostedConversationSummary): Prom
       closeMobilePanels();
     }
     await refreshDirectory();
-    ElMessage.success(translate('hostedConversations.deleted'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('hostedConversations.deleted')
+    });
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -608,7 +612,10 @@ async function copyMessage(text: string, onSuccess: () => void): Promise<void> {
     await navigator.clipboard.writeText(text);
     onSuccess();
   } catch {
-    ElMessage.error(translate('hostedConversations.copyFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('hostedConversations.copyFailed')
+    });
   }
 }
 
@@ -630,6 +637,8 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
       translate('hostedConversations.rollbackConfirmation'),
       translate('hostedConversations.rollbackTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.rollback'),
         cancelButtonText: translate('common.cancel')
@@ -655,7 +664,7 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
     if (selectedConversationKey.value === conversationKeyAtConfirmation)
       composer.value?.restoreMessage(text);
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     rollbackPending.value = false;
   }
@@ -709,23 +718,25 @@ async function uploadRelatedFiles(selectedFiles: Iterable<File>): Promise<void> 
         await props.workspace.uploadFile(file, crypto.randomUUID());
         uploaded += 1;
       } catch (error) {
-        ElMessage.error(
-          translate('hostedConversations.fileUploadFailed', {
+        ElMessage.error({
+          icon: marIcon('error'),
+          message: translate('hostedConversations.fileUploadFailed', {
             name: file.name,
             message: hostedErrorMessage(error)
           })
-        );
+        });
       }
     }
   } finally {
     uploadingDroppedFiles.value = false;
   }
   if (uploaded > 0)
-    ElMessage.success(
-      translate('hostedConversations.filesUploaded', {
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('hostedConversations.filesUploaded', {
         count: uploaded
       })
-    );
+    });
 }
 
 function dragContainsFiles(event: DragEvent): boolean {
@@ -739,6 +750,8 @@ async function deleteProjectedFile(file: ConversationFileProjection): Promise<vo
       translate('hostedConversations.fileDeleteConfirmation', { name: file.displayName }),
       translate('hostedConversations.fileDeleteTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.fileDelete'),
         cancelButtonText: translate('common.cancel')
@@ -751,13 +764,14 @@ async function deleteProjectedFile(file: ConversationFileProjection): Promise<vo
   try {
     await props.workspace.deleteFile(file.id);
     if (filePreview.file.value?.id === file.id) filePreview.close();
-    ElMessage.success(
-      translate('hostedConversations.fileDeleted', {
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('hostedConversations.fileDeleted', {
         name: file.displayName
       })
-    );
+    });
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     if (deletingFileId.value === file.id) deletingFileId.value = undefined;
   }
@@ -935,29 +949,33 @@ onBeforeUnmount(() => {
       </header>
       <div class="history-controls">
         <el-button class="history-create-button" type="primary" @click="beginNewConversation">
-          <el-icon><ChatLineSquare /></el-icon>
+          <MarIcon name="session-add" />
           <span>{{ translate('hostedConversations.create') }}</span>
         </el-button>
         <div class="history-search-row">
           <el-input
             v-model="filter"
             clearable
-            :prefix-icon="Search"
+            :prefix-icon="marIcon('search')"
             :placeholder="translate('hostedConversations.searchHistory')"
             :aria-label="translate('hostedConversations.searchHistory')"
+            :clear-icon="marIcon('clear-input')"
           />
-          <el-button
-            class="history-refresh-button utility-control"
-            :aria-label="translate('hostedConversations.refreshHistory')"
-            :title="translate('hostedConversations.refreshHistory')"
-            :disabled="loadingDirectory"
-            :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
-            size="small"
-            text
-            @click="refreshDirectory"
-          >
-            <el-icon><Refresh /></el-icon>
-          </el-button>
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('hostedConversations.refreshHistory')"
+            ><el-button
+              class="history-refresh-button utility-control"
+              :aria-label="translate('hostedConversations.refreshHistory')"
+              :disabled="loadingDirectory"
+              :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
+              size="small"
+              text
+              @click="refreshDirectory"
+              :loading-icon="marIcon('loading-action')"
+            >
+              <MarIcon name="refresh" /> </el-button
+          ></el-tooltip>
         </div>
       </div>
       <div
@@ -1005,12 +1023,12 @@ onBeforeUnmount(() => {
             @click="openConversationFromList(conversation)"
           >
             <span class="history-title-row">
-              <el-icon
+              <MarIcon
+                name="star-filled"
                 v-if="conversation.pinnedAt !== null"
                 class="history-pin-indicator"
                 :aria-label="translate('hostedConversations.pinnedLabel')"
-                ><StarFilled
-              /></el-icon>
+              />
               <span
                 v-if="workspace.conversationIsRunning(conversation)"
                 class="history-run-indicator"
@@ -1050,20 +1068,24 @@ onBeforeUnmount(() => {
                   title: hostedConversationTitle(conversation)
                 })
               "
-              :title="
-                translate('hostedConversations.moreActions', {
-                  title: hostedConversationTitle(conversation)
-                })
-              "
             >
-              <el-icon><More /></el-icon>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
+                  translate('hostedConversations.moreActions', {
+                    title: hostedConversationTitle(conversation)
+                  })
+                "
+              >
+                <MarIcon name="more" />
+              </el-tooltip>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item
                   @click="setConversationPinned(conversation, conversation.pinnedAt === null)"
                 >
-                  <el-icon><Top /></el-icon>
+                  <MarIcon name="pin" />
                   {{
                     translate(
                       conversation.pinnedAt === null
@@ -1073,14 +1095,14 @@ onBeforeUnmount(() => {
                   }}
                 </el-dropdown-item>
                 <el-dropdown-item @click="editConversationTitle(conversation)">
-                  <el-icon><Edit /></el-icon>
+                  <MarIcon name="edit" />
                   {{ translate('hostedConversations.editTitle') }}
                 </el-dropdown-item>
                 <el-dropdown-item
                   class="session-delete-menu-item"
                   @click="deleteConversation(conversation)"
                 >
-                  <el-icon><Delete /></el-icon>
+                  <MarIcon name="delete" />
                   {{ translate('hostedConversations.delete') }}
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -1118,16 +1140,18 @@ onBeforeUnmount(() => {
     </aside>
 
     <main id="hosted-pane-conversation" class="hosted-conversation-main">
-      <button
+      <el-tooltip
+        v-bind="tooltipOptions"
         v-if="mobileViewport"
-        class="hosted-mobile-files-button"
-        type="button"
-        :aria-label="translate('hostedConversations.mobileFiles')"
-        :title="translate('hostedConversations.mobileFiles')"
-        @click="openMobileFiles"
-      >
-        <el-icon><FolderOpened /></el-icon>
-      </button>
+        :content="translate('hostedConversations.mobileFiles')"
+        ><button
+          class="hosted-mobile-files-button"
+          type="button"
+          :aria-label="translate('hostedConversations.mobileFiles')"
+          @click="openMobileFiles"
+        >
+          <MarIcon name="folder-open" /></button
+      ></el-tooltip>
       <el-alert
         v-if="workspace.snapshot.value?.error"
         class="snapshot-error-alert"
@@ -1135,7 +1159,8 @@ onBeforeUnmount(() => {
         show-icon
         type="error"
         :title="hostedErrorMessage(workspace.snapshot.value.error)"
-      />
+        ><template #icon><MarIcon name="error" /></template
+      ></el-alert>
       <el-alert
         v-if="readonlyVisible"
         class="readonly-alert"
@@ -1143,7 +1168,8 @@ onBeforeUnmount(() => {
         show-icon
         type="warning"
         :title="readonlyReason"
-      />
+        ><template #icon><MarIcon name="warning" /></template
+      ></el-alert>
       <section
         v-if="draftingNewConversation || selectedSummary === undefined"
         class="conversation-draft"
@@ -1249,7 +1275,7 @@ onBeforeUnmount(() => {
         :disabled="!filesWritable || uploadingDroppedFiles"
         @click="chooseRelatedFiles"
       >
-        <el-icon><UploadFilled /></el-icon>
+        <MarIcon name="upload" />
         <span>
           {{
             filesDragging
@@ -1269,53 +1295,62 @@ onBeforeUnmount(() => {
             :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
             :style="{ '--file-depth': row.depth }"
           >
-            <button
+            <el-tooltip
+              v-bind="tooltipOptions"
               v-if="row.node.kind === 'DIRECTORY'"
-              class="file-directory"
-              type="button"
-              :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
-              :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
-              :title="row.node.path"
-              @click="toggleFileDirectory(group.category, row.node.path)"
+              :content="row.node.path"
+              ><span class="mar-tooltip-control"
+                ><button
+                  class="file-directory"
+                  type="button"
+                  :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
+                  :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
+                  @click="toggleFileDirectory(group.category, row.node.path)"
+                >
+                  <MarIcon
+                    name="chevron-right"
+                    class="file-directory-chevron"
+                    :class="{
+                      expanded: fileDirectoryExpanded(group.category, row.node.path)
+                    }"
+                  />
+                  <MarIcon name="folder-open" class="file-directory-kind" />
+                  <span>{{ row.node.name }}</span>
+                </button></span
+              ></el-tooltip
             >
-              <el-icon class="file-directory-chevron">
-                <ArrowRight
-                  :class="{
-                    expanded: fileDirectoryExpanded(group.category, row.node.path)
-                  }"
-                />
-              </el-icon>
-              <el-icon class="file-directory-kind"><FolderOpened /></el-icon>
-              <span>{{ row.node.name }}</span>
-            </button>
             <template v-else>
-              <button
-                class="file-open"
-                type="button"
-                :title="row.node.file.relativePath"
-                @click="filePreview.openFile(row.node.file)"
+              <el-tooltip v-bind="tooltipOptions" :content="row.node.file.relativePath"
+                ><button
+                  :aria-label="row.node.file.relativePath"
+                  class="file-open"
+                  type="button"
+                  @click="filePreview.openFile(row.node.file)"
+                >
+                  <span>{{ row.node.file.displayName }}</span>
+                  <small>{{ fileSizeLabel(row.node.file.size) }}</small>
+                </button></el-tooltip
               >
-                <span>{{ row.node.file.displayName }}</span>
-                <small>{{ fileSizeLabel(row.node.file.size) }}</small>
-              </button>
-              <button
-                class="file-delete"
-                type="button"
-                :disabled="!filesWritable || deletingFileId !== undefined"
-                :aria-label="
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
                   translate('hostedConversations.fileDeleteNamed', {
                     name: row.node.file.displayName
                   })
                 "
-                :title="
-                  translate('hostedConversations.fileDeleteNamed', {
-                    name: row.node.file.displayName
-                  })
-                "
-                @click="deleteProjectedFile(row.node.file)"
-              >
-                <el-icon><Delete /></el-icon>
-              </button>
+                ><button
+                  class="file-delete"
+                  type="button"
+                  :disabled="!filesWritable || deletingFileId !== undefined"
+                  :aria-label="
+                    translate('hostedConversations.fileDeleteNamed', {
+                      name: row.node.file.displayName
+                    })
+                  "
+                  @click="deleteProjectedFile(row.node.file)"
+                >
+                  <MarIcon name="delete" /></button
+              ></el-tooltip>
             </template>
           </div>
         </section>
@@ -1497,7 +1532,7 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
-.history-refresh-button :deep(.el-icon) {
+.history-refresh-button :deep(.mar-icon) {
   font-size: var(--mar-font-size-body);
 }
 
@@ -1713,7 +1748,7 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.conversation-empty > .el-icon {
+.conversation-empty > .mar-icon {
   color: var(--mar-color-brand);
   font-size: 34px;
 }
@@ -1766,7 +1801,7 @@ onBeforeUnmount(() => {
     color 120ms ease;
 }
 
-.files-drop-target > .el-icon {
+.files-drop-target > .mar-icon {
   flex: none;
   color: var(--mar-color-brand);
   font-size: 18px;

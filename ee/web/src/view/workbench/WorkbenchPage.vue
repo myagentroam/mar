@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
+
 import { ElMessage } from 'element-plus';
 import { proxyRefs, watch } from 'vue';
 import EnterpriseLoginExtension from '@/view/auth/EnterpriseLoginExtension.vue';
@@ -18,7 +20,10 @@ watch(
     if (!loaded || oauthErrorHandled) return;
     if (oauthError === null) return;
     oauthErrorHandled = true;
-    ElMessage.error(oauthErrorMessage(oauthError, t('workbench.oauthFailure')));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(oauthError, t('workbench.oauthFailure'))
+    });
     const url = new URL(window.location.href);
     url.searchParams.delete('oauthError');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);

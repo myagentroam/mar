@@ -96,26 +96,6 @@ export function reasoningEffortBaseline(
   return baseline;
 }
 
-export function lastConfigurationEffort(
-  messages: readonly ModelMessage[],
-  modelId: string
-): MarAgentReasoningEffort | undefined {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]!;
-    if (
-      message.role !== 'provider' ||
-      message.provider !== 'OPENAI_RESPONSES' ||
-      message.providerModelId !== modelId ||
-      message.item?.type !== 'configuration_update'
-    )
-      continue;
-    const reasoning = message.item.reasoning as Record<string, unknown> | undefined;
-    const effort = marAgentReasoningEffortSchema.safeParse(reasoning?.effort);
-    if (effort.success) return effort.data;
-  }
-  return undefined;
-}
-
 export function shouldUseNativeCompaction(input: {
   readonly estimatedRequestTokens: number;
   readonly contextWindowTokens: number;

@@ -9,24 +9,34 @@ export function createConversationScrollService() {
   const positioningInitialConversation = ref(false);
   let clientWidth: number | undefined;
   let clientHeight: number | undefined;
+  let scrollHeight: number | undefined;
+  let lastScrollTop = 0;
 
   function setElement(next: HTMLElement | undefined): void {
     element.value = next;
     clientWidth = next?.clientWidth;
     clientHeight = next?.clientHeight;
+    scrollHeight = next?.scrollHeight;
+    lastScrollTop = next?.scrollTop ?? 0;
   }
 
   function updateLayout(current: HTMLElement): boolean {
-    const changed = current.clientWidth !== clientWidth || current.clientHeight !== clientHeight;
+    const changed =
+      current.clientWidth !== clientWidth ||
+      current.clientHeight !== clientHeight ||
+      current.scrollHeight !== scrollHeight;
     clientWidth = current.clientWidth;
     clientHeight = current.clientHeight;
+    scrollHeight = current.scrollHeight;
     return changed;
   }
 
   function handleScroll(onLoadOlder: () => void): void {
     const current = element.value;
     if (current === undefined || positioningInitialConversation.value) return;
-    if (updateLayout(current)) {
+    const movedUp = current.scrollTop < lastScrollTop - 1;
+    lastScrollTop = current.scrollTop;
+    if (updateLayout(current) && !movedUp) {
       if (following.value) scrollToLatest();
       return;
     }
@@ -49,6 +59,7 @@ export function createConversationScrollService() {
     const current = element.value;
     if (current === undefined) return;
     current.scrollTop = current.scrollHeight;
+    lastScrollTop = current.scrollTop;
     following.value = true;
   }
 

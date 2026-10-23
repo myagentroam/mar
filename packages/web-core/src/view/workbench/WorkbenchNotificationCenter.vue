@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Bell, Delete, UploadFilled } from '@element-plus/icons-vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.js';
@@ -148,22 +149,31 @@ const emit = defineEmits<{
 
 <template>
   <div ref="center" :class="['workbench-notification-center', { 'mobile-mode': mobileMode }]">
-    <button
-      :class="['workbench-notification-trigger', 'icon-button', { 'utility-control': !mobileMode }]"
-      type="button"
-      :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-      :title="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-      :aria-expanded="open"
-      @click="toggle"
+    <el-tooltip
+      v-bind="tooltipOptions"
+      :content="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+      ><span class="mar-tooltip-control"
+        ><button
+          :class="[
+            'workbench-notification-trigger',
+            'icon-button',
+            { 'utility-control': !mobileMode }
+          ]"
+          type="button"
+          :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+          :aria-expanded="open"
+          @click="toggle"
+        >
+          <MarIcon name="notification" aria-hidden="true" />
+          <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
+            triggerLabel
+          }}</span>
+          <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
+            service.unreadCount.value
+          }}</span>
+        </button></span
+      ></el-tooltip
     >
-      <el-icon aria-hidden="true"><Bell /></el-icon>
-      <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
-        triggerLabel
-      }}</span>
-      <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
-        service.unreadCount.value
-      }}</span>
-    </button>
     <Teleport to="body" :disabled="!mobileMode">
       <Transition name="workbench-notification-panel">
         <aside
@@ -194,9 +204,11 @@ const emit = defineEmits<{
                 :key="task.id"
                 class="workbench-notification-upload"
               >
-                <el-icon><UploadFilled /></el-icon>
+                <MarIcon name="upload" />
                 <div>
-                  <strong :title="task.name">{{ task.name }}</strong>
+                  <el-tooltip v-bind="tooltipOptions" :content="task.name"
+                    ><strong>{{ task.name }}</strong></el-tooltip
+                  >
                   <small>
                     <span class="workbench-upload-size"
                       >{{ fileSizeLabel(task.receivedBytes) }} /
@@ -234,7 +246,7 @@ const emit = defineEmits<{
                     "
                     @click="emit('removeUpload', task)"
                   >
-                    <el-icon><Delete /></el-icon>
+                    <MarIcon name="delete" />
                   </button>
                   <button v-else type="button" @click="emit('cancelUpload', task)">
                     {{ translate('generated.workbenchNotificationCenter.cancel') }}
@@ -276,7 +288,7 @@ const emit = defineEmits<{
                   type="button"
                   @click="remove(notification.id)"
                 >
-                  <el-icon><Delete /></el-icon>
+                  <MarIcon name="delete" />
                 </button>
               </li>
             </ul>
@@ -320,7 +332,7 @@ const emit = defineEmits<{
   border-radius: var(--mar-radius-selection);
   padding: 2px 6px;
 }
-.mobile-mode .workbench-notification-trigger .el-icon {
+.mobile-mode .workbench-notification-trigger .mar-icon {
   width: 18px;
   height: 18px;
   font-size: 1.125rem;
@@ -344,7 +356,7 @@ const emit = defineEmits<{
   right: calc(50% - 14px);
   min-width: 14px;
   border: 1px solid var(--mar-bg-panel);
-  border-radius: 9px;
+  border-radius: var(--mar-radius-marker);
   background: var(--mar-color-brand);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);
@@ -371,10 +383,9 @@ const emit = defineEmits<{
   width: min(390px, calc(100vw - 1rem));
   overflow: hidden;
   border: 1px solid var(--mar-border-default);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--mar-bg-panel) 97%, transparent);
+  border-radius: var(--mar-radius-surface);
+  background: var(--mar-control-bg-color-overlay);
   box-shadow: 0 14px 30px var(--mar-shadow-medium);
-  backdrop-filter: blur(10px);
 }
 .workbench-notification-panel > header {
   display: flex;
@@ -437,7 +448,7 @@ const emit = defineEmits<{
   padding: 0.32rem 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
-.workbench-notification-upload > .el-icon {
+.workbench-notification-upload > .mar-icon {
   color: var(--mar-color-brand-text);
 }
 .workbench-notification-upload-actions {
@@ -506,7 +517,7 @@ const emit = defineEmits<{
 .notification-unread-label {
   flex: none;
   border: 1px solid var(--mar-border-strong);
-  border-radius: 3px;
+  border-radius: var(--mar-radius-marker);
   background: var(--mar-bg-page);
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-nano);
@@ -528,9 +539,6 @@ const emit = defineEmits<{
   min-height: 24px;
   place-items: center;
   color: var(--mar-text-neutral-control);
-}
-html[data-theme='vscode-dark-2026'] .workbench-notification-panel .workbench-notification-delete {
-  color: var(--mar-text-faint);
 }
 .workbench-notification-panel .workbench-notification-delete:hover,
 .workbench-notification-panel .workbench-notification-delete:focus-visible {

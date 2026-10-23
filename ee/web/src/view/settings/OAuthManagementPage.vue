@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Connection, Delete, Edit, Plus, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import {
   newOAuthProviderDraft,
   oauthProviderInput,
@@ -193,12 +193,13 @@ async function load(): Promise<void> {
     ).providers;
     ready.value = true;
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.unableToLoadOAuthProviders')
       )
-    );
+    });
   } finally {
     loading.value = false;
   }
@@ -245,7 +246,10 @@ async function save(): Promise<void> {
   if (saving.value) return;
   if (!(await formRef.value?.validate().catch(() => false))) return;
   if (!editing.value && form.value.clientSecret.trim() === '') {
-    ElMessage.error(translate('generated.oAuthManagementPage.enterTheClientSecret2'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.oAuthManagementPage.enterTheClientSecret2')
+    });
     return;
   }
   saving.value = true;
@@ -259,13 +263,18 @@ async function save(): Promise<void> {
     );
     open.value = false;
     await load();
-    ElMessage.success(
-      translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling')
-    );
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling')
+    });
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(error, translate('generated.oAuthManagementPage.unableToSaveOAuthProvider'))
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
+        error,
+        translate('generated.oAuthManagementPage.unableToSaveOAuthProvider')
+      )
+    });
   } finally {
     saving.value = false;
   }
@@ -276,14 +285,18 @@ async function test(provider: OAuthProvider): Promise<void> {
       method: 'POST'
     });
     await load();
-    ElMessage.success(translate('generated.oAuthManagementPage.configurationTestPassed'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.oAuthManagementPage.configurationTestPassed')
+    });
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.oAuthConfigurationTestFailed')
       )
-    );
+    });
   }
 }
 async function confirmProviderStatusChange(provider: OAuthProvider): Promise<void> {
@@ -298,6 +311,8 @@ async function confirmProviderStatusChange(provider: OAuthProvider): Promise<voi
           }),
       translate('generated.oAuthManagementPage.updateOAuthProviderStatus'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: provider.enabled
           ? translate('generated.oAuthManagementPage.disable')
@@ -318,12 +333,13 @@ async function toggle(provider: OAuthProvider): Promise<void> {
     );
     await load();
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.unableToUpdateProviderStatus')
       )
-    );
+    });
   }
 }
 async function remove(provider: OAuthProvider): Promise<void> {
@@ -332,6 +348,8 @@ async function remove(provider: OAuthProvider): Promise<void> {
       translate('generated.oAuthManagementPage.deleteOAuthProvider', { value0: provider.name }),
       translate('generated.oAuthManagementPage.deleteOAuthProvider2'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.oAuthManagementPage.delete'),
         cancelButtonText: translate('generated.oAuthManagementPage.cancel')
@@ -343,12 +361,13 @@ async function remove(provider: OAuthProvider): Promise<void> {
     await load();
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(
-        oauthErrorMessage(
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: oauthErrorMessage(
           error,
           translate('generated.oAuthManagementPage.unableToDeleteOAuthProvider')
         )
-      );
+      });
   }
 }
 onMounted(() => {
@@ -368,13 +387,18 @@ onMounted(() => {
           v-model="keyword"
           clearable
           :placeholder="translate('generated.oAuthManagementPage.enterAProviderNameOrKey')"
+          :clear-icon="marIcon('clear-input')"
       /></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && ready" @click="refresh">{{
-        translate('generated.oAuthManagementPage.refresh')
-      }}</el-button>
-      <el-button type="primary" :icon="Plus" :disabled="!writable" @click="create">{{
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && ready"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.oAuthManagementPage.refresh') }}</el-button
+      >
+      <el-button type="primary" :icon="marIcon('plus')" :disabled="!writable" @click="create">{{
         translate('generated.oAuthManagementPage.addProvider')
       }}</el-button>
     </div>
@@ -412,15 +436,22 @@ onMounted(() => {
       ><el-table-column :label="translate('generated.oAuthManagementPage.actions')" :width="320"
         ><template #default="{ row }"
           ><div class="row-actions" @click.stop>
-            <el-button link type="primary" :icon="Edit" :disabled="!writable" @click="edit(row)">{{
-              translate('generated.oAuthManagementPage.edit')
-            }}</el-button
-            ><el-button link :icon="Connection" :disabled="!writable" @click="test(row)">{{
-              translate('generated.oAuthManagementPage.test')
-            }}</el-button
+            <el-button
+              link
+              type="primary"
+              :icon="marIcon('edit')"
+              :disabled="!writable"
+              @click="edit(row)"
+              >{{ translate('generated.oAuthManagementPage.edit') }}</el-button
             ><el-button
               link
-              :icon="SwitchButton"
+              :icon="marIcon('connection')"
+              :disabled="!writable"
+              @click="test(row)"
+              >{{ translate('generated.oAuthManagementPage.test') }}</el-button
+            ><el-button
+              link
+              :icon="marIcon('power')"
               :disabled="!writable || (!row.enabled && row.testedAt === null)"
               @click="confirmProviderStatusChange(row)"
               >{{
@@ -431,7 +462,7 @@ onMounted(() => {
             ><el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable"
               @click="remove(row)"
               >{{ translate('generated.oAuthManagementPage.delete2') }}</el-button
@@ -446,6 +477,7 @@ onMounted(() => {
       :title="providerDetails.name"
       width="min(720px, calc(100vw - 32px))"
       @closed="providerDetails = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions :column="1" border>
         <el-descriptions-item :label="translate('generated.oAuthManagementPage.providerKey')">
@@ -511,6 +543,7 @@ onMounted(() => {
           : translate('generated.oAuthManagementPage.addOAuthProvider')
       "
       width="min(680px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
       ><el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="oauth-form"
         ><el-form-item
           :label="translate('generated.oAuthManagementPage.providerKey2')"
@@ -606,6 +639,8 @@ onMounted(() => {
           ><el-select
             v-model="form.pkceMode"
             :placeholder="translate('generated.oAuthManagementPage.selectAPKCEMode2')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               :label="translate('generated.oAuthManagementPage.required2')"
               value="REQUIRED" /><el-option
@@ -619,6 +654,8 @@ onMounted(() => {
           ><el-select
             v-model="form.tokenAuthMethod"
             :placeholder="translate('generated.oAuthManagementPage.selectAMethod')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               :label="translate('common.httpBasic')"
               value="client_secret_basic" /><el-option
@@ -635,9 +672,13 @@ onMounted(() => {
         ><el-button @click="open = false">{{
           translate('generated.oAuthManagementPage.cancel2')
         }}</el-button
-        ><el-button type="primary" :loading="saving" @click="save">{{
-          translate('generated.oAuthManagementPage.saveAndDisable')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :loading="saving"
+          @click="save"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('generated.oAuthManagementPage.saveAndDisable') }}</el-button
+        ></template
       ></el-dialog
     >
   </section>

@@ -123,6 +123,7 @@ export const composerZhCN = {
       modelAndReasoningEffort: '模型与思考强度',
       access: '权限',
       viewContextUsageClickToCompactContext: '查看上下文用量；点击压缩上下文',
+      compactUnavailable: '当前无法压缩上下文。',
       enterToQueueCtrlEnterToStop: 'Enter 排队 · Ctrl + Enter 插入消息',
       enterToSendShiftAltEnterFor: 'Enter 发送 · Shift/Alt + Enter 换行',
       stopRun: '停止运行',

@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="ManagementSection extends string">
-import { ChatDotRound, Monitor, Refresh, SetUp, Setting } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, ref } from 'vue';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
@@ -138,11 +139,11 @@ function openBlankMenu(event: MouseEvent): void {
     data-testid="workbench-brand"
   >
     <a class="brand-home-link" href="/" :aria-label="$t('navigation.home')">
-      <img
-        :src="logoIcon"
-        :alt="$t('common.productName')"
-        :title="$t('common.productVersion', { version: webVersion })"
-      />
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="$t('common.productVersion', { version: webVersion })"
+        ><img :src="logoIcon" :alt="$t('common.productName')"
+      /></el-tooltip>
     </a>
     <div class="brand-copy">
       <div class="brand-heading">
@@ -155,29 +156,31 @@ function openBlankMenu(event: MouseEvent): void {
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
       <template v-for="item in navigationItems" :key="item.id">
-        <button
-          :class="[
-            'nav-menu-button',
-            {
-              active: view === item.id,
-              utility: item.id === 'management' || item.id === 'settings'
-            }
-          ]"
-          :aria-label="item.label"
-          :aria-current="view === item.id ? 'page' : undefined"
-          :title="item.label"
-          type="button"
-          @click="emit('selectNavigation', item.id)"
-        >
-          <span class="nav-item-content">
-            <el-icon aria-hidden="true">
-              <Monitor v-if="item.id === 'nodes'" />
-              <ChatDotRound v-else-if="item.id === 'conversations'" />
-              <Setting v-else-if="item.id === 'settings'" />
-              <SetUp v-else />
-            </el-icon>
-          </span>
-        </button>
+        <el-tooltip v-bind="tooltipOptions" :content="item.label"
+          ><button
+            :class="[
+              'nav-menu-button',
+              {
+                active: view === item.id,
+                utility: item.id === 'management' || item.id === 'settings'
+              }
+            ]"
+            :aria-label="item.label"
+            :aria-current="view === item.id ? 'page' : undefined"
+            type="button"
+            @click="emit('selectNavigation', item.id)"
+          >
+            <span class="nav-item-content">
+              <MarIcon name="workspace" aria-hidden="true" v-if="item.id === 'nodes'" />
+              <MarIcon
+                name="conversation"
+                aria-hidden="true"
+                v-else-if="item.id === 'conversations'"
+              />
+              <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
+              <MarIcon name="administration" aria-hidden="true" v-else />
+            </span></button
+        ></el-tooltip>
         <WorkbenchRecentSessions
           v-if="item.id === 'conversations'"
           :service="notificationService"
@@ -185,23 +188,24 @@ function openBlankMenu(event: MouseEvent): void {
           @open-recent-run="emit('openRecentRun', $event)"
         />
       </template>
-      <el-link
+      <el-tooltip
+        v-bind="tooltipOptions"
         v-if="documentationAvailable"
-        class="nav-menu-button documentation-link"
-        :href="localizedDocsPath(locale, 'getting-started/overview')"
-        underline="never"
-        target="_blank"
-        rel="noopener noreferrer"
-        :aria-label="$t('navigation.help')"
-        :title="$t('navigation.help')"
+        :content="$t('navigation.help')"
+        ><el-link
+          class="nav-menu-button documentation-link"
+          :href="localizedDocsPath(locale, 'getting-started/overview')"
+          underline="never"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="$t('navigation.help')"
+        >
+          <span class="nav-item-content">
+            <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
+            <span class="rail-label">{{ $t('navigation.help') }}</span>
+          </span>
+        </el-link></el-tooltip
       >
-        <span class="nav-item-content">
-          <el-icon class="documentation-icon" aria-hidden="true">
-            <MarIcon name="help" />
-          </el-icon>
-          <span class="rail-label">{{ $t('navigation.help') }}</span>
-        </span>
-      </el-link>
       <WorkbenchNotificationCenter
         class="global-notification-center"
         :service="notificationService"
@@ -232,7 +236,7 @@ function openBlankMenu(event: MouseEvent): void {
       <button ref="blankMenuButton" type="button" tabindex="-1" aria-hidden="true" />
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item command="refresh" :icon="Refresh">{{
+          <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
             $t('generated.workspaceTree.refreshWorkspaces')
           }}</el-dropdown-item>
         </el-dropdown-menu>
@@ -499,7 +503,7 @@ function openBlankMenu(event: MouseEvent): void {
   width: 100%;
 }
 
-.activity-rail nav button .el-icon {
+.activity-rail nav button .mar-icon {
   font-size: 1.25rem;
 }
 
@@ -721,23 +725,13 @@ function openBlankMenu(event: MouseEvent): void {
     gap: 2px;
   }
 
-  .activity-rail nav .nav-menu-button .el-icon {
+  .activity-rail nav .nav-menu-button .mar-icon {
     display: grid;
     width: 18px;
     height: 18px;
     place-items: center;
     font-size: 1.125rem;
     line-height: 18px;
-  }
-
-  .activity-rail nav .nav-menu-button .el-icon > svg {
-    display: block;
-    width: 18px;
-    height: 18px;
-  }
-
-  .activity-rail nav .nav-menu-button .documentation-icon > svg {
-    transform: scale(1.2);
   }
 
   .activity-rail nav .nav-menu-button .rail-label {
@@ -822,7 +816,7 @@ function openBlankMenu(event: MouseEvent): void {
 </style>
 
 <style scoped>
-:global(.nav-item-content > .el-icon) {
+:global(.nav-item-content > .mar-icon) {
   font-size: 1rem;
   line-height: 1;
 }

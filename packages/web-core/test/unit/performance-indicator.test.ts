@@ -1,6 +1,6 @@
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { ElButton, ElIcon } from 'element-plus';
+import { ElButton, ElIcon, ElTooltip, ID_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
@@ -48,8 +48,10 @@ describe('Long Task diagnostic indicator', () => {
       localePreferenceService().setLocale(locale);
       const app = createSSRApp({ render: () => h(WebPerformanceIndicator, { diagnostics }) });
       app.use(i18n);
+      app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
       app.component('ElButton', ElButton);
       app.component('ElIcon', ElIcon);
+      app.component('ElTooltip', ElTooltip);
       // Render the reference and content; placement and hover are unchanged.
       app.component(
         'ElPopover',

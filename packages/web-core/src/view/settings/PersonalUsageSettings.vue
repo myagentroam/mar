@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { Refresh } from '@element-plus/icons-vue';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
@@ -20,7 +22,7 @@ import { createManagementPaginationService } from '../../service/ManagementPagin
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
 const service = new PersonalUsageService(props.request, (error) =>
-  ElMessage.error(errorMessage(error))
+  ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
 );
 const state = service.state;
 const busy = computed(() => state.loading || state.loadingPage);
@@ -227,10 +229,11 @@ onUnmounted(() => {
             }}
           </span>
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
             @click="refresh()"
+            :loading-icon="marIcon('loading-action')"
             >{{ t('modelUsage.refresh') }}</el-button
           >
         </div>
@@ -252,13 +255,18 @@ onUnmounted(() => {
           <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
           <p>
             {{ t('modelUsage.input') }}
-            <el-tooltip :content="number(card.value.inputTokens)" :trigger="['hover', 'focus']">
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="number(card.value.inputTokens)"
+              :trigger="['hover', 'focus']"
+            >
               <span class="usage-count" tabindex="0">{{
                 number(card.value.inputTokens, true)
               }}</span>
             </el-tooltip>
             · {{ t('modelUsage.cache') }}
             <el-tooltip
+              v-bind="tooltipOptions"
               :content="cacheTooltip(card.value)"
               :disabled="!hasCacheDetails(card.value)"
               :trigger="['hover', 'focus']"
@@ -270,13 +278,21 @@ onUnmounted(() => {
               >
             </el-tooltip>
             · {{ t('modelUsage.output') }}
-            <el-tooltip :content="number(card.value.outputTokens)" :trigger="['hover', 'focus']">
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="number(card.value.outputTokens)"
+              :trigger="['hover', 'focus']"
+            >
               <span class="usage-count" tabindex="0">{{
                 number(card.value.outputTokens, true)
               }}</span>
             </el-tooltip>
           </p>
-          <el-tooltip :content="number(card.value.totalTokens)" :trigger="['hover', 'focus']">
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="number(card.value.totalTokens)"
+            :trigger="['hover', 'focus']"
+          >
             <strong class="usage-count" tabindex="0">{{
               number(card.value.totalTokens, true)
             }}</strong> </el-tooltip
@@ -295,7 +311,13 @@ onUnmounted(() => {
         @submit.prevent="refresh()"
       >
         <el-form-item :label="t('modelUsage.range')"
-          ><el-select v-model="draft.period" :aria-label="t('modelUsage.range')" @change="change">
+          ><el-select
+            v-model="draft.period"
+            :aria-label="t('modelUsage.range')"
+            @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option :label="t('modelUsage.last24Hours')" value="24h" /><el-option
               :label="t('modelUsage.last7Days')"
               value="7d"
@@ -311,6 +333,8 @@ onUnmounted(() => {
               draft.model = '';
               change();
             "
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="runner in runners"
               :key="runner"
@@ -324,6 +348,8 @@ onUnmounted(() => {
             :placeholder="t('modelUsage.all')"
             :aria-label="t('modelUsage.model')"
             @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="model in modelOptions"
               :key="model.key"
@@ -337,6 +363,8 @@ onUnmounted(() => {
             :placeholder="t('modelUsage.all')"
             :aria-label="t('modelUsage.mode')"
             @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="mode in ['work', 'conversation']"
               :key="mode"
@@ -356,12 +384,19 @@ onUnmounted(() => {
             :start-placeholder="t('modelUsage.from')"
             :end-placeholder="t('modelUsage.to')"
             @change="change"
-        /></el-form-item>
+            :prefix-icon="marIcon('calendar')"
+            :clear-icon="marIcon('clear-input')"
+            ><template #prev-month><MarIcon name="chevron-left" /></template
+            ><template #next-month><MarIcon name="chevron-right" /></template
+            ><template #prev-year><MarIcon name="chevrons-left" /></template
+            ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
+        ></el-form-item>
       </el-form>
       <template v-if="state.overview">
         <div class="section-heading">
           <h3>{{ t('modelUsage.trend') }}</h3>
           <el-tooltip
+            v-bind="tooltipOptions"
             :content="
               t('modelUsage.selected', {
                 tokens: number(state.overview.selected.totalTokens),
@@ -395,6 +430,7 @@ onUnmounted(() => {
             <span class="input-key" />{{ t('modelUsage.input') }}
             <span class="cache-key" />
             <el-tooltip
+              v-bind="tooltipOptions"
               :content="cacheTooltip(state.overview.selected)"
               :disabled="!hasCacheDetails(state.overview.selected)"
               :trigger="['hover', 'focus']"
@@ -408,6 +444,7 @@ onUnmounted(() => {
             <span class="output-key" />{{ t('modelUsage.output') }}
           </div>
           <svg
+            class="usage-trend-chart"
             viewBox="0 0 800 170"
             role="img"
             :aria-label="t('modelUsage.trend')"
@@ -461,6 +498,7 @@ onUnmounted(() => {
             </g>
           </svg>
           <el-tooltip
+            v-bind="tooltipOptions"
             virtual-triggering
             :virtual-ref="bucketAnchor"
             :visible="!!activeBucket"
@@ -500,6 +538,7 @@ onUnmounted(() => {
               >
                 <template #default="{ row }">
                   <el-tooltip
+                    v-bind="tooltipOptions"
                     :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                     :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
                     :trigger="['hover', 'focus']"
@@ -549,6 +588,7 @@ onUnmounted(() => {
                 <div class="distribution-cache metadata">
                   {{ t('modelUsage.cache') }}
                   <el-tooltip
+                    v-bind="tooltipOptions"
                     :content="cacheTooltip(group)"
                     :disabled="!hasCacheDetails(group)"
                     :trigger="['hover', 'focus']"
@@ -563,7 +603,11 @@ onUnmounted(() => {
                   {{
                     t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
                   }}
-                  <el-tooltip :content="number(group[metric])" :trigger="['hover', 'focus']">
+                  <el-tooltip
+                    v-bind="tooltipOptions"
+                    :content="number(group[metric])"
+                    :trigger="['hover', 'focus']"
+                  >
                     <strong class="usage-count" tabindex="0">{{
                       number(group[metric], true)
                     }}</strong>
@@ -619,6 +663,7 @@ onUnmounted(() => {
                   ><dt>{{ t(`modelUsage.${key}`) }}</dt>
                   <dd>
                     <el-tooltip
+                      v-bind="tooltipOptions"
                       v-if="key.endsWith('Tokens')"
                       :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                       :disabled="
@@ -681,6 +726,7 @@ onUnmounted(() => {
           >
             <template #default="{ row }">
               <el-tooltip
+                v-bind="tooltipOptions"
                 :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                 :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
                 :trigger="['hover', 'focus']"
@@ -876,7 +922,7 @@ p {
 .bucket-hit-area {
   fill: transparent;
 }
-svg {
+.usage-trend-chart {
   width: 100%;
   height: 8rem;
 }

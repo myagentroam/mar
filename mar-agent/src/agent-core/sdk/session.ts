@@ -1,15 +1,10 @@
 import { restoreMessages } from '../runtime/context/restore.js';
 import { createNativeSteer } from './native-steer.js';
-import {
-  lastConfigurationEffort,
-  latestModelUsage,
-  reasoningEffortBaseline
-} from '../runtime/context/usage.js';
+import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
 import type { ContextualWorldState } from '../runtime/context/world-state.js';
 import {
   contextualInstructionInsertIndex,
-  insertContextualWorldState,
   latestContextualWorldStateGeneration,
   parsePersistedContextualWorldState,
   persistContextualWorldState,
@@ -19,7 +14,15 @@ import {
 } from '../runtime/context/world-state.js';
 import { eventForPersistence, publicModelUsage } from '../runtime/event-projection.js';
 import { ExecutionLoop, type PreparedExecutionRound } from '../runtime/execution.js';
-import { closeModelAdapters, createModelTurnSession } from './model-runtime.js';
+import {
+  closeModelAdapters,
+  createExecutionModelResources,
+  createModelTurnSession
+} from './model-runtime.js';
+import {
+  prepareSessionModelRequest,
+  projectSessionRequestMessages
+} from './request-preparation.js';
 import { createSubagentBackend } from './subagent-backend.js';
 import {
   ExecutionToolPermissions,
@@ -69,17 +72,14 @@ import { coreMcpCatalog } from '../extensions/mcp.js';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError, describeMarAgentError } from '../error.js';
 import type { HostDescription, MarAgentHost } from '../host/contracts.js';
-import {
-  usesResponsesConfigurationUpdates,
-  type MarAgentReasoningEffort
-} from '../model/configuration.js';
+import type { MarAgentReasoningEffort } from '../model/configuration.js';
+import { prepareModelConfiguration } from '../model/request-configuration.js';
 import type {
   ClientToolDefinition,
   ModelAdapter,
   ModelAttemptDiagnostic,
   ModelMessage,
   ModelRequest,
-  ModelTurnSession,
   ModelUsage
 } from '../model/contracts.js';
 import type { EnvironmentContextState } from '../prompts/core.js';
@@ -115,7 +115,6 @@ import { loadAgentInstructions, renderAgentInstructions } from '../runtime/conte
 import { normalizeMessagesForModel } from '../runtime/context/normalize.js';
 import {
   latestSmartContextTokens,
-  projectSmartCompactionMessage,
   requestSmartCompaction,
   type SmartCompactionInput
 } from '../runtime/compaction/smart.js';
@@ -133,7 +132,6 @@ import {
 } from '../subagent/session-controller.js';
 import { agentStartToolDefinitionWithModels } from '../tools/agent/agent-start.js';
 import { allowsDirectTool, allowsToolCaller, toolCallers } from '../tools/callers.js';
-import { projectCodeModeSearchResult, projectCodeModeTools } from '../tools/code-mode/index.js';
 import { assertMcpToolCatalog } from '../tools/mcp/catalog.js';
 import { BUILTIN_TOOL_DEFINITIONS } from '../tools/registry.js';
 import type { ToolRuntimeContext, ToolRuntimeImage } from '../tools/runtime-context.js';
@@ -646,10 +644,9 @@ export function createSessionOpener(services: SessionServices) {
         let finalAnswer = '';
         let executionLoop: ExecutionLoop | undefined;
         let executionToolSources: ExecutionToolSources | undefined;
-        let selectedTurn: ModelTurnSession | undefined;
         const contextGc = new ContextGcRuntime();
         let selectedAdapter: ModelAdapter | undefined;
-        const executionScopedAdapters = new Set<ModelAdapter>();
+        const modelResources = createExecutionModelResources(activeExecutionAdapters);
         const subagents = sessionSource.type === 'user' ? sessionRuntime.subagents : undefined;
         try {
           controller.signal.throwIfAborted();
@@ -1159,12 +1156,10 @@ export function createSessionOpener(services: SessionServices) {
             executionModels
           );
           const selectedModel = executionModels.get(input.modelId ?? executionDefaultModelId)!;
-          if (services.hasCustomAdapters && selectedAdapter.createTurnSession === undefined) {
-            executionScopedAdapters.add(selectedAdapter);
-            activeExecutionAdapters.add(selectedAdapter);
-          }
-          const selected = createModelTurnSession(selectedAdapter);
-          selectedTurn = selected;
+          const selected = modelResources.openTurn(
+            selectedAdapter,
+            services.hasCustomAdapters && selectedAdapter.createTurnSession === undefined
+          );
           let lastServerUsage = latestModelUsage(contextRecords, selectedModel.id);
           let smartContextTokens = latestSmartContextTokens(
             contextRecords,
@@ -1176,18 +1171,6 @@ export function createSessionOpener(services: SessionServices) {
             Math.floor(selectedModel.contextWindowTokens / 8)
           );
           const reasoningEffort = input.reasoningEffort ?? selectedModel.defaultReasoningEffort;
-          const useEffortUpdates = usesResponsesConfigurationUpdates(selectedModel);
-          const previousReasoningEffort = useEffortUpdates
-            ? reasoningEffortBaseline(contextRecords, selectedModel.id)
-            : undefined;
-          let requestReasoningEffort = useEffortUpdates
-            ? (previousReasoningEffort ?? reasoningEffort)
-            : undefined;
-          let effectiveReasoningEffort = useEffortUpdates
-            ? previousReasoningEffort === undefined
-              ? requestReasoningEffort
-              : (lastConfigurationEffort(messages, selectedModel.id) ?? requestReasoningEffort)
-            : undefined;
           if (mode !== 'compact' && subagents)
             await subagents.beginParentExecution({
               executionId,
@@ -1767,7 +1750,7 @@ export function createSessionOpener(services: SessionServices) {
           let preparedCompactPrompt:
             Awaited<ReturnType<typeof coreExtensions.composeModelSystem>> | undefined;
           sources.bind(captureRoundToolScope().toolScope);
-          let preparingRequestMessages: ModelMessage[] | undefined;
+          let preparingRequestMessages: readonly ModelMessage[] | undefined;
           let preparingRequestBaseLength = 0;
           executionContext.requestMessages = {
             read: () =>
@@ -1910,27 +1893,21 @@ export function createSessionOpener(services: SessionServices) {
                 coreExtensions.diagnose({ code: 'MAR_AGENT_STEER_POST_COMMIT_FAILED', sessionId })
             });
           }
-          if (
-            mode !== 'compact' &&
-            useEffortUpdates &&
-            effectiveReasoningEffort !== reasoningEffort
-          ) {
-            const update: ModelMessage = {
-              role: 'provider',
-              content: '',
-              provider: 'OPENAI_RESPONSES',
-              providerModelId: selectedModel.id,
-              item: { type: 'configuration_update', reasoning: { effort: reasoningEffort } }
-            };
-            messages.push(update);
-            await store.append(sessionId, {
-              type: 'model.context',
-              payload: update,
-              executionId,
-              turnId
-            });
-            effectiveReasoningEffort = reasoningEffort;
-          }
+          const modelConfiguration = prepareModelConfiguration(selectedModel, reasoningEffort, {
+            baselineEffort: reasoningEffortBaseline(contextRecords, selectedModel.id),
+            messages
+          });
+          let requestReasoningEffort = modelConfiguration.requestReasoningEffort;
+          if (mode !== 'compact')
+            for (const update of modelConfiguration.updates) {
+              messages.push(update);
+              await store.append(sessionId, {
+                type: 'model.context',
+                payload: update,
+                executionId,
+                turnId
+              });
+            }
           const runPreparedExecution = async (
             compactFocus: string = input.prompt,
             compactSignal: AbortSignal = controller.signal
@@ -2025,8 +2002,9 @@ export function createSessionOpener(services: SessionServices) {
               lastServerContextTokens = undefined;
               lastServerUsage = undefined;
               smartContextTokens = undefined;
-              requestReasoningEffort = reasoningEffort;
-              effectiveReasoningEffort = reasoningEffort;
+              requestReasoningEffort = prepareModelConfiguration(selectedModel, reasoningEffort, {
+                checkpointAdopted: true
+              }).requestReasoningEffort;
             };
             const compactLeaf = async (
               input: { readonly focus?: string; readonly async?: boolean },
@@ -2389,17 +2367,7 @@ export function createSessionOpener(services: SessionServices) {
                 await modelContext.recordEnvironment();
                 const { roundTools, roundBindings, toolScope, composeSystemPrompt } =
                   captureRoundToolScope();
-                const codeModeEnabled = roundTools.some((tool) => tool.name === 'code_exec');
                 const residentTools = projectTools(mcpRegistry.projectDirect(baseTools()));
-                const requestTools = (() => {
-                  if (selectedModel.protocol !== 'OPENAI_RESPONSES')
-                    return projectCodeModeTools(roundTools, residentTools);
-                  const directNames = new Set(residentTools.map((tool) => tool.name));
-                  // Discovery and caller policy are independent: keep nested declarations for active tools.
-                  return projectCodeModeTools(roundTools, residentTools).filter((tool) =>
-                    directNames.has(tool.name)
-                  );
-                })();
                 const requestContextMessages =
                   pendingOutputContinuation === undefined
                     ? messages
@@ -2411,28 +2379,26 @@ export function createSessionOpener(services: SessionServices) {
                   messages.length,
                   composedSystem.parts
                 );
-                const modelMessages = projectSessionRequestMessages(
-                  requestContextMessages,
+                const candidateRequest = prepareSessionModelRequest(
+                  {
+                    system: composedSystem.system,
+                    ...(composedSystem.systemBlocks
+                      ? { systemBlocks: composedSystem.systemBlocks }
+                      : {}),
+                    messages: requestContextMessages,
+                    tools: roundTools,
+                    promptCacheKey: sessionId,
+                    reasoningEffort,
+                    ...(requestReasoningEffort === undefined ? {} : { requestReasoningEffort }),
+                    ...(modelInputImages?.length ? { images: modelInputImages } : {}),
+                    onAttemptDiagnostic: recordModelAttempt('EXECUTION')
+                  },
+                  selectedModel,
                   candidateWorld.entries,
-                  selectedModel.inputCapabilities.includes('IMAGE'),
-                  codeModeEnabled,
+                  residentTools,
                   permissionPolicy.mode === 'auto'
                 );
-                const systemPrompt = composedSystem.system;
-                const candidateRequest: ModelRequest = {
-                  system: systemPrompt,
-                  ...(composedSystem.systemBlocks
-                    ? { systemBlocks: composedSystem.systemBlocks }
-                    : {}),
-                  messages: modelMessages,
-                  tools: requestTools,
-                  promptCacheKey: sessionId,
-                  reasoningEffort,
-                  ...(requestReasoningEffort === undefined ? {} : { requestReasoningEffort }),
-                  ...(modelInputImages?.length ? { images: modelInputImages } : {}),
-                  onAttemptDiagnostic: recordModelAttempt('EXECUTION')
-                };
-                preparingRequestMessages = modelMessages;
+                preparingRequestMessages = candidateRequest.messages;
                 preparingRequestBaseLength = messages.length;
                 let request: ModelRequest;
                 try {
@@ -2524,8 +2490,7 @@ export function createSessionOpener(services: SessionServices) {
                     modelId: selectedModel.id,
                     contextWindowTokens: selectedModel.contextWindowTokens,
                     usage: latestUsage,
-                    modelProtocol: selectedModel.protocol,
-                    responsesConfigurationUpdates: usesResponsesConfigurationUpdates(selectedModel),
+                    ...modelConfiguration.contextProjection,
                     workspace: logicalWorkspace,
                     platform: description.platform,
                     getActiveProcessIds: async () => {
@@ -2619,6 +2584,7 @@ export function createSessionOpener(services: SessionServices) {
             errorMessage: diagnostic.message
           };
         } finally {
+          // Revoke this Execution's request and input bindings, not Session warm resources.
           delete executionContext.requestMessages;
           compactRequests.close(new MarAgentError('MAR_AGENT_CANCELLED', 'Execution ended.'));
           if (executionContext.compactRequests === compactRequests)
@@ -2630,17 +2596,12 @@ export function createSessionOpener(services: SessionServices) {
           if (executionContext.toolSources === executionToolSources)
             delete executionContext.toolSources;
           internal.signal?.removeEventListener('abort', abortSource);
+          // Compact retains its existing owner, waiting and error propagation.
           await compactCoordinator.close(
             controller.signal.reason ?? new MarAgentError('MAR_AGENT_CANCELLED', 'Execution ended.')
           );
-          await selectedTurn?.close().catch(() => undefined);
-          try {
-            await closeModelAdapters(executionScopedAdapters);
-          } catch {
-            // Execution cleanup is best effort.
-          } finally {
-            for (const adapter of executionScopedAdapters) activeExecutionAdapters.delete(adapter);
-          }
+          await modelResources.close();
+          // Ending the parent Execution does not destroy Session-owned child tasks.
           subagents?.endParentExecution(executionId);
           try {
             await releaseSession?.();
@@ -2648,6 +2609,7 @@ export function createSessionOpener(services: SessionServices) {
             // Preserve the first failure/cancellation; successful executions still report release errors.
             if (!failedExecution) throw error;
           } finally {
+            // Writer release cannot skip owner-safe deactivation; the event stream closes last.
             if (sessionRuntime.execution === executionContext) delete sessionRuntime.execution;
             active.delete(`${sessionId}:${executionId}`);
             sessionRuntime.sessionBackend?.kick();
@@ -3061,26 +3023,6 @@ function modelAttemptFailureDiagnostic(
     code: diagnostic.code,
     message: `${prefix}${[...diagnostic.message].slice(0, availableCharacters).join('')}`
   };
-}
-
-/** Shared, side-effect-free projection for the real request and current Session request view. */
-function projectSessionRequestMessages(
-  messages: readonly ModelMessage[],
-  entries: ContextualWorldState['entries'],
-  supportsImages: boolean,
-  codeMode: boolean,
-  autoPermission = false
-): ModelMessage[] {
-  return normalizeMessagesForModel(insertContextualWorldState(messages, entries), {
-    supportsImages
-  }).map((message) =>
-    projectCodeModeSearchResult(
-      autoPermission && message.toolSearchTools
-        ? { ...message, toolSearchTools: message.toolSearchTools.map(projectPermissionTool) }
-        : projectSmartCompactionMessage(message),
-      codeMode
-    )
-  );
 }
 
 function projectAppendedModelMessage(input: CoreAppendInput): ModelMessage | undefined {

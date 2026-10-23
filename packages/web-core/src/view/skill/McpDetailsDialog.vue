@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 export interface McpDetails {
   readonly name: string;
@@ -25,6 +26,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
     width="min(720px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
+    :close-icon="marIcon('close')"
   >
     <div v-if="details" class="mcp-details">
       <p>

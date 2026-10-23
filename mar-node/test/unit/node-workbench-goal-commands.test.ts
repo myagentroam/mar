@@ -1,5 +1,9 @@
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import type { GoalContinuationCoordinator } from '../../src/service/goal-continuation-coordinator.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serializeComposerTag } from '@myagentroam/protocol';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
@@ -161,7 +165,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('queues ordinary Goal messages and only interrupts for explicit replacement without discarding FIFO messages', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-mode');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-mode',
+      path: await workspacePath('goal-mode'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -341,10 +345,11 @@ describe('Node Workbench Manifest and command control', () => {
     );
     expect(internals.runtime.activeSessionRun(session.id)?.suppressNotifications).toBe(true);
     expect(internals.continuousRunCoordinator.pending(continuationBeforeRetry[0]!)).toMatchObject({
-      marAgentRuntimeScopeId: 'scope-1',
-      marAgentModel,
-      marAgentModels
+      executionContext: { runner: 'claude-code' }
     });
+    expect(
+      internals.continuousRunCoordinator.pending(continuationBeforeRetry[0]!)?.executionContext
+    ).not.toHaveProperty('runnerInput');
     expect(internals.commandStates.get(session.id, 'goal')?.goal?.turns).toBe(1);
     await operation(connector, 'session.message', {
       sessionId: session.id,
@@ -404,13 +409,15 @@ describe('Node Workbench Manifest and command control', () => {
       objective: goalBeforeIntervention.objective,
       revision: goalBeforeIntervention.revision
     });
-    const queue = (await operation(connector, 'workspace.queue.get', {
-      workspaceId: workspace.id,
-      sessionId: session.id
-    })) as { queue: { items: readonly unknown[] } };
-    expect(queue.queue.items).toEqual(
-      ordinaryContents.map((content) => expect.objectContaining({ content }))
-    );
+    await vi.waitFor(async () => {
+      const queue = (await operation(connector, 'workspace.queue.get', {
+        workspaceId: workspace.id,
+        sessionId: session.id
+      })) as { queue: { items: readonly unknown[] } };
+      expect(queue.queue.items).toEqual(
+        ordinaryContents.map((content) => expect.objectContaining({ content }))
+      );
+    });
 
     const currentGoal = internals.goalRuntime.get(session.id)!;
     internals.goalCoordinator.publishGoalState(session, { ...currentGoal, status: 'completed' });
@@ -470,7 +477,7 @@ describe('Node Workbench Manifest and command control', () => {
     async (exit) => {
       const database = new NodeDatabase(':memory:', 'node-goal-message-fifo');
       const workspace = database.saveWorkspace({
-        path: '/workspace/goal-message-fifo',
+        path: await workspacePath('goal-message-fifo'),
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -602,7 +609,7 @@ describe('Node Workbench Manifest and command control', () => {
     async ({ namespace, toolName, progressed }) => {
       const database = new NodeDatabase(':memory:', 'node-goal-no-progress');
       const workspace = database.saveWorkspace({
-        path: '/workspace/goal-no-progress',
+        path: await workspacePath('goal-no-progress'),
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -746,7 +753,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('removes a continuation submission that finishes after no-progress completion invalidates it', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-paused-inflight-continuation');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-paused-inflight-continuation',
+      path: await workspacePath('goal-paused-inflight-continuation'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -847,7 +854,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('rejects same-revision stale lifecycle callbacks after user intervention', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-intervention-inflight-continuation');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-intervention-inflight-continuation',
+      path: await workspacePath('goal-intervention-inflight-continuation'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -976,7 +983,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('discards an old Goal start that finishes after a newer edit', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-stale-start-after-edit');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-stale-start-after-edit',
+      path: await workspacePath('goal-stale-start-after-edit'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1065,7 +1072,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('MAR Agent preserves model and dynamic credential context when Goal starts through a command', async () => {
     const database = new NodeDatabase(':memory:', 'node-mar-agent-goal-model-context');
     const workspace = database.saveWorkspace({
-      path: '/workspace/mar-agent-goal-model-context',
+      path: await workspacePath('mar-agent-goal-model-context'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1113,9 +1120,11 @@ describe('Node Workbench Manifest and command control', () => {
 
       expect(submitGoal).toHaveBeenCalledWith(
         expect.objectContaining({
-          marAgentRuntimeScopeId: 'scope-1',
-          marAgentModel,
-          marAgentModels
+          executionContext: new MarAgentRunner().prepareExecutionContext({
+            marAgentRuntimeScopeId: 'scope-1',
+            marAgentModel,
+            marAgentModels
+          })
         })
       );
     } finally {
@@ -1126,7 +1135,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('preserves the Run owner when editing a Goal through a command', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-edit-owner');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-edit-owner',
+      path: await workspacePath('goal-edit-owner'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1194,6 +1203,11 @@ describe('Node Workbench Manifest and command control', () => {
       await vi.waitFor(() =>
         expect(internals.runtime.activeSessionRun(session.id)?.initiatedByUserId).toBe(7)
       );
+      await vi.waitFor(() =>
+        expect(
+          internals.runtime.currentExecutionId(internals.runtime.activeSessionRun(session.id)!.id)
+        ).toBeTypeOf('string')
+      );
       const original = internals.goalRuntime.get(session.id)!;
       const originalRun = internals.runtime.activeSessionRun(session.id)!;
       const originalExecutionId = internals.runtime.currentExecutionId(originalRun.id)!;
@@ -1235,7 +1249,7 @@ describe('Node Workbench Manifest and command control', () => {
     vi.useFakeTimers();
     const database = new NodeDatabase(':memory:', 'node-mar-agent-goal-run-retry-context');
     const workspace = database.saveWorkspace({
-      path: '/workspace/mar-agent-goal-run-retry-context',
+      path: await workspacePath('mar-agent-goal-run-retry-context'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1298,7 +1312,11 @@ describe('Node Workbench Manifest and command control', () => {
       runId: accepted.run.id,
       sessionId: session.id,
       workspaceId: workspace.id,
-      runner: 'mar-agent',
+      executionContext: new MarAgentRunner().prepareExecutionContext({
+        marAgentModel,
+        marAgentModels,
+        marAgentRuntimeScopeId: 'scope-1'
+      }),
       input: 'Goal Start',
       clientMessageId: 'goal-run-retry-context',
       attachments: [],
@@ -1312,10 +1330,7 @@ describe('Node Workbench Manifest and command control', () => {
       secretEnvironment: {},
       goal: (
         connector as unknown as { goalCoordinator: GoalContinuationCoordinator }
-      ).goalCoordinator.reference(session.id),
-      marAgentRuntimeScopeId: 'scope-1',
-      marAgentModel,
-      marAgentModels
+      ).goalCoordinator.reference(session.id)
     });
     const submitGoal = vi.fn(async () => ({ run: accepted.run }));
     internals.sessionMessageService.submitGoal = submitGoal;
@@ -1326,9 +1341,11 @@ describe('Node Workbench Manifest and command control', () => {
 
       expect(submitGoal).toHaveBeenCalledWith(
         expect.objectContaining({
-          marAgentRuntimeScopeId: 'scope-1',
-          marAgentModel,
-          marAgentModels
+          executionContext: new MarAgentRunner().prepareExecutionContext({
+            marAgentRuntimeScopeId: 'scope-1',
+            marAgentModel,
+            marAgentModels
+          })
         })
       );
     } finally {
@@ -1340,7 +1357,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('continues an active Goal when its first Execution promotes the Session ID during continuation submission', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-session-promotion-continuation');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-session-promotion-continuation',
+      path: await workspacePath('goal-session-promotion-continuation'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1413,7 +1430,7 @@ describe('Node Workbench Manifest and command control', () => {
       runId: accepted.run.id,
       sessionId: session.id,
       workspaceId: workspace.id,
-      runner: 'claude-code',
+      executionContext: { runner: 'claude-code' },
       input: serializeComposerTag('mar_goal_start', {
         objective: 'Keep executing after Session promotion',
         instruction: 'A Goal has started or changed.'
@@ -1478,7 +1495,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('drops an old continuation after a Goal is inserted during an ordinary Run and edited', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-stale-continuation-after-edit');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-stale-continuation-after-edit',
+      path: await workspacePath('goal-stale-continuation-after-edit'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1624,7 +1641,7 @@ describe('Node Workbench Manifest and command control', () => {
     vi.useFakeTimers();
     const database = new NodeDatabase(':memory:', 'node-goal-insertion-during-run-preparation');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-insertion-during-run-preparation',
+      path: await workspacePath('goal-insertion-during-run-preparation'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1686,7 +1703,7 @@ describe('Node Workbench Manifest and command control', () => {
   it('queues Goal continuation even when the updated Goal projection fails', async () => {
     const database = new NodeDatabase(':memory:', 'node-goal-continuation-projection-failure');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-continuation-projection-failure',
+      path: await workspacePath('goal-continuation-projection-failure'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1763,7 +1780,7 @@ describe('Node Workbench Manifest and command control', () => {
     vi.useFakeTimers();
     const database = new NodeDatabase(':memory:', 'node-goal-continuation-retry');
     const workspace = database.saveWorkspace({
-      path: '/workspace/goal-continuation-retry',
+      path: await workspacePath('goal-continuation-retry'),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -1830,9 +1847,14 @@ describe('Node Workbench Manifest and command control', () => {
       internals.sessionMessageService
     );
     let attempts = 0;
+    let firstFailureAt = 0;
     internals.sessionMessageService.submitGoal = async (input) => {
+      if (input.kind !== 'continue') return submitGoal(input);
       attempts += 1;
-      if (attempts === 1) throw new Error('temporary continuation failure');
+      if (attempts === 1) {
+        firstFailureAt = Date.now();
+        throw new Error('temporary continuation failure');
+      }
       return submitGoal(input);
     };
 
@@ -1847,7 +1869,9 @@ describe('Node Workbench Manifest and command control', () => {
         clientMessageId: 'goal-retry-objective',
         content: 'Complete and verify the long-running task'
       });
-      await vi.advanceTimersByTimeAsync(14_999);
+      await vi.waitFor(() => expect(internals.goalRuntime.get(session.id)?.turns).toBe(1));
+      await vi.waitFor(() => expect(attempts).toBe(1));
+      await vi.advanceTimersByTimeAsync(14_999 - (Date.now() - firstFailureAt));
       expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([]);
       expect(internals.goalRuntime.get(session.id)).toMatchObject({
         status: 'active',
@@ -1908,7 +1932,7 @@ describe('Node Workbench Manifest and command control', () => {
 async function nativeGoalFixture() {
   const database = new NodeDatabase(':memory:', 'node-native-steer-goal');
   const workspace = database.saveWorkspace({
-    path: '/workspace/native-steer-goal',
+    path: await workspacePath('native-steer-goal'),
     kind: 'DIRECTORY',
     gitSummary: null
   });
@@ -1972,4 +1996,17 @@ function operation(connector: NodeConnector, operation: string, data: unknown): 
       executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
     }
   ).executeNodeOperation(operation, data);
+}
+
+const workspacePaths: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    workspacePaths.splice(0).map((path) => rm(path, { recursive: true, force: true }))
+  );
+});
+
+async function workspacePath(name: string): Promise<string> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), name + '-')));
+  workspacePaths.push(path);
+  return path;
 }

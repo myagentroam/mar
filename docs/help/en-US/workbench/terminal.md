@@ -1,9 +1,11 @@
 ---
 title: Workspace Terminals
-lastUpdated: 2026-09-24
+lastUpdated: 2026-10-23
 ---
 
 # Workspace Terminals
+
+On mobile, select **Open terminal** in the conversation title bar. Terminal slides up from the bottom as a full-width, half-screen sheet. Select the scrim above it to hide the sheet without ending the terminal; reopening preserves its tabs. Explicitly close a terminal tab to end its process.
 
 Open Terminal to start a shell on the selected Node, normally with the Workspace as its working directory. The process runs with the Node service account and receives the authorized secret snapshot created at startup.
 

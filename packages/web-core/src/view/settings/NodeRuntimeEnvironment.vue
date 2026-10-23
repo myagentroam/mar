@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Refresh } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed } from 'vue';
 import { translate } from '../../service/LocalePreferenceService';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
@@ -57,7 +58,14 @@ function computerUseStatus(capability: ComputerUseCapability): string {
 <template>
   <div class="runtime-environment" :class="{ 'runtime-environment--refreshable': refreshable }">
     <div v-if="refreshable" class="runtime-environment-actions">
-      <el-button link type="primary" :icon="Refresh" :loading="refreshing" @click="emit('refresh')">
+      <el-button
+        link
+        type="primary"
+        :icon="marIcon('refresh')"
+        :loading="refreshing"
+        @click="emit('refresh')"
+        :loading-icon="marIcon('loading-action')"
+      >
         {{ translate('generated.nodeDetailsDialogs.refreshCapabilities') }}
       </el-button>
     </div>
@@ -90,7 +98,9 @@ function computerUseStatus(capability: ComputerUseCapability): string {
           }}
         </el-tag>
         <span v-if="row.version" class="runtime-command-version">{{ row.version }}</span>
-        <span v-if="row.path" class="runtime-command-path" :title="row.path">{{ row.path }}</span>
+        <el-tooltip v-bind="tooltipOptions" v-if="row.path" :content="row.path"
+          ><span class="runtime-command-path">{{ row.path }}</span></el-tooltip
+        >
       </div>
     </div>
     <span v-else>{{

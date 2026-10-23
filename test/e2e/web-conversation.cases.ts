@@ -881,6 +881,7 @@ for (const hasTouch of [false, true]) {
         .click();
       await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
       await page.locator('.session-list .session-link').first().click();
+      await expect(page.locator('.conversation-process.is-group .process-content')).toHaveCount(0);
       await page.locator('.conversation-process.is-group .process-heading').first().click();
       const reasoning = page.locator('.conversation-item.reasoning-group details');
       await expect(reasoning).not.toHaveAttribute('open', '');
@@ -906,6 +907,10 @@ for (const hasTouch of [false, true]) {
           mobile ? '4px' : '8px'
         );
         await expect(process.locator('.process-heading')).toHaveCSS('padding-top', '4px');
+        await expect(process.locator('.process-heading')).toHaveCSS(
+          'padding-left',
+          mobile ? '8px' : '12px'
+        );
         const row = reasoning.locator('summary');
         await expect(row).toHaveCSS('padding-top', '4px');
         await expect(row).toHaveCSS('padding-bottom', '4px');
@@ -920,6 +925,7 @@ for (const hasTouch of [false, true]) {
               .evaluate((element) => element.getBoundingClientRect().height)
           )
           .toBe(0);
+        await expect(process.locator('.process-content')).toHaveCount(0);
         await process.locator('.process-heading').click();
         await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'true');
       };
@@ -931,6 +937,7 @@ for (const hasTouch of [false, true]) {
       await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
       await page.reload();
       await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
+      await page.locator('.conversation-process.is-group .process-heading').first().click();
       await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
         'Reasoning'
       );
@@ -1115,6 +1122,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       locale === 'zh-CN' ? '1 次调用' : '1 call'
     );
     await expect(read).not.toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(0);
     await expect(process.locator('.process-content > article').last()).toHaveClass(/command-group/);
     await read.evaluate((element) => {
       element.setAttribute('data-stable-group', 'initial');
@@ -1217,6 +1225,24 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(read.locator('.conversation-tool-detail').first()).toContainText(
       'Content for src/first.ts'
     );
+    await process.locator('.process-heading').click();
+    await expect(process.locator('.process-content')).toHaveCount(0);
+    await process.locator('.process-heading').click();
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText(
+      'Content for src/first.ts'
+    );
+    // Reopen before the leave transition finishes: do not duplicate or lose the subtree.
+    await process.locator('.process-heading').evaluate(async (heading) => {
+      for (let index = 0; index < 4; index += 1) {
+        (heading as HTMLButtonElement).click();
+        await new Promise(requestAnimationFrame);
+      }
+    });
+    await expect(process.locator('.process-content')).toHaveCount(1);
+    await expect(read).toHaveAttribute('open', '');
+    await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 });
       for (const dark of [false, true]) {
@@ -1228,7 +1254,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         const icon = read.locator(':scope > summary .conversation-record-icon');
         await expect(icon).toBeVisible();
         await expect(read).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        await expect(read.locator(':scope > summary')).toHaveCSS('display', 'grid');
+        await expect(read.locator(':scope > summary')).toHaveCSS('display', 'flex');
         const headingLayout = await process
           .locator('.conversation-record-heading')
           .evaluateAll((elements) =>
@@ -1271,26 +1297,38 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           const range = document.createRange();
           range.selectNodeContents(preview);
           return {
-            indent:
-              summary.getBoundingClientRect().left -
-              parent.getBoundingClientRect().left -
-              Number.parseFloat(getComputedStyle(parent).paddingLeft),
+            indent: summary.getBoundingClientRect().left - parent.getBoundingClientRect().left,
             parentGrid: getComputedStyle(parent).gridTemplateColumns,
             childGrid: getComputedStyle(summary).gridTemplateColumns,
             childAlignment: getComputedStyle(summary).alignItems,
+            parentHeight: parent.getBoundingClientRect().height,
+            childHeight: summary.getBoundingClientRect().height,
+            parentPadding: getComputedStyle(parent).padding,
+            childPadding: getComputedStyle(summary).padding,
             childMargin: getComputedStyle(summary.parentElement!).marginLeft,
             textLeft: preview.getBoundingClientRect().left,
-            lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
+            textRects: Array.from(range.getClientRects(), (rect) => ({
+              left: rect.left,
+              top: rect.top
+            }))
           };
         });
         const indentStep = await page.evaluate(
           () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
         );
         expect(commandLayout.indent, JSON.stringify(commandLayout)).toBeCloseTo(indentStep, 1);
-        if (width <= 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
-        expect(commandLayout.childAlignment).toBe('start');
-        for (const left of commandLayout.lineLefts)
-          expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
+        expect(commandLayout.textRects.length).toBeGreaterThan(0);
+        await expect(command.locator('.conversation-command-preview')).toHaveCSS(
+          'white-space',
+          'nowrap'
+        );
+        expect(commandLayout.childAlignment).toBe('center');
+        expect(commandLayout.childHeight).toBeCloseTo(commandLayout.parentHeight, 1);
+        expect(commandLayout.childPadding).toBe(commandLayout.parentPadding);
+        for (const rect of commandLayout.textRects) {
+          expect(Math.abs(rect.top - commandLayout.textRects[0]!.top)).toBeLessThanOrEqual(1);
+          expect(rect.left).toBeGreaterThanOrEqual(commandLayout.textLeft - 1);
+        }
         await expect(icon).toHaveAttribute('fill', 'none');
         await expect(icon).toHaveAttribute('aria-hidden', 'true');
         if ((await command.getAttribute('open')) === null) await command.locator('summary').click();
@@ -1803,6 +1841,40 @@ test.describe('Independent tool presentation', () => {
             );
           });
           expect(rightInset).toBeCloseTo(0, 1);
+          const rows = page.locator(
+            '.conversation-item > details > summary, .conversation-record-group > details > summary'
+          );
+          const metrics = [];
+          for (const row of await rows.all()) {
+            if (!(await row.isVisible())) continue;
+            metrics.push(
+              await row.evaluate((element) => {
+                const style = getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return {
+                  height: rect.height,
+                  padding: style.padding,
+                  radius: style.borderRadius,
+                  left: rect.left,
+                  right: rect.right,
+                  nested: element.parentElement!.parentElement!.matches(
+                    'details.conversation-record-group'
+                  )
+                };
+              })
+            );
+          }
+          const baseline = metrics.find((row) => !row.nested)!;
+          for (const row of metrics) {
+            expect(row.height).toBeCloseTo(baseline.height, 1);
+            expect(row.padding).toBe(baseline.padding);
+            expect(row.radius).toBe(baseline.radius);
+            expect(row.right).toBeCloseTo(baseline.right, 1);
+            if (row.nested) {
+              expect(row.left).toBeGreaterThan(baseline.left);
+              expect(row.left - baseline.left).toBeLessThanOrEqual(12);
+            } else expect(row.left).toBeCloseTo(baseline.left, 1);
+          }
           for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
             const heading = tool.locator(':scope > summary');
             const status = heading.locator('.conversation-record-meta');
@@ -1835,6 +1907,20 @@ test.describe('Independent tool presentation', () => {
           }
         };
         await expectCompactTools();
+        const groupHeading = page.locator('.tool-group > details > summary');
+        const skillHeading = skill.locator(':scope > summary');
+        await groupHeading.hover();
+        const groupHover = await groupHeading.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        await skillHeading.hover();
+        await expect(skillHeading).toHaveCSS('background-color', groupHover);
+        expect(groupHover).not.toBe('rgba(0, 0, 0, 0)');
+        await skillHeading.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(skillHeading).toBeFocused();
+        await expect(skillHeading).toHaveCSS('outline-style', 'solid');
         await expect(search.locator('summary .conversation-record-preview')).toHaveText(
           locale === 'zh-CN' ? 'Original query · 1 个来源' : 'Original query · 1 sources'
         );
@@ -1928,6 +2014,51 @@ test.describe('Independent tool presentation', () => {
         await expect(tools).toHaveCount(5);
         await expect(skill).not.toHaveAttribute('open');
         await expect(waiting.locator('summary')).toContainText('2026-10-21 00:20');
+        await page.setViewportSize({ width: 390, height: 500 });
+        const scroll = page.locator('.conversation-scroll').first();
+        const lastDisclosure = page.locator('.subagent-group > details').last();
+        await expect
+          .poll(() => scroll.evaluate((element) => element.scrollHeight > element.clientHeight))
+          .toBe(true);
+        const bottomGap = () =>
+          scroll.evaluate(
+            (element) => element.scrollHeight - element.scrollTop - element.clientHeight
+          );
+        for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+          await page.emulateMedia({ reducedMotion });
+          await scroll.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+          await expect.poll(bottomGap).toBeLessThan(2);
+          const previousHeight = await scroll.evaluate((element) => element.scrollHeight);
+          await lastDisclosure.locator(':scope > summary').click();
+          await expect(lastDisclosure).toHaveAttribute('open');
+          await expect
+            .poll(() => lastDisclosure.evaluate((element) => element.getAnimations().length))
+            .toBe(0);
+          await expect
+            .poll(() => scroll.evaluate((element) => element.scrollHeight))
+            .toBeGreaterThan(previousHeight);
+          await expect.poll(bottomGap).toBeLessThan(2);
+          await expect(page.locator('.conversation-latest')).toHaveCount(0);
+          const skillHeading = skill.locator(':scope > summary');
+          await scroll.hover();
+          await page.mouse.wheel(0, -600);
+          await expect.poll(bottomGap).toBeGreaterThan(28);
+          await skillHeading.scrollIntoViewIfNeeded();
+          await expect(page.locator('.conversation-latest')).toBeVisible();
+          const previousTop = await scroll.evaluate((element) => element.scrollTop);
+          await skillHeading.click();
+          await expect(skill).toHaveAttribute('open');
+          await expect
+            .poll(() => skill.evaluate((element) => element.getAnimations().length))
+            .toBe(0);
+          expect(await scroll.evaluate((element) => element.scrollTop)).toBeCloseTo(previousTop, 0);
+          await skillHeading.click();
+          await expect(skill).not.toHaveAttribute('open');
+          await lastDisclosure.locator(':scope > summary').click();
+          await expect(lastDisclosure).not.toHaveAttribute('open');
+        }
       }
     );
   }
@@ -2597,6 +2728,10 @@ for (const runner of ['mar-agent', 'codex'] as const) {
     await userMessage.getByRole('button', { name: '永久删除此用户消息及其后的对话记录' }).click();
     const confirmation = page.locator('.el-message-box');
     await expect(confirmation).toContainText('永久删除这条用户消息及其后的全部对话记录');
+    await expect(confirmation.locator('[data-mar-icon="warning"]')).toBeVisible();
+    await expect(
+      confirmation.locator('.el-message-box__headerbtn [data-mar-icon="close"]')
+    ).toBeVisible();
     await confirmation.getByRole('button', { name: '确认回滚', exact: true }).click();
 
     await expect(page.getByText('请重新检查这个问题', { exact: true })).toHaveCount(0);
@@ -2610,6 +2745,134 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       boundary: 'turn-retained'
     });
     expect(watchReads).toBe(2);
+  });
+}
+
+for (const outcome of ['success', 'navigation-failure'] as const) {
+  test(`Rewind ${outcome} keeps the committed branch distinct from navigation`, async ({
+    page
+  }) => {
+    await mockConsoleApi(
+      page,
+      'MANAGED',
+      ['history.read', 'turn.start'],
+      [],
+      'GIT_WORKSPACE',
+      true,
+      'IDLE'
+    );
+    const source = {
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      runner: 'codex',
+      externalSessionId: 'native-source',
+      nativeControl: 'MAR_MANAGED',
+      runnerTitle: 'Source conversation',
+      activity: 'IDLE',
+      control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] },
+      runtime: { level: 'MANAGED', capabilities: ['session.rollback'], reasonCode: null }
+    };
+    const branch = {
+      ...source,
+      id: 'session-3',
+      externalSessionId: 'native-branch',
+      runnerTitle: 'New branch'
+    };
+    let posts = 0;
+    let body: Record<string, unknown> | undefined;
+    await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+      json(route, { sessions: [source], nextCursor: null })
+    );
+    await page.route(/\/api\/agent-sessions\/session-[13]\?nodeId=node-1$/, (route) => {
+      const isBranch = route.request().url().includes('/session-3?');
+      if (isBranch && outcome === 'navigation-failure')
+        return json(
+          route,
+          { code: 'SESSION_READ_FAILED', error: 'Branch history unavailable.' },
+          503
+        );
+      return json(route, { session: isBranch ? branch : source });
+    });
+    await page.route(/\/api\/agent-sessions\/session-[13]\/watch(?:\?|$)/, (route) => {
+      if (route.request().method() === 'DELETE') return json(route, { unwatched: true });
+      const session = route.request().url().includes('/session-3/') ? branch : source;
+      const payload = watchedConversation([
+        {
+          sessionId: session.id,
+          id: session.id + ':segment:0',
+          turnId: 'native-turn',
+          index: 0,
+          runId: null,
+          status: 'SUCCEEDED',
+          rewind: { before: null, after: 'native-turn' },
+          items: [
+            {
+              sessionId: session.id,
+              id: session.id + ':user',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              payload: { text: session.id === source.id ? 'Original user text' : 'Branch history' }
+            }
+          ]
+        }
+      ]);
+      return fulfillMockSessionWatch(page, route, session, { ...payload, session });
+    });
+    await page.route('**/api/agent-sessions/session-1/rewind', (route) => {
+      posts += 1;
+      body = route.request().postDataJSON();
+      return json(route, { session: branch });
+    });
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await page.locator('.session-link', { hasText: 'Source conversation' }).click();
+    const composer = page.getByRole('textbox', { name: '输入消息' });
+    await composer.fill('Unsent source draft');
+    await page
+      .locator('.conversation-item.user_message', { hasText: 'Original user text' })
+      .getByRole('button', { name: '从此消息之前创建回退分支' })
+      .click();
+    const confirmation = page.locator('.el-message-box');
+    await expect(confirmation.locator('[data-mar-icon="warning"]')).toBeVisible();
+    await expect(
+      confirmation.locator('.el-message-box__headerbtn [data-mar-icon="close"]')
+    ).toBeVisible();
+    await page
+      .locator('.el-message-box')
+      .getByRole('button', { name: '创建分支', exact: true })
+      .click();
+    if (outcome === 'success') {
+      await expect(page.locator('.el-message--success [data-mar-icon="success"]')).toBeVisible();
+      await expect(
+        page.locator('.conversation-item.user_message', { hasText: 'Branch history' })
+      ).toBeVisible();
+      await expect(composer).toHaveValue('Original user text');
+      await expect(composer).toBeFocused();
+    } else {
+      await expect(page.getByText(/回退分支已创建，但无法打开/)).toBeVisible();
+      await expect(page.locator('.el-message--error [data-mar-icon="error"]')).toBeVisible();
+      await expect(page.locator('.session-link', { hasText: 'Source conversation' })).toHaveClass(
+        /selected/
+      );
+      await expect(
+        page.locator('.conversation-item.user_message', { hasText: 'Original user text' })
+      ).toBeVisible();
+      await expect(composer).toHaveValue('Unsent source draft');
+      await expect(page.locator('.session-link', { hasText: 'New branch' })).toBeVisible();
+    }
+    expect(posts).toBe(1);
+    expect(body).toEqual({
+      nodeId: 'node-1',
+      turnId: 'native-turn',
+      position: 'BEFORE',
+      boundary: null
+    });
   });
 }
 
@@ -2768,6 +3031,8 @@ for (const operation of ['rewind', 'rollback'] as const) {
       );
       release();
       await response;
+      if (outcome === 'failure')
+        await expect(page.locator('.el-message--error [data-mar-icon="error"]')).toBeVisible();
       await expect(targetRow.locator('.session-more-button')).toBeEnabled();
       await expect(targetRow.locator('.session-link')).toHaveClass(/selected/u);
       if (outcome === 'watch-failure') {
@@ -3400,11 +3665,16 @@ test('Opening a session loads only the latest window without initial scroll back
   const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
   await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
   await loadOlderButton.press('Enter');
-  await expect(loadOlderButton.locator('.is-loading')).toBeVisible();
+  await expect(loadOlderButton.locator('svg')).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(loadOlderButton.locator('svg')).not.toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(loadOlderButton.locator('svg')).toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
   expect(
     await loadOlderButton
-      .locator('.is-loading')
+      .locator('svg')
       .evaluate(
         (element) =>
           getComputedStyle(element).color === getComputedStyle(element.closest('button')!).color

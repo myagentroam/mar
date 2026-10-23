@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Expand, Fold } from '@element-plus/icons-vue';
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 type ManagementSection = string;
@@ -35,8 +36,8 @@ const emit = defineEmits<{
       type="button"
       @click="emit('toggleSidebar')"
     >
-      <el-icon v-if="sidebarCollapsed"><Expand /></el-icon>
-      <el-icon v-else><Fold /></el-icon>
+      <MarIcon name="menu" v-if="sidebarCollapsed" />
+      <MarIcon name="menu" v-else />
     </button>
     <div
       v-if="view === 'conversations' && conversationTitle"
@@ -44,7 +45,9 @@ const emit = defineEmits<{
       :aria-label="$t('navigation.currentLocation')"
     >
       <span>{{ $t('navigation.conversations') }}</span>
-      <strong :title="conversationTitle">{{ conversationTitle }}</strong>
+      <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"
+        ><strong>{{ conversationTitle }}</strong></el-tooltip
+      >
     </div>
     <div v-else-if="view === 'nodes'" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>
@@ -101,7 +104,7 @@ const emit = defineEmits<{
   color: var(--mar-text-secondary);
 }
 
-.workbench-tree-toggle :deep(.el-icon) {
+.workbench-tree-toggle :deep(.mar-icon) {
   display: grid;
   place-items: center;
 }

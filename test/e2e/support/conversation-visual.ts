@@ -24,6 +24,17 @@ export async function verifyConversationThemes(
     await page.keyboard.press('Enter');
   }
   await expect(processHeading).toHaveAttribute('aria-expanded', 'true');
+  // Lazy content enters while the scroll container is following its changing height.
+  await page.evaluate(async () => {
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => {}))
+    );
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  });
   for (const dark of [false, true]) {
     await page.evaluate((enabled) => {
       document.documentElement.classList.toggle('dark', enabled);

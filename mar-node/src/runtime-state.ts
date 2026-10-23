@@ -56,6 +56,7 @@ export class NodeRuntimeState {
     { readonly kind: 'run' | 'queue'; readonly id: string }
   >();
   private readonly failedMessageSubmissions = new Map<string, string>();
+  private readonly terminalMessageSubmissions = new Map<string, string>();
   private readonly queueItems = new Map<string, NodeQueueItem>();
   private readonly executions = new Map<string, NodeRunnerExecution>();
   private readonly retainedExecutionTurns = new Map<
@@ -369,6 +370,13 @@ export class NodeRuntimeState {
       this.messageSubmissions.delete(key);
       this.messageSubmissions.set(`${nativeSessionId}${key.slice(id.length)}`, submission);
     }
+    const terminalSubmissions = [...this.terminalMessageSubmissions];
+    this.terminalMessageSubmissions.clear();
+    for (const [key, runId] of terminalSubmissions)
+      this.terminalMessageSubmissions.set(
+        key.startsWith(`${id}\u0000`) ? `${nativeSessionId}${key.slice(id.length)}` : key,
+        runId
+      );
     for (const [executionId, reference] of this.retainedExecutionTurns)
       if (reference.sessionId === id)
         this.retainedExecutionTurns.set(executionId, {
@@ -850,8 +858,13 @@ export class NodeRuntimeState {
         readonly run: NodeAgentRun | undefined;
       }
     | undefined {
-    const submission = this.messageSubmissions.get(`${sessionId}\u0000${clientMessageId}`);
-    if (submission === undefined) return undefined;
+    const key = `${sessionId}\u0000${clientMessageId}`;
+    const submission = this.messageSubmissions.get(key);
+    if (submission === undefined) {
+      const runId = this.terminalMessageSubmissions.get(key);
+      const run = runId === undefined ? undefined : this.terminalRunIds.get(runId);
+      return run === undefined ? undefined : { kind: 'run', run };
+    }
     if (submission.kind === 'run') return { kind: 'run', run: this.requireRun(submission.id) };
     const item = this.requireQueueItem(submission.id);
     const run = this.activeSessionRun(sessionId);
@@ -1215,8 +1228,12 @@ export class NodeRuntimeState {
     const run = this.requireRun(runId);
     if (!terminal(run.status)) throw new Error('RUN_ACTIVE');
     this.terminalRunIds.set(runId, run);
-    if (this.terminalRunIds.size > 1_024)
-      this.terminalRunIds.delete(this.terminalRunIds.keys().next().value as string);
+    if (this.terminalRunIds.size > 1_024) {
+      const oldest = this.terminalRunIds.keys().next().value as string;
+      this.terminalRunIds.delete(oldest);
+      for (const [key, id] of this.terminalMessageSubmissions)
+        if (id === oldest) this.terminalMessageSubmissions.delete(key);
+    }
     const executionIds = new Set(
       [...this.executions.values()]
         .filter((execution) => execution.runId === runId)
@@ -1256,10 +1273,21 @@ export class NodeRuntimeState {
     this.recentUserMessages.delete(runId);
     this.runSequences.delete(runId);
     for (const [key, candidate] of this.messageSubmissions)
-      if (candidate.kind === 'run' && candidate.id === runId) this.messageSubmissions.delete(key);
+      if (candidate.kind === 'run' && candidate.id === runId) {
+        this.messageSubmissions.delete(key);
+        this.terminalMessageSubmissions.set(key, runId);
+        if (this.terminalMessageSubmissions.size > 1_024)
+          this.terminalMessageSubmissions.delete(
+            this.terminalMessageSubmissions.keys().next().value as string
+          );
+      }
     for (const [approvalId, approval] of this.approvals)
       if (approval.runId === runId || executionIds.has(approval.runId))
         this.approvals.delete(approvalId);
+  }
+  private clearTerminalMessageSubmissions(sessionId: string): void {
+    for (const key of this.terminalMessageSubmissions.keys())
+      if (key.startsWith(`${sessionId}\u0000`)) this.terminalMessageSubmissions.delete(key);
   }
   hasActiveWorkspaceLease(workspaceId: string): boolean {
     return [...this.leases.values()]
@@ -1278,6 +1306,7 @@ export class NodeRuntimeState {
         .map((execution) => execution.id)
     );
     this.sessions.delete(sessionId);
+    this.clearTerminalMessageSubmissions(sessionId);
     this.completeHistorySessions.delete(sessionId);
     this.removePromotedSessionAliases(sessionId);
     this.turns.delete(sessionId);
@@ -1327,6 +1356,7 @@ export class NodeRuntimeState {
     if (this.activeSessionRun(sessionId) !== undefined) throw new Error('SESSION_ACTIVE');
     if (this.sessionQueue(sessionId).itemIds.length > 0) throw new Error('SESSION_QUEUE_NOT_EMPTY');
     this.turns.delete(sessionId);
+    this.clearTerminalMessageSubmissions(sessionId);
     for (const [id, run] of this.terminalRunIds)
       if (run?.sessionId === sessionId) this.terminalRunIds.set(id, undefined);
     this.completeHistorySessions.delete(sessionId);
@@ -1355,6 +1385,7 @@ export class NodeRuntimeState {
     );
     for (const sessionId of sessionIds) {
       this.sessions.delete(sessionId);
+      this.clearTerminalMessageSubmissions(sessionId);
       this.completeHistorySessions.delete(sessionId);
       this.removePromotedSessionAliases(sessionId);
       this.turns.delete(sessionId);

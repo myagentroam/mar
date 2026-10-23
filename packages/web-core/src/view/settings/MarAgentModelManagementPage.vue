@@ -1,21 +1,10 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
-import {
-  Check,
-  Close,
-  Connection,
-  CopyDocument,
-  DataAnalysis,
-  Delete,
-  Edit,
-  Key,
-  Plus,
-  Rank,
-  Refresh
-} from '@element-plus/icons-vue';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
   resolveMarAgentDefaultReasoningEffort
@@ -293,7 +282,10 @@ const loginPoller = new CodexLoginAttemptPoller(credentialService, {
   },
   onTerminal: (attempt) => {
     if (attempt.status === 'SUCCEEDED') {
-      ElMessage.success(translate('marAgentModels.codexLoginSucceeded'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('marAgentModels.codexLoginSucceeded')
+      });
       void loadCredentials(false);
     } else if (attempt.status !== 'CANCELLED') {
       showCodexError(attempt.code, attempt.message, 'marAgentModels.codexLoginFailed');
@@ -536,9 +528,10 @@ async function load(showLoading = true) {
     }));
     modelsReady.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
+    });
   } finally {
     if (showLoading) loading.value = false;
   }
@@ -560,11 +553,13 @@ async function loadPersonalModels(showLoading = true) {
     }));
     personalOrderReady.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('marAgentModels.personalOrderLoadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('marAgentModels.personalOrderLoadFailed')
+    });
   } finally {
     if (showLoading) personalOrderLoading.value = false;
   }
@@ -590,7 +585,7 @@ async function openCreate() {
   try {
     await props.prepareModel?.();
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
     return;
   }
   await ensureCredentials();
@@ -657,12 +652,17 @@ async function saveOrder() {
       body: JSON.stringify({ modelIds: models.value.map((model) => model.id) })
     });
     finishSorting();
-    ElMessage.success(translate('marAgentModels.orderSaved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('marAgentModels.orderSaved')
+    });
     await load(false);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.orderSaveFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.orderSaveFailed')
+    });
   } finally {
     savingOrder.value = false;
   }
@@ -676,14 +676,19 @@ async function savePersonalOrder() {
       body: JSON.stringify({ modelIds: personalModels.value.map((model) => model.id) })
     });
     finishPersonalSorting();
-    ElMessage.success(translate('marAgentModels.personalOrderSaved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('marAgentModels.personalOrderSaved')
+    });
     await loadPersonalModels(false);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('marAgentModels.personalOrderSaveFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('marAgentModels.personalOrderSaveFailed')
+    });
   } finally {
     savingPersonalOrder.value = false;
   }
@@ -693,7 +698,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
   try {
     await props.prepareModel?.(duplicate ? undefined : model);
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
     return;
   }
   await ensureCredentials();
@@ -754,14 +759,16 @@ async function save() {
       body: JSON.stringify(modelSaveBody())
     });
     dialog.value = false;
-    ElMessage.success(
-      translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved')
-    );
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved')
+    });
     await load(false);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
+    });
   } finally {
     saving.value = false;
   }
@@ -811,19 +818,23 @@ async function remove(model: ModelSummary) {
       translate('marAgentModels.confirmRemove', { name: model.name }),
       translate('marAgentModels.remove'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.remove'),
         cancelButtonText: translate('marAgentModels.cancel')
       }
     );
     await props.request(`/api/admin/mar-agent/models/${model.id}`, { method: 'DELETE' });
-    ElMessage.success(translate('marAgentModels.removed'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('marAgentModels.removed') });
     await load(false);
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(
-        error instanceof Error ? errorMessage(error) : translate('marAgentModels.removeFailed')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message:
+          error instanceof Error ? errorMessage(error) : translate('marAgentModels.removeFailed')
+      });
   }
 }
 
@@ -843,7 +854,10 @@ function openModelTest(model: ModelSummary): void {
       )
     )
   ) {
-    ElMessage.error(translate('marAgentModels.modelTestNoNode'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('marAgentModels.modelTestNoNode')
+    });
     modelTestModel.value = undefined;
     return;
   }
@@ -999,7 +1013,10 @@ async function submitCredentialLogin(): Promise<void> {
         socks5Url: credentialDraft.socks5Url.trim() || null
       });
       credentialDialog.value = false;
-      ElMessage.success(translate('marAgentModels.codexCredentialUpdated'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('marAgentModels.codexCredentialUpdated')
+      });
       await loadCredentials(false);
       return;
     }
@@ -1080,16 +1097,27 @@ async function refreshCredential(credential: CodexCredentialSummary): Promise<vo
         };
       const outcome = credentialRefreshOutcome(credential, refreshed);
       if (outcome === 'DEFERRED')
-        ElMessage.info(
-          translate('marAgentModels.chatgptRefreshDeferred', {
+        ElMessage.info({
+          icon: marIcon('info'),
+          message: translate('marAgentModels.chatgptRefreshDeferred', {
             time: formatTimestamp(refreshed.earliestRefreshAt)
           })
-        );
+        });
       else if (outcome === 'DEGRADED')
-        ElMessage.warning(translate('marAgentModels.codexRefreshDegraded'));
+        ElMessage.warning({
+          icon: marIcon('warning'),
+          message: translate('marAgentModels.codexRefreshDegraded')
+        });
       else if (outcome === 'UNCHANGED')
-        ElMessage.info(translate('marAgentModels.codexRefreshUnchanged'));
-      else ElMessage.success(translate('marAgentModels.codexRefreshSucceeded'));
+        ElMessage.info({
+          icon: marIcon('info'),
+          message: translate('marAgentModels.codexRefreshUnchanged')
+        });
+      else
+        ElMessage.success({
+          icon: marIcon('success'),
+          message: translate('marAgentModels.codexRefreshSucceeded')
+        });
       await loadCredentials(false);
     },
     'marAgentModels.codexRefreshFailed'
@@ -1119,6 +1147,8 @@ async function removeCredential(credential: CodexCredentialSummary): Promise<voi
       translate('marAgentModels.codexConfirmRemove', { name: credential.name }),
       translate('marAgentModels.remove'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.remove'),
         cancelButtonText: translate('marAgentModels.cancel')
@@ -1130,7 +1160,10 @@ async function removeCredential(credential: CodexCredentialSummary): Promise<voi
       async () => {
         await credentialService.removeCredential(credential.id);
         credentialDetailOpen.value = false;
-        ElMessage.success(translate('marAgentModels.codexRemoved'));
+        ElMessage.success({
+          icon: marIcon('success'),
+          message: translate('marAgentModels.codexRemoved')
+        });
         await loadCredentials(false);
       },
       'marAgentModels.codexRemoveFailed'
@@ -1226,7 +1259,10 @@ async function importCatalogModels(): Promise<void> {
   const currentCatalog = catalog.value;
   if (credential === undefined || currentCatalog === undefined) return;
   if (selectedCatalogCount.value === 0) {
-    ElMessage.warning(translate('marAgentModels.codexCatalogSelectionRequired'));
+    ElMessage.warning({
+      icon: marIcon('warning'),
+      message: translate('marAgentModels.codexCatalogSelectionRequired')
+    });
     return;
   }
   if (!(await catalogFormRef.value?.validate().catch(() => false))) return;
@@ -1242,15 +1278,24 @@ async function importCatalogModels(): Promise<void> {
     if (sequence !== catalogSequence) return;
     importResult.value = result;
     catalogDialog.value = false;
-    ElMessage.success(translate('marAgentModels.codexImportSucceeded'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('marAgentModels.codexImportSucceeded')
+    });
     await Promise.all([load(false), loadCredentials(false)]);
   } catch (error) {
     if (sequence !== catalogSequence) return;
     if (errorCode(error) === 'CODEX_CATALOG_CHANGED') {
-      ElMessage.warning(translate('marAgentModels.codexErrorCatalogChanged'));
+      ElMessage.warning({
+        icon: marIcon('warning'),
+        message: translate('marAgentModels.codexErrorCatalogChanged')
+      });
       await openCatalog(credential);
     } else if (errorCode(error) === 'CODEX_MODEL_IMPORT_LIMIT_REQUIRED') {
-      ElMessage.error(translate('marAgentModels.codexCatalogLimitsRequired'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('marAgentModels.codexCatalogLimitsRequired')
+      });
     } else {
       showCodexRequestError(error, 'marAgentModels.codexImportFailed');
     }
@@ -1271,7 +1316,10 @@ function resetCatalogDialog(): void {
 function showCodexRequestError(error: unknown, fallbackKey: string): void {
   const code = errorCode(error);
   const key = code === undefined ? undefined : codexCredentialErrorMessageKey(code);
-  ElMessage.error(key === undefined ? errorMessageOrFallback(error, fallbackKey) : translate(key));
+  ElMessage.error({
+    icon: marIcon('error'),
+    message: key === undefined ? errorMessageOrFallback(error, fallbackKey) : translate(key)
+  });
 }
 
 function showCodexError(
@@ -1280,7 +1328,10 @@ function showCodexError(
   fallbackKey: string
 ) {
   const key = code === undefined ? undefined : codexCredentialErrorMessageKey(code);
-  ElMessage.error(key === undefined ? (message ?? translate(fallbackKey)) : translate(key));
+  ElMessage.error({
+    icon: marIcon('error'),
+    message: key === undefined ? (message ?? translate(fallbackKey)) : translate(key)
+  });
 }
 
 function errorMessageOrFallback(error: unknown, fallbackKey: string): string {
@@ -1447,33 +1498,39 @@ onBeforeUnmount(() => {
       >
         <div class="table-actions">
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="loading && modelsReady"
             :disabled="sorting"
             @click="load()"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.refresh') }}</el-button
           >
-          <el-button v-if="writable && !sorting" :icon="Rank" @click="startSorting">{{
+          <el-button v-if="writable && !sorting" :icon="marIcon('queue')" @click="startSorting">{{
             translate('marAgentModels.adjustOrder')
           }}</el-button>
           <el-button
             v-if="writable && sorting"
             type="primary"
-            :icon="Check"
+            :icon="marIcon('check')"
             :loading="savingOrder"
             @click="saveOrder"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.saveOrder') }}</el-button
           >
           <el-button
             v-if="writable && sorting"
-            :icon="Close"
+            :icon="marIcon('close')"
             :disabled="savingOrder"
             @click="cancelSorting"
             >{{ translate('marAgentModels.cancel') }}</el-button
           >
-          <el-button v-if="writable && !sorting" type="primary" :icon="Plus" @click="openCreate">{{
-            translate('marAgentModels.add')
-          }}</el-button>
+          <el-button
+            v-if="writable && !sorting"
+            type="primary"
+            :icon="marIcon('plus')"
+            @click="openCreate"
+            >{{ translate('marAgentModels.add') }}</el-button
+          >
         </div>
         <el-table
           :class="{ 'clickable-rows': !sorting }"
@@ -1491,7 +1548,7 @@ onBeforeUnmount(() => {
                 @dragover.prevent
                 @dragend="draggedModelId = undefined"
               >
-                <el-icon><Rank /></el-icon><span>{{ $index + 1 }}</span>
+                <MarIcon name="queue" /><span>{{ $index + 1 }}</span>
               </div>
             </template>
           </el-table-column>
@@ -1541,7 +1598,7 @@ onBeforeUnmount(() => {
                   v-if="writable"
                   link
                   type="primary"
-                  :icon="Edit"
+                  :icon="marIcon('edit')"
                   @click="openEdit(row)"
                   >{{ translate('marAgentModels.edit') }}</el-button
                 >
@@ -1549,22 +1606,28 @@ onBeforeUnmount(() => {
                   v-if="writable"
                   link
                   type="primary"
-                  :icon="CopyDocument"
+                  :icon="marIcon('copy')"
                   @click="openEdit(row, true)"
                   >{{ translate('marAgentModels.duplicate') }}</el-button
                 >
                 <slot name="model-actions" :model="row" />
                 <el-button
                   link
-                  :icon="Connection"
+                  :icon="marIcon('connection')"
                   :loading="testingIds.has(row.id)"
                   :disabled="!writable || testingIds.has(row.id)"
                   @click="openModelTest(row)"
+                  :loading-icon="marIcon('loading-action')"
                   >{{ translate('marAgentModels.test') }}</el-button
                 >
-                <el-button v-if="writable" link type="danger" :icon="Delete" @click="remove(row)">{{
-                  translate('marAgentModels.remove')
-                }}</el-button>
+                <el-button
+                  v-if="writable"
+                  link
+                  type="danger"
+                  :icon="marIcon('delete')"
+                  @click="remove(row)"
+                  >{{ translate('marAgentModels.remove') }}</el-button
+                >
               </div>
             </template>
           </el-table-column>
@@ -1573,14 +1636,19 @@ onBeforeUnmount(() => {
       <el-tab-pane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
         <div class="table-actions">
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="credentialLoading && credentialsLoaded"
             @click="loadCredentials()"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.refresh') }}</el-button
           >
-          <el-button v-if="writable" type="primary" :icon="Plus" @click="openCredentialLogin()">{{
-            translate('marAgentModels.codexAddCredential')
-          }}</el-button>
+          <el-button
+            v-if="writable"
+            type="primary"
+            :icon="marIcon('plus')"
+            @click="openCredentialLogin()"
+            >{{ translate('marAgentModels.codexAddCredential') }}</el-button
+          >
         </div>
         <el-table class="clickable-rows" :data="credentials" @row-click="openCredentialDetails">
           <el-table-column
@@ -1631,20 +1699,22 @@ onBeforeUnmount(() => {
                   v-if="writable"
                   link
                   type="primary"
-                  :icon="Edit"
+                  :icon="marIcon('edit')"
                   :loading="credentialActionIs(row.id, 'EDIT')"
                   :disabled="credentialActionBusy(row.id)"
                   @click="openCredentialEdit(row)"
+                  :loading-icon="marIcon('loading-action')"
                 >
                   {{ translate('marAgentModels.edit') }}
                 </el-button>
                 <el-button
                   v-if="writable"
                   link
-                  :icon="Connection"
+                  :icon="marIcon('connection')"
                   :loading="credentialActionIs(row.id, 'TEST')"
                   :disabled="credentialActionBusy(row.id)"
                   @click="testCredential(row)"
+                  :loading-icon="marIcon('loading-action')"
                 >
                   {{ translate('marAgentModels.test') }}
                 </el-button>
@@ -1652,10 +1722,11 @@ onBeforeUnmount(() => {
                   v-if="writable"
                   link
                   type="danger"
-                  :icon="Delete"
+                  :icon="marIcon('delete')"
                   :loading="credentialActionIs(row.id, 'REMOVE')"
                   :disabled="credentialActionBusy(row.id)"
                   @click="removeCredential(row)"
+                  :loading-icon="marIcon('loading-action')"
                 >
                   {{ translate('marAgentModels.remove') }}
                 </el-button>
@@ -1700,29 +1771,31 @@ onBeforeUnmount(() => {
         <p class="selection-rule">{{ translate('marAgentModels.personalOrderHint') }}</p>
         <div class="table-actions">
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="personalOrderLoading && personalOrderReady"
             :disabled="personalSorting"
             @click="loadPersonalModels()"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.refresh') }}</el-button
           >
           <el-button
             v-if="writable && !personalSorting"
-            :icon="Rank"
+            :icon="marIcon('queue')"
             @click="startPersonalSorting"
             >{{ translate('marAgentModels.adjustPersonalOrder') }}</el-button
           >
           <el-button
             v-if="writable && personalSorting"
             type="primary"
-            :icon="Check"
+            :icon="marIcon('check')"
             :loading="savingPersonalOrder"
             @click="savePersonalOrder"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.saveOrder') }}</el-button
           >
           <el-button
             v-if="writable && personalSorting"
-            :icon="Close"
+            :icon="marIcon('close')"
             :disabled="savingPersonalOrder"
             @click="cancelPersonalSorting"
             >{{ translate('marAgentModels.cancel') }}</el-button
@@ -1744,7 +1817,7 @@ onBeforeUnmount(() => {
                 @dragover.prevent
                 @dragend="draggedPersonalModelId = undefined"
               >
-                <el-icon><Rank /></el-icon><span>{{ $index + 1 }}</span>
+                <MarIcon name="queue" /><span>{{ $index + 1 }}</span>
               </div>
             </template>
           </el-table-column>
@@ -1772,6 +1845,7 @@ onBeforeUnmount(() => {
             : translate('marAgentModels.add')
       "
       width="min(720px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="formRef"
@@ -1788,7 +1862,12 @@ onBeforeUnmount(() => {
             <el-input v-model="draft.name" />
           </el-form-item>
           <el-form-item :label="translate('marAgentModels.protocol')" prop="protocol">
-            <el-select :model-value="draft.protocol" @change="changeProtocol">
+            <el-select
+              :model-value="draft.protocol"
+              @change="changeProtocol"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+            >
               <el-option :label="translate('marAgentModels.protocolCodex')" value="CODEX" />
               <el-option :label="translate('marAgentModels.chatgptCredential')" value="CHATGPT" />
               <el-option :label="translate('marAgentModels.grokProtocol')" value="GROK" />
@@ -1823,6 +1902,8 @@ onBeforeUnmount(() => {
                 ? translate('marAgentModels.credentialKeepHint')
                 : translate('marAgentModels.credentialSelect')
             "
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="credential in availableModelCredentials"
@@ -1838,24 +1919,36 @@ onBeforeUnmount(() => {
             type="password"
             show-password
             :placeholder="canKeepCredential ? translate('marAgentModels.keyHint') : ''"
-          />
+            ><template #password-icon="{ visible }"
+              ><MarIcon :name="visible ? 'view' : 'view-off'" /></template
+          ></el-input>
         </el-form-item>
         <el-form-item :label="translate('marAgentModels.model')" prop="modelId">
           <el-input v-model="draft.modelId" maxlength="256" />
         </el-form-item>
         <div class="model-grid">
           <el-form-item :label="translate('marAgentModels.context')">
-            <el-input-number v-model="draft.contextWindowTokens" :min="1" />
+            <el-input-number v-model="draft.contextWindowTokens" :min="1"
+              ><template #decrease-icon><MarIcon name="subtract" /></template
+              ><template #increase-icon><MarIcon name="plus" /></template
+            ></el-input-number>
           </el-form-item>
           <el-form-item :label="translate('marAgentModels.output')" prop="maxOutputTokens">
-            <el-input-number v-model="draft.maxOutputTokens" :min="1" />
+            <el-input-number v-model="draft.maxOutputTokens" :min="1"
+              ><template #decrease-icon><MarIcon name="subtract" /></template
+              ><template #increase-icon><MarIcon name="plus" /></template
+            ></el-input-number>
           </el-form-item>
         </div>
         <el-form-item
           v-if="draft.protocol !== 'ANTHROPIC_MESSAGES'"
           :label="translate('marAgentModels.transport')"
         >
-          <el-select v-model="responsesTransportChoice">
+          <el-select
+            v-model="responsesTransportChoice"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option :label="translate('marAgentModels.transportWebSocket')" value="WEBSOCKET" />
             <el-option
               v-if="draft.protocol !== 'GROK'"
@@ -1870,7 +1963,11 @@ onBeforeUnmount(() => {
           v-if="isOAuthProtocol(draft.protocol) && draft.protocol !== 'GROK'"
           :label="translate('marAgentModels.serviceTier')"
         >
-          <el-select v-model="draft.serviceTier">
+          <el-select
+            v-model="draft.serviceTier"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option :label="translate('marAgentModels.serviceTierDefault')" value="default" />
             <el-option :label="translate('marAgentModels.serviceTierFast')" value="priority" />
             <el-option
@@ -1927,7 +2024,11 @@ onBeforeUnmount(() => {
           :label="translate('marAgentModels.defaultReasoningEffort')"
           prop="defaultReasoningEffort"
         >
-          <el-select v-model="draft.defaultReasoningEffort">
+          <el-select
+            v-model="draft.defaultReasoningEffort"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option
               v-for="effort in defaultReasoningEffortOptions"
               :key="effort"
@@ -1939,9 +2040,13 @@ onBeforeUnmount(() => {
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">{{ translate('marAgentModels.cancel') }}</el-button>
-        <el-button type="primary" :loading="saving" @click="save">{{
-          translate('marAgentModels.save')
-        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="save"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('marAgentModels.save') }}</el-button
+        >
       </template>
     </el-dialog>
 
@@ -1950,6 +2055,7 @@ onBeforeUnmount(() => {
       v-model="modelTestDialog"
       :title="translate('marAgentModels.modelTestTitle')"
       width="min(520px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <p class="dialog-summary">{{ translate('marAgentModels.modelTestSummary') }}</p>
       <el-form label-position="top">
@@ -1961,6 +2067,8 @@ onBeforeUnmount(() => {
             v-model="modelTestNodeId"
             :placeholder="translate('marAgentModels.modelTestNodeRequired')"
             filterable
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="node in eligibleTestNodes"
@@ -2031,10 +2139,11 @@ onBeforeUnmount(() => {
         }}</el-button>
         <el-button
           type="primary"
-          :icon="Connection"
+          :icon="marIcon('connection')"
           :disabled="!modelTestNodeId"
           :loading="testingIds.has(modelTestModel.id)"
           @click="test(modelTestModel)"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('marAgentModels.test') }}</el-button
         >
       </template>
@@ -2053,6 +2162,7 @@ onBeforeUnmount(() => {
       "
       width="min(620px, calc(100vw - 32px))"
       @closed="resetCredentialDialog"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="credentialFormRef"
@@ -2066,6 +2176,8 @@ onBeforeUnmount(() => {
             :disabled="
               credentialEditId !== undefined || credentialDraft.targetCredentialId !== undefined
             "
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               value="CODEX_OAUTH"
@@ -2086,7 +2198,12 @@ onBeforeUnmount(() => {
           :label="translate('marAgentModels.chatgptLocalNode')"
           prop="nodeId"
         >
-          <el-select v-model="credentialDraft.nodeId" filterable>
+          <el-select
+            v-model="credentialDraft.nodeId"
+            filterable
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option
               v-for="node in eligibleLoginNodes"
               :key="node.id"
@@ -2101,7 +2218,10 @@ onBeforeUnmount(() => {
         </el-form-item>
         <slot name="credential-ownership">
           <el-form-item :label="translate('marAgentModels.codexCredentialScope')">
-            <el-select model-value="PERSONAL"
+            <el-select
+              model-value="PERSONAL"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
               ><el-option
                 value="PERSONAL"
                 :label="translate('marAgentModels.codexCredentialScopePersonal')"
@@ -2131,15 +2251,21 @@ onBeforeUnmount(() => {
         <el-button @click="credentialDialog = false">{{
           translate('marAgentModels.cancel')
         }}</el-button>
-        <el-button type="primary" :loading="credentialSaving" @click="submitCredentialLogin">{{
-          translate(
-            credentialEditId
-              ? 'marAgentModels.save'
-              : credentialDraft.type === 'CHATGPT_OAUTH'
-                ? 'marAgentModels.chatgptStartLogin'
-                : 'marAgentModels.codexStartLogin'
-          )
-        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="credentialSaving"
+          @click="submitCredentialLogin"
+          :loading-icon="marIcon('loading-action')"
+          >{{
+            translate(
+              credentialEditId
+                ? 'marAgentModels.save'
+                : credentialDraft.type === 'CHATGPT_OAUTH'
+                  ? 'marAgentModels.chatgptStartLogin'
+                  : 'marAgentModels.codexStartLogin'
+            )
+          }}</el-button
+        >
       </template>
     </el-dialog>
 
@@ -2159,6 +2285,7 @@ onBeforeUnmount(() => {
       :show-close="loginAttempt.status !== 'PENDING'"
       :close-on-click-modal="false"
       :close-on-press-escape="loginAttempt.status !== 'PENDING'"
+      :close-icon="marIcon('close')"
     >
       <template v-if="loginAttempt.status === 'PENDING'">
         <p class="dialog-summary">
@@ -2200,19 +2327,27 @@ onBeforeUnmount(() => {
         v-else-if="loginAttempt.status === 'SUCCEEDED'"
         icon="success"
         :title="translate('marAgentModels.codexLoginSucceeded')"
-      />
+        ><template #icon
+          ><MarIcon
+            name="success"
+            size="64"
+            style="color: var(--mar-color-success-text)" /></template
+      ></el-result>
       <el-result
         v-else
         icon="error"
         :title="translate('marAgentModels.codexLoginFailed')"
         :sub-title="loginAttempt.code ?? loginAttempt.message"
-      />
+        ><template #icon
+          ><MarIcon name="error" size="64" style="color: var(--mar-color-danger-text)" /></template
+      ></el-result>
       <template #footer>
         <template v-if="loginAttempt.status === 'PENDING'">
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="loginAttemptRefreshing"
             @click="refreshLoginAttempt"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.codexRefreshLoginStatus') }}</el-button
           >
           <el-button @click="cancelLoginAttempt">{{
@@ -2230,6 +2365,7 @@ onBeforeUnmount(() => {
       v-model="modelDetailOpen"
       :title="translate('marAgentModels.details')"
       width="min(720px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions class="mar-detail-descriptions" :column="1" border>
         <el-descriptions-item :label="translate('marAgentModels.modelConfigurationId')">
@@ -2303,6 +2439,7 @@ onBeforeUnmount(() => {
       v-model="credentialDetailOpen"
       :title="translate('marAgentModels.codexCredentialDetails')"
       width="min(720px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <div v-loading="credentialDetailLoading">
         <el-descriptions v-if="selectedCredentialDetails" :column="1" border>
@@ -2456,27 +2593,29 @@ onBeforeUnmount(() => {
               selectedCredentialDetails.credential.type === 'CODEX_OAUTH' ||
               selectedCredentialDetails.credential.type === 'XAI_OAUTH'
             "
-            :icon="DataAnalysis"
+            :icon="marIcon('info')"
             :loading="credentialUsageLoading"
             @click="loadCredentialUsage(selectedCredentialDetails.credential.id)"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('marAgentModels.codexQueryUsage') }}</el-button
           >
           <template v-if="writable">
             <el-button
-              :icon="Refresh"
+              :icon="marIcon('refresh')"
               :loading="credentialActionIs(selectedCredentialDetails.credential.id, 'REFRESH')"
               :disabled="credentialActionBusy(selectedCredentialDetails.credential.id)"
               @click="refreshCredential(selectedCredentialDetails.credential)"
+              :loading-icon="marIcon('loading-action')"
               >{{ translate('marAgentModels.codexRefresh') }}</el-button
             >
             <el-button
-              :icon="Key"
+              :icon="marIcon('key')"
               @click="openCredentialLogin(selectedCredentialDetails.credential)"
               >{{ translate('marAgentModels.codexRelogin') }}</el-button
             >
             <el-button
               v-if="canManageModels"
-              :icon="Plus"
+              :icon="marIcon('plus')"
               @click="openCatalog(selectedCredentialDetails.credential)"
               >{{ translate('marAgentModels.codexLoadCatalog') }}</el-button
             >
@@ -2493,6 +2632,7 @@ onBeforeUnmount(() => {
       v-model="catalogDialog"
       :title="translate('marAgentModels.codexCatalogTitle')"
       width="min(1180px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <p v-if="catalogCredential" class="dialog-summary">
         {{ translate('marAgentModels.codexCatalogSummary', { name: catalogCredential.name }) }}
@@ -2552,7 +2692,9 @@ onBeforeUnmount(() => {
                 v-model="row.contextWindowTokens"
                 :min="1"
                 :disabled="!row.selected"
-              />
+                ><template #decrease-icon><MarIcon name="subtract" /></template
+                ><template #increase-icon><MarIcon name="plus" /></template
+              ></el-input-number>
               <span v-else>{{ row.contextWindowTokens }}</span>
             </template>
           </el-table-column>
@@ -2570,6 +2712,7 @@ onBeforeUnmount(() => {
           :disabled="selectedCatalogCount === 0"
           :loading="catalogImporting"
           @click="importCatalogModels"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('marAgentModels.codexImport') }}</el-button
         >
       </template>
@@ -2580,6 +2723,7 @@ onBeforeUnmount(() => {
       v-model="importResultDialog"
       :title="translate('marAgentModels.codexImportResultTitle')"
       width="min(640px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <el-table :data="importResult?.items ?? []">
         <el-table-column
@@ -2670,7 +2814,7 @@ onBeforeUnmount(() => {
   margin: 18px 0 12px;
   padding: 12px 18px;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-fill-subtle);
   color: var(--mar-text-primary);
   font-family: var(--mar-font-mono);

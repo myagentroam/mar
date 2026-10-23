@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { onBeforeUnmount, onMounted, watch, watchEffect, type Ref, type WatchSource } from 'vue';
 import { ElMessage } from 'element-plus';
@@ -78,9 +79,11 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
   watchEffect(() => {
     const value = options.notice.value;
     if (value.length === 0) return;
+    const type = options.noticeType(value);
     ElMessage({
+      icon: marIcon(type),
       message: value,
-      type: options.noticeType(value),
+      type,
       grouping: false,
       showClose: true
     });

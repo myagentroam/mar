@@ -43,7 +43,7 @@ describe('scheduled session coordinator', () => {
       });
       const authorize = vi.fn(async () => {
         if (stage === 'authorization') await pending;
-        return { secretEnvironment: {} };
+        return { secretEnvironment: {}, executionContext: { runner: 'codex' as const } };
       });
       const submit = vi.fn(async () => {
         if (stage === 'submission') await pending;
@@ -96,7 +96,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit: async () => ({ runId: 'run-1' }),
         emitNotification: emit,
         sessionTitle: () => 'Current title'
@@ -139,6 +142,119 @@ describe('scheduled session coordinator', () => {
     }
   );
 
+  it('returns whether finish matched an active occurrence', () => {
+    const { database, store, task } = fixture(() => Date.parse('2025-01-01T00:00:00Z'));
+    try {
+      const occurrenceId = store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+      expect(store.finish('missing-occurrence', 'FAILED', 'SCHEDULE_EXECUTION_FAILED')).toBe(false);
+      expect(store.finish(occurrenceId, 'SUBMITTED', undefined, 'run-1')).toBe(true);
+      expect(store.finish(occurrenceId, 'FAILED', 'SCHEDULE_RUN_FAILED', 'run-1')).toBe(true);
+      expect(store.finish(occurrenceId, 'SUCCEEDED', undefined, 'run-1')).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('does not notify after the task and occurrence are removed', () => {
+    const { database, store, task } = fixture(() => Date.parse('2025-01-01T00:00:00Z'), true);
+    const occurrenceId = store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+    const emit = vi.fn();
+    const coordinator = new ScheduledSessionCoordinator({
+      store: () => store,
+      busy: () => false,
+      authorize: async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }),
+      submit: async () => ({ runId: 'run-1' }),
+      emitNotification: emit,
+      sessionTitle: (id) => id
+    });
+    try {
+      store.remove(task.sessionId, task.revision);
+      coordinator.executionTerminated(
+        { id: 'run-1', clientMessageId: occurrenceId, source: 'SCHEDULED' },
+        'FAILED'
+      );
+      expect(store.recent(task.id)).toEqual([]);
+      expect(emit).not.toHaveBeenCalled();
+    } finally {
+      database.close();
+    }
+  });
+
+  it.each([
+    'terminal-before-submit-result',
+    'terminal-before-submit-rejection',
+    'submit-rejection-before-terminal'
+  ] as const)(
+    'publishes only the winning terminal notification when %s occurs',
+    async (ordering) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+      const { database, store, task } = fixture(Date.now, true);
+      const emit = vi.fn();
+      let coordinator!: ScheduledSessionCoordinator;
+      coordinator = new ScheduledSessionCoordinator({
+        store: () => store,
+        busy: () => false,
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
+        submit: async (_task, occurrenceId) => {
+          if (ordering !== 'submit-rejection-before-terminal')
+            coordinator.executionTerminated(
+              { id: 'run-1', clientMessageId: occurrenceId, source: 'SCHEDULED' },
+              'FAILED'
+            );
+          if (ordering !== 'terminal-before-submit-result')
+            throw new Error('SCHEDULE_EXECUTION_FAILED');
+          return { runId: 'run-1' };
+        },
+        emitNotification: emit,
+        sessionTitle: (id) => id
+      });
+      try {
+        coordinator.start();
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+        const terminalWon = ordering !== 'submit-rejection-before-terminal';
+        expect(store.recent(task.id)[0]).toMatchObject({
+          status: 'FAILED',
+          code: terminalWon ? 'SCHEDULE_RUN_FAILED' : 'SCHEDULE_EXECUTION_FAILED',
+          run_id: terminalWon ? 'run-1' : null
+        });
+        expect(emit).toHaveBeenCalledOnce();
+        expect(
+          (emit.mock.calls[0]![0] as { event: { payload: Record<string, unknown> } }).event.payload
+        ).toMatchObject({
+          kind: terminalWon ? 'SCHEDULE_TERMINAL' : 'SCHEDULE_FAILED',
+          notificationId: `${terminalWon ? 'schedule-terminal' : 'schedule'}:${task.id}:${store.recent(task.id)[0]!.id}`
+        });
+
+        coordinator.executionTerminated(
+          {
+            id: 'run-1',
+            clientMessageId: store.recent(task.id)[0]!.id as string,
+            source: 'SCHEDULED'
+          },
+          'FAILED'
+        );
+        expect(emit).toHaveBeenCalledOnce();
+        expect(store.recent(task.id)[0]).toMatchObject({
+          status: 'FAILED',
+          code: terminalWon ? 'SCHEDULE_RUN_FAILED' : 'SCHEDULE_EXECUTION_FAILED',
+          run_id: terminalWon ? 'run-1' : null
+        });
+      } finally {
+        await coordinator.stop();
+        database.close();
+        vi.useRealTimers();
+      }
+    }
+  );
+
   it('notifies task change proposals even when task outcome notifications are disabled', () => {
     const { database, store, task } = fixture(Date.now);
     try {
@@ -146,7 +262,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit: async () => ({ runId: 'unused' }),
         sessionTitle: () => 'Session',
         emitNotification: notify
@@ -179,7 +298,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit,
         emitNotification: notify,
         sessionTitle: (id) => id
@@ -207,7 +329,10 @@ describe('scheduled session coordinator', () => {
       try {
         vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
         const { database, store, task } = fixture(Date.now, enabled);
-        const authorize = vi.fn(async () => ({ secretEnvironment: {} }));
+        const authorize = vi.fn(async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }));
         const notify = vi.fn();
         const coordinator = new ScheduledSessionCoordinator({
           store: () => store,
@@ -241,7 +366,10 @@ describe('scheduled session coordinator', () => {
     const coordinator = new ScheduledSessionCoordinator({
       store: () => store,
       busy: () => false,
-      authorize: async () => ({ secretEnvironment: {} }),
+      authorize: async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }),
       submit: async () => {
         throw new Error('SCHEDULE_EXECUTION_FAILED');
       },
@@ -274,7 +402,7 @@ describe('scheduled session coordinator', () => {
       busy: () => false,
       authorize: async () => {
         store.update(task.sessionId, task.revision, { notifyOnTerminal: false });
-        return { secretEnvironment: {} };
+        return { secretEnvironment: {}, executionContext: { runner: 'codex' as const } };
       },
       submit,
       emitNotification: notify,

@@ -10,6 +10,34 @@ function scrollElement(values: {
 }
 
 describe('Web session scrolling status', () => {
+  it.each([true, false])('Preserves follow intent during content expansion: %s', (following) => {
+    const element = scrollElement({
+      scrollHeight: 1000,
+      scrollTop: following ? 800 : 300,
+      clientHeight: 200
+    });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.following.value = following;
+    Object.defineProperty(element, 'scrollHeight', { value: 1500, configurable: true });
+    const loadOlder = vi.fn();
+    state.handleScroll(loadOlder);
+    expect(element.scrollTop).toBe(following ? 1500 : 300);
+    expect(state.following.value).toBe(following);
+    expect(loadOlder).not.toHaveBeenCalled();
+  });
+
+  it('Honors upward user scrolling even when content expands in the same frame', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    Object.defineProperty(element, 'scrollHeight', { value: 1500 });
+    element.scrollTop = 600;
+    state.handleScroll(vi.fn());
+    expect(element.scrollTop).toBe(600);
+    expect(state.following.value).toBe(false);
+  });
+
   it('Stay pinned near the bottom and load older messages after the user scrolls away', () => {
     const state = createConversationScrollService();
     const loadOlder = vi.fn();

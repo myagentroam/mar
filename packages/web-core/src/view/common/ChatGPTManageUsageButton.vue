@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TopRight } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 </script>
 
@@ -9,7 +9,7 @@ import { translate } from '../../service/LocalePreferenceService.js';
     href="https://chatgpt.com/settings/usage"
     target="_blank"
     rel="noopener noreferrer"
-    :icon="TopRight"
+    :icon="marIcon('external-link')"
     >{{ translate('marAgentModels.chatgptManageUsage') }}</el-button
   >
 </template>

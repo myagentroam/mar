@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
 import { computed, onBeforeUnmount } from 'vue';
+import { marIconSvg } from '../../util/icon-shapes.js';
 import DOMPurify from 'dompurify';
 import { ElMessage } from 'element-plus';
 import hljs from 'highlight.js/lib/common';
@@ -35,11 +38,20 @@ const renderer = new MarkdownIt({
   }
 }).use(taskLists, { enabled: true, label: true, labelAfter: true });
 
+const copyIconSvg = marIconSvg('copy').replace(
+  'class="mar-icon"',
+  'class="mar-icon agent-markdown-code-icon agent-markdown-code-icon--copy"'
+);
+const checkIconSvg = marIconSvg('check').replace(
+  'class="mar-icon"',
+  'class="mar-icon agent-markdown-code-icon agent-markdown-code-icon--check"'
+);
+
 const defaultFenceRenderer = renderer.renderer.rules.fence ?? (() => '');
 renderer.renderer.rules.fence = (tokens, index, options, environment, self) => {
   const rendered = defaultFenceRenderer(tokens, index, options, environment, self);
   const label = renderer.utils.escapeHtml(translate('generated.conversationTimeline.copyCode'));
-  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button utility-control" data-code-copy aria-label="${label}" title="${label}"><svg class="agent-markdown-code-icon agent-markdown-code-icon--copy" viewBox="0 0 1024 1024" aria-hidden="true"><path fill="currentColor" d="M768 832a128 128 0 0 1-128 128H192A128 128 0 0 1 64 832V384a128 128 0 0 1 128-128v64a64 64 0 0 0-64 64v448a64 64 0 0 0 64 64h448a64 64 0 0 0 64-64z"/><path fill="currentColor" d="M384 128a64 64 0 0 0-64 64v448a64 64 0 0 0 64 64h448a64 64 0 0 0 64-64V192a64 64 0 0 0-64-64zm0-64h448a128 128 0 0 1 128 128v448a128 128 0 0 1-128 128H384a128 128 0 0 1-128-128V192A128 128 0 0 1 384 64"/></svg><svg class="agent-markdown-code-icon agent-markdown-code-icon--check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>`;
+  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button utility-control" data-code-copy aria-label="${label}" title="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
 };
 
 renderer.core.ruler.after('linkify', 'workspace-file-locations', (state) => {
@@ -206,7 +218,10 @@ async function onCopyClick(event: MouseEvent): Promise<void> {
       }, 500)
     );
   } catch {
-    ElMessage.error(translate('generated.conversationTimeline.copyCodeFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.conversationTimeline.copyCodeFailed')
+    });
   }
 }
 
@@ -402,7 +417,7 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(th) {
   background: var(--mar-fill-muted);
-  color: var(--mar-text-primary);
+  color: var(--mar-conversation-text);
   font-weight: 650;
 }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { QuickPrompt, RunnerCommand } from '../../model/workbench.js';
@@ -95,7 +96,9 @@ function statusText(): string {
         @click="emit('select', command)"
       >
         <strong>/{{ command.id }}</strong
-        ><span :title="command.description">{{ command.description }}</span>
+        ><el-tooltip v-bind="tooltipOptions" :content="command.description"
+          ><span>{{ command.description }}</span></el-tooltip
+        >
       </button>
     </template>
     <template v-if="skillsEnabled && skills.length > 0">
@@ -114,7 +117,9 @@ function statusText(): string {
         @click="emit('selectSkill', skill)"
       >
         <strong>{{ skill.name }}</strong
-        ><span :title="skill.description">{{ skill.description }}</span>
+        ><el-tooltip v-bind="tooltipOptions" :content="skill.description"
+          ><span>{{ skill.description }}</span></el-tooltip
+        >
       </button>
     </template>
     <template v-if="quickPrompts.length > 0">
@@ -130,8 +135,12 @@ function statusText(): string {
         @mouseenter="emit('activate', index)"
         @click="emit('selectQuickPrompt', prompt)"
       >
-        <strong :title="`#${prompt.phrase}`">#{{ prompt.phrase }}</strong>
-        <span class="quick-prompt-content" :title="prompt.prompt">{{ prompt.prompt }}</span>
+        <el-tooltip v-bind="tooltipOptions" :content="`#${prompt.phrase}`"
+          ><strong>#{{ prompt.phrase }}</strong></el-tooltip
+        >
+        <el-tooltip v-bind="tooltipOptions" :content="prompt.prompt"
+          ><span class="quick-prompt-content">{{ prompt.prompt }}</span></el-tooltip
+        >
       </button>
     </template>
     <p v-if="commands.length === 0 && skills.length === 0 && quickPrompts.length === 0">

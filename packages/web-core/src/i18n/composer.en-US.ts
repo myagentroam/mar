@@ -126,6 +126,7 @@ export const composerEnUS = {
       modelAndReasoningEffort: 'Model and reasoning effort',
       access: 'Access',
       viewContextUsageClickToCompactContext: 'View context usage; click to compact context',
+      compactUnavailable: 'Context compaction is currently unavailable.',
       enterToQueueCtrlEnterToStop: 'Enter to queue · Ctrl + Enter to steer',
       enterToSendShiftAltEnterFor: 'Enter to send · Shift/Alt + Enter for a new line',
       stopRun: 'Stop run',

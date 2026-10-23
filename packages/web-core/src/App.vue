@@ -13,6 +13,7 @@ import en from 'element-plus/es/locale/lang/en';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import { localePreferenceService } from './service/LocalePreferenceService.js';
 import { consoleKeyboardShortcutService } from './service/ConsoleKeyboardShortcutService.js';
+import { tableTooltipOptions } from './util/tooltip.js';
 const SessionSharePage = defineAsyncComponent(
   () => import('./view/conversation/SessionSharePage.vue')
 );
@@ -76,7 +77,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Suspense @resolve="revealApplication">
-    <el-config-provider :locale="elementLocale">
+    <el-config-provider :locale="elementLocale" :table="{ tooltipOptions: tableTooltipOptions }">
       <SessionSharePage v-if="shareId" :share-id="shareId" />
       <component :is="filePreview" v-else-if="standaloneFilePreview" />
       <component :is="workbench" v-else />

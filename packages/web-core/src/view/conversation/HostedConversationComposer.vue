@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
-import { ArrowDown, Document, Paperclip, Promotion } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
@@ -159,7 +162,10 @@ const attachmentInput = createComposerAttachmentInputService({
   addFiles: queueFiles,
   confirmDrop: confirmDroppedAttachments,
   rejectDirectory: () =>
-    ElMessage.warning(translate('hostedConversations.folderAttachmentUnsupported')),
+    ElMessage.warning({
+      icon: marIcon('warning'),
+      message: translate('hostedConversations.folderAttachmentUnsupported')
+    }),
   setDragging: (dragging) => (draggingAttachments.value = dragging)
 });
 
@@ -181,7 +187,10 @@ function selectedFiles(event: Event): void {
 function queueFiles(files: Iterable<File>): void {
   for (const file of files) {
     if (attachments.value.length >= 32) {
-      ElMessage.warning(translate('hostedConversations.attachmentLimit'));
+      ElMessage.warning({
+        icon: marIcon('warning'),
+        message: translate('hostedConversations.attachmentLimit')
+      });
       break;
     }
     const attachment: HostedAttachment = {
@@ -284,6 +293,8 @@ async function confirmDroppedAttachments(files: readonly File[]): Promise<boolea
       translate('hostedConversations.confirmDroppedAttachments', { count: files.length }),
       translate('hostedConversations.confirmDroppedAttachmentsTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.confirmUpload'),
         cancelButtonText: translate('hostedConversations.cancel')
@@ -331,7 +342,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   }
 }
 
@@ -367,7 +378,7 @@ async function updateModel(modelId: string): Promise<void> {
     await props.workspace.updateConfiguration({ modelId });
     messageIntent = undefined;
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   } finally {
     configurationUpdating.value = false;
   }
@@ -377,7 +388,7 @@ async function stop(): Promise<void> {
   try {
     await props.workspace.interrupt();
   } catch (error) {
-    ElMessage.error(hostedErrorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
   }
 }
 
@@ -451,7 +462,9 @@ onBeforeUnmount(() => {
       <ul v-if="attachments.length" class="hosted-attachments">
         <li v-for="attachment in attachments" :key="attachment.id">
           <img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.name" />
-          <span :title="attachment.name">{{ attachment.name }}</span>
+          <el-tooltip v-bind="tooltipOptions" :content="attachment.name"
+            ><span>{{ attachment.name }}</span></el-tooltip
+          >
           <small v-if="attachment.status === 'UPLOADING'" role="status" aria-live="polite">
             {{
               translate('hostedConversations.uploadProgress', {
@@ -487,7 +500,7 @@ onBeforeUnmount(() => {
             "
             @click="removeAttachment(attachment.id)"
           >
-            ×
+            <MarIcon name="close" />
           </button>
         </li>
       </ul>
@@ -502,16 +515,18 @@ onBeforeUnmount(() => {
           multiple
           @change="selectedFiles"
         />
-        <button
-          class="hosted-icon-button utility-control"
-          type="button"
-          :disabled="composerReadonly"
-          :aria-label="translate('hostedConversations.addAttachment')"
-          :title="translate('hostedConversations.addAttachment')"
-          @click="chooseFiles"
-        >
-          <el-icon><Paperclip /></el-icon>
-        </button>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('hostedConversations.addAttachment')"
+          ><button
+            class="hosted-icon-button utility-control"
+            type="button"
+            :disabled="composerReadonly"
+            :aria-label="translate('hostedConversations.addAttachment')"
+            @click="chooseFiles"
+          >
+            <MarIcon name="attachment" /></button
+        ></el-tooltip>
         <div class="hosted-model-slot">
           <el-dropdown
             class="hosted-model-menu"
@@ -524,10 +539,12 @@ onBeforeUnmount(() => {
               type="button"
               :disabled="modelSelectionDisabled"
               :aria-label="translate('hostedConversations.model')"
-              :title="selectedModelLabel"
+              :aria-description="selectedModelLabel"
             >
-              <span>{{ selectedModelLabel }}</span>
-              <el-icon aria-hidden="true"><ArrowDown /></el-icon>
+              <el-tooltip v-bind="tooltipOptions" :content="selectedModelLabel">
+                <span>{{ selectedModelLabel }}</span>
+              </el-tooltip>
+              <MarIcon name="chevron-down" aria-hidden="true" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -543,15 +560,12 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <span
-          v-if="templateName"
-          class="hosted-template-name"
-          :aria-label="loadedTemplateLabel"
-          :title="loadedTemplateLabel"
+        <el-tooltip v-bind="tooltipOptions" v-if="templateName" :content="loadedTemplateLabel"
+          ><span class="hosted-template-name" :aria-label="loadedTemplateLabel">
+            <MarIcon name="document" aria-hidden="true" />
+            <span>{{ templateName }}</span>
+          </span></el-tooltip
         >
-          <el-icon aria-hidden="true"><Document /></el-icon>
-          <span>{{ templateName }}</span>
-        </span>
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
@@ -561,17 +575,19 @@ onBeforeUnmount(() => {
         <span v-if="submitting" class="composer-submitting" role="status">{{
           translate('workbench.sending')
         }}</span>
-        <button
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="activeRun"
-          class="hosted-stop-button"
-          type="button"
-          :disabled="!canStopCurrent"
-          :aria-label="translate('hostedConversations.stopWithEsc')"
-          :title="translate('hostedConversations.stopWithEsc')"
-          @click="stop"
-        >
-          <i aria-hidden="true" />
-        </button>
+          :content="translate('hostedConversations.stopWithEsc')"
+          ><button
+            class="hosted-stop-button"
+            type="button"
+            :disabled="!canStopCurrent"
+            :aria-label="translate('hostedConversations.stopWithEsc')"
+            @click="stop"
+          >
+            <i aria-hidden="true" /></button
+        ></el-tooltip>
         <button
           v-else
           class="hosted-send-button"
@@ -585,7 +601,7 @@ onBeforeUnmount(() => {
           "
           :aria-label="translate('hostedConversations.send')"
         >
-          <el-icon><Promotion /></el-icon>
+          <MarIcon name="send" />
         </button>
       </div>
     </template>
@@ -742,7 +758,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.hosted-model-trigger > .el-icon {
+.hosted-model-trigger > .mar-icon {
   flex: none;
   color: var(--mar-text-tertiary);
 }
@@ -774,7 +790,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.hosted-template-name > .el-icon {
+.hosted-template-name > .mar-icon {
   flex: none;
   color: var(--mar-text-tertiary);
 }

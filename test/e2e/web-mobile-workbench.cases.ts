@@ -484,9 +484,11 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     })
   );
   let mobileTerminalCreated = false;
+  const terminalLifecycleRequests: string[] = [];
   await page.route('**/api/terminals**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/terminals' && route.request().method() === 'POST') {
+      terminalLifecycleRequests.push('create');
       mobileTerminalCreated = true;
       return json(route, {
         terminal: {
@@ -501,6 +503,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     if (path === '/api/terminals/terminal-1/attach-ticket')
       return json(route, { ticket: 'ticket-1' });
     if (path === '/api/terminals/terminal-1' && route.request().method() === 'DELETE') {
+      terminalLifecycleRequests.push('close');
       mobileTerminalCreated = false;
       return json(route, {
         terminal: {
@@ -584,17 +587,16 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
   await expect(brand.getByText('MyAgentRoam')).not.toBeVisible();
   await expect(brand.locator('.brand-version')).not.toBeVisible();
-  await expect(brand.getByRole('img', { name: 'MyAgentRoam' })).toHaveAttribute(
-    'title',
-    `MyAgentRoam ${currentVersion}`
-  );
+  await brand.getByRole('img', { name: 'MyAgentRoam' }).hover();
+  await expect(page.getByRole('tooltip', { name: `MyAgentRoam ${currentVersion}` })).toBeVisible();
+  await page.mouse.move(389, 843);
   const notificationsButton = page.getByRole('button', { name: '打开通知中心' });
   const documentationLink = page.getByRole('link', { name: '帮助' });
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
   await expect(documentationLink.locator('.rail-label')).toHaveText('帮助');
   await expect(documentationLink).toBeVisible();
-  await expect(documentationLink.locator('.el-icon')).toBeVisible();
+  await expect(documentationLink.locator('svg')).toBeVisible();
   await expect(documentationLink.locator('.rail-label')).toBeHidden();
   await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
   const [nodesGeometry, documentationGeometry, notificationGeometry, brandGeometryBox] =
@@ -609,7 +611,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const [nodesContentGeometry, documentationContentGeometry] = await Promise.all([
     nodesButton.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
-      const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
+      const icon = element.querySelector('svg')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
@@ -619,7 +621,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     }),
     documentationLink.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
-      const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
+      const icon = element.querySelector('svg')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
@@ -721,7 +723,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
 
   const closeMobileWorkspaceSurface = async () => {
-    const scrim = page.getByRole('button', { name: '关闭工作区工具' });
+    const scrim = page.locator('.workspace-surface-scrim');
     await expect(scrim).toBeVisible();
     const bounds = await scrim.boundingBox();
     if (bounds === null) throw new Error('工作区工具遮罩未生成可点击区域');
@@ -894,7 +896,35 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
 
   await page.getByRole('button', { name: '打开终端' }).click();
   await expect(page.locator('.terminal-dock')).toBeVisible();
-  await expect(page.locator('.terminal-dock')).toHaveCSS('top', '46px');
+  const terminalDock = page.locator('.terminal-dock');
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 430, height: 400 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(terminalDock).toBeVisible();
+    await expect
+      .poll(async () => {
+        const bounds = await terminalDock.boundingBox();
+        return (
+          bounds && {
+            x: Math.round(bounds.x),
+            y: Math.round(bounds.y),
+            width: Math.round(bounds.width),
+            height: Math.round(bounds.height)
+          }
+        );
+      })
+      .toEqual({
+        x: 0,
+        y: viewport.height / 2,
+        width: viewport.width,
+        height: viewport.height / 2
+      });
+    await expect(page.locator('.admin-terminal-body')).toBeVisible();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-weight', '500');
@@ -911,10 +941,20 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   });
   expect(terminalFill).not.toBeNull();
   expect(terminalFill?.bottomGap).toBeLessThanOrEqual(1);
-  expect(terminalFill?.bodyHeight).toBeGreaterThan(500);
+  expect(terminalFill?.bodyHeight).toBeGreaterThan(300);
+  await page.screenshot({ path: test.info().outputPath('mobile-terminal-bottom-sheet.png') });
+  expect(terminalLifecycleRequests).toEqual(['create']);
+  await closeMobileWorkspaceSurface();
+  await expect(terminalDock).not.toBeVisible();
+  expect(mobileTerminalCreated).toBe(true);
+  await page.getByRole('button', { name: '打开终端' }).click();
+  await expect(terminalDock).toBeVisible();
+  await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
+  expect(terminalLifecycleRequests).toEqual(['create']);
   await page.getByRole('button', { name: '关闭终端 1' }).click();
   await expect(page.locator('.terminal-dock')).not.toBeVisible();
   await expect(page.getByRole('button', { name: '关闭工作区工具' })).toHaveCount(0);
+  expect(terminalLifecycleRequests).toEqual(['create', 'close']);
   await expect(page.getByRole('textbox', { name: '输入消息' })).toBeVisible();
 
   await page.locator('.conversation-header').evaluate((header) => {
@@ -1036,6 +1076,21 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   });
   const pendingWork = page.getByLabel('待执行工作');
   await expect(pendingWork).toContainText('移动端排队消息');
+  async function expectQueueBottomAligned(): Promise<void> {
+    const bottomGap = await pendingWork.evaluate((section) => {
+      const lastItem = section.querySelector('ol')!.lastElementChild!;
+      return (
+        section.getBoundingClientRect().bottom -
+        parseFloat(getComputedStyle(section).borderBottomWidth) -
+        lastItem.getBoundingClientRect().bottom
+      );
+    });
+    expect(bottomGap).toBeCloseTo(0, 1);
+    await pendingWork.screenshot({
+      path: test.info().outputPath('queue-bottom-' + page.viewportSize()!.width + '.png')
+    });
+  }
+  await expectQueueBottomAligned();
   const mobileQueueLayout = await pendingWork.locator('.queue-item').evaluate((item) => {
     const kindElement = item.querySelector('.work-item-kind');
     const contentElement = item.querySelector('.work-item-content');
@@ -1136,6 +1191,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   expect(mobileGoalLayout.kindFontSize).toBe(mobileGoalLayout.objectiveFontSize);
   expect(mobileGoalLayout.itemHeight).toBeLessThanOrEqual(32);
   await page.setViewportSize({ width: 1280, height: 800 });
+  await expectQueueBottomAligned();
   const desktopQueueLayout = await pendingWork.locator('.queue-item').evaluate((item) => {
     const kind = item.querySelector('.work-item-kind');
     const content = item.querySelector('.work-item-content');
@@ -1267,6 +1323,40 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
       })
     ])
   );
+  await expect(pendingWork.locator('.goal-card')).toHaveCount(0);
+  await emitMockSessionEvent(page, 'queue', {
+    sessionId: 'session-1',
+    queue: {
+      version: 2,
+      paused: false,
+      items: Array.from({ length: 3 }, (_, index) => ({
+        queueItemId: 'alignment-item-' + index,
+        sessionId: 'session-1',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        clientMessageId: 'alignment-message-' + index,
+        sessionTitle: 'Current session',
+        content: 'Queued message ' + (index + 1),
+        createdAt: index + 3
+      }))
+    }
+  });
+  await expect(pendingWork.locator('.queue-item')).toHaveCount(3);
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1280, height: 800 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectQueueBottomAligned();
+    const contentOffsets = await pendingWork.locator('.queue-item').evaluateAll((items) =>
+      items.map((item) => {
+        const row = item.getBoundingClientRect();
+        const content = item.querySelector('.queue-item-content')!.getBoundingClientRect();
+        return (content.top + content.bottom - row.top - row.bottom) / 2;
+      })
+    );
+    for (const offset of contentOffsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
+  }
 });
 
 for (const labels of [

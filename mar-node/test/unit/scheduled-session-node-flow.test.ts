@@ -1,5 +1,5 @@
 import { serializeComposerTag } from '@myagentroam/protocol';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,82 @@ afterEach(async () => {
 });
 
 describe('scheduled Node session flow', () => {
+  it.each([-1000, 1000])(
+    'preserves the due occurrence when a full form is saved %s ms from its due time',
+    async (offset) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.parse('2026-10-23T00:00:00Z'));
+      const database = new NodeDatabase(':memory:', 'schedule-edit');
+      try {
+        const workspace = database.saveWorkspace({
+          path: '/schedule-edit',
+          kind: 'DIRECTORY',
+          gitSummary: null
+        });
+        database.saveNativeSessionMetadata({
+          runner: 'codex',
+          externalSessionId: 'editable',
+          workspaceId: workspace.id,
+          pinned: true
+        });
+        const session = {
+          id: 'editable',
+          externalSessionId: 'editable',
+          workspaceId: workspace.id,
+          runner: 'codex'
+        };
+        const store = new ScheduledSessionStore(database.raw);
+        const task = store.create({
+          sessionId: session.id,
+          workspaceId: workspace.id,
+          runner: 'codex',
+          ownerUserId: 1,
+          objective: 'Original',
+          cron: '0 * * * *',
+          timezone: 'UTC'
+        });
+        const dueAt = task.nextRunAt!;
+        vi.setSystemTime(dueAt + offset);
+        const service = new SessionScheduleService({
+          database: () => database,
+          runtime: { getAgentSession: () => session } as never,
+          projection: {} as never,
+          present: (value) => value,
+          emitSession: vi.fn(),
+          awaitNativeSessionId: async () => session.id
+        });
+        const save = service.operations()['session.schedule.save']!;
+        const scope = { sessionId: session.id, workspaceId: workspace.id, __requestUserId: 2 };
+        await save({
+          ...scope,
+          expectedRevision: task.revision,
+          objective: 'Updated',
+          cron: task.cron,
+          enabled: true,
+          notifyOnTerminal: true
+        });
+        expect(store.get(session.id)).toMatchObject({
+          nextRunAt: dueAt,
+          revision: 2,
+          objective: 'Updated',
+          ownerUserId: 2,
+          notifyOnTerminal: true
+        });
+        await save({ ...scope, expectedRevision: 2, objective: 'Partial edit' });
+        expect(store.get(session.id)).toMatchObject({ nextRunAt: dueAt, revision: 3 });
+        vi.setSystemTime(dueAt + 1000);
+        expect(store.listDue(Date.now()).map((entry) => entry.sessionId)).toEqual([session.id]);
+        const occurrenceId = store.claim(session.id, dueAt, 3);
+        expect(occurrenceId).toBe(`${task.id}:${dueAt}`);
+        expect(store.claim(session.id, dueAt, 3)).toBeUndefined();
+        expect(store.recent(task.id)).toHaveLength(1);
+        expect(store.get(session.id)?.nextRunAt).toBe(dueAt + 3_600_000);
+      } finally {
+        database.close();
+      }
+    }
+  );
+
   it.each([false, true])(
     'keeps approval ownership in Runner interactions (scheduled: %s)',
     async (scheduled) => {
@@ -456,7 +532,7 @@ describe('scheduled Node session flow', () => {
   });
 
   it('starts the saved objective in the existing Claude Code session and permits schedule edits', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'schedule-success-'));
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-success-')));
     temporaryDirectories.push(directory);
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
@@ -624,10 +700,16 @@ describe('scheduled Node session flow', () => {
     }
   });
 
-  it.each([false, true])(
-    'pins a session and records a scheduled message and Runner start failure (terminal notifications: %s)',
-    async (notifyOnTerminal) => {
-      const directory = await mkdtemp(join(tmpdir(), 'schedule-failure-'));
+  it.each([
+    ['Runner start', false],
+    ['Runner start', true],
+    ['input preparation', false],
+    ['input preparation', true]
+  ] as const)(
+    'pins a session and records a scheduled message and %s failure (terminal notifications: %s)',
+    async (failureStage, notifyOnTerminal) => {
+      const failDuringInputPreparation = failureStage === 'input preparation';
+      const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-failure-')));
       temporaryDirectories.push(directory);
       vi.useFakeTimers();
       vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
@@ -658,7 +740,9 @@ describe('scheduled Node session flow', () => {
           conversationTurnForRun(
             runId: string
           ): { items: readonly { kind: string; payload: Record<string, unknown> }[] } | undefined;
-          getRun(runId: string): { source?: string; initiatedByUserId?: number } | undefined;
+          getRun(
+            runId: string
+          ): { id: string; source?: string; initiatedByUserId?: number } | undefined;
         };
         claudeClient: { execution: { managedNativeIds: Set<string> } };
         runners: {
@@ -670,16 +754,31 @@ describe('scheduled Node session flow', () => {
         runEventBridge: { emitRun: (...args: unknown[]) => unknown };
         emitWorkbenchEvent: (category: string, payload: unknown) => void;
         scheduledRunAuthorization: { authorize: (input: unknown) => Promise<unknown> };
-        scheduledSessions: { start(): void; stop(): void };
+        scheduledSessions: { start(): void; stop(): Promise<void> | undefined };
         executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
       };
       try {
+        const observedRuns: {
+          id: string;
+          source?: string;
+          initiatedByUserId?: number;
+        }[] = [];
+        const getRun = internals.runtime.getRun.bind(internals.runtime);
+        vi.spyOn(internals.runtime, 'getRun').mockImplementation((runId) => {
+          const run = getRun(runId);
+          if (run !== undefined) observedRuns.push(run);
+          return run;
+        });
         vi.spyOn(internals.runners.require('claude-code'), 'discoverSessions').mockResolvedValue(
           []
         );
         const emitted = vi.spyOn(internals.runEventBridge, 'emitRun');
         const workbench = vi.spyOn(internals, 'emitWorkbenchEvent');
         const prepared = vi.spyOn(internals.runners.require('claude-code'), 'prepareMessageInput');
+        if (failDuringInputPreparation)
+          prepared.mockImplementation(() => {
+            throw new Error('SCHEDULE_INPUT_PREPARATION_FAILED');
+          });
         const session = internals.runtime.createAgentSession({
           workspaceId: workspace.id,
           runner: 'claude-code',
@@ -721,43 +820,62 @@ describe('scheduled Node session flow', () => {
         internals.scheduledSessions.start();
         await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
         const task = new ScheduledSessionStore(database.raw).get(session.id)!;
+        let submittedRunId: string | undefined;
+        if (!failDuringInputPreparation) {
+          await vi.waitFor(
+            () =>
+              expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]).toMatchObject({
+                status: 'SUBMITTED'
+              }),
+            { interval: 1 }
+          );
+          const submitted = new ScheduledSessionStore(database.raw).recent(task.id)[0]!;
+          submittedRunId = submitted['run_id'] as string;
+          expect(observedRuns.find((run) => run.id === submittedRunId)).toMatchObject({
+            source: 'SCHEDULED',
+            initiatedByUserId: notifyOnTerminal ? 8 : 7
+          });
+          expect(
+            internals.runtime
+              .conversationTurnForRun(submittedRunId)
+              ?.items.find((item) => item.kind === 'user_message')?.payload
+          ).toMatchObject({ text: 'Inspect the repository', source: 'SCHEDULED' });
+        }
+        const terminalEvent = failDuringInputPreparation ? 'run.rejected' : 'run.failed';
+        await vi.waitFor(
+          () => expect(emitted.mock.calls.some((call) => call[1] === terminalEvent)).toBe(true),
+          { interval: 1 }
+        );
+        await internals.scheduledSessions.stop();
         await vi.waitFor(
           () =>
             expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]).toMatchObject({
-              status: 'SUBMITTED'
+              status: 'FAILED'
             }),
           { interval: 1 }
         );
         const occurrence = new ScheduledSessionStore(database.raw).recent(task.id)[0]!;
-        expect(occurrence).toMatchObject({ status: 'SUBMITTED' });
-        const runId = occurrence['run_id'] as string;
-        expect(internals.runtime.getRun(runId)?.source).toBe('SCHEDULED');
-        expect(internals.runtime.getRun(runId)?.initiatedByUserId).toBe(notifyOnTerminal ? 8 : 7);
         expect(internals.scheduledRunAuthorization.authorize).toHaveBeenCalledWith(
           expect.objectContaining({ ownerUserId: notifyOnTerminal ? 8 : 7 })
         );
-        expect(
-          internals.runtime
-            .conversationTurnForRun(runId)
-            ?.items.find((item) => item.kind === 'user_message')?.payload
-        ).toMatchObject({ text: 'Inspect the repository', source: 'SCHEDULED' });
         expect(prepared).toHaveBeenCalledWith(
           serializeComposerTag('mar_schedule', { objective: 'Inspect the repository' }),
           'default'
         );
-        await vi.waitFor(
-          () => expect(emitted.mock.calls.some((call) => call[1] === 'run.failed')).toBe(true),
-          { interval: 1 }
-        );
-        expect(startChannel).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({ cwd: directory, resumeSessionId: session.id })
-        );
-        expect(emitted.mock.calls.find((call) => call[1] === 'run.failed')?.[2]).toMatchObject({
-          code: 'CLAUDE_RUN_START_FAILED'
-        });
-        expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]).toMatchObject({
-          status: 'FAILED'
-        });
+        if (failDuringInputPreparation) {
+          expect(occurrence).toMatchObject({ status: 'FAILED' });
+          expect(startChannel).not.toHaveBeenCalled();
+          expect(emitted.mock.calls.find((call) => call[1] === 'run.rejected')).toBeDefined();
+        } else {
+          const runId = submittedRunId!;
+          expect(occurrence).toMatchObject({ status: 'FAILED', run_id: expect.any(String) });
+          expect(startChannel).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ cwd: directory, resumeSessionId: session.id })
+          );
+          expect(emitted.mock.calls.find((call) => call[1] === 'run.failed')?.[2]).toMatchObject({
+            code: 'CLAUDE_RUN_START_FAILED'
+          });
+        }
         const notifications = workbench.mock.calls
           .filter(
             ([category, payload]) =>

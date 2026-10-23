@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
@@ -13,6 +14,7 @@ import { translate } from './LocalePreferenceService.js';
 import { hasUnavailableSkillToken, serializeComposerMessage } from './ComposerSkillTokenService.js';
 import { sessionSubmissionContext } from './WorkbenchSubmissionService.js';
 import { errorCode } from '../util/api-error.js';
+import { isTerminalRunStatus } from './RunService.js';
 
 type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 
@@ -70,7 +72,10 @@ export interface WorkbenchSessionMessageOptions {
   readonly scrollToLatest: () => void;
   readonly scrollToLatestAfterLayout: () => Promise<void>;
   readonly errorMessage: (error: unknown) => string;
-  readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
+  readonly beginSubmission: (
+    context?: string,
+    onTimeout?: () => void
+  ) => (() => boolean) | undefined;
 }
 
 /**
@@ -127,6 +132,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     )
       return;
     const submissionNodeId = options.workspaceTarget.value?.nodeId;
+    const submissionWorkspaceId = options.workspaceTarget.value?.workspaceId;
     const body = options.input.value.trim();
     const titleBody = body;
     if (
@@ -171,11 +177,13 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       return;
     }
     const deliveryIntent = resolveDeliveryIntent(intentOverride, options.composerBusy.value);
+    const draftSession =
+      options.draftOpen.value || options.selectedSessionId.value?.startsWith('draft:') === true;
     const commandInput =
       commandOverride?.input ??
       (preserveDraft && command !== undefined ? `/${command.id}` : content);
     if (
-      options.draftOpen.value &&
+      draftSession &&
       command !== undefined &&
       !(command.id === 'fast' && command.runner === 'codex')
     ) {
@@ -203,6 +211,8 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           translate('generated.workbenchSessionMessageService.clearSessionConfirmation'),
           translate('generated.workbenchSessionMessageService.clearSession'),
           {
+            closeIcon: marIcon('close'),
+            icon: marIcon('warning'),
             type: 'warning',
             confirmButtonText: translate(
               'generated.workbenchSessionMessageService.confirmClearSession'
@@ -231,8 +241,18 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     let submittedSession: Session | undefined;
     let attemptedRetryCandidate:
       { readonly signature: string; readonly clientMessageId: string } | undefined;
+    const submissionSessionId = options.selectedSessionId.value;
     const finishSubmission = options.beginSubmission(
-      sessionSubmissionContext(options.selectedSessionId.value)
+      sessionSubmissionContext(submissionSessionId),
+      () => {
+        if (
+          active() &&
+          options.workspaceTarget.value?.nodeId === submissionNodeId &&
+          options.workspaceTarget.value?.workspaceId === submissionWorkspaceId &&
+          options.selectedSessionId.value === (submittedSession?.id ?? submissionSessionId)
+        )
+          options.notice.value = translate('workbench.submissionTimedOut');
+      }
     );
     if (finishSubmission === undefined) return;
     let completedInSubmissionWindow = false;
@@ -257,9 +277,9 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         }
         return;
       }
-      const createdDraft = options.draftOpen.value;
+      const createdDraft = draftSession;
       startedDraft = createdDraft;
-      const session = createdDraft
+      const session = options.draftOpen.value
         ? await options.createDraftSession(options.temporaryTitle(titleBody))
         : options.selectedSession.value;
       if (!active()) return;
@@ -372,7 +392,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           latest,
           ...options.runs.value.filter((candidate) => candidate.id !== result.run.id)
         ];
-        if (result.delivery === undefined || result.delivery === 'STARTED')
+        if (
+          (result.delivery === undefined || result.delivery === 'STARTED') &&
+          !isTerminalRunStatus(latest.status)
+        )
           options.openRun(result.run.id);
       } else {
         options.cacheRun(submissionNodeId, session.workspaceId, {

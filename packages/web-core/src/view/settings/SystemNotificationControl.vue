@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
-import { Bell, SwitchButton } from '@element-plus/icons-vue';
 import type { WorkbenchNotificationService } from '../../service/WorkbenchNotificationService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 
@@ -51,10 +51,11 @@ const blocked = computed(
         <el-button
           link
           type="primary"
-          :icon="service.enabled.value ? SwitchButton : Bell"
+          :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
           :disabled="blocked"
           @click="service.setEnabled(!service.enabled.value)"
+          :loading-icon="marIcon('loading-action')"
         >
           {{
             translate(
@@ -76,7 +77,7 @@ const blocked = computed(
           "
           link
           type="primary"
-          :icon="Bell"
+          :icon="marIcon('notification')"
           @click="service.enablePush()"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button
         >

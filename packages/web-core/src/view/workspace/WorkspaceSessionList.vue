@@ -1,22 +1,7 @@
 <script setup lang="ts">
-import {
-  ArrowDown,
-  ArrowUp,
-  ChatLineSquare,
-  Clock,
-  Collection,
-  Connection,
-  Delete,
-  Document,
-  Edit,
-  Loading,
-  More,
-  Refresh,
-  Search,
-  Share,
-  StarFilled,
-  Top
-} from '@element-plus/icons-vue';
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
@@ -200,7 +185,10 @@ async function openSkills(): Promise<void> {
   try {
     await skillService.load(props.nodeId, props.workspaceId);
   } catch {
-    ElMessage.error(translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain')
+    });
   }
 }
 
@@ -209,7 +197,10 @@ async function openMcps(): Promise<void> {
   try {
     await mcpService.run(() => mcpService.loadWorkspace(props.nodeId, props.workspaceId));
   } catch {
-    ElMessage.error(translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry')
+    });
   }
 }
 
@@ -223,16 +214,6 @@ function skillStatusLabel(status: string): string {
         : status === 'GIT_EXCLUDE_BROKEN'
           ? translate('generated.workspaceSessionList.invalidGitRules')
           : translate('generated.workspaceSessionList.invalidDirectory');
-}
-
-function workspaceBranchTone(branch: string): string {
-  const normalized = branch.trim().toLowerCase();
-  if (normalized === 'main' || normalized === 'master') return 'branch-main';
-  if (normalized === 'develop') return 'branch-develop';
-  if (normalized.startsWith('feat')) return 'branch-feature';
-  if (normalized.startsWith('release')) return 'branch-release';
-  if (/^(fix|bugfix|hotfix)(?:[\/_-]|$)/.test(normalized)) return 'branch-fix';
-  return 'branch-other';
 }
 
 function pinned(session: Session): boolean {
@@ -346,13 +327,15 @@ function submitSessionSearch(): void {
         <el-tag
           v-if="workspaceKind === 'GIT_WORKSPACE'"
           class="workspace-kind-tag"
+          type="info"
           effect="plain"
           size="small"
           >{{ workspaceKindLabel }}</el-tag
         >
         <el-tag
           v-if="workspaceBranch !== undefined"
-          :class="['workspace-branch-tag', workspaceBranchTone(workspaceBranch)]"
+          class="workspace-branch-tag"
+          type="info"
           effect="plain"
           size="small"
           >{{ workspaceBranch }}</el-tag
@@ -369,34 +352,37 @@ function submitSessionSearch(): void {
         v-model="searchInput"
         :placeholder="translate('workspaceSessions.searchPlaceholder')"
         :aria-label="translate('workspaceSessions.searchLabel')"
-        :prefix-icon="Search"
+        :prefix-icon="marIcon('search')"
         clearable
         size="small"
         @clear="emit('search', '')"
+        :clear-icon="marIcon('clear-input')"
       />
-      <button
-        class="session-search-button utility-control"
-        :aria-label="
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="
           translate(
             searchInput.trim()
               ? 'workspaceSessions.searchAction'
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        :aria-busy="searching || refreshing || undefined"
-        :disabled="!nodeReady || searching || refreshing"
-        :title="
-          translate(
-            searchInput.trim()
-              ? 'workspaceSessions.searchAction'
-              : 'generated.workspaceSessionList.refreshWorkspaceSessions'
-          )
-        "
-        type="submit"
-      >
-        <el-icon v-if="searching || refreshing" class="is-loading"><Loading /></el-icon>
-        <el-icon v-else><Refresh /></el-icon>
-      </button>
+        ><button
+          class="session-search-button utility-control"
+          :aria-label="
+            translate(
+              searchInput.trim()
+                ? 'workspaceSessions.searchAction'
+                : 'generated.workspaceSessionList.refreshWorkspaceSessions'
+            )
+          "
+          :aria-busy="searching || refreshing || undefined"
+          :disabled="!nodeReady || searching || refreshing"
+          type="submit"
+        >
+          <MarIcon name="loading-action" v-if="searching || refreshing" />
+          <MarIcon name="refresh" v-else /></button
+      ></el-tooltip>
     </form>
     <div class="new-session-form">
       <el-button
@@ -405,8 +391,9 @@ function submitSessionSearch(): void {
         type="primary"
         @click="emit('create')"
       >
-        <el-icon><ChatLineSquare /></el-icon
-        ><span>{{ translate('generated.workspaceSessionList.newSession') }}</span>
+        <MarIcon name="session-add" /><span>{{
+          translate('generated.workspaceSessionList.newSession')
+        }}</span>
       </el-button>
       <el-dropdown trigger="click" popper-class="workspace-tool-menu">
         <button
@@ -415,25 +402,28 @@ function submitSessionSearch(): void {
           :disabled="!nodeReady"
           type="button"
         >
-          <el-icon><More /></el-icon>
+          <MarIcon name="more" />
         </button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item v-if="skillSupported" @click="openSkills">
-              <el-icon><Collection /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.loadedSkills') }}</span>
+              <MarIcon name="collection" /><span>{{
+                translate('generated.workspaceSessionList.loadedSkills')
+              }}</span>
             </el-dropdown-item>
             <el-dropdown-item v-if="mcpSupported" @click="openMcps">
-              <el-icon><Connection /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.loadedMCP') }}</span>
+              <MarIcon name="connection" /><span>{{
+                translate('generated.workspaceSessionList.loadedMCP')
+              }}</span>
             </el-dropdown-item>
             <el-dropdown-item
               v-if="cleanupSessionsSupported"
               :disabled="loading || !nodeReady || !workspaceManageable"
               @click="emit('cleanupSessions')"
             >
-              <el-icon><Delete /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.cleanupSessions') }}</span>
+              <MarIcon name="delete" /><span>{{
+                translate('generated.workspaceSessionList.cleanupSessions')
+              }}</span>
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -493,56 +483,66 @@ function submitSessionSearch(): void {
                   aria-hidden="true"
                   class="runner-brand-icon session-title-runner-icon"
                 />
-                <el-icon
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="session.schedule"
-                  :class="[
-                    'session-pin-indicator',
-                    { 'schedule-paused': !session.schedule.enabled }
-                  ]"
-                  :aria-label="
+                  :content="
                     translate(
                       session.schedule.enabled
                         ? 'generated.scheduledSession.enabled'
                         : 'generated.scheduledSession.paused'
                     )
                   "
-                  :title="
-                    translate(
-                      session.schedule.enabled
-                        ? 'generated.scheduledSession.enabled'
-                        : 'generated.scheduledSession.paused'
-                    )
-                  "
-                  ><Clock
-                /></el-icon>
-                <el-icon
+                  ><MarIcon
+                    name="clock"
+                    :class="[
+                      'session-pin-indicator',
+                      { 'schedule-paused': !session.schedule.enabled }
+                    ]"
+                    :aria-label="
+                      translate(
+                        session.schedule.enabled
+                          ? 'generated.scheduledSession.enabled'
+                          : 'generated.scheduledSession.paused'
+                      )
+                    "
+                /></el-tooltip>
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-else-if="pinned(session)"
-                  class="session-pin-indicator"
-                  :aria-label="translate('generated.workspaceSessionList.pinned')"
-                  :title="translate('generated.workspaceSessionList.pinned2')"
-                  ><StarFilled
-                /></el-icon>
-                <strong :title="title(session)">{{ title(session) }}</strong>
-                <span
-                  v-if="hasUnread(session.id)"
-                  class="session-unread-label"
-                  :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
-                  :title="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
-                  >{{ translate('generated.workspaceSessionList.unread') }}</span
+                  :content="translate('generated.workspaceSessionList.pinned2')"
+                  ><MarIcon
+                    name="star-filled"
+                    class="session-pin-indicator"
+                    :aria-label="translate('generated.workspaceSessionList.pinned')"
+                /></el-tooltip>
+                <el-tooltip v-bind="tooltipOptions" :content="title(session)"
+                  ><strong>{{ title(session) }}</strong></el-tooltip
                 >
-                <span
+                <el-tooltip
+                  v-bind="tooltipOptions"
+                  v-if="hasUnread(session.id)"
+                  :content="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
+                  ><span
+                    class="session-unread-label"
+                    :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
+                    >{{ translate('generated.workspaceSessionList.unread') }}</span
+                  ></el-tooltip
+                >
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="nodeReady && activity(session) === 'MANAGED_ACTIVE'"
-                  :class="['session-activity', activity(session).toLocaleLowerCase()]"
-                  :aria-label="activityLabel(session)"
-                  :title="activityLabel(session)"
-                  role="img"
-                  ><i aria-hidden="true"
-                /></span>
-                <time
-                  class="session-relative-time"
-                  :datetime="activityDateTime(session)"
-                  :title="activityTitle(session)"
-                  >{{ relativeActivity(session) }}</time
+                  :content="activityLabel(session)"
+                  ><span
+                    :class="['session-activity', activity(session).toLocaleLowerCase()]"
+                    :aria-label="activityLabel(session)"
+                    role="img"
+                    ><i aria-hidden="true" /></span
+                ></el-tooltip>
+                <el-tooltip v-bind="tooltipOptions" :content="activityTitle(session)"
+                  ><time class="session-relative-time" :datetime="activityDateTime(session)">{{
+                    relativeActivity(session)
+                  }}</time></el-tooltip
                 >
               </span>
             </span>
@@ -563,44 +563,52 @@ function submitSessionSearch(): void {
                   value0: title(session)
                 })
               "
-              :title="translate('generated.workspaceSessionList.moreSessionActions2')"
               type="button"
             >
-              <el-icon><More /></el-icon>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="translate('generated.workspaceSessionList.moreSessionActions2')"
+              >
+                <MarIcon name="more" />
+              </el-tooltip>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="!pinned(session)" @click="emit('pin', session, true)"
-                  ><el-icon><Top /></el-icon
-                  >{{ translate('generated.workspaceSessionList.pin') }}</el-dropdown-item
+                  ><MarIcon name="pin" />{{
+                    translate('generated.workspaceSessionList.pin')
+                  }}</el-dropdown-item
                 >
                 <template v-else>
                   <el-dropdown-item
                     :disabled="session.schedule?.enabled === true"
                     @click="emit('pin', session, false)"
-                    ><el-icon><Top /></el-icon
-                    >{{ translate('generated.workspaceSessionList.unpin') }}</el-dropdown-item
+                    ><MarIcon name="pin" />{{
+                      translate('generated.workspaceSessionList.unpin')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     :disabled="!canMove(session, 'up')"
                     @click="emit('movePin', session, 'up')"
-                    ><el-icon><ArrowUp /></el-icon
-                    >{{ translate('generated.workspaceSessionList.moveUp') }}</el-dropdown-item
+                    ><MarIcon name="chevron-up" />{{
+                      translate('generated.workspaceSessionList.moveUp')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     :disabled="!canMove(session, 'down')"
                     @click="emit('movePin', session, 'down')"
-                    ><el-icon><ArrowDown /></el-icon
-                    >{{ translate('generated.workspaceSessionList.moveDown') }}</el-dropdown-item
+                    ><MarIcon name="chevron-down" />{{
+                      translate('generated.workspaceSessionList.moveDown')
+                    }}</el-dropdown-item
                   >
                 </template>
                 <el-dropdown-item @click="shareSession = session"
-                  ><el-icon><Share /></el-icon
-                  >{{ translate('sessionShare.title') }}</el-dropdown-item
+                  ><MarIcon name="share" />{{ translate('sessionShare.title') }}</el-dropdown-item
                 >
                 <el-dropdown-item @click="emit('rename', session)"
-                  ><el-icon><Edit /></el-icon
-                  >{{ translate('generated.workspaceSessionList.rename') }}</el-dropdown-item
+                  ><MarIcon name="edit" />{{
+                    translate('generated.workspaceSessionList.rename')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="
@@ -608,8 +616,9 @@ function submitSessionSearch(): void {
                     session.runtime?.capabilities?.includes('session.prompt')
                   "
                   @click="promptSession = session"
-                  ><el-icon><Document /></el-icon
-                  >{{ translate('generated.sessionPrompt.title') }}</el-dropdown-item
+                  ><MarIcon name="document" />{{
+                    translate('generated.sessionPrompt.title')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="session.runtime?.capabilities?.includes('session.schedule')"
@@ -617,15 +626,17 @@ function submitSessionSearch(): void {
                     scheduleSession = session;
                     scheduleDialogOpen = true;
                   "
-                  ><el-icon><Clock /></el-icon
-                  >{{ translate('generated.scheduledSession.title') }}</el-dropdown-item
+                  ><MarIcon name="clock" />{{
+                    translate('generated.scheduledSession.title')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="props.canDeleteSession?.(session) !== false"
                   divided
                   @click="emit('deleteSession', session)"
-                  ><el-icon><Delete /></el-icon
-                  >{{ translate('generated.workspaceSessionList.delete') }}</el-dropdown-item
+                  ><MarIcon name="delete" />{{
+                    translate('generated.workspaceSessionList.delete')
+                  }}</el-dropdown-item
                 >
               </el-dropdown-menu>
             </template>
@@ -667,6 +678,7 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.currentSkills')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <div v-loading="skillService.loading.value" class="effective-skill-list">
         <p v-if="!skillService.loading.value && skillService.skills.value.length === 0">
@@ -704,6 +716,7 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.loadedMCP2')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <div v-loading="mcpService.loading.value" class="effective-skill-list">
         <p
@@ -845,10 +858,12 @@ function submitSessionSearch(): void {
   line-height: 1.4;
 }
 
-.workspace-kind-tag {
-  --el-tag-bg-color: var(--mar-color-warning-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-warning-text);
+.workspace-kind-tag,
+.workspace-branch-tag {
+  --el-tag-bg-color: var(--mar-bg-subtle);
+  --el-tag-border-color: var(--mar-border-default);
+  --el-tag-text-color: var(--mar-text-secondary);
+  color: var(--mar-text-secondary);
   min-height: 1.5em;
   height: auto;
   border-radius: var(--mar-radius-marker);
@@ -858,49 +873,14 @@ function submitSessionSearch(): void {
 }
 
 .workspace-branch-tag {
-  --el-tag-bg-color: var(--mar-bg-page);
-  --el-tag-border-color: var(--mar-border-subtle);
-  --el-tag-text-color: var(--mar-text-tertiary);
-  min-height: 1.5em;
-  height: auto;
-  border-radius: var(--mar-radius-marker);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.2;
   max-width: 10rem;
   overflow: hidden;
-  padding: 0 5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workspace-branch-tag.branch-main {
-  --el-tag-bg-color: var(--mar-color-accent-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-accent) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-accent);
-}
-
-.workspace-branch-tag.branch-develop {
-  --el-tag-bg-color: var(--mar-color-brand-subtle);
-  --el-tag-border-color: var(--mar-color-brand-border);
-  --el-tag-text-color: var(--mar-color-brand-text);
-}
-
-.workspace-branch-tag.branch-feature {
-  --el-tag-bg-color: var(--mar-color-success-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-success-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-success-text);
-}
-
-.workspace-branch-tag.branch-release {
-  --el-tag-bg-color: var(--mar-color-warning-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-warning-text);
-}
-
-.workspace-branch-tag.branch-fix {
-  --el-tag-bg-color: var(--mar-color-danger-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-danger-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-danger-text);
+.session-heading-meta :deep(.el-tag__content) {
+  color: inherit;
 }
 
 .new-session-form {
@@ -1019,7 +999,7 @@ function submitSessionSearch(): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--mar-font-size-body);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .session-title-row {

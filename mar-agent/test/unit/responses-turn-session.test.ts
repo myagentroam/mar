@@ -14,6 +14,7 @@ import {
   openAiInput
 } from '../../src/agent-core/model/openai-responses.js';
 import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
 import {
   type ModelAdapter,
   type ModelEvent,
@@ -178,7 +179,7 @@ async function collect(source: AsyncIterable<ModelEvent>) {
 
 describe('OpenAI Responses turn sessions', () => {
   it('preserves a GPT-6 request effort across changes, replay, and Compact', async () => {
-    const responses = Array.from({ length: 6 }, (_, index) =>
+    const responses = Array.from({ length: 8 }, (_, index) =>
       completedResponse(`response-effort-${index}`, `Answer ${index}`)
     );
     const server = await startResponsesWebSocketServer([], {
@@ -237,16 +238,59 @@ describe('OpenAI Responses turn sessions', () => {
         models: [{ ...model, reasoningEfforts: [...model.reasoningEfforts] }]
       });
       const restored = await agent.openSession(session.id);
-      await expect(restored.compact().result()).resolves.toMatchObject({ status: 'completed' });
+      for (const index of [4, 5])
+        await expect(
+          restored.run({ prompt: `Restored ${index}`, reasoningEffort: 'low' }).result()
+        ).resolves.toMatchObject({ status: 'completed', finalAnswer: `Answer ${index}` });
       expect(server.requests[4]?.reasoning?.effort).toBe('high');
-      expect(JSON.stringify(server.requests[4]?.input)).toContain('configuration_update');
+      expect(
+        server.requests[4]?.input.filter(
+          (item: { type?: string }) => item.type === 'configuration_update'
+        )
+      ).toEqual([expectedUpdate('low'), expectedUpdate('high'), expectedUpdate('low')]);
+      expect(server.requests[5]?.reasoning?.effort).toBe('high');
+      expect(server.requests[5]?.input).not.toContainEqual(expectedUpdate('low'));
+      await expect(restored.compact().result()).resolves.toMatchObject({ status: 'completed' });
+      expect(server.requests[6]?.reasoning?.effort).toBe('high');
+      expect(JSON.stringify(server.requests[6]?.input)).toContain('configuration_update');
       await expect(
         restored.run({ prompt: 'After compact', reasoningEffort: 'low' }).result()
-      ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'Answer 5' });
-      expect(server.requests[5]?.reasoning?.effort).toBe('low');
-      expect(JSON.stringify(server.requests[5]?.input)).not.toContain('configuration_update');
+      ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'Answer 7' });
+      expect(server.requests[7]?.reasoning?.effort).toBe('low');
+      expect(JSON.stringify(server.requests[7]?.input)).not.toContain('configuration_update');
     } finally {
       await agent.dispose();
+    }
+    const store = await JsonlSessionStore.open(home);
+    try {
+      const records = await store.read(session.id);
+      const updates = records.filter(
+        (record) =>
+          record.type === 'model.context' &&
+          (record.payload as ModelMessage).item?.type === 'configuration_update'
+      );
+      expect(updates.map((record) => record.payload)).toEqual(
+        ['low', 'high', 'low'].map((effort) => ({
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: model.id,
+          item: { type: 'configuration_update', reasoning: { effort } }
+        }))
+      );
+      for (const update of updates) {
+        const user = records.find(
+          (record) => record.type === 'turn.user' && record.turnId === update.turnId
+        )!;
+        const header = records.find(
+          (record) =>
+            record.type === 'execution.header' && record.executionId === update.executionId
+        )!;
+        expect(update.sequence).toBeGreaterThan(user.sequence);
+        expect(update.sequence).toBeLessThan(header.sequence);
+      }
+    } finally {
+      await store.close();
     }
   });
 

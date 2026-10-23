@@ -11,16 +11,24 @@ export function createWorkbenchSubmissionService() {
   const context = ref<string>();
   let sequence = 0;
 
-  function begin(nextContext?: string): (() => boolean) | undefined {
+  function begin(
+    nextContext?: string,
+    onTimeout?: () => void,
+    timeoutMs: number | null = SUBMISSION_TIMEOUT_MS
+  ): (() => boolean) | undefined {
     if (pending.value) return undefined;
     const current = ++sequence;
     pending.value = true;
     context.value = nextContext;
-    const timeout = setTimeout(() => {
-      if (sequence !== current) return;
-      pending.value = false;
-      context.value = undefined;
-    }, SUBMISSION_TIMEOUT_MS);
+    const timeout =
+      timeoutMs === null
+        ? undefined
+        : setTimeout(() => {
+            if (sequence !== current) return;
+            pending.value = false;
+            context.value = undefined;
+            onTimeout?.();
+          }, timeoutMs);
     return () => {
       clearTimeout(timeout);
       const active = sequence === current && pending.value;

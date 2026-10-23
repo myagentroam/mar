@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
 import {
   computed,
   nextTick,
@@ -117,9 +119,11 @@ const service = new PromptCompletionService({
     else void nextTick(renderPreview);
   },
   feedback(reason, error) {
-    if (error !== undefined) ElMessage.error(errorMessage(error));
-    else if (feedbackKeys.has(reason)) ElMessage.info(translate(`promptCompletion.${reason}`));
-    else ElMessage.error(reason);
+    if (error !== undefined)
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    else if (feedbackKeys.has(reason))
+      ElMessage.info({ icon: marIcon('info'), message: translate(`promptCompletion.${reason}`) });
+    else ElMessage.error({ icon: marIcon('error'), message: reason });
   }
 });
 

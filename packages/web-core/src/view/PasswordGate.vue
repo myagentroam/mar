@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../util/mar-icons.js';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElButton, ElInput } from 'element-plus';
@@ -71,6 +72,7 @@ function submit(): void {
         :loading="loading"
         native-type="submit"
         type="primary"
+        :loading-icon="marIcon('loading-action')"
         >{{ t('passwordGate.submit') }}</el-button
       >
     </form>

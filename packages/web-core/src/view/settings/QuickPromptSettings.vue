@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EditPen, Plus, Delete } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
@@ -85,11 +85,14 @@ async function save(): Promise<void> {
     if (generation !== editorGeneration.value) return;
     await props.refresh();
     if (generation !== editorGeneration.value) return;
-    ElMessage.success(translate('quickPrompts.saved'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('quickPrompts.saved') });
     close();
   } catch (error) {
     if (generation === editorGeneration.value)
-      ElMessage.error(translate('quickPrompts.saveFailed', { value0: errorMessage(error) }));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('quickPrompts.saveFailed', { value0: errorMessage(error) })
+      });
   } finally {
     if (generation === editorGeneration.value) saving.value = false;
   }
@@ -99,16 +102,19 @@ async function remove(prompt: QuickPrompt): Promise<void> {
     await ElMessageBox.confirm(
       translate('quickPrompts.removeConfirmation', { value0: `#${prompt.phrase}` }),
       translate('quickPrompts.remove'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/quick-prompts/${encodeURIComponent(prompt.id)}`, {
       method: 'DELETE'
     });
     await props.refresh();
-    ElMessage.success(translate('quickPrompts.removed'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('quickPrompts.removed') });
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(translate('quickPrompts.removeFailed', { value0: errorMessage(error) }));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('quickPrompts.removeFailed', { value0: errorMessage(error) })
+      });
   }
 }
 </script>
@@ -123,7 +129,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         </div>
       </header>
       <div class="prompt-list-toolbar">
-        <el-button :icon="Plus" type="primary" :disabled="loading" @click="openCreate">
+        <el-button :icon="marIcon('plus')" type="primary" :disabled="loading" @click="openCreate">
           {{ translate('quickPrompts.add') }}
         </el-button>
       </div>
@@ -141,7 +147,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           <p>{{ prompt.prompt }}</p>
           <div class="prompt-actions">
             <el-button
-              :icon="EditPen"
+              :icon="marIcon('edit')"
               link
               type="primary"
               :disabled="loading"
@@ -149,7 +155,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
               >{{ translate('quickPrompts.edit') }}</el-button
             >
             <el-button
-              :icon="Delete"
+              :icon="marIcon('delete')"
               link
               type="danger"
               :disabled="loading"
@@ -168,6 +174,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       width="min(560px, calc(100vw - 32px))"
       append-to-body
       :before-close="close"
+      :close-icon="marIcon('close')"
     >
       <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <el-form-item :label="translate('quickPrompts.phrase')" prop="phrase">
@@ -191,9 +198,13 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       </el-form>
       <template #footer>
         <el-button @click="close">{{ translate('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="saving" @click="save">{{
-          translate('common.save')
-        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="save"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('common.save') }}</el-button
+        >
       </template>
     </el-dialog>
   </LoadingPanel>

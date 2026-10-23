@@ -33,6 +33,108 @@ function session(
 }
 
 describe('Node Session message FIFO', () => {
+  it.each(['SUCCEEDED', 'FAILED', 'INTERRUPTED'] as const)(
+    'retains first, FIFO and native-steer identities after %s resource cleanup',
+    (status) => {
+      const runtime = preparedRuntime();
+      const current = session(runtime);
+      const run = runtime.createMessageRun({
+        sessionId: current.id,
+        clientMessageId: 'first',
+        content: 'First'
+      }).run;
+      runtime.createQueueItem({ sessionId: current.id, clientMessageId: 'fifo', content: 'Next' });
+      runtime.claimNextQueueItem(current.id);
+      const item = runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: 'steer',
+        content: 'Context'
+      }).item;
+      const release = runtime.reserveQueueItem(item.id);
+      runtime.consumeSteeredQueueItem(item.id, run.id);
+      release();
+      runtime.finishRun(run.id, status);
+      runtime.removeTerminalRun(run.id);
+      for (const id of ['first', 'fifo', 'steer']) {
+        expect(runtime.findMessageSubmission(current.id, id)).toMatchObject({
+          kind: 'run',
+          run: { id: run.id, status }
+        });
+        expect(runtime.findMessageRun(current.id, id)).toBeUndefined();
+      }
+      expect(runtime.getRun(run.id)).toBeUndefined();
+      expect(runtime.activeSessionRun(current.id)).toBeUndefined();
+      const other = session(runtime);
+      expect(runtime.findMessageSubmission(other.id, 'first')).toBeUndefined();
+      runtime.promoteSessionIdentity(current.id, 'native-retained');
+      expect(runtime.findMessageSubmission('native-retained', 'fifo')).toMatchObject({
+        run: { id: run.id, sessionId: 'native-retained' }
+      });
+      expect(runtime.findMessageSubmission(current.id, 'fifo')).toBeUndefined();
+    }
+  );
+
+  it.each(['history', 'session', 'workspace'] as const)(
+    'releases terminal receipts on %s removal',
+    (scope) => {
+      const runtime = preparedRuntime();
+      const current = session(runtime);
+      const run = runtime.createMessageRun({
+        sessionId: current.id,
+        clientMessageId: 'first',
+        content: 'First'
+      }).run;
+      runtime.finishRun(run.id, 'SUCCEEDED');
+      runtime.removeTerminalRun(run.id);
+      if (scope === 'history') runtime.resetAgentSessionHistory(current.id, 200);
+      else if (scope === 'session') runtime.removeAgentSession(current.id);
+      else runtime.removeWorkspace(current.workspaceId);
+      expect(runtime.findMessageSubmission(current.id, 'first')).toBeUndefined();
+    }
+  );
+
+  it('bounds terminal receipts per message even when a continuous Run outlives the Turn window', () => {
+    const runtime = preparedRuntime();
+    const current = session(runtime);
+    const run = runtime.createMessageRun({
+      sessionId: current.id,
+      clientMessageId: 'first',
+      content: 'First'
+    }).run;
+    for (let index = 0; index < 1_025; index++) {
+      const item = runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: `message-${index}`,
+        content: 'Context'
+      }).item;
+      const release = runtime.reserveQueueItem(item.id);
+      runtime.consumeSteeredQueueItem(item.id, run.id);
+      release();
+    }
+    runtime.finishRun(run.id, 'SUCCEEDED');
+    runtime.removeTerminalRun(run.id);
+    expect(runtime.findMessageSubmission(current.id, 'first')).toBeUndefined();
+    expect(runtime.findMessageSubmission(current.id, 'message-0')).toBeUndefined();
+    expect(runtime.findMessageSubmission(current.id, 'message-1')).toMatchObject({
+      run: { id: run.id }
+    });
+    expect(runtime.findMessageSubmission(current.id, 'message-1024')).toMatchObject({
+      run: { id: run.id }
+    });
+    // Runs without message receipts can evict the retained summary first.
+    for (let index = 0; index < 1_024; index++) {
+      const next = runtime.adoptRun({
+        runId: `envelope-${index}`,
+        sessionId: current.id,
+        runner: current.runner,
+        cwd: current.cwd
+      });
+      runtime.finishRun(next.id, 'SUCCEEDED');
+      runtime.removeTerminalRun(next.id);
+    }
+    expect(runtime.findMessageSubmission(current.id, 'message-1024')).toBeUndefined();
+  });
+
   it.each(['resume', 'publish'] as const)(
     'settles a background command-queue %s failure without an unhandled rejection',
     async (stage) => {
@@ -572,6 +674,92 @@ describe('Node Session message FIFO', () => {
       auditReceipt: { sessionId: current.id, queueItemId: item.id, inputMode: 'EXECUTE_QUEUE' }
     });
   });
+
+  it.each([false, true])(
+    'returns the latest Session activity after asynchronous message delivery (queued: %s)',
+    async (queued) => {
+      let now = 100;
+      const runtime = preparedRuntime(() => now);
+      const current = session(runtime);
+      if (queued)
+        runtime.createMessageRun({
+          sessionId: current.id,
+          clientMessageId: 'active-message',
+          content: 'current message'
+        });
+      let releaseDelivery!: () => void;
+      const delivery = new Promise<void>((resolve) => {
+        releaseDelivery = resolve;
+      });
+      let deliveryStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        deliveryStarted = resolve;
+      });
+      const service = new SessionMessageService({
+        runtime,
+        uploads: {} as never,
+        attachments: {
+          protectSession: () => () => undefined,
+          persistFiles: async () => [],
+          retainSessionFiles: vi.fn(),
+          acceptSessionInput: vi.fn(),
+          cache: vi.fn()
+        } as never,
+        commands: { list: () => [] } as never,
+        coordinator: {
+          accept(input: Parameters<NodeRuntimeState['createMessageRun']>[0]) {
+            if (!queued) return runtime.createMessageRun(input);
+            const created = runtime.createQueueItem(input);
+            return {
+              run: runtime.activeSessionRun(current.id),
+              queueItem: created.item,
+              created: created.created
+            };
+          },
+          prepare: vi.fn(),
+          publishCurrentTurn: vi.fn(),
+          async settle() {
+            deliveryStarted();
+            await delivery;
+            return queued ? 'QUEUED' : 'STARTED';
+          }
+        } as never,
+        runners: {
+          require: () => ({
+            prepareMessageInput: (input: string) => input,
+            serviceTier: () => undefined
+          })
+        } as never,
+        resolve: async () => ({ session: current }),
+        present: (value) => value,
+        emitSession: vi.fn(),
+        channelToken: () => undefined,
+        goalMessage: () => undefined,
+        prepareGoalInsertion: () => true,
+        goalPreparationFailed: vi.fn()
+      });
+      const response = service.operations()['session.message']!({
+        sessionId: current.id,
+        clientMessageId: 'pending-message',
+        content: 'next message'
+      });
+      await started;
+      now += 8 * 60_000;
+      if (!queued)
+        runtime.createQueueItem({
+          sessionId: current.id,
+          clientMessageId: 'following-message',
+          content: 'following message'
+        });
+      expect(runtime.claimNextQueueItem(current.id)).toBeDefined();
+      expect(runtime.getAgentSession(current.id)?.lastActivityAt).toBe(now);
+      releaseDelivery();
+      await expect(response).resolves.toMatchObject({
+        session: { id: current.id, lastActivityAt: now },
+        delivery: queued ? 'QUEUED' : 'STARTED'
+      });
+    }
+  );
 
   it.each(
     [undefined, false, true].flatMap((activated) =>

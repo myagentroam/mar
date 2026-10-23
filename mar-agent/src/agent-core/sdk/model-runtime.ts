@@ -86,6 +86,32 @@ export function createModelTurnSession(adapter: ModelAdapter): ModelTurnSession 
   };
 }
 
+/** Owns only one Execution's model turn and explicitly transferred adapters. */
+export function createExecutionModelResources(activeAdapters: Set<ModelAdapter>) {
+  let turn: ModelTurnSession | undefined;
+  const ownedAdapters = new Set<ModelAdapter>();
+  return {
+    openTurn(adapter: ModelAdapter, ownsAdapter: boolean): ModelTurnSession {
+      if (ownsAdapter) {
+        ownedAdapters.add(adapter);
+        activeAdapters.add(adapter);
+      }
+      turn = createModelTurnSession(adapter);
+      return turn;
+    },
+    async close(): Promise<void> {
+      await turn?.close().catch(() => undefined);
+      try {
+        await closeModelAdapters(ownedAdapters);
+      } catch {
+        // Model cleanup must not replace the Execution result.
+      } finally {
+        for (const adapter of ownedAdapters) activeAdapters.delete(adapter);
+      }
+    }
+  };
+}
+
 export async function closeModelAdapters(adapters: Iterable<ModelAdapter>): Promise<void> {
   const results = await Promise.allSettled(
     [...new Set(adapters)].flatMap((adapter) =>

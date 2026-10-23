@@ -149,7 +149,9 @@ export const hostedConversationsEnUS = {
     mobileFiles: 'Files'
   },
   workbench: {
-    sending: 'Sending...'
+    sending: 'Sending...',
+    submissionTimedOut:
+      'Send confirmation timed out. The message may have been received. Check the session before retrying.'
   },
   presentation: {
     lastActivity: 'Last activity: {value}'

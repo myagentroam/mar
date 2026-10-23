@@ -54,12 +54,13 @@ function buttonTag(html: string, label: string): string {
   return button!;
 }
 
-function expectNativeButtonTitles(html: string): void {
+function expectUnifiedButtonHints(html: string): void {
   const buttons = html.match(/<button\b[^>]*aria-label="[^"]+"[^>]*>/gu) ?? [];
   expect(buttons.length).toBeGreaterThan(0);
   for (const button of buttons) {
-    expect(button).toMatch(/\stitle="[^"]+"/u);
+    expect(button).not.toMatch(/\stitle="[^"]+"/u);
   }
+  expect(html).toContain('el-tooltip__trigger');
 }
 
 function stubBrowserEnvironment(): {
@@ -290,12 +291,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     };
     for (const component of [WorkspaceFilePage, WorkspaceFormatFilePage]) {
       const embedded = await render(component, base);
-      expectNativeButtonTitles(embedded);
+      expectUnifiedButtonHints(embedded);
       expect(embedded).not.toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
       const standalone = await render(component, { ...base, fullscreen: true });
-      expectNativeButtonTitles(standalone);
+      expectUnifiedButtonHints(standalone);
       expect(standalone).toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
@@ -377,7 +378,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expect(html).toContain(i18n.global.t('inlineFind.label'));
     expect(html).toContain(i18n.global.t('inlineFind.placeholder'));
     expect(html).toContain('2 / 7+');
-    expectNativeButtonTitles(html);
+    expectUnifiedButtonHints(html);
     expect(html).toContain(`aria-label="${i18n.global.t('inlineFind.previous')}"`);
     expect(html).toContain(`aria-label="${i18n.global.t('inlineFind.next')}"`);
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
@@ -396,7 +397,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     });
 
     expect(html).toContain('0 / 0');
-    expectNativeButtonTitles(html);
+    expectUnifiedButtonHints(html);
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
       expect(buttonTag(html, i18n.global.t(key))).toMatch(/\sdisabled(?:\s|=|>)/u);
     }
@@ -419,10 +420,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       previewEnabled: false
     });
 
-    expectNativeButtonTitles(html);
+    expectUnifiedButtonHints(html);
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain(`title="assets/&lt;logo&gt;.png"`);
+    expect(html).toContain(`aria-description="assets/&lt;logo&gt;.png"`);
     expect(html).toContain(i18n.global.t('common.gitDiff'));
     expect(html).toContain(i18n.global.t('generated.gitDiffViewer.binaryFilesDoNotSupportDiff'));
     expect(html).toContain(i18n.global.t('generated.gitDiffViewer.openFilePreview'));
@@ -558,14 +559,15 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     });
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain(`title="notes/&lt;draft&gt;.txt"`);
+    expect(html).toContain(`aria-description="notes/&lt;draft&gt;.txt"`);
     expect(html).toContain(i18n.global.t('fileEditor.readOnly'));
     expect(html).toContain('693.19 KB');
     expect(html).toContain('file-text-preview');
-    expectNativeButtonTitles(html);
+    expectUnifiedButtonHints(html);
     expect(html).toContain(i18n.global.t('generated.filePreviewDialog.onlyTheFirst512KiBIsShown'));
     expect(html).not.toContain('code-file-editor');
-    expect(html).not.toContain('aria-hidden="true"');
+    // Decorative SVGs are hidden, but the preview and its controls must remain exposed.
+    expect(html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gu, '')).not.toContain('aria-hidden="true"');
     expect(html).not.toContain('inert');
     expect(html).not.toContain(i18n.global.t('fileEditor.editing'));
     expect(html).not.toMatch(/(?:fileEditor|filePreviewDialog|generated)\./u);

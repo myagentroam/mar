@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Paperclip, Promotion } from '@element-plus/icons-vue';
 import type { SelectInstance } from 'element-plus';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
 
 const props = defineProps<{
@@ -10,6 +12,7 @@ const props = defineProps<{
   readonly runner: Session['runner'];
   readonly runnerOptions: readonly { readonly value: Session['runner']; readonly label: string }[];
   readonly runnerLoading: boolean;
+  readonly runnerDisabled?: boolean;
   readonly runnerLabel: string | undefined;
   readonly modelEffortSelection: string | undefined;
   readonly modelEffortLabel: string;
@@ -50,6 +53,16 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement>();
+const contextHint = computed(() =>
+  [
+    props.contextUsageLabel,
+    translate(
+      props.canCompactContext
+        ? 'generated.composerToolbar.viewContextUsageClickToCompactContext'
+        : 'generated.composerToolbar.compactUnavailable'
+    )
+  ].join('\n')
+);
 const modelSelect = ref<SelectInstance>();
 
 function openModelMenu(): boolean {
@@ -114,15 +127,17 @@ function selectFiles(event: Event): void {
       @change="selectFiles"
     />
     <div :class="['composer-configuration', { 'has-runner-select': draftSessionOpen }]">
-      <button
-        class="composer-icon-button composer-attachment-button utility-control"
-        type="button"
-        :aria-label="translate('generated.composerToolbar.addAttachment')"
-        :title="translate('generated.composerToolbar.addAttachment2')"
-        @click="fileInput?.click()"
-      >
-        <el-icon><Paperclip /></el-icon>
-      </button>
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="translate('generated.composerToolbar.addAttachment2')"
+        ><button
+          class="composer-icon-button composer-attachment-button utility-control"
+          type="button"
+          :aria-label="translate('generated.composerToolbar.addAttachment')"
+          @click="fileInput?.click()"
+        >
+          <MarIcon name="attachment" /></button
+      ></el-tooltip>
       <div
         v-if="draftSessionOpen"
         class="composer-select-slot composer-runner-slot"
@@ -135,9 +150,11 @@ function selectFiles(event: Event): void {
           popper-class="composer-mini-popper composer-runner-popper"
           size="small"
           teleported
-          :disabled="runnerLoading"
+          :disabled="runnerLoading || runnerDisabled"
           :loading="runnerLoading"
           @change="emit('updateRunner', $event as Session['runner'])"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in runnerOptions"
@@ -148,11 +165,11 @@ function selectFiles(event: Event): void {
         </el-select>
       </div>
       <div v-if="!hideModelSelection" class="composer-model-slot">
-        <span
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="runner === 'codex' && fastEnabled"
-          class="composer-fast-badge"
-          :title="translate('generated.composerToolbar.fastModeIsEnabled')"
-          >{{ translate('common.fast') }}</span
+          :content="translate('generated.composerToolbar.fastModeIsEnabled')"
+          ><span class="composer-fast-badge">{{ translate('common.fast') }}</span></el-tooltip
         >
         <div class="composer-select-slot" :data-label="modelEffortLabel">
           <el-select
@@ -168,6 +185,8 @@ function selectFiles(event: Event): void {
             teleported
             @change="emit('updateModelEffort', String($event))"
             @keydown="onModelMenuKeydown"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option-group :label="translate('common.reasoning')">
               <el-option
@@ -204,6 +223,8 @@ function selectFiles(event: Event): void {
           size="small"
           teleported
           @change="emit('updateAccess', String($event))"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in accessOptions"
@@ -215,67 +236,80 @@ function selectFiles(event: Event): void {
       </div>
     </div>
     <el-tooltip
+      v-bind="tooltipOptions"
       v-if="contextUsage !== undefined && contextUsage !== null"
-      :content="contextUsageLabel"
+      :content="contextHint"
       placement="top"
     >
       <button
         class="composer-context-button utility-control"
         type="button"
         :aria-label="contextUsageLabel"
+        :aria-description="contextHint"
         :aria-disabled="!canCompactContext"
         :style="{
           '--context-usage': `${Math.min(100, Math.max(0, contextUsage.percentage))}%`
         }"
-        :title="translate('generated.composerToolbar.viewContextUsageClickToCompactContext')"
-        @click="emit('compact')"
+        @click="canCompactContext && emit('compact')"
       >
         <i aria-hidden="true" />
         <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
       </button>
     </el-tooltip>
-    <span v-if="!mobileViewport" class="composer-hint">{{
-      activeRun
-        ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
-        : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
-    }}</span>
-    <span v-if="submitting" class="composer-submitting" role="status">{{
-      translate('workbench.sending')
-    }}</span>
-    <button
+    <span v-if="!mobileViewport" class="composer-hint" :class="{ 'is-submitting': submitting }">
+      <span :aria-hidden="submitting || undefined">{{
+        activeRun
+          ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
+          : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
+      }}</span>
+      <span v-if="submitting" class="composer-submitting" role="status">{{
+        translate('workbench.sending')
+      }}</span>
+    </span>
+    <el-tooltip
+      v-bind="tooltipOptions"
       v-if="interruptVisible"
-      class="composer-stop-button"
-      :disabled="loading || !canInterrupt"
-      type="button"
-      :aria-label="translate('generated.composerToolbar.stopRun')"
-      :title="
+      :content="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
           : translate('generated.composerToolbar.stopRunEsc')
       "
-      @click="emit('stop')"
-    >
-      <i class="composer-stop-square" aria-hidden="true" />
-    </button>
-    <button
+      ><button
+        class="composer-stop-button"
+        :disabled="!canInterrupt"
+        type="button"
+        :aria-label="translate('generated.composerToolbar.stopRun')"
+        @click="emit('stop')"
+      >
+        <MarIcon name="stop" /></button
+    ></el-tooltip>
+    <el-tooltip
+      v-bind="tooltipOptions"
       v-if="!canInterrupt || inputHasContent"
-      class="composer-send-button"
-      :disabled="
-        (!inputHasContent && !hasSelectedCommand) ||
-        loading ||
-        (attachmentsPending && !hasSelectedCommand)
-      "
-      type="submit"
-      :aria-label="translate('generated.composerToolbar.send')"
-      :title="translate('generated.composerToolbar.send2')"
-    >
-      <el-icon><Promotion /></el-icon>
-    </button>
+      :content="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
+      ><button
+        class="composer-send-button"
+        :disabled="
+          (!inputHasContent && !hasSelectedCommand) ||
+          loading ||
+          submitting ||
+          (attachmentsPending && !hasSelectedCommand)
+        "
+        type="submit"
+        :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
+        :aria-busy="submitting || undefined"
+      >
+        <MarIcon name="loading-action" aria-hidden="true" v-if="submitting" />
+        <MarIcon name="send" aria-hidden="true" v-else /></button
+    ></el-tooltip>
   </div>
 </template>
 
 <style scoped>
 .composer-submitting {
+  position: absolute;
+  inset: 0;
+  text-align: right;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   flex-shrink: 0;
@@ -370,7 +404,12 @@ function selectFiles(event: Event): void {
 }
 
 .composer-hint {
+  position: relative;
   margin-left: auto;
+}
+
+.composer-hint.is-submitting > :first-child {
+  visibility: hidden;
 }
 
 .composer-context-button {
@@ -380,7 +419,7 @@ function selectFiles(event: Event): void {
   gap: 0.26rem;
   min-height: var(--mar-compact-control-size);
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   padding: 0.1rem 0.3rem;
   font-size: var(--mar-font-size-meta);
   line-height: 1;
@@ -482,14 +521,6 @@ function selectFiles(event: Event): void {
   color: var(--mar-text-faint);
 }
 
-.composer-stop-square {
-  display: block;
-  width: 0.58rem;
-  height: 0.58rem;
-  border-radius: 1px;
-  background: currentcolor;
-}
-
 @media (max-width: 767px) {
   .composer-context-button {
     min-height: 36px;
@@ -548,8 +579,8 @@ function selectFiles(event: Event): void {
     background: var(--mar-fill-soft);
   }
 
-  .composer-send-button :deep(.el-icon),
-  .composer-stop-button .composer-stop-square {
+  .composer-send-button :deep(.mar-icon),
+  .composer-stop-button :deep(.mar-icon) {
     position: relative;
     z-index: 1;
   }
@@ -799,8 +830,8 @@ function selectFiles(event: Event): void {
   padding-top: 0.25rem;
 }
 
-:global(.composer-send-button .el-icon),
-:global(.composer-stop-button .el-icon) {
+:global(.composer-send-button .mar-icon),
+:global(.composer-stop-button .mar-icon) {
   font-size: 0.92rem;
 }
 </style>

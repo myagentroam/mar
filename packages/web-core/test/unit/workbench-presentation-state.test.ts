@@ -62,6 +62,7 @@ function controlsFixture() {
   });
   const loading = ref(false);
   const submissionPending = ref(false);
+  const draftOpen = ref(false);
   const queue = ref<WorkspaceQueue>({ version: 1, paused: false, items: [] });
   const sessionContextUsage = ref<SessionContextUsage | null>();
   const state = createWorkbenchPresentationStateService({
@@ -73,7 +74,7 @@ function controlsFixture() {
     runs: runService.runs,
     turns: ref([]),
     attachments: ref([]),
-    draftOpen: ref(false),
+    draftOpen,
     runnerProfilesLoading: ref(false),
     runnerProfilesFailed: ref(false),
     composerProfile: configuration.profile,
@@ -121,6 +122,8 @@ function controlsFixture() {
     compact,
     loading,
     submissionPending,
+    draftOpen,
+    selectedSessionId,
     queue,
     sessionContextUsage
   };
@@ -157,6 +160,46 @@ describe('Workbench context usage label', () => {
 });
 
 describe('Workbench mutually exclusive controls', () => {
+  it('keeps the Composer available while a new draft is submitting without inventing a Run', () => {
+    const f = controlsFixture();
+    f.draftOpen.value = true;
+    f.selectedSessionId.value = undefined;
+    expect(f.state.canUseComposer.value).toBe(true);
+
+    f.submissionPending.value = true;
+    f.session.value = {
+      id: 'draft:pending-session',
+      workspaceId: 'workspace-1',
+      runner: 'mar-agent',
+      activity: 'IDLE'
+    };
+    f.selectedSessionId.value = f.session.value.id;
+    f.draftOpen.value = false;
+    expect(f.state.canUseComposer.value).toBe(true);
+    expect(f.state.composerInputDisabled.value).toBe(false);
+    expect(f.state.composerConfigurationDisabled.value).toBe(true);
+    expect(f.state.composerAccessDisabled.value).toBe(true);
+    expect(f.state.activeComposerRun.value).toBeUndefined();
+    expect(f.state.composerSessionBusy.value).toBe(false);
+
+    f.submissionPending.value = false;
+    expect(f.state.canUseComposer.value).toBe(true);
+    expect(f.state.composerConfigurationDisabled.value).toBe(true);
+    expect(f.state.composerAccessDisabled.value).toBe(true);
+    expect(f.state.rewindConversationEnabled.value).toBe(false);
+    expect(
+      f.state.canExecuteRunnerCommand({ ...f.compact, id: 'plan', interaction: 'TOGGLE' })
+    ).toBe(false);
+    f.session.value = { ...f.session.value, id: 'created-session' };
+    f.selectedSessionId.value = f.session.value.id;
+    expect(f.state.canUseComposer.value).toBe(false);
+    f.session.value = {
+      ...f.session.value,
+      control: { level: 'MANAGED', capabilities: ['turn.start'] }
+    };
+    expect(f.state.canUseComposer.value).toBe(true);
+  });
+
   it('hides history mutations and locks configuration and compact before an active Run arrives', () => {
     const f = controlsFixture();
     expect(f.state.rewindConversationEnabled.value).toBe(true);

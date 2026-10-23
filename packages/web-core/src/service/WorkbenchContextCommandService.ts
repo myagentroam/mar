@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
 import type { ComputedRef, Ref } from 'vue';
@@ -36,6 +37,8 @@ export function createWorkbenchContextCommandService(
         translate('generated.workbenchContextCommandService.compactOlderContextToFreeWindowSpace'),
         translate('generated.workbenchContextCommandService.compactContext'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           confirmButtonText: translate('generated.workbenchContextCommandService.compact'),
           cancelButtonText: translate('generated.workbenchContextCommandService.cancel'),
           type: 'warning'

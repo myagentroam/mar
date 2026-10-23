@@ -1,3 +1,22 @@
+.mar-tooltip-control {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.el-popper.mar-tooltip {
+  max-width: min(28rem, calc(100vw - 2rem));
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-control-bg-color-overlay);
+  color: var(--mar-text-primary);
+  box-shadow: 0 4px 12px var(--mar-shadow-medium);
+  font-family: var(--mar-font-sans);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,
@@ -196,7 +215,7 @@ html.console-ui,
   --mar-color-brand-text: #245994;
   --mar-color-on-accent: #ffffff;
   --mar-control-disabled-on-accent: var(--mar-color-on-accent);
-  --mar-color-brand-hover: #1e5396;
+  --mar-color-brand-hover: #184b8b;
   --mar-color-brand-disabled: #8198b5;
   --mar-control-link-text: #245994;
   --mar-control-link-hover: #184780;
@@ -304,7 +323,7 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-conversation-process: #111720;
   --mar-conversation-border: #313d50;
   --mar-conversation-process-border: #202a39;
-  --mar-conversation-text: #e8eef8;
+  --mar-conversation-text: #d0d7e2;
   --mar-conversation-muted: #9fb0c7;
   --mar-conversation-code: #111720;
   --mar-color-brand: #1f73cf;
@@ -317,7 +336,7 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-color-brand-text: #3093ff;
   --mar-color-on-accent: #ffffff;
   --mar-control-disabled-on-accent: color-mix(in srgb, var(--mar-color-on-accent) 50%, transparent);
-  --mar-color-brand-hover: #2477d1;
+  --mar-color-brand-hover: #1a65b8;
   --mar-color-brand-disabled: #3093ff73;
   --mar-control-link-text: #3093ff;
   --mar-control-link-hover: #e8eef8;
@@ -1021,6 +1040,29 @@ pre {
   border-radius: 50%;
   background: var(--mar-text-faint);
 }
+.mar-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+/* Preserve control spacing when a business icon is rendered without ElIcon. */
+.el-button .mar-icon + span {
+  margin-inline-start: 6px;
+}
+
+.el-button--small .mar-icon + span {
+  margin-inline-start: 4px;
+}
+
+.el-button--large .mar-icon + span {
+  margin-inline-start: 8px;
+}
+
+.el-dropdown-menu__item > .mar-icon {
+  margin-inline-end: 5px;
+}
+
 .busy-indicator,
 .mar-page-loading .el-loading-spinner::before {
   display: inline-block;
@@ -1100,6 +1142,9 @@ pre {
 
 .session-activity.managed_active i {
   background: var(--mar-color-success-text);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
+    0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .session-activity.managed_active i {
@@ -1109,14 +1154,10 @@ pre {
 @keyframes mar-run-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
     opacity: 0.86;
     transform: scale(1);
   }
   50% {
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
-      0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
     opacity: 1;
     transform: scale(1.08);
   }

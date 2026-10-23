@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/LocalePreferenceService';
 
 defineProps<{
@@ -22,6 +23,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :aria-label="translate('generated.resourceSharingPage.keyword')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.enterANameOrID')"
+        :clear-icon="marIcon('clear-input')"
       />
     </label>
     <label v-if="resourceType === 'NODE'" class="filter-field">
@@ -31,6 +33,8 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :aria-label="translate('generated.resourceSharingPage.status')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAStatus')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option :label="translate('generated.resourceSharingPage.online2')" value="online" />
         <el-option :label="translate('generated.resourceSharingPage.offline2')" value="offline" />

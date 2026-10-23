@@ -51,9 +51,114 @@ describe('scheduled session recurrence', () => {
       Date.parse('2025-02-03T09:00:00Z')
     );
   });
+
+  it.each([
+    ['30 1 * * *', 'America/New_York', '2025-11-02T05:31:00Z', '2025-11-03T06:30:00Z'],
+    ['* * * * *', 'America/New_York', '2025-11-02T05:59:00Z', '2025-11-02T07:00:00Z'],
+    ['*/15 * * * *', 'America/New_York', '2025-11-02T06:10:00Z', '2025-11-02T07:00:00Z'],
+    ['45 1 * * *', 'Australia/Lord_Howe', '2025-04-05T14:46:00Z', '2025-04-06T15:15:00Z'],
+    ['15 2 * * *', 'Australia/Lord_Howe', '2025-10-04T15:00:00Z', '2025-10-05T15:15:00Z'],
+    ['0 9 * * *', 'Asia/Kathmandu', '2025-01-01T03:14:00Z', '2025-01-01T03:15:00Z'],
+    ['0 0 1 1 *', 'UTC', '2026-01-01T00:00:00Z', '2027-01-01T00:00:00Z'],
+    ['0 0 29 2 *', 'UTC', '2096-03-01T00:00:00Z', '2104-02-29T00:00:00Z'],
+    ['0 0 31 2 1', 'UTC', '2025-02-01T00:00:00Z', '2025-02-03T00:00:00Z']
+  ])('selects one local occurrence for %s in %s after %s', (cron, zone, after, expected) => {
+    expect(nextScheduledAt(cron, zone, Date.parse(after))).toBe(Date.parse(expected));
+  });
+
+  it('rejects an impossible date without reducing the search horizon', () => {
+    expect(() => nextScheduledAt('0 0 31 2 *', 'UTC', Date.parse('2025-01-01T00:00:00Z'))).toThrow(
+      'SCHEDULE_NEXT_TIME_UNAVAILABLE'
+    );
+  });
 });
 
 describe('scheduled session store', () => {
+  it('recomputes time only for changed rules or a transition from disabled to enabled', () => {
+    let now = Date.parse('2026-10-23T00:00:00Z');
+    const database = new NodeDatabase(':memory:', 'schedule-edit', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-edit',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'editable',
+        workspaceId: workspace.id
+      });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      let task = store.create({
+        sessionId: 'editable',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 1,
+        objective: 'Original',
+        cron: '0 * * * *',
+        timezone: 'UTC'
+      });
+      const dueAt = task.nextRunAt;
+      now = Date.parse('2026-10-23T01:00:01Z');
+      task = store.update(task.sessionId, task.revision, { timezone: 'UTC' });
+      expect(task.nextRunAt).toBe(dueAt);
+      task = store.update(task.sessionId, task.revision, { cron: '30 2 * * *' });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:30:00Z'));
+      task = store.update(task.sessionId, task.revision, { timezone: 'Asia/Shanghai' });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T18:30:00Z'));
+      task = store.update(task.sessionId, task.revision, { enabled: false });
+      expect(task.nextRunAt).toBeNull();
+      task = store.update(task.sessionId, task.revision, {
+        objective: 'Paused edit',
+        cron: '0 * * * *'
+      });
+      expect(task.nextRunAt).toBeNull();
+      task = store.update(task.sessionId, task.revision, { enabled: true });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:00:00Z'));
+    } finally {
+      database.close();
+    }
+  });
+
+  it('advances a delayed DST claim and re-enabled task beyond the repeated local minute', () => {
+    let now = Date.parse('2025-11-02T05:00:00Z');
+    const database = new NodeDatabase(':memory:', 'node-dst', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-dst',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'dst',
+        workspaceId: workspace.id
+      });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      const task = store.create({
+        sessionId: 'dst',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 1,
+        objective: 'Inspect',
+        cron: '30 1 * * *',
+        timezone: 'America/New_York'
+      });
+      expect(task.nextRunAt).toBe(Date.parse('2025-11-02T05:30:00Z'));
+      now = Date.parse('2025-11-02T05:31:00Z');
+      expect(store.claim(task.sessionId, task.nextRunAt!, task.revision)).toBe(
+        `${task.id}:${task.nextRunAt}`
+      );
+      expect(store.get(task.sessionId)?.nextRunAt).toBe(Date.parse('2025-11-03T06:30:00Z'));
+      const paused = store.update(task.sessionId, task.revision, { enabled: false });
+      now = Date.parse('2025-11-02T06:10:00Z');
+      const resumed = store.update(task.sessionId, paused.revision, { enabled: true });
+      expect(resumed.nextRunAt).toBe(Date.parse('2025-11-03T06:30:00Z'));
+    } finally {
+      database.close();
+    }
+  });
+
   it('queries ten occurrences per page with stable totals, terminal retention, and last-page clamping', () => {
     let now = Date.parse('2025-01-01T00:00:00Z');
     const database = new NodeDatabase(':memory:', 'node-schedule-pages', () => now);

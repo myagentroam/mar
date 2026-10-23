@@ -11,7 +11,7 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { serializeComposerTag } from '@myagentroam/protocol';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ElTooltip, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
@@ -25,6 +25,7 @@ import SessionPerformanceInfo from '../../src/view/conversation/SessionPerforman
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
+import { conversationItemLabel } from '../../src/util/conversation-presentation.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
@@ -37,7 +38,66 @@ vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
 
 const originalLocale = localePreferenceService().locale.value;
 
-it('uses the shared decorative reasoning icon without changing help and info icons', async () => {
+// The custom host renderer has no CSS engine; browser tests cover transition timing.
+vi.mock('vue', async (importOriginal) => {
+  const vue = await importOriginal<typeof import('vue')>();
+  return { ...vue, Transition: vue.BaseTransition };
+});
+
+it.each([false, true])(
+  'only invokes a process content slot while open (active: %s)',
+  async (active) => {
+    const slot = vi.fn(() => h('div', 'Expensive process content'));
+    const html = await render(
+      ConversationWorkProcess,
+      {
+        block: {
+          id: 'lazy-process',
+          groupId: 'lazy-process',
+          entries: [],
+          partial: false,
+          sealed: !active,
+          active
+        },
+        synchronized: true,
+        now: undefined
+      },
+      { default: slot }
+    );
+    expect(slot).toHaveBeenCalledTimes(active ? 1 : 0);
+    expect(html.includes('Expensive process content')).toBe(active);
+    expect(html).toContain(`aria-expanded="${active}"`);
+  }
+);
+
+it.each(['command_execution', 'tool_call'])(
+  'does not mount closed %s group children as history grows',
+  async (kind) => {
+    const items = Array.from({ length: 200 }, (_, index) =>
+      conversationItem(
+        `lazy-${index}`,
+        kind,
+        kind === 'command_execution'
+          ? { command: `hidden-command-${index}` }
+          : {
+              toolName: 'read',
+              toolPresentation: { kind: 'READ', paths: [`hidden-file-${index}.ts`] }
+            }
+      )
+    );
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn(items)]
+    });
+    expect(html).toContain('conversation-record-group');
+    expect(html).not.toContain('conversation-command-detail');
+    expect(html).not.toContain('conversation-tool-detail');
+    expect(html).not.toContain('hidden-command-');
+    expect(html).not.toContain('hidden-file-');
+  }
+);
+
+it('uses shared decorative SVGs for reasoning, help and information', async () => {
   const reasoning = await renderToString(
     createSSRApp(ConversationRecordIcon, { kind: 'reasoning' })
   );
@@ -47,9 +107,10 @@ it('uses the shared decorative reasoning icon without changing help and info ico
   expect(reasoning).toContain('focusable="false"');
   expect(reasoning).toContain('fill="none" stroke="currentColor"');
   expect(reasoning.match(/<svg\b/gu)).toHaveLength(1);
-  for (const name of ['info', 'help']) {
+  for (const name of ['info', 'help'] as const) {
     const html = await renderToString(createSSRApp(MarIcon, { name }));
-    expect(html).toContain('fill-rule="evenodd"');
+    expect(html).toContain(`data-mar-icon="${name}"`);
+    expect(html).toContain('stroke="currentColor"');
     expect(html).toContain('<circle');
   }
 });
@@ -113,7 +174,8 @@ async function render(
 ): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props, slots) });
   app.use(i18n);
-  if (component === ImagePreviewDialogs) app.component('ElDialog', DialogStub);
+  if (component === ImagePreviewDialogs)
+    app.component('ElDialog', DialogStub).component('ElTooltip', ElTooltip);
   else app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -308,7 +370,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('Hello');
     expect(html).not.toContain('mar_channel');
     expect(html).toContain(
-      'title="' + i18n.global.t('generated.conversationPresentation.webShareSourceDetails') + '"'
+      'aria-description="' +
+        i18n.global.t('generated.conversationPresentation.webShareSourceDetails') +
+        '"'
     );
     expect(html).not.toContain('channel-origin');
     expect(html).not.toContain('Owner');
@@ -369,9 +433,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(html).not.toContain('<img src=x onerror=alert(1)>');
       expect(html).not.toContain(renamedSession);
       expect(html).toContain(
-        `title="${i18n.global.t('generated.conversationPresentation.sessionSourceDetails', {
-          sessionId
-        })}"`
+        `aria-description="${i18n.global.t(
+          'generated.conversationPresentation.sessionSourceDetails',
+          {
+            sessionId
+          }
+        )}"`
       );
       expect(html).toContain(
         i18n.global.t('generated.conversationPresentation.messageFromSource', {
@@ -436,7 +503,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
           control('failed', 'STATUS', 'FAILED'),
           control('message', 'MESSAGE')
         ])
-      ]
+      ],
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }]
     });
     expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(3);
     for (const operation of ['START', 'STATUS', 'MESSAGE'])
@@ -450,8 +519,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain('conversation-tool-detail');
     const separate = await render(ConversationTimeline, {
       ...timelineProps,
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
       turns: [
-        conversationTurn([control('start', 'START')], { id: 'segment-1' }),
+        conversationTurn([control('start', 'START', 'IN_PROGRESS')], { id: 'segment-1' }),
         conversationTurn([control('message', 'MESSAGE')], { id: 'segment-2' })
       ]
     });
@@ -595,7 +666,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('Original session title');
     expect(html).toMatch(/<code(?:\s[^>]*)?>session-1<\/code>/u);
     expect(html).toContain('aria-label="Original activity"');
-    expect(html).toContain('title="Original activity"');
+    expect(html).not.toContain('title="Original activity"');
     expect(html).toContain(
       `aria-label="${i18n.global.t('generated.conversationHeader.copySessionId', {
         sessionId: 'session-1'
@@ -634,7 +705,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(managed).toContain('session-activity managed_active');
-    expect(managed).toContain('title="Session activity"');
+    expect(managed).toContain('aria-label="Session activity"');
     expect(idle).not.toContain('session-activity');
   });
 
@@ -944,13 +1015,14 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(
-      html.match(/class="conversation-message-action icon-button utility-control"/gu)
+      html.match(/class="conversation-message-action icon-button utility-control\b/gu)
     ).toHaveLength(2);
     expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
     expect(html).toContain('Assistant text');
-    expect(html).toContain(
-      `title="${i18n.global.t('generated.conversationTimeline.copyMessage2')}"`
-    );
+    for (const kind of ['user_message', 'assistant_message'])
+      expect(html).toContain(
+        `aria-label="${i18n.global.t('generated.conversationTimeline.copyMessage', { value0: conversationItemLabel(kind) })}"`
+      );
   });
 
   it('removes legacy performance from assistant cards and exposes independent session metrics', async () => {
@@ -1204,12 +1276,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html.match(/class="process-heading"/gu)).toHaveLength(2);
     expect(html).toContain('data-process-id="process-one"');
     expect(html).toContain('data-process-id="process-two"');
-    const markers = [
-      'First process reasoning marker',
-      'First process tool marker',
-      'First process command marker',
-      'Second process marker'
-    ];
+    const markers = ['First process reasoning marker', 'Second process marker'];
+    expect(html).not.toContain('First process tool marker');
+    expect(html).not.toContain('First process command marker');
+    // Collapsing affects mounting, not authoritative membership or record order.
+    const projected = conversationWorkProcessBlocks([conversationTurn(items)])[0]!;
+    expect(
+      projected.entries.flatMap(({ displayItem }) =>
+        'items' in displayItem ? displayItem.items.map((item) => item.id) : [displayItem.item.id]
+      )
+    ).toEqual(items.map((item) => item.id));
     const positions = markers.map((marker) => html.indexOf(marker));
     expect(markers.filter((_, index) => positions[index]! < 0)).toEqual([]);
     expect(positions).toEqual([...positions].sort((left, right) => left - right));

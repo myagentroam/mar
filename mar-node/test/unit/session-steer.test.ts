@@ -11,8 +11,12 @@ import {
   type ContinuousRunCoordinatorOptions
 } from '../../src/service/continuous-run-coordinator.js';
 import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 
-function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
+function fixture(
+  overrides: Partial<ContinuousRunCoordinatorOptions> = {},
+  runner: 'codex' | 'mar-agent' = 'codex'
+) {
   const runtime = new NodeRuntimeState(
     () => 'node',
     () => ({
@@ -26,7 +30,7 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
   );
   const session = runtime.createAgentSession({
     workspaceId: 'workspace',
-    runner: 'codex',
+    runner,
     cwd: '/workspace'
   });
   const control = vi.fn();
@@ -50,7 +54,7 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
       runId: id,
       sessionId: session.id,
       workspaceId: 'workspace',
-      runner: 'codex',
+      executionContext: { runner },
       input: text,
       prepareSteerInput,
       attachments: [],
@@ -89,6 +93,41 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
 }
 
 describe('Node steering delivery', () => {
+  it('keeps the active MAR configuration when native steer accepts an invalid incoming configuration', async () => {
+    const steer = vi.fn(async () => ({ status: 'handled' as const }));
+    const f = fixture({ steer, stopped: () => false }, 'mar-agent');
+    const { run, execution } = f.start();
+    const runner = new MarAgentRunner();
+    const activeContext = runner.prepareExecutionContext({
+      marAgentModel: { id: 'active-model' },
+      marAgentRuntimeScopeId: 'active-scope'
+    });
+    f.coordinator.prepare(execution.id, {
+      ...f.coordinator.pending(execution.id)!,
+      executionContext: activeContext
+    });
+    const target = f.queue('guidance');
+    f.coordinator.prepare(target.id, {
+      ...f.coordinator.pending(target.id)!,
+      executionContext: runner.prepareExecutionContext({ marAgentModel: 'invalid' })
+    });
+    expect(
+      await f.coordinator.settle({
+        submissionId: target.id,
+        intent: 'REPLACE_CURRENT',
+        queueBefore: target.queueBefore,
+        activeRunId: run.id,
+        steerTarget: { turnId: execution.turnId, executionId: execution.id }
+      })
+    ).toBe('ACCEPTED');
+    expect(steer).toHaveBeenCalledOnce();
+    expect(f.coordinator.pending(execution.id)?.executionContext).toBe(activeContext);
+    expect(f.runtime.currentExecutionId(run.id)).toBe(execution.id);
+    expect(f.runtime.getQueueItem(target.id)).toBeUndefined();
+    expect(f.control).not.toHaveBeenCalled();
+    f.coordinator.clear();
+  });
+
   it('consumes only the natively accepted item, preserving the active turn and other queue order', async () => {
     const admission =
       Promise.withResolvers<import('../../src/runner/abstract-runner.js').RunnerSteerResult>();
@@ -134,6 +173,13 @@ describe('Node steering delivery', () => {
       'conversation.item',
       expect.objectContaining({ itemId: 'canonical-record' })
     );
+    f.runtime.finishRun(run.id, 'SUCCEEDED');
+    f.runtime.removeTerminalRun(run.id);
+    expect(f.runtime.findMessageSubmission(f.session.id, 'target')).toMatchObject({
+      kind: 'run',
+      run: { id: run.id, status: 'SUCCEEDED' }
+    });
+    expect(f.runtime.findMessageRun(f.session.id, 'target')).toBeUndefined();
   });
 
   it.each(['conversation', 'queue', 'continuation'] as const)(
@@ -312,12 +358,12 @@ describe('Node steering delivery', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('prepares queue steering before changing queue state or interrupting work', () => {
+  it('prepares queue steering before changing queue state or interrupting work', async () => {
     const f = fixture();
     f.start();
     const item = f.queue('oversized', '字'.repeat(50_000));
     const before = f.runtime.sessionQueue(f.session.id);
-    expect(() => f.coordinator.executeQueueItem(item.id)).toThrow('COMPOSER_TAG_INVALID');
+    await expect(f.coordinator.executeQueueItem(item.id)).rejects.toThrow('COMPOSER_TAG_INVALID');
     expect(f.runtime.sessionQueue(f.session.id)).toEqual(before);
     expect(f.coordinator.isImmediate(item.id)).toBe(false);
     expect(f.control).not.toHaveBeenCalled();
@@ -364,13 +410,13 @@ describe('Node steering delivery', () => {
     expect(composerVisibleText(pending.input)).toBe('Original task\n\nCorrected context');
   });
 
-  it('uses ordinary SEND behavior when idle, including a paused existing queue', () => {
+  it('uses ordinary SEND behavior when idle, including a paused existing queue', async () => {
     const f = fixture();
     const old = f.queue('old', 'Older queued input');
     f.runtime.pauseSessionQueue(f.session.id);
     const item = f.queue('new');
     expect(
-      f.coordinator.settle({
+      await f.coordinator.settle({
         submissionId: item.id,
         intent: 'REPLACE_CURRENT',
         queueBefore: item.queueBefore,

@@ -268,6 +268,97 @@ test('built-ins are read-only, copies include every color, and reset restores sa
 
 for (const scheme of ['Light', 'Dark']) {
   test(
+    'workspace Git and branch labels use neutral ' + scheme + ' theme colors',
+    async ({ page }, testInfo) => {
+      const row = page.locator('.theme-option').filter({
+        has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
+      });
+      if (scheme === 'Light')
+        await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
+      const workspace = page.getByRole('region', { name: 'Real workspace labels' });
+      const git = workspace.locator('.workspace-kind-tag');
+      const branch = workspace.locator('.workspace-branch-tag');
+      const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
+      const colors =
+        scheme === 'Light'
+          ? ['rgb(79, 96, 115)', 'rgb(245, 247, 250)', 'rgb(199, 209, 221)']
+          : ['rgb(159, 176, 199)', 'rgb(22, 29, 40)', 'rgb(39, 49, 66)'];
+      async function expectColors(expected: string[]): Promise<void> {
+        for (const tag of [git, branch]) {
+          await expect(tag).toHaveCSS('color', expected[0]!);
+          await expect(tag.locator('.el-tag__content')).toHaveCSS('color', expected[0]!);
+          await expect(tag).toHaveCSS('background-color', expected[1]!);
+          await expect(tag).toHaveCSS('border-top-color', expected[2]!);
+        }
+      }
+      await expect(git).toHaveText('Git');
+      for (const name of [
+        'main',
+        'master',
+        'develop',
+        'feature/ui',
+        'release/1.0',
+        'hotfix/hover',
+        'other'
+      ]) {
+        await input.fill(name);
+        await expect(branch).toHaveText(name);
+        await expectColors(colors);
+      }
+      await input.fill('develop');
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expectColors(colors);
+        await workspace.locator('.session-heading').screenshot({
+          path: testInfo.outputPath('workspace-labels-' + width + '.png')
+        });
+      }
+      const longBranch = 'feature/a-long-branch-name-that-must-remain-bounded';
+      await input.fill(longBranch);
+      await expect(branch).toHaveText(longBranch);
+      await expect(branch).toHaveCSS('text-overflow', 'ellipsis');
+      await expect.poll(async () => (await branch.boundingBox())?.width).toBeLessThanOrEqual(160);
+      await expectColors(colors);
+
+      const gitWorkspace = workspace.getByRole('checkbox', { name: 'Git workspace', exact: true });
+      const workspaceToggle = workspace.getByText('Git workspace', { exact: true });
+      await workspaceToggle.click();
+      await expect(gitWorkspace).not.toBeChecked();
+      await expect(git).toHaveCount(0);
+      await expect(branch).toHaveCount(0);
+      await workspaceToggle.click();
+      await expect(gitWorkspace).toBeChecked();
+      await expect(git).toHaveText('Git');
+      await expect(branch).toHaveText(longBranch);
+      await expectColors(colors);
+
+      await row.getByRole('button', { name: 'Inspect ' + scheme, exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+      const theme = JSON.parse(await editor.inputValue());
+      theme.name = scheme + ' neutral labels';
+      Object.assign(theme.colors, {
+        '--mar-text-secondary': '#bacac0',
+        '--mar-bg-subtle': '#1b2521',
+        '--mar-border-default': '#3f5148'
+      });
+      await page.locator('input[type=file]').setInputFiles({
+        name: 'neutral-labels.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(theme))
+      });
+      await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect ' + theme.name, exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+      await expectColors(['rgb(186, 202, 192)', 'rgb(27, 37, 33)', 'rgb(63, 81, 72)']);
+    }
+  );
+}
+
+for (const scheme of ['Light', 'Dark']) {
+  test(
     'theme helper and action controls share standard hover states in ' + scheme,
     async ({ page }, testInfo) => {
       const options = page.locator('.theme-option');
@@ -659,7 +750,7 @@ for (const locale of ['en-US', 'zh-CN']) {
 for (const scheme of ['Light', 'Dark']) {
   test(
     'real controls preserve the built-in ' + scheme + ' palette and respond to custom states',
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       const controls = page.getByRole('region', { name: 'Real theme controls' });
       const row = page.locator('.theme-option').filter({
         has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
@@ -667,6 +758,29 @@ for (const scheme of ['Light', 'Dark']) {
       if (scheme === 'Light')
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+      const typography = page.getByRole('region', { name: 'Real conversation typography' });
+      const conversationText = scheme === 'Dark' ? 'rgb(208, 215, 226)' : 'rgb(32, 43, 59)';
+      const conversationMuted = scheme === 'Dark' ? 'rgb(159, 176, 199)' : 'rgb(79, 96, 115)';
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
+          await expect(typography.locator('.agent-markdown ' + selector).first()).toHaveCSS(
+            'color',
+            conversationText
+          );
+        await expect(typography.locator('.agent-markdown')).toHaveCSS(
+          'font-size',
+          width < 768 ? '13px' : '14px'
+        );
+        await expect(typography.locator('.conversation-metadata')).toHaveCSS(
+          'color',
+          conversationMuted
+        );
+        await typography.screenshot({
+          path: testInfo.outputPath('conversation-typography-' + width + '.png')
+        });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
       const panel = scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
       await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
@@ -683,6 +797,18 @@ for (const scheme of ['Light', 'Dark']) {
         'background-color',
         scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(36, 95, 168)'
       );
+      const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
+      await primary.scrollIntoViewIfNeeded();
+      const primaryBounds = await primary.boundingBox();
+      await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
+      await primary.hover();
+      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(24, 75, 139)';
+      await expect(primary).toHaveCSS('background-color', hoverColor);
+      await expect(primary).toHaveCSS('border-top-color', hoverColor);
+      await expect(primary).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(primary).toHaveCSS('transform', 'none');
+      expect(await primary.boundingBox()).toEqual(primaryBounds);
+      await primary.screenshot({ path: testInfo.outputPath('primary-hover.png') });
       expect(
         resolvedColorToHex(
           await controls
@@ -713,6 +839,8 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-table-header-bg': '#234567',
         '--mar-table-row-hover-bg': '#345678',
         '--mar-color-on-accent': '#fedcba',
+        '--mar-color-brand-hover': '#234567',
+        '--mar-conversation-text': '#d5c4af',
         '--mar-control-link-text': '#abcdef',
         '--mar-control-link-hover': '#bcdefa',
         '--mar-color-brand-disabled': '#cdefab'
@@ -737,10 +865,22 @@ for (const scheme of ['Light', 'Dark']) {
         'background-color',
         'rgb(35, 69, 103)'
       );
+      for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
+        await expect(typography.locator('.agent-markdown ' + selector).first()).toHaveCSS(
+          'color',
+          'rgb(213, 196, 175)'
+        );
+      await expect(typography.locator('.conversation-metadata')).toHaveCSS(
+        'color',
+        conversationMuted
+      );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'color',
         'rgb(254, 220, 186)'
       );
+      await primary.hover();
+      await expect(primary).toHaveCSS('background-color', 'rgb(35, 69, 103)');
+      await expect(primary).toHaveCSS('border-top-color', 'rgb(35, 69, 103)');
       const disabledPrimary = controls.getByRole('button', {
         name: 'Sample disabled primary',
         exact: true

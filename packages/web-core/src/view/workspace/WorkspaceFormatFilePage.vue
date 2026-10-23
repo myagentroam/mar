@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { Close, Download } from '@element-plus/icons-vue';
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
@@ -117,50 +119,60 @@ defineExpose({
       </span>
     </template>
     <template #secondary-actions>
-      <el-button
-        :loading="downloading"
-        :aria-label="translate('generated.filePreviewDialog.downloadFile')"
-        :title="translate('generated.filePreviewDialog.downloadFile')"
-        circle
-        size="small"
-        @click="emit('download')"
-      >
-        <el-icon><Download /></el-icon>
-      </el-button>
-      <el-button
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="translate('generated.filePreviewDialog.downloadFile')"
+        ><el-button
+          :loading="downloading"
+          :aria-label="translate('generated.filePreviewDialog.downloadFile')"
+          circle
+          size="small"
+          @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
+        >
+          <MarIcon name="download" /> </el-button
+      ></el-tooltip>
+      <el-tooltip
+        v-bind="tooltipOptions"
         v-if="fullscreen"
-        :aria-label="translate('generated.filePreviewDialog.closePreview')"
-        :title="translate('generated.filePreviewDialog.closePreview')"
-        circle
-        size="small"
-        type="primary"
-        @click="emit('close')"
-      >
-        <el-icon><Close /></el-icon>
-      </el-button>
+        :content="translate('generated.filePreviewDialog.closePreview')"
+        ><el-button
+          :aria-label="translate('generated.filePreviewDialog.closePreview')"
+          circle
+          size="small"
+          type="primary"
+          @click="emit('close')"
+        >
+          <MarIcon name="close" /> </el-button
+      ></el-tooltip>
     </template>
     <template #mobile-actions>
-      <el-button
-        :loading="downloading"
-        :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
-        :title="translate('generated.filePreviewDialog.downloadFile2')"
-        circle
-        size="small"
-        @click="emit('download')"
-      >
-        <el-icon><Download /></el-icon>
-      </el-button>
-      <el-button
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="translate('generated.filePreviewDialog.downloadFile2')"
+        ><el-button
+          :loading="downloading"
+          :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
+          circle
+          size="small"
+          @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
+        >
+          <MarIcon name="download" /> </el-button
+      ></el-tooltip>
+      <el-tooltip
+        v-bind="tooltipOptions"
         v-if="fullscreen"
-        :aria-label="translate('generated.filePreviewDialog.closePreview2')"
-        :title="translate('generated.filePreviewDialog.closePreview2')"
-        circle
-        size="small"
-        type="primary"
-        @click="emit('close')"
-      >
-        <el-icon><Close /></el-icon>
-      </el-button>
+        :content="translate('generated.filePreviewDialog.closePreview2')"
+        ><el-button
+          :aria-label="translate('generated.filePreviewDialog.closePreview2')"
+          circle
+          size="small"
+          type="primary"
+          @click="emit('close')"
+        >
+          <MarIcon name="close" /> </el-button
+      ></el-tooltip>
     </template>
     <main class="file-preview-content">
       <template v-if="!loading">

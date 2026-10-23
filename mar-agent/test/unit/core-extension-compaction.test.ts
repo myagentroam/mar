@@ -519,6 +519,7 @@ describe('Core compact generation extension', () => {
           {
             type: 'response.item',
             provider: 'ANTHROPIC_MESSAGES',
+            contextKind: 'private',
             item: { type: 'thinking', thinking: '', signature: 'PRIVATE_SIGNATURE' }
           },
           {
@@ -553,6 +554,18 @@ describe('Core compact generation extension', () => {
       })
     );
     expect(seeded.result.status, JSON.stringify(seeded.result)).toBe('completed');
+    expect(
+      (await readRecords(f.home, f.session.id))
+        .filter((record) => record.type === 'model.context')
+        .map((record) => record.payload)
+    ).toContainEqual({
+      role: 'provider',
+      content: '',
+      provider: 'ANTHROPIC_MESSAGES',
+      providerModelId: baseModel.id,
+      contextKind: 'private',
+      item: { type: 'thinking', thinking: '', signature: 'PRIVATE_SIGNATURE' }
+    });
     const { events, result } = await collect(f.session.run({ prompt: 'CONTINUE_MARKER_PROMPT' }));
     expect(result).toMatchObject({
       status: 'completed',

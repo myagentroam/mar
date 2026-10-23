@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { onUnmounted, ref, watch } from 'vue';
-import { Check } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { PersonalGitService } from '../../service/PersonalGitService.js';
 import { translate as t } from '../../service/LocalePreferenceService.js';
@@ -45,7 +45,8 @@ async function load(): Promise<void> {
     includeParent.value = result.includeParentRepository;
     loaded.value = true;
   } catch (error) {
-    if (current === generation) ElMessage.error(errorMessage(error));
+    if (current === generation)
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (current === generation) loading.value = false;
   }
@@ -64,10 +65,11 @@ async function save(): Promise<void> {
     if (current === generation) {
       preserve.value = result.preserveGitConfig;
       includeParent.value = result.includeParentRepository;
-      ElMessage.success(t('personalGit.saved'));
+      ElMessage.success({ icon: marIcon('success'), message: t('personalGit.saved') });
     }
   } catch (error) {
-    if (current === generation) ElMessage.error(errorMessage(error));
+    if (current === generation)
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (current === generation) saving.value = false;
   }
@@ -91,10 +93,11 @@ async function save(): Promise<void> {
         <el-button
           v-if="writable"
           type="primary"
-          :icon="Check"
+          :icon="marIcon('check')"
           :disabled="!loaded || loading || saving"
           :loading="saving"
           @click="save"
+          :loading-icon="marIcon('loading-action')"
           >{{ t('personalGit.save') }}</el-button
         >
       </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
+import { tooltipOptions } from '@myagentroam/web-core';
 import type { WorkspaceUploadTask } from '@/service/WorkspaceUploadService';
 import { translate } from '@/service/LocalePreferenceService';
 
@@ -35,13 +37,15 @@ const emit = defineEmits<{
         :aria-label="translate('generated.workspaceTransferDock.closeFileTransfers')"
         @click="emit('closeDock')"
       >
-        ×
+        <MarIcon name="close" />
       </button>
     </header>
     <div v-if="!collapsed" class="workspace-transfer-list">
       <div v-for="task in tasks" :key="task.id" class="workspace-transfer-row">
         <div>
-          <strong :title="task.name">{{ task.name }}</strong>
+          <el-tooltip v-bind="tooltipOptions" :content="task.name"
+            ><strong>{{ task.name }}</strong></el-tooltip
+          >
           <small
             >{{ task.directory }} · {{ task.receivedBytes }} / {{ task.size }}
             {{ translate('generated.workspaceTransferDock.bytes') }}</small

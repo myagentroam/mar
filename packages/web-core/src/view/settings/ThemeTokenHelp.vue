@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
-import { CopyDocument, QuestionFilled, Search } from '@element-plus/icons-vue';
 import { CUSTOM_THEME_TOKENS } from '../../model/custom-theme.js';
 import { THEME_TOKEN_GROUPS, THEME_TOKEN_HELP } from '../../model/theme-token-help.js';
 
@@ -30,22 +31,22 @@ function show(): void {
 async function copy(token: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(token);
-    ElMessage.success(t('customThemes.tokenCopied'));
+    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.tokenCopied') });
   } catch {
-    ElMessage.error(t('customThemes.tokenCopyFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.tokenCopyFailed') });
   }
 }
 </script>
 
 <template>
-  <el-button
-    class="utility-control"
-    text
-    :icon="QuestionFilled"
-    :aria-label="t('customThemes.tokenHelp')"
-    :title="t('customThemes.tokenHelp')"
-    @click="show"
-  />
+  <el-tooltip v-bind="tooltipOptions" :content="t('customThemes.tokenHelp')"
+    ><el-button
+      class="utility-control"
+      text
+      :icon="marIcon('help')"
+      :aria-label="t('customThemes.tokenHelp')"
+      @click="show"
+  /></el-tooltip>
   <el-dialog
     v-if="open"
     v-model="open"
@@ -53,14 +54,16 @@ async function copy(token: string): Promise<void> {
     width="min(720px, calc(100vw - 32px))"
     append-to-body
     class="theme-token-help"
+    :close-icon="marIcon('close')"
   >
     <p class="hint">{{ t('customThemes.tokenHint') }}</p>
     <el-input
       v-model="search"
-      :prefix-icon="Search"
+      :prefix-icon="marIcon('search')"
       :placeholder="t('customThemes.tokenSearch')"
       :aria-label="t('customThemes.tokenSearch')"
       clearable
+      :clear-icon="marIcon('clear-input')"
     />
     <div class="reference-body">
       <section v-for="group in groups" :key="group.key">
@@ -74,14 +77,16 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-button
-                class="utility-control"
-                link
-                :icon="CopyDocument"
-                :aria-label="t('customThemes.tokenCopy', { token: item.token })"
-                :title="t('customThemes.tokenCopy', { token: item.token })"
-                @click="copy(item.token)"
-              />
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="t('customThemes.tokenCopy', { token: item.token })"
+                ><el-button
+                  class="utility-control"
+                  link
+                  :icon="marIcon('copy')"
+                  :aria-label="t('customThemes.tokenCopy', { token: item.token })"
+                  @click="copy(item.token)"
+              /></el-tooltip>
             </dt>
             <dd>{{ item.description }}</dd>
           </div>
