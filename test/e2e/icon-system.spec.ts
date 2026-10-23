@@ -300,6 +300,59 @@ test('Terminal close icons preserve accessible names and close only the selected
   expect(closed).toEqual(['/api/terminals/fixture-terminal']);
 });
 
+test('Terminal headers keep multiple shell profiles reachable on narrow screens', async ({
+  page
+}) => {
+  const openedProfiles: string[] = [];
+  await page.route('**/api/terminals**', async (route) => {
+    if (route.request().method() === 'POST') {
+      const profileId = route.request().postDataJSON().profileId as string;
+      openedProfiles.push(profileId);
+      await route.fulfill({
+        json: {
+          terminal: {
+            id: `fixture-terminal-${openedProfiles.length}`,
+            workspaceId: 'project',
+            profileId,
+            state: 'RUNNING',
+            latestSequence: 0
+          }
+        }
+      });
+    } else {
+      await route.fulfill({ json: { terminals: [] } });
+    }
+  });
+  for (const theme of ['light', 'dark']) {
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}icon-system.html?terminal=1&multipleProfiles=1&theme=${theme}`
+      );
+      await expect(page.getByRole('tab', { name: 'Terminal 1', exact: true })).toBeVisible();
+      const profile = page.getByRole('combobox');
+      await expect(profile).toBeVisible();
+      const bounds = await page.locator('.admin-terminal-header').evaluate((header) => {
+        const headerBox = header.getBoundingClientRect();
+        const selectBox = header.querySelector('.el-select')!.getBoundingClientRect();
+        return {
+          height: headerBox.height,
+          left: selectBox.left - headerBox.left,
+          right: headerBox.right - selectBox.right
+        };
+      });
+      expect(bounds.height).toBeLessThanOrEqual(72);
+      expect(bounds.left).toBeGreaterThanOrEqual(0);
+      expect(bounds.right).toBeGreaterThanOrEqual(0);
+      await page.locator('.terminal-profile .el-select').click();
+      await page.getByRole('option', { name: 'Other shell', exact: true }).click();
+      await page.getByRole('button', { name: 'New terminal', exact: true }).click();
+      await expect(page.getByRole('tab', { name: 'Terminal 2', exact: true })).toBeVisible();
+      expect(openedProfiles.at(-1)).toBe('other-shell');
+    }
+  }
+});
+
 test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {
   await page.goto(`${fixture.url}icon-system.html?usage=1`);
   const chart = page.locator('[data-testid="personal-usage"] svg[role="img"]');

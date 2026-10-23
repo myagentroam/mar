@@ -297,6 +297,7 @@ const app = createApp({
         });
     }
     if (new URL(location.href).searchParams.has('terminal')) {
+      const multipleProfiles = new URL(location.href).searchParams.has('multipleProfiles');
       return () =>
         h(TerminalDock, {
           errorMessage: String,
@@ -311,7 +312,12 @@ const app = createApp({
             supportsReplay: false,
             supportsConPty: false,
             supportsTakeover: false,
-            profiles: [{ id: 'shell', label: 'Shell', isDefault: true }]
+            profiles: [
+              { id: 'shell', label: 'Shell', isDefault: true },
+              ...(multipleProfiles
+                ? [{ id: 'other-shell', label: 'Other shell', isDefault: false }]
+                : [])
+            ]
           },
           direct: {
             attach: async ({ onAttached }: { onAttached: () => void }) => {
