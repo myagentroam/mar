@@ -277,6 +277,8 @@ async function render(props: Record<string, unknown> = {}): Promise<string> {
   const app = createSSRApp({
     render: () => h(WorkspaceInspector, { ...baseProps, ...props })
   });
+  // Tooltip layout is browser-only; SSR has no tooltip output.
+  app.directive('tooltip', {});
   app.use(i18n);
   app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
@@ -497,6 +499,7 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     const app = createSSRApp({
       render: () => h(WorkspaceGitChanges, { service: service as never, target: undefined })
     });
+    app.directive('tooltip', {});
     app.use(i18n);
     app.use(ElementPlus);
     app.provide(ssrContextKey, { modules: new Set<string>() });

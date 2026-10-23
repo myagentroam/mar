@@ -63,6 +63,8 @@ describe('tool change review', () => {
             embedded: true
           })
       });
+      // Tooltip layout is browser-only; SSR has no tooltip output.
+      app.directive('tooltip', {});
       app.use(i18n);
       app.use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 50, current: 0 });

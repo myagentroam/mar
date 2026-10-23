@@ -219,6 +219,8 @@ describe('Public resource details', () => {
             writable: true
           })
       });
+      // Tooltip layout is browser-only; SSR has no tooltip output.
+      app.directive('tooltip', {});
       app.use(ElementPlus).use(i18n);
       app.provide(ID_INJECTION_KEY, { prefix: 1, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -266,6 +268,7 @@ describe('Public resource details', () => {
             usageDisabledReason: () => ''
           })
       });
+      app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       app.component(
         'ElDialog',
@@ -300,6 +303,7 @@ describe('Public resource details', () => {
           }
         })
     });
+    app.directive('tooltip', {});
     app.use(i18n).use(ElementPlus);
     const html = await renderToString(app);
     expect(html).toContain('/usr/bin/git');

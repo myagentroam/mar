@@ -615,6 +615,8 @@ describe('personal usage settings contract', () => {
       return service;
     });
     const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+    // Tooltip layout is browser-only; SSR has no tooltip output.
+    app.directive('tooltip', {});
     app.use(i18n).use(ElementPlus);
     app.provide(ID_INJECTION_KEY, { prefix: 942, current: 0 });
     app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -688,6 +690,7 @@ describe('personal usage settings contract', () => {
         render: () =>
           h(ManagementPagination, { page: 1, mobile: false, mobileVisibleCount: 0, ...props })
       });
+      app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -807,6 +810,7 @@ describe('personal usage settings contract', () => {
       localePreferenceService().setLocale(locale);
       const request = vi.fn();
       const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+      app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       let selectedRange: unknown;
       app.component(
@@ -855,6 +859,7 @@ describe('personal usage settings contract', () => {
         return service;
       });
       const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+      app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
