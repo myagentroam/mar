@@ -1733,14 +1733,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-conversation-muted);
 }
 
-.conversation-item summary.conversation-record-heading {
-  display: grid;
-  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr);
-  column-gap: 0.5rem;
-  row-gap: 0.25rem;
-  align-items: center;
-}
-
 .conversation-item summary.conversation-record-heading::before,
 .conversation-item summary.conversation-record-heading > .conversation-record-icon,
 .conversation-item summary.conversation-record-heading > strong,
@@ -1768,34 +1760,11 @@ function stepDuration(item: ConversationItem): string | undefined {
   white-space: nowrap;
 }
 
-.conversation-tool-presentation > .conversation-record-heading,
-.subagent-group > details > .conversation-record-heading {
-  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr) max-content;
-}
-
 .conversation-record-heading > .conversation-record-preview {
-  grid-column: 4;
-  grid-row: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.conversation-tool-presentation > .conversation-record-heading > .conversation-record-meta,
-.subagent-group > details > .conversation-record-heading > .conversation-record-meta,
-.subagent-group > details > .conversation-record-heading > .conversation-group-meta {
-  grid-column: 5;
-  grid-row: 1;
-}
-
-.conversation-tool-presentation[open]:not([data-disclosure-closing])
-  > .conversation-record-heading
-  > .conversation-record-preview {
-  grid-column: 3 / -1;
-  grid-row: 2;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .conversation-record-group > .conversation-tool-detail,
@@ -2130,23 +2099,20 @@ details.conversation-record-group > details {
   border-radius: var(--mar-radius-control);
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary {
+.conversation-item details > summary {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   white-space: nowrap;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary::before,
-.conversation-item
-  details:is(:not([open]), [data-disclosure-closing])
-  > summary
-  > .conversation-record-icon {
+.conversation-item details > summary::before,
+.conversation-item details > summary > .conversation-record-icon {
   flex: none;
   margin-inline: 0;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > strong {
+.conversation-item details > summary > strong {
   min-width: 0;
   max-width: 45%;
   overflow: hidden;
@@ -2154,7 +2120,7 @@ details.conversation-record-group > details {
   margin-inline: 0;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > span {
+.conversation-item details > summary > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2162,7 +2128,7 @@ details.conversation-record-group > details {
 }
 
 .conversation-item
-  details:is(:not([open]), [data-disclosure-closing])
+  details
   > summary
   > span:not(.conversation-record-meta):not(.conversation-group-meta) {
   flex: 1;

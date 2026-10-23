@@ -1807,7 +1807,7 @@ test.describe('Independent tool presentation', () => {
           });
           expect(rightInset).toBeCloseTo(0, 1);
           for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
-            const heading = tool.locator('summary');
+            const heading = tool.locator(':scope > summary');
             const status = heading.locator('.conversation-record-meta');
             await expect(status).toBeVisible();
             const layout = await heading.evaluate((element) => {
@@ -1868,6 +1868,11 @@ test.describe('Independent tool presentation', () => {
           'https://example.com/source'
         );
         await expect(search.getByText('Original summary')).toBeVisible();
+        for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
+          if (!(await tool.evaluate((element) => element.hasAttribute('open'))))
+            await tool.locator(':scope > summary').click();
+        }
+        await expectCompactTools();
         await expect
           .poll(() =>
             tools.evaluateAll(
@@ -1916,6 +1921,11 @@ test.describe('Independent tool presentation', () => {
             .first()
             .evaluate((element) => element.scrollWidth <= element.clientWidth)
         ).toBe(true);
+        for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
+          if (!(await tool.evaluate((element) => element.hasAttribute('open'))))
+            await tool.locator(':scope > summary').click();
+        }
+        await expectCompactTools();
         await page.screenshot({ path: testInfo.outputPath('tools-mobile.png') });
         await page.reload();
         await expect(tools).toHaveCount(5);
