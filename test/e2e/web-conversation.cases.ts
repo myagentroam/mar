@@ -3531,11 +3531,16 @@ test('Opening a session loads only the latest window without initial scroll back
   const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
   await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
   await loadOlderButton.press('Enter');
-  await expect(loadOlderButton.locator('.is-loading')).toBeVisible();
+  await expect(loadOlderButton.locator('svg')).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(loadOlderButton.locator('svg')).not.toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(loadOlderButton.locator('svg')).toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
   expect(
     await loadOlderButton
-      .locator('.is-loading')
+      .locator('svg')
       .evaluate(
         (element) =>
           getComputedStyle(element).color === getComputedStyle(element.closest('button')!).color

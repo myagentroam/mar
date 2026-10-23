@@ -17,14 +17,18 @@ import {
   onUpdated,
   reactive,
   ref,
-  watch
+  watch,
+  type ComponentPublicInstance
 } from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
-import { conversationWorkProcessBlocks } from '../../util/conversation-work-process.js';
+import {
+  conversationWorkProcessBlocks,
+  nextConversationRenderItemCount
+} from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
@@ -213,6 +217,12 @@ let renderGeneration = 0;
 let preparedInitialRenderVersion = 0;
 
 const renderedTurns = computed(() => latestConversationItems(props.turns, renderedItemCount.value));
+const renderBudgetBlocks = computed(() => conversationWorkProcessBlocks(props.turns, props.runs));
+const processViews = new Map<string, InstanceType<typeof ConversationWorkProcess>>();
+function setProcessView(id: string, instance: Element | ComponentPublicInstance | null): void {
+  if (instance) processViews.set(id, instance as InstanceType<typeof ConversationWorkProcess>);
+  else processViews.delete(id);
+}
 const copiedMessage = ref<string>();
 const copyResetTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -255,9 +265,12 @@ function scheduleProgressiveRender(): void {
       scroll === null ||
       scroll === undefined ||
       scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 28;
-    renderedItemCount.value = Math.min(
-      total,
-      renderedItemCount.value + CONVERSATION_RENDER_BATCH_ITEMS
+    renderedItemCount.value = nextConversationRenderItemCount(
+      props.turns,
+      renderedItemCount.value,
+      renderBudgetBlocks.value,
+      (id) => processViews.get(id)?.isOpen(),
+      CONVERSATION_RENDER_BATCH_ITEMS
     );
     await nextTick();
     if (generation !== renderGeneration) return;
@@ -512,6 +525,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     <ConversationWorkProcess
       v-for="block in processBlocks"
       :key="block.id"
+      :ref="(instance) => setProcessView(block.id, instance)"
       :block="block"
       :synchronized="synchronized"
       :now="block.active ? processNow : undefined"
