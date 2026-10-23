@@ -14,6 +14,7 @@ import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndi
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
+import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
@@ -243,13 +244,53 @@ const app = createApp({
       })
     ])
 });
-(new URLSearchParams(location.search).has('shared-tooltip')
-  ? createApp(SharedTooltipFixture)
-  : new URLSearchParams(location.search).has('loading-feedback')
-    ? createApp(LoadingFeedbackFixture)
-    : new URLSearchParams(location.search).has('session-performance')
-      ? createApp(sessionPerformanceFixture)
-      : app
+const resourceDetailsFixture = {
+  setup() {
+    const open = ref(true);
+    const waiting = ref(false);
+    const refreshed = ref(0);
+    return () =>
+      h('main', [
+        h('output', { 'data-testid': 'capability-refresh-count' }, String(refreshed.value)),
+        h(NodeDetailsDialogs, {
+          nodeOpen: open.value,
+          workspaceOpen: false,
+          usageOpen: false,
+          node: { id: 'node', label: 'Fixture Node', connected: true, manageable: true },
+          nodeRefreshable: true,
+          usageDisabledReason: () => '',
+          request: async () => ({ secrets: [] }),
+          upgrade: {
+            label: 'Upgrade',
+            canUpgrade: !waiting.value,
+            waitingForRuns: waiting.value,
+            canCancelUpgrade: true
+          },
+          onUpgrade: () => {
+            waiting.value = true;
+          },
+          onCancelUpgrade: () => {
+            waiting.value = false;
+          },
+          onRefreshNode: () => {
+            refreshed.value++;
+          },
+          'onUpdate:nodeOpen': (value: boolean) => {
+            open.value = value;
+          }
+        })
+      ]);
+  }
+};
+(new URLSearchParams(location.search).has('resource-details')
+  ? createApp(resourceDetailsFixture)
+  : new URLSearchParams(location.search).has('shared-tooltip')
+    ? createApp(SharedTooltipFixture)
+    : new URLSearchParams(location.search).has('loading-feedback')
+      ? createApp(LoadingFeedbackFixture)
+      : new URLSearchParams(location.search).has('session-performance')
+        ? createApp(sessionPerformanceFixture)
+        : app
 )
   .use(i18n)
   .use(ElementPlus)

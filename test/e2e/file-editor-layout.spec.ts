@@ -9,6 +9,64 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Restored drafts render immediately and preserve their original revision on save', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}file-editor-layout.html?text=code&draft=1`);
+  await expect(page.locator('html')).toHaveAttribute('data-applied-draft', 'draft-tab');
+  await expect(page.locator('.cm-content')).toHaveText('Recovered unsaved content');
+  await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+  await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-saved-draft',
+    JSON.stringify({ value: 'Recovered unsaved content', revision: 'draft-revision' })
+  );
+});
+
+test('Fallback draft selection and Diff find remain scoped to the visible preview', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}file-editor-layout.html?text=fallback&draft=1&shortcuts=1`);
+  const text = page.locator('.file-text-preview');
+  await expect(text).toHaveValue('Recovered unsaved content');
+  await text.focus();
+  await page.getByRole('button', { name: 'Select preview content' }).click();
+  expect(
+    await text.evaluate((element) => {
+      const input = element as HTMLTextAreaElement;
+      return input.value.slice(input.selectionStart, input.selectionEnd);
+    })
+  ).toBe('Recovered unsaved content');
+  await page.getByRole('button', { name: 'Find in file', exact: true }).click();
+  await expect(page.locator('.inline-find-bar')).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}file-editor-layout.html?diff=HISTORY&shortcuts=1`);
+  const outside = page.getByRole('button', { name: 'Select preview content' });
+  await outside.focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await page.locator('html').getAttribute('data-moved-file')).toBeNull();
+  await expect(page.locator('.inline-find-bar')).toHaveCount(0);
+  await page.locator('.workspace-file-page-frame').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('html')).toHaveAttribute('data-moved-file', '1');
+  await page.getByRole('button', { name: 'Find in file', exact: true }).click();
+  await expect(page.locator('.inline-find-bar')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.inline-find-bar')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Select preview content' }).click();
+  const selected = await page.evaluate(() => window.getSelection()?.toString());
+  expect(selected).toContain('+new');
+  expect(selected).not.toContain('Select preview content');
+  await page.goto(`${fixture.url}file-editor-layout.html?diff=HISTORY&inactive=1&shortcuts=1`);
+  await page
+    .locator('.workspace-file-page-frame')
+    .dispatchEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+  expect(await page.locator('html').getAttribute('data-moved-file')).toBeNull();
+  await expect(page.locator('.inline-find-bar')).toHaveCount(0);
+});
+
 test('Unified Diff fills its content surface without an inset frame', async ({
   page
 }, testInfo) => {

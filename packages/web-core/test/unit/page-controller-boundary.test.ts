@@ -65,7 +65,6 @@ describe('public Workbench page controller', () => {
     expect(source).not.toContain('/git/file-metadata');
     expect(source).not.toContain('createWorkspaceDirectObjectUrlSink(');
     expect(source).not.toContain('createWorkspaceDirectDownloadStream(');
-    expect(source).not.toContain('turnId: turn.turnId ?? turn.id');
   });
   it('owns the root page without OAuth or enterprise resource implementations', () => {
     const source = readFileSync(

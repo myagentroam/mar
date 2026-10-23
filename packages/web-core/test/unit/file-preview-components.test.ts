@@ -670,33 +670,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     );
     expect(html).not.toContain('code-file-editor');
   });
-
-  it('applies a restored dirty draft on first page render and scopes Diff shortcuts to visible content', () => {
-    const textPage = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTextFilePage.vue', import.meta.url),
-      'utf8'
-    );
-    const diffViewer = readFileSync(
-      new URL('../../src/view/workspace/GitDiffViewer.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(textPage).toContain('{ immediate: true }');
-    expect(textPage).toContain("emit('dirty-draft-applied', draft.tabIdentity)");
-    expect(textPage).toContain('v-if="fallbackFindOpen && fallbackTextEnabled"');
-    expect(textPage).toContain('ref="fallbackTextArea"');
-    expect(textPage).toContain('textArea.setSelectionRange(0, textArea.value.length)');
-    expect(diffViewer).toContain('if (props.active === false) return;');
-    expect(diffViewer).toContain(
-      "if (typeof document === 'undefined' || props.embedded === true) return;"
-    );
-    expect(diffViewer).toContain('event.stopPropagation();\n    closeFind();');
-    expect(diffViewer).toContain('@keydown="onKeydown"');
-    expect(diffViewer).not.toContain("window.addEventListener('keydown', onKeydown)");
-    expect(diffViewer).toContain('function selectAll(): boolean {');
-    expect(diffViewer).toContain('selection.selectAllChildren(pane);');
-    expect(diffViewer).toContain('selectAll,');
-  });
 });
 
 describe('standalone Markdown preview', () => {
