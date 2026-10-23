@@ -51,6 +51,7 @@ export const conversationUiEnUS = {
   },
   toolPresentation: {
     calls: '{count} call | {count} calls',
+    moreFiles: '{count} more file | {count} more files',
     title: {
       READ: 'Read',
       WEB_SEARCH: 'Web search',

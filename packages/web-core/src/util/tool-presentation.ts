@@ -55,7 +55,15 @@ export function toolPresentationText(payload: unknown, status: string): string {
   const value = toolPresentation(payload);
   if (!value) return '';
   const exceptional = ['FAILED', 'DECLINED', 'CANCELLED', 'INTERRUPTED'].includes(status);
-  if (value.kind === 'READ') return (value.paths ?? []).join(' · ');
+  if (value.kind === 'READ') {
+    const paths = [...new Set((value.paths ?? []).filter((path) => path.length > 0))];
+    const first = paths[0];
+    if (!first) return '';
+    const name = first.split(/[\\/]/u).at(-1) || first;
+    return paths.length > 1
+      ? `${name} · ${translate('toolPresentation.moreFiles', { count: paths.length - 1 })}`
+      : name;
+  }
   if (value.kind === 'SKILL') return value.name ?? '';
   if (value.kind === 'WEB_SEARCH') {
     const sources =

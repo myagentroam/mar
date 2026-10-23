@@ -97,6 +97,43 @@ describe('independent tool presentation', () => {
     expect(toolPresentationDetails(read)).toBe(details);
   });
   it.each(['zh-CN', 'en-US'] as const)(
+    'deduplicates Read titles by full path without changing the original ranges in %s',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      const paths = ['src/first.ts', 'src/first.ts', 'test/first.ts'];
+      const inputSummary = JSON.stringify({
+        reads: [
+          { path: paths[0], offset: 1, limit: 20 },
+          { path: paths[1], offset: 90, limit: 10 },
+          { path: paths[2] }
+        ]
+      });
+      const read = { ...payload({ kind: 'READ', paths }), inputSummary };
+      const original = structuredClone(read);
+      expect(conversationItemText('tool_call', read)).toBe(
+        locale === 'zh-CN' ? 'first.ts · 另 1 个文件' : 'first.ts · 1 more file'
+      );
+      expect(toolPresentationDetails(read)).toContain(inputSummary);
+      expect(read).toEqual(original);
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: paths.slice(0, 2) }))
+      ).toBe('first.ts');
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: ['C:\\src\\file.ts'] }))
+      ).toBe('file.ts');
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: ['', '目录/文件.ts'] }))
+      ).toBe('文件.ts');
+      expect(conversationItemText('tool_call', payload({ kind: 'READ', paths: [] }))).toBe('');
+      expect(
+        conversationItemText(
+          'tool_call',
+          payload({ kind: 'READ', paths: ['a/x.ts', 'b/y.ts', 'c/z.ts'] })
+        )
+      ).toBe(locale === 'zh-CN' ? 'x.ts · 另 2 个文件' : 'x.ts · 2 more files');
+    }
+  );
+  it.each(['zh-CN', 'en-US'] as const)(
     'preserves free text and distinguishes unknown and empty sources in %s',
     (locale) => {
       localePreferenceService().setLocale(locale);

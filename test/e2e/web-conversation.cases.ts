@@ -895,7 +895,16 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       normalizer.normalize({
         ...base,
         type: 'tool.started',
-        input: { reads: [{ path }] }
+        input: {
+          reads:
+            index === 0
+              ? [
+                  { path, offset: 1, limit: 20 },
+                  { path, offset: 90, limit: 10 },
+                  { path: 'test/first.ts' }
+                ]
+              : [{ path }]
+        }
       } as MarAgentEvent);
       const [result] = normalizer.normalize({
         ...base,
@@ -1129,7 +1138,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(read).toHaveAttribute('open', '');
     await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
     await expect(read.locator('.conversation-tool-detail > summary > strong')).toHaveCount(0);
-    await expect(read.locator('.conversation-tool-preview').first()).toHaveText('src/first.ts');
+    await expect(read.locator('.conversation-tool-preview').first()).toHaveText(
+      locale === 'zh-CN' ? 'first.ts · 另 1 个文件' : 'first.ts · 1 more file'
+    );
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText('test/first.ts');
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText('"offset":90');
     await expect(read.locator('.conversation-tool-detail').first()).toContainText(
       'Content for src/first.ts'
     );

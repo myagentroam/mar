@@ -494,13 +494,6 @@ const processNow = createWorkbenchSecondClock(
   )
 );
 
-function readPreview(item: ConversationItem): string {
-  const presentation = toolPresentation(item.payload);
-  return presentation?.kind === 'READ' && presentation.paths?.length
-    ? presentation.paths.join(' · ')
-    : conversationItemText(item.kind, item.payload, item.status);
-}
-
 function stepDuration(item: ConversationItem): string | undefined {
   const duration = completedStepDuration(item);
   return duration === undefined
@@ -720,9 +713,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             >
               <summary>
                 <span class="conversation-tool-preview">{{
-                  (displayItem.type === 'read_group'
-                    ? readPreview(toolItem)
-                    : conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)) ||
+                  conversationItemText(toolItem.kind, toolItem.payload, toolItem.status) ||
                   conversationItemLabel(toolItem.kind, toolItem.payload)
                 }}</span>
                 <span class="conversation-record-meta">{{
