@@ -1,3 +1,4 @@
+import { isPublicErrorCode } from '@myagentroam/protocol';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ApiError, errorCode } from '../util/api-error.js';
 import { shallowRef, type Ref } from 'vue';
@@ -215,8 +216,14 @@ export function createWorkbenchSessionWatchController(options: {
       watchedConnectionId = currentConnectionId;
     }
     const operation = lifecycle.start(sessionId, input.skipImmediateRenew === true);
-    void operation?.catch(() => undefined);
-    return operation;
+    const currentWatchId = watchId;
+    const completion = operation?.then(() => {
+      // Background lease cancellation is silent, but initial callers must not mistake it for success.
+      if (watchId !== currentWatchId || connectionId() !== currentConnectionId)
+        throw new ApiError('WATCH_CANCELLED', 'The watch was stopped or replaced.');
+    });
+    void completion?.catch(() => undefined);
+    return completion;
   }
 
   function stop(): void {
@@ -429,8 +436,12 @@ export function createWorkbenchSessionWatchController(options: {
     if (pendingInitial?.sessionId === sessionId && pendingInitial.watchId === watchId) {
       cancelPendingInitial(
         new ApiError(
-          'SESSION_HISTORY_INITIAL_FAILED',
-          'Unable to load the initial session snapshot.'
+          isPublicErrorCode(event.code) ? event.code : 'SESSION_HISTORY_INITIAL_FAILED',
+          typeof event.message === 'string' &&
+            event.message.length > 0 &&
+            event.message.length <= 1000
+            ? event.message
+            : 'Unable to load the initial session snapshot.'
         )
       );
       lifecycle.pause();

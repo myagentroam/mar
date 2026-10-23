@@ -2301,6 +2301,7 @@ export function createWorkbenchPageController<
     sessionPathId: agentSessionPathId,
     replaceSession,
     canWatch: canWatchSessionHistory,
+    hasInitialSnapshot: (sessionId) => sessionWatchController.hasInitialSessionSnapshot(sessionId),
     beginWatch: async (sessionId) => {
       const coordinator = watchCoordinator.current;
       if (coordinator === undefined) return false;

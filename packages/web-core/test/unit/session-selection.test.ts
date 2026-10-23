@@ -58,6 +58,7 @@ function tabSessionFixture() {
     sessionPathId: (id) => id,
     replaceSession: vi.fn(),
     canWatch: () => true,
+    hasInitialSnapshot: () => true,
     beginWatch: vi.fn(async () => true),
     applySnapshot: vi.fn(() => false),
     mergeTurns: vi.fn(() => false),
@@ -138,6 +139,7 @@ async function watchedTabFixture() {
       f.options.sessions.value = [next];
     },
     canWatch: controller.canWatchSessionHistory,
+    hasInitialSnapshot: controller.hasInitialSessionSnapshot,
     beginWatch: async (id: string) => {
       await coordinator.restartSession(id);
       return controller.hasInitialSessionSnapshot(id);
@@ -197,6 +199,30 @@ it.each([false, true])(
 );
 
 describe('Shared session selection', () => {
+  it.each([false, true])(
+    'keeps Watch cancellation silent without reporting transactional success: %s',
+    async (throwOnFailure) => {
+      const f = tabSessionFixture();
+      const cancellation = new Error('WATCH_CANCELLED');
+      vi.mocked(f.options.beginWatch).mockRejectedValue(cancellation);
+      const result = f.service.openSession(f.session.id, { throwOnFailure });
+      if (throwOnFailure) await expect(result).rejects.toBe(cancellation);
+      else await expect(result).resolves.toBeUndefined();
+      expect(f.options.initialLoadFailed.value).toBe(false);
+      expect(f.options.loadingInitial.value).toBe(false);
+      expect(f.options.notice).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not silently discard an unclassified AbortError', async () => {
+    const f = tabSessionFixture();
+    const failure = new DOMException('The operation was aborted.', 'AbortError');
+    vi.mocked(f.options.beginWatch).mockRejectedValue(failure);
+    await f.service.openSession(f.session.id);
+    expect(f.options.initialLoadFailed.value).toBe(true);
+    expect(f.options.notice).toHaveBeenCalledWith(expect.any(String), 'error', failure);
+  });
+
   it('retains unread across missing-connection and same-session retries, then reads after a real snapshot', async () => {
     const f = await watchedTabFixture();
     try {
@@ -235,7 +261,7 @@ describe('Shared session selection', () => {
     }
   });
 
-  it.each(['cancel', 'node', 'session', 'generation'] as const)(
+  it.each(['cancel', 'hidden', 'replacement', 'node', 'session', 'generation'] as const)(
     'does not read an unconfirmed snapshot after %s replacement',
     async (replacement) => {
       const f = await watchedTabFixture();
@@ -248,14 +274,20 @@ describe('Shared session selection', () => {
           f.target.value = { nodeId: 'node-2', workspaceId: 'workspace-1' };
         if (replacement === 'session') f.options.selectedSessionId.value = 'another-session';
         if (replacement === 'generation') f.options.nextRequest();
-        f.controller.stopSelectedSessionWatch();
+        if (replacement === 'hidden') {
+          vi.stubGlobal('document', { visibilityState: 'hidden' });
+          f.controller.handleSessionWatchVisibility();
+        } else if (replacement === 'replacement') {
+          void f.controller.restartSelectedSessionWatch(f.session.id)?.catch(() => undefined);
+        } else f.controller.stopSelectedSessionWatch();
         await opening;
+        expect(f.options.notice).not.toHaveBeenCalled();
+        expect(f.options.initialLoadFailed.value).toBe(false);
         expect(f.controller.handleEvent(stale)).toBe(false);
         expect(f.controller.hasInitialSessionSnapshot(f.session.id)).toBe(false);
         expect(f.readPosts).toEqual([]);
         expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
         if (replacement === 'cancel') {
-          expect(f.options.initialLoadFailed.value).toBe(true);
           const retry = f.service.openWorkspaceTabSession(f.session.id);
           await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(2));
           expect(f.controller.handleEvent(stale)).toBe(false);
@@ -263,6 +295,45 @@ describe('Shared session selection', () => {
           await retry;
           expect(f.readPosts).toEqual([f.session.id]);
         }
+      } finally {
+        f.dispose();
+        vi.unstubAllGlobals();
+      }
+    }
+  );
+
+  it.each(['NATIVE_TRANSCRIPT_UNAVAILABLE', 'SESSION_WORKSPACE_MISMATCH'])(
+    'preserves the Node initial failure %s and permits an explicit reload',
+    async (code) => {
+      const f = await watchedTabFixture();
+      try {
+        f.connection.value = 'connection-1';
+        const opening = f.service.openWorkspaceTabSession(f.session.id);
+        await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
+        const message = 'Session watch snapshot failed.';
+        expect(
+          f.controller.handleEvent(
+            f.frame({ type: 'watch.failed', watchType: 'session', code, message })
+          )
+        ).toBe(true);
+        await opening;
+        expect(f.options.initialLoadFailed.value).toBe(true);
+        expect(f.options.loadingInitial.value).toBe(false);
+        expect(f.options.notice).toHaveBeenCalledWith(
+          expect.any(String),
+          'error',
+          expect.objectContaining({ code, message })
+        );
+        expect(f.readPosts).toEqual([]);
+        expect(f.watchPosts()).toHaveLength(1);
+
+        const retry = f.service.openWorkspaceTabSession(f.session.id);
+        await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(2));
+        f.controller.handleEvent(f.frame());
+        await retry;
+        expect(f.options.initialLoadFailed.value).toBe(false);
+        expect(f.readPosts).toEqual([f.session.id]);
+        expect(f.options.notice).toHaveBeenCalledTimes(1);
       } finally {
         f.dispose();
       }
@@ -388,6 +459,7 @@ describe('Shared session selection', () => {
       sessionPathId: (id) => id,
       replaceSession: vi.fn(),
       canWatch: () => true,
+      hasInitialSnapshot: () => true,
       beginWatch: vi.fn(async () => true),
       applySnapshot: vi.fn(() => false),
       mergeTurns: vi.fn(() => false),
