@@ -38,12 +38,14 @@ import { createWorkbenchPerformanceService } from './WorkbenchPerformanceService
 import { createWorkspaceUploadService } from './WorkspaceUploadService.js';
 import { createWorkbenchLiveService } from './WorkbenchLiveService.js';
 import { createWorkbenchDirectTransportCoordinator } from './WorkbenchDirectTransportCoordinator.js';
-import { createWorkspaceDirectObjectUrlSink } from './WorkspaceDirectObjectUrlService.js';
+import { readWorkspaceDirectObjectUrl } from './WorkspaceDirectObjectUrlService.js';
 import {
-  createWorkspaceDirectDownloadStream,
+  downloadWorkspaceDirectFile,
   type WorkspaceDirectDownloadResult
 } from './WorkspaceDirectDownloadStreamService.js';
 import {
+  readWorkspaceDirectFileMetadata,
+  readGitDirectFileMetadata,
   readWorkspaceDirectFileRange,
   type WorkspaceDirectFileIdentity
 } from './WorkspaceDirectFileReadService.js';
@@ -76,6 +78,7 @@ import {
   mergeWorkspaceWatchSnapshot
 } from './WorkspaceRuntimeStateService.js';
 import { createWorkbenchSessionSelectionService } from './WorkbenchSessionSelectionService.js';
+import { createWorkbenchSessionHistoryMutationService } from './WorkbenchSessionHistoryMutationService.js';
 import { createWorkbenchSessionMessageService } from './WorkbenchSessionMessageService.js';
 import {
   createWorkbenchSubmissionService,
@@ -129,7 +132,7 @@ import {
   CONVERSATION_SEGMENT_PAGE_SIZE,
   limitConversationHistory
 } from '../util/conversation-history.js';
-import { conversationItemText, userInputQuestions } from '../util/conversation-presentation.js';
+import { userInputQuestions } from '../util/conversation-presentation.js';
 import { createWorkspaceTabService } from './WorkspaceTabService.js';
 import {
   STANDALONE_FILE_OPEN_EVENT,
@@ -1391,85 +1394,39 @@ export function createWorkbenchPageController<
     });
   };
 
-  async function workspaceDirectMetadata(
-    path: string,
-    worktreePath?: string,
-    repositoryPath?: string
-  ) {
+  function workspaceDirectFile(path: string, worktreePath?: string, repositoryPath?: string) {
     if (isComposerAttachmentResourcePath(path)) return undefined;
     const nodeId = workspaceNodeId.value;
     const workspaceId = activeWorkspaceId.value;
-    const nodeGeneration = nodeManifest.value?.nodeGeneration;
+    const manifest = nodeManifest.value;
+    const nodeGeneration = manifest?.nodeGeneration;
     if (
       nodeId === undefined ||
       workspaceId === undefined ||
       nodeGeneration === undefined ||
-      nodeManifest.value?.directTransfer?.download !== true ||
       !workspaceDirectAvailable(nodeId)
     )
       return undefined;
-    const parameters = new URLSearchParams({ nodeId, path });
-    if (worktreePath !== undefined) parameters.set('worktreePath', worktreePath);
-    if (repositoryPath !== undefined) parameters.set('repositoryPath', repositoryPath);
-    const result = await request<{
-      readonly file?: {
-        size?: unknown;
-        revision?: unknown;
-      };
-    }>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/files/direct-metadata?${parameters.toString()}`
-    );
-    return typeof result.file?.size === 'number' && typeof result.file.revision === 'string'
-      ? {
-          nodeId,
-          workspaceId,
-          nodeGeneration,
-          size: result.file.size,
-          revision: result.file.revision
-        }
-      : undefined;
-  }
-
-  async function directWorkspaceFileReadRange(
-    path: string,
-    offset: number,
-    length: number,
-    worktreePath?: string,
-    identity?: WorkspaceDirectFileIdentity,
-    repositoryPath?: string
-  ) {
-    if (isComposerAttachmentResourcePath(path)) return undefined;
-    const nodeId = workspaceNodeId.value;
-    const workspaceId = activeWorkspaceId.value;
-    const nodeGeneration = nodeManifest.value?.nodeGeneration;
-    if (
-      nodeId === undefined ||
-      workspaceId === undefined ||
-      nodeGeneration === undefined ||
-      nodeManifest.value?.directTransfer?.range !== true ||
-      !workspaceDirectAvailable(nodeId)
-    )
-      return undefined;
-    return readWorkspaceDirectFileRange({
+    const resource = {
+      kind: 'WORKSPACE_FILE' as const,
+      workspaceId,
+      path,
+      ...(repositoryPath === undefined ? {} : { repositoryPath }),
+      ...(worktreePath === undefined ? {} : { worktreePath })
+    };
+    return {
       direct: workspaceDirectTransfer,
       nodeId,
       nodeGeneration,
-      resource: {
-        kind: 'WORKSPACE_FILE',
-        workspaceId,
-        path,
-        ...(repositoryPath === undefined ? {} : { repositoryPath }),
-        ...(worktreePath === undefined ? {} : { worktreePath })
-      },
-      fileName: path.split('/').at(-1) ?? 'file',
-      offset,
-      length,
-      ...(identity === undefined ? {} : { identity }),
-      metadata: () => workspaceDirectMetadata(path, worktreePath, repositoryPath)
-    }).catch(() => undefined);
+      resource,
+      metadata: () =>
+        manifest?.directTransfer?.download === true
+          ? readWorkspaceDirectFileMetadata({ request, nodeId, resource })
+          : Promise.resolve(undefined)
+    };
   }
 
-  async function gitDirectMetadata(
+  function gitDirectFile(
     commit: string,
     path: string,
     repositoryPath: string,
@@ -1486,26 +1443,41 @@ export function createWorkbenchPageController<
       !workspaceDirectAvailable(nodeId)
     )
       return undefined;
-    const parameters = new URLSearchParams({ nodeId, path });
-    if (repositoryPath.length > 0) parameters.set('repositoryPath', repositoryPath);
-    for (const ref of refs) parameters.append('refs', ref);
-    const result = await request<{
-      readonly file?: {
-        size?: unknown;
-        revision?: unknown;
-      };
-    }>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(commit)}/files/direct-metadata?${parameters.toString()}`
-    );
-    return typeof result.file?.size === 'number' && typeof result.file.revision === 'string'
-      ? {
-          nodeId,
-          workspaceId,
-          nodeGeneration,
-          size: result.file.size,
-          revision: result.file.revision
-        }
-      : undefined;
+    const resource = {
+      kind: 'GIT_COMMIT_BLOB' as const,
+      workspaceId,
+      commit,
+      path,
+      ...(repositoryPath.length === 0 ? {} : { repositoryPath })
+    };
+    const capturedRefs = [...refs];
+    return {
+      direct: workspaceDirectTransfer,
+      nodeId,
+      nodeGeneration,
+      resource,
+      metadata: () => readGitDirectFileMetadata({ request, nodeId, resource, refs: capturedRefs })
+    };
+  }
+
+  async function directWorkspaceFileReadRange(
+    path: string,
+    offset: number,
+    length: number,
+    worktreePath?: string,
+    identity?: WorkspaceDirectFileIdentity,
+    repositoryPath?: string
+  ) {
+    if (nodeManifest.value?.directTransfer?.range !== true) return undefined;
+    const target = workspaceDirectFile(path, worktreePath, repositoryPath);
+    if (target === undefined) return undefined;
+    return readWorkspaceDirectFileRange({
+      ...target,
+      fileName: path.split('/').at(-1) ?? 'file',
+      offset,
+      length,
+      ...(identity === undefined ? {} : { identity })
+    }).catch(() => undefined);
   }
 
   async function directGitFileReadRange(
@@ -1517,34 +1489,15 @@ export function createWorkbenchPageController<
     length: number,
     identity?: WorkspaceDirectFileIdentity
   ) {
-    const nodeId = workspaceNodeId.value;
-    const workspaceId = activeWorkspaceId.value;
-    const nodeGeneration = nodeManifest.value?.nodeGeneration;
-    if (
-      nodeId === undefined ||
-      workspaceId === undefined ||
-      nodeGeneration === undefined ||
-      nodeManifest.value?.directTransfer?.range !== true ||
-      nodeManifest.value.directTransfer.gitCommitBlob !== true ||
-      !workspaceDirectAvailable(nodeId)
-    )
-      return undefined;
+    if (nodeManifest.value?.directTransfer?.range !== true) return undefined;
+    const target = gitDirectFile(commit, path, repositoryPath, refs);
+    if (target === undefined) return undefined;
     return readWorkspaceDirectFileRange({
-      direct: workspaceDirectTransfer,
-      nodeId,
-      nodeGeneration,
-      resource: {
-        kind: 'GIT_COMMIT_BLOB',
-        workspaceId,
-        commit,
-        path,
-        ...(repositoryPath.length === 0 ? {} : { repositoryPath })
-      },
+      ...target,
       fileName: path.split('/').at(-1) ?? 'file',
       offset,
       length,
-      ...(identity === undefined ? {} : { identity }),
-      metadata: () => gitDirectMetadata(commit, path, repositoryPath, refs)
+      ...(identity === undefined ? {} : { identity })
     }).catch(() => undefined);
   }
 
@@ -1553,34 +1506,8 @@ export function createWorkbenchPageController<
     worktreePath?: string,
     repositoryPath?: string
   ): Promise<string | undefined> {
-    const metadata = await workspaceDirectMetadata(path, worktreePath, repositoryPath).catch(
-      () => undefined
-    );
-    if (metadata === undefined) return undefined;
-    try {
-      const target = await createWorkspaceDirectObjectUrlSink(path.split('/').at(-1) ?? 'file');
-      await workspaceDirectTransfer.download({
-        nodeId: metadata.nodeId,
-        nodeGeneration: metadata.nodeGeneration,
-        descriptor: {
-          direction: 'DOWNLOAD',
-          resource: {
-            kind: 'WORKSPACE_FILE',
-            workspaceId: metadata.workspaceId,
-            path,
-            ...(repositoryPath === undefined ? {} : { repositoryPath }),
-            ...(worktreePath === undefined ? {} : { worktreePath })
-          },
-          fileName: path.split('/').at(-1) ?? 'file',
-          revision: metadata.revision,
-          size: metadata.size
-        },
-        sink: target.sink
-      });
-      return target.objectUrl();
-    } catch {
-      return undefined;
-    }
+    const target = workspaceDirectFile(path, worktreePath, repositoryPath);
+    return target === undefined ? undefined : (await readWorkspaceDirectObjectUrl(target))?.url;
   }
 
   async function directWorkspaceFileDownload(
@@ -1588,47 +1515,9 @@ export function createWorkbenchPageController<
     worktreePath?: string,
     repositoryPath?: string
   ): Promise<WorkspaceDirectDownloadResult> {
-    const nodeId = workspaceNodeId.value;
-    if (
-      nodeId === undefined ||
-      activeWorkspaceId.value === undefined ||
-      nodeManifest.value?.nodeGeneration === undefined ||
-      nodeManifest.value.directTransfer?.download !== true ||
-      !workspaceDirectAvailable(nodeId)
-    )
-      return 'UNAVAILABLE';
-    const metadata = await workspaceDirectMetadata(path, worktreePath, repositoryPath).catch(
-      () => undefined
-    );
-    if (metadata === undefined) return 'UNAVAILABLE';
-    const fileName = path.split('/').at(-1) ?? 'download';
-    let target: Awaited<ReturnType<typeof createWorkspaceDirectDownloadStream>> | undefined;
-    try {
-      target = await createWorkspaceDirectDownloadStream(fileName, metadata.size);
-      await workspaceDirectTransfer.download({
-        nodeId: metadata.nodeId,
-        nodeGeneration: metadata.nodeGeneration,
-        descriptor: {
-          direction: 'DOWNLOAD',
-          resource: {
-            kind: 'WORKSPACE_FILE',
-            workspaceId: metadata.workspaceId,
-            path,
-            ...(repositoryPath === undefined ? {} : { repositoryPath }),
-            ...(worktreePath === undefined ? {} : { worktreePath })
-          },
-          fileName,
-          revision: metadata.revision,
-          size: metadata.size
-        },
-        sink: target.sink,
-        signal: target.signal
-      });
-      return 'COMPLETED';
-    } catch {
-      if (target?.cancelled() === true) return 'CANCELLED';
-      return target?.started() === true ? 'FAILED' : 'UNAVAILABLE';
-    }
+    if (nodeManifest.value?.directTransfer?.download !== true) return 'UNAVAILABLE';
+    const target = workspaceDirectFile(path, worktreePath, repositoryPath);
+    return target === undefined ? 'UNAVAILABLE' : downloadWorkspaceDirectFile(target);
   }
 
   async function directGitFileObjectUrl(
@@ -1637,34 +1526,8 @@ export function createWorkbenchPageController<
     repositoryPath: string,
     refs: readonly string[]
   ): Promise<string | undefined> {
-    const metadata = await gitDirectMetadata(commit, path, repositoryPath, refs).catch(
-      () => undefined
-    );
-    if (metadata === undefined) return undefined;
-    try {
-      const target = await createWorkspaceDirectObjectUrlSink(path.split('/').at(-1) ?? 'file');
-      await workspaceDirectTransfer.download({
-        nodeId: metadata.nodeId,
-        nodeGeneration: metadata.nodeGeneration,
-        descriptor: {
-          direction: 'DOWNLOAD',
-          resource: {
-            kind: 'GIT_COMMIT_BLOB',
-            workspaceId: metadata.workspaceId,
-            commit,
-            path,
-            ...(repositoryPath.length === 0 ? {} : { repositoryPath })
-          },
-          fileName: path.split('/').at(-1) ?? 'file',
-          revision: metadata.revision,
-          size: metadata.size
-        },
-        sink: target.sink
-      });
-      return target.objectUrl();
-    } catch {
-      return undefined;
-    }
+    const target = gitDirectFile(commit, path, repositoryPath, refs);
+    return target === undefined ? undefined : (await readWorkspaceDirectObjectUrl(target))?.url;
   }
 
   async function directGitFileDownload(
@@ -1673,48 +1536,9 @@ export function createWorkbenchPageController<
     repositoryPath: string,
     refs: readonly string[]
   ): Promise<WorkspaceDirectDownloadResult> {
-    const nodeId = workspaceNodeId.value;
-    if (
-      nodeId === undefined ||
-      activeWorkspaceId.value === undefined ||
-      nodeManifest.value?.nodeGeneration === undefined ||
-      nodeManifest.value.directTransfer?.download !== true ||
-      nodeManifest.value.directTransfer.gitCommitBlob !== true ||
-      !workspaceDirectAvailable(nodeId)
-    )
-      return 'UNAVAILABLE';
-    const metadata = await gitDirectMetadata(commit, path, repositoryPath, refs).catch(
-      () => undefined
-    );
-    if (metadata === undefined) return 'UNAVAILABLE';
-    const fileName = path.split('/').at(-1) ?? 'download';
-    let target: Awaited<ReturnType<typeof createWorkspaceDirectDownloadStream>> | undefined;
-    try {
-      target = await createWorkspaceDirectDownloadStream(fileName, metadata.size);
-      await workspaceDirectTransfer.download({
-        nodeId: metadata.nodeId,
-        nodeGeneration: metadata.nodeGeneration,
-        descriptor: {
-          direction: 'DOWNLOAD',
-          resource: {
-            kind: 'GIT_COMMIT_BLOB',
-            workspaceId: metadata.workspaceId,
-            commit,
-            path,
-            ...(repositoryPath.length === 0 ? {} : { repositoryPath })
-          },
-          fileName,
-          revision: metadata.revision,
-          size: metadata.size
-        },
-        sink: target.sink,
-        signal: target.signal
-      });
-      return 'COMPLETED';
-    } catch {
-      if (target?.cancelled() === true) return 'CANCELLED';
-      return target?.started() === true ? 'FAILED' : 'UNAVAILABLE';
-    }
+    if (nodeManifest.value?.directTransfer?.download !== true) return 'UNAVAILABLE';
+    const target = gitDirectFile(commit, path, repositoryPath, refs);
+    return target === undefined ? 'UNAVAILABLE' : downloadWorkspaceDirectFile(target);
   }
 
   const adminAuthService = createAdminAuthService({
@@ -2647,11 +2471,7 @@ export function createWorkbenchPageController<
 
   async function openSession(
     sessionId: string,
-    options: {
-      readonly preserveMobileWorkspaceSurface?: boolean;
-      readonly deferInitialScroll?: boolean;
-      readonly skipSaveCurrent?: boolean;
-    } = {}
+    options: Parameters<typeof workbenchSessionSelectionService.openSession>[1] = {}
   ): Promise<void> {
     return workbenchSessionSelectionService.openSession(sessionId, options);
   }
@@ -2660,154 +2480,77 @@ export function createWorkbenchPageController<
     if (selectedSessionId.value !== undefined) void openSession(selectedSessionId.value);
   }
 
-  async function rewindConversation(turn: ConversationTurn, item: ConversationItem): Promise<void> {
-    const nodeId = workspaceNodeId.value;
-    const session = selectedSession.value;
-    if (
-      nodeId === undefined ||
-      session === undefined ||
-      turn.rewind === undefined ||
-      !rewindConversationEnabled.value
-    )
-      return;
-    const before = item.kind === 'user_message';
-    const previousSessionId = session.id;
-    const sourceSelected = () =>
-      workspaceNodeId.value === nodeId && selectedSessionId.value === session.id;
-    try {
-      await ElMessageBox.confirm(
-        before
-          ? translate('generated.workbenchPageController.createANewSessionBranchBeforeThis')
-          : translate('generated.workbenchPageController.createANewSessionBranchThatRetains'),
-        translate('generated.workbenchPageController.createFallbackBranch'),
-        {
-          closeIcon: marIcon('close'),
-          icon: marIcon('warning'),
-          confirmButtonText: translate('generated.workbenchPageController.createBranch'),
-          cancelButtonText: translate('generated.workbenchPageController.cancel'),
-          type: 'warning'
-        }
-      );
-    } catch {
-      return;
-    }
-    if (
-      workspaceNodeId.value !== nodeId ||
-      selectedSessionId.value !== session.id ||
-      !rewindConversationEnabled.value
-    )
-      return;
-    const finishSubmission = submissionService.begin(`session:${session.id}`);
-    if (finishSubmission === undefined) return;
-    const previousInput = sessionInput.value;
-    let createdSessionId: string | undefined;
-    loading.value = true;
-    try {
-      const result = await request<{ session: Session }>(
-        `/api/agent-sessions/${agentSessionPathId(session.id)}/rewind`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            nodeId,
-            turnId: turn.turnId ?? turn.id,
-            position: before ? 'BEFORE' : 'AFTER',
-            boundary: before ? turn.rewind.before : turn.rewind.after
-          })
-        }
-      );
-      if (!sourceSelected()) return;
-      createdSessionId = result.session.id;
-      replaceSession(result.session.id, result.session);
-      await openSession(result.session.id);
-      if (workspaceNodeId.value !== nodeId || selectedSessionId.value !== result.session.id) return;
-      sessionInput.value = before ? conversationItemText(item.kind, item.payload) : '';
-      focusComposerInputAt(sessionInput.value.length);
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('generated.workbenchPageController.fallbackBranchCreated')
-      });
-    } catch (error) {
-      if (
-        createdSessionId !== undefined &&
-        workspaceNodeId.value === nodeId &&
-        selectedSessionId.value === createdSessionId
-      ) {
-        await openSession(previousSessionId).catch(() => undefined);
-        if (sourceSelected()) sessionInput.value = previousInput;
+  const sessionHistoryMutation = createWorkbenchSessionHistoryMutationService({
+    current: () => {
+      const nodeId = workspaceNodeId.value;
+      const session = selectedSession.value;
+      return nodeId === undefined || session === undefined ? undefined : { nodeId, session };
+    },
+    canRewind: () => rewindConversationEnabled.value,
+    canRollback: () => rollbackConversationEnabled.value,
+    confirmRewind: async (before) => {
+      try {
+        await ElMessageBox.confirm(
+          before
+            ? translate('generated.workbenchPageController.createANewSessionBranchBeforeThis')
+            : translate('generated.workbenchPageController.createANewSessionBranchThatRetains'),
+          translate('generated.workbenchPageController.createFallbackBranch'),
+          {
+            closeIcon: marIcon('close'),
+            icon: marIcon('warning'),
+            confirmButtonText: translate('generated.workbenchPageController.createBranch'),
+            cancelButtonText: translate('generated.workbenchPageController.cancel'),
+            type: 'warning'
+          }
+        );
+        return true;
+      } catch {
+        return false;
       }
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('generated.workbenchPageController.unableToCreateAFallbackBranch', {
-          value0: message(error)
-        })
-      });
-    } finally {
-      finishSubmission();
-      loading.value = false;
-    }
-  }
-
-  async function rollbackConversation(
-    turn: ConversationTurn,
-    item: ConversationItem
-  ): Promise<void> {
-    const nodeId = workspaceNodeId.value;
-    const session = selectedSession.value;
-    if (
-      nodeId === undefined ||
-      session === undefined ||
-      !rollbackConversationEnabled.value ||
-      item.kind !== 'user_message' ||
-      item.status !== 'COMPLETED' ||
-      turn.rewind === undefined ||
-      !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(turn.status)
-    )
-      return;
-    const sourceSelected = () =>
-      workspaceNodeId.value === nodeId && selectedSessionId.value === session.id;
-    try {
-      await ElMessageBox.confirm(
-        translate('generated.workbenchPageController.rollbackConversationWarning'),
-        translate('generated.workbenchPageController.rollbackConversation'),
-        {
-          closeIcon: marIcon('close'),
-          icon: marIcon('warning'),
-          confirmButtonText: translate(
-            'generated.workbenchPageController.confirmRollbackConversation'
-          ),
-          cancelButtonText: translate('generated.workbenchPageController.cancel'),
-          type: 'warning'
-        }
-      );
-    } catch {
-      return;
-    }
-    if (
-      workspaceNodeId.value !== nodeId ||
-      selectedSessionId.value !== session.id ||
-      !rollbackConversationEnabled.value
-    )
-      return;
-    const finishSubmission = submissionService.begin(`session:${session.id}`);
-    if (finishSubmission === undefined) return;
-    loading.value = true;
-    try {
-      const result = await request<{ session: Session }>(
-        `/api/agent-sessions/${agentSessionPathId(session.id)}/rollback`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            nodeId,
-            turnId: turn.turnId ?? turn.id,
-            boundary: turn.rewind.before
-          })
-        }
-      );
+    },
+    confirmRollback: async () => {
+      try {
+        await ElMessageBox.confirm(
+          translate('generated.workbenchPageController.rollbackConversationWarning'),
+          translate('generated.workbenchPageController.rollbackConversation'),
+          {
+            closeIcon: marIcon('close'),
+            icon: marIcon('warning'),
+            confirmButtonText: translate(
+              'generated.workbenchPageController.confirmRollbackConversation'
+            ),
+            cancelButtonText: translate('generated.workbenchPageController.cancel'),
+            type: 'warning'
+          }
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    request,
+    sessionPathId: agentSessionPathId,
+    // History mutations retain the existing shared admission until navigation/recovery settles.
+    beginSubmission: (context) => submissionService.begin(context, undefined, null),
+    draft: {
+      read: () => sessionInput.value,
+      restore: (text) => {
+        sessionInput.value = text;
+      },
+      fill: (text, operation) => {
+        sessionInput.value = text;
+        if (operation === 'rollback') saveCurrentWorkspaceView();
+        focusComposerInputAt(text.length);
+      }
+    },
+    replaceSession,
+    openSession: (id, options) => openSession(id, { ...options, throwOnFailure: true }),
+    invalidateDetail: (nodeId, session) => {
       workspaceViewCache(nodeId, session.workspaceId).sessionDetails.delete(session.id);
-      if (!sourceSelected()) return;
-      replaceSession(session.id, result.session);
+    },
+    clearHistory: (sessionId) => {
       clearConversationProjectionSession(
-        session.id,
+        sessionId,
         runs.value.map((run) => run.id)
       );
       conversationTurns.value = [];
@@ -2815,24 +2558,55 @@ export function createWorkbenchPageController<
       runs.value = [];
       resetConversationProjection();
       watchCoordinator.current?.stopSession();
-      await openSession(session.id, {
-        preserveMobileWorkspaceSurface: true,
-        deferInitialScroll: true
+    }
+  });
+  watch(
+    sessionHistoryMutation.pending,
+    (pending) => {
+      loading.value = pending;
+    },
+    { flush: 'sync' }
+  );
+
+  async function rewindConversation(turn: ConversationTurn, item: ConversationItem): Promise<void> {
+    const result = await sessionHistoryMutation.rewind(turn, item);
+    if (result.status === 'APPLIED') {
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('generated.workbenchPageController.fallbackBranchCreated')
       });
-      if (!sourceSelected()) return;
-      sessionInput.value = conversationItemText(item.kind, item.payload);
-      saveCurrentWorkspaceView();
-      focusComposerInputAt(sessionInput.value.length);
-    } catch (error) {
+    } else if (result.status === 'FAILED') {
       ElMessage.error({
         icon: marIcon('error'),
-        message: translate('generated.workbenchPageController.unableToRollbackConversation', {
-          value0: message(error)
-        })
+        message: translate(
+          result.phase === 'REQUEST'
+            ? 'generated.workbenchPageController.unableToCreateAFallbackBranch'
+            : 'generated.workbenchPageController.fallbackBranchCreatedButLoadFailed',
+          {
+            value0: message(result.error)
+          }
+        )
       });
-    } finally {
-      finishSubmission();
-      loading.value = false;
+    }
+  }
+
+  async function rollbackConversation(
+    turn: ConversationTurn,
+    item: ConversationItem
+  ): Promise<void> {
+    const result = await sessionHistoryMutation.rollback(turn, item);
+    if (result.status === 'FAILED') {
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate(
+          result.phase === 'REQUEST'
+            ? 'generated.workbenchPageController.unableToRollbackConversation'
+            : 'generated.workbenchPageController.rollbackCompletedButLoadFailed',
+          {
+            value0: message(result.error)
+          }
+        )
+      });
     }
   }
 

@@ -46,4 +46,16 @@ describe('shared submission gate', () => {
     expect(onTimeout).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('keeps an explicitly settlement-bound transaction exclusive without changing normal timeouts', () => {
+    vi.useFakeTimers();
+    const service = createWorkbenchSubmissionService();
+    const finish = service.begin('session:history', undefined, null)!;
+    vi.advanceTimersByTime(30_000);
+    expect(service.begin('session:message')).toBeUndefined();
+    expect(finish()).toBe(true);
+    service.begin('session:message');
+    vi.advanceTimersByTime(5_000);
+    expect(service.pending.value).toBe(false);
+  });
 });

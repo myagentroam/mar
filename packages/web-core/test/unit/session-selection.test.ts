@@ -175,6 +175,21 @@ async function watchedTabFixture() {
   };
 }
 
+it.each([false, true])(
+  'exposes history load failures to transactional callers only when requested: %s',
+  async (throwOnFailure) => {
+    const f = tabSessionFixture();
+    const failure = new Error('HISTORY_UNAVAILABLE');
+    vi.mocked(f.options.beginWatch).mockRejectedValue(failure);
+    const result = f.service.openSession(f.session.id, { throwOnFailure });
+    if (throwOnFailure) await expect(result).rejects.toBe(failure);
+    else await expect(result).resolves.toBeUndefined();
+    expect(f.options.initialLoadFailed.value).toBe(true);
+    expect(f.options.loadingInitial.value).toBe(false);
+    expect(f.options.notice).toHaveBeenCalledTimes(throwOnFailure ? 0 : 1);
+  }
+);
+
 describe('Shared session selection', () => {
   it('retains unread across missing-connection and same-session retries, then reads after a real snapshot', async () => {
     const f = await watchedTabFixture();

@@ -75,6 +75,10 @@ export const workbenchPageEnUS = {
       createBranch: 'Create branch',
       cancel: 'Cancel',
       fallbackBranchCreated: 'Fallback branch created.',
+      fallbackBranchCreatedButLoadFailed:
+        'The fallback branch was created, but could not be opened: {value0}',
+      rollbackCompletedButLoadFailed:
+        'The conversation was rolled back, but could not be reloaded: {value0}',
       unableToCreateAFallbackBranch: 'Unable to create a fallback branch: {value0}',
       rollbackConversationWarning:
         'This permanently deletes this user message and all later conversation history in the current session. Workspace files are not rolled back, and the message will be restored to the composer.',
