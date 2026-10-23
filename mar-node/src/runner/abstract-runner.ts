@@ -293,6 +293,13 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     return page === undefined ? undefined : { ...page, source: 'native' };
   }
 
+  async readConversationRewind(
+    input: RunnerConversationRewindInput
+  ): Promise<ReadonlyMap<NodeConversationTurn['id'], NonNullable<NodeConversationTurn['rewind']>>> {
+    void input;
+    return new Map();
+  }
+
   async readExternalActivity(
     session: NodeAgentSession
   ): Promise<ExternalSessionActivationState | undefined> {
@@ -460,6 +467,16 @@ export interface RunnerConversationHistoryReaders {
 
 export interface RunnerConversationHistoryPage extends RunnerConversationPage {
   readonly source: RunnerConversationHistorySource;
+}
+
+export interface RunnerConversationRewindInput {
+  readonly session: Readonly<NodeAgentSession>;
+  readonly turns: readonly NodeConversationTurn[];
+  readonly managedActive: boolean;
+  readonly firstPage: boolean;
+  readonly readHistory: (input: {
+    readonly limit: number;
+  }) => Promise<RunnerConversationHistoryPage | undefined>;
 }
 
 export interface RunnerSessionPresentationContext {
