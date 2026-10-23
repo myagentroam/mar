@@ -513,7 +513,9 @@ export class SessionMessageService {
       };
       const delivery = await prepare();
       return {
-        session: this.options.present(sessionForPresentation),
+        session: this.options.present(
+          this.options.runtime.getAgentSession(session.id) ?? sessionForPresentation
+        ),
         run: created.run,
         ...(created.queueItem === undefined ? {} : { queueItemId: created.queueItem.id }),
         delivery,
