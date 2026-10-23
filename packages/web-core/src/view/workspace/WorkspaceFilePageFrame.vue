@@ -78,7 +78,7 @@ defineExpose({ root });
         "
         class="mar-tooltip-control"
         ><button
-          class="workspace-file-mobile-actions-toggle"
+          class="workspace-file-mobile-actions-toggle icon-button utility-control"
           type="button"
           :aria-expanded="mobileActionsExpanded"
           :aria-label="
@@ -170,6 +170,12 @@ defineExpose({ root });
   flex-direction: column;
 }
 
+.workspace-file-page-frame :deep(.file-preview-actions .el-button.is-circle),
+.workspace-file-mobile-actions :deep(.el-button),
+.workspace-file-mobile-actions-toggle {
+  border-radius: var(--mar-radius-control);
+}
+
 @media (min-width: 768px) {
   .workspace-file-page-frame-title {
     display: grid;
@@ -213,7 +219,6 @@ defineExpose({ root });
   .file-preview-desktop-actions :deep(.el-button.is-circle) {
     width: var(--mar-compact-control-size);
     height: var(--mar-compact-control-size);
-    border-radius: var(--mar-radius-control);
   }
 }
 
@@ -230,7 +235,7 @@ defineExpose({ root });
     align-items: center;
     gap: 0;
     border: 1px solid var(--mar-border-default);
-    border-radius: 0.75rem;
+    border-radius: var(--mar-radius-surface);
     background: color-mix(in srgb, var(--mar-bg-panel) 96%, transparent);
     box-shadow: 0 4px 14px var(--mar-shadow-medium);
     padding: 0.25rem 0.2rem 0.25rem 0.25rem;
@@ -299,19 +304,6 @@ defineExpose({ root });
     color: var(--mar-text-secondary);
     cursor: pointer;
     font-size: 1.1rem;
-  }
-
-  .workspace-file-mobile-actions-toggle:hover,
-  .workspace-file-mobile-actions-toggle:active {
-    background: transparent;
-    color: var(--mar-color-brand);
-  }
-
-  .workspace-file-mobile-actions-toggle:focus-visible {
-    background: transparent;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 35%, transparent);
-    color: var(--mar-color-brand);
-    outline: none;
   }
 
   .workspace-file-mobile-actions.is-collapsed .workspace-file-mobile-actions-body {

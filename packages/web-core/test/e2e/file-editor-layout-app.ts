@@ -10,8 +10,8 @@ import { i18n, localePreferenceService } from '../../src/service/LocalePreferenc
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
 
 localePreferenceService().setLocale('en-US');
-themePreferenceService().setTheme('vscode-dark-2026');
 const query = new URLSearchParams(location.search);
+themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
 const longContent = query.has('long');
 const handle = ref<{ selectAll(): boolean }>();
 const restoreDraft = query.has('draft');
