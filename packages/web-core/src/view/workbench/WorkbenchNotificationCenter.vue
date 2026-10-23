@@ -457,9 +457,7 @@ const emit = defineEmits<{
   gap: 0.2rem;
 }
 .workbench-notification-upload strong,
-.workbench-notification-upload small,
-.workbench-notification-list strong,
-.workbench-notification-list small {
+.workbench-notification-upload small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -475,8 +473,9 @@ const emit = defineEmits<{
   line-height: 1.35;
 }
 .workbench-notification-list > li > button:first-child small {
-  font-size: var(--mar-font-size-body);
-  line-height: 1.35;
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 .workbench-upload-size {
   display: inline-block;
@@ -495,18 +494,19 @@ const emit = defineEmits<{
 .workbench-notification-list > li > button:first-child {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 0.6rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.2rem;
+  padding: 0;
   text-align: left;
 }
 .workbench-notification-list > li > button:first-child strong,
 .workbench-notification-list > li > button:first-child small {
-  grid-column: 1;
+  overflow-wrap: anywhere;
 }
 .workbench-notification-title {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   color: var(--el-text-color-primary);
 }
@@ -526,9 +526,6 @@ const emit = defineEmits<{
   padding: 2px 4px;
 }
 .workbench-notification-list time {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  align-self: center;
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;

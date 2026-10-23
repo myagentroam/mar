@@ -24,15 +24,24 @@ localePreferenceService().setLocale('en-US');
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );
+let notificationRemoved = false;
 const service = createWorkbenchNotificationService(ref('fixture'), {
-  request: async <T>() =>
-    ({
+  request: async <T>(path: string, init?: RequestInit) => {
+    if (path === '/api/notifications/notice' && init?.method === 'DELETE') {
+      notificationRemoved = true;
+    }
+    if (notificationRemoved) return { notifications: [] } as T;
+    return {
       notifications: [
         {
           id: 'notice',
           kind: 'agent',
-          title: 'Review ready',
-          message: 'A complete notification message',
+          title: new URLSearchParams(location.search).has('long-notification')
+            ? 'MyAgentRoam: 检查通知布局与完整内容 Review notification layout and complete content'
+            : 'Review ready',
+          message: new URLSearchParams(location.search).has('long-notification')
+            ? `Run completed. Open the related session to review all results.\n完整通知内容不应被截断。${'LongUnbrokenDetail'.repeat(20)}\nEnd of notification.`
+            : 'A complete notification message',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           expiresAt: Date.now() + 60000,
@@ -45,7 +54,8 @@ const service = createWorkbenchNotificationService(ref('fixture'), {
           }
         }
       ]
-    }) as T
+    } as T;
+  }
 });
 const compactCount = ref(0);
 const canCompact = ref(true);

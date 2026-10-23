@@ -226,6 +226,79 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
+for (const mobile of [false, true]) {
+  test(`Notification long content wraps completely and remains scrollable: mobile=${mobile}`, async ({
+    browser
+  }, testInfo) => {
+    const viewport = mobile ? { width: 320, height: 480 } : { width: 1280, height: 720 };
+    const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}visual-alignment.html?long-notification=1${mobile ? '&mobile=1&theme=daylight' : ''}`
+      );
+      await page.locator('.workbench-notification-center button').first().click();
+      const panel = page.locator('.workbench-notification-panel');
+      const item = panel.locator('.workbench-notification-list > li').first();
+      const title = item.locator('strong');
+      const message = item.locator('small');
+      await expect(message).toContainText('End of notification.');
+      for (const text of [title, message]) {
+        const metrics = await text.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const box = element.getBoundingClientRect();
+          const lines = [...range.getClientRects()];
+          return {
+            lines: lines.length,
+            width: box.width,
+            contentWidth: range.getBoundingClientRect().width,
+            allLinesInside: lines.every((line) => {
+              const center = line.top + line.height / 2;
+              return center >= box.top && center <= box.bottom;
+            })
+          };
+        });
+        expect(metrics.lines).toBeGreaterThan(1);
+        expect(metrics.contentWidth).toBeLessThanOrEqual(metrics.width + 1);
+        expect(metrics.allLinesInside).toBe(true);
+      }
+      const font = await message.evaluate((element) => ({
+        actual: getComputedStyle(element).fontSize,
+        expected: getComputedStyle(document.documentElement)
+          .getPropertyValue('--mar-font-size-meta')
+          .trim()
+      }));
+      expect(font.actual).toBe(font.expected);
+      const messageBox = (await message.boundingBox())!;
+      const time = item.locator('time');
+      const timeBox = (await time.boundingBox())!;
+      expect(timeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
+      const section = panel.locator('.workbench-notification-section');
+      await section.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(time).toBeInViewport();
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+      await page.screenshot({
+        path: testInfo.outputPath('notification-long.png'),
+        animations: 'disabled'
+      });
+      const remove = item.locator('.workbench-notification-delete');
+      await remove.scrollIntoViewIfNeeded();
+      await expect(remove).toBeInViewport({ ratio: 1 });
+      if (mobile) await remove.tap();
+      else await remove.click();
+      await expect(item).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test('Mobile first touch executes the action and the notification stays within the viewport', async ({
   browser
 }, testInfo) => {
