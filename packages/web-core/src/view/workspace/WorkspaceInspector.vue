@@ -5146,9 +5146,19 @@ button.history-refresh {
   text-decoration: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .history-toolbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .history-toolbar > .history-filter:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .history-toolbar > .history-refresh {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 </style>

@@ -226,6 +226,49 @@ for (const language of [
     await expect(page.locator('.history-graph-continuation line')).toHaveCount(3);
     await verify('narrow-expanded-merge');
     await inspector.screenshot({ path: testInfo.outputPath('graph-narrow-expanded-merge.png') });
+
+    await inspector.evaluate((element) => {
+      for (const property of ['width', 'min-width', 'max-width'])
+        (element as HTMLElement).style.removeProperty(property);
+    });
+    for (const width of [320, 390, 767, 768]) {
+      await page.setViewportSize({ width, height: 844 });
+      if (width === 320) await page.getByRole('button', { name: /打开文件|Open files/ }).click();
+      await page.getByRole('tab', { name: language.history, exact: true }).click();
+      const toolbar = page.locator('.history-toolbar');
+      await expect(toolbar).toBeVisible();
+      const layout = await toolbar.evaluate((element) => {
+        const rect = (item: Element) => {
+          const { left, right, top, bottom, height } = item.getBoundingClientRect();
+          return { left, right, top, bottom, height };
+        };
+        const filters = element.querySelectorAll('.history-filter');
+        return {
+          toolbar: rect(element),
+          repository: rect(filters[0]!),
+          branches: rect(filters[1]!),
+          refresh: rect(element.querySelector('.history-refresh')!)
+        };
+      });
+      const center = (item: { top: number; bottom: number }) => (item.top + item.bottom) / 2;
+      expect(Math.abs(center(layout.repository) - center(layout.refresh))).toBeLessThanOrEqual(1);
+      expect(layout.refresh.left).toBeGreaterThanOrEqual(layout.repository.right);
+      expect(layout.refresh.right).toBeLessThanOrEqual(layout.toolbar.right + 1);
+      if (width < 768) {
+        expect(layout.branches.top).toBeGreaterThanOrEqual(layout.repository.bottom);
+        expect(Math.abs(layout.branches.left - layout.repository.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(layout.branches.right - layout.toolbar.right)).toBeLessThanOrEqual(1);
+        expect(layout.toolbar.height).toBeLessThanOrEqual(
+          layout.repository.height + layout.branches.height + 8
+        );
+      } else {
+        expect(Math.abs(center(layout.repository) - center(layout.branches))).toBeLessThanOrEqual(
+          1
+        );
+      }
+      if (width === 390)
+        await inspector.screenshot({ path: testInfo.outputPath('history-toolbar-mobile.png') });
+    }
   });
 }
 
