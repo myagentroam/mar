@@ -480,7 +480,7 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 .activity-rail nav button.active:not(:disabled) {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
   color: var(--mar-color-brand-text);
 }
 
@@ -595,13 +595,14 @@ function openBlankMenu(event: MouseEvent): void {
   cursor: pointer;
 }
 
-.settings-nav button:hover,
-.settings-nav button.active {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+.settings-nav button:hover {
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
 }
 
 .settings-nav button.active {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
   font-weight: 500;
 }
 
@@ -774,7 +775,7 @@ function openBlankMenu(event: MouseEvent): void {
 
 @media (max-width: 767px) {
   .activity-rail nav button.active:not(:disabled) {
-    background: var(--mar-color-brand-selected);
+    background: var(--mar-fill-selection);
     color: var(--mar-color-brand-text);
   }
 }

@@ -223,7 +223,30 @@ describe('Web theme preference', () => {
     expect(source).toContain('--el-message-bg-color: var(--mar-bg-tab-inactive);');
   });
 
-  it('uses rounded brand-highlight selection without tab underlines on desktop and mobile', () => {
+  it('keeps navigation selection separate from brand interactions and stronger than hover', () => {
+    const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    const palettes = [
+      styleDeclarations(source, ':root').find((rule) => '--mar-bg-page' in rule)!,
+      styleDeclarations(source, "html.console-ui[data-theme='vscode-dark-2026']").find(
+        (rule) => '--mar-bg-page' in rule
+      )!
+    ];
+    for (const colors of palettes) {
+      const selected = colors['--mar-fill-selection']!;
+      const hover = colors['--mar-fill-row-hover']!;
+      const panel = colors['--mar-bg-panel']!;
+      expect(selected).not.toBe(colors['--mar-color-brand-selected']);
+      expect(contrast(colors['--mar-text-primary']!, selected)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(colors['--mar-text-secondary']!, selected)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(colors['--mar-color-brand-text']!, selected)).toBeGreaterThanOrEqual(3);
+      expect(contrast(selected, panel)).toBeGreaterThan(contrast(hover, panel));
+      expect(contrast(selected, colors['--mar-bg-chrome']!)).toBeGreaterThan(
+        contrast(hover, colors['--mar-bg-chrome']!)
+      );
+    }
+  });
+
+  it('uses rounded neutral selection without tab underlines on desktop and mobile', () => {
     const global = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
     const radii = styleDeclarations(global, ':root').find(
       (rule) => '--mar-radius-selection' in rule
@@ -260,7 +283,7 @@ describe('Web theme preference', () => {
 
     expect(workspaceTabs).not.toContain('box-shadow: inset 0 -2px 0 var(--mar-color-brand)');
     expect(styleDeclarations(workspaceTabs, '.workspace-tab.active')[0]!['background']).toContain(
-      'var(--mar-color-brand-selected)'
+      'var(--mar-fill-selection)'
     );
     expect(styleDeclarations(workspaceTabs, '.workspace-tab:not(.active):hover')).toContainEqual(
       expect.objectContaining({ background: 'var(--mar-fill-row-hover)' })
@@ -271,18 +294,18 @@ describe('Web theme preference', () => {
       '.inspector-tabs button.active:hover:not(:disabled)'
     ])
       expect(styleDeclarations(inspector, selector)).toContainEqual(
-        expect.objectContaining({ background: 'var(--mar-color-brand-selected)' })
+        expect.objectContaining({ background: 'var(--mar-fill-selection)' })
       );
     expect(
       styleDeclarations(inspector, '.inspector-tabs button:not(.active):hover:not(:disabled)')
     ).toContainEqual(
       expect.objectContaining({
-        background: 'var(--mar-bg-tab-inactive)',
+        background: 'var(--mar-fill-row-hover)',
         color: 'var(--mar-text-primary)'
       })
     );
     expect(styleDeclarations(terminal, '.terminal-tab.active')).toContainEqual(
-      expect.objectContaining({ background: 'var(--mar-color-brand-selected)' })
+      expect.objectContaining({ background: 'var(--mar-fill-selection)' })
     );
     expect(
       styleDeclarations(terminal, '.terminal-tab:not(.active):hover:not(:disabled)')
@@ -320,12 +343,12 @@ describe('Web theme preference', () => {
     );
     expect(fileTabs).not.toContain('box-shadow: inset 0 -2px var(--mar-color-brand)');
     expect(styleDeclarations(fileTabs, '.workspace-file-tab.is-active')).toContainEqual(
-      expect.objectContaining({ background: 'var(--mar-color-brand-selected)' })
+      expect.objectContaining({ background: 'var(--mar-fill-selection)' })
     );
     expect(fileTabs).toContain('background: var(--mar-bg-subtle);');
     expect(styleDeclarations(fileTabs, '.workspace-file-tab:not(.is-active):hover')).toContainEqual(
       expect.objectContaining({
-        background: 'var(--mar-bg-tab-inactive)',
+        background: 'var(--mar-fill-row-hover)',
         color: 'var(--mar-text-primary)'
       })
     );
@@ -347,9 +370,9 @@ describe('Web theme preference', () => {
     );
     expect(
       styleDeclarations(workspaceTree, '.workspace-branches > li.selected .workspace-branch-button')
-    ).toContainEqual(expect.objectContaining({ color: 'var(--mar-color-brand-text)' }));
+    ).toContainEqual(expect.objectContaining({ color: 'var(--mar-text-primary)' }));
     expect(styleDeclarations(workspaceTree, '.tree-node-row.selected .tree-node')).toContainEqual(
-      expect.objectContaining({ color: 'var(--mar-color-brand-text)' })
+      expect.objectContaining({ color: 'var(--mar-text-primary)' })
     );
     expect(workspaceTree).toContain('margin: 2px 6px;');
     expect(sessionList).not.toContain('box-shadow: inset 2px 0 var(--mar-color-brand)');

@@ -1439,11 +1439,11 @@ onBeforeUnmount(() => {
 }
 
 .history-list article:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
 }
 
 .history-list article.selected {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .history-list article.selected .history-open,
@@ -1451,7 +1451,7 @@ onBeforeUnmount(() => {
 .history-list article.selected .history-open time,
 .history-list article.selected .history-pin-indicator,
 .history-list article.selected .history-more-button {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .history-open {
@@ -1493,6 +1493,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-list article.selected .history-open time {
+  color: var(--mar-text-secondary);
 }
 
 .history-pin-indicator {

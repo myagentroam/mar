@@ -4189,14 +4189,14 @@ onBeforeUnmount(revokePreviewObjectUrl);
 }
 
 .inspector-tabs button:not(.active):hover:not(:disabled) {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
 .inspector-tabs button.active,
 .inspector-tabs button.active:hover:not(:disabled) {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .content-search {

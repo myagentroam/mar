@@ -272,7 +272,7 @@ for (const language of [
 
 // Workbench Live and the capability baseline
 
-test('Workbench controls preserve selection, foreground-only emphasis, focus, and mobile hit targets', async ({
+test('Workbench controls preserve selection, foreground-only emphasis, focus, and compact mobile controls', async ({
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -285,7 +285,7 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     const colors = await navigation.evaluate((button) => {
       const reference = document.createElement('span');
       reference.style.cssText =
-        'background-color: var(--mar-color-brand-selected); color: var(--mar-color-brand-text);';
+        'background-color: var(--mar-fill-selection); color: var(--mar-color-brand-text);';
       button.append(reference);
       const actual = getComputedStyle(button);
       const expected = getComputedStyle(reference);
@@ -322,6 +322,32 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     }, theme);
     await page.mouse.move(0, 0);
     await expectSelectedNavigation();
+    const selection = await page.locator('html').evaluate((root) => {
+      const reference = document.createElement('span');
+      reference.style.cssText =
+        'background: var(--mar-fill-selection); color: var(--mar-text-primary);';
+      root.append(reference);
+      const style = getComputedStyle(reference);
+      const colors = { background: style.backgroundColor, text: style.color };
+      reference.remove();
+      return colors;
+    });
+    const workspace = page.locator('.workspace-tab.active').first();
+    await expect(workspace.locator('.workspace-tab-content > span')).toHaveCSS(
+      'color',
+      selection.text
+    );
+    await expect
+      .poll(() => workspace.evaluate((element) => getComputedStyle(element).backgroundImage))
+      .toContain(selection.background);
+    const treeWorkspace = page.locator('.workspace-branches > li.selected').first();
+    await expect(treeWorkspace).toHaveCSS('background-color', selection.background);
+    await expect(treeWorkspace.locator('.workspace-branch-button')).toHaveCSS(
+      'color',
+      selection.text
+    );
+    await treeWorkspace.hover();
+    await expect(treeWorkspace).toHaveCSS('background-color', selection.background);
     const idle = await refresh.evaluate((button) => ({
       color: getComputedStyle(button).color,
       background: getComputedStyle(button).backgroundColor
@@ -353,15 +379,20 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
   expect(navigationBox!.height).toBeGreaterThanOrEqual(36);
   expect(navigationBox!.x).toBeGreaterThanOrEqual(0);
   expect(navigationBox!.x + navigationBox!.width).toBeLessThanOrEqual(390);
-  for (const [opener, control] of [
-    ['打开文件', refresh],
-    ['打开会话列表', page.getByRole('button', { name: '刷新当前工作区会话' })]
+  const compactSize = await page
+    .locator('html')
+    .evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
+    );
+  for (const [opener, control, size] of [
+    ['打开文件', refresh, 26],
+    ['打开会话列表', page.getByRole('button', { name: '刷新当前工作区会话' }), compactSize]
   ] as const) {
     await page.getByRole('button', { name: opener, exact: true }).click();
     await expect(control).toBeVisible();
     const box = await control.boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(36);
-    expect(box?.height).toBeGreaterThanOrEqual(36);
+    expect(box?.width).toBe(size);
+    expect(box?.height).toBe(size);
     const scrim = page.getByRole('button', { name: '关闭工作区工具', exact: true });
     const bounds = await scrim.boundingBox();
     expect(bounds).not.toBeNull();

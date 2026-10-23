@@ -929,7 +929,7 @@ function submitSessionSearch(): void {
 
 .session-link:hover:not(:disabled),
 .session-link.selected {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .session-link strong {
@@ -966,7 +966,7 @@ function submitSessionSearch(): void {
 .session-row.selected,
 .session-row.selected:hover,
 .session-row.selected:focus-within {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .session-row-actions {
@@ -1001,6 +1001,10 @@ function submitSessionSearch(): void {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+}
+
+.session-row.selected .session-relative-time {
+  color: var(--mar-text-secondary);
 }
 
 .session-load-more-row {
