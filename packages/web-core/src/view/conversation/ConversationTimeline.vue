@@ -6,22 +6,23 @@ import {
   toolPresentationStatus
 } from '../../util/tool-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
+import { createWorkbenchSecondClock } from '../../service/WorkbenchClockService.js';
+import { Back, Check, CopyDocument, RefreshLeft } from '@element-plus/icons-vue';
 import {
-  Back,
-  Check,
-  CopyDocument,
-  RefreshLeft,
-  Document,
-  Cpu,
-  Monitor,
-  Tools,
-  EditPen
-} from '@element-plus/icons-vue';
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onUpdated,
+  reactive,
+  ref,
+  watch
+} from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
+import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import { conversationWorkProcessBlocks } from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
@@ -136,6 +137,21 @@ const emit = defineEmits<{
 }>();
 
 const timelineElement = ref<HTMLElement>();
+let focusedRecord: HTMLElement | undefined;
+onBeforeUpdate(() => {
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  focusedRecord =
+    active && active instanceof HTMLElement && timelineElement.value?.contains(active)
+      ? active
+      : undefined;
+});
+onUpdated(() => {
+  // Moving a keyed group can detach its focused disclosure from the document.
+  if (focusedRecord?.isConnected && document.activeElement === document.body)
+    focusedRecord.focus({ preventScroll: true });
+  focusedRecord = undefined;
+});
 const renderedItemCount = ref(0);
 let renderFrame: number | undefined;
 let progressiveRenderPending = false;
@@ -338,6 +354,21 @@ const runDurations = computed(() => {
 const processBlocks = computed(() =>
   conversationWorkProcessBlocks(renderedTurns.value, props.runs, new Set(runDurations.value.keys()))
 );
+const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
+const processNow = createWorkbenchSecondClock(
+  computed(
+    () =>
+      synchronized.value &&
+      processBlocks.value.some((block) => block.active && block.startedAt !== undefined)
+  )
+);
+
+function readPreview(item: ConversationItem): string {
+  const presentation = toolPresentation(item.payload);
+  return presentation?.kind === 'READ' && presentation.paths?.length
+    ? presentation.paths.join(' · ')
+    : conversationItemText(item.kind, item.payload, item.status);
+}
 
 function stepDuration(item: ConversationItem): string | undefined {
   const duration = completedStepDuration(item);
@@ -366,7 +397,8 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
       v-for="block in processBlocks"
       :key="block.id"
       :block="block"
-      :synchronized="props.synchronized ?? (props.nodeReady && !props.initializing)"
+      :synchronized="synchronized"
+      :now="block.active ? processNow : undefined"
       class="conversation-turn"
     >
       <article
@@ -427,8 +459,8 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             :open="reasoningDisclosure[displayItem.id]"
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
           >
-            <summary>
-              <Cpu class="conversation-record-icon" aria-hidden="true" />
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon kind="reasoning" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('reasoning') }}</strong>
               <span
                 v-if="
@@ -539,23 +571,24 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary>
-              <component
-                :is="displayItem.type === 'read_group' ? Document : Tools"
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon
+                :kind="displayItem.type === 'read_group' ? 'READ' : 'tool_call'"
                 class="conversation-record-icon"
-                aria-hidden="true"
               />
               <strong>{{
                 displayItem.type === 'read_group'
                   ? translate('toolPresentation.title.READ')
                   : conversationItemLabel('tool_call')
               }}</strong>
-              <span>{{
-                translate('toolPresentation.calls', { count: displayItem.items.length })
-              }}</span>
-              <span v-if="aggregateStatus(displayItem.items)">{{
-                aggregateStatus(displayItem.items)
-              }}</span>
+              <span class="conversation-group-meta">
+                <span>{{
+                  translate('toolPresentation.calls', { count: displayItem.items.length })
+                }}</span>
+                <span v-if="aggregateStatus(displayItem.items)">{{
+                  aggregateStatus(displayItem.items)
+                }}</span>
+              </span>
             </summary>
             <details
               v-for="toolItem in displayItem.items"
@@ -565,17 +598,18 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
             >
               <summary>
-                <component
-                  :is="displayItem.type === 'read_group' ? Document : Tools"
-                  class="conversation-record-icon"
-                  aria-hidden="true"
-                />
-                <strong>{{ conversationItemLabel(toolItem.kind, toolItem.payload) }}</strong>
-                <span>{{
-                  conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)
+                <span class="conversation-tool-preview">{{
+                  (displayItem.type === 'read_group'
+                    ? readPreview(toolItem)
+                    : conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)) ||
+                  conversationItemLabel(toolItem.kind, toolItem.payload)
+                }}</span>
+                <span class="conversation-record-meta">{{
+                  toolPresentationStatus(toolItem.status)
                 }}</span>
               </summary>
               <p
+                class="conversation-record-detail"
                 v-if="
                   groupedItemDisclosure[toolItem.id] &&
                   conversationItemDetail(toolItem.kind, toolItem.payload)
@@ -592,19 +626,21 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary>
-              <Monitor class="conversation-record-icon" aria-hidden="true" />
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon kind="command_execution" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('command_execution') }}</strong>
-              <span>{{
-                translate('toolPresentation.calls', { count: displayItem.items.length })
-              }}</span>
-              <span
-                v-if="
-                  !displayItem.items.some((item) => item.status === 'FAILED') &&
-                  aggregateStatus(displayItem.items)
-                "
-                >{{ aggregateStatus(displayItem.items) }}</span
-              >
+              <span class="conversation-group-meta">
+                <span>{{
+                  translate('toolPresentation.calls', { count: displayItem.items.length })
+                }}</span>
+                <span
+                  v-if="
+                    !displayItem.items.some((item) => item.status === 'FAILED') &&
+                    aggregateStatus(displayItem.items)
+                  "
+                  >{{ aggregateStatus(displayItem.items) }}</span
+                >
+              </span>
             </summary>
             <details
               v-for="commandItem in displayItem.items"
@@ -614,14 +650,13 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
             >
               <summary>
-                <Monitor class="conversation-record-icon" aria-hidden="true" />
-                <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
                 <span class="conversation-command-preview">{{
-                  conversationItemText(commandItem.kind, commandItem.payload)
+                  conversationItemText(commandItem.kind, commandItem.payload) ||
+                  conversationItemLabel(commandItem.kind)
                 }}</span>
                 <span
                   v-if="toolPresentationStatus(commandItem.status) || stepDuration(commandItem)"
-                  class="conversation-command-meta"
+                  class="conversation-command-meta conversation-record-meta"
                 >
                   <span class="conversation-command-status">{{
                     toolPresentationStatus(commandItem.status)
@@ -632,6 +667,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
                 </span>
               </summary>
               <p
+                class="conversation-command-output"
                 v-if="
                   groupedItemDisclosure[commandItem.id] &&
                   conversationItemDetail(commandItem.kind, commandItem.payload)
@@ -648,8 +684,8 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             class="conversation-file-change-details"
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
           >
-            <summary>
-              <EditPen class="conversation-record-icon" aria-hidden="true" />
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon kind="file_change" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
               <span
                 >{{ conversationFileChangeEntries(displayItem.items).length }}
@@ -1173,7 +1209,11 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
             class="conversation-tool-presentation"
             :data-tool-presentation="toolPresentation(displayItem.item.payload)?.kind"
           >
-            <summary>
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon
+                :kind="toolPresentation(displayItem.item.payload)?.kind ?? 'tool_call'"
+                class="conversation-record-icon"
+              />
               <strong>{{
                 conversationItemLabel(displayItem.item.kind, displayItem.item.payload)
               }}</strong>
@@ -1371,7 +1411,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 }
 
 .conversation-timeline {
-  --conversation-record-gap: 8px;
+  --conversation-record-gap: 4px;
   --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
@@ -1410,6 +1450,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   justify-self: start;
   border: 0;
   background: transparent;
+  padding-block: 8px;
 }
 
 .conversation-item:where(:not(.user_message):not(.assistant_message)) {
@@ -1428,6 +1469,12 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   display: flow-root;
   border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-process);
+}
+
+.conversation-item:where(.reasoning-group, .tool-group, .command-group, .file-change-group)
+  > details[open],
+.conversation-item > details.conversation-tool-presentation[open] {
+  background: transparent;
 }
 
 .conversation-item.error {
@@ -1570,11 +1617,56 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 
 .conversation-record-icon {
   display: inline-block;
-  width: 1em;
-  height: 1em;
+  width: 1.125rem;
+  height: 1.125rem;
   margin-right: 0.4rem;
   vertical-align: -0.12em;
   color: var(--mar-conversation-muted);
+}
+
+.conversation-item summary.conversation-record-heading {
+  display: grid;
+  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr);
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+  align-items: baseline;
+}
+
+.conversation-item summary.conversation-record-heading::before,
+.conversation-item summary.conversation-record-heading > .conversation-record-icon,
+.conversation-item summary.conversation-record-heading > strong,
+.conversation-item summary.conversation-record-heading > span {
+  margin-inline: 0;
+}
+
+.conversation-item summary.conversation-record-heading > .conversation-record-icon {
+  align-self: start;
+  margin-block-start: 1px;
+}
+
+.conversation-item summary.conversation-record-heading > strong {
+  font-weight: 500;
+}
+
+.conversation-group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-record-heading > .reasoning-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-tool-presentation > .conversation-record-heading > span {
+  grid-column: 3 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .conversation-record-group > .conversation-tool-detail,
@@ -1592,11 +1684,11 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-record-group > summary {
-  padding: 0.5rem 0.875rem;
+  padding: 0.5rem 14px;
 }
 
 details.conversation-record-group > details {
-  margin-inline: calc(0.875rem + 1rem) 0.875rem;
+  margin-inline: calc(14px + 1.125rem + 0.5rem) 14px;
 }
 
 .conversation-record-group > summary > span + span {
@@ -1605,16 +1697,15 @@ details.conversation-record-group > details {
 
 .conversation-record-group > details > summary {
   display: grid;
-  grid-template-columns: 1em 1em max-content minmax(0, 1fr);
-  column-gap: 0.4rem;
+  grid-template-columns: 1em minmax(0, 1fr) max-content;
+  column-gap: 0.5rem;
   align-items: start;
   white-space: normal;
 }
 
-.conversation-record-group > details > summary::before,
-.conversation-record-group > details > summary > .conversation-record-icon,
-.conversation-record-group > details > summary > strong {
+.conversation-record-group > details > summary::before {
   margin-inline: 0;
+  color: var(--mar-conversation-muted);
 }
 
 .conversation-record-group > details > summary > span {
@@ -1622,15 +1713,54 @@ details.conversation-record-group > details {
   overflow-wrap: anywhere;
 }
 
-.conversation-command-meta {
-  grid-column: 4;
+.conversation-record-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.5rem;
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
+  font-variant-numeric: tabular-nums;
 }
 
 .conversation-command-meta > span {
   margin-inline: 0;
+}
+
+.conversation-command-preview {
+  font-family: var(--mar-font-mono);
+}
+
+.conversation-item .conversation-command-output,
+.conversation-item .conversation-record-detail {
+  margin: 0.5rem 0 0 1.375rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.conversation-item .conversation-command-output {
+  padding: 0.625rem 0.75rem;
+  background: var(--mar-conversation-code);
+  border-radius: var(--mar-radius-control);
+  font-family: var(--mar-font-mono);
+}
+
+.conversation-item .conversation-tool-presentation > p,
+.conversation-item .conversation-tool-sources {
+  margin-inline-start: calc(1em + 1.125rem + 1rem);
+}
+
+.conversation-tool-sources {
+  padding-inline-start: 1rem;
+}
+
+.conversation-tool-sources > li + li {
+  margin-top: 0.75rem;
+}
+
+.conversation-tool-source-host {
+  margin-inline-start: 0.5rem;
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-file-change-list {
@@ -1903,6 +2033,14 @@ details.conversation-record-group > details {
 }
 
 @media (max-width: 767px) {
+  .conversation-record-group > details > summary {
+    grid-template-columns: 1em minmax(0, 1fr);
+  }
+
+  .conversation-record-meta {
+    grid-column: 2;
+  }
+
   .conversation-file-change-list li {
     grid-template-columns: minmax(0, 1fr) max-content;
     row-gap: 2px;

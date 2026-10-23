@@ -112,8 +112,7 @@ function controlsFixture() {
     shouldDisplayItem: () => true,
     runService,
     formatTokenCount: String,
-    formatPercentage: String,
-    formatWorkingElapsed: String
+    formatPercentage: String
   });
   return {
     state,

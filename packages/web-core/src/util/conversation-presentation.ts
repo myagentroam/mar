@@ -170,7 +170,7 @@ function isImageGenerationItem(item: ConversationItem): boolean {
   return value !== undefined && !isSubagentToolCall(value) && isImageGenerationPayload(value);
 }
 
-/** Render each public record in place; process membership comes exclusively from Node. */
+/** Aggregate public records at their latest category position within Node-assigned processes. */
 export function conversationDisplayItems(
   items: readonly ConversationItem[]
 ): readonly ConversationDisplayItem[] {
@@ -197,39 +197,41 @@ export function conversationDisplayItems(
       }
     ];
   });
-  const result: ConversationDisplayItem[] = [];
+  const result: (ConversationDisplayItem | undefined)[] = [];
   const anchors = new Map<string, number>();
   let groupId: string | undefined;
-  let parentId: string | null | undefined;
   for (const entry of projected) {
     const item = 'items' in entry ? entry.items[0]! : entry.item;
-    if (item.processGroup?.id !== groupId || item.parentItemId !== parentId) anchors.clear();
+    if (item.processGroup?.id !== groupId) anchors.clear();
     groupId = item.processGroup?.id;
-    parentId = item.parentItemId;
     if (!groupId || !('items' in entry) || entry.type === 'subagent_group') {
       anchors.clear();
       result.push(entry);
       continue;
     }
-    // Keep summary and visible thinking distinct, anchored at their first record.
-    const key =
-      entry.type === 'reasoning_group'
-        ? `${entry.type}:${conversationPayload(item.payload)?.representation}`
-        : entry.type;
+    // Derived records keep their parent scope without clearing sibling anchors.
+    const key = JSON.stringify([
+      entry.type,
+      item.parentItemId ?? null,
+      entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null
+    ]);
     const index = anchors.get(key);
     const previous = index === undefined ? undefined : result[index];
     if (previous && 'items' in previous && index !== undefined) {
       const members = [...previous.items, ...entry.items];
-      result[index] =
+      const merged =
         previous.type === 'reasoning_group' && entry.type === 'reasoning_group'
           ? { ...previous, items: members, text: `${previous.text}\n\n${entry.text}` }
           : { ...previous, items: members };
+      result[index] = undefined;
+      anchors.set(key, result.length);
+      result.push(merged);
     } else {
       anchors.set(key, result.length);
       result.push(entry);
     }
   }
-  return result;
+  return result.filter((entry): entry is ConversationDisplayItem => entry !== undefined);
 }
 export function reasoningDisclosureOpen(
   previousTurnActive: boolean | undefined,

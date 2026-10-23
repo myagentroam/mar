@@ -127,6 +127,10 @@ for (const labels of [
           `${state} at ${width}px: attachment stays near the toolbar's left edge`
         ).toBeLessThanOrEqual(6);
         if (width < 768) {
+          expect(
+            geometry.controls[1]!.left - geometry.controls[0]!.right,
+            `${state} at ${width}px: attachment stays close to the first configuration option`
+          ).toBeLessThanOrEqual(8);
           for (const [index, control] of geometry.controls.entries()) {
             expect(control.left).toBeGreaterThanOrEqual(geometry.left);
             expect(control.right).toBeLessThanOrEqual(geometry.right);
@@ -1143,6 +1147,13 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   expect(desktopGoalLayout.kindFontSize).toBe(desktopGoalLayout.objectiveFontSize);
   expect(desktopGoalLayout.itemHeight).toBeLessThanOrEqual(32);
   await page.setViewportSize({ width: 390, height: 844 });
+  const goalCard = pendingWork.locator('.goal-card');
+  await goalCard.getByRole('button', { name: '编辑', exact: true }).click();
+  const goalEditor = goalCard.locator('.goal-objective-input textarea');
+  await expect(goalEditor).toHaveCSS('font-size', mobileGoalLayout.objectiveFontSize);
+  await expect(goalEditor).toHaveValue('持续处理当前目标');
+  await goalCard.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(goalCard.locator('.goal-objective')).toHaveText('持续处理当前目标');
   await pendingWork.locator('.queue-item').getByRole('button', { name: '编辑' }).click();
   const mobileQueueEditLayout = await pendingWork
     .locator('.queue-item.editing')
@@ -1171,7 +1182,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   ).toBeLessThan(3);
   expect(mobileQueueEditLayout.bottomGap).toBeLessThanOrEqual(5);
   const queueEditor = pendingWork.locator('.composer-queue-input textarea');
-  await expect(queueEditor).toHaveCSS('font-size', '14px');
+  await expect(queueEditor).toHaveCSS('font-size', mobileQueueLayout.contentFontSize!);
   await queueEditor.fill('第一行\n第二行');
   await expect
     .poll(async () => (await queueEditor.boundingBox())?.height)
