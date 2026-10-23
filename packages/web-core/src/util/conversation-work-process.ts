@@ -16,7 +16,7 @@ export interface ConversationProcessBlock {
     readonly displayItem: ConversationDisplayItem;
   }[];
   readonly groupId?: string;
-  readonly runId?: string | null;
+  runId?: string | null;
   partial: boolean;
   sealed: boolean;
   active: boolean;
@@ -68,6 +68,7 @@ export function conversationWorkProcessBlocks(
           open.set(turn.sessionId, group);
         }
         group.entries.push(entry);
+        if (turn.runId != null) group.runId = turn.runId;
         if (item.processGroup.isStart) group.partial = false;
         if (['PENDING', 'IN_PROGRESS'].includes(item.status)) activeMembers.add(key);
         if (

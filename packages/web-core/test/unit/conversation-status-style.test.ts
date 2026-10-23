@@ -32,4 +32,11 @@ describe('conversation status styling', () => {
       /summary\.conversation-record-heading > \.conversation-group-meta\s*\{\s*flex: none;\s*margin-inline-start: auto;/u
     );
   });
+
+  it('keeps the plan item count in the same trailing metadata position', () => {
+    const timeline = source('conversation/ConversationTimeline');
+    expect(timeline).toMatch(
+      /v-if="planSteps\(displayItem\.item\.payload\)\.length"\s+class="conversation-record-meta"/u
+    );
+  });
 });

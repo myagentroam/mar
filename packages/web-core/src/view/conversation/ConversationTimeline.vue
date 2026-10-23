@@ -1263,7 +1263,9 @@ function stepDuration(item: ConversationItem): string | undefined {
           <details v-if="hasPlanContent(displayItem.item)" open>
             <summary>
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
-              <span v-if="planSteps(displayItem.item.payload).length"
+              <span
+                v-if="planSteps(displayItem.item.payload).length"
+                class="conversation-record-meta"
                 >{{ planSteps(displayItem.item.payload).length }}
                 {{ translate('generated.conversationTimeline.planItems') }}</span
               >

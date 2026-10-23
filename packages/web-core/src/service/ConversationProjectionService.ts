@@ -153,7 +153,14 @@ export function createConversationProjectionService(options: {
     const existing = options.turns.value.findIndex(
       (turn) => turn.id === segmentId && (turn.runId === runId || turn.runId === null)
     );
-    if (existing >= 0) return existing;
+    if (existing >= 0) {
+      // Native history may omit runtime identity; the matching live event restores it.
+      if (options.turns.value[existing]!.runId === null)
+        options.turns.value = options.turns.value.map((turn, index) =>
+          index === existing ? { ...turn, runId } : turn
+        );
+      return existing;
+    }
     if (
       turnId === undefined ||
       typeof event.segmentIndex !== 'number' ||
