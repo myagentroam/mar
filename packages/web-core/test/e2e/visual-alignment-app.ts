@@ -1,6 +1,6 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
-import { h, ref, resolveDirective, withDirectives } from 'vue';
+import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
 import { tableTooltipOptions } from '../../src/util/tooltip.js';
 import SharedTooltipFixture from './shared-tooltip-fixture.vue';
@@ -14,6 +14,8 @@ import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndi
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
+import { createWorkbenchContextCommandService } from '../../src/service/WorkbenchContextCommandService.js';
+import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
@@ -123,6 +125,20 @@ const toolbar = {
   attachmentsPending: false,
   effortLabel: String
 };
+const contextCommands = createWorkbenchContextCommandService({
+  workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
+  selectedSession: computed(() => ({ id: 'session' }) as Session),
+  compactCommand: computed(() => ({ id: 'compact' }) as RunnerCommand),
+  canCompact: computed(() => canCompact.value),
+  contextUsageLabel: computed(() => toolbar.contextUsageLabel),
+  notice: () => {},
+  request: async <T>() => ({}) as T,
+  execute: async () => {
+    compactCount.value++;
+  },
+  errorMessage: String,
+  beginSubmission: () => () => true
+});
 const sessionPerformanceFixture = {
   setup: () => () =>
     h('main', { style: 'display: flex; flex-direction: column; height: 100dvh' }, [
@@ -189,7 +205,10 @@ const app = createApp({
         h(ComposerToolbar, {
           ...toolbar,
           canCompactContext: canCompact.value,
-          onCompact: () => compactCount.value++
+          onCompact: () =>
+            new URLSearchParams(location.search).has('context-confirm')
+              ? contextCommands.compactCurrentContext()
+              : compactCount.value++
         })
       ]),
       h('output', { 'data-testid': 'compact-count' }, compactCount.value),

@@ -9,6 +9,44 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Touch conversation details reveal status and unavailable change reasons', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}conversation-style.html?touch-details=1`);
+    const hint = page.locator('[role="tooltip"]:visible');
+    await page.locator('.conversation-header h2').tap();
+    await expect(hint).toHaveText('Review session');
+    await page.locator('.conversation-header .session-activity').tap();
+    await expect(hint).toHaveText('Managed by an agent');
+    await page.getByText('File changes', { exact: true }).tap();
+    await expect(page.locator('.conversation-file-change-note')).toBeVisible();
+    // Reading starts after expansion; scrolling during the height animation dismisses hints.
+    await expect
+      .poll(() =>
+        page
+          .locator('.conversation-file-change-details')
+          .evaluate(
+            (details) =>
+              details.getAnimations().filter((animation) => animation.playState === 'running')
+                .length
+          )
+      )
+      .toBe(0);
+    await page.locator('.conversation-file-change-note').tap();
+    await expect(hint).toHaveText('Line differences are unavailable for non-text files');
+    await expect(hint).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
     page

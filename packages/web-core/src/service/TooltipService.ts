@@ -7,6 +7,7 @@ export interface TooltipOptions {
   readonly disabled?: boolean;
   readonly placement?: ElTooltipProps['placement'];
   readonly popperClass?: string;
+  readonly touch?: boolean;
 }
 
 export type TooltipValue = string | TooltipOptions | null | undefined;
@@ -84,6 +85,7 @@ export class TooltipService {
     doc.addEventListener('pointerover', this.onPointerOver, true);
     doc.addEventListener('pointerout', this.onPointerOut, true);
     doc.addEventListener('pointerdown', this.onPointerDown, true);
+    doc.addEventListener('click', this.onClick, true);
     doc.addEventListener('focusin', this.onFocusIn, true);
     doc.addEventListener('focusout', this.onFocusOut, true);
     doc.addEventListener('keydown', this.onKeyDown, true);
@@ -96,6 +98,7 @@ export class TooltipService {
       doc.removeEventListener('pointerover', this.onPointerOver, true);
       doc.removeEventListener('pointerout', this.onPointerOut, true);
       doc.removeEventListener('pointerdown', this.onPointerDown, true);
+      doc.removeEventListener('click', this.onClick, true);
       doc.removeEventListener('focusin', this.onFocusIn, true);
       doc.removeEventListener('focusout', this.onFocusOut, true);
       doc.removeEventListener('keydown', this.onKeyDown, true);
@@ -134,7 +137,7 @@ export class TooltipService {
     target.setAttribute('aria-describedby', [...ids].join(' '));
   }
 
-  private request(target: Element, input: 'pointer' | 'focus'): void {
+  private request(target: Element, input: 'pointer' | 'focus' | 'touch'): void {
     clearTimeout(this.hideTimer);
     if (this.active.value?.target === target || this.pending === target) {
       if (input === 'pointer') this.pointerWithin = true;
@@ -184,6 +187,7 @@ export class TooltipService {
   };
 
   private onPointerOut = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') return;
     const target = this.find(event.target);
     if (target === this.find(event.relatedTarget)) return;
     if (!target || (target !== this.pending && target !== this.active.value?.target)) return;
@@ -195,6 +199,14 @@ export class TooltipService {
   private onPointerDown = (event: PointerEvent): void => {
     this.touchInput = event.pointerType === 'touch';
     this.close();
+  };
+
+  private onClick = (event: MouseEvent): void => {
+    const pointerType = 'pointerType' in event ? event.pointerType : undefined;
+    if (pointerType ? pointerType !== 'touch' : !this.touchInput || event.detail === 0) return;
+    const target = this.find(event.target);
+    // Only explicit detail entries opt in. Never consume the underlying action or long press.
+    if (target && this.targets.get(target)?.touch) this.request(target, 'touch');
   };
 
   private onFocusIn = (event: FocusEvent): void => {

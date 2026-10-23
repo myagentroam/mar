@@ -27,6 +27,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
     return { notifications: [], recentRuns: [] } as T;
   }
 });
+const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const items: ConversationItem[] = [
   {
     id: 'user',
@@ -71,7 +72,11 @@ const items: ConversationItem[] = [
     status: 'COMPLETED',
     payload: {
       changes: [
-        { path: 'src/a.ts', change: 'MODIFIED' },
+        {
+          path: 'src/a.ts',
+          change: 'MODIFIED',
+          ...(touchDetails ? { diff: { status: 'unavailable', reason: 'binary' } } : {})
+        },
         { path: 'src/b.ts', change: 'ADDED' }
       ]
     }
@@ -149,8 +154,8 @@ const turns: ConversationTurn[] = [
       :content-search-ready="true"
       :runner-icon="() => ''"
       :session-title="() => 'Review session'"
-      :activity="() => 'IDLE'"
-      :activity-label="() => 'Idle'"
+      :activity="() => (touchDetails ? 'MANAGED_ACTIVE' : 'IDLE')"
+      :activity-label="() => (touchDetails ? 'Managed by an agent' : 'Idle')"
     />
     <ConversationWorkProcess
       :block="{

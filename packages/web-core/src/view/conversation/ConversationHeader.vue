@@ -45,11 +45,12 @@ async function copySessionId(sessionId: string): Promise<void> {
           class="runner-brand-icon conversation-title-runner-icon"
         />
         <h2
-          v-tooltip="
-            sessionIsDraft(session)
+          v-tooltip="{
+            content: sessionIsDraft(session)
               ? translate('generated.conversationHeader.newSession')
-              : sessionTitle(session!)
-          "
+              : sessionTitle(session!),
+            touch: true
+          }"
         >
           {{
             sessionIsDraft(session)
@@ -58,7 +59,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           }}
         </h2>
         <span
-          v-tooltip="activityLabel(session)"
+          v-tooltip="{ content: activityLabel(session), touch: true }"
           v-if="session && !sessionIsDraft(session) && activity(session) === 'MANAGED_ACTIVE'"
           :class="['session-activity', activity(session).toLocaleLowerCase()]"
           :aria-label="activityLabel(session)"

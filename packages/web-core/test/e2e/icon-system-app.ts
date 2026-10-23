@@ -332,13 +332,14 @@ const app = createApp({
         });
     }
     if (new URL(location.href).searchParams.has('usage')) {
+      const usageDetails = new URL(location.href).searchParams.has('touch-details');
       const totals: UsageTotals = {
-        inputTokens: '1',
-        outputTokens: '1',
-        totalTokens: '2',
+        inputTokens: usageDetails ? '1234567' : '1',
+        outputTokens: usageDetails ? '23456' : '1',
+        totalTokens: usageDetails ? '1258023' : '2',
         requests: '1',
-        cacheReadTokens: null,
-        cacheWriteTokens: null,
+        cacheReadTokens: usageDetails ? '345678' : null,
+        cacheWriteTokens: usageDetails ? '2345' : null,
         completeRequests: '1',
         partialRequests: '0',
         unknownRequests: '0'

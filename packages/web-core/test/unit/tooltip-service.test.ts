@@ -9,6 +9,7 @@ interface TestEvent {
   readonly relatedTarget?: FakeElement | null | undefined;
   readonly pointerType?: string | undefined;
   readonly buttons?: number | undefined;
+  readonly detail?: number | undefined;
   readonly key?: string | undefined;
   readonly isComposing?: boolean | undefined;
   immediatePropagationStopped: boolean;
@@ -52,6 +53,7 @@ class FakeEventTarget {
       relatedTarget: init.relatedTarget,
       pointerType: init.pointerType,
       buttons: init.buttons,
+      detail: init.detail,
       key: init.key,
       isComposing: init.isComposing,
       immediatePropagationStopped: false,
@@ -217,7 +219,7 @@ describe('TooltipService', () => {
     const remaining = new FakeElement();
     const showAfter = tableTooltipOptions.showAfter;
     service.update(removed as unknown as Element, 'Removable hint');
-    service.update(remaining as unknown as Element, 'Remaining hint');
+    service.update(remaining as unknown as Element, { content: 'Remaining hint', touch: true });
 
     pointerOver(document, removed);
     vi.advanceTimersByTime(showAfter);
@@ -231,6 +233,7 @@ describe('TooltipService', () => {
     expect(service.active.value).toBeUndefined();
 
     pointerOver(document, remaining);
+    document.dispatch('click', { target: remaining, pointerType: 'touch', detail: 1 });
     vi.advanceTimersByTime(showAfter);
     expect(service.active.value).toBeUndefined();
   });
@@ -292,8 +295,44 @@ describe('TooltipService', () => {
     pointerOver(document, target, 'touch');
     document.activeElement = target;
     document.dispatch('focusin', { target });
+    document.dispatch('click', { target, pointerType: 'touch', detail: 1 });
     vi.advanceTimersByTime(tableTooltipOptions.showAfter);
 
+    expect(service.active.value).toBeUndefined();
+  });
+
+  it('opens opted-in details on a completed touch tap without requiring focus', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    const child = new FakeElement();
+    child.parentElement = target;
+    service.update(target as unknown as Element, { content: 'Touch details', touch: true });
+
+    document.dispatch('pointerdown', { target: child, pointerType: 'touch' });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter * 2);
+    expect(service.active.value).toBeUndefined();
+    document.dispatch('click', { target: child, pointerType: 'touch', detail: 1 });
+    document.dispatch('pointerout', { target: child, pointerType: 'touch' });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    expect(service.active.value).toMatchObject({ content: 'Touch details', target });
+
+    document.dispatch('pointerdown', { target: new FakeElement(), pointerType: 'touch' });
+    expect(service.active.value).toBeUndefined();
+    expect(target.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('supports touch-generated MouseEvent clicks but not keyboard or programmatic clicks', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    service.update(target as unknown as Element, { content: 'Touch details', touch: true });
+    document.dispatch('pointerdown', { target, pointerType: 'touch' });
+    document.dispatch('click', { target, detail: 0 });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    expect(service.active.value).toBeUndefined();
+    document.dispatch('click', { target, detail: 1 });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    expect(service.active.value?.target).toBe(target);
+    document.dispatch('scroll');
     expect(service.active.value).toBeUndefined();
   });
 

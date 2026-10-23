@@ -267,12 +267,16 @@ onUnmounted(() => {
           <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
           <p>
             {{ t('modelUsage.input') }}
-            <span v-tooltip="number(card.value.inputTokens)" class="usage-count" tabindex="0">{{
-              number(card.value.inputTokens, true)
-            }}</span>
+            <span
+              v-tooltip="{ content: number(card.value.inputTokens), touch: true }"
+              class="usage-count"
+              tabindex="0"
+              >{{ number(card.value.inputTokens, true) }}</span
+            >
             · {{ t('modelUsage.cache') }}
             <span
               v-tooltip="{
+                touch: true,
                 content: cacheTooltip(card.value),
                 disabled: !hasCacheDetails(card.value)
               }"
@@ -281,13 +285,18 @@ onUnmounted(() => {
               >{{ cacheLabel(card.value, true) }}</span
             >
             · {{ t('modelUsage.output') }}
-            <span v-tooltip="number(card.value.outputTokens)" class="usage-count" tabindex="0">{{
-              number(card.value.outputTokens, true)
-            }}</span>
+            <span
+              v-tooltip="{ content: number(card.value.outputTokens), touch: true }"
+              class="usage-count"
+              tabindex="0"
+              >{{ number(card.value.outputTokens, true) }}</span
+            >
           </p>
-          <strong v-tooltip="number(card.value.totalTokens)" class="usage-count" tabindex="0">{{
-            number(card.value.totalTokens, true)
-          }}</strong
+          <strong
+            v-tooltip="{ content: number(card.value.totalTokens), touch: true }"
+            class="usage-count"
+            tabindex="0"
+            >{{ number(card.value.totalTokens, true) }}</strong
           ><span>{{ t('modelUsage.totalTokens') }}</span>
           <span class="metadata">
             · {{ t('modelUsage.requests') }} {{ number(card.value.requests) }}</span
@@ -388,15 +397,16 @@ onUnmounted(() => {
         <div class="section-heading">
           <h3>{{ t('modelUsage.trend') }}</h3>
           <span
-            v-tooltip="
-              t('modelUsage.selected', {
+            v-tooltip="{
+              content: t('modelUsage.selected', {
                 tokens: number(state.overview.selected.totalTokens),
                 input: number(state.overview.selected.inputTokens),
                 cache: cacheLabel(state.overview.selected),
                 output: number(state.overview.selected.outputTokens),
                 requests: number(state.overview.selected.requests)
-              })
-            "
+              }),
+              touch: true
+            }"
             class="usage-count"
             tabindex="0"
             >{{
@@ -422,6 +432,7 @@ onUnmounted(() => {
             <span class="cache-key" />
             <span
               v-tooltip="{
+                touch: true,
                 content: cacheTooltip(state.overview.selected),
                 disabled: !hasCacheDetails(state.overview.selected)
               }"
@@ -531,6 +542,7 @@ onUnmounted(() => {
                 <template #default="{ row }">
                   <span
                     v-tooltip="{
+                      touch: true,
                       content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
                       disabled: key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
                     }"
@@ -577,7 +589,11 @@ onUnmounted(() => {
                 <div class="distribution-cache metadata">
                   {{ t('modelUsage.cache') }}
                   <span
-                    v-tooltip="{ content: cacheTooltip(group), disabled: !hasCacheDetails(group) }"
+                    v-tooltip="{
+                      touch: true,
+                      content: cacheTooltip(group),
+                      disabled: !hasCacheDetails(group)
+                    }"
                     :class="{ 'usage-count': hasCacheDetails(group) }"
                     :tabindex="hasCacheDetails(group) ? 0 : undefined"
                     >{{ cacheLabel(group, true) }}</span
@@ -586,9 +602,12 @@ onUnmounted(() => {
                   {{
                     t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
                   }}
-                  <strong v-tooltip="number(group[metric])" class="usage-count" tabindex="0">{{
-                    number(group[metric], true)
-                  }}</strong>
+                  <strong
+                    v-tooltip="{ content: number(group[metric]), touch: true }"
+                    class="usage-count"
+                    tabindex="0"
+                    >{{ number(group[metric], true) }}</strong
+                  >
                 </div>
                 <div class="bar-track" aria-hidden="true">
                   <span
@@ -641,6 +660,7 @@ onUnmounted(() => {
                   <dd>
                     <span
                       v-tooltip="{
+                        touch: true,
                         content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
                         disabled:
                           key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
@@ -700,6 +720,7 @@ onUnmounted(() => {
             <template #default="{ row }">
               <span
                 v-tooltip="{
+                  touch: true,
                   content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
                   disabled: key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
                 }"

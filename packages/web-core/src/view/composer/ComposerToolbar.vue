@@ -233,7 +233,7 @@ function selectFiles(event: Event): void {
       </div>
     </div>
     <button
-      v-tooltip="{ content: contextHint, placement: 'top' }"
+      v-tooltip="{ content: contextHint, placement: 'top', touch: !canCompactContext }"
       v-if="contextUsage !== undefined && contextUsage !== null"
       class="composer-context-button utility-control"
       type="button"

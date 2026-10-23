@@ -181,6 +181,90 @@ test('Escape dismisses a focused hint before its containing dialog', async ({ pa
   await expect(dialog).toHaveCount(0);
 });
 
+test('Touch Context details stay readable without stealing the compact action', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}visual-alignment.html?mobile=1&context-confirm=1`);
+    const compact = page.locator('.composer-context-button');
+    const hint = page.locator('.mar-tooltip:visible');
+    await page.getByRole('button', { name: 'Toggle availability', exact: true }).tap();
+    // ARIA disables compaction, not detail reading. Check native hit-testing before tapping.
+    const point = await compact.evaluate((button: HTMLButtonElement) => {
+      const rect = button.getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      return {
+        x,
+        y,
+        hit: button.contains(document.elementFromPoint(x, y)),
+        disabled: button.disabled
+      };
+    });
+    expect(point.hit).toBe(true);
+    expect(point.disabled).toBe(false);
+    await page.touchscreen.tap(point.x, point.y);
+    await expect(hint).toContainText('42000 of 100000');
+    await expect(hint).toContainText('currently unavailable');
+    await expect(compact).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByRole('dialog', { name: 'Compact Context', exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('compact-count')).toHaveText('0');
+    await page.getByRole('button', { name: 'Toggle availability', exact: true }).tap();
+    await expect(hint).toHaveCount(0);
+
+    await compact.tap();
+    const dialog = page.getByRole('dialog', { name: 'Compact Context', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('42000 of 100000');
+    await expect(hint).toHaveCount(0);
+    await expect(page.getByTestId('compact-count')).toHaveText('0');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).tap();
+    await expect(dialog).toHaveCount(0);
+    await compact.tap();
+    await dialog.getByRole('button', { name: 'Compact', exact: true }).tap();
+    await expect(page.getByTestId('compact-count')).toHaveText('1');
+    await expect(hint).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('Shared tooltip switches between touch, keyboard and mouse without stale input state', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+    const first = page.locator('[data-row="1"]');
+    const second = page.locator('[data-row="2"]');
+    const hint = page.locator('.mar-tooltip:visible');
+    await first.tap();
+    await expect(hint).toHaveText('Original 1');
+    await second.tap();
+    await expect(hint).toHaveCount(0);
+    await page.keyboard.press('Shift+Tab');
+    await expect(first).toBeFocused();
+    await expect(hint).toHaveText('Original 1');
+    await page.keyboard.press('Escape');
+    await expect(hint).toHaveCount(0);
+    await second.hover();
+    await expect(hint).toHaveText('Original 2');
+    await expect(hint).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});
+
 test('Hosted model hints preserve dropdown semantics and keyboard selection', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?hosted=1`);
   const trigger = page.locator('.hosted-model-trigger');
@@ -277,8 +361,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
           expect(bottomGap).toBeCloseTo(rootFontSize * 0.75, 1);
         }
-        await info.focus();
+        if (width < 768) await info.tap();
+        else await info.focus();
         await expect(page.locator('.mar-tooltip:visible')).toContainText('420 ms');
+        await expect(page.locator('.mar-tooltip:visible')).toContainText('42.0');
+        const hintBox = (await page.locator('.mar-tooltip:visible').boundingBox())!;
+        expect(hintBox.x).toBeGreaterThanOrEqual(0);
+        expect(hintBox.x + hintBox.width).toBeLessThanOrEqual(width);
+        expect(hintBox.y).toBeGreaterThanOrEqual(0);
+        expect(hintBox.y + hintBox.height).toBeLessThanOrEqual(700);
+        await page.screenshot({ path: testInfo.outputPath('session-performance-hint.png') });
         await page.getByTestId('leave-latest').click();
         const latest = page.locator('.conversation-latest');
         await expect(latest).toBeVisible();

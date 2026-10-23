@@ -353,6 +353,35 @@ test('Terminal headers keep multiple shell profiles reachable on narrow screens'
   }
 });
 
+test('Touch usage counts reveal exact values and cache details without requiring focus', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}icon-system.html?usage=1&touch-details=1`);
+    const overview = page.locator('.overview-cell').first();
+    const input = overview.locator('.usage-count').nth(0);
+    const cache = overview.locator('.usage-count').nth(1);
+    const hint = page.locator('[role="tooltip"]:visible');
+    await expect(input).not.toContainText('1,234,567');
+    await input.tap();
+    await expect(hint).toHaveText('1,234,567');
+    await cache.tap();
+    await expect(hint).toContainText('Cache read tokens: 345,678');
+    await expect(hint).toContainText('Cache write tokens: 2,345');
+    await expect(hint).toHaveCount(1);
+    await overview.locator('h3').tap();
+    await expect(hint).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {
   await page.goto(`${fixture.url}icon-system.html?usage=1`);
   const chart = page.locator('[data-testid="personal-usage"] svg[role="img"]');

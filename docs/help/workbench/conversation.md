@@ -1,6 +1,6 @@
 ---
 title: 阅读对话、工具调用与通知
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-24
 ---
 
 # 阅读对话、工具调用与通知
@@ -31,7 +31,7 @@ Rewind 不修改原会话，也不回滚 Workspace 文件。Working、消息提�
 
 ## 实时性能
 
-Agent 提供有效的计时指标时，工作区对话右下角会出现小型 Info 图标。悬停或聚焦后，可查看最近一次 Latency（本轮输入到首个文本、思考、Tool Call 或其他有效模型响应的等待时间）及可用的平均输出 TPS（每秒 Token 数）。它们不属于某条消息，也不是整条工具执行链的统计；Tool 执行时间不计入 Latency，缺失指标不估算。MAR Agent 的平均输出 TPS 仅在请求结束、取得 Provider 权威输出 Token 且观测到可靠的流式生成窗口后显示，表示从首个实际生成增量到请求结束的客户端观察平均值；仅有完成态或单次、瞬时批量输出时不产生新的 TPS。可用 TPS 仍可能包含 reasoning、Tool Call、网络或 Hosted Tool 等时间，不等同于模型服务端纯推理速度。Claude Code、Codex 和 OpenCode 由 Node 按实时事件观测 Latency：提交用户输入后等待首个有效 Agent 响应；工具调用后，从最后一个已观察到的并行 Tool Result 等待下一段有效响应。该观测包含 Runner、IPC 与网络开销，不等同于模型服务端纯响应时间；这三个 Runner 当前不提供输出 TPS。
+Agent 提供有效的计时指标时，工作区对话右下角会出现小型 Info 图标。悬停、聚焦或触屏点按后，可查看最近一次 Latency（本轮输入到首个文本、思考、Tool Call 或其他有效模型响应的等待时间）及可用的平均输出 TPS（每秒 Token 数）。它们不属于某条消息，也不是整条工具执行链的统计；Tool 执行时间不计入 Latency，缺失指标不估算。MAR Agent 的平均输出 TPS 仅在请求结束、取得 Provider 权威输出 Token 且观测到可靠的流式生成窗口后显示，表示从首个实际生成增量到请求结束的客户端观察平均值；仅有完成态或单次、瞬时批量输出时不产生新的 TPS。可用 TPS 仍可能包含 reasoning、Tool Call、网络或 Hosted Tool 等时间，不等同于模型服务端纯推理速度。Claude Code、Codex 和 OpenCode 由 Node 按实时事件观测 Latency：提交用户输入后等待首个有效 Agent 响应；工具调用后，从最后一个已观察到的并行 Tool Result 等待下一段有效响应。该观测包含 Runner、IPC 与网络开销，不等同于模型服务端纯响应时间；这三个 Runner 当前不提供输出 TPS。
 
 性能实时推送，不写入会话历史。同一次运行中，Latency 与输出 TPS 独立更新：新 Latency 到达时保留最近一次可用的 TPS，直到新的 TPS 到达；它们可能来自不同模型请求，新运行不继承上一运行的指标。Node 只在运行期间于内存保留最近一份指标；切回仍在运行的会话或刷新页面后会自动恢复，Node 重启后不保留。运行结束即清除 Node 中的指标；当前页面可继续显示最终值，但结束后切回不会恢复。切换会话、工作区、Node 或模式时，页面先清除原指标。消息卡片不显示性能 Info。
 

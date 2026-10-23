@@ -32,7 +32,7 @@ const details = computed(() => {
 
 <template>
   <button
-    v-tooltip="{ content: details, placement: 'top' }"
+    v-tooltip="{ content: details, placement: 'top', touch: true }"
     v-if="details"
     class="session-performance-info icon-button utility-control"
     type="button"

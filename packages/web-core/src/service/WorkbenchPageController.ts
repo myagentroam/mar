@@ -2869,6 +2869,7 @@ export function createWorkbenchPageController<
     selectedSession,
     compactCommand,
     canCompact: canCompactContext,
+    contextUsageLabel,
     notice,
     request,
     execute: executeRunnerCommand,
