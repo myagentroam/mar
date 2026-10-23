@@ -56,7 +56,8 @@ export interface WorkbenchSessionMessageOptions {
   readonly replaceSession: (previousId: string, next: Session) => void;
   readonly sessionPathId: (sessionId: string) => string;
   readonly temporaryTitle: (content: string) => string;
-  readonly clearAttachments: (revokeUrls?: boolean) => void;
+  readonly consumeAttachments: (submitted: readonly ComposerAttachment[]) => void;
+  readonly retainAttachments: (submitted: readonly ComposerAttachment[]) => () => void;
   readonly clearSkillTokens: () => void;
   readonly newestRun: (current: AgentRun | undefined, next: AgentRun) => AgentRun;
   readonly migrateSessionCache: (
@@ -236,7 +237,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         return;
     }
     options.notice.value = '';
-    let outgoing: readonly ComposerAttachment[] = [];
+    const outgoing = contentOverride === undefined ? [...options.attachments.value] : [];
+    const submittedSkillTokens = options.skillTokens.value;
+    const submittedReferences = options.references?.value;
+    const selectedWorkspace = options.selectedWorkspace.value;
     let startedDraft = false;
     let submittedSession: Session | undefined;
     let attemptedRetryCandidate:
@@ -255,6 +259,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       }
     );
     if (finishSubmission === undefined) return;
+    const releaseAttachments = options.retainAttachments(command === undefined ? outgoing : []);
     let completedInSubmissionWindow = false;
     try {
       if (command?.id === 'fast' && command.runner === 'codex') {
@@ -296,7 +301,6 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         }
         return;
       }
-      const selectedWorkspace = options.selectedWorkspace.value;
       if (createdDraft && selectedWorkspace === undefined)
         throw new Error(
           translate(
@@ -304,9 +308,6 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           )
         );
       const workspaceId = resolveSessionWorkspaceId(selectedWorkspace, session);
-      outgoing = contentOverride === undefined ? [...options.attachments.value] : [];
-      const submittedSkillTokens = options.skillTokens.value;
-      const submittedReferences = options.references?.value;
       const signature = draftSignature(
         submissionNodeId,
         workspaceId,
@@ -331,7 +332,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         {
           method: 'POST',
           body: JSON.stringify({
-            nodeId: options.workspaceTarget.value?.nodeId,
+            nodeId: submissionNodeId,
             ...(createdDraft
               ? {
                   workspaceId,
@@ -359,6 +360,8 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         }
       );
       if (!active()) return;
+      options.consumeAttachments(outgoing);
+      if (retryCandidate === attemptedRetryCandidate) retryCandidate = undefined;
       if (createdDraft) options.deferredCommands.value = [];
       const selectedBeforeDelivery = options.selectedSessionId.value;
       const nodeStillSelected = options.workspaceTarget.value?.nodeId === submissionNodeId;
@@ -414,17 +417,15 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       completedInSubmissionWindow = finishSubmission();
       if (
         contentOverride === undefined &&
+        options.workspaceTarget.value?.nodeId === submissionNodeId &&
+        options.workspaceTarget.value?.workspaceId === submissionWorkspaceId &&
         options.input.value.trim() === body &&
         options.skillTokens.value === submittedSkillTokens &&
-        options.references?.value === submittedReferences &&
-        options.attachments.value.map((attachment) => attachment.id).join('\u0000') ===
-          outgoing.map((attachment) => attachment.id).join('\u0000')
+        options.references?.value === submittedReferences
       ) {
         options.input.value = '';
         options.clearSkillTokens();
         if (options.references !== undefined) options.references.value = [];
-        options.clearAttachments(false);
-        retryCandidate = undefined;
       }
     } catch (error) {
       if (!active()) return;
@@ -450,6 +451,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           { value0: options.errorMessage(error) }
         );
     } finally {
+      releaseAttachments();
       finishSubmission();
     }
   }

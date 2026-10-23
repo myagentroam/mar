@@ -659,6 +659,26 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     }
   );
 
+  it('keeps the submitted text read-only while the submission window is pending', async () => {
+    const props = {
+      input: 'Submitted message',
+      placeholder: 'Message',
+      working: false,
+      workingLabel: '',
+      readonly: false,
+      dropTarget: false,
+      mobileViewport: false,
+      commandStates: [],
+      loading: true,
+      skillTokens: []
+    };
+    const pending = await render(ConversationComposer, props);
+    expect(pending).toMatch(/<textarea[^>]*readonly/u);
+    expect(pending).toContain('Submitted message');
+    const settled = await render(ConversationComposer, { ...props, loading: false });
+    expect(settled).not.toMatch(/<textarea[^>]*readonly/u);
+  });
+
   it.each(['', 'Reconnecting'])(
     'renders the shared input and gates activity while connection feedback is %s',
     async (connectionLabel) => {

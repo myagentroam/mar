@@ -76,6 +76,8 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.isComposing) return;
   if (
     editor !== undefined &&
+    !props.readonly &&
+    !props.loading &&
     event.key === 'Backspace' &&
     editor.value.length === 0 &&
     editor.selectionStart === 0 &&
@@ -257,7 +259,7 @@ const emit = defineEmits<{
             ref="editorElement"
             class="composer-input"
             :value="input"
-            :readonly="readonly"
+            :readonly="readonly || loading"
             :aria-label="translate('generated.conversationComposer.message')"
             :placeholder="placeholder"
             enterkeyhint="enter"

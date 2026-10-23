@@ -423,7 +423,6 @@ export function createWorkbenchPageController<
     previewOpen: attachmentPreviewOpen,
     add: addNewSessionFiles,
     remove: removeNewSessionAttachment,
-    clear: clearNewSessionAttachments,
     clearAll: clearAllNewSessionAttachments,
     openPreview: openAttachmentPreview
   } = composerAttachmentService;
@@ -2730,7 +2729,8 @@ export function createWorkbenchPageController<
     replaceSession,
     sessionPathId: agentSessionPathId,
     temporaryTitle: temporarySessionTitle,
-    clearAttachments: clearNewSessionAttachments,
+    consumeAttachments: composerAttachmentService.consume,
+    retainAttachments: composerAttachmentService.retainForSubmission,
     clearSkillTokens: composerSkillTokenService.clear,
     newestRun: newestRunSnapshot,
     migrateSessionCache: (nodeId, workspaceId, previousId, nextId, session) =>

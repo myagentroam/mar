@@ -342,7 +342,8 @@ export function createSessionShareConversationService(options: {
     replaceSession: (_previous, value) => mergeSessions([value]),
     sessionPathId: encodeURIComponent,
     temporaryTitle: (value) => value,
-    clearAttachments: attachments.clear,
+    consumeAttachments: attachments.consume,
+    retainAttachments: attachments.retainForSubmission,
     clearSkillTokens: () => {
       skillTokens.value = [];
     },

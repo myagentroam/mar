@@ -32,6 +32,9 @@ export function createComposerAttachmentService(options: {
   };
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
+  const submissions = new Map<string, number>();
+  const attachmentKey = (attachment: ComposerAttachment) =>
+    JSON.stringify([attachment.nodeId, attachment.workspaceId, attachment.id]);
   const visibleAttachments = computed(() => {
     const context = options.context();
     return context === undefined
@@ -120,6 +123,38 @@ export function createComposerAttachmentService(options: {
       void cancel(attachment);
     }
     attachments.value = [];
+  }
+
+  function retainForSubmission(submitted: readonly ComposerAttachment[]): () => void {
+    const keys = submitted.map(attachmentKey);
+    for (const key of keys) submissions.set(key, (submissions.get(key) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const key of keys) {
+        const remaining = submissions.get(key)! - 1;
+        if (remaining === 0) submissions.delete(key);
+        else submissions.set(key, remaining);
+      }
+    };
+  }
+
+  function consume(submitted: readonly ComposerAttachment[]): void {
+    attachments.value = attachments.value.filter((attachment) => {
+      if (
+        !submitted.some(
+          (item) =>
+            item.id === attachment.id &&
+            item.nodeId === attachment.nodeId &&
+            item.workspaceId === attachment.workspaceId
+        )
+      )
+        return true;
+      if (preview.value?.id === attachment.id) previewOpen.value = false;
+      if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
+      return false;
+    });
   }
 
   function openPreview(attachment: ComposerAttachment): void {
@@ -284,6 +319,9 @@ export function createComposerAttachmentService(options: {
   }
 
   async function cancel(attachment: ComposerAttachment): Promise<void> {
+    // Removing a draft attachment must not cancel a message already in flight.
+    // Unconsumed uploads removed in flight are left to Node's expiry cleanup.
+    if (submissions.has(attachmentKey(attachment))) return;
     directRequests.get(attachment.id)?.abort();
     directRequests.delete(attachment.id);
     const uploadId = attachment.status === 'COMPLETED' ? attachment.id : attachment.uploadId;
@@ -305,6 +343,8 @@ export function createComposerAttachmentService(options: {
     remove,
     clear,
     clearAll,
+    retainForSubmission,
+    consume,
     openPreview
   };
 }

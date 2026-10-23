@@ -17,6 +17,8 @@ Pasting regular text keeps plain text only and remains undoable as one native ed
 
 Uploaded attachments that have not been sent remain available for one hour. Add them again after they expire.
 
+During the short sending window, the input stays visible but is temporarily read-only so the next message cannot mix with the previous one. Success clears the submitted content; failure or the five-second timeout restores editing. For ordinary workspace messages, a late success removes sent attachments while preserving subsequently edited text and newly added attachments, without switching sessions. Removing an attachment while a request is in flight only changes the next draft; it does not withdraw the message already sent.
+
 In an existing ordinary session, a timeout or unknown network outcome preserves the draft. Sending the unchanged draft again reuses the original message identity. Within its bounded in-process retention window, Node returns the original acceptance result without executing again, even if that Run has ended. After a Node restart, record eviction, or explicit history clearing/session deletion, a manual retry can still execute twice; check the session history and actual outcome first. This guarantee does not cover the first request that creates a session and is not permanent deduplication.
 
 On desktop, drag a queued message to change its order. On mobile, press and hold a queue item, then choose Move up or Move down.
