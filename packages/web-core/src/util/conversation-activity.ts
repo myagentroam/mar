@@ -28,6 +28,38 @@ export function completedStepDuration(item: ConversationItem): number | undefine
     : undefined;
 }
 
+/** Preserve completed round durations when runtime Run metadata is no longer available. */
+export function completedConversationDurations(
+  turns: readonly ConversationTurn[]
+): Map<string, number> {
+  const groups = new Map<string, ConversationTurn[]>();
+  for (const turn of turns) {
+    const key = JSON.stringify([turn.sessionId, turn.turnId ?? turn.id]);
+    const group = groups.get(key) ?? [];
+    group.push(turn);
+    groups.set(key, group);
+  }
+  const durations = new Map<string, number>();
+  for (const group of groups.values()) {
+    const first = group[0]!;
+    const last = group.at(-1)!;
+    if (!isTerminalRunStatus(last.status)) continue;
+    // A later page can contain an appended input, not the round's initial input.
+    const user =
+      first.segmentIndex === undefined || first.segmentIndex === 0
+        ? first.items.find((item) => item.kind === 'user_message')
+        : undefined;
+    const startedAt = user?.startedAt;
+    const completedAt = last.completedAt;
+    const duration = runDuration({
+      startedAt: startedAt ?? null,
+      completedAt: completedAt ?? null
+    });
+    if (duration !== undefined) durations.set(last.id, duration);
+  }
+  return durations;
+}
+
 function conversationActivityState(
   run: Pick<AgentRun, 'id' | 'status'> | undefined,
   turns: readonly ConversationTurn[]

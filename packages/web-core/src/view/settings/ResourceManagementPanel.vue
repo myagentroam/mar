@@ -178,7 +178,18 @@ const pagination = createManagementPageService<Row>({
 });
 const resources = pagination.items;
 const loading = pagination.loading;
+const pageReady = ref(false);
+const refreshLoading = ref(false);
 const displayedResources = resources;
+watch(pagination.result, (result) => {
+  if (result !== undefined) pageReady.value = true;
+});
+watch(
+  () => [props.resourcePath, props.resourceType, props.queryExtension],
+  () => {
+    pageReady.value = false;
+  }
+);
 watch(
   () => paginationContext(),
   () => {
@@ -308,6 +319,14 @@ async function readResources(page: number, full = false): Promise<ManagementPage
 }
 async function load(): Promise<void> {
   await Promise.all([pagination.load(true), props.loadExtension?.()]);
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
+  }
 }
 function statusLabel(row: Row): string {
   return row.disabled
@@ -657,7 +676,11 @@ onMounted(() => {
 onUnmounted(() => pagination.dispose());
 </script>
 <template>
-  <section v-loading="loading" class="management-page resource-management-panel">
+  <section
+    v-loading="loading && !pageReady"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page resource-management-panel"
+  >
     <slot
       name="filters"
       :keyword="keyword"
@@ -672,7 +695,7 @@ onUnmounted(() => pagination.dispose());
       />
     </slot>
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
         translate('generated.resourceSharingPage.refresh')
       }}</el-button>
       <el-button
@@ -693,6 +716,9 @@ onUnmounted(() => pagination.dispose());
       >
     </div>
     <el-table
+      v-loading="
+        pagination.loading.value && pageReady && !pagination.loadingMore.value && !refreshLoading
+      "
       class="clickable-rows"
       :data="displayedResources"
       row-key="key"
@@ -785,6 +811,7 @@ onUnmounted(() => pagination.dispose());
       :total="pagination.total.value"
       :has-more="pagination.hasMore.value"
       :loading="loading"
+      :loading-more="pagination.loadingMore.value"
       :page="pagination.page.value"
       :mobile="pagination.mobileViewport.value"
       :mobile-visible-count="pagination.mobileVisibleCount.value"

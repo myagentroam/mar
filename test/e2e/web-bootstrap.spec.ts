@@ -17,7 +17,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       await page.goto('/console');
       const bootstrap = page.locator('#mar-bootstrap');
-      const graphic = bootstrap.locator('svg');
+      const graphic = bootstrap.locator('.mar-bootstrap__trace');
       await expect(bootstrap).toBeVisible();
       await expect(bootstrap).toHaveCSS(
         'background-color',
@@ -27,12 +27,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(bounds).not.toBeNull();
       expect(bounds!.x + bounds!.width / 2).toBeCloseTo(viewport.width / 2, 0);
       expect(bounds!.y + bounds!.height / 2).toBeCloseTo(viewport.height / 2, 0);
-      expect(bounds!.width).toBeGreaterThanOrEqual(40);
-      expect(bounds!.width).toBeLessThanOrEqual(64);
-      expect(await graphic.evaluate((svg) => svg.getAnimations({ subtree: true }).length)).toBe(1);
+      await expect(graphic).toHaveCSS('width', '20px');
+      await expect(graphic).toHaveCSS('height', '20px');
+      expect(bounds!.height).toBeCloseTo(bounds!.width, 1);
+      await expect(graphic).toHaveCSS('border-top-width', '2px');
+      await expect(graphic).toHaveCSS('border-inline-end-color', 'rgba(0, 0, 0, 0)');
       expect(
-        await graphic.evaluate(async (svg) => {
-          const animation = svg.getAnimations({ subtree: true })[0]!;
+        await graphic.evaluate((element) => element.getAnimations({ subtree: true }).length)
+      ).toBe(1);
+      expect(
+        await graphic.evaluate(async (element) => {
+          const animation = element.getAnimations({ subtree: true })[0]!;
           await animation.ready;
           const before = Number(animation.currentTime);
           await new Promise(requestAnimationFrame);
@@ -40,8 +45,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           return Number(animation.currentTime) > before;
         })
       ).toBe(true);
-      await graphic.evaluate((svg) => {
-        for (const animation of svg.getAnimations({ subtree: true })) {
+      await graphic.evaluate((element) => {
+        for (const animation of element.getAnimations({ subtree: true })) {
           animation.pause();
           animation.currentTime = 350;
         }
@@ -52,13 +57,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect
-        .poll(() => graphic.evaluate((svg) => svg.getAnimations({ subtree: true }).length))
+        .poll(() => graphic.evaluate((element) => element.getAnimations({ subtree: true }).length))
         .toBe(0);
       await expect(graphic).toBeVisible();
       await expect(bootstrap).toHaveCSS('transition-duration', '0s');
-      await bootstrap.evaluate((element) => element.classList.add('mar-bootstrap--leaving'));
-      await expect(bootstrap).toHaveCSS('opacity', '0');
-      await expect(bootstrap).toHaveCSS('pointer-events', 'none');
+      await expect(bootstrap).toHaveCSS('opacity', '1');
     });
   }
 }

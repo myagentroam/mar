@@ -22,6 +22,7 @@ import './web-session-performance.cases.js';
 import './web-hosted-conversation.cases.js';
 import './web-session-pinning.cases.js';
 import './web-session-density.cases.js';
+import './web-loading.cases.js';
 import './web-session-prompt.cases.js';
 import './web-session-sharing.cases.js';
 import './web-composer.cases.js';

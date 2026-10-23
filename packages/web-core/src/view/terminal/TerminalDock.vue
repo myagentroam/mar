@@ -513,6 +513,13 @@ defineExpose({ release, toggle: toggleTerminal });
   background: transparent;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-body);
+  font-weight: 500;
+}
+
+@media (min-width: 768px) {
+  .terminal-tab {
+    font-size: calc(var(--mar-font-size-body) - 1px);
+  }
 }
 
 .terminal-tab-select {
@@ -525,6 +532,7 @@ defineExpose({ release, toggle: toggleTerminal });
   border-radius: inherit;
   background: transparent;
   color: inherit;
+  font: inherit;
 }
 
 .terminal-tab.active {

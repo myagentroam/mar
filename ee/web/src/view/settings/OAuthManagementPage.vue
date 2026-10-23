@@ -21,6 +21,8 @@ const props = defineProps<{
 }>();
 const providers = ref<readonly OAuthProvider[]>([]);
 const loading = ref(false);
+const ready = ref(false);
+const refreshLoading = ref(false);
 const saving = ref(false);
 const open = ref(false);
 const editing = ref(false);
@@ -189,6 +191,7 @@ async function load(): Promise<void> {
     providers.value = (
       await props.request<{ providers: readonly OAuthProvider[] }>('/api/oauth-providers')
     ).providers;
+    ready.value = true;
   } catch (error) {
     ElMessage.error(
       oauthErrorMessage(
@@ -198,6 +201,14 @@ async function load(): Promise<void> {
     );
   } finally {
     loading.value = false;
+  }
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
   }
 }
 function create(): void {
@@ -345,7 +356,11 @@ onMounted(() => {
 });
 </script>
 <template>
-  <section v-loading="loading" class="management-page oauth-management">
+  <section
+    v-loading="loading && !ready"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page oauth-management"
+  >
     <div class="filter-row">
       <label class="filter-field"
         ><span>{{ translate('generated.oAuthManagementPage.provider') }}</span
@@ -356,7 +371,7 @@ onMounted(() => {
       /></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && ready" @click="refresh">{{
         translate('generated.oAuthManagementPage.refresh')
       }}</el-button>
       <el-button type="primary" :icon="Plus" :disabled="!writable" @click="create">{{
@@ -364,6 +379,7 @@ onMounted(() => {
       }}</el-button>
     </div>
     <el-table
+      v-loading="loading && ready && !refreshLoading"
       :data="filteredProviders"
       class="clickable-rows oauth-provider-table"
       row-key="providerKey"

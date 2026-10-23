@@ -21,6 +21,7 @@ const codexCredentials = computed(() =>
 );
 const busy = ref(false);
 const ready = ref(false);
+const refreshing = ref(false);
 const dialog = ref(false);
 const detailOpen = ref(false);
 const selectedDetail = ref<ImageGenerationModel>();
@@ -106,8 +107,9 @@ const rules = computed<FormRules>(() => ({
     }
   ]
 }));
-async function load() {
+async function load(showRefresh = false) {
   if (sorting.value) return;
+  if (showRefresh) refreshing.value = true;
   busy.value = true;
   try {
     models.value = await service.imageGenerationConfiguration();
@@ -117,6 +119,7 @@ async function load() {
     ElMessage.error(errorMessage(error));
   } finally {
     busy.value = false;
+    if (showRefresh) refreshing.value = false;
   }
 }
 function edit(model?: ImageGenerationModel) {
@@ -202,12 +205,20 @@ onMounted(load);
 </script>
 
 <template>
-  <section v-loading="busy" class="image-generation-management">
+  <section
+    v-loading="busy && !ready"
+    element-loading-custom-class="mar-page-loading"
+    class="image-generation-management"
+  >
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
     <div class="table-actions">
-      <el-button :icon="Refresh" :disabled="busy || sorting" @click="load">{{
-        translate('marAgentModels.refresh')
-      }}</el-button>
+      <el-button
+        :icon="Refresh"
+        :loading="refreshing && ready"
+        :disabled="busy || sorting"
+        @click="load(true)"
+        >{{ translate('marAgentModels.refresh') }}</el-button
+      >
       <el-button
         v-if="writable && !sorting"
         :icon="Rank"

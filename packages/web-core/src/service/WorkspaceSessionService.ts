@@ -10,6 +10,7 @@ interface SessionPage {
 
 interface SessionPaging {
   readonly nextCursors: Ref<Map<string, string | null>>;
+  readonly loadMoreErrors: Ref<Map<string, unknown>>;
   readonly loadingMore: Ref<boolean>;
   initialize(tabId: string): void;
   reset(tabId: string): void;
@@ -34,10 +35,12 @@ export function createWorkspaceSessionService(options: {
   const searchNextCursor = ref<string | null>(null);
   const searching = ref(false);
   const loadingMoreSearchResults = ref(false);
+  const loadMoreSearchResultsError = ref<unknown>();
   const synchronizationGenerations = new Map<string, number>();
   let latestSnapshot:
     { readonly id: string; readonly generation: number; readonly page: SessionPage } | undefined;
   let searchGeneration = 0;
+  let loadMoreOperation = 0;
 
   function preserveStablePresentation(current: Session | undefined, next: Session): Session {
     let merged = next;
@@ -168,40 +171,52 @@ export function createWorkspaceSessionService(options: {
     options.paging.initialize(id);
     merge(page.sessions, { authoritativeOrder: true, authoritativeActivity: true });
     options.paging.nextCursors.value.set(id, page.nextCursor);
+    options.paging.loadMoreErrors.value.delete(id);
+    if (
+      options.workspaceTarget.value?.nodeId === nodeId &&
+      options.workspaceTarget.value?.workspaceId === workspaceId
+    ) {
+      loadMoreOperation += 1;
+      options.paging.loadingMore.value = false;
+    }
   }
 
   async function loadMore(): Promise<void> {
     const workspaceSelection = options.workspaceTarget.value;
     const nodeId = workspaceSelection?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
-    if (nodeId === undefined || workspaceId === undefined || options.paging.loadingMore.value)
+    if (
+      nodeId === undefined ||
+      workspaceId === undefined ||
+      options.paging.loadingMore.value ||
+      refreshing.value
+    )
       return;
     const id = options.tabId(nodeId, workspaceId);
     const cursor = options.paging.nextCursors.value.get(id);
     if (typeof cursor !== 'string') return;
     const generation = synchronizationGenerations.get(id) ?? 0;
+    const operation = ++loadMoreOperation;
     const isCurrent = () =>
       (synchronizationGenerations.get(id) ?? 0) === generation &&
       options.workspaceTarget.value === workspaceSelection &&
       options.workspaceTarget.value?.nodeId === nodeId &&
       options.workspaceTarget.value?.workspaceId === workspaceId;
     options.paging.loadingMore.value = true;
+    options.paging.loadMoreErrors.value.delete(id);
     try {
       const result = await options.request<SessionPage>(
         `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}&cursor=${encodeURIComponent(cursor)}`
       );
       if (!isCurrent()) return;
+      if (result.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
       merge(result.sessions);
       options.paging.append(id, result.sessions.length, result.nextCursor);
     } catch (error) {
       if (!isCurrent()) return;
-      options.notice(
-        translate('generated.workspaceSessionService.unableToLoadMoreSessions', {
-          value0: options.errorMessage(error)
-        })
-      );
+      options.paging.loadMoreErrors.value.set(id, error);
     } finally {
-      options.paging.loadingMore.value = false;
+      if (operation === loadMoreOperation) options.paging.loadingMore.value = false;
     }
   }
 
@@ -214,6 +229,9 @@ export function createWorkspaceSessionService(options: {
     searchQuery.value = normalized;
     searchResults.value = [];
     searchNextCursor.value = null;
+    loadingMoreSearchResults.value = false;
+    loadMoreSearchResultsError.value = undefined;
+    searching.value = false;
     if (nodeId === undefined || workspaceId === undefined || normalized.length === 0) return;
     searching.value = true;
     try {
@@ -243,9 +261,14 @@ export function createWorkspaceSessionService(options: {
     searchNextCursor.value = null;
     searching.value = false;
     loadingMoreSearchResults.value = false;
+    loadMoreSearchResultsError.value = undefined;
   }
 
-  watch(options.workspaceTarget, clearSearch);
+  watch(options.workspaceTarget, () => {
+    clearSearch();
+    loadMoreOperation += 1;
+    options.paging.loadingMore.value = false;
+  });
 
   async function loadMoreSearchResults(): Promise<void> {
     const workspaceSelection = options.workspaceTarget.value;
@@ -258,7 +281,8 @@ export function createWorkspaceSessionService(options: {
       workspaceId === undefined ||
       query.length === 0 ||
       cursor === null ||
-      loadingMoreSearchResults.value
+      loadingMoreSearchResults.value ||
+      searching.value
     )
       return;
     const generation = searchGeneration;
@@ -268,17 +292,19 @@ export function createWorkspaceSessionService(options: {
       options.workspaceTarget.value?.nodeId === nodeId &&
       options.workspaceTarget.value?.workspaceId === workspaceId;
     loadingMoreSearchResults.value = true;
+    loadMoreSearchResultsError.value = undefined;
     try {
       const result = await options.request<SessionPage>(
         `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}&cursor=${encodeURIComponent(cursor)}&query=${encodeURIComponent(query)}`
       );
       if (!isCurrent()) return;
+      if (result.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
       const byId = new Map(searchResults.value.map((session) => [session.id, session]));
       for (const session of result.sessions) byId.set(session.id, session);
       searchResults.value = [...byId.values()];
       searchNextCursor.value = result.nextCursor;
     } catch (error) {
-      if (isCurrent()) options.notice(options.errorMessage(error));
+      if (isCurrent()) loadMoreSearchResultsError.value = error;
     } finally {
       if (isCurrent()) loadingMoreSearchResults.value = false;
     }
@@ -357,6 +383,7 @@ export function createWorkspaceSessionService(options: {
     searchNextCursor,
     searching,
     loadingMoreSearchResults,
+    loadMoreSearchResultsError,
     preserveManagedActive,
     merge,
     applySnapshot,

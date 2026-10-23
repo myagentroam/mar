@@ -66,7 +66,10 @@ import type {
 import { userInputOtherAnswerId } from '../../service/ConversationUserInputService.js';
 import { absoluteMessageTime } from '../../util/conversation-presentation.js';
 import type { AgentRun } from '../../model/workbench.js';
-import { completedStepDuration, runDuration } from '../../util/conversation-activity.js';
+import {
+  completedStepDuration,
+  completedConversationDurations
+} from '../../util/conversation-activity.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
 import { isTerminalRunStatus } from '../../service/RunService.js';
 
@@ -470,15 +473,11 @@ function messageTimeTitle(timestamp: number): string {
 
 const runDurations = computed(() => {
   const labels = new Map<string, string>();
-  for (const run of props.runs ?? []) {
-    if (!isTerminalRunStatus(run.status)) continue;
-    const duration = runDuration(run);
-    const last = [...props.turns].reverse().find((turn) => turn.runId === run.id);
-    if (duration !== undefined && last !== undefined)
-      labels.set(
-        last.id,
-        translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
-      );
+  for (const [turnId, duration] of completedConversationDurations(props.turns)) {
+    labels.set(
+      turnId,
+      translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
+    );
   }
   return labels;
 });
@@ -792,7 +791,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <summary class="conversation-record-heading">
               <ConversationRecordIcon kind="file_change" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
-              <span
+              <span class="conversation-group-meta"
                 >{{ conversationFileChangeEntries(displayItem.items).length }}
                 {{ translate('generated.conversationTimeline.files') }}</span
               >
@@ -988,9 +987,6 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
-          <div class="conversation-item-heading">
-            <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
-          </div>
           <AgentMarkdown
             :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
             v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
@@ -1263,7 +1259,9 @@ function stepDuration(item: ConversationItem): string | undefined {
           <details v-if="hasPlanContent(displayItem.item)" open>
             <summary>
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
-              <span v-if="planSteps(displayItem.item.payload).length"
+              <span
+                v-if="planSteps(displayItem.item.payload).length"
+                class="conversation-record-meta"
                 >{{ planSteps(displayItem.item.payload).length }}
                 {{ translate('generated.conversationTimeline.planItems') }}</span
               >
@@ -1735,14 +1733,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-conversation-muted);
 }
 
-.conversation-item summary.conversation-record-heading {
-  display: grid;
-  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr);
-  column-gap: 0.5rem;
-  row-gap: 0.25rem;
-  align-items: center;
-}
-
 .conversation-item summary.conversation-record-heading::before,
 .conversation-item summary.conversation-record-heading > .conversation-record-icon,
 .conversation-item summary.conversation-record-heading > strong,
@@ -1770,34 +1760,11 @@ function stepDuration(item: ConversationItem): string | undefined {
   white-space: nowrap;
 }
 
-.conversation-tool-presentation > .conversation-record-heading,
-.subagent-group > details > .conversation-record-heading {
-  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr) max-content;
-}
-
 .conversation-record-heading > .conversation-record-preview {
-  grid-column: 4;
-  grid-row: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.conversation-tool-presentation > .conversation-record-heading > .conversation-record-meta,
-.subagent-group > details > .conversation-record-heading > .conversation-record-meta,
-.subagent-group > details > .conversation-record-heading > .conversation-group-meta {
-  grid-column: 5;
-  grid-row: 1;
-}
-
-.conversation-tool-presentation[open]:not([data-disclosure-closing])
-  > .conversation-record-heading
-  > .conversation-record-preview {
-  grid-column: 3 / -1;
-  grid-row: 2;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .conversation-record-group > .conversation-tool-detail,
@@ -1827,6 +1794,8 @@ details.conversation-record-group > details {
 }
 
 .conversation-record-group > details > summary {
+  padding-block: 2px;
+  padding-inline: 0 8px;
   display: grid;
   grid-template-columns: 1em minmax(0, 1fr) max-content;
   column-gap: 0.5rem;
@@ -2130,23 +2099,20 @@ details.conversation-record-group > details {
   border-radius: var(--mar-radius-control);
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary {
+.conversation-item details > summary {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   white-space: nowrap;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary::before,
-.conversation-item
-  details:is(:not([open]), [data-disclosure-closing])
-  > summary
-  > .conversation-record-icon {
+.conversation-item details > summary::before,
+.conversation-item details > summary > .conversation-record-icon {
   flex: none;
   margin-inline: 0;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > strong {
+.conversation-item details > summary > strong {
   min-width: 0;
   max-width: 45%;
   overflow: hidden;
@@ -2154,7 +2120,7 @@ details.conversation-record-group > details {
   margin-inline: 0;
 }
 
-.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > span {
+.conversation-item details > summary > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2162,7 +2128,7 @@ details.conversation-record-group > details {
 }
 
 .conversation-item
-  details:is(:not([open]), [data-disclosure-closing])
+  details
   > summary
   > span:not(.conversation-record-meta):not(.conversation-group-meta) {
   flex: 1;

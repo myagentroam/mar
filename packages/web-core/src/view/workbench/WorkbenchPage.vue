@@ -11,6 +11,7 @@ import PasswordGate from '../../view/PasswordGate.vue';
 import ImagePreviewDialogs from '../../view/conversation/ImagePreviewDialogs.vue';
 import type { createWorkbenchPageController } from '../../service/WorkbenchPageController.js';
 import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkbenchSurface from './WorkbenchSurface.vue';
 import { useI18n } from 'vue-i18n';
 
@@ -92,7 +93,15 @@ function closeStandaloneFileWindow(): void {
       'console-shell--gate': !page.adminLoaded || !page.admin.authenticated || page.locked
     }"
   >
-    <div v-if="!page.adminLoaded" aria-busy="true" />
+    <div
+      v-if="!page.adminLoaded"
+      class="page-loading-state"
+      role="status"
+      aria-busy="true"
+      :aria-label="t('common.loading')"
+    >
+      <BusyIndicator />
+    </div>
     <LoginPage
       v-else-if="!page.admin.authenticated"
       :loading="page.loading"
@@ -204,7 +213,7 @@ function closeStandaloneFileWindow(): void {
             {{ t('generated.filePreviewDialog.closePreview') }}
           </el-button>
         </template>
-        <FilePreviewLoading v-else />
+        <FilePreviewLoading v-else variant="page" />
       </div>
       <slot name="resource-details">
         <NodeDetailsDialogs

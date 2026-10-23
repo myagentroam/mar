@@ -23,6 +23,12 @@ it('uses shared Composer typography and registered semantic colors without chang
   const source = (name: string) =>
     readFileSync(new URL(`../../src/view/${name}.vue`, import.meta.url), 'utf8');
   const composer = source('composer/ConversationComposer');
+  const outer = composer.match(/\.composer\s*\{([^}]+)\}/u)?.[1];
+  expect(outer).toContain('background: var(--mar-conversation-canvas);');
+  expect(outer).not.toContain('border-top:');
+  expect(composer).toMatch(
+    /\.composer-shell\s*\{[^}]*border: 1px solid var\(--mar-border-medium\);[^}]*background: var\(--mar-bg-panel\);/u
+  );
   const completion = source('composer/PromptCompletionEditor');
   const toolbar = source('composer/ComposerToolbar');
   expect(composer).toContain('font-size: var(--mar-font-size-input)');

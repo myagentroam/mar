@@ -3,7 +3,16 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, type ShallowUnwrapRef } from 'vue';
+import LoadingPanel from '../common/LoadingPanel.vue';
+
+import {
+  computed,
+  defineAsyncComponent,
+  h,
+  onBeforeUnmount,
+  ref,
+  type ShallowUnwrapRef
+} from 'vue';
 import { Connection } from '@element-plus/icons-vue';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -15,6 +24,7 @@ import {
 } from '../../util/workbench-presentation.js';
 import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
@@ -36,7 +46,16 @@ import { useManagementComposition } from '../../service/ManagementComposition.js
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/WorkbenchLayoutService.js';
 
-const SettingsContent = defineAsyncComponent(() => import('../settings/SettingsContent.vue'));
+const loadingComponent = {
+  render: () =>
+    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+};
+
+const SettingsContent = defineAsyncComponent({
+  loader: () => import('../settings/SettingsContent.vue'),
+  loadingComponent,
+  delay: 0
+});
 
 const props = defineProps<{
   page: ShallowUnwrapRef<
@@ -263,7 +282,14 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
           "
           class="welcome-panel compact-welcome workspace-selection-panel"
         >
-          <el-skeleton v-if="page.workspaceSelectionLoading" animated :rows="6" />
+          <div
+            v-if="page.workspaceSelectionLoading"
+            class="page-loading-state"
+            role="status"
+            :aria-label="translate('common.loading')"
+          >
+            <BusyIndicator />
+          </div>
           <el-empty
             v-else
             :description="translate('generated.workbenchSurface.workspaceMetadataUnavailable')"
@@ -284,6 +310,11 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
             :mobile-viewport="page.mobileViewport"
             :can-load-more="page.canLoadMoreWorkspaceSessions"
             :loading-more="page.loadingMoreWorkspaceSessions"
+            :load-more-error="page.loadMoreWorkspaceSessionsError"
+            :active="
+              (!page.mobileViewport || page.mobileWorkspaceSurface === 'sessions') &&
+              page.workspaceHost?.connected !== false
+            "
             :watch-status="page.workspaceWatchTopicStatus.sessions"
             :node-ready="page.nodeReady"
             :loading="page.loading"

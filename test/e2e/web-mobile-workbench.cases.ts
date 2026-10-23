@@ -170,7 +170,13 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
           createdAt: notificationNow,
           updatedAt: notificationNow,
           expiresAt: notificationNow + 60_000,
-          read: false
+          read: false,
+          target: {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'session-1'
+          }
         }
       ]
     })
@@ -186,11 +192,15 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
     return {
       horizontalOverlap: icon.right - badge.left,
       rightInset: button.getBoundingClientRect().right - badge.right,
+      leftInset: badge.left - button.getBoundingClientRect().left,
+      topInset: badge.top - button.getBoundingClientRect().top,
       verticalOverlap: badge.bottom - icon.top
     };
   });
   expect(badgePosition.horizontalOverlap).toBeGreaterThanOrEqual(6);
-  expect(badgePosition.rightInset).toBeGreaterThanOrEqual(8);
+  expect(badgePosition.rightInset).toBeGreaterThanOrEqual(0);
+  expect(badgePosition.leftInset).toBeGreaterThanOrEqual(0);
+  expect(badgePosition.topInset).toBeGreaterThanOrEqual(0);
   expect(badgePosition.verticalOverlap).toBeGreaterThanOrEqual(6);
   const nodesButton = page.getByRole('button', { name: '工作', exact: true });
   await nodesButton.click();
@@ -407,6 +417,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
           expiresAt: notificationNow + 60_000,
           read: false,
           target: {
+            targetType: 'WORKSPACE_SESSION',
             nodeId: 'node-1',
             workspaceId: 'workspace-1',
             sessionId: 'session-1',
@@ -582,7 +593,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
   await expect(documentationLink.locator('.rail-label')).toHaveText('帮助');
-  await expect(documentationLink.locator('.rail-label')).toBeVisible();
+  await expect(documentationLink).toBeVisible();
+  await expect(documentationLink.locator('.el-icon')).toBeVisible();
+  await expect(documentationLink.locator('.rail-label')).toBeHidden();
   await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
   const [nodesGeometry, documentationGeometry, notificationGeometry, brandGeometryBox] =
     await Promise.all([
@@ -597,25 +610,28 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     nodesButton.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
       const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
-      const label = element.querySelector('.rail-label')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
-        labelCenterY: label.top + label.height / 2
+        iconWidth: icon.width,
+        iconHeight: icon.height
       };
     }),
     documentationLink.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
       const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
-      const label = element.querySelector('.rail-label')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
-        labelCenterY: label.top + label.height / 2
+        iconWidth: icon.width,
+        iconHeight: icon.height
       };
     })
   ]);
   expect(documentationContentGeometry).toEqual(nodesContentGeometry);
+  expect(nodesContentGeometry.iconCenterY).toBe(nodesContentGeometry.contentCenterY);
+  expect(nodesContentGeometry.iconWidth).toBe(18);
+  expect(nodesContentGeometry.iconHeight).toBe(18);
   expect(
     (notificationGeometry?.y ?? Infinity) + (notificationGeometry?.height ?? 0)
   ).toBeLessThanOrEqual((brandGeometryBox?.y ?? 0) + (brandGeometryBox?.height ?? 0));
@@ -726,6 +742,15 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.workspace-inspector').getByRole('heading', { level: 2 })).toHaveText(
     '文件'
   );
+  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-size',
+    '13px'
+  );
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-weight',
+    '500'
+  );
   await expect(page.locator('.inspector-column')).toHaveCSS('top', '46px');
   const inspectorBounds = await page.locator('.inspector-column').evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -802,6 +827,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .getByRole('button', { name: '文件内查找' })
     .click();
   await expect(preview.getByRole('search', { name: '文件内查找' })).toBeVisible();
+  await preview.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await preview.getByRole('button', { name: '关闭查找' }).click();
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
 
@@ -859,6 +885,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
   await diffUtilities.getByRole('button', { name: '文件内查找' }).click();
   await expect(diff.getByRole('search', { name: '文件内查找' })).toBeVisible();
+  await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await diff.getByRole('button', { name: '关闭查找' }).click();
   await expect(diff.getByRole('button', { name: '关闭 Diff 预览' })).toHaveCount(0);
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
@@ -869,6 +896,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.terminal-dock')).toBeVisible();
   await expect(page.locator('.terminal-dock')).toHaveCSS('top', '46px');
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-weight', '500');
+  await expect(page.locator('.admin-terminal-body')).toBeVisible();
   const terminalFill = await page.locator('.terminal-dock').evaluate((dock) => {
     const body = dock.querySelector<HTMLElement>('.admin-terminal-body');
     if (body === null) return null;
@@ -1240,29 +1270,82 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
 });
 
 for (const labels of [
-  { locale: 'zh-CN', enter: '进入控制台', work: '工作', help: '帮助' },
-  { locale: 'en-US', enter: 'Open console', work: 'Work', help: 'Help' }
+  { locale: 'zh-CN', enter: '进入控制台', work: '工作', help: '帮助', theme: 'vscode-dark-2026' },
+  { locale: 'en-US', enter: 'Open console', work: 'Work', help: 'Help', theme: 'daylight' }
 ]) {
-  test(`Mobile Help icon stays visually balanced with navigation entries (${labels.locale})`, async ({
+  test(`Mobile Help and notification icons align with navigation entries (${labels.locale})`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-    await page.addInitScript(
-      (locale) => localStorage.setItem('mar.locale.v2', locale),
-      labels.locale
-    );
+    await page.addInitScript(({ locale, theme }) => {
+      localStorage.setItem('mar.locale.v2', locale);
+      localStorage.setItem('mar.theme', theme);
+    }, labels);
     await page.goto('/console');
     await page.getByRole('button', { name: labels.enter }).click();
     const help = page.getByRole('link', { name: labels.help, exact: true });
     const work = page.getByRole('button', { name: labels.work, exact: true });
+    const notification = page.locator('.workbench-notification-trigger');
+    await work.click();
     for (const width of [320, 390, 767, 768, 1600]) {
       await page.setViewportSize({ width, height: 844 });
       await expect(help).toBeVisible();
       if (width >= 768) {
         await expect(help.locator('.documentation-icon')).toBeHidden();
+        await notification.hover();
+        await expect(notification).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         continue;
       }
+      await expect(notification).toHaveCSS('width', '36px');
+      await expect(notification).toHaveCSS('height', '36px');
+      await expect(notification.locator('.el-icon')).toHaveCSS('width', '18px');
+      await expect(notification.locator('.el-icon')).toHaveCSS('height', '18px');
+      const [workBounds, notificationBounds] = await Promise.all([
+        work.boundingBox(),
+        notification.boundingBox()
+      ]);
+      expect(notificationBounds?.y).toBe(workBounds?.y);
+      expect(notificationBounds?.height).toBe(workBounds?.height);
+      const idleNavigation = page.locator('button.nav-menu-button:not(.active)').first();
+      await page.mouse.move(0, 100);
+      await expect(notification).toHaveCSS(
+        'color',
+        await idleNavigation.evaluate((element) => getComputedStyle(element).color)
+      );
+      await idleNavigation.hover();
+      const hoverStyle = await idleNavigation.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          radius: style.borderRadius
+        };
+      });
+      await notification.hover();
+      await expect(notification).toHaveCSS('color', hoverStyle.color);
+      await expect(notification).toHaveCSS('background-color', hoverStyle.background);
+      await expect(notification).toHaveCSS('border-radius', hoverStyle.radius);
+      await expect(notification.locator('svg')).toHaveCSS('transform', 'none');
+      await page.mouse.move(0, 100);
+      await page.keyboard.press('Tab');
+      await notification.focus();
+      await expect(notification).toHaveCSS('outline-style', 'solid');
+      await expect(notification).toHaveCSS('outline-width', '2px');
+      await expect(notification).toHaveCSS('outline-offset', '-2px');
+      await notification.click();
+      await expect(notification).toHaveAttribute('aria-expanded', 'true');
+      const activeStyle = await work.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { color: style.color, background: style.backgroundColor };
+      });
+      await page.mouse.move(0, 100);
+      await expect(notification).toHaveCSS('color', activeStyle.color);
+      await expect(notification).toHaveCSS('background-color', activeStyle.background);
+      if (width === 390)
+        await page.screenshot({ path: testInfo.outputPath('mobile-notification-open.png') });
+      await notification.click();
+      await expect(notification).toHaveAttribute('aria-expanded', 'false');
       const geometry = await Promise.all(
         [work, help].map((entry) =>
           entry.evaluate((element) => {
@@ -1270,12 +1353,10 @@ for (const labels of [
             const rect = svg.getBoundingClientRect();
             const shape = svg.getBBox();
             const icon = svg.parentElement!.getBoundingClientRect();
-            const label = element.querySelector('.rail-label')!.getBoundingClientRect();
             return {
               paintedWidth: (shape.width / svg.viewBox.baseVal.width) * rect.width,
               paintedHeight: (shape.height / svg.viewBox.baseVal.height) * rect.height,
-              iconCenterY: icon.top + icon.height / 2,
-              labelCenterY: label.top + label.height / 2
+              iconCenterY: icon.top + icon.height / 2
             };
           })
         )
@@ -1285,7 +1366,7 @@ for (const labels of [
       expect(ratio).toBeGreaterThanOrEqual(0.9);
       expect(ratio).toBeLessThanOrEqual(1.1);
       expect(geometry[1]!.iconCenterY).toBe(geometry[0]!.iconCenterY);
-      expect(geometry[1]!.labelCenterY).toBe(geometry[0]!.labelCenterY);
+      await expect(help.locator('.rail-label')).toBeHidden();
       if (width === 390)
         await page
           .getByTestId('workbench-brand')

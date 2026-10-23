@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
 import {
@@ -416,7 +417,9 @@ function onKeydown(event: KeyboardEvent): void {
         </button>
       </li>
     </ul>
-    <p v-else-if="loading" class="empty">{{ translate('generated.quickOpenDialog.searching') }}</p>
+    <p v-else-if="loading" class="empty" role="status">
+      <BusyIndicator /> {{ translate('generated.quickOpenDialog.searching') }}
+    </p>
     <p v-else-if="statusNotices.length === 0" class="empty">
       {{ translate('generated.quickOpenDialog.noMatches') }}
     </p>

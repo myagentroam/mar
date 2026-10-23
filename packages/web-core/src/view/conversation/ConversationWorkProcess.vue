@@ -165,6 +165,10 @@ watch(open, async () => {
   font-weight: 500;
 }
 .process-activity.is-active {
+  color: var(--mar-conversation-text);
+  font-weight: 600;
+}
+.process-activity-indicator {
   color: var(--mar-color-brand-text);
 }
 .process-activity-label {

@@ -164,6 +164,7 @@ describe('management page service lifecycle', () => {
     expect(service.items.value).toEqual([{ id: 'a' }, { id: 'b' }]);
     expect(reportError).toHaveBeenCalledOnce();
     expect(service.loading.value).toBe(false);
+    expect(service.loadingMore.value).toBe(false);
     const callsAfterFailure = read.mock.calls.length;
 
     await service.loadMore(true);
@@ -176,6 +177,100 @@ describe('management page service lifecycle', () => {
     expect(service.page.value).toBe(2);
     service.dispose();
   });
+
+  it.each(['resolve', 'reject'] as const)(
+    'retains a loaded directory during same-context refresh and its %s outcome',
+    async (outcome) => {
+      let context = 'current';
+      const response = deferred<ManagementPage<Item>>();
+      const reportError = vi.fn();
+      const read = vi
+        .fn()
+        .mockResolvedValueOnce(page([{ id: 'a' }], 1, 3, true))
+        .mockResolvedValueOnce(page([{ id: 'b' }], 2, 3, true))
+        .mockImplementationOnce(() => response.promise)
+        .mockResolvedValueOnce(page([{ id: 'other-context' }]));
+      const service = createManagementPageService<Item>({
+        read,
+        key: (item) => item.id,
+        context: () => context,
+        reportError
+      });
+      await service.load();
+      await service.loadMore();
+      const items = service.items.value;
+      const metadata = service.result.value;
+      const refresh = service.load(true);
+      expect(service.items.value).toBe(items);
+      expect(service.result.value).toBe(metadata);
+      expect(service.loading.value).toBe(true);
+      expect(read.mock.calls.map(([number]) => number)).toEqual([1, 2, 1]);
+      if (outcome === 'resolve') response.resolve(page([{ id: 'refreshed' }]));
+      else response.reject(new Error('Refresh failed.'));
+      await refresh;
+      expect(service.loading.value).toBe(false);
+      if (outcome === 'resolve') {
+        expect(service.items.value).toEqual([{ id: 'refreshed' }]);
+        expect(service.page.value).toBe(1);
+      } else {
+        expect(service.items.value).toBe(items);
+        expect(service.result.value).toBe(metadata);
+        expect(service.page.value).toBe(2);
+        expect(reportError).toHaveBeenCalledOnce();
+      }
+      context = 'next';
+      const switching = service.load(true);
+      expect(service.items.value).toEqual([]);
+      expect(service.result.value).toBeUndefined();
+      await switching;
+      expect(service.items.value).toEqual([{ id: 'other-context' }]);
+      service.dispose();
+    }
+  );
+
+  it.each(['resolve', 'reject'] as const)(
+    'does not let a superseded append %s clear the current append indicator',
+    async (outcome) => {
+      const stale = deferred<ManagementPage<Item>>();
+      const refreshResponse = deferred<ManagementPage<Item>>();
+      const current = deferred<ManagementPage<Item>>();
+      const reportError = vi.fn();
+      const read = vi
+        .fn()
+        .mockResolvedValueOnce(page([{ id: 'initial' }], 1, 40, true))
+        .mockImplementationOnce(() => stale.promise)
+        .mockImplementationOnce(() => refreshResponse.promise)
+        .mockImplementationOnce(() => current.promise);
+      const service = createManagementPageService<Item>({
+        read,
+        key: (item) => item.id,
+        context: () => 'same-directory',
+        reportError
+      });
+      await service.load();
+      const oldAppend = service.loadMore();
+      expect(service.loadingMore.value).toBe(true);
+      const refresh = service.load(true);
+      expect(service.loadingMore.value).toBe(false);
+      refreshResponse.resolve(page([{ id: 'refreshed' }], 1, 40, true));
+      await refresh;
+      const newAppend = service.loadMore();
+      expect(service.loadingMore.value).toBe(true);
+      if (outcome === 'resolve') stale.resolve(page([{ id: 'stale' }], 2, 40, false));
+      else stale.reject(new Error('Stale append failed.'));
+      await oldAppend;
+      expect(service.loading.value).toBe(true);
+      expect(service.loadingMore.value).toBe(true);
+      expect(service.items.value).toEqual([{ id: 'refreshed' }]);
+      expect(reportError).not.toHaveBeenCalled();
+      current.resolve(page([{ id: 'current' }], 2, 40, false));
+      await newAppend;
+      expect(service.loading.value).toBe(false);
+      expect(service.loadingMore.value).toBe(false);
+      expect(service.items.value).toEqual([{ id: 'refreshed' }, { id: 'current' }]);
+      service.dispose();
+    }
+  );
 
   it('resets and rereads page one when an append response is clamped to the current page', async () => {
     vi.stubGlobal('window', {
@@ -204,6 +299,32 @@ describe('management page service lifecycle', () => {
     expect(service.items.value).toEqual([{ id: 'refreshed-page-one' }]);
     expect(service.page.value).toBe(1);
     expect(service.hasMore.value).toBe(false);
+    service.dispose();
+  });
+
+  it('retains the loaded page when a clamped append cannot reload page one', async () => {
+    const reportError = vi.fn();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(page([{ id: 'retained' }], 1, 40, true))
+      .mockResolvedValueOnce(page([{ id: 'clamped' }], 1, 12, false))
+      .mockRejectedValueOnce(new Error('Reload failed.'));
+    const service = createManagementPageService<Item>({
+      read,
+      key: (item) => item.id,
+      context: () => 'clamped-list',
+      reportError
+    });
+    await service.load();
+    const items = service.items.value;
+    const metadata = service.result.value;
+    await service.loadMore();
+    expect(service.items.value).toBe(items);
+    expect(service.result.value).toBe(metadata);
+    expect(service.page.value).toBe(1);
+    expect(service.loading.value).toBe(false);
+    expect(service.loadingMore.value).toBe(false);
+    expect(reportError).toHaveBeenCalledOnce();
     service.dispose();
   });
 

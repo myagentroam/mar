@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { EditPen, Plus, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -19,6 +19,7 @@ const editing = ref<QuickPrompt>();
 const dialogOpen = ref(false);
 const editorGeneration = ref(0);
 const saving = ref(false);
+const ready = ref(false);
 const draft = ref({ phrase: '', prompt: '' });
 const isNew = computed(() => editing.value === undefined);
 const rules: FormRules = {
@@ -37,8 +38,14 @@ const rules: FormRules = {
   ]
 };
 
-onMounted(() => void props.refresh());
+onMounted(() => void loadInitial());
 onBeforeUnmount(close);
+
+async function loadInitial(): Promise<void> {
+  await props.refresh();
+  await nextTick();
+  if (!props.failed) ready.value = true;
+}
 
 function openCreate(): void {
   editorGeneration.value += 1;
@@ -107,11 +114,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 </script>
 
 <template>
-  <LoadingPanel
-    :loading="loading"
-    :element-loading-text="translate('common.loading')"
-    class="quick-prompts settings-panel"
-  >
+  <LoadingPanel :loading="loading && !ready" variant="page" class="quick-prompts settings-panel">
     <div class="quick-prompts-content">
       <header>
         <div>

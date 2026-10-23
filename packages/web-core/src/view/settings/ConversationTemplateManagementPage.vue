@@ -75,6 +75,8 @@ const mcpOptions = ref<readonly ConversationTemplateMcpOption[]>([]);
 const detailWorkspaces = ref<readonly Workspace[]>([]);
 const operationLoading = ref(false);
 const loading = computed(() => operationLoading.value || pagination.loading.value);
+const pageReady = ref(false);
+const refreshLoading = ref(false);
 const modelLoading = ref(false);
 const mcpLoading = ref(false);
 const saving = ref(false);
@@ -106,6 +108,9 @@ const eligibleNodes = computed(() =>
 );
 const availableModels = computed(() => models.value);
 const displayedTemplates = templates;
+watch(pagination.result, (result) => {
+  if (result !== undefined) pageReady.value = true;
+});
 const modelSelectionAvailable = computed(
   () =>
     !modelLoading.value &&
@@ -182,6 +187,14 @@ function endLoading(): void {
 
 async function load(_showLoading = true): Promise<void> {
   await pagination.load(true);
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
+  }
 }
 function sortTemplates(input: { prop?: string; order?: string | null }): void {
   sortBy.value = input.order ? input.prop : undefined;
@@ -707,12 +720,13 @@ onMounted(() => {
 
 <template>
   <section
-    v-loading="loading"
+    v-loading="pagination.loading.value && !pageReady"
+    element-loading-custom-class="mar-page-loading"
     class="management-page conversation-template-management"
-    :aria-busy="loading"
+    :aria-busy="pagination.loading.value && !pageReady"
   >
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load()">{{
+      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
         translate('conversationTemplates.refresh')
       }}</el-button>
       <el-button
@@ -732,6 +746,9 @@ onMounted(() => {
       :title="translate('conversationTemplates.noEligibleNode')"
     />
     <el-table
+      v-loading="
+        pagination.loading.value && pageReady && !pagination.loadingMore.value && !refreshLoading
+      "
       class="clickable-rows"
       :data="displayedTemplates"
       row-key="id"
@@ -821,6 +838,7 @@ onMounted(() => {
       :mobile="pagination.mobileViewport.value"
       :mobile-visible-count="pagination.mobileVisibleCount.value"
       :loading="loading"
+      :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
       @load-more="pagination.loadMore"
     />

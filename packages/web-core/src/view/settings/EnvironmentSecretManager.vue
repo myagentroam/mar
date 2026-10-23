@@ -46,6 +46,7 @@ const service = createEnvironmentSecretService<Secret, EnvironmentSecretInput<st
 );
 const secrets = shallowRef<readonly Secret[]>([]);
 const operationLoading = ref(false);
+const refreshLoading = ref(false);
 const dialogOpen = ref(false);
 const editing = shallowRef<Secret>();
 const secretDetailsOpen = ref(false);
@@ -122,6 +123,14 @@ const pagination = createManagementPageService<Secret>({
 const loading = computed(
   () => operationLoading.value || (!targetScoped.value && pagination.loading.value)
 );
+const regionLoading = computed(
+  () =>
+    (operationLoading.value && !refreshLoading.value) ||
+    (!targetScoped.value &&
+      pagination.loading.value &&
+      !pagination.loadingMore.value &&
+      !refreshLoading.value)
+);
 const displayedSecrets = computed(() =>
   targetScoped.value ? visibleSecrets.value : pagination.items.value
 );
@@ -147,6 +156,14 @@ async function load(): Promise<void> {
     ElMessage.error(message(caught));
   } finally {
     operationLoading.value = false;
+  }
+}
+async function refresh(): Promise<void> {
+  refreshLoading.value = true;
+  try {
+    await load();
+  } finally {
+    refreshLoading.value = false;
   }
 }
 
@@ -294,7 +311,8 @@ function message(error: unknown): string {
 
 <template>
   <LoadingPanel
-    :loading="loading"
+    :loading="regionLoading"
+    variant="region"
     class="secret-manager"
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
@@ -308,7 +326,7 @@ function message(error: unknown): string {
       /></label>
     </div>
     <div class="secret-toolbar">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="refreshLoading" @click="refresh">{{
         translate('generated.environmentSecretManager.refresh')
       }}</el-button>
       <el-button v-if="writable !== false" type="primary" :icon="Plus" @click="openCreate">{{
@@ -403,6 +421,7 @@ function message(error: unknown): string {
       :mobile="pagination.mobileViewport.value"
       :mobile-visible-count="pagination.mobileVisibleCount.value"
       :loading="loading"
+      :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
       @load-more="pagination.loadMore"
     />

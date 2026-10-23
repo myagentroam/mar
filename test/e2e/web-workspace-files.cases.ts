@@ -48,6 +48,15 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   const workspaceName = page.locator('.workspace-tree .workspace-branch-button').first();
   await expect(workspaceName).toHaveCSS('font-weight', '400');
   await expect(workspaceName).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-size',
+    '13px'
+  );
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-weight',
+    '500'
+  );
+  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.workspace-tab-content > span').first()).toHaveCSS(
     'font-weight',
     '400'
@@ -79,6 +88,25 @@ test('File navigation uses rounded selection and the editor fills its surface wi
       (value) => document.documentElement.setAttribute('data-theme', value),
       theme
     );
+    const tabSelection = await page
+      .locator('.workspace-tab.active')
+      .first()
+      .evaluate((tab) => {
+        const reference = document.createElement('span');
+        reference.style.backgroundColor = 'var(--mar-fill-selection)';
+        tab.append(reference);
+        const background = getComputedStyle(reference).backgroundColor;
+        reference.remove();
+        return {
+          background,
+          radius: getComputedStyle(tab).borderRadius,
+          color: getComputedStyle(tab.querySelector('button')!).color
+        };
+      });
+    const selectedRow = page.locator('.file-tree-row-shell.selected').first();
+    await expect(selectedRow).toHaveCSS('background-color', tabSelection.background);
+    await expect(selectedRow).toHaveCSS('border-radius', tabSelection.radius);
+    await expect(selectedRow.getByRole('treeitem')).toHaveCSS('color', tabSelection.color);
     await editor.click();
     await editor.press('Control+a');
     const selection = preview.locator('.cm-selectionBackground').first();

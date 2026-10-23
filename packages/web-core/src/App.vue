@@ -38,11 +38,7 @@ const elementLocales = { 'zh-CN': zhCn, 'en-US': en } as const;
 const elementLocale = computed(() => elementLocales[localeService.locale.value]);
 
 function revealApplication(): void {
-  const bootstrap = document.getElementById('mar-bootstrap');
-  if (!bootstrap) return;
-  bootstrap.classList.add('mar-bootstrap--leaving');
-  bootstrap.addEventListener('transitionend', () => bootstrap.remove(), { once: true });
-  window.setTimeout(() => bootstrap.remove(), 240);
+  document.getElementById('mar-bootstrap')?.remove();
 }
 
 function preventBrowserContextMenu(event: MouseEvent): void {

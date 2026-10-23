@@ -165,7 +165,7 @@ async function clear(): Promise<void> {
 <template>
   <section
     v-loading="loading"
-    :element-loading-text="translate('common.loading')"
+    element-loading-custom-class="mar-page-loading"
     class="personal-instructions settings-panel"
     :aria-busy="loading"
   >

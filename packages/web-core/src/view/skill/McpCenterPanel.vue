@@ -26,6 +26,8 @@ const service = createMcpCenterService(props.request);
 const targetKind = ref<'NODE' | 'WORKSPACE'>('NODE');
 const targetNodeId = ref('');
 const targetWorkspaceId = ref('');
+const inspectionReady = ref(false);
+const pageLoading = computed(() => service.loading.value && !inspectionReady.value);
 const query = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
@@ -152,8 +154,12 @@ onMounted(() => {
 });
 onUnmounted(() => pagination.dispose());
 watch([targetKind, targetNodeId, targetWorkspaceId], () => {
+  inspectionReady.value = false;
   operationError.value = '';
   void inspect();
+});
+watch(service.inspection, (inspection) => {
+  if (inspection !== undefined) inspectionReady.value = true;
 });
 watch(targetNodes, (nodes) => {
   if (!nodes.some((node) => node.id === targetNodeId.value))
@@ -279,7 +285,11 @@ function mcpErrorMessage(error: unknown): string {
 </script>
 
 <template>
-  <section v-loading="service.loading.value" class="mcp-panel">
+  <section
+    v-loading="pageLoading"
+    element-loading-custom-class="mar-page-loading"
+    class="mcp-panel"
+  >
     <section
       class="mcp-target-panel"
       :aria-label="translate('generated.mcpCenterPanel.mCPConfigurationTarget')"
@@ -364,7 +374,14 @@ function mcpErrorMessage(error: unknown): string {
         </button>
       </div>
     </div>
-    <div class="mcp-table-section">
+    <div
+      v-loading="
+        pagination.loading.value &&
+        !pagination.loadingMore.value &&
+        (inspectionReady || !targetReady)
+      "
+      class="mcp-table-section"
+    >
       <el-table
         v-if="visibleEntries.length > 0"
         class="clickable-rows mcp-config-table"
@@ -499,7 +516,13 @@ function mcpErrorMessage(error: unknown): string {
                 <span>{{
                   translate('generated.mcpCenterPanel.downloadingAndValidatingMCPOnTheNode')
                 }}</span>
-                <el-progress :percentage="50" indeterminate :show-text="false" />
+                <div
+                  class="mcp-install-progress__indicator"
+                  role="progressbar"
+                  :aria-label="
+                    translate('generated.mcpCenterPanel.downloadingAndValidatingMCPOnTheNode')
+                  "
+                />
               </div>
             </div>
           </template>
@@ -521,6 +544,7 @@ function mcpErrorMessage(error: unknown): string {
         :mobile="pagination.mobileViewport.value"
         :mobile-visible-count="pagination.mobileVisibleCount.value"
         :loading="pagination.loading.value"
+        :loading-more="pagination.loadingMore.value"
         @page="pagination.setPage"
         @load-more="pagination.loadMore"
       />
@@ -636,6 +660,37 @@ function mcpErrorMessage(error: unknown): string {
   gap: 6px;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+}
+.mcp-install-progress__indicator {
+  position: relative;
+  overflow: hidden;
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--el-fill-color-light);
+}
+.mcp-install-progress__indicator::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--el-color-primary);
+  content: '';
+  animation: mcp-install-progress 1.4s ease-in-out infinite;
+}
+@keyframes mcp-install-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcp-install-progress__indicator::after {
+    width: 100%;
+    opacity: 0.6;
+    animation: none;
+    transform: none;
+  }
 }
 @media (max-width: 720px) {
   .mcp-target-panel .el-select {

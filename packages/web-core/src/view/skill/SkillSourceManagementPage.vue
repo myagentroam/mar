@@ -442,7 +442,11 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <section v-loading="initialLoading" class="management-page">
+  <section
+    v-loading="initialLoading"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page"
+  >
     <div class="table-actions">
       <el-button
         type="primary"
@@ -562,7 +566,7 @@ function scopeLabel(scope: string): string {
             </el-input>
           </div>
         </div>
-        <div v-loading="sourceSkillsLoading" class="skill-table-section">
+        <div v-loading="sourceSkillsLoading && !initialLoading" class="skill-table-section">
           <el-table
             v-if="service.candidates.value.length > 0"
             class="clickable-rows source-skill-table"
@@ -659,7 +663,10 @@ function scopeLabel(scope: string): string {
             </button>
           </div>
         </div>
-        <div class="skill-table-section">
+        <div
+          v-loading="pagination.loading.value && !initialLoading && !pagination.loadingMore.value"
+          class="skill-table-section"
+        >
           <el-table
             v-if="filteredFavorites.length > 0"
             class="clickable-rows catalog-skill-table"
@@ -788,6 +795,7 @@ function scopeLabel(scope: string): string {
             :mobile="pagination.mobileViewport.value"
             :mobile-visible-count="pagination.mobileVisibleCount.value"
             :loading="pagination.loading.value"
+            :loading-more="pagination.loadingMore.value"
             :has-more="pagination.hasMore.value"
             @page="pagination.setPage"
             @load-more="pagination.loadMore"

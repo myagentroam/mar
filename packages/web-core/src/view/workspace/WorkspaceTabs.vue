@@ -793,14 +793,20 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab-unread {
   flex: none;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 3px;
-  background: var(--mar-bg-page);
+  border: 1px solid var(--mar-border-subtle);
+  border-radius: var(--mar-radius-marker);
+  background: transparent;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
-  padding: 2px 3px;
+  padding: 1px 3px;
+}
+
+@media (min-width: 768px) {
+  .workspace-tab-unread {
+    font-size: calc(var(--mar-font-size-meta) - 1px);
+  }
 }
 
 .workspace-tab .tab-close,

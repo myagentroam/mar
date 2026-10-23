@@ -7,12 +7,33 @@ describe('Web Workspace Session Paging State', () => {
     state.initialize('node-1:workspace-1');
     state.append('node-1:workspace-1', 10, 'next-page');
     state.initialize('node-2:workspace-1');
+    state.loadMoreErrors.value.set('node-1:workspace-1', new Error('page failed'));
+    state.loadMoreErrors.value.set('node-2:workspace-1', new Error('other tab failed'));
 
     expect(state.visibleLimits.value.get('node-1:workspace-1')).toBe(20);
     expect(state.nextCursors.value.get('node-1:workspace-1')).toBe('next-page');
     state.removeNode('node-1');
     expect(state.visibleLimits.value.has('node-1:workspace-1')).toBe(false);
     expect(state.visibleLimits.value.has('node-2:workspace-1')).toBe(true);
+    expect(state.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(state.loadMoreErrors.value.has('node-2:workspace-1')).toBe(true);
+  });
+
+  it('Clears a Tab pagination error when its page state is reset, removed, or appended', () => {
+    const state = createWorkspaceSessionPagingService(10);
+    state.initialize('node-1:workspace-1');
+    state.loadMoreErrors.value.set('node-1:workspace-1', new Error('page failed'));
+
+    state.append('node-1:workspace-1', 10, 'next-page');
+    expect(state.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+
+    state.loadMoreErrors.value.set('node-1:workspace-1', new Error('page failed'));
+    state.reset('node-1:workspace-1');
+    expect(state.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+
+    state.loadMoreErrors.value.set('node-1:workspace-1', new Error('page failed'));
+    state.remove('node-1:workspace-1');
+    expect(state.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
   });
 
   it('Expands the visible limit when opening a session that is currently hidden', () => {

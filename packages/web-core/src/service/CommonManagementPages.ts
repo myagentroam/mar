@@ -1,6 +1,14 @@
-import { defineAsyncComponent } from 'vue';
+import LoadingPanel from '../view/common/LoadingPanel.vue';
+import { translate } from './LocalePreferenceService.js';
+import { defineAsyncComponent, h } from 'vue';
 import type { ManagementPageDefinition } from './ManagementComposition.js';
 import logoUrl from '../assets/logo-icon.png';
+
+const loadingComponent = {
+  render: () =>
+    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+};
+
 export type CommonManagementSection =
   | 'resource-nodes'
   | 'resource-workspaces'
@@ -18,7 +26,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'resource-nodes',
       order: 30,
       labelKey: 'navigation.nodeManagement',
-      component: defineAsyncComponent(() => import('../view/settings/NodeManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/NodeManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -26,7 +38,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'resource-workspaces',
       order: 40,
       labelKey: 'navigation.workspaceManagement',
-      component: defineAsyncComponent(() => import('../view/settings/WorkspaceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/WorkspaceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -34,7 +50,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'skill-config',
       order: 50,
       labelKey: 'navigation.skillConfiguration',
-      component: defineAsyncComponent(() => import('../view/skill/SkillCenterPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/SkillCenterPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes }) => ({ request, nodes })
     },
@@ -42,7 +62,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'skill-sources',
       order: 60,
       labelKey: 'navigation.skillSources',
-      component: defineAsyncComponent(() => import('../view/skill/SkillSourceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/SkillSourceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -50,7 +74,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'mcp-sources',
       order: 70,
       labelKey: 'navigation.mcpSources',
-      component: defineAsyncComponent(() => import('../view/skill/McpSourceManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/skill/McpSourceManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -58,7 +86,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'secrets',
       order: 80,
       labelKey: 'navigation.secrets',
-      component: defineAsyncComponent(() => import('../view/settings/SecretManagementPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/SecretManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -66,9 +98,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'mar-agent-models',
       order: 90,
       labelKey: 'navigation.marAgentModels',
-      component: defineAsyncComponent(
-        () => import('../view/settings/MarAgentModelManagementPage.vue')
-      ),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/MarAgentModelManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes, admin }) => ({
         request,
@@ -80,9 +114,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'conversation-templates',
       order: 110,
       labelKey: 'navigation.conversationTemplates',
-      component: defineAsyncComponent(
-        () => import('../view/settings/ConversationTemplateManagementPage.vue')
-      ),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/ConversationTemplateManagementPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes, admin }) => ({
         request,
@@ -94,7 +130,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'configuration',
       order: 130,
       labelKey: 'navigation.configuration',
-      component: defineAsyncComponent(() => import('../view/settings/SystemConfigurationPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/settings/SystemConfigurationPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
     },
@@ -102,7 +142,11 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'system',
       order: 140,
       labelKey: 'navigation.system',
-      component: defineAsyncComponent(() => import('../view/SystemInformationPage.vue')),
+      component: defineAsyncComponent({
+        loader: () => import('../view/SystemInformationPage.vue'),
+        loadingComponent,
+        delay: 0
+      }),
       visible: () => true,
       props: ({ request, nodes, admin, onlineNodeCount, serverVersion }) => ({
         request,

@@ -19,6 +19,14 @@ const syntheticAbsoluteFile = `${process.cwd()}/mar-web-console/src/App.vue`;
 test('Assistant Markdown images use compact thumbnails and the conversation image preview', async ({
   page
 }, testInfo) => {
+  const longImageName = `External screenshot ${'long filename 中文 with spaces '.repeat(8)}.png`;
+  const imageSizes = [
+    { width: 1200, height: 900 },
+    { width: 600, height: 1800 },
+    { width: 2400, height: 200 }
+  ];
+  const imageSvg = ({ width, height }: { width: number; height: number }) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#4b80bd"/></svg>`;
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(
@@ -38,7 +46,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
               kind: 'assistant_message',
               status: 'COMPLETED',
               payload: {
-                text: '**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![External screenshot](https://images.example/screenshot.png)'
+                text: `**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![${longImageName}](https://images.example/screenshot.png)`
               }
             }
           ]
@@ -46,13 +54,18 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       ])
     )
   );
-  const image =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900"><rect width="1200" height="900" fill="#4b80bd"/></svg>';
   await page.route('**/api/workspaces/workspace-1/files/content?**', (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: image })
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: imageSvg(
+        new URL(route.request().url()).searchParams.get('path')?.endsWith('mobile.png')
+          ? imageSizes[1]!
+          : imageSizes[0]!
+      )
+    })
   );
   await page.route('https://images.example/screenshot.png', (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: image })
+    route.fulfill({ contentType: 'image/svg+xml', body: imageSvg(imageSizes[2]!) })
   );
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -63,16 +76,26 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 1000 });
+  for (const { width, height, theme } of [
+    { width: 1440, height: 1000, theme: 'vscode-dark-2026' },
+    { width: 390, height: 844, theme: 'vscode-dark-2026' },
+    { width: 320, height: 568, theme: 'daylight' },
+    { width: 667, height: 375, theme: 'daylight' }
+  ]) {
+    await page.evaluate((value) => localStorage.setItem('mar.theme', value), theme);
+    await page.setViewportSize({ width, height });
     await page.reload();
     const thumbnails = page.locator('.agent-markdown [data-image-preview]');
     await expect(thumbnails).toHaveCount(3);
     for (let index = 0; index < 3; index += 1) {
       const thumbnail = thumbnails.nth(index);
       const img = thumbnail.locator('img');
-      await thumbnail.scrollIntoViewIfNeeded();
-      await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(1200);
+      await thumbnail.evaluate((element) =>
+        element.scrollIntoView({ block: 'center', inline: 'nearest' })
+      );
+      await expect
+        .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth))
+        .toBe(imageSizes[index]!.width);
       const bounds = await img.boundingBox();
       expect(bounds!.width).toBeLessThanOrEqual(160);
       expect(bounds!.height).toBeLessThanOrEqual(120);
@@ -85,8 +108,59 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       const dialog = page.getByRole('dialog', { name: name!, exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog.locator('img')).toHaveAttribute('src', source!);
+      const frame = dialog.locator('.attachment-preview-dialog');
+      const expectedWidth = Math.min(960, width - 32);
+      const expectedHeight = Math.min(760, height - 32);
+      await expect
+        .poll(() => frame.boundingBox())
+        .toEqual({
+          x: (width - expectedWidth) / 2,
+          y: (height - expectedHeight) / 2,
+          width: expectedWidth,
+          height: expectedHeight
+        });
+      const title = dialog.locator('.el-dialog__title');
+      await expect(title).toHaveCSS(
+        'font-size',
+        await title.evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--mar-font-size-title').trim()
+        )
+      );
+      await expect(title).toHaveAttribute('title', name!);
+      await expect(title).toHaveCSS('text-overflow', 'ellipsis');
+      await expect(dialog.locator('img')).toHaveCSS('object-fit', 'contain');
+      await expect(dialog.locator('img')).toHaveCSS('object-position', '50% 50%');
+      const layout = await frame.evaluate((element) => {
+        const body = element.querySelector('.el-dialog__body')!.getBoundingClientRect();
+        const image = element.querySelector('img')!.getBoundingClientRect();
+        const close = element.querySelector('.el-dialog__headerbtn')!.getBoundingClientRect();
+        const header = element.querySelector('.el-dialog__header')!.getBoundingClientRect();
+        return {
+          imageFillsBody:
+            Math.abs(image.left - body.left) < 1 &&
+            Math.abs(image.top - body.top) < 1 &&
+            Math.abs(image.width - body.width) < 1 &&
+            Math.abs(image.height - body.height) < 1,
+          closeVisible:
+            close.left >= 0 &&
+            close.right <= innerWidth &&
+            close.top >= 0 &&
+            close.bottom <= innerHeight,
+          headerAboveImage: header.bottom <= body.top,
+          noOverflow: element.scrollHeight <= element.clientHeight
+        };
+      });
+      expect(layout).toEqual({
+        imageFillsBody: true,
+        closeVisible: true,
+        headerAboveImage: true,
+        noOverflow: true
+      });
+      if (index === 1)
+        await page.screenshot({ path: testInfo.outputPath(`image-preview-${width}.png`) });
       await page.keyboard.press('Escape');
-      await expect(dialog).not.toBeVisible();
+      await expect(dialog).toHaveCount(0);
+      await expect(thumbnail).toBeFocused();
     }
     await testInfo.attach(`markdown-images-${width}`, {
       body: await page.screenshot(),
@@ -424,16 +498,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             rgb(style.backgroundColor),
             rgb(style.getPropertyValue('--mar-conversation-surface'))
           ),
-          titleColor: getComputedStyle(element.querySelector('strong')!).color,
-          mutedColor: style.getPropertyValue('--mar-conversation-muted').trim()
+          titleColor: rgb(getComputedStyle(element.querySelector('strong')!).color),
+          mutedColor: rgb(style.getPropertyValue('--mar-conversation-muted').trim())
         };
       });
       expect(colors.borderDistance).toBeLessThan(colors.oldBorderDistance);
       expect(colors.surfaceDistance).toBeLessThan(30);
-      await expect(card.locator('strong').first()).toHaveCSS(
-        'color',
-        dark ? 'rgb(159, 176, 199)' : 'rgb(82, 100, 118)'
-      );
+      expect(colors.titleColor).toEqual(colors.mutedColor);
       await page.screenshot({
         path: testInfo.outputPath(`attachment-${dark ? 'dark' : 'light'}.png`)
       });
@@ -1272,6 +1343,13 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
           status: 'RUNNING',
           items: [
             {
+              id: 'round-input',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              startedAt: now - 11_000,
+              payload: { text: 'Inspect the workspace.' }
+            },
+            {
               id: 'reasoning-first',
               kind: 'reasoning',
               startedAt: now - 8000,
@@ -1361,11 +1439,29 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     'animation-name',
     /busy-indicator-spin/u
   );
+  await expect(page.locator('.composer-working > i')).toHaveCSS('width', '10px');
+  const stroke = await page
+    .locator('.composer-working > i')
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
+  // Fractional borders snap to physical pixels at the current device scale.
+  expect(stroke).toBeGreaterThan(0);
+  expect(stroke).toBeLessThanOrEqual(1.5);
   const indicator = heading.locator('.process-activity-indicator');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(indicator).toBeVisible();
   await expect(indicator).toHaveCSS('animation-name', /busy-indicator-spin/u);
   await expect(indicator).toHaveAttribute('aria-hidden', 'true');
+  await expect(heading.locator('.process-activity-label')).toHaveCSS('font-weight', '600');
+  expect(
+    await heading.locator('.process-activity-label').evaluate((element) => {
+      const expected = document.createElement('span');
+      expected.style.color = 'var(--mar-conversation-text)';
+      element.parentElement!.append(expected);
+      const matches = getComputedStyle(element).color === getComputedStyle(expected).color;
+      expected.remove();
+      return matches;
+    })
+  ).toBe(true);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(indicator).toHaveCSS('animation-name', 'none');
   await expect(page.locator('.composer-working > i')).toHaveCSS('animation-name', 'none');
@@ -1488,6 +1584,21 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await emitMockSessionEvent(page, 'run', {
     run: { ...run, status: 'SUCCEEDED', completedAt: run.startedAt + 20_000 }
   });
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'session-1',
+    turn: {
+      id: 'turn-reasoning',
+      sessionId: 'session-1',
+      runId: run.id,
+      status: 'SUCCEEDED',
+      items: []
+    },
+    segments: segments(true).map((segment) => ({
+      ...segment,
+      status: 'SUCCEEDED',
+      completedAt: now + 10_000
+    }))
+  });
   await expect(heading).toHaveAttribute('aria-expanded', 'true');
   await expect(processes.last().locator('.process-heading')).toHaveAttribute(
     'aria-expanded',
@@ -1495,7 +1606,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   );
   await expect(processes.last().locator('.process-heading')).not.toContainText('有需关注的记录');
   await expect(card.locator('details')).toHaveAttribute('open', '');
-  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 20s');
+  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 21s');
   await expect(processes.locator('.process-activity-indicator')).toHaveCount(0);
   await expect(processes.last().locator('.process-heading')).toContainText('已完成');
   await expect(activeDuration).toContainText('2s');
@@ -1693,7 +1804,7 @@ test.describe('Independent tool presentation', () => {
           });
           expect(rightInset).toBeCloseTo(0, 1);
           for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
-            const heading = tool.locator('summary');
+            const heading = tool.locator(':scope > summary');
             const status = heading.locator('.conversation-record-meta');
             await expect(status).toBeVisible();
             const layout = await heading.evaluate((element) => {
@@ -1754,6 +1865,11 @@ test.describe('Independent tool presentation', () => {
           'https://example.com/source'
         );
         await expect(search.getByText('Original summary')).toBeVisible();
+        for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
+          if (!(await tool.evaluate((element) => element.hasAttribute('open'))))
+            await tool.locator(':scope > summary').click();
+        }
+        await expectCompactTools();
         await expect
           .poll(() =>
             tools.evaluateAll(
@@ -1802,6 +1918,11 @@ test.describe('Independent tool presentation', () => {
             .first()
             .evaluate((element) => element.scrollWidth <= element.clientWidth)
         ).toBe(true);
+        for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
+          if (!(await tool.evaluate((element) => element.hasAttribute('open'))))
+            await tool.locator(':scope > summary').click();
+        }
+        await expectCompactTools();
         await page.screenshot({ path: testInfo.outputPath('tools-mobile.png') });
         await page.reload();
         await expect(tools).toHaveCount(5);
@@ -2985,6 +3106,150 @@ test('Admin workspaces render replies, plans, and streaming updates as safe Mark
   ).toBeUndefined();
 });
 
+for (const mobile of [false, true]) {
+  test.describe(`History action recovery ${mobile ? 'mobile' : 'desktop'}`, () => {
+    test.use({
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+      isMobile: mobile,
+      hasTouch: mobile
+    });
+
+    test('Retains retry focus and updates pending history labels across locales', async ({
+      page
+    }, testInfo) => {
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      let initialAttempts = 0;
+      let releaseRetry!: () => void;
+      const retryReady = new Promise<void>((resolve) => {
+        releaseRetry = resolve;
+      });
+      await page.route('**/api/agent-sessions/session-1/watch*', async (route) => {
+        initialAttempts += 1;
+        if (initialAttempts <= 2) {
+          if (initialAttempts === 2) await retryReady;
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              error: { code: 'TEMPORARILY_UNAVAILABLE', message: 'History unavailable' }
+            })
+          });
+          return;
+        }
+        await fulfillMockSessionWatch(
+          page,
+          route,
+          { id: 'session-1', workspaceId: 'workspace-1' },
+          watchedConversation(
+            [
+              {
+                id: 'short:segment:0',
+                turnId: 'short',
+                index: 0,
+                status: 'SUCCEEDED',
+                items: [
+                  {
+                    id: 'short-answer',
+                    kind: 'assistant_message',
+                    status: 'COMPLETED',
+                    payload: { text: 'Short history' }
+                  }
+                ]
+              }
+            ],
+            'older-page'
+          )
+        );
+      });
+      await page.goto('/console');
+      await page.getByRole('button', { name: '进入控制台' }).click();
+      const work = page.getByRole('button', { name: '工作', exact: true });
+      await work.click();
+      await page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: /node-1/ })
+        .click();
+      const project = page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: 'project', exact: true });
+      if (mobile && !(await project.isVisible())) await work.click();
+      await project.click();
+      if (mobile) await page.getByRole('button', { name: '打开会话列表' }).click();
+      await page.locator('.session-list .session-link').first().click();
+      const retry = page.locator('button.conversation-reload');
+      await expect(retry).toBeVisible();
+      await retry.focus();
+      await retry.press('Enter');
+      await expect(retry).toBeFocused();
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
+      await expect(retry.locator('.is-loading')).toHaveCount(1);
+      await expect(page.locator('.conversation-loading-initial .busy-indicator')).toHaveCount(0);
+      await expect.poll(() => initialAttempts).toBe(2);
+      await retry.press('Enter');
+      expect(initialAttempts).toBe(2);
+      releaseRetry();
+      await expect(retry).toHaveAttribute('aria-busy', 'false');
+      await expect(retry).toBeFocused();
+      await retry.press('Enter');
+      await expect(page.getByText('Short history', { exact: true })).toBeVisible();
+      await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
+
+      let olderAttempts = 0;
+      let releaseOlder!: () => void;
+      const olderReady = new Promise<void>((resolve) => {
+        releaseOlder = resolve;
+      });
+      await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
+        olderAttempts += 1;
+        await olderReady;
+        await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
+      });
+      const older = page.locator('.conversation-history-control button');
+      await expect(older).toBeVisible();
+      const scroll = page.locator('.conversation-scroll');
+      expect(await scroll.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
+        true
+      );
+      if (mobile) await older.tap();
+      else {
+        await older.focus();
+        await older.press('Enter');
+      }
+      await expect(older).toHaveAttribute('aria-disabled', 'true');
+      // Reproduce the supported cross-tab locale update without reloading the pending request.
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'mar.locale.v2',
+            newValue: 'en-US'
+          })
+        )
+      );
+      await expect(older).toHaveText('Load earlier messages');
+      if (!mobile) await expect(older).toBeFocused();
+      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+      await expect(older.locator('.is-loading')).toHaveCount(1);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'rotating');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'none');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect.poll(() => olderAttempts).toBe(1);
+      await page.screenshot({ path: testInfo.outputPath('history-pending.png') });
+      if (mobile) {
+        const bounds = await older.boundingBox();
+        if (!bounds) throw new Error('Pending history action is not visible');
+        await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      } else await older.press('Enter');
+      expect(olderAttempts).toBe(1);
+      releaseOlder();
+      await expect(older).toHaveCount(0);
+      await expect(page.locator('.conversation-history-start')).toBeVisible();
+      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+    });
+  });
+}
+
 test('Opening a session loads only the latest window without initial scroll backfill', async ({
   page
 }) => {
@@ -3132,13 +3397,28 @@ test('Opening a session loads only the latest window without initial scroll back
       await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
     }
   });
-  await page.getByRole('button', { name: '加载更早记录' }).click();
-  await expect(page.locator('.conversation-history-control .busy-indicator')).toBeVisible();
-  await expect(page.locator('button.conversation-load-older')).toHaveCount(0);
+  const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
+  await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
+  await loadOlderButton.press('Enter');
+  await expect(loadOlderButton.locator('.is-loading')).toBeVisible();
+  await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+  expect(
+    await loadOlderButton
+      .locator('.is-loading')
+      .evaluate(
+        (element) =>
+          getComputedStyle(element).color === getComputedStyle(element.closest('button')!).color
+      )
+  ).toBe(true);
+  await expect(loadOlderButton).toBeFocused();
+  await expect(loadOlderButton).toHaveAttribute('aria-disabled', 'true');
+  await loadOlderButton.press('Enter');
+  expect(olderAttempts).toBe(1);
   releaseOlder();
   await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
   await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
   await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeFocused();
   expect(olderAttempts).toBe(1);
   await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.getByText('已到最早消息', { exact: true })).toBeVisible();

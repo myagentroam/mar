@@ -10,6 +10,7 @@ import {
 import { translate } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import SessionShareConversation from './SessionShareConversation.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 const StandaloneFilePreviewPage = defineAsyncComponent(
   () => import('../workspace/StandaloneFilePreviewPage.vue')
 );
@@ -24,6 +25,7 @@ const standalone = initialIntent.get('standaloneFile') === '1';
 const previewIntent = ref<URLSearchParams | undefined>(standalone ? initialIntent : undefined);
 const previewVersion = ref(0);
 const loading = ref(true);
+const restoring = ref(true);
 const form = ref<FormInstance>();
 const fields = ref({ password: '' });
 const rules: FormRules = {
@@ -71,7 +73,9 @@ function acceptFile(event: Event): void {
 }
 onMounted(() => {
   window.addEventListener(STANDALONE_FILE_OPEN_EVENT, acceptFile);
-  void login(true);
+  void login(true).finally(() => {
+    restoring.value = false;
+  });
 });
 onBeforeUnmount(() => {
   window.removeEventListener(STANDALONE_FILE_OPEN_EVENT, acceptFile);
@@ -102,7 +106,14 @@ onBeforeUnmount(() => {
       <p v-if="invalidCode && invalidCode !== 'SESSION_SHARE_CREDENTIAL_INVALID'" role="status">
         {{ translate('sessionShare.invalid') }}
       </p>
-      <p v-else-if="loading" role="status">{{ translate('sessionShare.loading') }}</p>
+      <div
+        v-else-if="restoring"
+        class="page-loading-state"
+        role="status"
+        :aria-label="translate('sessionShare.loading')"
+      >
+        <BusyIndicator />
+      </div>
       <el-form
         v-else
         ref="form"

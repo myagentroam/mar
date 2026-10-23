@@ -105,6 +105,7 @@ const originRules: FormRules = {
   ]
 };
 const { snapshot, drafts, editingKey, savingKey, loading, beginEdit, cancelEdit } = service;
+const initialized = ref(false);
 const originModel = computed(() => ({ origin: drafts.value.htmlPreviewOrigin }));
 const rows = computed(() =>
   service.settings.map((setting) => ({
@@ -152,6 +153,7 @@ function openSmtpDialog(): void {
 async function load(): Promise<void> {
   try {
     await service.load();
+    initialized.value = true;
   } catch (error) {
     ElMessage.error(
       error instanceof Error
@@ -228,9 +230,13 @@ onMounted(() => {
 });
 </script>
 <template>
-  <section v-loading="loading" class="management-page">
+  <section
+    v-loading="loading && !initialized"
+    element-loading-custom-class="mar-page-loading"
+    class="management-page"
+  >
     <div class="table-actions">
-      <el-button :icon="Refresh" @click="load">{{
+      <el-button :icon="Refresh" :loading="loading && initialized" @click="load">{{
         translate('generated.systemConfigurationPage.refresh')
       }}</el-button>
     </div>

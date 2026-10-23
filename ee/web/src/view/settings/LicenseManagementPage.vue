@@ -25,6 +25,7 @@ const status = ref<LicenseStatus>();
 const requestCode = ref('');
 const document = ref('');
 const loading = ref(false);
+const ready = ref(false);
 const requestCodeLoading = ref(true);
 const editionLabel = computed(() =>
   status.value?.edition === 'ENTERPRISE'
@@ -47,6 +48,7 @@ async function load(): Promise<void> {
     ]);
     if (licenseStatus.status === 'rejected') throw licenseStatus.reason;
     status.value = licenseStatus.value;
+    ready.value = true;
     if (generatedRequest.status === 'fulfilled') {
       requestCode.value = generatedRequest.value.requestCode;
     } else {
@@ -101,7 +103,11 @@ void load();
 </script>
 
 <template>
-  <section class="management-page license-management" v-loading="loading">
+  <section
+    class="management-page license-management"
+    v-loading="loading && !ready"
+    element-loading-custom-class="mar-page-loading"
+  >
     <h3 v-if="embedded">{{ translate('generated.licenseManagementPage.license') }}</h3>
     <div
       v-if="status"

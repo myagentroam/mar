@@ -21,6 +21,8 @@ const lifetime = new AbortController();
 const form = ref<FormInstance>();
 const busy = ref(false);
 const ready = ref(false);
+const refreshing = ref(false);
+const saving = ref(false);
 const models = ref<MarAgentModelSummary[]>([]);
 const draft = reactive<MarAgentCompactConfiguration>({
   enabled: false,
@@ -78,8 +80,9 @@ function modelChanged() {
           selected.value.reasoningEfforts
         );
 }
-async function load() {
+async function load(showRefresh = false) {
   if (busy.value) return;
+  if (showRefresh) refreshing.value = true;
   busy.value = true;
   try {
     const result = await service.load(lifetime.signal);
@@ -91,11 +94,13 @@ async function load() {
     if (!lifetime.signal.aborted) ElMessage.error(errorMessage(error));
   } finally {
     busy.value = false;
+    if (showRefresh) refreshing.value = false;
   }
 }
 async function save() {
   if (!props.writable || busy.value || !ready.value || !form.value) return;
   if (!(await form.value.validate().catch(() => false))) return;
+  saving.value = true;
   busy.value = true;
   try {
     const configuration = await service.save({ ...draft }, lifetime.signal);
@@ -106,6 +111,7 @@ async function save() {
     if (!lifetime.signal.aborted) ElMessage.error(errorMessage(error));
   } finally {
     busy.value = false;
+    saving.value = false;
   }
 }
 onMounted(() => {
@@ -115,7 +121,11 @@ onBeforeUnmount(() => lifetime.abort());
 </script>
 
 <template>
-  <section v-loading="busy" class="compact-settings">
+  <section
+    v-loading="busy && !ready"
+    element-loading-custom-class="mar-page-loading"
+    class="compact-settings"
+  >
     <p class="compact-hint">{{ translate('marAgentModels.compactHint') }}</p>
     <el-form
       ref="form"
@@ -155,10 +165,10 @@ onBeforeUnmount(() => lifetime.abort());
         </el-select>
       </el-form-item>
       <div class="compact-actions">
-        <el-button type="primary" :icon="Check" @click="save">{{
+        <el-button type="primary" :icon="Check" :loading="saving" @click="save">{{
           translate('marAgentModels.compactSave')
         }}</el-button>
-        <el-button :icon="Refresh" @click="load">{{
+        <el-button :icon="Refresh" :loading="refreshing && ready" @click="load(true)">{{
           translate('marAgentModels.refresh')
         }}</el-button>
       </div>

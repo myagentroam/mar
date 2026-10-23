@@ -737,7 +737,7 @@ describe('Claude events and approvals', () => {
                 signature: 'private-thinking-signature'
               },
               { type: 'tool_use', id: 'tool-pwd', name: 'Bash', input: { command: 'pwd' } },
-              { type: 'text', text: 'The current directory is the workspace.' },
+              { type: 'text', text: 'The current directory is the workspace.', citations: [] },
               {
                 type: 'tool_use',
                 id: 'tool-after-text',
@@ -745,7 +745,10 @@ describe('Claude events and approvals', () => {
                 input: { command: 'printf later' }
               },
               { type: 'redacted_thinking', data: 'private-redacted-data' },
-              { type: 'future_content_block' }
+              // Deliberately exercise a future block outside the installed SDK union.
+              {
+                type: 'future_content_block'
+              } as unknown as (typeof result.value.message.content)[number]
             ]
           }
         }

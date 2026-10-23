@@ -132,8 +132,7 @@ describe('shared product application shell', () => {
   it('keeps the HTML bootstrap visible until the selected async page resolves', () => {
     const source = readFileSync(new URL('../../src/App.vue', import.meta.url), 'utf8');
     expect(source).toContain('<Suspense @resolve="revealApplication">');
-    expect(source).toContain("document.getElementById('mar-bootstrap')");
-    expect(source).toContain("bootstrap.classList.add('mar-bootstrap--leaving')");
+    expect(source).toContain("document.getElementById('mar-bootstrap')?.remove()");
   });
 
   it.each([true, false])(

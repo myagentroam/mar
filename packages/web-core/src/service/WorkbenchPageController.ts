@@ -1830,6 +1830,7 @@ export function createWorkbenchPageController<
     searchNextCursor: workspaceSessionSearchNextCursor,
     searching: searchingWorkspaceSessions,
     loadingMoreSearchResults: loadingMoreWorkspaceSessionSearchResults,
+    loadMoreSearchResultsError: loadMoreWorkspaceSessionSearchResultsError,
     preserveManagedActive: preserveManagedActiveSession,
     merge: mergeSessions,
     applySnapshot: applyWorkspaceSessionSnapshot,
@@ -1854,6 +1855,16 @@ export function createWorkbenchPageController<
       ? loadingMoreWorkspaceSessionSearchResults.value
       : workspaceSessionPaging.loadingMore.value
   );
+  const loadMoreWorkspaceSessionsError = computed(() => {
+    if (workspaceSessionSearchQuery.value.length > 0)
+      return loadMoreWorkspaceSessionSearchResultsError.value;
+    const target = workspaceTarget.value;
+    return target === undefined
+      ? undefined
+      : workspaceSessionPaging.loadMoreErrors.value.get(
+          workspaceTabId(target.nodeId, target.workspaceId)
+        );
+  });
   function loadMoreVisibleWorkspaceSessions(): Promise<void> {
     return workspaceSessionSearchQuery.value.length > 0
       ? loadMoreWorkspaceSessionSearchResults()
@@ -3460,6 +3471,7 @@ export function createWorkbenchPageController<
     canCompactContext,
     canInterruptTurn,
     canLoadMoreWorkspaceSessions,
+    loadMoreWorkspaceSessionsError,
     canUseComposer,
     cancelWorkspaceUpload,
     changeWorkspaceWatchDirectory,

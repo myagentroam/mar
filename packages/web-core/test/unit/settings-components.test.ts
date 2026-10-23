@@ -65,7 +65,12 @@ describe('Shared personal settings components', () => {
         render: () =>
           h(
             LoadingPanel,
-            { loading, 'aria-label': 'Page content', 'element-loading-text': 'Loading content' },
+            {
+              loading,
+              variant: 'region',
+              'aria-label': 'Page content',
+              'element-loading-text': 'Loading content'
+            },
             () => h('p', 'Retained page content')
           )
       });

@@ -502,6 +502,7 @@ describe('Web Conversation Projection State', () => {
     controller.flushPendingTextDeltas();
     expect(turns.value).toHaveLength(1);
     expect(turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'Live reply' });
+    expect(turns.value[0]?.runId).toBe('run-1');
   });
 
   it('Keeps Turns ordered from oldest to newest after a live merge', () => {

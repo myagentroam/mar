@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { defineAsyncComponent, type ShallowUnwrapRef } from 'vue';
+import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
+
+import { defineAsyncComponent, h, type ShallowUnwrapRef } from 'vue';
 import type { createWorkbenchPageController } from '@/service/WorkbenchPageController';
 import CoreSurface from '@myagentroam/web-core/WorkbenchSurface.vue';
 import WorkspaceRegistrationPicker from '@/view/workspace/WorkspaceRegistrationPicker.vue';
 import { translate } from '@/service/LocalePreferenceService';
-const SettingsContent = defineAsyncComponent(() => import('@/view/settings/SettingsContent.vue'));
+
+const loadingComponent = {
+  render: () =>
+    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+};
+
+const SettingsContent = defineAsyncComponent({
+  loader: () => import('@/view/settings/SettingsContent.vue'),
+  loadingComponent,
+  delay: 0
+});
 defineProps<{ page: ShallowUnwrapRef<ReturnType<typeof createWorkbenchPageController>> }>();
 </script>
 <template>

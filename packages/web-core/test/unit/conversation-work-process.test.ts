@@ -464,6 +464,40 @@ describe('Conversation work process blocks', () => {
     expect(processBlock(blocks, groupId)).toMatchObject({ status: 'history', active: false });
   });
 
+  it('retains the live Run association when an earlier native page joins the same process', () => {
+    const prefix = turn(
+      [
+        item('first', 'reasoning', {
+          processGroup: { id: 'joined', isStart: true },
+          payload: { sections: [{ text: 'Earlier reasoning' }] }
+        })
+      ],
+      { id: 'older', runId: null }
+    );
+    const latest = turn(
+      [
+        item('latest', 'tool_call', {
+          processGroup: { id: 'joined' },
+          status: 'IN_PROGRESS',
+          payload: { toolName: 'read' }
+        })
+      ],
+      { id: 'latest' }
+    );
+    expect(
+      processBlock(
+        conversationWorkProcessBlocks([prefix, latest], [{ id: runId, status: 'RUNNING' }]),
+        'joined'
+      )
+    ).toMatchObject({ runId, active: true, status: 'executing' });
+    expect(
+      processBlock(
+        conversationWorkProcessBlocks([prefix, latest], [{ id: runId, status: 'SUCCEEDED' }]),
+        'joined'
+      )
+    ).toMatchObject({ runId, active: false, status: 'completed' });
+  });
+
   it.each([
     [1000, 4500, 3500],
     [0, 0, 0],

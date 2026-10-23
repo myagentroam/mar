@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { Bottom } from '@element-plus/icons-vue';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { Bottom, Loading } from '@element-plus/icons-vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-defineProps<{
+const props = defineProps<{
   readonly hasOlder: boolean;
   readonly loadingInitial: boolean;
   readonly initialLoadFailed: boolean;
@@ -23,6 +23,44 @@ const emit = defineEmits<{
 }>();
 
 const element = ref<HTMLElement>();
+const reloading = ref(false);
+const olderAction = ref<'retry' | 'load'>();
+
+watch(
+  () => props.loadingInitial,
+  (loading) => {
+    if (!loading) reloading.value = false;
+  }
+);
+watch(
+  () => props.loadingOlder,
+  (loading) => {
+    if (!loading) olderAction.value = undefined;
+    else if (typeof document !== 'undefined') {
+      const button = element.value?.querySelector('.conversation-history-control button');
+      // Focusing an offscreen button can scroll to the automatic pagination boundary.
+      if (button && button === document.activeElement)
+        olderAction.value ??=
+          button.getAttribute('data-history-action') === 'retry' ? 'retry' : 'load';
+    }
+  }
+);
+
+async function reload(): Promise<void> {
+  if (props.loadingInitial || reloading.value) return;
+  reloading.value = true;
+  emit('reload');
+  await nextTick();
+  if (!props.loadingInitial) reloading.value = false;
+}
+
+async function loadOlder(): Promise<void> {
+  if (props.loadingOlder || olderAction.value !== undefined) return;
+  olderAction.value = props.olderError ? 'retry' : 'load';
+  emit('loadOlder');
+  await nextTick();
+  if (!props.loadingOlder) olderAction.value = undefined;
+}
 
 onMounted(() => emit('scrollElement', element.value));
 onBeforeUnmount(() => emit('scrollElement', undefined));
@@ -32,56 +70,70 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
   <div class="conversation-scroll-region">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
       <div
-        v-if="loadingInitial"
+        v-if="loadingInitial && !reloading"
         class="conversation-load-older conversation-loading-initial"
         role="status"
         aria-live="polite"
         :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
       >
-        <BusyIndicator />
+        <BusyIndicator class="history-busy-indicator" />
       </div>
       <el-button
-        v-else-if="initialLoadFailed"
+        v-if="initialLoadFailed || reloading"
         class="conversation-load-older conversation-reload"
         link
         type="primary"
         size="small"
         native-type="button"
-        @click="emit('reload')"
+        :aria-disabled="loadingInitial || reloading"
+        :aria-busy="loadingInitial || reloading"
+        @click="reload"
       >
+        <template v-if="loadingInitial || reloading" #icon>
+          <Loading class="el-icon is-loading" aria-hidden="true" />
+        </template>
         {{ translate('generated.conversationScroll.reloadConversationHistory') }}
       </el-button>
       <div
-        v-else-if="hasOlder && hasTurns"
+        v-if="!loadingInitial && !initialLoadFailed && !reloading && hasOlder && hasTurns"
         class="conversation-history-control"
         :aria-busy="loadingOlder"
       >
         <p v-if="olderError" class="conversation-history-error" role="status">{{ olderError }}</p>
         <div
-          v-if="loadingOlder"
+          v-if="loadingOlder && olderAction === undefined"
           class="conversation-load-older"
           role="status"
           :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
         >
-          <BusyIndicator />
+          <BusyIndicator class="history-busy-indicator" />
         </div>
         <el-button
-          v-else
+          v-if="!loadingOlder || olderAction !== undefined"
           class="conversation-load-older"
           link
           type="primary"
           size="small"
           native-type="button"
-          @click="emit('loadOlder')"
+          :aria-disabled="loadingOlder"
+          :aria-busy="loadingOlder"
+          :data-history-action="olderAction ?? (olderError ? 'retry' : 'load')"
+          @click="loadOlder"
         >
+          <template v-if="loadingOlder" #icon>
+            <Loading class="el-icon is-loading" aria-hidden="true" />
+          </template>
           {{
-            olderError
+            (olderAction ?? (olderError ? 'retry' : 'load')) === 'retry'
               ? translate('conversationActivity.retry')
               : translate('generated.conversationScroll.loadEarlierMessages')
           }}
         </el-button>
       </div>
-      <p v-else-if="hasTurns" class="conversation-history-start">
+      <p
+        v-else-if="!loadingInitial && !initialLoadFailed && !reloading && hasTurns"
+        class="conversation-history-start"
+      >
         {{ translate('conversationActivity.historyStart') }}
       </p>
       <slot />
@@ -152,6 +204,10 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
   color: var(--mar-text-faint);
   font-size: var(--mar-font-size-meta);
   text-align: center;
+}
+
+.history-busy-indicator {
+  color: var(--mar-color-brand-text);
 }
 
 .conversation-latest {

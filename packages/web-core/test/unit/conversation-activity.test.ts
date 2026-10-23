@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentRun, ConversationItem, ConversationTurn } from '../../src/model/workbench';
 import {
   completedStepDuration,
+  completedConversationDurations,
   conversationActivityLabel,
   conversationActivityBusy,
   conversationElapsedLabel,
@@ -37,6 +38,78 @@ const turn = (
 const label = (key: string) => translate(`conversationActivity.${key}`);
 
 describe('Public activity and duration', () => {
+  it('restores one historical duration from the first input through the final segment after restart', () => {
+    const segments = [0, 1, 2].map((index) =>
+      turn(
+        [{ ...item, id: `input-${index}`, kind: 'user_message', startedAt: 1000 + index * 4000 }],
+        {
+          id: `segment-${index}`,
+          turnId: 'original',
+          segmentIndex: index,
+          runId: null,
+          status: 'SUCCEEDED',
+          startedAt: 1000 + index * 4000,
+          completedAt: 5000 + index * 4000
+        }
+      )
+    );
+    expect([...completedConversationDurations(segments)]).toEqual([['segment-2', 12000]]);
+    expect(completedConversationDurations(segments.slice(1)).size).toBe(0);
+    const next = turn([{ ...item, kind: 'user_message', startedAt: 20000 }], {
+      id: 'next',
+      turnId: 'next',
+      segmentIndex: 0,
+      runId: null,
+      status: 'SUCCEEDED',
+      completedAt: 23000
+    });
+    expect([...completedConversationDurations([...segments, next])]).toEqual([
+      ['segment-2', 12000],
+      ['next', 3000]
+    ]);
+  });
+
+  it('uses the initial user timestamp before Run startup without resetting for appended inputs', () => {
+    const first = turn([{ ...item, kind: 'user_message', startedAt: 500 }], {
+      id: 'first',
+      turnId: 'round',
+      segmentIndex: 0
+    });
+    const last = turn([{ ...item, kind: 'user_message', startedAt: 2000 }], {
+      id: 'last',
+      turnId: 'round',
+      segmentIndex: 1,
+      status: 'SUCCEEDED',
+      completedAt: 3500
+    });
+    expect([...completedConversationDurations([first, last])]).toEqual([['last', 3000]]);
+    expect(
+      completedConversationDurations([first, { ...last, status: 'RUNNING', completedAt: null }])
+        .size
+    ).toBe(0);
+    expect([
+      ...completedConversationDurations([first, last].map((part) => ({ ...part, runId: null })))
+    ]).toEqual([['last', 3000]]);
+  });
+
+  it('does not invent historical completion, origin or reversed time', () => {
+    const base = turn([{ ...item, kind: 'user_message', startedAt: 1000 }], {
+      runId: null,
+      status: 'SUCCEEDED',
+      completedAt: 2000
+    });
+    for (const changed of [
+      { status: 'RUNNING' },
+      { completedAt: null },
+      { completedAt: 500 },
+      { completedAt: NaN },
+      { items: [{ ...item, kind: 'user_message' }] },
+      { items: [] }
+    ]) {
+      expect(completedConversationDurations([{ ...base, ...changed }]).size).toBe(0);
+    }
+  });
+
   it('only animates ongoing work, not terminal or user-wait states', () => {
     expect(conversationActivityBusy(run, [])).toBe(true);
     for (const kind of ['approval_request', 'user_input_request'] as const) {

@@ -39,6 +39,8 @@ export const hostedConversationsZhCN = {
     hostNode: '承载 Node',
     offline: '离线',
     searchHistory: '搜索对话标题',
+    noLoadedHistoryMatches: '已加载的历史中没有匹配对话。',
+    filterLoadedOnly: '仅筛选已加载的对话，清空筛选后继续加载历史。',
     noHistory: '当前没有对话。',
     historyTemplateNode: '{template} · {node}',
     refreshHistory: '刷新历史',
