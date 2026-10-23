@@ -8,6 +8,8 @@ import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
 import ThemeSettings from '../../src/view/settings/ThemeSettings.vue';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
+import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
+import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
@@ -46,6 +48,8 @@ const service = createWorkbenchNotificationService(ref('fixture'), {
 const compactCount = ref(0);
 const canCompact = ref(true);
 const hintDialogOpen = ref(false);
+const following = ref(true);
+const performanceVisible = ref(true);
 const diagnostics = createWebPerformanceDiagnostics();
 const hostedSnapshot = ref({
   conversation: {
@@ -103,6 +107,45 @@ const toolbar = {
   loading: false,
   attachmentsPending: false,
   effortLabel: String
+};
+const sessionPerformanceFixture = {
+  setup: () => () =>
+    h('main', { style: 'display: flex; flex-direction: column; height: 100dvh' }, [
+      h(
+        ConversationScroll,
+        {
+          hasOlder: false,
+          loadingInitial: false,
+          initialLoadFailed: false,
+          loadingOlder: false,
+          hasTurns: true,
+          following: following.value,
+          onLatest: () => (following.value = true)
+        },
+        {
+          default: () => [
+            h('div', { style: 'height: 900px' }, 'Reviewing Git diff output'),
+            h('div', { 'data-testid': 'last-row', style: 'text-align: right' }, '4 files')
+          ],
+          status: () =>
+            h(SessionPerformanceInfo, {
+              performance: performanceVisible.value
+                ? { runId: 'run', latencyMs: 420, tokensPerSecond: 42 }
+                : undefined
+            })
+        }
+      ),
+      h(
+        'button',
+        { 'data-testid': 'leave-latest', onClick: () => (following.value = false) },
+        'Read older messages'
+      ),
+      h(
+        'button',
+        { 'data-testid': 'hide-performance', onClick: () => (performanceVisible.value = false) },
+        'Hide performance'
+      )
+    ])
 };
 const app = createApp({
   setup: () => () =>
@@ -186,4 +229,10 @@ const app = createApp({
       })
     ])
 });
-app.use(i18n).use(ElementPlus).mount('#app');
+(new URLSearchParams(location.search).has('session-performance')
+  ? createApp(sessionPerformanceFixture)
+  : app
+)
+  .use(i18n)
+  .use(ElementPlus)
+  .mount('#app');

@@ -271,4 +271,14 @@ onBeforeUnmount(() => {
 .conversation-status.has-latest {
   bottom: calc(0.75rem + var(--mar-utility-control-size) + 0.5rem);
 }
+
+@media (max-width: 767px) {
+  .conversation-scroll-region:has(.conversation-status:not(:empty)) .conversation-scroll {
+    padding-bottom: calc(var(--mar-utility-control-size) + 0.5rem);
+  }
+
+  .conversation-status:not(.has-latest) {
+    bottom: 0.25rem;
+  }
+}
 </style>

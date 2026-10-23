@@ -113,6 +113,63 @@ test('Performance hover displays the details panel without a second hint', async
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [390, 767, 768, 1280]) {
+    test(`Session performance clears the final row and stays near the mobile bottom: ${theme}, ${width}px`, async ({
+      browser
+    }, testInfo) => {
+      const context = await browser.newContext({
+        viewport: { width, height: 700 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}visual-alignment.html?session-performance=1&theme=${theme}`);
+        const info = page.locator('.session-performance-info');
+        await expect(info).toBeVisible();
+        await page.locator('.conversation-scroll').evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        const infoBox = (await info.boundingBox())!;
+        const region = (await page.locator('.conversation-scroll-region').boundingBox())!;
+        const lastRow = (await page.getByTestId('last-row').boundingBox())!;
+        const bottomGap = region.y + region.height - infoBox.y - infoBox.height;
+        if (width < 768) {
+          expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
+          expect(bottomGap).toBeGreaterThanOrEqual(0);
+          expect(bottomGap).toBeLessThanOrEqual(4);
+        } else {
+          const rootFontSize = await page
+            .locator('html')
+            .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+          expect(bottomGap).toBeCloseTo(rootFontSize * 0.75, 1);
+        }
+        await info.focus();
+        await expect(page.locator('.mar-tooltip:visible')).toContainText('420 ms');
+        await page.getByTestId('leave-latest').click();
+        const latest = page.locator('.conversation-latest');
+        await expect(latest).toBeVisible();
+        const latestBox = (await latest.boundingBox())!;
+        const raisedInfo = (await info.boundingBox())!;
+        expect(raisedInfo.y + raisedInfo.height).toBeLessThanOrEqual(latestBox.y);
+        await latest.click();
+        await expect(latest).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath('session-performance-position.png') });
+        await page.getByTestId('hide-performance').click();
+        await expect(info).toHaveCount(0);
+        const padding = await page.locator('.conversation-scroll').evaluate((element) => ({
+          bottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
+          root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+        }));
+        expect(padding.bottom).toBeCloseTo(padding.root, 1);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Notification and template surfaces consume semantic fields without glass or horizontal motion: ${theme}`, async ({
     page
   }, testInfo) => {
