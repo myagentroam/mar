@@ -290,6 +290,10 @@ test('Git History filters all or selected branches, expands commit files, and op
   let historyRequests = 0;
   let holdHistoryRefresh = false;
   let releaseHistoryRefresh: (() => void) | undefined;
+  let releaseCommitFiles!: () => void;
+  const commitFilesResponse = new Promise<void>((resolve) => {
+    releaseCommitFiles = resolve;
+  });
   await page.route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>
     json(route, { files: { entries: [], nextCursor: null, truncated: false } })
   );
@@ -353,15 +357,17 @@ test('Git History filters all or selected branches, expands commit files, and op
   });
   await page.route(
     /\/api\/workspaces\/workspace-1\/git\/commits\/[a-f0-9]+\/files(?:\?.*)?$/,
-    (route) =>
-      json(route, {
+    async (route) => {
+      await commitFilesResponse;
+      await json(route, {
         files: [
           { path: 'README.md', change: 'MODIFIED' },
           { path: 'src/history.ts', change: 'ADDED' },
           { path: 'src/photo.png', change: 'ADDED' },
           { path: 'src/nested/deeper.ts', change: 'MODIFIED' }
         ]
-      })
+      });
+    }
   );
   await page.route(
     /\/api\/workspaces\/workspace-1\/git\/commits\/[a-f0-9]+\/diff(?:\?.*)?$/,
@@ -409,6 +415,10 @@ test('Git History filters all or selected branches, expands commit files, and op
   await page.getByRole('option', { name: 'main', exact: true }).click();
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await page.getByText('初始化 Git History').click();
+  const commitFilesLoading = page.locator('.history-files [role="status"]');
+  await expect(commitFilesLoading.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+  await expect(commitFilesLoading.locator('.busy-indicator')).toHaveCount(0);
+  releaseCommitFiles();
   await expect(page.getByRole('button', { name: /README\.md/ })).toBeVisible();
   await expect(page.locator('.history-files .el-button').first()).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: 'src', exact: true })).toBeVisible();

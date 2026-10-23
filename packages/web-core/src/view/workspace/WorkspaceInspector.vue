@@ -2,7 +2,6 @@
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessageBox } from 'element-plus';
 import {
@@ -3887,7 +3886,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
               </svg>
               <ul class="history-files">
                 <li v-if="historyFilesLoading === commit.hash" class="empty" role="status">
-                  <BusyIndicator />
+                  <MarIcon name="loading-action" />
                   {{ translate('generated.workspaceInspector.loadingCommitFiles') }}
                 </li>
                 <li
