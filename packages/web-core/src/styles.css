@@ -1,3 +1,22 @@
+.mar-tooltip-control {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.el-popper.mar-tooltip {
+  max-width: min(28rem, calc(100vw - 2rem));
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-control-bg-color-overlay);
+  color: var(--mar-text-primary);
+  box-shadow: 0 4px 12px var(--mar-shadow-medium);
+  font-family: var(--mar-font-sans);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,

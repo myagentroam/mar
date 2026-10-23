@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { ArrowDown, ArrowLeft, ArrowRight, Close, Link } from '@element-plus/icons-vue';
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
@@ -357,53 +358,66 @@ function activate(tab: WorkspaceTab): void {
         @contextmenu="openContextMenu($event, tab)"
       >
         <button
+          :aria-label="tab.label"
           role="tab"
           :aria-selected="activeTabId === tab.id"
-          :title="tab.label"
           type="button"
           @click="activate(tab)"
         >
           <span class="workspace-tab-content">
-            <span>{{ tab.label }}</span>
+            <el-tooltip v-bind="tooltipOptions" :content="tab.label"
+              ><span>{{ tab.label }}</span></el-tooltip
+            >
             <small class="workspace-tab-meta">
-              <span
+              <el-tooltip
+                v-bind="tooltipOptions"
                 v-if="activeTabId === tab.id && directAvailable(tab.nodeId)"
-                class="workspace-tab-node direct-available-node"
-                :title="directDescription(tab.nodeId)"
-                :aria-description="directDescription(tab.nodeId)"
-              >
-                <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
-                <el-icon class="workspace-tab-direct-icon" aria-hidden="true"><Link /></el-icon>
-              </span>
+                :content="directDescription(tab.nodeId)"
+                ><span
+                  class="workspace-tab-node direct-available-node"
+                  :aria-description="directDescription(tab.nodeId)"
+                >
+                  <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
+                  <el-icon class="workspace-tab-direct-icon" aria-hidden="true"
+                    ><Link
+                  /></el-icon> </span
+              ></el-tooltip>
               <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
-              <span
+              <el-tooltip
+                v-bind="tooltipOptions"
                 v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-running session-activity managed_active"
-                role="img"
-                :aria-label="translate('workspaceTabs.running')"
-                :title="translate('generated.sessionPresentation.managed')"
-                ><i aria-hidden="true"
-              /></span>
-              <span
+                :content="translate('generated.sessionPresentation.managed')"
+                ><span
+                  class="workspace-tab-running session-activity managed_active"
+                  role="img"
+                  :aria-label="translate('workspaceTabs.running')"
+                  ><i aria-hidden="true" /></span
+              ></el-tooltip>
+              <el-tooltip
+                v-bind="tooltipOptions"
                 v-if="hasUnread(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-unread"
-                :aria-label="translate('workspaceTabs.unreadDescription')"
-                :title="translate('workspaceTabs.unreadDescription')"
-                >{{ translate('workspaceTabs.unread') }}</span
+                :content="translate('workspaceTabs.unreadDescription')"
+                ><span
+                  class="workspace-tab-unread"
+                  :aria-label="translate('workspaceTabs.unreadDescription')"
+                  >{{ translate('workspaceTabs.unread') }}</span
+                ></el-tooltip
               >
             </small>
           </span>
         </button>
-        <button
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="tab.pinned === true"
-          class="tab-pin icon-button utility-control"
-          :aria-label="translate('workspaceTabs.unpinLabel', { label: tab.label })"
-          :title="translate('workspaceTabs.unpin')"
-          type="button"
-          @click.stop="emit('pin', tab.id, false)"
-        >
-          <el-icon><WorkspacePinIcon /></el-icon>
-        </button>
+          :content="translate('workspaceTabs.unpin')"
+          ><button
+            class="tab-pin icon-button utility-control"
+            :aria-label="translate('workspaceTabs.unpinLabel', { label: tab.label })"
+            type="button"
+            @click.stop="emit('pin', tab.id, false)"
+          >
+            <el-icon><WorkspacePinIcon /></el-icon></button
+        ></el-tooltip>
         <button
           v-else
           class="tab-close icon-button utility-control"
@@ -443,30 +457,39 @@ function activate(tab: WorkspaceTab): void {
             >
               <span>{{ tab.label }}</span>
               <small class="workspace-tab-meta">
-                <span
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="activeTabId === tab.id && directAvailable(tab.nodeId)"
-                  class="workspace-tab-node direct-available-node"
-                  :title="directDescription(tab.nodeId)"
-                  :aria-description="directDescription(tab.nodeId)"
-                >
-                  <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
-                  <el-icon class="workspace-tab-direct-icon" aria-hidden="true"><Link /></el-icon>
-                </span>
+                  :content="directDescription(tab.nodeId)"
+                  ><span
+                    class="workspace-tab-node direct-available-node"
+                    :aria-description="directDescription(tab.nodeId)"
+                  >
+                    <span class="workspace-tab-node-label">{{ nodeLabel(tab) }}</span>
+                    <el-icon class="workspace-tab-direct-icon" aria-hidden="true"
+                      ><Link
+                    /></el-icon> </span
+                ></el-tooltip>
                 <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
-                <span
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-running session-activity managed_active"
-                  role="img"
-                  :aria-label="translate('workspaceTabs.running')"
-                  :title="translate('generated.sessionPresentation.managed')"
-                  ><i aria-hidden="true"
-                /></span>
-                <span
+                  :content="translate('generated.sessionPresentation.managed')"
+                  ><span
+                    class="workspace-tab-running session-activity managed_active"
+                    role="img"
+                    :aria-label="translate('workspaceTabs.running')"
+                    ><i aria-hidden="true" /></span
+                ></el-tooltip>
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="hasUnread(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-unread"
-                  :aria-label="translate('workspaceTabs.unreadDescription')"
-                  :title="translate('workspaceTabs.unreadDescription')"
-                  >{{ translate('workspaceTabs.unread') }}</span
+                  :content="translate('workspaceTabs.unreadDescription')"
+                  ><span
+                    class="workspace-tab-unread"
+                    :aria-label="translate('workspaceTabs.unreadDescription')"
+                    >{{ translate('workspaceTabs.unread') }}</span
+                  ></el-tooltip
                 >
               </small>
             </el-dropdown-item>

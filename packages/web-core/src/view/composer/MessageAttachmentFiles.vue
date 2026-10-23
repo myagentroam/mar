@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import ConversationImageThumbnail from '../conversation/ConversationImageThumbnail.vue';
@@ -39,20 +40,29 @@ const emit = defineEmits<{
           emit('openFile', file.path, undefined, undefined, $event.ctrlKey || $event.metaKey, file)
         "
       />
-      <button
-        v-else
-        type="button"
-        class="conversation-file-attachment conversation-file-chip"
-        :title="file.path"
-        :aria-label="translate('generated.conversationTimeline.previewFile', { value0: file.name })"
-        @click="
-          emit('openFile', file.path, undefined, undefined, $event.ctrlKey || $event.metaKey, file)
-        "
+      <el-tooltip v-bind="tooltipOptions" v-else :content="file.path"
+        ><button
+          type="button"
+          class="conversation-file-attachment conversation-file-chip"
+          :aria-label="
+            translate('generated.conversationTimeline.previewFile', { value0: file.name })
+          "
+          @click="
+            emit(
+              'openFile',
+              file.path,
+              undefined,
+              undefined,
+              $event.ctrlKey || $event.metaKey,
+              file
+            )
+          "
+        >
+          <FileTypeIcon :name="file.name" /><span class="conversation-file-name">{{
+            file.name
+          }}</span>
+        </button></el-tooltip
       >
-        <FileTypeIcon :name="file.name" /><span class="conversation-file-name">{{
-          file.name
-        }}</span>
-      </button>
     </template>
   </div>
 </template>

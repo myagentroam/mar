@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
@@ -52,7 +53,9 @@ watch(
     @update:model-value="emit('update:attachmentOpen', $event)"
   >
     <template #header="{ titleId, titleClass }">
-      <span :id="titleId" :class="titleClass" :title="attachmentTitle">{{ attachmentTitle }}</span>
+      <el-tooltip v-bind="tooltipOptions" :content="attachmentTitle"
+        ><span :id="titleId" :class="titleClass">{{ attachmentTitle }}</span></el-tooltip
+      >
     </template>
     <img
       v-if="attachment?.previewUrl"
@@ -73,9 +76,9 @@ watch(
     @update:model-value="emit('update:conversationOpen', $event)"
   >
     <template #header="{ titleId, titleClass }">
-      <span :id="titleId" :class="titleClass" :title="conversationTitle">{{
-        conversationTitle
-      }}</span>
+      <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"
+        ><span :id="titleId" :class="titleClass">{{ conversationTitle }}</span></el-tooltip
+      >
     </template>
     <img
       v-if="conversation !== undefined"

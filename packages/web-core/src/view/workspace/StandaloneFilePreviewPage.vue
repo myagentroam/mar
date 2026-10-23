@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
@@ -767,7 +768,9 @@ function rawContentUrl(
     <p v-if="error" class="standalone-error">{{ error }}</p>
     <template v-else-if="htmlPreviewMode">
       <header class="standalone-markdown-header html-preview-header">
-        <code :title="query.get('path') ?? ''">{{ query.get('path') }}</code>
+        <el-tooltip v-bind="tooltipOptions" :content="query.get('path') ?? ''"
+          ><code>{{ query.get('path') }}</code></el-tooltip
+        >
         <small v-if="htmlUrl">{{
           translate(htmlTrusted ? 'htmlPreview.trustedWarning' : 'htmlPreview.isolatedWarning')
         }}</small>
@@ -791,9 +794,8 @@ function rawContentUrl(
     </template>
     <template v-else-if="markdownPreviewMode">
       <header class="standalone-markdown-header">
-        <code :title="query.get('path') ?? file?.path ?? ''">{{
-          query.get('path') ?? file?.path
-        }}</code
+        <el-tooltip v-bind="tooltipOptions" :content="query.get('path') ?? file?.path ?? ''"
+          ><code>{{ query.get('path') ?? file?.path }}</code></el-tooltip
         ><small v-if="file?.size !== undefined">{{ fileSizeLabel(file.size ?? 0) }}</small>
       </header>
       <div class="standalone-preview-body">

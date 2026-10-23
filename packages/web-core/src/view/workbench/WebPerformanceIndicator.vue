@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { CopyDocument } from '@element-plus/icons-vue';
@@ -87,7 +88,6 @@ onBeforeUnmount(props.diagnostics.dispose);
         class="web-performance-indicator icon-button utility-control"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
-        :title="t('performanceDiagnostics.title')"
       >
         <el-icon aria-hidden="true"><MarIcon name="info" /></el-icon>
       </button>
@@ -97,14 +97,14 @@ onBeforeUnmount(props.diagnostics.dispose);
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
-          <el-button
-            link
-            :aria-label="t('performanceDiagnostics.copy')"
-            :title="t('performanceDiagnostics.copy')"
-            @click="copyDiagnostics"
-          >
-            <el-icon><CopyDocument /></el-icon>
-          </el-button>
+          <el-tooltip v-bind="tooltipOptions" :content="t('performanceDiagnostics.copy')"
+            ><el-button
+              link
+              :aria-label="t('performanceDiagnostics.copy')"
+              @click="copyDiagnostics"
+            >
+              <el-icon><CopyDocument /></el-icon> </el-button
+          ></el-tooltip>
         </div>
       </header>
       <dl>

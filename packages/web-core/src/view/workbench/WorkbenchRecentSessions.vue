@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { Files } from '@element-plus/icons-vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -89,24 +90,29 @@ function runTime(run: RecentRun): string {
       popper-class="recent-sessions-popover"
     >
       <template #reference>
-        <button
-          type="button"
-          :class="['recent-sessions-trigger', { active: open }]"
-          :title="translate('workbenchNotificationCenter.recentSessions')"
-          :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-          :aria-description="
-            translate('workbenchNotificationCenter.recentSessionsCount', {
-              count: activeSessionCount
-            })
-          "
-          :aria-expanded="open"
-          @keydown.esc.stop="open = false"
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('workbenchNotificationCenter.recentSessions')"
+          ><span class="mar-tooltip-control"
+            ><button
+              type="button"
+              :class="['recent-sessions-trigger', { active: open }]"
+              :aria-label="translate('workbenchNotificationCenter.recentSessions')"
+              :aria-description="
+                translate('workbenchNotificationCenter.recentSessionsCount', {
+                  count: activeSessionCount
+                })
+              "
+              :aria-expanded="open"
+              @keydown.esc.stop="open = false"
+            >
+              <el-icon aria-hidden="true"><Files /></el-icon>
+              <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
+                activeSessionCount
+              }}</span>
+            </button></span
+          ></el-tooltip
         >
-          <el-icon aria-hidden="true"><Files /></el-icon>
-          <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
-            activeSessionCount
-          }}</span>
-        </button>
       </template>
       <section
         class="recent-sessions-panel"
@@ -120,25 +126,27 @@ function runTime(run: RecentRun): string {
         <ul v-else class="recent-sessions-list">
           <li v-for="run in service.recentRuns.value" :key="`${run.nodeId}:${run.runId}`">
             <button type="button" @click="openSession(run)">
-              <span
-                class="recent-session-title"
-                :title="
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
                   translate('workbenchNotificationCenter.recentRunTitle', {
                     value0: run.workspaceName ?? run.workspaceId,
                     value1: run.sessionTitle
                   })
                 "
-                >{{
+                ><span class="recent-session-title">{{
                   translate('workbenchNotificationCenter.recentRunTitle', {
                     value0: run.workspaceName ?? run.workspaceId,
                     value1: run.sessionTitle
                   })
-                }}</span
+                }}</span></el-tooltip
               >
               <el-tag size="small" :type="runStatusType(run.status)">{{
                 translate(RUN_STATUS_KEYS[run.status])
               }}</el-tag>
-              <small :title="run.userMessage">{{ run.userMessage }}</small>
+              <el-tooltip v-bind="tooltipOptions" :content="run.userMessage"
+                ><small>{{ run.userMessage }}</small></el-tooltip
+              >
               <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{
                 runTime(run)
               }}</time>

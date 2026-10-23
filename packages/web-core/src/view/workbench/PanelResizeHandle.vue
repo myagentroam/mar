@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { onBeforeUnmount, ref } from 'vue';
 
 const props = defineProps<{
@@ -48,19 +49,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="panel-resize-handle"
-    :class="{ dragging }"
-    role="separator"
-    aria-orientation="vertical"
-    :aria-label="label"
-    :title="label"
-    @pointerdown="start"
-    @pointermove="move"
-    @pointerup="finish"
-    @pointercancel="finish"
-    @lostpointercapture="finish"
-  />
+  <el-tooltip v-bind="tooltipOptions" :content="label"
+    ><div
+      class="panel-resize-handle"
+      :class="{ dragging }"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-label="label"
+      @pointerdown="start"
+      @pointermove="move"
+      @pointerup="finish"
+      @pointercancel="finish"
+      @lostpointercapture="finish"
+  /></el-tooltip>
 </template>
 
 <style scoped>

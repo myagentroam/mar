@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import {
   ArrowDown,
   ArrowRight,
@@ -439,28 +440,30 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             <el-icon class="tree-chevron"><ArrowRight /></el-icon>
           </button>
           <span v-else class="node-expand-spacer" aria-hidden="true" />
-          <button
-            class="tree-node"
-            :draggable="nodeDragEnabled"
-            @dragstart.stop="startNodeDrag($event, result.node.id)"
-            @dragend.stop="endNodeDrag"
-            type="button"
-            :title="nodeLabel(result.node)"
-            @click="toggleTreeNode(result.node.id)"
-          >
-            <span class="tree-node-content">
-              <span class="tree-node-icon" aria-hidden="true">
-                <el-icon class="tree-type-icon"><Monitor /></el-icon>
-                <span
-                  :class="[
-                    'state-dot',
-                    result.node.connected && !result.node.disabled ? 'ready' : 'offline'
-                  ]"
-                />
+          <el-tooltip v-bind="tooltipOptions" :content="nodeLabel(result.node)"
+            ><button
+              :aria-label="nodeLabel(result.node)"
+              class="tree-node"
+              :draggable="nodeDragEnabled"
+              @dragstart.stop="startNodeDrag($event, result.node.id)"
+              @dragend.stop="endNodeDrag"
+              type="button"
+              @click="toggleTreeNode(result.node.id)"
+            >
+              <span class="tree-node-content">
+                <span class="tree-node-icon" aria-hidden="true">
+                  <el-icon class="tree-type-icon"><Monitor /></el-icon>
+                  <span
+                    :class="[
+                      'state-dot',
+                      result.node.connected && !result.node.disabled ? 'ready' : 'offline'
+                    ]"
+                  />
+                </span>
+                <span>{{ nodeLabel(result.node) }}</span>
               </span>
-              <span>{{ nodeLabel(result.node) }}</span>
-            </span>
-          </button>
+            </button></el-tooltip
+          >
           <el-dropdown
             v-if="nodeActionsVisible(result.node.id)"
             class="tree-row-menu node-tree-actions"
@@ -557,17 +560,19 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
                   @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
                 >
-                  <button
-                    :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
-                    class="workspace-branch-button"
-                    type="button"
-                    :title="workspaceLabel(workspace)"
-                    @click="selectWorkspace(result.node.id, workspace.id)"
+                  <el-tooltip v-bind="tooltipOptions" :content="workspaceLabel(workspace)"
+                    ><button
+                      :aria-label="workspaceLabel(workspace)"
+                      :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
+                      class="workspace-branch-button"
+                      type="button"
+                      @click="selectWorkspace(result.node.id, workspace.id)"
+                    >
+                      <span class="workspace-branch-content">
+                        <span>{{ workspaceLabel(workspace) }}</span>
+                      </span>
+                    </button></el-tooltip
                   >
-                    <span class="workspace-branch-content">
-                      <span>{{ workspaceLabel(workspace) }}</span>
-                    </span>
-                  </button>
                   <el-dropdown
                     v-if="workspaceActionsVisible(result.node.id, workspace.id)"
                     class="tree-row-menu workspace-row-actions"
@@ -656,7 +661,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         })
                   "
                   :aria-expanded="groupExpanded(result.node.id, group.groupName)"
-                  :title="group.groupName"
                   @dragenter.stop="
                     setWorkspaceGroupDropTarget($event, result.node, group.groupName)
                   "
@@ -671,7 +675,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     <FolderOpened v-if="groupExpanded(result.node.id, group.groupName)" />
                     <Folder v-else />
                   </el-icon>
-                  <span>{{ group.groupName }}</span>
+                  <el-tooltip v-bind="tooltipOptions" :content="group.groupName"
+                    ><span>{{ group.groupName }}</span></el-tooltip
+                  >
                 </button>
                 <Transition
                   name="workspace-branch"
@@ -719,17 +725,19 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
                       @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
                     >
-                      <button
-                        :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
-                        class="workspace-branch-button"
-                        type="button"
-                        :title="workspaceLabel(workspace)"
-                        @click="selectWorkspace(result.node.id, workspace.id)"
+                      <el-tooltip v-bind="tooltipOptions" :content="workspaceLabel(workspace)"
+                        ><button
+                          :aria-label="workspaceLabel(workspace)"
+                          :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
+                          class="workspace-branch-button"
+                          type="button"
+                          @click="selectWorkspace(result.node.id, workspace.id)"
+                        >
+                          <span class="workspace-branch-content">
+                            <span>{{ workspaceLabel(workspace) }}</span>
+                          </span>
+                        </button></el-tooltip
                       >
-                        <span class="workspace-branch-content">
-                          <span>{{ workspaceLabel(workspace) }}</span>
-                        </span>
-                      </button>
                       <el-dropdown
                         v-if="workspaceActionsVisible(result.node.id, workspace.id)"
                         class="tree-row-menu workspace-row-actions"

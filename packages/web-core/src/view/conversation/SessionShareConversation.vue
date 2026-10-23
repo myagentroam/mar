@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Edit } from '@element-plus/icons-vue';
 import { ClickOutside as vClickOutside, ElMessage, type ButtonInstance } from 'element-plus';
@@ -393,15 +394,17 @@ onBeforeUnmount(() => {
       </div>
       <div v-for="visitor in participants" :key="visitor.visitorId" class="share-person">
         <span class="presence" aria-hidden="true" /><span>{{ name(visitor) }}</span>
-        <el-button
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="chat.canRename.value && visitor.visitorId === access.visitor.value.visitorId"
-          class="share-edit-name"
-          :icon="Edit"
-          :aria-label="translate('sessionShare.editName')"
-          :title="translate('sessionShare.editName')"
-          link
-          @click="editingName = true"
-        />
+          :content="translate('sessionShare.editName')"
+          ><el-button
+            class="share-edit-name"
+            :icon="Edit"
+            :aria-label="translate('sessionShare.editName')"
+            link
+            @click="editingName = true"
+        /></el-tooltip>
       </div>
     </aside>
     <SessionShareNameDialog

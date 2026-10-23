@@ -2670,7 +2670,7 @@ onBeforeUnmount(() => {
   margin: 18px 0 12px;
   padding: 12px 18px;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-fill-subtle);
   color: var(--mar-text-primary);
   font-family: var(--mar-font-mono);

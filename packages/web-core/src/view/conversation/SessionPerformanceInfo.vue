@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { tooltipOptions } from '../../util/tooltip.js';
 import type { RunPerformance } from '@myagentroam/protocol';
 import { translate } from '../../service/LocalePreferenceService.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -31,7 +32,13 @@ const details = computed(() => {
 </script>
 
 <template>
-  <el-tooltip v-if="details" :content="details" placement="top" :trigger="['hover', 'focus']">
+  <el-tooltip
+    v-bind="tooltipOptions"
+    v-if="details"
+    :content="details"
+    placement="top"
+    :trigger="['hover', 'focus']"
+  >
     <button
       class="session-performance-info icon-button utility-control"
       type="button"

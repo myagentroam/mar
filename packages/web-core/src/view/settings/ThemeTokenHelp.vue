@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
@@ -38,14 +39,14 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <el-button
-    class="utility-control"
-    text
-    :icon="QuestionFilled"
-    :aria-label="t('customThemes.tokenHelp')"
-    :title="t('customThemes.tokenHelp')"
-    @click="show"
-  />
+  <el-tooltip v-bind="tooltipOptions" :content="t('customThemes.tokenHelp')"
+    ><el-button
+      class="utility-control"
+      text
+      :icon="QuestionFilled"
+      :aria-label="t('customThemes.tokenHelp')"
+      @click="show"
+  /></el-tooltip>
   <el-dialog
     v-if="open"
     v-model="open"
@@ -74,14 +75,16 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-button
-                class="utility-control"
-                link
-                :icon="CopyDocument"
-                :aria-label="t('customThemes.tokenCopy', { token: item.token })"
-                :title="t('customThemes.tokenCopy', { token: item.token })"
-                @click="copy(item.token)"
-              />
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="t('customThemes.tokenCopy', { token: item.token })"
+                ><el-button
+                  class="utility-control"
+                  link
+                  :icon="CopyDocument"
+                  :aria-label="t('customThemes.tokenCopy', { token: item.token })"
+                  @click="copy(item.token)"
+              /></el-tooltip>
             </dt>
             <dd>{{ item.description }}</dd>
           </div>

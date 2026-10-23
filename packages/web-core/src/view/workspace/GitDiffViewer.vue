@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import {
   ArrowDown,
   ArrowLeft,
@@ -671,103 +672,121 @@ defineExpose({
   >
     <template #status>
       <div class="diff-mobile-summary" :aria-label="translate('gitDiffViewer.mobileSummary')">
-        <span
-          :title="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
+          ><span>
+            {{
+              translate('gitDiffViewer.mobileFileSummary', {
+                value0: currentFileNumber,
+                value1: paths.length
+              })
+            }}
+          </span></el-tooltip
         >
-          {{
-            translate('gitDiffViewer.mobileFileSummary', {
-              value0: currentFileNumber,
-              value1: paths.length
-            })
-          }}
-        </span>
-        <span :title="translate('generated.gitDiffViewer.changes', { value0: hunks.length })">
-          {{
-            translate('gitDiffViewer.mobileChangeSummary', {
-              value0: activeDiffNumber,
-              value1: hunks.length
-            })
-          }}
-        </span>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
+          ><span>
+            {{
+              translate('gitDiffViewer.mobileChangeSummary', {
+                value0: activeDiffNumber,
+                value1: hunks.length
+              })
+            }}
+          </span></el-tooltip
+        >
       </div>
     </template>
     <template #mobile-actions>
       <div class="diff-mobile-action-row diff-mobile-navigation">
-        <el-button
-          circle
-          size="small"
-          :disabled="props.paths.length < 2 || props.loading"
-          :aria-label="translate('generated.gitDiffViewer.previousFile')"
-          :title="translate('generated.gitDiffViewer.previousFile')"
-          @click="emit('moveFile', -1)"
-          ><el-icon><ArrowLeft /></el-icon
-        ></el-button>
-        <el-button
-          circle
-          size="small"
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.previousChange')"
-          :title="translate('generated.gitDiffViewer.previousChange')"
-          @click="moveDiff(-1)"
-          ><el-icon><ArrowUp /></el-icon
-        ></el-button>
-        <el-button
-          circle
-          size="small"
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.nextChange')"
-          :title="translate('generated.gitDiffViewer.nextChange')"
-          @click="moveDiff(1)"
-          ><el-icon><ArrowDown /></el-icon
-        ></el-button>
-        <el-button
-          circle
-          size="small"
-          :disabled="props.paths.length < 2 || props.loading"
-          :aria-label="translate('generated.gitDiffViewer.nextFile')"
-          :title="translate('generated.gitDiffViewer.nextFile')"
-          @click="emit('moveFile', 1)"
-          ><el-icon><ArrowRight /></el-icon
-        ></el-button>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.previousFile')"
+          ><el-button
+            circle
+            size="small"
+            :disabled="props.paths.length < 2 || props.loading"
+            :aria-label="translate('generated.gitDiffViewer.previousFile')"
+            @click="emit('moveFile', -1)"
+            ><el-icon><ArrowLeft /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.previousChange')"
+          ><el-button
+            circle
+            size="small"
+            :disabled="hunks.length === 0"
+            :aria-label="translate('generated.gitDiffViewer.previousChange')"
+            @click="moveDiff(-1)"
+            ><el-icon><ArrowUp /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.nextChange')"
+          ><el-button
+            circle
+            size="small"
+            :disabled="hunks.length === 0"
+            :aria-label="translate('generated.gitDiffViewer.nextChange')"
+            @click="moveDiff(1)"
+            ><el-icon><ArrowDown /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip v-bind="tooltipOptions" :content="translate('generated.gitDiffViewer.nextFile')"
+          ><el-button
+            circle
+            size="small"
+            :disabled="props.paths.length < 2 || props.loading"
+            :aria-label="translate('generated.gitDiffViewer.nextFile')"
+            @click="emit('moveFile', 1)"
+            ><el-icon><ArrowRight /></el-icon></el-button
+        ></el-tooltip>
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
-        <el-button
-          circle
-          size="small"
-          :aria-label="translate('fileEditor.openSource')"
-          :title="translate('fileEditor.openSourceShortcut')"
-          @click="toggleEdit"
-          ><el-icon><Tickets /></el-icon
-        ></el-button>
-        <el-button
+        <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.openSourceShortcut')"
+          ><el-button
+            circle
+            size="small"
+            :aria-label="translate('fileEditor.openSource')"
+            @click="toggleEdit"
+            ><el-icon><Tickets /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="findAvailable"
-          circle
-          size="small"
-          :aria-label="translate('inlineFind.label')"
-          :title="translate('inlineFind.label')"
-          @click="openInternalFind"
-          ><el-icon><Search /></el-icon
-        ></el-button>
-        <el-button
-          :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
-          :title="translate('generated.gitDiffViewer.downloadDiff')"
-          circle
-          size="small"
-          @click="emit('download')"
-        >
-          <el-icon><Download /></el-icon>
-        </el-button>
-        <el-button
+          :content="translate('inlineFind.label')"
+          ><el-button
+            circle
+            size="small"
+            :aria-label="translate('inlineFind.label')"
+            @click="openInternalFind"
+            ><el-icon><Search /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.downloadDiff')"
+          ><el-button
+            :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
+            circle
+            size="small"
+            @click="emit('download')"
+          >
+            <el-icon><Download /></el-icon> </el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="!embedded"
-          :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
-          :title="translate('generated.gitDiffViewer.closeDiffPreview2')"
-          circle
-          size="small"
-          type="primary"
-          @click="emit('close')"
-        >
-          <el-icon><Close /></el-icon>
-        </el-button>
+          :content="translate('generated.gitDiffViewer.closeDiffPreview2')"
+          ><el-button
+            :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
+            circle
+            size="small"
+            type="primary"
+            @click="emit('close')"
+          >
+            <el-icon><Close /></el-icon> </el-button
+        ></el-tooltip>
       </div>
     </template>
     <template #primary-actions>
@@ -775,79 +794,91 @@ defineExpose({
         class="file-preview-actions diff-preview-toolbar"
         :aria-label="translate('generated.gitDiffViewer.diffToolbar')"
       >
-        <el-button
-          circle
-          size="small"
-          :aria-label="translate('fileEditor.openSource')"
-          :title="translate('fileEditor.openSourceShortcut')"
-          @click="toggleEdit"
-          ><el-icon><Tickets /></el-icon
-        ></el-button>
-        <el-button
-          :disabled="paths.length < 2 || loading"
-          :aria-label="translate('generated.gitDiffViewer.previousFile')"
-          circle
-          size="small"
-          :title="translate('generated.gitDiffViewer.previousFile2')"
-          @click="emit('moveFile', -1)"
+        <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.openSourceShortcut')"
+          ><el-button
+            circle
+            size="small"
+            :aria-label="translate('fileEditor.openSource')"
+            @click="toggleEdit"
+            ><el-icon><Tickets /></el-icon></el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.previousFile2')"
+          ><el-button
+            :disabled="paths.length < 2 || loading"
+            :aria-label="translate('generated.gitDiffViewer.previousFile')"
+            circle
+            size="small"
+            @click="emit('moveFile', -1)"
+          >
+            <el-icon><ArrowLeft /></el-icon> </el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
+          ><span class="diff-toolbar-count">
+            {{ currentFileNumber }} / {{ paths.length }}
+          </span></el-tooltip
         >
-          <el-icon><ArrowLeft /></el-icon>
-        </el-button>
-        <span
-          class="diff-toolbar-count"
-          :title="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
-        >
-          {{ currentFileNumber }} / {{ paths.length }}
-        </span>
-        <el-button
-          :disabled="paths.length < 2 || loading"
-          :aria-label="translate('generated.gitDiffViewer.nextFile')"
-          circle
-          size="small"
-          :title="translate('generated.gitDiffViewer.nextFile2')"
-          @click="emit('moveFile', 1)"
-        >
-          <el-icon><ArrowRight /></el-icon>
-        </el-button>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.nextFile2')"
+          ><el-button
+            :disabled="paths.length < 2 || loading"
+            :aria-label="translate('generated.gitDiffViewer.nextFile')"
+            circle
+            size="small"
+            @click="emit('moveFile', 1)"
+          >
+            <el-icon><ArrowRight /></el-icon> </el-button
+        ></el-tooltip>
         <span class="diff-toolbar-divider" aria-hidden="true" />
-        <el-button
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.previousChange')"
-          circle
-          size="small"
-          :title="translate('generated.gitDiffViewer.previousChange2')"
-          @click="moveDiff(-1)"
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.previousChange2')"
+          ><el-button
+            :disabled="hunks.length === 0"
+            :aria-label="translate('generated.gitDiffViewer.previousChange')"
+            circle
+            size="small"
+            @click="moveDiff(-1)"
+          >
+            <el-icon><ArrowUp /></el-icon> </el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
+          ><span class="diff-toolbar-count">
+            {{ activeDiffNumber }} / {{ hunks.length }}
+          </span></el-tooltip
         >
-          <el-icon><ArrowUp /></el-icon>
-        </el-button>
-        <span
-          class="diff-toolbar-count"
-          :title="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
-        >
-          {{ activeDiffNumber }} / {{ hunks.length }}
-        </span>
-        <el-button
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.nextChange')"
-          circle
-          size="small"
-          :title="translate('generated.gitDiffViewer.nextChange2')"
-          @click="moveDiff(1)"
-        >
-          <el-icon><ArrowDown /></el-icon>
-        </el-button>
-        <el-button
+        <el-tooltip
+          v-bind="tooltipOptions"
+          :content="translate('generated.gitDiffViewer.nextChange2')"
+          ><el-button
+            :disabled="hunks.length === 0"
+            :aria-label="translate('generated.gitDiffViewer.nextChange')"
+            circle
+            size="small"
+            @click="moveDiff(1)"
+          >
+            <el-icon><ArrowDown /></el-icon> </el-button
+        ></el-tooltip>
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="!embedded"
-          class="diff-close-button"
-          :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
-          :title="translate('generated.gitDiffViewer.closeDiffPreview')"
-          circle
-          size="small"
-          type="primary"
-          @click="emit('close')"
-        >
-          <el-icon><Close /></el-icon>
-        </el-button>
+          :content="translate('generated.gitDiffViewer.closeDiffPreview')"
+          ><el-button
+            class="diff-close-button"
+            :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
+            circle
+            size="small"
+            type="primary"
+            @click="emit('close')"
+          >
+            <el-icon><Close /></el-icon> </el-button
+        ></el-tooltip>
       </div>
     </template>
     <InlineFindBar
@@ -875,18 +906,29 @@ defineExpose({
         </section>
         <section v-else-if="value?.binary === true" class="binary-diff-preview">
           <p>{{ translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff') }}</p>
-          <el-button
-            type="primary"
-            :disabled="!previewEnabled"
-            :title="
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="
               previewEnabled
                 ? undefined
                 : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
             "
-            @click="emit('preview')"
+            :disabled="previewEnabled"
+            ><span class="mar-tooltip-control"
+              ><el-button
+                type="primary"
+                :disabled="!previewEnabled"
+                :aria-description="
+                  previewEnabled
+                    ? undefined
+                    : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
+                "
+                @click="emit('preview')"
+              >
+                {{ translate('generated.gitDiffViewer.openFilePreview') }}
+              </el-button></span
+            ></el-tooltip
           >
-            {{ translate('generated.gitDiffViewer.openFilePreview') }}
-          </el-button>
         </section>
         <section v-else-if="hasWorkingTreeFullText" class="unified-diff-pane">
           <small v-if="value?.afterTruncated === true" class="unified-diff-truncation">{{

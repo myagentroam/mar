@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -183,54 +184,64 @@ const emit = defineEmits<{
           v-if="commandStates.length || skillTokens.length || fileReferences.length"
           class="composer-command-states"
         >
-          <button
+          <el-tooltip
+            v-bind="tooltipOptions"
             v-for="state in commandStates"
             :key="state.commandId"
-            class="composer-command-state"
-            type="button"
-            :disabled="!state.closable || loading"
-            :title="state.detail ?? state.label"
-            @click="emit('closeCommand', state)"
+            :content="state.detail ?? state.label"
+            ><button
+              :aria-label="state.detail ?? state.label"
+              class="composer-command-state"
+              type="button"
+              :disabled="!state.closable || loading"
+              @click="emit('closeCommand', state)"
+            >
+              <span>{{ state.label }}</span
+              ><span v-if="state.closable">×</span>
+            </button></el-tooltip
           >
-            <span>{{ state.label }}</span
-            ><span v-if="state.closable">×</span>
-          </button>
-          <button
+          <el-tooltip
+            v-bind="tooltipOptions"
             v-for="token in skillTokens"
             :key="token.name"
-            class="composer-command-state composer-skill-state"
-            :class="{ unavailable: !token.available }"
-            type="button"
-            :disabled="readonly || loading"
-            :title="
+            :content="
               token.available
                 ? token.skillFilePath
                 : translate('composer.skillUnavailableToken', { name: token.name })
             "
-            :aria-label="translate('composer.removeSkill', { name: token.name })"
-            @click="emit('removeSkill', token.name)"
+            ><button
+              class="composer-command-state composer-skill-state"
+              :class="{ unavailable: !token.available }"
+              type="button"
+              :disabled="readonly || loading"
+              :aria-label="translate('composer.removeSkill', { name: token.name })"
+              @click="emit('removeSkill', token.name)"
+            >
+              <el-icon><Collection /></el-icon>
+              <span>{{ token.name }}</span
+              ><span>×</span>
+            </button></el-tooltip
           >
-            <el-icon><Collection /></el-icon>
-            <span>{{ token.name }}</span
-            ><span>×</span>
-          </button>
-          <button
+          <el-tooltip
+            v-bind="tooltipOptions"
             v-for="reference in fileReferences"
             :key="reference.path"
-            class="composer-command-state composer-file-reference-state"
-            type="button"
-            :disabled="readonly || loading"
-            :title="reference.path"
-            :aria-label="translate('composer.removeFileReference', { name: reference.label })"
-            @click="emit('removeReference', reference.path)"
+            :content="reference.path"
+            ><button
+              class="composer-command-state composer-file-reference-state"
+              type="button"
+              :disabled="readonly || loading"
+              :aria-label="translate('composer.removeFileReference', { name: reference.label })"
+              @click="emit('removeReference', reference.path)"
+            >
+              <FileTypeIcon
+                :name="reference.path"
+                :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
+              />
+              <span>{{ reference.label }}</span
+              ><span>×</span>
+            </button></el-tooltip
           >
-            <FileTypeIcon
-              :name="reference.path"
-              :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
-            />
-            <span>{{ reference.label }}</span
-            ><span>×</span>
-          </button>
         </div>
         <slot name="queue" />
         <slot name="attachments" />

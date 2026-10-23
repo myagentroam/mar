@@ -250,8 +250,7 @@ async function sendTest(): Promise<void> {
   gap: 7px;
   width: 100%;
   border: 1px solid var(--el-border-color);
-  border-left: 3px solid var(--el-border-color);
-  border-radius: 8px;
+  border-radius: var(--mar-radius-selection);
   padding: 13px 14px;
   background: var(--el-fill-color-blank);
   color: var(--el-text-color-primary);
@@ -259,17 +258,17 @@ async function sendTest(): Promise<void> {
   cursor: pointer;
   transition:
     border-color 150ms ease,
-    background-color 150ms ease,
-    transform 150ms ease;
+    background-color 150ms ease;
 }
 .template-choice.is-selected {
-  border-color: var(--el-color-primary-light-5);
-  border-left-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-selection);
 }
 .template-choice:hover {
-  border-left-color: var(--el-color-primary);
-  transform: translateX(2px);
+  background: var(--mar-fill-hover);
+}
+.template-choice.is-selected:hover {
+  background: var(--mar-fill-selection);
 }
 .template-choice:focus-visible {
   outline: 2px solid var(--el-color-primary);

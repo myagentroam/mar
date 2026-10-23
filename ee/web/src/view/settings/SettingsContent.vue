@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '@myagentroam/web-core';
 import { Link, Refresh, Unlock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
@@ -153,14 +154,16 @@ function createNodeToken(): void {
       >
         <div class="admin-sessions-heading">
           <h3>{{ translate('generated.settingsContent.oAuthAccountBindings2') }}</h3>
-          <el-button
-            class="utility-control"
-            :icon="Refresh"
-            :aria-label="translate('generated.settingsContent.refresh')"
-            :title="translate('generated.settingsContent.refresh')"
-            text
-            @click="loadOAuthBindings"
-          />
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('generated.settingsContent.refresh')"
+            ><el-button
+              class="utility-control"
+              :icon="Refresh"
+              :aria-label="translate('generated.settingsContent.refresh')"
+              text
+              @click="loadOAuthBindings"
+          /></el-tooltip>
         </div>
         <el-table v-loading="oauthLoading" :data="oauthBindings" row-key="providerKey">
           <el-table-column

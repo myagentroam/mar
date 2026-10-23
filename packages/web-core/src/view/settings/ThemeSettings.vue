@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
@@ -289,10 +290,15 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
             <el-button
               class="utility-control"
               text
-              :icon="MoreFilled"
               :aria-label="t('customThemes.moreActions', { name: item.name })"
-              :title="t('customThemes.moreActions', { name: item.name })"
-            />
+            >
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="t('customThemes.moreActions', { name: item.name })"
+              >
+                <el-icon><MoreFilled /></el-icon>
+              </el-tooltip>
+            </el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="duplicate" :icon="CopyDocument">{{

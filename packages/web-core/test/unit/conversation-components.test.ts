@@ -11,7 +11,7 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { serializeComposerTag } from '@myagentroam/protocol';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ElTooltip, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
@@ -25,6 +25,7 @@ import SessionPerformanceInfo from '../../src/view/conversation/SessionPerforman
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
+import { conversationItemLabel } from '../../src/util/conversation-presentation.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
@@ -113,7 +114,8 @@ async function render(
 ): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props, slots) });
   app.use(i18n);
-  if (component === ImagePreviewDialogs) app.component('ElDialog', DialogStub);
+  if (component === ImagePreviewDialogs)
+    app.component('ElDialog', DialogStub).component('ElTooltip', ElTooltip);
   else app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -308,7 +310,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('Hello');
     expect(html).not.toContain('mar_channel');
     expect(html).toContain(
-      'title="' + i18n.global.t('generated.conversationPresentation.webShareSourceDetails') + '"'
+      'aria-description="' +
+        i18n.global.t('generated.conversationPresentation.webShareSourceDetails') +
+        '"'
     );
     expect(html).not.toContain('channel-origin');
     expect(html).not.toContain('Owner');
@@ -369,9 +373,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(html).not.toContain('<img src=x onerror=alert(1)>');
       expect(html).not.toContain(renamedSession);
       expect(html).toContain(
-        `title="${i18n.global.t('generated.conversationPresentation.sessionSourceDetails', {
-          sessionId
-        })}"`
+        `aria-description="${i18n.global.t(
+          'generated.conversationPresentation.sessionSourceDetails',
+          {
+            sessionId
+          }
+        )}"`
       );
       expect(html).toContain(
         i18n.global.t('generated.conversationPresentation.messageFromSource', {
@@ -595,7 +602,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('Original session title');
     expect(html).toMatch(/<code(?:\s[^>]*)?>session-1<\/code>/u);
     expect(html).toContain('aria-label="Original activity"');
-    expect(html).toContain('title="Original activity"');
+    expect(html).not.toContain('title="Original activity"');
     expect(html).toContain(
       `aria-label="${i18n.global.t('generated.conversationHeader.copySessionId', {
         sessionId: 'session-1'
@@ -634,7 +641,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(managed).toContain('session-activity managed_active');
-    expect(managed).toContain('title="Session activity"');
+    expect(managed).toContain('aria-label="Session activity"');
     expect(idle).not.toContain('session-activity');
   });
 
@@ -944,13 +951,14 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(
-      html.match(/class="conversation-message-action icon-button utility-control"/gu)
+      html.match(/class="conversation-message-action icon-button utility-control\b/gu)
     ).toHaveLength(2);
     expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
     expect(html).toContain('Assistant text');
-    expect(html).toContain(
-      `title="${i18n.global.t('generated.conversationTimeline.copyMessage2')}"`
-    );
+    for (const kind of ['user_message', 'assistant_message'])
+      expect(html).toContain(
+        `aria-label="${i18n.global.t('generated.conversationTimeline.copyMessage', { value0: conversationItemLabel(kind) })}"`
+      );
   });
 
   it('removes legacy performance from assistant cards and exposes independent session metrics', async () => {

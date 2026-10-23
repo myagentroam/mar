@@ -24,7 +24,7 @@ const template: ConversationTemplateSummary = {
 };
 
 const hostedConversationMessageKeys =
-  'eyebrow title summary chooseTemplate chooseTemplateLabel chooseTemplateHint singleTemplatePreselected noTemplates noTemplateSelected temporaryTitle templatePlaceholder templateRequired explicitConfirmation create start created createFailed loadFailed createdTitle createdHint nodeOffline capacityUnavailable sandboxUnavailable nodeUnavailable historyTitle closeHistory hostNode offline searchHistory noHistory historyTemplateNode refreshHistory loadMore noConversationSelected selectConversationHint loadingConversation filesTitle closeFiles noFiles filesDropHint filesDropNow filesUploaded fileUploadFailed fileDelete fileDeleteNamed fileDeleteTitle fileDeleteConfirmation fileDeleted fileNotFound fileConflict fileCategoryUPLOAD fileCategoryOUTPUT expandFileDirectory collapseFileDirectory statusACTIVE moreActions editTitle titlePrompt titlePlaceholder titleRequired titleTooLong titleUpdated pin unpin pinned unpinned pinnedLabel deleteNamed deleteTitle deleteConfirmation delete cancel deleted nodeOfflineReadonly watchUnavailableReadonly readonly watchExpired watchFailed messagePlaceholder sending running addAttachment confirmDroppedAttachmentsTitle confirmDroppedAttachments confirmUpload attachmentLimit folderAttachmentUnsupported attachmentTooLarge attachmentInvalidName attachmentConflict quotaExceeded storageFull fileProjectionFailed uploadProgress uploaded retryAttachment retryAttachmentNamed removeAttachment model modelUnavailable loadedTemplateNamed send stop stopWithEsc runActive replaceCurrentHint replaceCurrentUnsupported rollbackTitle rollbackConfirmation rollback rollbackTargetInvalid upgradeFailed operationFailed copied copyFailed notFound stateInvalid responseInvalid filePreview previewTruncated previewUnavailable download mobilePanels mobileHistory mobileConversation mobileFiles'.split(
+  'eyebrow title summary chooseTemplate chooseTemplateLabel chooseTemplateHint singleTemplatePreselected noTemplates noTemplateSelected temporaryTitle templatePlaceholder templateRequired explicitConfirmation create start created createFailed loadFailed createdTitle createdHint nodeOffline capacityUnavailable sandboxUnavailable nodeUnavailable historyTitle closeHistory hostNode offline searchHistory noLoadedHistoryMatches filterLoadedOnly noHistory historyTemplateNode refreshHistory loadMore noConversationSelected selectConversationHint loadingConversation filesTitle closeFiles noFiles filesDropHint filesDropNow filesUploaded fileUploadFailed fileDelete fileDeleteNamed fileDeleteTitle fileDeleteConfirmation fileDeleted fileNotFound fileConflict fileCategoryUPLOAD fileCategoryOUTPUT expandFileDirectory collapseFileDirectory statusACTIVE moreActions editTitle titlePrompt titlePlaceholder titleRequired titleTooLong titleUpdated pin unpin pinned unpinned pinnedLabel deleteNamed deleteTitle deleteConfirmation delete cancel deleted nodeOfflineReadonly watchUnavailableReadonly readonly watchExpired watchFailed messagePlaceholder sending running addAttachment confirmDroppedAttachmentsTitle confirmDroppedAttachments confirmUpload attachmentLimit folderAttachmentUnsupported attachmentTooLarge attachmentInvalidName attachmentConflict quotaExceeded storageFull fileProjectionFailed uploadProgress uploaded retryAttachment retryAttachmentNamed removeAttachment model modelUnavailable loadedTemplateNamed send stop stopWithEsc runActive replaceCurrentHint replaceCurrentUnsupported rollbackTitle rollbackConfirmation rollback rollbackTargetInvalid upgradeFailed operationFailed copied copyFailed notFound stateInvalid responseInvalid filePreview previewTruncated previewUnavailable download mobilePanels mobileHistory mobileConversation mobileFiles'.split(
     ' '
   );
 
@@ -172,19 +172,21 @@ describe('Public Hosted Conversation Boundaries', () => {
     expect(source).toContain('-webkit-touch-callout: none;');
   });
 
-  it('uses the shared rounded brand selection style for hosted conversation history', () => {
+  it('uses the shared neutral selection style for hosted conversation history', () => {
     const source = readFileSync(
       new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
       'utf8'
     );
 
     expect(source).toContain(
-      '.history-list article.selected {\n  background: var(--mar-color-brand-selected);'
+      '.history-list article.selected {\n  background: var(--mar-fill-selection);'
     );
     expect(source).toContain(
       '.history-list article.selected .history-title-row strong,\n.history-list article.selected .history-open time,'
     );
-    expect(source).toContain('color: var(--mar-color-brand-text);');
+    expect(source).toContain(
+      '.history-list article.selected .history-pin-indicator {\n  color: var(--mar-text-primary);'
+    );
     expect(source).not.toContain(
       '.history-list article.selected {\n  border-color: var(--mar-color-brand-border);'
     );

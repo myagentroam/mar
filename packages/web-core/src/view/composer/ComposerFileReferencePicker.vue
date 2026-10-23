@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { nextTick, ref, watch } from 'vue';
@@ -52,8 +53,12 @@ watch(
         @click="emit('select', entry)"
       >
         <FileTypeIcon :name="entry.name" :kind="entry.kind" />
-        <strong :title="entry.name">{{ entry.name }}</strong>
-        <code :title="entry.path">{{ entry.path }}</code>
+        <el-tooltip v-bind="tooltipOptions" :content="entry.name"
+          ><strong>{{ entry.name }}</strong></el-tooltip
+        >
+        <el-tooltip v-bind="tooltipOptions" :content="entry.path"
+          ><code>{{ entry.path }}</code></el-tooltip
+        >
         <span class="entry-kind">{{
           entry.kind === 'DIRECTORY'
             ? translate('generated.composerFileReferencePicker.folder')

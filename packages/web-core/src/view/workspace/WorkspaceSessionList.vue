@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import {
   ArrowDown,
   ArrowUp,
@@ -366,29 +367,31 @@ function submitSessionSearch(): void {
         size="small"
         @clear="emit('search', '')"
       />
-      <button
-        class="session-search-button utility-control"
-        :aria-label="
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="
           translate(
             searchInput.trim()
               ? 'workspaceSessions.searchAction'
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        :aria-busy="searching || refreshing || undefined"
-        :disabled="!nodeReady || searching || refreshing"
-        :title="
-          translate(
-            searchInput.trim()
-              ? 'workspaceSessions.searchAction'
-              : 'generated.workspaceSessionList.refreshWorkspaceSessions'
-          )
-        "
-        type="submit"
-      >
-        <el-icon v-if="searching || refreshing" class="is-loading"><Loading /></el-icon>
-        <el-icon v-else><Refresh /></el-icon>
-      </button>
+        ><button
+          class="session-search-button utility-control"
+          :aria-label="
+            translate(
+              searchInput.trim()
+                ? 'workspaceSessions.searchAction'
+                : 'generated.workspaceSessionList.refreshWorkspaceSessions'
+            )
+          "
+          :aria-busy="searching || refreshing || undefined"
+          :disabled="!nodeReady || searching || refreshing"
+          type="submit"
+        >
+          <el-icon v-if="searching || refreshing" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else><Refresh /></el-icon></button
+      ></el-tooltip>
     </form>
     <div class="new-session-form">
       <el-button
@@ -485,56 +488,66 @@ function submitSessionSearch(): void {
                   aria-hidden="true"
                   class="runner-brand-icon session-title-runner-icon"
                 />
-                <el-icon
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="session.schedule"
-                  :class="[
-                    'session-pin-indicator',
-                    { 'schedule-paused': !session.schedule.enabled }
-                  ]"
-                  :aria-label="
+                  :content="
                     translate(
                       session.schedule.enabled
                         ? 'generated.scheduledSession.enabled'
                         : 'generated.scheduledSession.paused'
                     )
                   "
-                  :title="
-                    translate(
-                      session.schedule.enabled
-                        ? 'generated.scheduledSession.enabled'
-                        : 'generated.scheduledSession.paused'
-                    )
-                  "
-                  ><Clock
-                /></el-icon>
-                <el-icon
+                  ><el-icon
+                    :class="[
+                      'session-pin-indicator',
+                      { 'schedule-paused': !session.schedule.enabled }
+                    ]"
+                    :aria-label="
+                      translate(
+                        session.schedule.enabled
+                          ? 'generated.scheduledSession.enabled'
+                          : 'generated.scheduledSession.paused'
+                      )
+                    "
+                    ><Clock /></el-icon
+                ></el-tooltip>
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-else-if="pinned(session)"
-                  class="session-pin-indicator"
-                  :aria-label="translate('generated.workspaceSessionList.pinned')"
-                  :title="translate('generated.workspaceSessionList.pinned2')"
-                  ><StarFilled
-                /></el-icon>
-                <strong :title="title(session)">{{ title(session) }}</strong>
-                <span
-                  v-if="hasUnread(session.id)"
-                  class="session-unread-label"
-                  :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
-                  :title="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
-                  >{{ translate('generated.workspaceSessionList.unread') }}</span
+                  :content="translate('generated.workspaceSessionList.pinned2')"
+                  ><el-icon
+                    class="session-pin-indicator"
+                    :aria-label="translate('generated.workspaceSessionList.pinned')"
+                    ><StarFilled /></el-icon
+                ></el-tooltip>
+                <el-tooltip v-bind="tooltipOptions" :content="title(session)"
+                  ><strong>{{ title(session) }}</strong></el-tooltip
                 >
-                <span
+                <el-tooltip
+                  v-bind="tooltipOptions"
+                  v-if="hasUnread(session.id)"
+                  :content="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
+                  ><span
+                    class="session-unread-label"
+                    :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
+                    >{{ translate('generated.workspaceSessionList.unread') }}</span
+                  ></el-tooltip
+                >
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="nodeReady && activity(session) === 'MANAGED_ACTIVE'"
-                  :class="['session-activity', activity(session).toLocaleLowerCase()]"
-                  :aria-label="activityLabel(session)"
-                  :title="activityLabel(session)"
-                  role="img"
-                  ><i aria-hidden="true"
-                /></span>
-                <time
-                  class="session-relative-time"
-                  :datetime="activityDateTime(session)"
-                  :title="activityTitle(session)"
-                  >{{ relativeActivity(session) }}</time
+                  :content="activityLabel(session)"
+                  ><span
+                    :class="['session-activity', activity(session).toLocaleLowerCase()]"
+                    :aria-label="activityLabel(session)"
+                    role="img"
+                    ><i aria-hidden="true" /></span
+                ></el-tooltip>
+                <el-tooltip v-bind="tooltipOptions" :content="activityTitle(session)"
+                  ><time class="session-relative-time" :datetime="activityDateTime(session)">{{
+                    relativeActivity(session)
+                  }}</time></el-tooltip
                 >
               </span>
             </span>
@@ -555,10 +568,14 @@ function submitSessionSearch(): void {
                   value0: title(session)
                 })
               "
-              :title="translate('generated.workspaceSessionList.moreSessionActions2')"
               type="button"
             >
-              <el-icon><More /></el-icon>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="translate('generated.workspaceSessionList.moreSessionActions2')"
+              >
+                <el-icon><More /></el-icon>
+              </el-tooltip>
             </button>
             <template #dropdown>
               <el-dropdown-menu>

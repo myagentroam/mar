@@ -174,7 +174,7 @@ describe('Shared workbench shell', () => {
       );
 
       expect(html).toContain(`aria-label="${label}"`);
-      expect(html).toContain(`title="${label}"`);
+      expect(html).not.toContain(`title="${label}"`);
       const navigationButtons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gsu)].filter(
         (match) => match[1]!.includes('nav-menu-button')
       );
@@ -188,7 +188,8 @@ describe('Shared workbench shell', () => {
       expect(navigationButtons[1]![1]).toContain('aria-current="page"');
       for (const button of navigationButtons) {
         expect(button[1]).toMatch(/aria-label="[^"]+"/u);
-        expect(button[1]).toMatch(/title="[^"]+"/u);
+        expect(button[1]).not.toMatch(/title="[^"]+"/u);
+        expect(button[1]).toContain('el-tooltip__trigger');
         expect(button[2]).not.toContain('rail-label');
       }
       expect(html).toContain('documentation-icon');
@@ -236,9 +237,9 @@ describe('Shared workbench shell', () => {
       new URL('../../src/view/workspace/WorkspaceTabs.vue', import.meta.url),
       'utf8'
     );
-    expect(source).not.toContain('<el-tooltip');
+    expect(source).toContain('v-bind="tooltipOptions"');
     expect(source).toContain('activeTabId === tab.id && directAvailable(tab.nodeId)');
-    expect(source).toContain(':title="directDescription(tab.nodeId)"');
+    expect(source).toContain(':content="directDescription(tab.nodeId)"');
     expect(source).toContain(':aria-description="directDescription(tab.nodeId)"');
     expect(source).not.toContain('direct-available-dot');
   });
@@ -279,14 +280,14 @@ describe('Shared workbench shell', () => {
       expect(
         html.match(/class="workspace-tab-running session-activity managed_active/gu)
       ).toHaveLength(1);
-      expect(html.match(/class="workspace-tab-unread"/gu)).toHaveLength(1);
+      expect(html.match(/class="workspace-tab-unread\b[^"]*"/gu)).toHaveLength(1);
       expect(html).toContain('aria-label="' + running + '"');
-      expect(html).toContain(
+      expect(html).not.toContain(
         'title="' + i18n.global.t('generated.sessionPresentation.managed') + '"'
       );
       expect(html).toContain('>' + unread + '</span>');
       expect(html).toContain(
-        'title="Peer-to-peer connection available (Private network IPv4 UDP)"'
+        'aria-description="Peer-to-peer connection available (Private network IPv4 UDP)"'
       );
     }
   );

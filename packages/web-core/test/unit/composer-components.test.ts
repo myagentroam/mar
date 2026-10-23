@@ -387,7 +387,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).not.toContain('mar_attachments');
     const actionLabel = locale === 'zh-CN' ? '执行' : 'Steer';
     expect(html).toContain(`aria-label="${actionLabel}"`);
-    expect(html).toContain(`title="${actionLabel}"`);
+    expect(html).not.toContain(`title="${actionLabel}"`);
+    expect(html).toContain('el-tooltip__trigger');
     expect(html).toContain(`>${actionLabel}</span>`);
   });
 

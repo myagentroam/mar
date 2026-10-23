@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { Paperclip, Promotion } from '@element-plus/icons-vue';
 import type { SelectInstance } from 'element-plus';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
 
 const props = defineProps<{
@@ -50,6 +51,16 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement>();
+const contextHint = computed(() =>
+  [
+    props.contextUsageLabel,
+    translate(
+      props.canCompactContext
+        ? 'generated.composerToolbar.viewContextUsageClickToCompactContext'
+        : 'generated.composerToolbar.compactUnavailable'
+    )
+  ].join('\n')
+);
 const modelSelect = ref<SelectInstance>();
 
 function openModelMenu(): boolean {
@@ -114,15 +125,17 @@ function selectFiles(event: Event): void {
       @change="selectFiles"
     />
     <div :class="['composer-configuration', { 'has-runner-select': draftSessionOpen }]">
-      <button
-        class="composer-icon-button composer-attachment-button utility-control"
-        type="button"
-        :aria-label="translate('generated.composerToolbar.addAttachment')"
-        :title="translate('generated.composerToolbar.addAttachment2')"
-        @click="fileInput?.click()"
-      >
-        <el-icon><Paperclip /></el-icon>
-      </button>
+      <el-tooltip
+        v-bind="tooltipOptions"
+        :content="translate('generated.composerToolbar.addAttachment2')"
+        ><button
+          class="composer-icon-button composer-attachment-button utility-control"
+          type="button"
+          :aria-label="translate('generated.composerToolbar.addAttachment')"
+          @click="fileInput?.click()"
+        >
+          <el-icon><Paperclip /></el-icon></button
+      ></el-tooltip>
       <div
         v-if="draftSessionOpen"
         class="composer-select-slot composer-runner-slot"
@@ -148,11 +161,11 @@ function selectFiles(event: Event): void {
         </el-select>
       </div>
       <div v-if="!hideModelSelection" class="composer-model-slot">
-        <span
+        <el-tooltip
+          v-bind="tooltipOptions"
           v-if="runner === 'codex' && fastEnabled"
-          class="composer-fast-badge"
-          :title="translate('generated.composerToolbar.fastModeIsEnabled')"
-          >{{ translate('common.fast') }}</span
+          :content="translate('generated.composerToolbar.fastModeIsEnabled')"
+          ><span class="composer-fast-badge">{{ translate('common.fast') }}</span></el-tooltip
         >
         <div class="composer-select-slot" :data-label="modelEffortLabel">
           <el-select
@@ -215,20 +228,21 @@ function selectFiles(event: Event): void {
       </div>
     </div>
     <el-tooltip
+      v-bind="tooltipOptions"
       v-if="contextUsage !== undefined && contextUsage !== null"
-      :content="contextUsageLabel"
+      :content="contextHint"
       placement="top"
     >
       <button
         class="composer-context-button utility-control"
         type="button"
         :aria-label="contextUsageLabel"
+        :aria-description="contextHint"
         :aria-disabled="!canCompactContext"
         :style="{
           '--context-usage': `${Math.min(100, Math.max(0, contextUsage.percentage))}%`
         }"
-        :title="translate('generated.composerToolbar.viewContextUsageClickToCompactContext')"
-        @click="emit('compact')"
+        @click="canCompactContext && emit('compact')"
       >
         <i aria-hidden="true" />
         <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
@@ -380,7 +394,7 @@ function selectFiles(event: Event): void {
   gap: 0.26rem;
   min-height: var(--mar-compact-control-size);
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   padding: 0.1rem 0.3rem;
   font-size: var(--mar-font-size-meta);
   line-height: 1;

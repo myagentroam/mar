@@ -417,7 +417,8 @@ describe('public file navigation components', () => {
       expect(html).toContain('aria-expanded="true"');
       expect(html).toContain('aria-selected="true"');
       expect(html).toContain('disabled');
-      expect(html).toContain('title="docs/guide.md"');
+      expect(html).toContain('aria-label="docs/guide.md"');
+      expect(html).not.toContain('title="docs/guide.md"');
       expect(html).not.toContain('file-31.txt');
       expect(html).not.toMatch(/generated\.|workspaceFileTree\./u);
       const treeSource = readFileSync(

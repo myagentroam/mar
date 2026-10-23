@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { Close, Upload } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
@@ -211,10 +212,11 @@ function usagePercentageLabel(value: number): string {
       <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.supportedAgents')">
         <div v-if="supportedAgents(node).length > 0" class="supported-agent-list">
           <div v-for="entry in supportedAgents(node)" :key="entry.runner">
-            <el-tooltip :content="supportedAgentTitle(entry)">
+            <el-tooltip v-bind="tooltipOptions" :content="supportedAgentTitle(entry)">
               <span class="supported-agent-label">{{ supportedAgentTitle(entry) }}</span>
             </el-tooltip>
             <el-tooltip
+              v-bind="tooltipOptions"
               v-if="entry.runner !== 'opencode'"
               :content="usageDisabledReason(entry.runner)"
               :disabled="usageDisabledReason(entry.runner) === ''"

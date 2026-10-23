@@ -3,6 +3,7 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue';
@@ -348,7 +349,9 @@ function message(error: unknown): string {
         min-width="150"
       >
         <template #default="{ row }">
-          <span :title="row.name">{{ row.name }}</span>
+          <el-tooltip v-bind="tooltipOptions" :content="row.name"
+            ><span>{{ row.name }}</span></el-tooltip
+          >
         </template>
       </el-table-column>
       <el-table-column
@@ -358,7 +361,9 @@ function message(error: unknown): string {
         min-width="170"
       >
         <template #default="{ row }">
-          <code class="secret-value" :title="row.value">{{ row.value }}</code>
+          <el-tooltip v-bind="tooltipOptions" :content="row.value"
+            ><code class="secret-value">{{ row.value }}</code></el-tooltip
+          >
         </template>
       </el-table-column>
       <el-table-column

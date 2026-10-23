@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import {
   ArrowRight,
@@ -408,6 +409,7 @@ defineExpose({ reveal });
             @contextmenu="openNodeActions(row.node.path, $event)"
           >
             <button
+              :aria-label="row.node.path === '.' ? row.node.name : row.node.path"
               class="file-tree-row"
               type="button"
               role="treeitem"
@@ -418,7 +420,6 @@ defineExpose({ reveal });
               :disabled="disabled"
               :tabindex="focusedPath === row.node.path ? 0 : -1"
               :style="{ '--tree-depth': row.depth }"
-              :title="row.node.path === '.' ? row.node.name : row.node.path"
               :draggable="fileMoveEnabled(row.node)"
               @click="activate(row.node, $event)"
               @keydown="onKeydown($event, row)"
@@ -437,7 +438,11 @@ defineExpose({ reveal });
                 ><BusyIndicator
               /></span>
               <FileTypeIcon v-else class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
-              <span class="tree-name">{{ row.node.name }}</span>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="row.node.path === '.' ? row.node.name : row.node.path"
+                ><span class="tree-name">{{ row.node.name }}</span></el-tooltip
+              >
             </button>
             <el-dropdown
               v-if="nodeActionsVisible(row.node.path)"

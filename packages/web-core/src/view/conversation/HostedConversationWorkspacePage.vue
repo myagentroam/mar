@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import type {
   ConversationFileProjection,
   HostedConversationSnapshot,
@@ -946,18 +947,20 @@ onBeforeUnmount(() => {
             :placeholder="translate('hostedConversations.searchHistory')"
             :aria-label="translate('hostedConversations.searchHistory')"
           />
-          <el-button
-            class="history-refresh-button utility-control"
-            :aria-label="translate('hostedConversations.refreshHistory')"
-            :title="translate('hostedConversations.refreshHistory')"
-            :disabled="loadingDirectory"
-            :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
-            size="small"
-            text
-            @click="refreshDirectory"
-          >
-            <el-icon><Refresh /></el-icon>
-          </el-button>
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('hostedConversations.refreshHistory')"
+            ><el-button
+              class="history-refresh-button utility-control"
+              :aria-label="translate('hostedConversations.refreshHistory')"
+              :disabled="loadingDirectory"
+              :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
+              size="small"
+              text
+              @click="refreshDirectory"
+            >
+              <el-icon><Refresh /></el-icon> </el-button
+          ></el-tooltip>
         </div>
       </div>
       <div
@@ -1050,13 +1053,17 @@ onBeforeUnmount(() => {
                   title: hostedConversationTitle(conversation)
                 })
               "
-              :title="
-                translate('hostedConversations.moreActions', {
-                  title: hostedConversationTitle(conversation)
-                })
-              "
             >
-              <el-icon><More /></el-icon>
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
+                  translate('hostedConversations.moreActions', {
+                    title: hostedConversationTitle(conversation)
+                  })
+                "
+              >
+                <el-icon><More /></el-icon>
+              </el-tooltip>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -1118,16 +1125,18 @@ onBeforeUnmount(() => {
     </aside>
 
     <main id="hosted-pane-conversation" class="hosted-conversation-main">
-      <button
+      <el-tooltip
+        v-bind="tooltipOptions"
         v-if="mobileViewport"
-        class="hosted-mobile-files-button"
-        type="button"
-        :aria-label="translate('hostedConversations.mobileFiles')"
-        :title="translate('hostedConversations.mobileFiles')"
-        @click="openMobileFiles"
-      >
-        <el-icon><FolderOpened /></el-icon>
-      </button>
+        :content="translate('hostedConversations.mobileFiles')"
+        ><button
+          class="hosted-mobile-files-button"
+          type="button"
+          :aria-label="translate('hostedConversations.mobileFiles')"
+          @click="openMobileFiles"
+        >
+          <el-icon><FolderOpened /></el-icon></button
+      ></el-tooltip>
       <el-alert
         v-if="workspace.snapshot.value?.error"
         class="snapshot-error-alert"
@@ -1269,53 +1278,62 @@ onBeforeUnmount(() => {
             :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
             :style="{ '--file-depth': row.depth }"
           >
-            <button
+            <el-tooltip
+              v-bind="tooltipOptions"
               v-if="row.node.kind === 'DIRECTORY'"
-              class="file-directory"
-              type="button"
-              :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
-              :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
-              :title="row.node.path"
-              @click="toggleFileDirectory(group.category, row.node.path)"
+              :content="row.node.path"
+              ><span class="mar-tooltip-control"
+                ><button
+                  class="file-directory"
+                  type="button"
+                  :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
+                  :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
+                  @click="toggleFileDirectory(group.category, row.node.path)"
+                >
+                  <el-icon class="file-directory-chevron">
+                    <ArrowRight
+                      :class="{
+                        expanded: fileDirectoryExpanded(group.category, row.node.path)
+                      }"
+                    />
+                  </el-icon>
+                  <el-icon class="file-directory-kind"><FolderOpened /></el-icon>
+                  <span>{{ row.node.name }}</span>
+                </button></span
+              ></el-tooltip
             >
-              <el-icon class="file-directory-chevron">
-                <ArrowRight
-                  :class="{
-                    expanded: fileDirectoryExpanded(group.category, row.node.path)
-                  }"
-                />
-              </el-icon>
-              <el-icon class="file-directory-kind"><FolderOpened /></el-icon>
-              <span>{{ row.node.name }}</span>
-            </button>
             <template v-else>
-              <button
-                class="file-open"
-                type="button"
-                :title="row.node.file.relativePath"
-                @click="filePreview.openFile(row.node.file)"
+              <el-tooltip v-bind="tooltipOptions" :content="row.node.file.relativePath"
+                ><button
+                  :aria-label="row.node.file.relativePath"
+                  class="file-open"
+                  type="button"
+                  @click="filePreview.openFile(row.node.file)"
+                >
+                  <span>{{ row.node.file.displayName }}</span>
+                  <small>{{ fileSizeLabel(row.node.file.size) }}</small>
+                </button></el-tooltip
               >
-                <span>{{ row.node.file.displayName }}</span>
-                <small>{{ fileSizeLabel(row.node.file.size) }}</small>
-              </button>
-              <button
-                class="file-delete"
-                type="button"
-                :disabled="!filesWritable || deletingFileId !== undefined"
-                :aria-label="
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
                   translate('hostedConversations.fileDeleteNamed', {
                     name: row.node.file.displayName
                   })
                 "
-                :title="
-                  translate('hostedConversations.fileDeleteNamed', {
-                    name: row.node.file.displayName
-                  })
-                "
-                @click="deleteProjectedFile(row.node.file)"
-              >
-                <el-icon><Delete /></el-icon>
-              </button>
+                ><button
+                  class="file-delete"
+                  type="button"
+                  :disabled="!filesWritable || deletingFileId !== undefined"
+                  :aria-label="
+                    translate('hostedConversations.fileDeleteNamed', {
+                      name: row.node.file.displayName
+                    })
+                  "
+                  @click="deleteProjectedFile(row.node.file)"
+                >
+                  <el-icon><Delete /></el-icon></button
+              ></el-tooltip>
             </template>
           </div>
         </section>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { Expand, Fold } from '@element-plus/icons-vue';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
@@ -44,7 +45,9 @@ const emit = defineEmits<{
       :aria-label="$t('navigation.currentLocation')"
     >
       <span>{{ $t('navigation.conversations') }}</span>
-      <strong :title="conversationTitle">{{ conversationTitle }}</strong>
+      <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"
+        ><strong>{{ conversationTitle }}</strong></el-tooltip
+      >
     </div>
     <div v-else-if="view === 'nodes'" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>

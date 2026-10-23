@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
@@ -252,13 +253,18 @@ onUnmounted(() => {
           <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
           <p>
             {{ t('modelUsage.input') }}
-            <el-tooltip :content="number(card.value.inputTokens)" :trigger="['hover', 'focus']">
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="number(card.value.inputTokens)"
+              :trigger="['hover', 'focus']"
+            >
               <span class="usage-count" tabindex="0">{{
                 number(card.value.inputTokens, true)
               }}</span>
             </el-tooltip>
             · {{ t('modelUsage.cache') }}
             <el-tooltip
+              v-bind="tooltipOptions"
               :content="cacheTooltip(card.value)"
               :disabled="!hasCacheDetails(card.value)"
               :trigger="['hover', 'focus']"
@@ -270,13 +276,21 @@ onUnmounted(() => {
               >
             </el-tooltip>
             · {{ t('modelUsage.output') }}
-            <el-tooltip :content="number(card.value.outputTokens)" :trigger="['hover', 'focus']">
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="number(card.value.outputTokens)"
+              :trigger="['hover', 'focus']"
+            >
               <span class="usage-count" tabindex="0">{{
                 number(card.value.outputTokens, true)
               }}</span>
             </el-tooltip>
           </p>
-          <el-tooltip :content="number(card.value.totalTokens)" :trigger="['hover', 'focus']">
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="number(card.value.totalTokens)"
+            :trigger="['hover', 'focus']"
+          >
             <strong class="usage-count" tabindex="0">{{
               number(card.value.totalTokens, true)
             }}</strong> </el-tooltip
@@ -362,6 +376,7 @@ onUnmounted(() => {
         <div class="section-heading">
           <h3>{{ t('modelUsage.trend') }}</h3>
           <el-tooltip
+            v-bind="tooltipOptions"
             :content="
               t('modelUsage.selected', {
                 tokens: number(state.overview.selected.totalTokens),
@@ -395,6 +410,7 @@ onUnmounted(() => {
             <span class="input-key" />{{ t('modelUsage.input') }}
             <span class="cache-key" />
             <el-tooltip
+              v-bind="tooltipOptions"
               :content="cacheTooltip(state.overview.selected)"
               :disabled="!hasCacheDetails(state.overview.selected)"
               :trigger="['hover', 'focus']"
@@ -461,6 +477,7 @@ onUnmounted(() => {
             </g>
           </svg>
           <el-tooltip
+            v-bind="tooltipOptions"
             virtual-triggering
             :virtual-ref="bucketAnchor"
             :visible="!!activeBucket"
@@ -500,6 +517,7 @@ onUnmounted(() => {
               >
                 <template #default="{ row }">
                   <el-tooltip
+                    v-bind="tooltipOptions"
                     :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                     :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
                     :trigger="['hover', 'focus']"
@@ -549,6 +567,7 @@ onUnmounted(() => {
                 <div class="distribution-cache metadata">
                   {{ t('modelUsage.cache') }}
                   <el-tooltip
+                    v-bind="tooltipOptions"
                     :content="cacheTooltip(group)"
                     :disabled="!hasCacheDetails(group)"
                     :trigger="['hover', 'focus']"
@@ -563,7 +582,11 @@ onUnmounted(() => {
                   {{
                     t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
                   }}
-                  <el-tooltip :content="number(group[metric])" :trigger="['hover', 'focus']">
+                  <el-tooltip
+                    v-bind="tooltipOptions"
+                    :content="number(group[metric])"
+                    :trigger="['hover', 'focus']"
+                  >
                     <strong class="usage-count" tabindex="0">{{
                       number(group[metric], true)
                     }}</strong>
@@ -619,6 +642,7 @@ onUnmounted(() => {
                   ><dt>{{ t(`modelUsage.${key}`) }}</dt>
                   <dd>
                     <el-tooltip
+                      v-bind="tooltipOptions"
                       v-if="key.endsWith('Tokens')"
                       :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                       :disabled="
@@ -681,6 +705,7 @@ onUnmounted(() => {
           >
             <template #default="{ row }">
               <el-tooltip
+                v-bind="tooltipOptions"
                 :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
                 :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
                 :trigger="['hover', 'focus']"

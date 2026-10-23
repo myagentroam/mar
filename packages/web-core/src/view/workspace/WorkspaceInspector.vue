@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import {
@@ -3385,30 +3386,34 @@ onBeforeUnmount(revokePreviewObjectUrl);
                 ><el-icon><Search /></el-icon
               ></template>
             </el-input>
-            <button
-              class="file-explorer-utility-button utility-control"
-              :disabled="filesBusy"
-              :aria-label="translate('generated.workspaceInspector.refreshFiles')"
-              :aria-busy="filesBusy || undefined"
-              :title="translate('generated.workspaceInspector.refreshFiles2')"
-              type="button"
-              @click="refreshFiles"
-            >
-              <el-icon v-if="filesBusy" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else><Refresh /></el-icon>
-            </button>
-            <button
-              class="file-explorer-utility-button utility-control"
-              :disabled="preparingUploads"
-              :aria-label="translate('generated.workspaceInspector.uploadFiles')"
-              :aria-busy="preparingUploads || undefined"
-              :title="translate('generated.workspaceInspector.uploadFiles2')"
-              type="button"
-              @click="chooseUploadFiles"
-            >
-              <el-icon v-if="preparingUploads" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else><DocumentAdd /></el-icon>
-            </button>
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="translate('generated.workspaceInspector.refreshFiles2')"
+              ><button
+                class="file-explorer-utility-button utility-control"
+                :disabled="filesBusy"
+                :aria-label="translate('generated.workspaceInspector.refreshFiles')"
+                :aria-busy="filesBusy || undefined"
+                type="button"
+                @click="refreshFiles"
+              >
+                <el-icon v-if="filesBusy" class="is-loading"><Loading /></el-icon>
+                <el-icon v-else><Refresh /></el-icon></button
+            ></el-tooltip>
+            <el-tooltip
+              v-bind="tooltipOptions"
+              :content="translate('generated.workspaceInspector.uploadFiles2')"
+              ><button
+                class="file-explorer-utility-button utility-control"
+                :disabled="preparingUploads"
+                :aria-label="translate('generated.workspaceInspector.uploadFiles')"
+                :aria-busy="preparingUploads || undefined"
+                type="button"
+                @click="chooseUploadFiles"
+              >
+                <el-icon v-if="preparingUploads" class="is-loading"><Loading /></el-icon>
+                <el-icon v-else><DocumentAdd /></el-icon></button
+            ></el-tooltip>
           </div>
           <WorkspaceFileTree
             ref="fileTreeView"
@@ -3450,17 +3455,19 @@ onBeforeUnmount(revokePreviewObjectUrl);
             :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
             size="small"
           />
-          <button
-            class="content-search-button file-explorer-utility-button utility-control"
-            :disabled="contentSearchLoading"
-            :aria-label="translate('generated.workspaceInspector.runContentSearch')"
-            :aria-busy="contentSearchLoading || undefined"
-            :title="translate('generated.workspaceInspector.runContentSearch2')"
-            type="submit"
-          >
-            <el-icon v-if="contentSearchLoading" class="is-loading"><Loading /></el-icon>
-            <el-icon v-else><Search /></el-icon>
-          </button>
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('generated.workspaceInspector.runContentSearch2')"
+            ><button
+              class="content-search-button file-explorer-utility-button utility-control"
+              :disabled="contentSearchLoading"
+              :aria-label="translate('generated.workspaceInspector.runContentSearch')"
+              :aria-busy="contentSearchLoading || undefined"
+              type="submit"
+            >
+              <el-icon v-if="contentSearchLoading" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><Search /></el-icon></button
+          ></el-tooltip>
         </form>
         <p v-if="contentSearchTruncated" class="content-search-warning">
           {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
@@ -3470,31 +3477,33 @@ onBeforeUnmount(revokePreviewObjectUrl);
           :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
         >
           <li v-for="match in contentMatches" :key="`${match.path}:${match.line}:${match.column}`">
-            <button
-              type="button"
-              :title="match.path"
-              @click="
-                $event.ctrlKey || $event.metaKey
-                  ? openWorkspaceFileExternal(match.path, match.line, match.column)
-                  : openFile(match.path, match.line, match.column)
-              "
-            >
-              <span class="content-search-name"
-                ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
-                  match.path
-                }}</strong></span
-              ><small>{{
-                translate('generated.workspaceInspector.line', { value0: match.line })
-              }}</small>
-              <code
-                ><template
-                  v-for="(fragment, index) in contentMatchFragments(match.preview)"
-                  :key="index"
-                  ><mark v-if="fragment.match">{{ fragment.text }}</mark
-                  ><template v-else>{{ fragment.text }}</template></template
-                ></code
+            <el-tooltip v-bind="tooltipOptions" :content="match.path"
+              ><button
+                :aria-label="match.path"
+                type="button"
+                @click="
+                  $event.ctrlKey || $event.metaKey
+                    ? openWorkspaceFileExternal(match.path, match.line, match.column)
+                    : openFile(match.path, match.line, match.column)
+                "
               >
-            </button>
+                <span class="content-search-name"
+                  ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
+                    match.path
+                  }}</strong></span
+                ><small>{{
+                  translate('generated.workspaceInspector.line', { value0: match.line })
+                }}</small>
+                <code
+                  ><template
+                    v-for="(fragment, index) in contentMatchFragments(match.preview)"
+                    :key="index"
+                    ><mark v-if="fragment.match">{{ fragment.text }}</mark
+                    ><template v-else>{{ fragment.text }}</template></template
+                  ></code
+                >
+              </button></el-tooltip
+            >
           </li>
           <li
             v-if="
@@ -3519,12 +3528,16 @@ onBeforeUnmount(revokePreviewObjectUrl);
               v-for="(worktree, index) in visibleGitWorktrees"
               :key="`${worktree.directoryName}:${worktree.head}:${index}`"
             >
-              <strong class="git-worktree-name" :title="worktree.directoryName">
-                {{ worktree.directoryName }}
-              </strong>
-              <code :title="worktreeReference(worktree)">
-                {{ worktreeReference(worktree) }}
-              </code>
+              <el-tooltip v-bind="tooltipOptions" :content="worktree.directoryName"
+                ><strong class="git-worktree-name">
+                  {{ worktree.directoryName }}
+                </strong></el-tooltip
+              >
+              <el-tooltip v-bind="tooltipOptions" :content="worktreeReference(worktree)"
+                ><code>
+                  {{ worktreeReference(worktree) }}
+                </code></el-tooltip
+              >
               <span class="git-worktree-statuses">
                 <el-tag v-if="worktree.current" effect="plain" size="small">
                   {{ translate('gitWorktrees.current') }}
@@ -3564,29 +3577,36 @@ onBeforeUnmount(revokePreviewObjectUrl);
             <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
               <div class="repository-heading-content">
                 <div class="repository-title-row">
-                  <strong :title="repository.physicalPath || repository.repositoryPath">
-                    {{ repository.repositoryName }}
-                  </strong>
-                  <code
+                  <el-tooltip
+                    v-bind="tooltipOptions"
+                    :content="repository.physicalPath || repository.repositoryPath"
+                    ><strong>
+                      {{ repository.repositoryName }}
+                    </strong></el-tooltip
+                  >
+                  <el-tooltip
+                    v-bind="tooltipOptions"
                     v-if="repositoryReference(repository)"
-                    class="repository-branch current-branch"
-                    :title="repositoryReference(repository)"
+                    :content="repositoryReference(repository)"
+                    ><code class="repository-branch current-branch">
+                      {{ repositoryReference(repository) }}
+                    </code></el-tooltip
                   >
-                    {{ repositoryReference(repository) }}
-                  </code>
-                  <button
+                  <el-tooltip
+                    v-bind="tooltipOptions"
                     v-if="repository.source === 'ROOT'"
-                    class="changes-refresh-button file-explorer-utility-button utility-control"
-                    :disabled="changesRefreshing"
-                    :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-                    :aria-busy="changesRefreshing || undefined"
-                    :title="translate('generated.workspaceInspector.refreshGitChanges2')"
-                    type="button"
-                    @click="loadChanges()"
-                  >
-                    <el-icon v-if="changesRefreshing" class="is-loading"><Loading /></el-icon>
-                    <el-icon v-else><Refresh /></el-icon>
-                  </button>
+                    :content="translate('generated.workspaceInspector.refreshGitChanges2')"
+                    ><button
+                      class="changes-refresh-button file-explorer-utility-button utility-control"
+                      :disabled="changesRefreshing"
+                      :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
+                      :aria-busy="changesRefreshing || undefined"
+                      type="button"
+                      @click="loadChanges()"
+                    >
+                      <el-icon v-if="changesRefreshing" class="is-loading"><Loading /></el-icon>
+                      <el-icon v-else><Refresh /></el-icon></button
+                  ></el-tooltip>
                 </div>
                 <div class="repository-tags-row">
                   <el-tag class="repository-kind" type="info" effect="plain" size="small">
@@ -3625,23 +3645,25 @@ onBeforeUnmount(revokePreviewObjectUrl);
                     >
                   </el-tag>
                 </div>
-                <code
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="repository.source === 'SUBMODULE' && repository.repositoryPath"
-                  class="repository-relative-path"
-                  :title="repository.repositoryPath"
+                  :content="repository.repositoryPath"
+                  ><code class="repository-relative-path">
+                    {{ repository.repositoryPath }}
+                  </code></el-tooltip
                 >
-                  {{ repository.repositoryPath }}
-                </code>
-                <code
+                <el-tooltip
+                  v-bind="tooltipOptions"
                   v-if="
                     (repository.source === 'WORKTREE' || repository.source === 'ROOT') &&
                     repository.physicalPath
                   "
-                  class="repository-physical-path"
-                  :title="repository.physicalPath"
+                  :content="repository.physicalPath"
+                  ><code class="repository-physical-path">
+                    {{ repository.physicalPath }}
+                  </code></el-tooltip
                 >
-                  {{ repository.physicalPath }}
-                </code>
               </div>
             </li>
             <li v-if="repository.changes.length === 0" class="change-repository-empty">
@@ -3654,58 +3676,65 @@ onBeforeUnmount(revokePreviewObjectUrl);
               }}
             </li>
             <li v-for="entry in repository.changes" :key="changeKey(entry)" class="change-entry">
-              <button
-                class="change-path"
-                type="button"
-                :aria-label="
-                  entry.diffAvailable
-                    ? translate('generated.workspaceInspector.viewDiffFor', {
-                        value0: workspaceChangePath(entry)
-                      })
-                    : translate('generated.workspaceInspector.preview', {
-                        value0: workspaceChangePath(entry)
-                      })
-                "
-                :title="workspaceChangePath(entry)"
-                @click="openChange(entry, $event)"
+              <el-tooltip v-bind="tooltipOptions" :content="workspaceChangePath(entry)"
+                ><button
+                  class="change-path"
+                  type="button"
+                  :aria-label="
+                    entry.diffAvailable
+                      ? translate('generated.workspaceInspector.viewDiffFor', {
+                          value0: workspaceChangePath(entry)
+                        })
+                      : translate('generated.workspaceInspector.preview', {
+                          value0: workspaceChangePath(entry)
+                        })
+                  "
+                  @click="openChange(entry, $event)"
+                >
+                  <span class="change-path-content">
+                    <span class="change-file-heading"
+                      ><FileTypeIcon :name="changeFileName(entry.path)" /><strong
+                        class="change-file-name"
+                        >{{ changeFileName(entry.path) }}</strong
+                      ></span
+                    >
+                    <small v-if="changeDirectory(entry.path)" class="change-directory">
+                      {{ changeDirectory(entry.path) }}
+                    </small>
+                  </span>
+                </button></el-tooltip
               >
-                <span class="change-path-content">
-                  <span class="change-file-heading"
-                    ><FileTypeIcon :name="changeFileName(entry.path)" /><strong
-                      class="change-file-name"
-                      >{{ changeFileName(entry.path) }}</strong
-                    ></span
-                  >
-                  <small v-if="changeDirectory(entry.path)" class="change-directory">
-                    {{ changeDirectory(entry.path) }}
-                  </small>
-                </span>
-              </button>
-              <span :title="entry.change">{{ shortChange(entry.change) }}</span>
-              <small :title="entry.state">{{ shortState(entry.state) }}</small>
-              <el-button
-                class="change-restore utility-control"
-                text
-                :icon="RefreshLeft"
-                :loading="restoringPath === changeKey(entry)"
-                :disabled="restoringPath !== undefined"
-                :aria-label="
-                  entry.state === 'UNTRACKED'
-                    ? translate('generated.workspaceInspector.deleteChangesTo', {
-                        value0: workspaceChangePath(entry)
-                      })
-                    : translate('generated.workspaceInspector.revertChangesTo', {
-                        value0: workspaceChangePath(entry)
-                      })
-                "
-                :title="
+              <el-tooltip v-bind="tooltipOptions" :content="entry.change"
+                ><span>{{ shortChange(entry.change) }}</span></el-tooltip
+              >
+              <el-tooltip v-bind="tooltipOptions" :content="entry.state"
+                ><small>{{ shortState(entry.state) }}</small></el-tooltip
+              >
+              <el-tooltip
+                v-bind="tooltipOptions"
+                :content="
                   entry.state === 'UNTRACKED'
                     ? translate('generated.workspaceInspector.deleteUntrackedFile2')
                     : translate('generated.workspaceInspector.revertChanges2')
                 "
-                size="small"
-                @click="restoreChange(entry)"
-              />
+                ><el-button
+                  class="change-restore utility-control"
+                  text
+                  :icon="RefreshLeft"
+                  :loading="restoringPath === changeKey(entry)"
+                  :disabled="restoringPath !== undefined"
+                  :aria-label="
+                    entry.state === 'UNTRACKED'
+                      ? translate('generated.workspaceInspector.deleteChangesTo', {
+                          value0: workspaceChangePath(entry)
+                        })
+                      : translate('generated.workspaceInspector.revertChangesTo', {
+                          value0: workspaceChangePath(entry)
+                        })
+                  "
+                  size="small"
+                  @click="restoreChange(entry)"
+              /></el-tooltip>
             </li>
           </template>
         </ul>
@@ -3756,18 +3785,20 @@ onBeforeUnmount(revokePreviewObjectUrl);
               />
             </el-option-group>
           </el-select>
-          <button
-            class="history-refresh file-explorer-utility-button utility-control"
-            :disabled="historyLoading"
-            :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
-            :aria-busy="historyLoading || undefined"
-            :title="translate('generated.workspaceInspector.refreshGitHistory2')"
-            type="button"
-            @click="resetHistory"
-          >
-            <el-icon v-if="historyLoading" class="is-loading"><Loading /></el-icon>
-            <el-icon v-else><Refresh /></el-icon>
-          </button>
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('generated.workspaceInspector.refreshGitHistory2')"
+            ><button
+              class="history-refresh file-explorer-utility-button utility-control"
+              :disabled="historyLoading"
+              :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
+              :aria-busy="historyLoading || undefined"
+              type="button"
+              @click="resetHistory"
+            >
+              <el-icon v-if="historyLoading" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><Refresh /></el-icon></button
+          ></el-tooltip>
         </div>
         <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
           {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
@@ -3779,9 +3810,9 @@ onBeforeUnmount(revokePreviewObjectUrl);
             class="history-commit"
           >
             <button
+              :aria-label="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
               class="history-commit-row"
               type="button"
-              :title="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
               @click="toggleHistoryCommit(commit)"
               @contextmenu="openHistoryContextMenu(commit, $event)"
             >
@@ -3814,15 +3845,19 @@ onBeforeUnmount(revokePreviewObjectUrl);
               </svg>
               <span class="history-content">
                 <span class="history-title-row">
-                  <span class="history-subject">{{
-                    commit.subject || translate('generated.workspaceInspector.untitled2')
-                  }}</span>
-                  <span
+                  <el-tooltip
+                    v-bind="tooltipOptions"
+                    :content="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
+                    ><span class="history-subject">{{
+                      commit.subject || translate('generated.workspaceInspector.untitled2')
+                    }}</span></el-tooltip
+                  >
+                  <el-tooltip
+                    v-bind="tooltipOptions"
                     v-for="refName in commit.refs"
                     :key="refName"
-                    class="history-ref"
-                    :title="refName"
-                    >{{ refName }}</span
+                    :content="refName"
+                    ><span class="history-ref">{{ refName }}</span></el-tooltip
                   >
                 </span>
                 <small>{{ commit.authorName }} · {{ historyTime(commit.committedAt) }}</small>
@@ -3864,45 +3899,53 @@ onBeforeUnmount(revokePreviewObjectUrl);
                       : `file:${row.file.previousPath ?? ''}:${row.file.path}`
                   "
                 >
-                  <el-button
+                  <el-tooltip
+                    v-bind="tooltipOptions"
                     v-if="row.kind === 'DIRECTORY'"
-                    text
-                    size="small"
-                    class="history-directory"
-                    :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                    :title="row.path"
-                    :aria-expanded="
-                      (expandedHistoryDirectories[commit.hash] ?? []).includes(row.path)
-                    "
-                    @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
+                    :content="row.path"
+                    ><span class="mar-tooltip-control"
+                      ><el-button
+                        text
+                        size="small"
+                        class="history-directory"
+                        :style="{ paddingLeft: historyTreeIndent(row.depth) }"
+                        :aria-expanded="
+                          (expandedHistoryDirectories[commit.hash] ?? []).includes(row.path)
+                        "
+                        @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
+                      >
+                        <el-icon
+                          class="history-directory-toggle"
+                          :class="{
+                            'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
+                              row.path
+                            )
+                          }"
+                          ><ArrowRight
+                        /></el-icon>
+                        <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
+                      </el-button></span
+                    ></el-tooltip
                   >
-                    <el-icon
-                      class="history-directory-toggle"
-                      :class="{
-                        'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
-                          row.path
-                        )
-                      }"
-                      ><ArrowRight
-                    /></el-icon>
-                    <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
-                  </el-button>
-                  <el-button
+                  <el-tooltip
+                    v-bind="tooltipOptions"
                     v-else
-                    text
-                    size="small"
-                    :title="
+                    :content="
                       row.file.previousPath
                         ? `${row.file.previousPath} → ${row.file.path}`
                         : row.file.path
                     "
-                    :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                    @click.stop="openHistoryDiff(commit, row.file, $event)"
+                    ><el-button
+                      text
+                      size="small"
+                      :style="{ paddingLeft: historyTreeIndent(row.depth) }"
+                      @click.stop="openHistoryDiff(commit, row.file, $event)"
+                    >
+                      <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
+                      <FileTypeIcon :name="row.name" />
+                      <span class="history-file-path">{{ row.name }}</span>
+                    </el-button></el-tooltip
                   >
-                    <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
-                    <FileTypeIcon :name="row.name" />
-                    <span class="history-file-path">{{ row.name }}</span>
-                  </el-button>
                 </li>
               </ul>
             </div>

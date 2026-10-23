@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -69,7 +70,9 @@ watch(open, async () => {
         :class="{ 'is-active': block.active && synchronized }"
       >
         <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
-        <span class="process-activity-label" :title="statusLabel">{{ statusLabel }}</span>
+        <el-tooltip v-bind="tooltipOptions" :content="statusLabel"
+          ><span class="process-activity-label">{{ statusLabel }}</span></el-tooltip
+        >
       </span>
       <span v-if="durationMs !== undefined" class="process-duration"
         >·

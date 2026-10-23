@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '@myagentroam/web-core';
 import type { WorkspaceUploadTask } from '@/service/WorkspaceUploadService';
 import { translate } from '@/service/LocalePreferenceService';
 
@@ -41,7 +42,9 @@ const emit = defineEmits<{
     <div v-if="!collapsed" class="workspace-transfer-list">
       <div v-for="task in tasks" :key="task.id" class="workspace-transfer-row">
         <div>
-          <strong :title="task.name">{{ task.name }}</strong>
+          <el-tooltip v-bind="tooltipOptions" :content="task.name"
+            ><strong>{{ task.name }}</strong></el-tooltip
+          >
           <small
             >{{ task.directory }} · {{ task.receivedBytes }} / {{ task.size }}
             {{ translate('generated.workspaceTransferDock.bytes') }}</small

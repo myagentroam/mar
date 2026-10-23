@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { ArrowDown, ArrowUp, Close, Search } from '@element-plus/icons-vue';
 import { nextTick, onMounted, ref } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -52,29 +53,26 @@ onMounted(focus);
       <span class="inline-find-count" aria-live="polite"
         >{{ current }} / {{ total }}{{ truncated ? '+' : '' }}</span
       >
-      <el-button
-        text
-        :disabled="total === 0"
-        :aria-label="translate('inlineFind.previous')"
-        :title="translate('inlineFind.previous')"
-        @click="emit('previous')"
-        ><el-icon><ArrowUp /></el-icon
-      ></el-button>
-      <el-button
-        text
-        :disabled="total === 0"
-        :aria-label="translate('inlineFind.next')"
-        :title="translate('inlineFind.next')"
-        @click="emit('next')"
-        ><el-icon><ArrowDown /></el-icon
-      ></el-button>
-      <el-button
-        text
-        :aria-label="translate('inlineFind.close')"
-        :title="translate('inlineFind.close')"
-        @click="emit('close')"
-        ><el-icon><Close /></el-icon
-      ></el-button>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.previous')"
+        ><el-button
+          text
+          :disabled="total === 0"
+          :aria-label="translate('inlineFind.previous')"
+          @click="emit('previous')"
+          ><el-icon><ArrowUp /></el-icon></el-button
+      ></el-tooltip>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.next')"
+        ><el-button
+          text
+          :disabled="total === 0"
+          :aria-label="translate('inlineFind.next')"
+          @click="emit('next')"
+          ><el-icon><ArrowDown /></el-icon></el-button
+      ></el-tooltip>
+      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.close')"
+        ><el-button text :aria-label="translate('inlineFind.close')" @click="emit('close')"
+          ><el-icon><Close /></el-icon></el-button
+      ></el-tooltip>
     </div>
   </div>
 </template>

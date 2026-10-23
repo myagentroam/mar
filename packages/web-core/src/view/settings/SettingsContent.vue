@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tooltipOptions } from '../../util/tooltip.js';
 import { Delete, Key, Link, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
@@ -198,14 +199,16 @@ async function confirmLogout(): Promise<void> {
               translate('generated.settingsContent.signInSessions5', { value0: sessions.length })
             }}
           </h3>
-          <el-button
-            class="utility-control"
-            :icon="Refresh"
-            :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
-            :title="translate('generated.settingsContent.refreshSignInSessions')"
-            text
-            @click="emit('refreshSessions')"
-          />
+          <el-tooltip
+            v-bind="tooltipOptions"
+            :content="translate('generated.settingsContent.refreshSignInSessions')"
+            ><el-button
+              class="utility-control"
+              :icon="Refresh"
+              :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
+              text
+              @click="emit('refreshSessions')"
+          /></el-tooltip>
         </div>
         <p v-if="sessions.length === 0">
           {{ translate('generated.settingsContent.noActiveSignInSessions') }}
@@ -217,7 +220,9 @@ async function confirmLogout(): Promise<void> {
                 ? translate('generated.settingsContent.currentDevice')
                 : translate('generated.settingsContent.signedInDevice')
             }}</strong>
-            <span :title="session.userAgent">{{ session.userAgent }}</span>
+            <el-tooltip v-bind="tooltipOptions" :content="session.userAgent"
+              ><span>{{ session.userAgent }}</span></el-tooltip
+            >
             <small>
               {{ session.ipAddress }} · {{ translate('generated.settingsContent.signedIn') }}
               {{ formatSessionTime(session.createdAt) }} ·
@@ -701,9 +706,6 @@ async function confirmLogout(): Promise<void> {
 
 .about-settings :deep(.el-descriptions) {
   width: min(100%, 820px);
-  overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 10px;
   background: var(--mar-bg-panel);
 }
 
