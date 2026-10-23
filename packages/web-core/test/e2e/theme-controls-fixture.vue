@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import { ref } from 'vue';
+import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 const value = ref('');
+const message =
+  'Body text with **emphasis** and `inline code`.\n\n### Section heading\n\n| Item | Value |\n| --- | --- |\n| Example | Readable content |';
 </script>
 <template>
   <WorkspaceLabelsFixture />
@@ -20,4 +23,20 @@ const value = ref('');
       <el-table-column prop="name" label="Name" />
     </el-table>
   </section>
+  <section class="conversation-typography-fixture" aria-label="Real conversation typography">
+    <AgentMarkdown :content="message" />
+    <p class="conversation-metadata">Run duration 11s</p>
+  </section>
 </template>
+
+<style scoped>
+.conversation-typography-fixture {
+  margin-top: 1rem;
+  background: var(--mar-conversation-canvas);
+  padding: 1rem;
+}
+
+.conversation-metadata {
+  color: var(--mar-conversation-muted);
+}
+</style>

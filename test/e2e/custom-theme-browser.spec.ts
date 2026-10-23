@@ -758,6 +758,29 @@ for (const scheme of ['Light', 'Dark']) {
       if (scheme === 'Light')
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+      const typography = page.getByRole('region', { name: 'Real conversation typography' });
+      const conversationText = scheme === 'Dark' ? 'rgb(208, 215, 226)' : 'rgb(32, 43, 59)';
+      const conversationMuted = scheme === 'Dark' ? 'rgb(159, 176, 199)' : 'rgb(79, 96, 115)';
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
+          await expect(typography.locator('.agent-markdown ' + selector).first()).toHaveCSS(
+            'color',
+            conversationText
+          );
+        await expect(typography.locator('.agent-markdown')).toHaveCSS(
+          'font-size',
+          width < 768 ? '13px' : '14px'
+        );
+        await expect(typography.locator('.conversation-metadata')).toHaveCSS(
+          'color',
+          conversationMuted
+        );
+        await typography.screenshot({
+          path: testInfo.outputPath('conversation-typography-' + width + '.png')
+        });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
       const panel = scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
       await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
@@ -817,6 +840,7 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-table-row-hover-bg': '#345678',
         '--mar-color-on-accent': '#fedcba',
         '--mar-color-brand-hover': '#234567',
+        '--mar-conversation-text': '#d5c4af',
         '--mar-control-link-text': '#abcdef',
         '--mar-control-link-hover': '#bcdefa',
         '--mar-color-brand-disabled': '#cdefab'
@@ -840,6 +864,15 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',
         'rgb(35, 69, 103)'
+      );
+      for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
+        await expect(typography.locator('.agent-markdown ' + selector).first()).toHaveCSS(
+          'color',
+          'rgb(213, 196, 175)'
+        );
+      await expect(typography.locator('.conversation-metadata')).toHaveCSS(
+        'color',
+        conversationMuted
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'color',

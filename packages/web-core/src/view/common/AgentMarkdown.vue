@@ -417,7 +417,7 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(th) {
   background: var(--mar-fill-muted);
-  color: var(--mar-text-primary);
+  color: var(--mar-conversation-text);
   font-weight: 650;
 }
 
