@@ -5,6 +5,13 @@ const source = (path: string) =>
   readFileSync(new URL(`../../src/view/${path}.vue`, import.meta.url), 'utf8');
 
 describe('conversation status styling', () => {
+  it('gives nested disclosure text breathing room without increasing indentation', () => {
+    const timeline = source('conversation/ConversationTimeline');
+    expect(timeline).toMatch(
+      /\.conversation-record-group > details > summary\s*\{\s*padding-block: 2px;\s*padding-inline: 0 8px;/u
+    );
+  });
+
   it('keeps the composer spinner compact without relying on shared style order', () => {
     const composer = source('composer/ConversationComposer');
     expect(composer).toContain('class="composer-busy-indicator"');

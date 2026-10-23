@@ -1825,6 +1825,8 @@ details.conversation-record-group > details {
 }
 
 .conversation-record-group > details > summary {
+  padding-block: 2px;
+  padding-inline: 0 8px;
   display: grid;
   grid-template-columns: 1em minmax(0, 1fr) max-content;
   column-gap: 0.5rem;
