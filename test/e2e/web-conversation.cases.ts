@@ -799,6 +799,15 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       },
       reads[0]!,
       {
+        id: 'skill-a',
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        payload: {
+          toolName: 'skill',
+          toolPresentation: { kind: 'SKILL', name: 'first-skill' }
+        }
+      },
+      {
         id: 'command-a',
         kind: 'command_execution',
         status: 'COMPLETED',
@@ -811,6 +820,15 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         }
       },
       reads[1]!,
+      {
+        id: 'skill-b',
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        payload: {
+          toolName: 'skill',
+          toolPresentation: { kind: 'SKILL', name: 'second-skill' }
+        }
+      },
       {
         id: 'thinking-b',
         kind: 'reasoning',
@@ -869,8 +887,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await process.locator('.process-heading').click();
     await expect(process.locator('.reasoning-group')).toHaveCount(1);
     await expect(process.locator('.command-group')).toHaveCount(1);
+    await expect(process.locator('[data-tool-presentation="SKILL"]')).toHaveCount(2);
     await expect(process.locator('.process-activity + .process-duration')).toHaveText(
-      locale === 'zh-CN' ? '· 耗时 5s' : '· Duration 5s'
+      locale === 'zh-CN' ? '· 耗时 7s' : '· Duration 7s'
     );
     await process.locator('.command-group > details > summary').click();
     const command = process.locator('.conversation-command-detail').first();
@@ -967,8 +986,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
               {
                 ...reads[1],
                 id: 'read-third',
-                startedAt: 7000,
-                completedAt: 8000,
+                startedAt: 9000,
+                completedAt: 10000,
                 processGroup: { id: 'read-process' }
               }
             ]
@@ -1010,6 +1029,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             elements.map((element) => ({
               titleLeft: element.querySelector('strong')!.getBoundingClientRect().left,
               iconLeft: element.querySelector('svg')!.getBoundingClientRect().left,
+              titleCenter:
+                element.querySelector('strong')!.getBoundingClientRect().top +
+                element.querySelector('strong')!.getBoundingClientRect().height / 2,
+              iconCenter:
+                element.querySelector('svg')!.getBoundingClientRect().top +
+                element.querySelector('svg')!.getBoundingClientRect().height / 2,
+              alignment: getComputedStyle(element).alignItems,
               width: element.clientWidth,
               contentWidth: element.scrollWidth
             }))
@@ -1017,6 +1043,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         for (const heading of headingLayout) {
           expect(Math.abs(heading.titleLeft - headingLayout[0]!.titleLeft)).toBeLessThan(1);
           expect(Math.abs(heading.iconLeft - headingLayout[0]!.iconLeft)).toBeLessThan(1);
+          expect(Math.abs(heading.iconCenter - heading.titleCenter)).toBeLessThan(1);
+          expect(heading.alignment).toBe('center');
           expect(heading.contentWidth).toBeLessThanOrEqual(heading.width + 1);
         }
         const commandLayout = await process.locator('.command-group').evaluate((group) => {
@@ -1029,6 +1057,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             indent: preview.getBoundingClientRect().left - parent.getBoundingClientRect().left,
             parentGrid: getComputedStyle(parent.parentElement!).gridTemplateColumns,
             childGrid: getComputedStyle(summary).gridTemplateColumns,
+            childAlignment: getComputedStyle(summary).alignItems,
             childMargin: getComputedStyle(summary.parentElement!).marginLeft,
             textLeft: preview.getBoundingClientRect().left,
             lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
@@ -1038,6 +1067,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           1
         );
         if (width <= 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
+        expect(commandLayout.childAlignment).toBe('start');
         for (const left of commandLayout.lineLefts)
           expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
         await expect(icon).toHaveAttribute('fill', 'none');
@@ -1771,6 +1801,15 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         const skillLayout = await skill.locator(':scope > summary').boundingBox();
         const commandLayout = await commands.locator(':scope > details > summary').boundingBox();
         const skillIconBox = await skillIcon.boundingBox();
+        const skillTitleBox = await skill.locator(':scope > summary > strong').boundingBox();
+        await expect(skill.locator(':scope > summary')).toHaveCSS('align-items', 'center');
+        expect(
+          Math.abs(
+            skillIconBox!.y +
+              skillIconBox!.height / 2 -
+              (skillTitleBox!.y + skillTitleBox!.height / 2)
+          )
+        ).toBeLessThan(1);
         const commandIconBox = await commands
           .locator(':scope > details > summary > svg')
           .boundingBox();

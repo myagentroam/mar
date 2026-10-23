@@ -1616,11 +1616,9 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 }
 
 .conversation-record-icon {
-  display: inline-block;
+  display: block;
   width: 1.125rem;
   height: 1.125rem;
-  margin-right: 0.4rem;
-  vertical-align: -0.12em;
   color: var(--mar-conversation-muted);
 }
 
@@ -1629,7 +1627,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr);
   column-gap: 0.5rem;
   row-gap: 0.25rem;
-  align-items: baseline;
+  align-items: center;
 }
 
 .conversation-item summary.conversation-record-heading::before,
@@ -1637,11 +1635,6 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 .conversation-item summary.conversation-record-heading > strong,
 .conversation-item summary.conversation-record-heading > span {
   margin-inline: 0;
-}
-
-.conversation-item summary.conversation-record-heading > .conversation-record-icon {
-  align-self: start;
-  margin-block-start: 1px;
 }
 
 .conversation-item summary.conversation-record-heading > strong {
