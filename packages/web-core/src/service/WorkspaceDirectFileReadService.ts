@@ -12,6 +12,50 @@ export interface WorkspaceDirectFileRange extends WorkspaceDirectFileIdentity {
   readonly nextOffset: number | null;
 }
 
+type MetadataRequest = (path: string) => Promise<unknown>;
+
+function metadataIdentity(body: unknown): WorkspaceDirectFileIdentity | undefined {
+  const file = (body as { readonly file?: { size?: unknown; revision?: unknown } }).file;
+  return typeof file?.size === 'number' && typeof file.revision === 'string'
+    ? { size: file.size, revision: file.revision }
+    : undefined;
+}
+
+export async function readWorkspaceDirectFileMetadata(input: {
+  readonly request: MetadataRequest;
+  readonly nodeId: string;
+  readonly resource: Extract<DirectTransferResource, { kind: 'WORKSPACE_FILE' }>;
+}): Promise<WorkspaceDirectFileIdentity | undefined> {
+  const { resource } = input;
+  const parameters = new URLSearchParams({ nodeId: input.nodeId, path: resource.path });
+  if (resource.repositoryPath !== undefined)
+    parameters.set('repositoryPath', resource.repositoryPath);
+  if (resource.worktreePath !== undefined) parameters.set('worktreePath', resource.worktreePath);
+  return metadataIdentity(
+    await input.request(
+      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/files/direct-metadata?${parameters}`
+    )
+  );
+}
+
+export async function readGitDirectFileMetadata(input: {
+  readonly request: MetadataRequest;
+  readonly nodeId: string;
+  readonly resource: Extract<DirectTransferResource, { kind: 'GIT_COMMIT_BLOB' }>;
+  readonly refs: readonly string[];
+}): Promise<WorkspaceDirectFileIdentity | undefined> {
+  const { resource } = input;
+  const parameters = new URLSearchParams({ nodeId: input.nodeId, path: resource.path });
+  if (resource.repositoryPath !== undefined && resource.repositoryPath.length > 0)
+    parameters.set('repositoryPath', resource.repositoryPath);
+  for (const ref of input.refs) parameters.append('refs', ref);
+  return metadataIdentity(
+    await input.request(
+      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/git/commits/${encodeURIComponent(resource.commit)}/files/direct-metadata?${parameters}`
+    )
+  );
+}
+
 /** The editor uses the same content revision as the relayed file read and Node write. */
 export async function directFileContentRevision(
   file: WorkspaceDirectFileRange

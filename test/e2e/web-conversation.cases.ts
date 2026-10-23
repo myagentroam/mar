@@ -2722,6 +2722,127 @@ for (const runner of ['mar-agent', 'codex'] as const) {
   });
 }
 
+for (const outcome of ['success', 'navigation-failure'] as const) {
+  test(`Rewind ${outcome} keeps the committed branch distinct from navigation`, async ({
+    page
+  }) => {
+    await mockConsoleApi(
+      page,
+      'MANAGED',
+      ['history.read', 'turn.start'],
+      [],
+      'GIT_WORKSPACE',
+      true,
+      'IDLE'
+    );
+    const source = {
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      runner: 'codex',
+      externalSessionId: 'native-source',
+      nativeControl: 'MAR_MANAGED',
+      runnerTitle: 'Source conversation',
+      activity: 'IDLE',
+      control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] },
+      runtime: { level: 'MANAGED', capabilities: ['session.rollback'], reasonCode: null }
+    };
+    const branch = {
+      ...source,
+      id: 'session-3',
+      externalSessionId: 'native-branch',
+      runnerTitle: 'New branch'
+    };
+    let posts = 0;
+    let body: Record<string, unknown> | undefined;
+    await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+      json(route, { sessions: [source], nextCursor: null })
+    );
+    await page.route(/\/api\/agent-sessions\/session-[13]\?nodeId=node-1$/, (route) => {
+      const isBranch = route.request().url().includes('/session-3?');
+      if (isBranch && outcome === 'navigation-failure')
+        return json(
+          route,
+          { code: 'SESSION_READ_FAILED', error: 'Branch history unavailable.' },
+          503
+        );
+      return json(route, { session: isBranch ? branch : source });
+    });
+    await page.route(/\/api\/agent-sessions\/session-[13]\/watch(?:\?|$)/, (route) => {
+      if (route.request().method() === 'DELETE') return json(route, { unwatched: true });
+      const session = route.request().url().includes('/session-3/') ? branch : source;
+      const payload = watchedConversation([
+        {
+          sessionId: session.id,
+          id: session.id + ':segment:0',
+          turnId: 'native-turn',
+          index: 0,
+          runId: null,
+          status: 'SUCCEEDED',
+          rewind: { before: null, after: 'native-turn' },
+          items: [
+            {
+              sessionId: session.id,
+              id: session.id + ':user',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              payload: { text: session.id === source.id ? 'Original user text' : 'Branch history' }
+            }
+          ]
+        }
+      ]);
+      return fulfillMockSessionWatch(page, route, session, { ...payload, session });
+    });
+    await page.route('**/api/agent-sessions/session-1/rewind', (route) => {
+      posts += 1;
+      body = route.request().postDataJSON();
+      return json(route, { session: branch });
+    });
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await page.locator('.session-link', { hasText: 'Source conversation' }).click();
+    const composer = page.getByRole('textbox', { name: '输入消息' });
+    await composer.fill('Unsent source draft');
+    await page
+      .locator('.conversation-item.user_message', { hasText: 'Original user text' })
+      .getByRole('button', { name: '从此消息之前创建回退分支' })
+      .click();
+    await page
+      .locator('.el-message-box')
+      .getByRole('button', { name: '创建分支', exact: true })
+      .click();
+    if (outcome === 'success') {
+      await expect(
+        page.locator('.conversation-item.user_message', { hasText: 'Branch history' })
+      ).toBeVisible();
+      await expect(composer).toHaveValue('Original user text');
+      await expect(composer).toBeFocused();
+    } else {
+      await expect(page.getByText(/回退分支已创建，但无法打开/)).toBeVisible();
+      await expect(page.locator('.session-link', { hasText: 'Source conversation' })).toHaveClass(
+        /selected/
+      );
+      await expect(
+        page.locator('.conversation-item.user_message', { hasText: 'Original user text' })
+      ).toBeVisible();
+      await expect(composer).toHaveValue('Unsent source draft');
+      await expect(page.locator('.session-link', { hasText: 'New branch' })).toBeVisible();
+    }
+    expect(posts).toBe(1);
+    expect(body).toEqual({
+      nodeId: 'node-1',
+      turnId: 'native-turn',
+      position: 'BEFORE',
+      boundary: null
+    });
+  });
+}
+
 for (const operation of ['rewind', 'rollback'] as const) {
   for (const outcome of ['success', 'failure', 'watch-failure'] as const) {
     if (operation === 'rewind' && outcome === 'watch-failure') continue;

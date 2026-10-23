@@ -3,6 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { commonMessages } from '../../src/i18n/messages.js';
 
 describe('public Workbench page controller', () => {
+  it('delegates file protocols and native history transactions to domain owners', () => {
+    const source = readFileSync(
+      new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
+      'utf8'
+    );
+    expect(source).toContain('createWorkbenchSessionHistoryMutationService(');
+    expect(source).toContain('readWorkspaceDirectFileMetadata(');
+    expect(source).toContain('readGitDirectFileMetadata(');
+    expect(source).not.toContain('/files/direct-metadata');
+    expect(source).not.toContain('/git/file-metadata');
+    expect(source).not.toContain('createWorkspaceDirectObjectUrlSink(');
+    expect(source).not.toContain('createWorkspaceDirectDownloadStream(');
+    expect(source).not.toContain('turnId: turn.turnId ?? turn.id');
+  });
   it('owns the root page without OAuth or enterprise resource implementations', () => {
     const source = readFileSync(
       new URL('../../src/view/workbench/WorkbenchPage.vue', import.meta.url),

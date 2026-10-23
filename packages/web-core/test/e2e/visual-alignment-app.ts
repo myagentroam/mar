@@ -6,6 +6,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
+import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
 import ThemeSettings from '../../src/view/settings/ThemeSettings.vue';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
@@ -71,7 +72,7 @@ const hostedWorkspace = {
   updateConfiguration: async ({ modelId }: { modelId: string }) => {
     hostedSnapshot.value.conversation.modelId = modelId;
   }
-} as unknown as InstanceType<typeof HostedConversationComposer>['$props']['workspace'];
+} as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
 const toolbar = {
   draftSessionOpen: false,
   runner: 'MAR_AGENT' as const,

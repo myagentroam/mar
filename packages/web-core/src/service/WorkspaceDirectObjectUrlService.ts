@@ -1,3 +1,33 @@
+import type { DirectTransferResource } from '@myagentroam/protocol';
+import type { createWorkspaceDirectTransferService } from './WorkspaceDirectTransferService.js';
+import type { WorkspaceDirectFileIdentity } from './WorkspaceDirectFileReadService.js';
+
+export async function readWorkspaceDirectObjectUrl(input: {
+  readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
+  readonly nodeId: string;
+  readonly nodeGeneration: string;
+  readonly resource: DirectTransferResource;
+  readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
+}): Promise<({ readonly url: string } & WorkspaceDirectFileIdentity) | undefined> {
+  let target: WorkspaceDirectObjectUrlSink | undefined;
+  try {
+    const identity = await input.metadata();
+    if (identity === undefined) return undefined;
+    const fileName = input.resource.path.split('/').at(-1) ?? 'file';
+    target = await createWorkspaceDirectObjectUrlSink(fileName);
+    await input.direct.download({
+      nodeId: input.nodeId,
+      nodeGeneration: input.nodeGeneration,
+      descriptor: { direction: 'DOWNLOAD', resource: input.resource, fileName, ...identity },
+      sink: target.sink
+    });
+    return { url: await target.objectUrl(), ...identity };
+  } catch {
+    await target?.sink.abort().catch(() => undefined);
+    return undefined;
+  }
+}
+
 export interface WorkspaceDirectObjectUrlSink {
   readonly sink: {
     write(bytes: Uint8Array): Promise<void>;
