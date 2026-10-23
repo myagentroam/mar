@@ -347,13 +347,13 @@ function openBlankMenu(event: MouseEvent): void {
   gap: 10px;
   background: var(--mar-bg-chrome);
   padding: 0 18px;
-  transition: padding 0.16s ease;
+  overflow: hidden;
 }
 
 .workbench-brand.collapsed {
   width: var(--mar-activity-rail-width);
   gap: 0;
-  overflow: visible;
+  overflow: hidden;
   padding: 0 8px;
 }
 
@@ -526,6 +526,21 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (min-width: 768px) {
+  .workbench-brand {
+    transition:
+      width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
+      padding var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .workspace-tree {
+    transition: width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .console-shell:has(.workspace-tree-resize.dragging) .workbench-brand,
+  .console-shell:has(.workspace-tree-resize.dragging) .workspace-tree {
+    transition: none;
+  }
+
   .activity-rail nav .nav-menu-button.utility {
     margin-top: auto;
   }
@@ -809,8 +824,17 @@ function openBlankMenu(event: MouseEvent): void {
 
 <style scoped>
 @media (prefers-reduced-motion: reduce) {
-  .workspace-tree {
+  .workspace-tree,
+  .workbench-brand {
     transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .activity-rail nav button {
+    transition:
+      background-color var(--mar-motion-duration-collapse) ease,
+      color var(--mar-motion-duration-collapse) ease;
   }
 }
 </style>

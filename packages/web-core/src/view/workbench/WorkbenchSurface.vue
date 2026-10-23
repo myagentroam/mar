@@ -1072,6 +1072,16 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
   margin-left: var(--mar-activity-rail-width);
 }
 
+@media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .workbench {
+    transition: margin-left var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .console-shell:has(.workspace-tree-resize.dragging) .workbench {
+    transition: none;
+  }
+}
+
 .workbench.standalone {
   margin-left: var(--mar-workbench-sidebar-total-width);
 }

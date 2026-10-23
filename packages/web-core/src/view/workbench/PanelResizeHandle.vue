@@ -11,6 +11,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ resize: [width: number] }>();
 const dragging = ref(false);
+const handleElement = ref<HTMLElement>();
 let drag: { pointerId: number; x: number; width: number } | undefined;
 
 function resize(value: number): void {
@@ -22,6 +23,11 @@ function start(event: PointerEvent): void {
   event.preventDefault();
   const handle = event.currentTarget as HTMLElement;
   handle.setPointerCapture(event.pointerId);
+  // A drag takes over from the settled layout, not an intermediate collapse frame.
+  for (const animation of props.target.getAnimations()) {
+    if (animation instanceof CSSTransition && animation.transitionProperty === 'width')
+      animation.finish();
+  }
   drag = {
     pointerId: event.pointerId,
     x: event.clientX,
@@ -49,19 +55,26 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-tooltip v-bind="tooltipOptions" :content="label"
-    ><div
-      class="panel-resize-handle"
-      :class="{ dragging }"
-      role="separator"
-      aria-orientation="vertical"
-      :aria-label="label"
-      @pointerdown="start"
-      @pointermove="move"
-      @pointerup="finish"
-      @pointercancel="finish"
-      @lostpointercapture="finish"
-  /></el-tooltip>
+  <div
+    ref="handleElement"
+    class="panel-resize-handle"
+    :class="{ dragging }"
+    role="separator"
+    aria-orientation="vertical"
+    :aria-label="label"
+    @pointerdown="start"
+    @pointermove="move"
+    @pointerup="finish"
+    @pointercancel="finish"
+    @lostpointercapture="finish"
+  >
+    <el-tooltip
+      v-bind="tooltipOptions"
+      :content="label"
+      :virtual-ref="handleElement"
+      virtual-triggering
+    />
+  </div>
 </template>
 
 <style scoped>

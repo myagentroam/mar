@@ -940,6 +940,7 @@ onBeforeUnmount(() => {
       id="hosted-pane-history"
       class="hosted-conversation-history"
       :class="{ 'mobile-open': mobileViewport && mobileHistoryOpen }"
+      :inert="!mobileViewport && sidebarCollapsed"
       :aria-label="translate('hostedConversations.historyTitle')"
     >
       <header class="sidebar-heading session-heading history-header">
@@ -1975,10 +1976,17 @@ onBeforeUnmount(() => {
     inset: var(--sidebar-header-height) auto 0 var(--mar-activity-rail-width);
     width: var(--mar-workbench-sidebar-width);
     background: var(--mar-bg-subtle);
+    transition:
+      width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
+      visibility 0s;
   }
 
   .hosted-workspace.history-collapsed .hosted-conversation-history {
-    display: none;
+    width: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, var(--mar-motion-duration-collapse);
   }
 }
 

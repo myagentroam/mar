@@ -8,6 +8,7 @@ import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/ManagementComposit
 import type { WorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import type { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
+import PanelResizeHandle from '../../src/view/workbench/PanelResizeHandle.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
@@ -73,6 +74,22 @@ async function renderOfflineSurface() {
 }
 
 describe('Shared workbench shell', () => {
+  it('keeps resize layout attributes on the interactive separator', async () => {
+    const html = await renderComponent(PanelResizeHandle, {
+      target: undefined,
+      label: 'Resize workspace tree',
+      min: 180,
+      max: 420,
+      direction: 1,
+      class: 'workspace-tree-resize',
+      style: { left: '280px' }
+    });
+    const separator = html.match(/<div\b[^>]*role="separator"[^>]*>/u)?.[0];
+    expect(separator).toContain('workspace-tree-resize');
+    expect(separator).toContain('left:280px');
+    expect(separator).toContain('aria-label="Resize workspace tree"');
+  });
+
   it.each([
     ['en-US', 'Node offline. Waiting for reconnection.'],
     ['zh-CN', '节点离线，等待重新连接。']
