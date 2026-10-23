@@ -11,7 +11,14 @@ describe('Shared Run State Convergence', () => {
     'restores an observed-idle Run from an authoritative snapshot at revision %s',
     (version) => {
       const state = createRunService({ value: 'session-1' } as never);
-      const run = { id: 'run-1', sessionId: 'session-1', status: 'RUNNING', version: 2 };
+      const run = {
+        id: 'run-1',
+        sessionId: 'session-1',
+        status: 'RUNNING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: 'message-1',
+        version: 2
+      };
       state.runs.value = [run];
       state.settleSessionRuns('session-1');
       state.observeManagedSessionActive('session-1');
@@ -47,7 +54,14 @@ describe('Shared Run State Convergence', () => {
 
   it('preserves stop protection when a user stops an already observed-idle session', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    const run = { id: 'run-1', sessionId: 'session-1', status: 'RUNNING', version: 2 };
+    const run = {
+      id: 'run-1',
+      sessionId: 'session-1',
+      status: 'RUNNING',
+      recoveryState: 'ACTIVE',
+      clientMessageId: 'message-1',
+      version: 2
+    };
     state.runs.value = [run];
     state.settleSessionRuns('session-1');
     state.markSessionInterruptionPending('session-1');
@@ -60,7 +74,14 @@ describe('Shared Run State Convergence', () => {
     'does not restore a user-stopped Run from an authoritative snapshot after %s',
     (phase) => {
       const state = createRunService({ value: 'session-1' } as never);
-      const run = { id: 'run-1', sessionId: 'session-1', status: 'RUNNING', version: 2 };
+      const run = {
+        id: 'run-1',
+        sessionId: 'session-1',
+        status: 'RUNNING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: 'message-1',
+        version: 2
+      };
       state.runs.value = [run];
       state.settleSessionRuns('session-1', true);
       if (phase !== 'settled') state.markSessionInterrupted('session-1', run.id);
