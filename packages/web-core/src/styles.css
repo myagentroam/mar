@@ -797,9 +797,9 @@ pre {
 }
 
 .utility-control:hover:not(:disabled),
-.utility-control:focus-visible,
-.utility-control.is-active,
-.utility-control[aria-expanded='true'] {
+.utility-control:focus-visible:not(:disabled),
+.utility-control.is-active:not(:disabled),
+.utility-control[aria-expanded='true']:not(:disabled) {
   background: transparent;
   color: var(--mar-color-brand-text);
 }

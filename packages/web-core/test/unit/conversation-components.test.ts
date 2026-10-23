@@ -919,16 +919,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       'utf8'
     );
     expect(info).toContain('session-performance-info');
+    expect(info).toContain('icon-button utility-control');
     expect(info).toContain('420 ms');
     expect(info).toContain('42.0 token/s');
     expect(info).toContain(
       i18n.global.t('generated.conversationTimeline.providerOutputTps', { value: '42.0' })
     );
     expect(info).not.toContain('Output tokens');
-    expect(infoSource).toContain('border: 0;');
-    expect(infoSource).toContain('background: transparent;');
-    expect(infoSource).not.toContain('background: var(--mar-bg-panel);');
-    expect(infoSource).toContain('font-size: 16px;');
     expect(infoSource).not.toContain('ttftMs');
     for (const performance of [
       { runId: 'run', latencyMs: 0 },

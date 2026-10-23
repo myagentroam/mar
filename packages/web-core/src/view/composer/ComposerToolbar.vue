@@ -220,7 +220,7 @@ function selectFiles(event: Event): void {
       placement="top"
     >
       <button
-        class="composer-context-button"
+        class="composer-context-button utility-control"
         type="button"
         :aria-label="contextUsageLabel"
         :aria-disabled="!canCompactContext"
@@ -381,19 +381,10 @@ function selectFiles(event: Event): void {
   min-height: var(--mar-compact-control-size);
   border: 0;
   border-radius: 5px;
-  background: transparent;
-  color: var(--mar-text-tertiary);
   padding: 0.1rem 0.3rem;
   font-size: var(--mar-font-size-meta);
   line-height: 1;
   cursor: pointer;
-}
-
-.composer-context-button:hover,
-.composer-context-button:focus-visible {
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
-  outline: none;
 }
 
 .composer-context-button[aria-disabled='true'] {

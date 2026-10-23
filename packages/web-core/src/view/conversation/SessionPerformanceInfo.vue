@@ -52,18 +52,11 @@ const details = computed(() => {
   border: 0;
   border-radius: 4px;
   padding: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
 }
 
 .session-performance-info .el-icon {
   width: 16px;
   height: 16px;
   font-size: 16px;
-}
-
-.session-performance-info:focus-visible {
-  outline: 2px solid var(--mar-color-brand-hover);
-  outline-offset: 2px;
 }
 </style>

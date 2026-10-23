@@ -75,10 +75,16 @@ onBeforeUnmount(props.diagnostics.dispose);
 </script>
 
 <template>
-  <el-popover placement="right-end" trigger="hover" :width="320" :show-after="180" :hide-after="80">
+  <el-popover
+    placement="right-end"
+    :trigger="['hover', 'focus']"
+    :width="320"
+    :show-after="180"
+    :hide-after="80"
+  >
     <template #reference>
       <button
-        class="web-performance-indicator"
+        class="web-performance-indicator icon-button utility-control"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
         :title="t('performanceDiagnostics.title')"
@@ -180,28 +186,16 @@ onBeforeUnmount(props.diagnostics.dispose);
   display: grid;
   place-items: center;
   border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
+  border-radius: 4px;
   padding: 3px;
   cursor: pointer;
   line-height: 1;
   transform: translateX(-50%);
 }
-.web-performance-indicator:hover,
-.web-performance-indicator:focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand);
-  outline: none;
-}
 .web-performance-indicator .el-icon {
-  transition:
-    color 0.15s ease,
-    transform 0.15s ease;
-  font-size: 0.95rem;
-}
-.web-performance-indicator:hover .el-icon,
-.web-performance-indicator:focus-visible .el-icon {
-  transform: scale(1.12);
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
 }
 .web-performance-panel {
   color: var(--mar-text-primary);
