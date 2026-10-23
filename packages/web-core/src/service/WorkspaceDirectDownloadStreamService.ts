@@ -1,4 +1,36 @@
+import type { DirectTransferResource } from '@myagentroam/protocol';
+import type { createWorkspaceDirectTransferService } from './WorkspaceDirectTransferService.js';
+import type { WorkspaceDirectFileIdentity } from './WorkspaceDirectFileReadService.js';
+
 export type WorkspaceDirectDownloadResult = 'COMPLETED' | 'UNAVAILABLE' | 'CANCELLED' | 'FAILED';
+
+export async function downloadWorkspaceDirectFile(input: {
+  readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
+  readonly nodeId: string;
+  readonly nodeGeneration: string;
+  readonly resource: DirectTransferResource;
+  readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
+}): Promise<WorkspaceDirectDownloadResult> {
+  let target: WorkspaceDirectDownloadStream | undefined;
+  try {
+    const identity = await input.metadata();
+    if (identity === undefined) return 'UNAVAILABLE';
+    const fileName = input.resource.path.split('/').at(-1) ?? 'download';
+    target = await createWorkspaceDirectDownloadStream(fileName, identity.size);
+    await input.direct.download({
+      nodeId: input.nodeId,
+      nodeGeneration: input.nodeGeneration,
+      descriptor: { direction: 'DOWNLOAD', resource: input.resource, fileName, ...identity },
+      sink: target.sink,
+      signal: target.signal
+    });
+    return 'COMPLETED';
+  } catch {
+    await target?.sink.abort().catch(() => undefined);
+    if (target?.cancelled() === true) return 'CANCELLED';
+    return target?.started() === true ? 'FAILED' : 'UNAVAILABLE';
+  }
+}
 
 export interface WorkspaceDirectDownloadStream {
   readonly sink: {

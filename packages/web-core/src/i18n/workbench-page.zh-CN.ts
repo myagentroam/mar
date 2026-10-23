@@ -66,6 +66,8 @@ export const workbenchPageZhCN = {
       createBranch: '创建分支',
       cancel: '取消',
       fallbackBranchCreated: '已创建回退分支。',
+      fallbackBranchCreatedButLoadFailed: '回退分支已创建，但无法打开：{value0}',
+      rollbackCompletedButLoadFailed: '对话已回滚，但无法重新加载：{value0}',
       unableToCreateAFallbackBranch: '无法创建回退分支：{value0}',
       rollbackConversationWarning:
         '此操作会在当前会话中永久删除这条用户消息及其后的全部对话记录。工作区文件不会回滚，该消息将回填到输入框。',

@@ -1,4 +1,12 @@
-import { createRenderer, h, nextTick, shallowRef, ssrContextKey } from 'vue';
+import {
+  createRenderer,
+  defineComponent,
+  h,
+  nextTick,
+  shallowRef,
+  ssrContextKey,
+  type VNode
+} from 'vue';
 import { expect, it, vi } from 'vitest';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
@@ -38,14 +46,14 @@ it.each(['initial', 'older'] as const)(
         olderError: ''
       };
     });
-    const component = { ...ConversationScroll, render: () => null };
+    const component = Object.assign({}, ConversationScroll, { render: () => null });
     const app = renderer.createApp({
       render: () =>
         h(component, {
           ...props.value,
           onReload: request,
           onLoadOlder: request,
-          onVnodeMounted: (vnode) => {
+          onVnodeMounted: (vnode: VNode) => {
             state = (vnode.component as unknown as { setupState: Record<string, unknown> })
               .setupState;
           }
@@ -53,18 +61,24 @@ it.each(['initial', 'older'] as const)(
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.component('ElButton', {
-      setup:
-        (_, { slots }) =>
-        () =>
-          h('button', slots.default?.())
-    });
-    app.component('ElIcon', {
-      setup:
-        (_, { slots }) =>
-        () =>
-          h('span', slots.default?.())
-    });
+    app.component(
+      'ElButton',
+      defineComponent({
+        setup:
+          (_, { slots }) =>
+          () =>
+            h('button', slots.default?.())
+      })
+    );
+    app.component(
+      'ElIcon',
+      defineComponent({
+        setup:
+          (_, { slots }) =>
+          () =>
+            h('span', slots.default?.())
+      })
+    );
     app.mount({});
     try {
       const activate = state![kind === 'initial' ? 'reload' : 'loadOlder'] as () => Promise<void>;

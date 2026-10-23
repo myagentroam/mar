@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const direct = {
@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => {
     close: vi.fn()
   };
   let liveOptions: Record<string, (...args: never[]) => unknown> | undefined;
-  let streamStarted = false;
   const live = {
     connect: vi.fn(() => {
       void liveOptions?.['onReady']?.();
@@ -34,26 +33,25 @@ const mocks = vi.hoisted(() => {
     direct,
     live,
     createDirect: vi.fn(() => direct),
-    createObjectUrlSink: vi.fn(async () => ({
-      sink: {
-        write: vi.fn(async () => undefined),
-        close: vi.fn(async () => undefined),
-        abort: vi.fn(async () => undefined)
-      },
-      objectUrl: vi.fn(async () => 'blob:standalone-direct')
+    getFileHandle: vi.fn(async () => ({
+      createWritable: async () => ({
+        write: async () => undefined,
+        close: async () => undefined,
+        abort: async () => undefined
+      }),
+      getFile: async () => new File([new Uint8Array([1, 2, 3])], 'image.bin')
     })),
-    createDownloadStream: vi.fn(async () => ({
-      sink: {
-        write: vi.fn(async () => {
-          streamStarted = true;
-        }),
-        close: vi.fn(async () => undefined),
-        abort: vi.fn(async () => undefined)
-      },
-      signal: new AbortController().signal,
-      started: () => streamStarted,
-      cancelled: () => false
-    })),
+    workerPost: vi.fn((_value: unknown, ports: readonly MessagePort[]) => {
+      const port = ports[0]!;
+      port.onmessage = (event) => {
+        if (['close', 'abort'].includes(event.data.type)) {
+          port.postMessage({ type: 'finished' });
+          port.close();
+        }
+      };
+      port.postMessage({ type: 'created' });
+      port.postMessage({ type: 'pull' });
+    }),
     createLive: vi.fn((options: Record<string, (...args: never[]) => unknown>) => {
       liveOptions = options;
       return live;
@@ -67,23 +65,143 @@ vi.mock('../../src/service/WorkspaceDirectTransferService.js', () => ({
 vi.mock('../../src/service/WorkbenchLiveService.js', () => ({
   createWorkbenchLiveService: mocks.createLive
 }));
-vi.mock('../../src/service/WorkspaceDirectObjectUrlService.js', () => ({
-  createWorkspaceDirectObjectUrlSink: mocks.createObjectUrlSink,
-  revokeWorkspaceDirectObjectUrl: vi.fn()
-}));
-vi.mock('../../src/service/WorkspaceDirectDownloadStreamService.js', () => ({
-  createWorkspaceDirectDownloadStream: mocks.createDownloadStream
-}));
-
 import { createStandaloneWorkspaceDirectTransferService } from '../../src/service/StandaloneWorkspaceDirectTransferService.js';
 
+beforeEach(() => {
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: async () => ({
+        getDirectoryHandle: async () => ({
+          getFileHandle: mocks.getFileHandle,
+          removeEntry: async () => undefined
+        })
+      })
+    },
+    serviceWorker: { controller: { postMessage: mocks.workerPost } }
+  });
+  vi.stubGlobal('document', {
+    body: { append: vi.fn() },
+    createElement: () => ({ style: {}, remove: vi.fn(), click: vi.fn() })
+  });
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:standalone-direct');
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
 describe('Standalone Workspace direct transfer', () => {
+  it('discards metadata arriving after window close without allocating an output', async () => {
+    let finish!: (value: Response) => void;
+    const metadata = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request) =>
+      String(url).includes('workbench-capabilities')
+        ? Response.json({
+            manifest: {
+              nodeGeneration: 'generation-1',
+              directTransfer: { apiVersion: 3, transport: true, download: true }
+            }
+          })
+        : metadata
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createStandaloneWorkspaceDirectTransferService({
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1'
+    });
+    const operation = service.objectUrl('late.bin');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    service.close();
+    finish(Response.json({ file: { size: 3, revision: 'r1' } }));
+    await expect(operation).resolves.toBeUndefined();
+    expect(mocks.getFileHandle).not.toHaveBeenCalled();
+    expect(mocks.direct.download).not.toHaveBeenCalled();
+  });
+  it.each(['close', 'replace'] as const)(
+    'does not revive a late initialization after %s',
+    async (action) => {
+      let firstManifest!: (response: Response) => void;
+      let reads = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          if (++reads === 1)
+            return new Promise<Response>((resolve) => {
+              firstManifest = resolve;
+            });
+          return response({
+            manifest: {
+              nodeGeneration: 'generation-2',
+              directTransfer: { apiVersion: 3, transport: true, download: true }
+            }
+          });
+        })
+      );
+      const service = createStandaloneWorkspaceDirectTransferService({
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1'
+      });
+      if (action === 'close') service.close();
+      else {
+        const options = mocks.createLive.mock.calls[0]![0]!;
+        options['onReady']!();
+        await vi.waitFor(() =>
+          expect(mocks.direct.ensureTransport).toHaveBeenCalledWith('node-1', 'generation-2')
+        );
+      }
+      firstManifest(
+        response({
+          manifest: {
+            nodeGeneration: 'generation-1',
+            directTransfer: { apiVersion: 3, transport: true, download: true }
+          }
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mocks.direct.ensureTransport).not.toHaveBeenCalledWith('node-1', 'generation-1');
+      service.close();
+    }
+  );
+
+  it('discards late metadata on close and never sends attachments through direct transfer', async () => {
+    let finishMetadata!: (response: Response) => void;
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('workbench-capabilities')
+        ? response({
+            manifest: {
+              nodeGeneration: 'generation-1',
+              directTransfer: { apiVersion: 3, transport: true, download: true }
+            }
+          })
+        : new Promise<Response>((resolve) => {
+            finishMetadata = resolve;
+          })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createStandaloneWorkspaceDirectTransferService({
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1'
+    });
+    await vi.waitFor(() => expect(mocks.direct.ensureTransport).toHaveBeenCalledOnce());
+    const attachment = 'mar-attachment://00000000-0000-4000-8000-000000000001/file.bin';
+    await expect(service.objectUrl(attachment)).resolves.toBeUndefined();
+    await expect(service.readRange(attachment, 0, 3)).resolves.toBeUndefined();
+    await expect(service.download(attachment)).resolves.toBe('UNAVAILABLE');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const pending = service.objectUrl('late.bin');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    service.close();
+    finishMetadata(response({ file: { size: 3, revision: 'revision' } }));
+    await expect(pending).resolves.toBeUndefined();
+    expect(mocks.direct.download).not.toHaveBeenCalled();
+  });
+
   it.each([
     {},
     { repositoryPath: '' },
@@ -111,9 +229,7 @@ describe('Standalone Workspace direct transfer', () => {
       }
       throw new Error(`UNEXPECTED_FETCH:${path}`);
     });
-    const createObjectURL = vi.fn(() => 'blob:standalone-direct');
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL }));
 
     const service = createStandaloneWorkspaceDirectTransferService({
       nodeId: 'node-1',
@@ -144,12 +260,17 @@ describe('Standalone Workspace direct transfer', () => {
         })
       })
     );
-    expect(mocks.createObjectUrlSink).toHaveBeenCalledWith('image.bin');
+    expect(mocks.getFileHandle).toHaveBeenCalledWith(expect.stringContaining('image.bin'), {
+      create: true
+    });
 
     downloadOrder.length = 0;
     await expect(service.download('assets/image.bin')).resolves.toBe('COMPLETED');
     expect(downloadOrder).toEqual(['metadata']);
-    expect(mocks.createDownloadStream).toHaveBeenCalledWith('image.bin', 3);
+    expect(mocks.workerPost).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: 'image.bin', size: 3 }),
+      expect.any(Array)
+    );
 
     await expect(service.readRange('assets/image.bin', 0, 3)).resolves.toMatchObject({
       bytes: new Uint8Array([1, 2, 3]),
