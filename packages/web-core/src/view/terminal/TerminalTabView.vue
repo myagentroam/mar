@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Brush, CopyDocument, DocumentCopy } from '@element-plus/icons-vue';
+import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -270,11 +270,11 @@ onBeforeUnmount(() => {
             :aria-disabled="!contextMenu.selection"
             @click="contextMenu.selection && copySelection()"
           >
-            <el-icon><CopyDocument /></el-icon>
+            <MarIcon name="copy" />
             {{ translate('generated.terminalTabView.copy') }}
           </li>
           <li class="el-dropdown-menu__item" role="menuitem" @click="pasteFromClipboard">
-            <el-icon><DocumentCopy /></el-icon>
+            <MarIcon name="paste" />
             {{ translate('generated.terminalTabView.paste') }}
           </li>
           <li
@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
             role="menuitem"
             @click="clearTerminal"
           >
-            <el-icon><Brush /></el-icon>
+            <MarIcon name="clear" />
             {{ translate('generated.terminalTabView.clear') }}
           </li>
         </ul>

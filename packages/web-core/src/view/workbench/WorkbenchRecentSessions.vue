@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Files } from '@element-plus/icons-vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type {
@@ -106,7 +106,7 @@ function runTime(run: RecentRun): string {
               :aria-expanded="open"
               @keydown.esc.stop="open = false"
             >
-              <el-icon aria-hidden="true"><Files /></el-icon>
+              <MarIcon name="recent-sessions" aria-hidden="true" />
               <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
                 activeSessionCount
               }}</span>
@@ -177,7 +177,7 @@ function runTime(run: RecentRun): string {
   color: var(--mar-text-secondary);
   cursor: pointer;
 }
-.recent-sessions-trigger .el-icon {
+.recent-sessions-trigger .mar-icon {
   font-size: 1.25rem;
 }
 .recent-sessions-trigger:hover {
@@ -215,7 +215,7 @@ function runTime(run: RecentRun): string {
   margin: 0 1px;
   padding: 2px 6px;
 }
-.mobile-mode .recent-sessions-trigger .el-icon {
+.mobile-mode .recent-sessions-trigger .mar-icon {
   font-size: 18px;
 }
 :global(.recent-sessions-popover.el-popover) {

@@ -1,20 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUp,
-  Delete,
-  Edit,
-  Folder,
-  FolderAdd,
-  FolderOpened,
-  Monitor,
-  More,
-  Refresh,
-  Search,
-  View
-} from '@element-plus/icons-vue';
 import { computed, nextTick, ref } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -397,10 +384,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         :aria-label="translate('generated.workspaceTree.filterNodeWorkspaces')"
         :placeholder="translate('generated.workspaceTree.filterNodeWorkspaces')"
         size="small"
+        :clear-icon="marIcon('clear-input')"
       >
-        <template #prefix
-          ><el-icon><Search /></el-icon
-        ></template>
+        <template #prefix><MarIcon name="search" /></template>
       </el-input>
     </div>
     <ul v-if="filteredNodes.length" class="node-tree">
@@ -437,7 +423,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             type="button"
             @click="toggleTreeNode(result.node.id)"
           >
-            <el-icon class="tree-chevron"><ArrowRight /></el-icon>
+            <MarIcon name="chevron-right" class="tree-chevron" />
           </button>
           <span v-else class="node-expand-spacer" aria-hidden="true" />
           <el-tooltip v-bind="tooltipOptions" :content="nodeLabel(result.node)"
@@ -452,7 +438,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             >
               <span class="tree-node-content">
                 <span class="tree-node-icon" aria-hidden="true">
-                  <el-icon class="tree-type-icon"><Monitor /></el-icon>
+                  <MarIcon name="node" class="tree-type-icon" />
                   <span
                     :class="[
                       'state-dot',
@@ -477,31 +463,31 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
               type="button"
               @click.stop
             >
-              <el-icon><More /></el-icon>
+              <MarIcon name="more" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="details" :icon="View">{{
+                <el-dropdown-item command="details" :icon="marIcon('view')">{{
                   translate('generated.workspaceTree.nodeDetails')
                 }}</el-dropdown-item>
                 <el-dropdown-item
                   command="up"
-                  :icon="ArrowUp"
+                  :icon="marIcon('chevron-up')"
                   :disabled="filterActive || nodeIndex === 0"
                   >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   command="down"
-                  :icon="ArrowDown"
+                  :icon="marIcon('chevron-down')"
                   :disabled="filterActive || nodeIndex === groupedNodes.length - 1"
                   >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
                 >
-                <el-dropdown-item command="refresh" :icon="Refresh">{{
+                <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
                   translate('generated.workspaceTree.refreshWorkspaces')
                 }}</el-dropdown-item>
                 <el-dropdown-item
                   command="add"
-                  :icon="FolderAdd"
+                  :icon="marIcon('folder-add')"
                   :disabled="
                     result.node.disabled ||
                     !result.node.connected ||
@@ -590,34 +576,34 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       type="button"
                       @click.stop
                     >
-                      <el-icon><More /></el-icon>
+                      <MarIcon name="more" />
                     </button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="details" :icon="View">{{
+                        <el-dropdown-item command="details" :icon="marIcon('view')">{{
                           translate('generated.workspaceTree.workspaceDetails')
                         }}</el-dropdown-item>
                         <el-dropdown-item
                           command="up"
-                          :icon="ArrowUp"
+                          :icon="marIcon('chevron-up')"
                           :disabled="filterActive || workspaceIndex === 0"
                           >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
                         >
                         <el-dropdown-item
                           command="down"
-                          :icon="ArrowDown"
+                          :icon="marIcon('chevron-down')"
                           :disabled="filterActive || workspaceIndex === group.workspaces.length - 1"
                           >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
                         >
                         <el-dropdown-item
                           command="rename"
-                          :icon="Edit"
+                          :icon="marIcon('edit')"
                           :disabled="workspace.manageable === false"
                           >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
                         >
                         <el-dropdown-item
                           command="move-group"
-                          :icon="FolderAdd"
+                          :icon="marIcon('folder-add')"
                           :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                           >{{
                             translate('generated.workspaceTree.moveWorkspaceToGroup')
@@ -625,7 +611,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         >
                         <el-dropdown-item
                           command="delete"
-                          :icon="Delete"
+                          :icon="marIcon('delete')"
                           :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                           divided
                           >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
@@ -670,11 +656,14 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   type="button"
                   @click="toggleGroup(result.node.id, group.groupName)"
                 >
-                  <el-icon class="tree-chevron"><ArrowRight /></el-icon>
-                  <el-icon class="tree-type-icon" aria-hidden="true">
-                    <FolderOpened v-if="groupExpanded(result.node.id, group.groupName)" />
-                    <Folder v-else />
-                  </el-icon>
+                  <MarIcon name="chevron-right" class="tree-chevron" />
+                  <MarIcon
+                    name="folder-open"
+                    class="tree-type-icon"
+                    aria-hidden="true"
+                    v-if="groupExpanded(result.node.id, group.groupName)"
+                  />
+                  <MarIcon name="folder" class="tree-type-icon" aria-hidden="true" v-else />
                   <el-tooltip v-bind="tooltipOptions" :content="group.groupName"
                     ><span>{{ group.groupName }}</span></el-tooltip
                   >
@@ -755,22 +744,22 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                           type="button"
                           @click.stop
                         >
-                          <el-icon><More /></el-icon>
+                          <MarIcon name="more" />
                         </button>
                         <template #dropdown>
                           <el-dropdown-menu>
-                            <el-dropdown-item command="details" :icon="View">{{
+                            <el-dropdown-item command="details" :icon="marIcon('view')">{{
                               translate('generated.workspaceTree.workspaceDetails')
                             }}</el-dropdown-item>
                             <el-dropdown-item
                               command="up"
-                              :icon="ArrowUp"
+                              :icon="marIcon('chevron-up')"
                               :disabled="filterActive || workspaceIndex === 0"
                               >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
                             >
                             <el-dropdown-item
                               command="down"
-                              :icon="ArrowDown"
+                              :icon="marIcon('chevron-down')"
                               :disabled="
                                 filterActive || workspaceIndex === group.workspaces.length - 1
                               "
@@ -778,13 +767,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                             >
                             <el-dropdown-item
                               command="rename"
-                              :icon="Edit"
+                              :icon="marIcon('edit')"
                               :disabled="workspace.manageable === false"
                               >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
                             >
                             <el-dropdown-item
                               command="move-group"
-                              :icon="FolderAdd"
+                              :icon="marIcon('folder-add')"
                               :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                               >{{
                                 translate('generated.workspaceTree.moveWorkspaceToGroup')
@@ -792,7 +781,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                             >
                             <el-dropdown-item
                               command="delete"
-                              :icon="Delete"
+                              :icon="marIcon('delete')"
                               :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                               divided
                               >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
@@ -823,6 +812,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
     :title="translate('generated.workspaceTree.moveWorkspaceToGroup')"
     width="min(440px, calc(100vw - 32px))"
     @closed="closeWorkspaceGroupMoveDialog"
+    :close-icon="marIcon('close')"
   >
     <div class="workspace-group-move-control">
       <el-select
@@ -833,6 +823,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         filterable
         :aria-label="translate('generated.workspaceTree.workspaceGroupName')"
         :placeholder="translate('generated.workspaceTree.workspaceGroupMovePlaceholder')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option
           v-for="groupName in workspaceGroupMoveOptions"
@@ -1254,7 +1246,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   cursor: pointer;
 }
 
-.node-expand-button :deep(.el-icon) {
+.node-expand-button :deep(.mar-icon) {
   font-size: var(--workspace-tree-control);
 }
 

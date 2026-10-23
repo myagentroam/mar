@@ -18,6 +18,8 @@
     "./bootstrap": "./src/bootstrap.ts",
     "./theme": "./src/service/ThemePreferenceService.ts",
     "./styles.css": "./src/styles.css",
+    "./MarIcon.vue": "./src/view/common/MarIcon.vue",
+    "./icons": "./src/util/mar-icons.ts",
     "./auth": "./src/service/AdminAuthService.ts",
     "./session-state": "./src/service/AdminSessionStateService.ts",
     "./http": "./src/service/WorkbenchHttpService.ts",

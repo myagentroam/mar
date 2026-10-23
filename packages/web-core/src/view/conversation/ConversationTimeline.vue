@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import {
@@ -8,7 +10,6 @@ import {
 } from '../../util/tool-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { createWorkbenchSecondClock } from '../../service/WorkbenchClockService.js';
-import { Back, Check, CopyDocument, RefreshLeft } from '@element-plus/icons-vue';
 import {
   computed,
   nextTick,
@@ -988,11 +989,11 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="copyItem(turn, displayItem.item)"
               >
-                <el-icon
-                  ><Check
-                    v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" /><CopyDocument
-                    v-else
-                /></el-icon></button
+                <MarIcon
+                  name="check"
+                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
+                />
+                <MarIcon name="copy" v-else /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -1006,7 +1007,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rewind', turn, displayItem.item)"
               >
-                <el-icon><RefreshLeft /></el-icon></button
+                <MarIcon name="undo" /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -1021,7 +1022,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rollback', turn, displayItem.item)"
               >
-                <el-icon><Back /></el-icon></button
+                <MarIcon name="back" /></button
             ></el-tooltip>
           </div>
         </template>
@@ -1075,11 +1076,11 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="copyItem(turn, displayItem.item)"
               >
-                <el-icon
-                  ><Check
-                    v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" /><CopyDocument
-                    v-else
-                /></el-icon></button
+                <MarIcon
+                  name="check"
+                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
+                />
+                <MarIcon name="copy" v-else /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -1093,7 +1094,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 "
                 @click.stop="emit('rewind', turn, displayItem.item)"
               >
-                <el-icon><RefreshLeft /></el-icon></button
+                <MarIcon name="undo" /></button
             ></el-tooltip>
           </div>
         </template>
@@ -1201,6 +1202,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                   props.userInputSubmitted(displayItem.item.id)
                 "
                 @click="emit('submitInput', turn, displayItem.item)"
+                :loading-icon="marIcon('loading-action')"
                 >{{ translate('generated.conversationTimeline.submitAnswers') }}</el-button
               >
             </div>

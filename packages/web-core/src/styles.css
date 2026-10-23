@@ -1040,6 +1040,29 @@ pre {
   border-radius: 50%;
   background: var(--mar-text-faint);
 }
+.mar-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+/* Preserve control spacing when a business icon is rendered without ElIcon. */
+.el-button .mar-icon + span {
+  margin-inline-start: 6px;
+}
+
+.el-button--small .mar-icon + span {
+  margin-inline-start: 4px;
+}
+
+.el-button--large .mar-icon + span {
+  margin-inline-start: 8px;
+}
+
+.el-dropdown-menu__item > .mar-icon {
+  margin-inline-end: 5px;
+}
+
 .busy-indicator,
 .mar-page-loading .el-loading-spinner::before {
   display: inline-block;

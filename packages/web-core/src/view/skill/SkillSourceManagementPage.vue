@@ -1,15 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import {
-  Delete,
-  Edit,
-  Plus,
-  Refresh,
-  RefreshRight,
-  Search,
-  SwitchButton
-} from '@element-plus/icons-vue';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -132,12 +124,13 @@ const catalogTags = pagination.tags;
 const filteredFavorites = service.favorites;
 watch(pagination.error, (error) => {
   if (error !== undefined)
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
       )
-    );
+    });
 });
 
 onMounted(() => {
@@ -162,14 +155,15 @@ async function loadPage(): Promise<void> {
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
   try {
     await operation();
-    if (success !== undefined) ElMessage.success(success);
+    if (success !== undefined) ElMessage.success({ icon: marIcon('success'), message: success });
   } catch (error) {
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
       )
-    );
+    });
   }
 }
 
@@ -303,6 +297,8 @@ async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void>
           }),
       translate('generated.skillSourceManagementPage.updateSkillSourceStatus'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: source.enabled
           ? translate('generated.skillSourceManagementPage.disable')
@@ -312,12 +308,13 @@ async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void>
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmSourceStatusChange')
       )
-    );
+    });
     return;
   }
   await run(
@@ -345,11 +342,12 @@ async function checkSkillUpdate(skill: (typeof service.favorites.value)[number])
     await run(async () => {
       const result = await service.checkUpdate(skill.id);
       updateChecks.value = { ...updateChecks.value, [skill.id]: result };
-      ElMessage.success(
-        result.updateAvailable
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: result.updateAvailable
           ? translate('generated.skillSourceManagementPage.updateAvailable')
           : translate('generated.skillSourceManagementPage.alreadyUpToDate')
-      );
+      });
     });
   } finally {
     const remaining = new Set(checkingSkillIds.value);
@@ -382,6 +380,8 @@ async function removeSource(source: SkillSourceCard): Promise<void> {
       translate('generated.skillSourceManagementPage.deleteSkillSource', { value0: source.name }),
       translate('generated.skillSourceManagementPage.deleteSkillSource2'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillSourceManagementPage.delete'),
         cancelButtonText: translate('generated.skillSourceManagementPage.cancel')
@@ -389,12 +389,13 @@ async function removeSource(source: SkillSourceCard): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmDeletionTryAgainLater')
       )
-    );
+    });
     return;
   }
   await run(
@@ -411,6 +412,8 @@ async function removeSkill(id: string, name: string): Promise<void> {
       }),
       translate('generated.skillSourceManagementPage.removeSkill'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillSourceManagementPage.remove'),
         cancelButtonText: translate('generated.skillSourceManagementPage.cancel2')
@@ -418,12 +421,13 @@ async function removeSkill(id: string, name: string): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmRemovalTryAgainLater')
       )
-    );
+    });
     return;
   }
   await run(
@@ -450,7 +454,7 @@ function scopeLabel(scope: string): string {
     <div class="table-actions">
       <el-button
         type="primary"
-        :icon="Plus"
+        :icon="marIcon('plus')"
         :disabled="!writable || service.loading.value"
         @click="openSourceDialog"
         >{{ translate('generated.skillSourceManagementPage.addSkillSource') }}</el-button
@@ -501,7 +505,7 @@ function scopeLabel(scope: string): string {
             <el-button
               link
               type="primary"
-              :icon="SwitchButton"
+              :icon="marIcon('power')"
               :disabled="!writable || !row.manageable || service.loading.value"
               @click="confirmSourceStatusChange(row)"
               >{{
@@ -514,7 +518,7 @@ function scopeLabel(scope: string): string {
               v-if="!row.builtIn"
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable || !row.manageable || service.loading.value"
               @click="removeSource(row)"
               >{{ translate('generated.skillSourceManagementPage.delete2') }}</el-button
@@ -538,6 +542,8 @@ function scopeLabel(scope: string): string {
             "
             :disabled="service.loading.value"
             @change="selectSource"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="source in service.sources.value.filter((item) => item.enabled)"
@@ -554,10 +560,11 @@ function scopeLabel(scope: string): string {
                 translate('generated.skillSourceManagementPage.enterASkillNameOrDescription')
               "
               @keyup.enter="run(searchSourceSkills)"
+              :clear-icon="marIcon('clear-input')"
             >
               <template #append>
                 <el-button
-                  :icon="Search"
+                  :icon="marIcon('search')"
                   :disabled="!selectedSource?.enabled || service.loading.value"
                   @click="run(searchSourceSkills)"
                   >{{ translate('generated.skillSourceManagementPage.search') }}</el-button
@@ -610,7 +617,7 @@ function scopeLabel(scope: string): string {
                   <el-button
                     link
                     type="primary"
-                    :icon="Plus"
+                    :icon="marIcon('plus')"
                     :disabled="!writable || service.loading.value"
                     @click="openCatalogDialog(row)"
                     >{{ translate('generated.skillSourceManagementPage.addToCatalog') }}</el-button
@@ -642,6 +649,7 @@ function scopeLabel(scope: string): string {
             :placeholder="
               translate('generated.skillSourceManagementPage.searchSkillNamesOrDescriptions')
             "
+            :clear-icon="marIcon('clear-input')"
           />
           <div
             class="skill-category-strip"
@@ -742,7 +750,7 @@ function scopeLabel(scope: string): string {
                   <el-button
                     link
                     type="primary"
-                    :icon="Edit"
+                    :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="openEditDialog(row)"
                     >{{ translate('generated.skillSourceManagementPage.edit') }}</el-button
@@ -750,10 +758,11 @@ function scopeLabel(scope: string): string {
                   <el-button
                     v-if="!updateChecks[row.id]?.updateAvailable"
                     link
-                    :icon="Refresh"
+                    :icon="marIcon('refresh')"
                     :loading="checkingSkillIds.has(row.id)"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="checkSkillUpdate(row)"
+                    :loading-icon="marIcon('loading-action')"
                     >{{
                       translate('generated.skillSourceManagementPage.checkForUpdates')
                     }}</el-button
@@ -762,17 +771,18 @@ function scopeLabel(scope: string): string {
                     v-else
                     link
                     type="primary"
-                    :icon="RefreshRight"
+                    :icon="marIcon('retry')"
                     :loading="upgradingSkillId === row.id"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="upgradeSkill(row)"
+                    :loading-icon="marIcon('loading-action')"
                     >{{ translate('generated.skillSourceManagementPage.updateTo') }}
                     {{ updateChecks[row.id]!.latestCommitSha.slice(0, 8) }}</el-button
                   >
                   <el-button
                     link
                     type="danger"
-                    :icon="Delete"
+                    :icon="marIcon('delete')"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="removeSkill(row.id, row.normalizedName)"
                     >{{ translate('generated.skillSourceManagementPage.remove2') }}</el-button
@@ -809,6 +819,7 @@ function scopeLabel(scope: string): string {
       v-model="sourceDialog"
       :title="translate('generated.skillSourceManagementPage.addSkillSource2')"
       width="min(520px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="sourceForm"
@@ -835,7 +846,10 @@ function scopeLabel(scope: string): string {
         </p>
         <slot name="source-ownership">
           <el-form-item :label="translate('generated.skillSourceManagementPage.scope2')">
-            <el-select model-value="PERSONAL"
+            <el-select
+              model-value="PERSONAL"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
               ><el-option
                 value="PERSONAL"
                 :label="translate('generated.skillSourceManagementPage.personal2')"
@@ -847,9 +861,13 @@ function scopeLabel(scope: string): string {
         ><el-button @click="sourceDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel3')
         }}</el-button
-        ><el-button type="primary" :loading="service.loading.value" @click="addSource">{{
-          translate('generated.skillSourceManagementPage.add')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :loading="service.loading.value"
+          @click="addSource"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('generated.skillSourceManagementPage.add') }}</el-button
+        ></template
       >
     </el-dialog>
 
@@ -858,6 +876,7 @@ function scopeLabel(scope: string): string {
       v-model="catalogDialog"
       :title="translate('generated.skillSourceManagementPage.addToCatalog2')"
       width="min(460px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="catalogForm"
@@ -867,7 +886,10 @@ function scopeLabel(scope: string): string {
       >
         <slot name="catalog-ownership">
           <el-form-item :label="translate('generated.skillSourceManagementPage.availability')">
-            <el-select model-value="PERSONAL"
+            <el-select
+              model-value="PERSONAL"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
               ><el-option
                 value="PERSONAL"
                 :label="translate('generated.skillSourceManagementPage.personal3')"
@@ -886,6 +908,8 @@ function scopeLabel(scope: string): string {
             default-first-option
             :multiple-limit="10"
             :placeholder="translate('generated.skillSourceManagementPage.enterATagAndPressEnterUp')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
@@ -895,9 +919,13 @@ function scopeLabel(scope: string): string {
         ><el-button @click="catalogDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel4')
         }}</el-button
-        ><el-button type="primary" :loading="service.loading.value" @click="addToCatalog">{{
-          translate('generated.skillSourceManagementPage.add2')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :loading="service.loading.value"
+          @click="addToCatalog"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('generated.skillSourceManagementPage.add2') }}</el-button
+        ></template
       >
     </el-dialog>
 
@@ -907,6 +935,7 @@ function scopeLabel(scope: string): string {
       :title="translate('generated.skillSourceManagementPage.editSkillInformation')"
       width="min(460px, calc(100vw - 32px))"
       destroy-on-close
+      :close-icon="marIcon('close')"
     >
       <el-form ref="editForm" :model="editDraft" :rules="rules" label-position="top">
         <el-form-item :label="translate('generated.skillSourceManagementPage.featured3')">
@@ -923,6 +952,8 @@ function scopeLabel(scope: string): string {
             :placeholder="
               translate('generated.skillSourceManagementPage.enterATagAndPressEnterUp2')
             "
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
@@ -932,9 +963,13 @@ function scopeLabel(scope: string): string {
         <el-button @click="editDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel5')
         }}</el-button>
-        <el-button type="primary" :loading="service.loading.value" @click="savePresentation">{{
-          translate('generated.skillSourceManagementPage.save')
-        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="service.loading.value"
+          @click="savePresentation"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('generated.skillSourceManagementPage.save') }}</el-button
+        >
       </template>
     </el-dialog>
     <SkillDetailsDialog v-model="detailsOpen" :details="skillDetails" />

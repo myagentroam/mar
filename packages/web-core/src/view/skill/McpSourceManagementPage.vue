@@ -1,15 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import {
-  Delete,
-  Edit,
-  Plus,
-  Refresh,
-  RefreshRight,
-  Search,
-  SwitchButton
-} from '@element-plus/icons-vue';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/LocalePreferenceService';
@@ -242,6 +234,8 @@ async function confirmSourceStatusChange(source: Source): Promise<void> {
           }),
       translate('generated.mcpSourceManagementPage.updateMCPSourceStatus'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: source.enabled
           ? translate('generated.mcpSourceManagementPage.disable')
@@ -260,6 +254,8 @@ async function removeSource(source: Source): Promise<void> {
       translate('generated.mcpSourceManagementPage.deleteMCPSource', { value0: source.name }),
       translate('generated.mcpSourceManagementPage.deleteMCPSource2'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpSourceManagementPage.delete'),
         cancelButtonText: translate('generated.mcpSourceManagementPage.cancel')
@@ -363,11 +359,12 @@ async function checkUpdate(entry: CatalogEntry): Promise<void> {
       { method: 'POST' }
     );
     updateChecks.value = { ...updateChecks.value, [entry.id]: result };
-    ElMessage.success(
-      result.updateAvailable
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: result.updateAvailable
         ? translate('generated.mcpSourceManagementPage.updateAvailable')
         : translate('generated.mcpSourceManagementPage.alreadyUpToDate')
-    );
+    });
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -400,6 +397,8 @@ async function removeCatalog(entry: CatalogEntry): Promise<void> {
       }),
       translate('generated.mcpSourceManagementPage.removeCatalogEntry'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpSourceManagementPage.remove'),
         cancelButtonText: translate('generated.mcpSourceManagementPage.cancel2')
@@ -419,7 +418,7 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
   loading.value = true;
   try {
     await operation();
-    if (success) ElMessage.success(success);
+    if (success) ElMessage.success({ icon: marIcon('success'), message: success });
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -428,11 +427,13 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
 }
 
 function showOperationError(error: unknown): void {
-  ElMessage.error(
-    errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
-      ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
-      : displayErrorMessage(error)
-  );
+  ElMessage.error({
+    icon: marIcon('error'),
+    message:
+      errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
+        ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
+        : displayErrorMessage(error)
+  });
 }
 
 function scopeLabel(scope: string): string {
@@ -447,9 +448,13 @@ function scopeLabel(scope: string): string {
     class="management-page mcp-source-page"
   >
     <div class="table-actions">
-      <el-button type="primary" :icon="Plus" :disabled="!writable" @click="openSourceDialog">{{
-        translate('generated.mcpSourceManagementPage.addMCPSource')
-      }}</el-button>
+      <el-button
+        type="primary"
+        :icon="marIcon('plus')"
+        :disabled="!writable"
+        @click="openSourceDialog"
+        >{{ translate('generated.mcpSourceManagementPage.addMCPSource') }}</el-button
+      >
     </div>
     <el-table
       class="clickable-rows mcp-source-table"
@@ -491,7 +496,7 @@ function scopeLabel(scope: string): string {
             <el-button
               link
               type="primary"
-              :icon="SwitchButton"
+              :icon="marIcon('power')"
               :disabled="!row.manageable || !writable"
               @click="confirmSourceStatusChange(row)"
               >{{
@@ -502,7 +507,7 @@ function scopeLabel(scope: string): string {
             ><el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="row.builtIn || !row.manageable || !writable"
               @click="removeSource(row)"
               >{{ translate('generated.mcpSourceManagementPage.delete2') }}</el-button
@@ -521,6 +526,8 @@ function scopeLabel(scope: string): string {
           <el-select
             v-model="sourceId"
             :placeholder="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="source in sources.filter((item) => item.enabled)"
               :key="source.id"
@@ -535,11 +542,15 @@ function scopeLabel(scope: string): string {
                 translate('generated.mcpSourceManagementPage.enterAnMCPServerNameOrDescription')
               "
               @keyup.enter="discover"
+              :clear-icon="marIcon('clear-input')"
             >
               <template #append
-                ><el-button :icon="Search" :disabled="!sourceId || loading" @click="discover">{{
-                  translate('generated.mcpSourceManagementPage.search')
-                }}</el-button></template
+                ><el-button
+                  :icon="marIcon('search')"
+                  :disabled="!sourceId || loading"
+                  @click="discover"
+                  >{{ translate('generated.mcpSourceManagementPage.search') }}</el-button
+                ></template
               >
             </el-input>
           </div>
@@ -596,7 +607,7 @@ function scopeLabel(scope: string): string {
                   <el-button
                     link
                     type="primary"
-                    :icon="Plus"
+                    :icon="marIcon('plus')"
                     :disabled="!writable || catalogServerNames.has(row.serverName)"
                     @click="openCatalog(row)"
                     >{{
@@ -627,11 +638,14 @@ function scopeLabel(scope: string): string {
             v-model="pagination.keyword.value"
             clearable
             :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
+            :clear-icon="marIcon('clear-input')"
           />
           <el-select
             v-model="pagination.category.value"
             clearable
             :placeholder="translate('generated.mcpCenterPanel.mCPCategories')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
@@ -703,7 +717,7 @@ function scopeLabel(scope: string): string {
                   <el-button
                     link
                     type="primary"
-                    :icon="Edit"
+                    :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="openEdit(row)"
                     >{{ translate('generated.mcpSourceManagementPage.edit') }}</el-button
@@ -711,27 +725,29 @@ function scopeLabel(scope: string): string {
                   <el-button
                     v-if="!updateChecks[row.id]?.updateAvailable"
                     link
-                    :icon="Refresh"
+                    :icon="marIcon('refresh')"
                     :loading="checkingEntryIds.has(row.id)"
                     :disabled="!writable || !row.manageable || loading"
                     @click="checkUpdate(row)"
+                    :loading-icon="marIcon('loading-action')"
                     >{{ translate('generated.mcpSourceManagementPage.checkForUpdates') }}</el-button
                   >
                   <el-button
                     v-else
                     link
                     type="primary"
-                    :icon="RefreshRight"
+                    :icon="marIcon('retry')"
                     :loading="upgradingEntryId === row.id"
                     :disabled="!writable || !row.manageable || loading"
                     @click="upgrade(row)"
+                    :loading-icon="marIcon('loading-action')"
                     >{{ translate('generated.mcpSourceManagementPage.updateTo') }}
                     {{ updateChecks[row.id]!.latestVersion }}</el-button
                   >
                   <el-button
                     link
                     type="danger"
-                    :icon="Delete"
+                    :icon="marIcon('delete')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="removeCatalog(row)"
                     >{{ translate('generated.mcpSourceManagementPage.remove2') }}</el-button
@@ -765,6 +781,7 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.addMCPSource2')"
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
+    :close-icon="marIcon('close')"
     ><el-form
       ref="sourceForm"
       :model="{ ...sourceContext, ...sourceDraft }"
@@ -778,7 +795,10 @@ function scopeLabel(scope: string): string {
           :placeholder="translate('common.registryUrlExample')" /></el-form-item
       ><slot name="source-ownership">
         <el-form-item :label="translate('generated.mcpSourceManagementPage.scope2')">
-          <el-select model-value="PERSONAL"
+          <el-select
+            model-value="PERSONAL"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               value="PERSONAL"
               :label="translate('generated.mcpSourceManagementPage.personal2')"
@@ -799,6 +819,7 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.addToMCPCenter')"
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
+    :close-icon="marIcon('close')"
     ><el-form
       ref="catalogForm"
       :model="{ ...catalogContext, ...catalogDraft }"
@@ -808,7 +829,10 @@ function scopeLabel(scope: string): string {
         ><span>{{ candidate?.displayName }} {{ candidate?.version }}</span></el-form-item
       ><slot name="catalog-ownership">
         <el-form-item :label="translate('generated.mcpSourceManagementPage.scope3')">
-          <el-select model-value="PERSONAL"
+          <el-select
+            model-value="PERSONAL"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               value="PERSONAL"
               :label="translate('generated.mcpSourceManagementPage.personal3')"
@@ -823,6 +847,8 @@ function scopeLabel(scope: string): string {
           default-first-option
           :multiple-limit="10"
           :placeholder="translate('generated.mcpSourceManagementPage.selectAnExistingTagOrEnterA')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             v-for="tag in catalogTags"
             :key="tag"
@@ -845,6 +871,7 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.editMCPInformation')"
     width="min(460px, calc(100vw - 32px))"
     destroy-on-close
+    :close-icon="marIcon('close')"
   >
     <el-form ref="editForm" :model="editDraft" :rules="catalogRules" label-position="top">
       <el-form-item :label="translate('generated.mcpSourceManagementPage.featured3')"
@@ -859,6 +886,8 @@ function scopeLabel(scope: string): string {
           default-first-option
           :multiple-limit="10"
           :placeholder="translate('generated.mcpSourceManagementPage.selectAnExistingTagOrEnterA2')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
         </el-select>

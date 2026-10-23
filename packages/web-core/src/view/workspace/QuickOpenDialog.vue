@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
@@ -311,6 +312,7 @@ function onKeydown(event: KeyboardEvent): void {
     :show-close="false"
     @close="emit('close')"
     @opened="input?.focus()"
+    :close-icon="marIcon('close')"
   >
     <div
       class="quick-open-tabs"

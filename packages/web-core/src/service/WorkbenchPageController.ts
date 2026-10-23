@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
@@ -454,7 +455,8 @@ export function createWorkbenchPageController<
         });
         return `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/content?${parameters}`;
       },
-      onError: (error, path) => ElMessage.error(filePreviewErrorMessage(error, path))
+      onError: (error, path) =>
+        ElMessage.error({ icon: marIcon('error'), message: filePreviewErrorMessage(error, path) })
     }
   });
   onBeforeUnmount(conversationImageService.dispose);
@@ -1270,6 +1272,7 @@ export function createWorkbenchPageController<
       directTransport.nodeInvalidated(nodeId);
       if (nodeId !== workspaceNodeId.value) return;
       ElMessage.warning({
+        icon: marIcon('warning'),
         message: translate('generated.workbenchPageController.aNewerInstanceWithTheSameIdentity'),
         duration: 5_000
       });
@@ -1748,7 +1751,7 @@ export function createWorkbenchPageController<
 
   const runnerUsageService = createRunnerUsageService({
     request,
-    error: (value) => ElMessage.error(value),
+    error: (value) => ElMessage.error({ icon: marIcon('error'), message: value }),
     errorMessage: message
   });
 
@@ -1791,7 +1794,7 @@ export function createWorkbenchPageController<
       await selectWorkspace({ nodeId, workspaceId });
     },
     notice: (value) => (notice.value = value),
-    error: (value) => ElMessage.error(value),
+    error: (value) => ElMessage.error({ icon: marIcon('error'), message: value }),
     errorMessage: message
   });
 
@@ -2678,6 +2681,8 @@ export function createWorkbenchPageController<
           : translate('generated.workbenchPageController.createANewSessionBranchThatRetains'),
         translate('generated.workbenchPageController.createFallbackBranch'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           confirmButtonText: translate('generated.workbenchPageController.createBranch'),
           cancelButtonText: translate('generated.workbenchPageController.cancel'),
           type: 'warning'
@@ -2717,7 +2722,10 @@ export function createWorkbenchPageController<
       if (workspaceNodeId.value !== nodeId || selectedSessionId.value !== result.session.id) return;
       sessionInput.value = before ? conversationItemText(item.kind, item.payload) : '';
       focusComposerInputAt(sessionInput.value.length);
-      ElMessage.success(translate('generated.workbenchPageController.fallbackBranchCreated'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('generated.workbenchPageController.fallbackBranchCreated')
+      });
     } catch (error) {
       if (
         createdSessionId !== undefined &&
@@ -2727,11 +2735,12 @@ export function createWorkbenchPageController<
         await openSession(previousSessionId).catch(() => undefined);
         if (sourceSelected()) sessionInput.value = previousInput;
       }
-      ElMessage.error(
-        translate('generated.workbenchPageController.unableToCreateAFallbackBranch', {
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('generated.workbenchPageController.unableToCreateAFallbackBranch', {
           value0: message(error)
         })
-      );
+      });
     } finally {
       finishSubmission();
       loading.value = false;
@@ -2761,6 +2770,8 @@ export function createWorkbenchPageController<
         translate('generated.workbenchPageController.rollbackConversationWarning'),
         translate('generated.workbenchPageController.rollbackConversation'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           confirmButtonText: translate(
             'generated.workbenchPageController.confirmRollbackConversation'
           ),
@@ -2813,11 +2824,12 @@ export function createWorkbenchPageController<
       saveCurrentWorkspaceView();
       focusComposerInputAt(sessionInput.value.length);
     } catch (error) {
-      ElMessage.error(
-        translate('generated.workbenchPageController.unableToRollbackConversation', {
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('generated.workbenchPageController.unableToRollbackConversation', {
           value0: message(error)
         })
-      );
+      });
     } finally {
       finishSubmission();
       loading.value = false;
@@ -2903,7 +2915,7 @@ export function createWorkbenchPageController<
     stageDraftCommand(command, input);
     if (command.id !== 'goal') return;
     if (goalAlreadyActive) {
-      ElMessage.info(translate('goal.alreadyActive'));
+      ElMessage.info({ icon: marIcon('info'), message: translate('goal.alreadyActive') });
       return;
     }
     if (command.runner === 'mar-agent') return;
@@ -3058,7 +3070,7 @@ export function createWorkbenchPageController<
       });
     }
     if (commandId === 'goal' && result.goalAlreadyActive === true)
-      ElMessage.info(translate('goal.alreadyActive'));
+      ElMessage.info({ icon: marIcon('info'), message: translate('goal.alreadyActive') });
     if (result.run !== undefined) {
       if (stillSelected) {
         const current = runs.value.find((candidate) => candidate.id === result.run?.id);
@@ -3124,12 +3136,16 @@ export function createWorkbenchPageController<
       summary.turns < 0
     )
       return;
-    ElMessage.info(
-      translate(summary.status === 'removed' ? 'goal.removedSummary' : 'goal.stoppedSummary', {
-        value0: formatGoalDuration(summary.elapsedWallMs),
-        value1: String(summary.turns)
-      })
-    );
+    ElMessage.info({
+      icon: marIcon('info'),
+      message: translate(
+        summary.status === 'removed' ? 'goal.removedSummary' : 'goal.stoppedSummary',
+        {
+          value0: formatGoalDuration(summary.elapsedWallMs),
+          value1: String(summary.turns)
+        }
+      )
+    });
   }
 
   function onComposerKeydown(event: KeyboardEvent): void {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Close, Plus } from '@element-plus/icons-vue';
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/ScopedHttpService.js';
 import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
@@ -355,6 +356,8 @@ defineExpose({ release, toggle: toggleTerminal });
             :aria-label="translate('generated.terminalDock.terminalProfile2')"
             size="small"
             :disabled="!canUseTerminal || creating"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="profile in profiles"
@@ -418,7 +421,7 @@ defineExpose({ release, toggle: toggleTerminal });
             :disabled="closingId === item.id"
             @click="closeTerminal(item.id)"
           >
-            <el-icon><Close /></el-icon>
+            <MarIcon name="close" />
           </button>
         </div>
         <el-tooltip v-bind="tooltipOptions" :content="terminalActionTitle"
@@ -429,7 +432,7 @@ defineExpose({ release, toggle: toggleTerminal });
             :disabled="!canUseTerminal || creating"
             @click="openTerminal"
           >
-            <el-icon><Plus /></el-icon></button
+            <MarIcon name="plus" /></button
         ></el-tooltip>
       </div>
       <div class="terminal-context-cache">

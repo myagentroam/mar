@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -51,6 +52,7 @@ watch(
     width="min(960px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:attachmentOpen', $event)"
+    :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
       <el-tooltip v-bind="tooltipOptions" :content="attachmentTitle"
@@ -74,6 +76,7 @@ watch(
     width="min(960px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:conversationOpen', $event)"
+    :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
       <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"

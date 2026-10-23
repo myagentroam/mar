@@ -97,7 +97,7 @@ it.each(['command_execution', 'tool_call'])(
   }
 );
 
-it('uses the shared decorative reasoning icon without changing help and info icons', async () => {
+it('uses shared decorative SVGs for reasoning, help and information', async () => {
   const reasoning = await renderToString(
     createSSRApp(ConversationRecordIcon, { kind: 'reasoning' })
   );
@@ -107,9 +107,10 @@ it('uses the shared decorative reasoning icon without changing help and info ico
   expect(reasoning).toContain('focusable="false"');
   expect(reasoning).toContain('fill="none" stroke="currentColor"');
   expect(reasoning.match(/<svg\b/gu)).toHaveLength(1);
-  for (const name of ['info', 'help']) {
+  for (const name of ['info', 'help'] as const) {
     const html = await renderToString(createSSRApp(MarIcon, { name }));
-    expect(html).toContain('fill-rule="evenodd"');
+    expect(html).toContain(`data-mar-icon="${name}"`);
+    expect(html).toContain('stroke="currentColor"');
     expect(html).toContain('<circle');
   }
 });

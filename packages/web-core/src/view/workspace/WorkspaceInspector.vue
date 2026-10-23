@@ -1,16 +1,9 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
-import {
-  ArrowRight,
-  DocumentCopy,
-  DocumentAdd,
-  Loading,
-  Refresh,
-  RefreshLeft,
-  Search
-} from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import {
   isComposerAttachmentResourcePath,
@@ -1502,6 +1495,7 @@ async function mutateFile(
 async function promptName(title: string, initialValue = ''): Promise<string | undefined> {
   try {
     const result = await ElMessageBox.prompt('', title, {
+      closeIcon: marIcon('close'),
       inputValue: initialValue,
       inputPlaceholder: translate('generated.workspaceInspector.enterAName'),
       confirmButtonText: translate('generated.workspaceInspector.confirm'),
@@ -1596,6 +1590,8 @@ async function onFileTreeAction(
         : translate('generated.workspaceInspector.deleteFile', { value0: node.name }),
       translate('generated.workspaceInspector.confirmDeletion'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.workspaceInspector.delete'),
         cancelButtonText: translate('generated.workspaceInspector.cancel2')
@@ -2702,6 +2698,8 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       }),
       action,
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         confirmButtonText:
           entry.state === 'UNTRACKED'
             ? translate('generated.workspaceInspector.delete2')
@@ -3381,10 +3379,9 @@ onBeforeUnmount(revokePreviewObjectUrl);
               clearable
               :placeholder="translate('workspaceDisplayFilter.placeholder')"
               size="small"
+              :clear-icon="marIcon('clear-input')"
             >
-              <template #prefix
-                ><el-icon><Search /></el-icon
-              ></template>
+              <template #prefix><MarIcon name="search" /></template>
             </el-input>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -3397,8 +3394,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
                 type="button"
                 @click="refreshFiles"
               >
-                <el-icon v-if="filesBusy" class="is-loading"><Loading /></el-icon>
-                <el-icon v-else><Refresh /></el-icon></button
+                <MarIcon name="loading-action" v-if="filesBusy" />
+                <MarIcon name="refresh" v-else /></button
             ></el-tooltip>
             <el-tooltip
               v-bind="tooltipOptions"
@@ -3411,8 +3408,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
                 type="button"
                 @click="chooseUploadFiles"
               >
-                <el-icon v-if="preparingUploads" class="is-loading"><Loading /></el-icon>
-                <el-icon v-else><DocumentAdd /></el-icon></button
+                <MarIcon name="loading-action" v-if="preparingUploads" />
+                <MarIcon name="document-add" v-else /></button
             ></el-tooltip>
           </div>
           <WorkspaceFileTree
@@ -3465,8 +3462,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
               :aria-busy="contentSearchLoading || undefined"
               type="submit"
             >
-              <el-icon v-if="contentSearchLoading" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else><Search /></el-icon></button
+              <MarIcon name="loading-action" v-if="contentSearchLoading" />
+              <MarIcon name="search" v-else /></button
           ></el-tooltip>
         </form>
         <p v-if="contentSearchTruncated" class="content-search-warning">
@@ -3604,8 +3601,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
                       type="button"
                       @click="loadChanges()"
                     >
-                      <el-icon v-if="changesRefreshing" class="is-loading"><Loading /></el-icon>
-                      <el-icon v-else><Refresh /></el-icon></button
+                      <MarIcon name="loading-action" v-if="changesRefreshing" />
+                      <MarIcon name="refresh" v-else /></button
                   ></el-tooltip>
                 </div>
                 <div class="repository-tags-row">
@@ -3720,7 +3717,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
                 ><el-button
                   class="change-restore utility-control"
                   text
-                  :icon="RefreshLeft"
+                  :icon="marIcon('undo')"
                   :loading="restoringPath === changeKey(entry)"
                   :disabled="restoringPath !== undefined"
                   :aria-label="
@@ -3734,6 +3731,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
                   "
                   size="small"
                   @click="restoreChange(entry)"
+                  :loading-icon="marIcon('loading-action')"
               /></el-tooltip>
             </li>
           </template>
@@ -3748,6 +3746,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
             :placeholder="translate('generated.workspaceInspector.selectAGitRepository')"
             size="small"
             @change="changeHistoryRepository"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="repository in historyRepositories"
@@ -3767,6 +3767,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
             clearable
             size="small"
             @change="resetHistory"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option-group :label="translate('generated.workspaceInspector.localBranches')">
               <el-option
@@ -3796,8 +3798,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
               type="button"
               @click="resetHistory"
             >
-              <el-icon v-if="historyLoading" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else><Refresh /></el-icon></button
+              <MarIcon name="loading-action" v-if="historyLoading" />
+              <MarIcon name="refresh" v-else /></button
           ></el-tooltip>
         </div>
         <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
@@ -3914,15 +3916,15 @@ onBeforeUnmount(revokePreviewObjectUrl);
                         "
                         @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
                       >
-                        <el-icon
+                        <MarIcon
+                          name="chevron-right"
                           class="history-directory-toggle"
                           :class="{
                             'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
                               row.path
                             )
                           }"
-                          ><ArrowRight
-                        /></el-icon>
+                        />
                         <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
                       </el-button></span
                     ></el-tooltip
@@ -3959,7 +3961,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
             role="menu"
           >
             <button type="button" role="menuitem" @click="copyHistoryCommitId">
-              <el-icon><DocumentCopy /></el-icon>
+              <MarIcon name="paste" />
               {{ translate('generated.workspaceInspector.copyCommitId') }}
             </button>
           </div>
@@ -3971,6 +3973,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
           :loading="historyLoading"
           :disabled="historyLoading"
           @click="loadHistory(false)"
+          :loading-icon="marIcon('loading-action')"
         >
           {{ translate('generated.workspaceInspector.loadMore') }}
         </el-button>
@@ -4110,6 +4113,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
     :title="translate('generated.workspaceInspector.confirmFileUpload')"
     append-to-body
     width="560px"
+    :close-icon="marIcon('close')"
   >
     <p class="upload-dialog-target">
       {{ translate('generated.workspaceInspector.targetDirectory') }}:
@@ -4126,6 +4130,8 @@ onBeforeUnmount(revokePreviewObjectUrl);
           v-model="entry.overwrite"
           :aria-label="translate('generated.workspaceInspector.existingFileHandling')"
           size="small"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option :value="false" :label="translate('generated.workspaceInspector.skip')" />
           <el-option :value="true" :label="translate('generated.workspaceInspector.overwrite')" />
@@ -5124,7 +5130,7 @@ button.history-refresh {
   justify-content: flex-start;
 }
 
-.history-directory .el-icon {
+.history-directory .mar-icon {
   flex: none;
   font-size: 10px;
 }

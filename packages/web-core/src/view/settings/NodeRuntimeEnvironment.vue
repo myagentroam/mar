@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Refresh } from '@element-plus/icons-vue';
 import { computed } from 'vue';
 import { translate } from '../../service/LocalePreferenceService';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
@@ -58,7 +58,14 @@ function computerUseStatus(capability: ComputerUseCapability): string {
 <template>
   <div class="runtime-environment" :class="{ 'runtime-environment--refreshable': refreshable }">
     <div v-if="refreshable" class="runtime-environment-actions">
-      <el-button link type="primary" :icon="Refresh" :loading="refreshing" @click="emit('refresh')">
+      <el-button
+        link
+        type="primary"
+        :icon="marIcon('refresh')"
+        :loading="refreshing"
+        @click="emit('refresh')"
+        :loading-icon="marIcon('loading-action')"
+      >
         {{ translate('generated.nodeDetailsDialogs.refreshCapabilities') }}
       </el-button>
     </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { Edit } from '@element-plus/icons-vue';
 import { ClickOutside as vClickOutside, ElMessage, type ButtonInstance } from 'element-plus';
 import { createSessionShareConversationService } from '../../service/SessionShareConversationService.js';
 import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
@@ -35,7 +35,7 @@ const emit = defineEmits<{
 const chat = createSessionShareConversationService({
   access: props.access,
   beforeSend: props.access.ensureNamed,
-  notice: (value) => ElMessage.error(value)
+  notice: (value) => ElMessage.error({ icon: marIcon('error'), message: value })
 });
 const {
   input,
@@ -142,7 +142,7 @@ async function copyMessage(text: string, done: () => void): Promise<void> {
     await navigator.clipboard.writeText(text);
     done();
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 function confirmName(value: string): void {
@@ -400,7 +400,7 @@ onBeforeUnmount(() => {
           :content="translate('sessionShare.editName')"
           ><el-button
             class="share-edit-name"
-            :icon="Edit"
+            :icon="marIcon('edit')"
             :aria-label="translate('sessionShare.editName')"
             link
             @click="editingName = true"

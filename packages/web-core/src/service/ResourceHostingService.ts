@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import { getCurrentScope, onScopeDispose, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { ResourceRow } from '../model/ResourceManagement.js';
@@ -123,6 +124,8 @@ export function createResourceHostingService<Row extends ResourceRow>(
         translate('conversationHostingEnablement.enableConfirm'),
         translate('conversationHostingEnablement.enableConfirmTitle'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('conversationHostingEnablement.enable'),
           cancelButtonText: translate('common.cancel')
@@ -145,20 +148,26 @@ export function createResourceHostingService<Row extends ResourceRow>(
         capabilities: { ...resource.capabilities, conversationHosting: capability }
       }));
       if (capability.state === 'AVAILABLE')
-        ElMessage.success(translate('conversationHostingEnablement.enabled'));
+        ElMessage.success({
+          icon: marIcon('success'),
+          message: translate('conversationHostingEnablement.enabled')
+        });
       else
-        ElMessage.warning(
-          translate('conversationHostingEnablement.enabledUnavailable', {
+        ElMessage.warning({
+          icon: marIcon('warning'),
+          message: translate('conversationHostingEnablement.enabledUnavailable', {
             code: capability.reasonCode ?? 'CONVERSATION_HOSTING_UNAVAILABLE'
           })
-        );
+        });
     } catch (error) {
       if (!active) return;
-      ElMessage.error(
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('conversationHostingEnablement.enableFailed')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message:
+          error instanceof Error
+            ? errorMessage(error)
+            : translate('conversationHostingEnablement.enableFailed')
+      });
     } finally {
       if (hostingChangingNodeId.value === row.nodeId) hostingChangingNodeId.value = undefined;
     }
@@ -187,6 +196,8 @@ export function createResourceHostingService<Row extends ResourceRow>(
         translate('conversationHostingEnablement.disableConfirm'),
         translate('conversationHostingEnablement.disableConfirmTitle'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('conversationHostingEnablement.disable'),
           cancelButtonText: translate('common.cancel')
@@ -208,16 +219,21 @@ export function createResourceHostingService<Row extends ResourceRow>(
         ...resource,
         capabilities: { ...resource.capabilities, conversationHosting: capability }
       }));
-      ElMessage.success(translate('conversationHostingEnablement.disabled'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('conversationHostingEnablement.disabled')
+      });
     } catch (error) {
       if (!active) return;
-      ElMessage.error(
-        errorCode(error) === 'CONVERSATION_HOSTING_DISABLE_ACTIVE_RUNS'
-          ? translate('conversationHostingEnablement.disableActiveRuns')
-          : error instanceof Error
-            ? errorMessage(error)
-            : translate('conversationHostingEnablement.disableFailed')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message:
+          errorCode(error) === 'CONVERSATION_HOSTING_DISABLE_ACTIVE_RUNS'
+            ? translate('conversationHostingEnablement.disableActiveRuns')
+            : error instanceof Error
+              ? errorMessage(error)
+              : translate('conversationHostingEnablement.disableFailed')
+      });
     } finally {
       if (hostingChangingNodeId.value === row.nodeId) hostingChangingNodeId.value = undefined;
     }

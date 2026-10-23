@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/McpSourceManagementPage.vue';
 import { createCatalogOwnershipService } from '@/service/CatalogOwnershipService';
@@ -66,7 +67,10 @@ async function submitCatalog(input: {
   >
     <template #source-ownership>
       <el-form-item :label="translate('generated.mcpSourceManagementPage.scope2')"
-        ><el-select v-model="sourceDraft.scope"
+        ><el-select
+          v-model="sourceDraft.scope"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.mcpSourceManagementPage.personal2')"
             value="PERSONAL" /><el-option
@@ -83,11 +87,15 @@ async function submitCatalog(input: {
           filterable
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
     <template #catalog-ownership>
       <el-form-item :label="translate('generated.mcpSourceManagementPage.scope3')"
-        ><el-select v-model="catalogDraft.scope"
+        ><el-select
+          v-model="catalogDraft.scope"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.mcpSourceManagementPage.personal3')"
             value="PERSONAL" /><el-option
@@ -104,6 +112,7 @@ async function submitCatalog(input: {
           filterable
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
   </CorePage>

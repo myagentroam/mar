@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Close } from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
@@ -261,7 +261,7 @@ defineExpose({
               :aria-label="translate('generated.filePreviewDialog.closePreview')"
               @click="close($event, tab.id)"
             >
-              <el-icon><Close /></el-icon>
+              <MarIcon name="close" />
             </button>
           </el-tooltip>
         </div>
@@ -274,7 +274,7 @@ defineExpose({
           :aria-label="translate('filePreviewDialog.closeFileWindow')"
           @click="requestCloseAll"
         >
-          <el-icon><Close /></el-icon></button
+          <MarIcon name="close" /></button
       ></el-tooltip>
     </header>
     <div class="workspace-file-tab-content">

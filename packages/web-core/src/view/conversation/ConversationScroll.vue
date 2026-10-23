@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { Bottom, Loading } from '@element-plus/icons-vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
           @click="reload"
         >
           <template v-if="loadingInitial || reloading" #icon>
-            <Loading class="el-icon is-loading" aria-hidden="true" />
+            <MarIcon name="loading-action" />
           </template>
           {{ translate('generated.conversationScroll.reloadConversationHistory') }}
         </el-button>
@@ -133,7 +133,7 @@ onBeforeUnmount(() => {
             @click="loadOlder"
           >
             <template v-if="loadingOlder" #icon>
-              <Loading class="el-icon is-loading" aria-hidden="true" />
+              <MarIcon name="loading-action" />
             </template>
             {{
               (olderAction ?? (olderError ? 'retry' : 'load')) === 'retry'
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
         native-type="button"
         @click="emit('latest')"
       >
-        <el-icon aria-hidden="true"><Bottom /></el-icon>
+        <MarIcon name="to-bottom" aria-hidden="true" />
         {{ translate('generated.conversationScroll.jumpToLatest') }}
       </el-button>
     </Transition>

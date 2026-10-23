@@ -3,10 +3,10 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
   createEnvironmentSecretService,
@@ -119,7 +119,7 @@ const pagination = createManagementPageService<Secret>({
       sortBy.value,
       sortOrder.value
     ]),
-  reportError: (error) => ElMessage.error(message(error))
+  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: message(error) })
 });
 const loading = computed(
   () => operationLoading.value || (!targetScoped.value && pagination.loading.value)
@@ -154,7 +154,7 @@ async function load(): Promise<void> {
     const result = await service.list(props.nodeId, props.workspaceId);
     secrets.value = result.secrets;
   } catch (caught) {
-    ElMessage.error(message(caught));
+    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
   } finally {
     operationLoading.value = false;
   }
@@ -237,7 +237,7 @@ async function save(): Promise<void> {
     clearForm();
     await load();
   } catch (caught) {
-    ElMessage.error(message(caught));
+    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
   } finally {
     operationLoading.value = false;
   }
@@ -252,6 +252,8 @@ async function remove(secret: Secret): Promise<void> {
       ),
       translate('generated.environmentSecretManager.deleteSecret'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         confirmButtonText: translate('generated.environmentSecretManager.deleteSecret2'),
         cancelButtonText: translate('generated.environmentSecretManager.cancel'),
         type: 'warning'
@@ -265,7 +267,7 @@ async function remove(secret: Secret): Promise<void> {
     await service.remove(secret.id);
     await load();
   } catch (caught) {
-    ElMessage.error(message(caught));
+    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
   } finally {
     operationLoading.value = false;
   }
@@ -324,15 +326,24 @@ function message(error: unknown): string {
           v-model="keyword"
           clearable
           :placeholder="translate('generated.environmentSecretManager.enterASecretName')"
+          :clear-icon="marIcon('clear-input')"
       /></label>
     </div>
     <div class="secret-toolbar">
-      <el-button :icon="Refresh" :loading="refreshLoading" @click="refresh">{{
-        translate('generated.environmentSecretManager.refresh')
-      }}</el-button>
-      <el-button v-if="writable !== false" type="primary" :icon="Plus" @click="openCreate">{{
-        translate('generated.environmentSecretManager.addSecret')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.environmentSecretManager.refresh') }}</el-button
+      >
+      <el-button
+        v-if="writable !== false"
+        type="primary"
+        :icon="marIcon('plus')"
+        @click="openCreate"
+        >{{ translate('generated.environmentSecretManager.addSecret') }}</el-button
+      >
     </div>
     <el-table
       :data="displayedSecrets"
@@ -401,7 +412,7 @@ function message(error: unknown): string {
             <el-button
               link
               type="primary"
-              :icon="Edit"
+              :icon="marIcon('edit')"
               :disabled="writable === false"
               @click="openReplace(row)"
               >{{ translate('generated.environmentSecretManager.updateValue') }}</el-button
@@ -409,7 +420,7 @@ function message(error: unknown): string {
             <el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="writable === false"
               @click="remove(row)"
               >{{ translate('generated.environmentSecretManager.delete') }}</el-button
@@ -437,6 +448,7 @@ function message(error: unknown): string {
       width="min(720px, calc(100vw - 32px))"
       append-to-body
       @closed="secretDetails = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions :column="1" border>
         <el-descriptions-item :label="translate('generated.environmentSecretManager.name')">
@@ -467,6 +479,7 @@ function message(error: unknown): string {
       width="min(440px, calc(100vw - 32px))"
       append-to-body
       @closed="clearForm"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="formRef"
@@ -482,6 +495,8 @@ function message(error: unknown): string {
           <el-select
             v-model="scope"
             :placeholder="translate('generated.environmentSecretManager.selectAScope')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option v-for="item in scopes" :key="item" :value="item" :label="scopeLabel(item)"
           /></el-select>
         </el-form-item>
@@ -518,6 +533,7 @@ function message(error: unknown): string {
           :loading="loading"
           :disabled="writable === false"
           @click="save"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('generated.environmentSecretManager.save') }}</el-button
         ></template
       >

@@ -1,15 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Close,
-  Download,
-  Search,
-  Tickets
-} from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import DOMPurify from 'dompurify';
@@ -575,7 +567,10 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(selection.toString());
   } catch {
-    ElMessage.error(translate('filePreviewContext.clipboardFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('filePreviewContext.clipboardFailed')
+    });
   }
 }
 
@@ -709,7 +704,7 @@ defineExpose({
             :disabled="props.paths.length < 2 || props.loading"
             :aria-label="translate('generated.gitDiffViewer.previousFile')"
             @click="emit('moveFile', -1)"
-            ><el-icon><ArrowLeft /></el-icon></el-button
+            ><MarIcon name="chevron-left" /></el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -720,7 +715,7 @@ defineExpose({
             :disabled="hunks.length === 0"
             :aria-label="translate('generated.gitDiffViewer.previousChange')"
             @click="moveDiff(-1)"
-            ><el-icon><ArrowUp /></el-icon></el-button
+            ><MarIcon name="chevron-up" /></el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -731,7 +726,7 @@ defineExpose({
             :disabled="hunks.length === 0"
             :aria-label="translate('generated.gitDiffViewer.nextChange')"
             @click="moveDiff(1)"
-            ><el-icon><ArrowDown /></el-icon></el-button
+            ><MarIcon name="chevron-down" /></el-button
         ></el-tooltip>
         <el-tooltip v-bind="tooltipOptions" :content="translate('generated.gitDiffViewer.nextFile')"
           ><el-button
@@ -740,7 +735,7 @@ defineExpose({
             :disabled="props.paths.length < 2 || props.loading"
             :aria-label="translate('generated.gitDiffViewer.nextFile')"
             @click="emit('moveFile', 1)"
-            ><el-icon><ArrowRight /></el-icon></el-button
+            ><MarIcon name="chevron-right" /></el-button
         ></el-tooltip>
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
@@ -750,7 +745,7 @@ defineExpose({
             size="small"
             :aria-label="translate('fileEditor.openSource')"
             @click="toggleEdit"
-            ><el-icon><Tickets /></el-icon></el-button
+            ><MarIcon name="source-code" /></el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -761,7 +756,7 @@ defineExpose({
             size="small"
             :aria-label="translate('inlineFind.label')"
             @click="openInternalFind"
-            ><el-icon><Search /></el-icon></el-button
+            ><MarIcon name="search" /></el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -772,7 +767,7 @@ defineExpose({
             size="small"
             @click="emit('download')"
           >
-            <el-icon><Download /></el-icon> </el-button
+            <MarIcon name="download" /> </el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -785,7 +780,7 @@ defineExpose({
             type="primary"
             @click="emit('close')"
           >
-            <el-icon><Close /></el-icon> </el-button
+            <MarIcon name="close" /> </el-button
         ></el-tooltip>
       </div>
     </template>
@@ -800,7 +795,7 @@ defineExpose({
             size="small"
             :aria-label="translate('fileEditor.openSource')"
             @click="toggleEdit"
-            ><el-icon><Tickets /></el-icon></el-button
+            ><MarIcon name="source-code" /></el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -812,7 +807,7 @@ defineExpose({
             size="small"
             @click="emit('moveFile', -1)"
           >
-            <el-icon><ArrowLeft /></el-icon> </el-button
+            <MarIcon name="chevron-left" /> </el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -831,7 +826,7 @@ defineExpose({
             size="small"
             @click="emit('moveFile', 1)"
           >
-            <el-icon><ArrowRight /></el-icon> </el-button
+            <MarIcon name="chevron-right" /> </el-button
         ></el-tooltip>
         <span class="diff-toolbar-divider" aria-hidden="true" />
         <el-tooltip
@@ -844,7 +839,7 @@ defineExpose({
             size="small"
             @click="moveDiff(-1)"
           >
-            <el-icon><ArrowUp /></el-icon> </el-button
+            <MarIcon name="chevron-up" /> </el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -863,7 +858,7 @@ defineExpose({
             size="small"
             @click="moveDiff(1)"
           >
-            <el-icon><ArrowDown /></el-icon> </el-button
+            <MarIcon name="chevron-down" /> </el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -877,7 +872,7 @@ defineExpose({
             type="primary"
             @click="emit('close')"
           >
-            <el-icon><Close /></el-icon> </el-button
+            <MarIcon name="close" /> </el-button
         ></el-tooltip>
       </div>
     </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
+
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, ref } from 'vue';
 import { ElMessage } from 'element-plus';
@@ -53,16 +55,19 @@ async function load(): Promise<void> {
       requestCode.value = generatedRequest.value.requestCode;
     } else {
       requestCode.value = '';
-      ElMessage.error(
-        translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode')
+      });
     }
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.licenseManagementPage.unableToLoadLicense')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.licenseManagementPage.unableToLoadLicense')
+    });
   } finally {
     requestCodeLoading.value = false;
     loading.value = false;
@@ -71,11 +76,17 @@ async function load(): Promise<void> {
 async function copyRequestCode(): Promise<void> {
   try {
     await navigator.clipboard.writeText(requestCode.value);
-    ElMessage.info(translate('generated.licenseManagementPage.licenseRequestCodeCopied'));
+    ElMessage.info({
+      icon: marIcon('info'),
+      message: translate('generated.licenseManagementPage.licenseRequestCodeCopied')
+    });
   } catch {
-    ElMessage.error(
-      translate('generated.licenseManagementPage.unableToCopyCheckBrowserClipboardPermissions')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate(
+        'generated.licenseManagementPage.unableToCopyCheckBrowserClipboardPermissions'
+      )
+    });
   }
 }
 async function importLicense(): Promise<void> {
@@ -87,14 +98,19 @@ async function importLicense(): Promise<void> {
       body: JSON.stringify({ document: document.value.trim() })
     });
     document.value = '';
-    ElMessage.success(translate('generated.licenseManagementPage.licenseImported'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.licenseManagementPage.licenseImported')
+    });
     emit('imported');
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.licenseManagementPage.unableToImportLicense')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.licenseManagementPage.unableToImportLicense')
+    });
   } finally {
     loading.value = false;
   }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
@@ -45,7 +47,7 @@ async function login(restore = false): Promise<void> {
     await access.authenticate(restore ? undefined : fields.value.password);
     fields.value.password = '';
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     loading.value = false;
   }
@@ -56,7 +58,10 @@ function openFile(path: string, line?: number, column?: number, external?: boole
   if (column !== undefined) intent.set('column', String(column));
   if (external) {
     if (windows.open(`/share/${encodeURIComponent(props.shareId)}?${intent}`) === undefined)
-      ElMessage.error(translate('sessionShare.previewWindowBlocked'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('sessionShare.previewWindowBlocked')
+      });
   } else {
     previewIntent.value = intent;
     previewVersion.value += 1;
@@ -132,11 +137,19 @@ onBeforeUnmount(() => {
             autocomplete="off"
             autofocus
             show-password
-          />
+          >
+            <template #password-icon="{ visible }">
+              <MarIcon :name="visible ? 'view' : 'view-off'" />
+            </template>
+          </el-input>
         </el-form-item>
-        <el-button type="primary" native-type="submit" :loading="loading">{{
-          translate('sessionShare.enter')
-        }}</el-button>
+        <el-button
+          type="primary"
+          native-type="submit"
+          :loading="loading"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('sessionShare.enter') }}</el-button
+        >
       </el-form>
     </section>
   </main>

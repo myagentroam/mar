@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue';
 import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
 import { translate } from '@/service/LocalePreferenceService';
@@ -101,11 +101,13 @@ async function load(): Promise<void> {
     ).organizations;
     ready.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
+    });
   } finally {
     loading.value = false;
   }
@@ -136,11 +138,13 @@ async function saveOrganization(): Promise<void> {
     organizationForm.value.name = '';
     await load();
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToSaveOrganization')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.organizationUserManagementPage.unableToSaveOrganization')
+    });
   }
 }
 async function removeOrganization(organization: Organization): Promise<void> {
@@ -152,6 +156,8 @@ async function removeOrganization(organization: Organization): Promise<void> {
       ),
       translate('generated.organizationUserManagementPage.deleteOrganization'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate(
           'generated.organizationUserManagementPage.deleteOrganization2'
@@ -162,7 +168,8 @@ async function removeOrganization(organization: Organization): Promise<void> {
     await props.request(`/api/organizations/${organization.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 onMounted(() => {
@@ -185,12 +192,17 @@ onMounted(() => {
           :placeholder="
             translate('generated.organizationUserManagementPage.enterAnOrganizationNameOrID')
           "
+          :clear-icon="marIcon('clear-input')"
       /></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && ready" @click="refresh">{{
-        translate('generated.organizationUserManagementPage.refresh')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && ready"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
+      >
     </div>
     <el-table
       v-loading="loading && ready && !refreshLoading"
@@ -220,7 +232,7 @@ onMounted(() => {
             <el-button
               link
               type="primary"
-              :icon="Edit"
+              :icon="marIcon('edit')"
               :disabled="!writable"
               @click="editOrganization(row)"
               >{{ translate('generated.organizationUserManagementPage.edit') }}</el-button
@@ -228,7 +240,7 @@ onMounted(() => {
             <el-button
               link
               type="primary"
-              :icon="Plus"
+              :icon="marIcon('plus')"
               :disabled="!writable"
               @click="openOrganization(row)"
               >{{ translate('generated.organizationUserManagementPage.addChild') }}</el-button
@@ -236,7 +248,7 @@ onMounted(() => {
               v-if="row.id !== 1"
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable"
               @click="removeOrganization(row)"
               >{{ translate('generated.organizationUserManagementPage.delete') }}</el-button
@@ -254,6 +266,7 @@ onMounted(() => {
           : translate('generated.organizationUserManagementPage.editOrganization')
       "
       width="min(440px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
       ><el-form
         ref="organizationFormRef"
         :model="organizationForm"
@@ -293,6 +306,7 @@ onMounted(() => {
       :title="translate('generated.organizationUserManagementPage.organizationDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="organizationDetail = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions class="mar-detail-descriptions" :column="1" border>
         <el-descriptions-item

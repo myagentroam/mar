@@ -1,3 +1,4 @@
+import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
 import { createApp, h, ref } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn, ElTooltip } from 'element-plus';
 import { tableTooltipOptions, tooltipOptions } from '../../src/util/tooltip.js';
@@ -75,7 +76,7 @@ const hostedWorkspace = {
   updateConfiguration: async ({ modelId }: { modelId: string }) => {
     hostedSnapshot.value.conversation.modelId = modelId;
   }
-} as unknown as InstanceType<typeof HostedConversationComposer>['$props']['workspace'];
+} as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
 const toolbar = {
   draftSessionOpen: false,
   runner: 'MAR_AGENT' as const,

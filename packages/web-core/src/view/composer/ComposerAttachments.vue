@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Delete } from '@element-plus/icons-vue';
 import type { ComposerAttachment } from '../../model/workbench.js';
 
 defineProps<{ readonly attachments: readonly ComposerAttachment[] }>();
@@ -88,7 +88,7 @@ const emit = defineEmits<{
           "
           @click="emit('removeAttachment', attachment.id)"
         >
-          <el-icon><Delete /></el-icon></button
+          <MarIcon name="delete" /></button
       ></el-tooltip>
     </li>
   </ul>

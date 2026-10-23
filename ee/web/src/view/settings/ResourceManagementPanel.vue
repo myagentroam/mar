@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { Share } from '@element-plus/icons-vue';
 import CorePanel from '@myagentroam/web-core/ResourceManagementPanel.vue';
 import NodeDetailsDialogs from './NodeDetailsDialogs.vue';
 import ResourceManagementFilters from './ResourceManagementFilters.vue';
@@ -94,6 +94,7 @@ function detailsExtension(
           :placeholder="translate('generated.resourceSharingPage.selectAnOrganization')"
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
     <template #registration-owner>
@@ -110,6 +111,7 @@ function detailsExtension(
           :placeholder="translate('generated.resourceSharingPage.selectAnOwner')"
           :options="registrationOwnerOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
     <template #resource-actions="{ resource: row }">
@@ -117,7 +119,7 @@ function detailsExtension(
         v-if="row.ownership.ownerType === 'ORGANIZATION'"
         link
         type="primary"
-        :icon="Share"
+        :icon="marIcon('share')"
         :disabled="!writable"
         @click="grants?.open(row)"
         >{{ translate('common.grant') }}</el-button

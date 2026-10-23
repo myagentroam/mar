@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { ElMessage } from 'element-plus';
 import { promptCompletionPreferenceService } from '../../service/PromptCompletionPreferenceService';
 import { translate } from '../../service/LocalePreferenceService';
@@ -9,7 +10,7 @@ function setEnabled(value: boolean) {
   try {
     service.setEnabled(value);
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 </script>
@@ -25,6 +26,8 @@ function setEnabled(value: boolean) {
       class="theme-select"
       :aria-label="translate('promptCompletion.work')"
       @update:model-value="setEnabled"
+      :clear-icon="marIcon('clear-input')"
+      :suffix-icon="marIcon('chevron-down')"
     >
       <el-option :label="translate('promptCompletion.off')" :value="false" />
       <el-option :label="translate('promptCompletion.on')" :value="true" />

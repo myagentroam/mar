@@ -1,23 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import {
-  ArrowDown,
-  ArrowUp,
-  ChatLineSquare,
-  Clock,
-  Collection,
-  Connection,
-  Delete,
-  Document,
-  Edit,
-  Loading,
-  More,
-  Refresh,
-  Search,
-  Share,
-  StarFilled,
-  Top
-} from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
@@ -201,7 +185,10 @@ async function openSkills(): Promise<void> {
   try {
     await skillService.load(props.nodeId, props.workspaceId);
   } catch {
-    ElMessage.error(translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain')
+    });
   }
 }
 
@@ -210,7 +197,10 @@ async function openMcps(): Promise<void> {
   try {
     await mcpService.run(() => mcpService.loadWorkspace(props.nodeId, props.workspaceId));
   } catch {
-    ElMessage.error(translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry')
+    });
   }
 }
 
@@ -362,10 +352,11 @@ function submitSessionSearch(): void {
         v-model="searchInput"
         :placeholder="translate('workspaceSessions.searchPlaceholder')"
         :aria-label="translate('workspaceSessions.searchLabel')"
-        :prefix-icon="Search"
+        :prefix-icon="marIcon('search')"
         clearable
         size="small"
         @clear="emit('search', '')"
+        :clear-icon="marIcon('clear-input')"
       />
       <el-tooltip
         v-bind="tooltipOptions"
@@ -389,8 +380,8 @@ function submitSessionSearch(): void {
           :disabled="!nodeReady || searching || refreshing"
           type="submit"
         >
-          <el-icon v-if="searching || refreshing" class="is-loading"><Loading /></el-icon>
-          <el-icon v-else><Refresh /></el-icon></button
+          <MarIcon name="loading-action" v-if="searching || refreshing" />
+          <MarIcon name="refresh" v-else /></button
       ></el-tooltip>
     </form>
     <div class="new-session-form">
@@ -400,8 +391,9 @@ function submitSessionSearch(): void {
         type="primary"
         @click="emit('create')"
       >
-        <el-icon><ChatLineSquare /></el-icon
-        ><span>{{ translate('generated.workspaceSessionList.newSession') }}</span>
+        <MarIcon name="session-add" /><span>{{
+          translate('generated.workspaceSessionList.newSession')
+        }}</span>
       </el-button>
       <el-dropdown trigger="click" popper-class="workspace-tool-menu">
         <button
@@ -410,25 +402,28 @@ function submitSessionSearch(): void {
           :disabled="!nodeReady"
           type="button"
         >
-          <el-icon><More /></el-icon>
+          <MarIcon name="more" />
         </button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item v-if="skillSupported" @click="openSkills">
-              <el-icon><Collection /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.loadedSkills') }}</span>
+              <MarIcon name="collection" /><span>{{
+                translate('generated.workspaceSessionList.loadedSkills')
+              }}</span>
             </el-dropdown-item>
             <el-dropdown-item v-if="mcpSupported" @click="openMcps">
-              <el-icon><Connection /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.loadedMCP') }}</span>
+              <MarIcon name="connection" /><span>{{
+                translate('generated.workspaceSessionList.loadedMCP')
+              }}</span>
             </el-dropdown-item>
             <el-dropdown-item
               v-if="cleanupSessionsSupported"
               :disabled="loading || !nodeReady || !workspaceManageable"
               @click="emit('cleanupSessions')"
             >
-              <el-icon><Delete /></el-icon
-              ><span>{{ translate('generated.workspaceSessionList.cleanupSessions') }}</span>
+              <MarIcon name="delete" /><span>{{
+                translate('generated.workspaceSessionList.cleanupSessions')
+              }}</span>
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -498,7 +493,8 @@ function submitSessionSearch(): void {
                         : 'generated.scheduledSession.paused'
                     )
                   "
-                  ><el-icon
+                  ><MarIcon
+                    name="clock"
                     :class="[
                       'session-pin-indicator',
                       { 'schedule-paused': !session.schedule.enabled }
@@ -510,17 +506,16 @@ function submitSessionSearch(): void {
                           : 'generated.scheduledSession.paused'
                       )
                     "
-                    ><Clock /></el-icon
-                ></el-tooltip>
+                /></el-tooltip>
                 <el-tooltip
                   v-bind="tooltipOptions"
                   v-else-if="pinned(session)"
                   :content="translate('generated.workspaceSessionList.pinned2')"
-                  ><el-icon
+                  ><MarIcon
+                    name="star-filled"
                     class="session-pin-indicator"
                     :aria-label="translate('generated.workspaceSessionList.pinned')"
-                    ><StarFilled /></el-icon
-                ></el-tooltip>
+                /></el-tooltip>
                 <el-tooltip v-bind="tooltipOptions" :content="title(session)"
                   ><strong>{{ title(session) }}</strong></el-tooltip
                 >
@@ -574,42 +569,46 @@ function submitSessionSearch(): void {
                 v-bind="tooltipOptions"
                 :content="translate('generated.workspaceSessionList.moreSessionActions2')"
               >
-                <el-icon><More /></el-icon>
+                <MarIcon name="more" />
               </el-tooltip>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="!pinned(session)" @click="emit('pin', session, true)"
-                  ><el-icon><Top /></el-icon
-                  >{{ translate('generated.workspaceSessionList.pin') }}</el-dropdown-item
+                  ><MarIcon name="pin" />{{
+                    translate('generated.workspaceSessionList.pin')
+                  }}</el-dropdown-item
                 >
                 <template v-else>
                   <el-dropdown-item
                     :disabled="session.schedule?.enabled === true"
                     @click="emit('pin', session, false)"
-                    ><el-icon><Top /></el-icon
-                    >{{ translate('generated.workspaceSessionList.unpin') }}</el-dropdown-item
+                    ><MarIcon name="pin" />{{
+                      translate('generated.workspaceSessionList.unpin')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     :disabled="!canMove(session, 'up')"
                     @click="emit('movePin', session, 'up')"
-                    ><el-icon><ArrowUp /></el-icon
-                    >{{ translate('generated.workspaceSessionList.moveUp') }}</el-dropdown-item
+                    ><MarIcon name="chevron-up" />{{
+                      translate('generated.workspaceSessionList.moveUp')
+                    }}</el-dropdown-item
                   >
                   <el-dropdown-item
                     :disabled="!canMove(session, 'down')"
                     @click="emit('movePin', session, 'down')"
-                    ><el-icon><ArrowDown /></el-icon
-                    >{{ translate('generated.workspaceSessionList.moveDown') }}</el-dropdown-item
+                    ><MarIcon name="chevron-down" />{{
+                      translate('generated.workspaceSessionList.moveDown')
+                    }}</el-dropdown-item
                   >
                 </template>
                 <el-dropdown-item @click="shareSession = session"
-                  ><el-icon><Share /></el-icon
-                  >{{ translate('sessionShare.title') }}</el-dropdown-item
+                  ><MarIcon name="share" />{{ translate('sessionShare.title') }}</el-dropdown-item
                 >
                 <el-dropdown-item @click="emit('rename', session)"
-                  ><el-icon><Edit /></el-icon
-                  >{{ translate('generated.workspaceSessionList.rename') }}</el-dropdown-item
+                  ><MarIcon name="edit" />{{
+                    translate('generated.workspaceSessionList.rename')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="
@@ -617,8 +616,9 @@ function submitSessionSearch(): void {
                     session.runtime?.capabilities?.includes('session.prompt')
                   "
                   @click="promptSession = session"
-                  ><el-icon><Document /></el-icon
-                  >{{ translate('generated.sessionPrompt.title') }}</el-dropdown-item
+                  ><MarIcon name="document" />{{
+                    translate('generated.sessionPrompt.title')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="session.runtime?.capabilities?.includes('session.schedule')"
@@ -626,15 +626,17 @@ function submitSessionSearch(): void {
                     scheduleSession = session;
                     scheduleDialogOpen = true;
                   "
-                  ><el-icon><Clock /></el-icon
-                  >{{ translate('generated.scheduledSession.title') }}</el-dropdown-item
+                  ><MarIcon name="clock" />{{
+                    translate('generated.scheduledSession.title')
+                  }}</el-dropdown-item
                 >
                 <el-dropdown-item
                   v-if="props.canDeleteSession?.(session) !== false"
                   divided
                   @click="emit('deleteSession', session)"
-                  ><el-icon><Delete /></el-icon
-                  >{{ translate('generated.workspaceSessionList.delete') }}</el-dropdown-item
+                  ><MarIcon name="delete" />{{
+                    translate('generated.workspaceSessionList.delete')
+                  }}</el-dropdown-item
                 >
               </el-dropdown-menu>
             </template>
@@ -676,6 +678,7 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.currentSkills')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <div v-loading="skillService.loading.value" class="effective-skill-list">
         <p v-if="!skillService.loading.value && skillService.skills.value.length === 0">
@@ -713,6 +716,7 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.loadedMCP2')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
+      :close-icon="marIcon('close')"
     >
       <div v-loading="mcpService.loading.value" class="effective-skill-list">
         <p

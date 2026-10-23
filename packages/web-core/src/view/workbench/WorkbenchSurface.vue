@@ -3,6 +3,8 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
 
 import {
@@ -13,7 +15,6 @@ import {
   ref,
   type ShallowUnwrapRef
 } from 'vue';
-import { Connection } from '@element-plus/icons-vue';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
 import type { createWorkbenchPageController } from '../../service/WorkbenchPageController.js';
@@ -162,6 +163,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
           if (!value) page.closeWorkspaceRegistration();
         }
       "
+      :close-icon="marIcon('close')"
     >
       <slot name="workspace-registration">
         <WorkspaceRegistrationPicker
@@ -263,14 +265,15 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
             translate('generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable')
           "
           type="error"
-        />
+          ><template #icon><MarIcon name="error" /></template
+        ></el-alert>
         <section
           v-if="page.workspaceHost?.connected === false"
           class="workspace-offline-placeholder"
           role="status"
         >
           <div class="workspace-offline-message">
-            <el-icon class="workspace-offline-icon" aria-hidden="true"><Connection /></el-icon>
+            <MarIcon name="connection" class="workspace-offline-icon" aria-hidden="true" />
             <p>{{ translate('generated.workbenchSurface.offlineWorkspace') }}</p>
           </div>
         </section>
