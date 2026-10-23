@@ -701,7 +701,6 @@ function scopeLabel(scope: string): string {
                     <div class="row-actions" @click.stop>
                       <el-button
                         link
-                        type="primary"
                         :icon="marIcon('download')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="install(row)"
@@ -813,7 +812,6 @@ function scopeLabel(scope: string): string {
                       <el-button
                         v-if="matchingFavorite(row)"
                         link
-                        type="primary"
                         :icon="marIcon('retry')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="install(matchingFavorite(row)!)"

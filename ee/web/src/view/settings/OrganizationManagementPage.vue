@@ -232,7 +232,6 @@ onMounted(() => {
           <div class="organization-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('edit')"
               :disabled="!writable"
               @click="editOrganization(row)"
@@ -240,7 +239,6 @@ onMounted(() => {
             >
             <el-button
               link
-              type="primary"
               :icon="marIcon('plus')"
               :disabled="!writable"
               @click="openOrganization(row)"

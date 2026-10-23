@@ -412,7 +412,6 @@ function message(error: unknown): string {
           <div class="row-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('edit')"
               :disabled="writable === false"
               @click="openReplace(row)"

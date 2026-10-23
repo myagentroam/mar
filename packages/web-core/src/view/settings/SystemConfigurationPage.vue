@@ -327,7 +327,6 @@ onMounted(() => {
           <el-button
             v-if="editingKey !== row.key || row.type === 'json'"
             link
-            type="primary"
             :icon="marIcon('edit')"
             :disabled="!writable || editingKey !== null"
             @click="row.type === 'json' ? openSmtpDialog() : beginEdit(row.key)"

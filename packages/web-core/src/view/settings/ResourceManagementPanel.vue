@@ -817,14 +817,9 @@ onUnmounted(() => pagination.dispose());
       <el-table-column :label="translate('generated.resourceSharingPage.actions')" :width="290"
         ><template #default="{ row }"
           ><div class="row-actions" @click.stop>
-            <el-button
-              link
-              type="primary"
-              :icon="marIcon('edit')"
-              :disabled="!writable"
-              @click="openEdit(row)"
-              >{{ translate('generated.resourceSharingPage.edit') }}</el-button
-            >
+            <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
+              translate('generated.resourceSharingPage.edit')
+            }}</el-button>
             <el-button
               link
               type="danger"

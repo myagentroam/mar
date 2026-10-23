@@ -60,7 +60,6 @@ function computerUseStatus(capability: ComputerUseCapability): string {
     <div v-if="refreshable" class="runtime-environment-actions">
       <el-button
         link
-        type="primary"
         :icon="marIcon('refresh')"
         :loading="refreshing"
         @click="emit('refresh')"

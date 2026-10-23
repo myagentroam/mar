@@ -433,13 +433,9 @@ onMounted(() => {
       ><el-table-column :label="translate('generated.oAuthManagementPage.actions')" :width="320"
         ><template #default="{ row }"
           ><div class="row-actions" @click.stop>
-            <el-button
-              link
-              type="primary"
-              :icon="marIcon('edit')"
-              :disabled="!writable"
-              @click="edit(row)"
-              >{{ translate('generated.oAuthManagementPage.edit') }}</el-button
+            <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="edit(row)">{{
+              translate('generated.oAuthManagementPage.edit')
+            }}</el-button
             ><el-button
               link
               :icon="marIcon('connection')"

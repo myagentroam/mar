@@ -503,14 +503,12 @@ onUnmounted(() => usersPage.dispose());
           ><div class="row-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('edit')"
               :disabled="!writable"
               @click="openEditUser(row)"
               >{{ translate('generated.organizationUserManagementPage.edit2') }}</el-button
             ><el-button
               link
-              type="primary"
               :icon="marIcon('key')"
               :disabled="!writable || row.fixedAdmin"
               @click="resetPassword(row)"

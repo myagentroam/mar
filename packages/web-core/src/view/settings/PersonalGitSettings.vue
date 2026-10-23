@@ -280,7 +280,6 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
               ><div class="row-actions">
                 <el-button
                   link
-                  type="primary"
                   :icon="marIcon('edit')"
                   :disabled="saving"
                   @click.stop="openCredential(row)"

@@ -118,7 +118,6 @@ function detailsExtension(
       <el-button
         v-if="row.ownership.ownerType === 'ORGANIZATION'"
         link
-        type="primary"
         :icon="marIcon('share')"
         :disabled="!writable"
         @click="grants?.open(row)"

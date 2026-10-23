@@ -497,7 +497,6 @@ function scopeLabel(scope: string): string {
           ><div class="row-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('power')"
               :disabled="!row.manageable || !writable"
               @click="confirmSourceStatusChange(row)"
@@ -608,7 +607,6 @@ function scopeLabel(scope: string): string {
                 <div class="row-actions" @click.stop>
                   <el-button
                     link
-                    type="primary"
                     :icon="marIcon('plus')"
                     :disabled="!writable || catalogServerNames.has(row.serverName)"
                     @click="openCatalog(row)"
@@ -720,7 +718,6 @@ function scopeLabel(scope: string): string {
                 <div class="row-actions" @click.stop>
                   <el-button
                     link
-                    type="primary"
                     :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="openEdit(row)"
@@ -739,7 +736,6 @@ function scopeLabel(scope: string): string {
                   <el-button
                     v-else
                     link
-                    type="primary"
                     :icon="marIcon('retry')"
                     :loading="upgradingEntryId === row.id"
                     :disabled="!writable || !row.manageable || loading"

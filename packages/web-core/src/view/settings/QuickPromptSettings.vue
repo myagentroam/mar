@@ -150,14 +150,9 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           </div>
           <p>{{ prompt.prompt }}</p>
           <div class="prompt-actions">
-            <el-button
-              :icon="marIcon('edit')"
-              link
-              type="primary"
-              :disabled="loading"
-              @click="openEdit(prompt)"
-              >{{ translate('quickPrompts.edit') }}</el-button
-            >
+            <el-button :icon="marIcon('edit')" link :disabled="loading" @click="openEdit(prompt)">{{
+              translate('quickPrompts.edit')
+            }}</el-button>
             <el-button
               :icon="marIcon('delete')"
               link

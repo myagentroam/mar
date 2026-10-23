@@ -414,11 +414,11 @@ for (const scheme of ['Light', 'Dark']) {
       const help = page.getByRole('button', { name: 'Theme color reference', exact: true });
       const more = options.first().getByRole('button', { name: /^More actions for / });
       for (const control of [help, more]) {
-        await expect(control).toHaveAttribute(
-          'title',
-          (await control.getAttribute('aria-label')) ?? ''
-        );
+        const label = (await control.getAttribute('aria-label')) ?? '';
+        expect(label).not.toBe('');
+        await expect(control).not.toHaveAttribute('title');
         await control.hover();
+        await expect(page.getByRole('tooltip', { name: label, exact: true })).toBeVisible();
         await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(control).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
         await expect
@@ -868,8 +868,54 @@ for (const scheme of ['Light', 'Dark']) {
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(24, 71, 128)'
+        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(24, 71, 128)'
       );
+      const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
+      const disabledNeutral = controls.getByRole('button', {
+        name: 'Sample disabled neutral action',
+        exact: true
+      });
+      const danger = controls.getByRole('button', { name: 'Sample dangerous action', exact: true });
+      await page.mouse.move(0, 0);
+      const neutralColor = await neutral.evaluate((element) => getComputedStyle(element).color);
+      const dangerColor = await danger.evaluate((element) => getComputedStyle(element).color);
+      const disabledNeutralColor = await disabledNeutral.evaluate(
+        (element) => getComputedStyle(element).color
+      );
+      expect(neutralColor).not.toBe(dangerColor);
+      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(36, 89, 148)');
+      await expect(disabledNeutral).toBeDisabled();
+      for (const action of [neutral, disabledNeutral, danger]) {
+        await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await action.hover({ force: true });
+        await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      }
+      await disabledNeutral.hover({ force: true });
+      await expect(disabledNeutral).toHaveCSS('color', disabledNeutralColor);
+      await neutral.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(neutral).toBeFocused();
+      await expect(neutral).not.toHaveCSS('outline-style', 'none');
+      await controls.screenshot({ path: testInfo.outputPath('action-hierarchy.png') });
+      const management = page.getByRole('region', { name: 'Real management actions' });
+      const edit = management.locator('.prompt-actions .el-button').first();
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.mouse.move(0, 0);
+        await expect(edit).toHaveCSS('color', neutralColor);
+        await expect(edit).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await edit.click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.el-button--primary')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+        await management.screenshot({
+          path: testInfo.outputPath('management-actions-' + width + '.png')
+        });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await useThemeMenu(page, row, 'Duplicate');
       const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });

@@ -802,7 +802,6 @@ onMounted(() => {
             <el-button
               v-if="writable && row.status !== 'DELETED'"
               link
-              type="primary"
               :icon="marIcon('edit')"
               @click="openEdit(row)"
               >{{ translate('conversationTemplates.edit') }}</el-button
@@ -811,7 +810,6 @@ onMounted(() => {
             <el-button
               v-if="writable && row.status === 'ACTIVE'"
               link
-              type="primary"
               :icon="marIcon('upload')"
               :loading="publishingIds.has(row.id)"
               @click="publish(row)"

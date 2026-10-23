@@ -176,7 +176,6 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
       ><el-button
         v-if="model.ownership?.ownerType !== 'PERSONAL'"
         link
-        type="primary"
         :icon="marIcon('share')"
         @click="grants?.open(model)"
         >{{ translate('common.grant') }}</el-button

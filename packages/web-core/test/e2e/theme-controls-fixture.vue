@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
+import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { showMessage } from '../../src/service/MessageFeedbackService.js';
 const value = ref('');
+async function refreshPrompts(): Promise<void> {}
+async function requestPrompt<T>(): Promise<T> {
+  throw new Error('This visual fixture does not persist prompts');
+}
 const message =
   'Body text with **emphasis** and `inline code`.\n\n### Section heading\n\n| Item | Value |\n| --- | --- |\n| Example | Readable content |';
 const dialogOpen = ref(false);
@@ -24,6 +29,17 @@ function saveFeedbackDialog(): void {
 </script>
 <template>
   <WorkspaceLabelsFixture />
+  <section aria-label="Real management actions">
+    <QuickPromptSettings
+      :prompts="[
+        { id: 'visual-prompt', phrase: 'review', prompt: 'Review this change', updatedAt: 0 }
+      ]"
+      :loading="false"
+      :failed="false"
+      :refresh="refreshPrompts"
+      :request="requestPrompt"
+    />
+  </section>
   <section aria-label="Real theme controls">
     <el-input v-model="value" aria-label="Sample input" />
     <el-select v-model="value" aria-label="Sample select">
@@ -34,6 +50,9 @@ function saveFeedbackDialog(): void {
     <el-button type="primary" disabled>Sample disabled primary</el-button>
     <el-button type="primary" link>Sample link</el-button>
     <el-button type="primary" link disabled>Sample disabled link</el-button>
+    <el-button link>Sample neutral action</el-button>
+    <el-button link disabled>Sample disabled neutral action</el-button>
+    <el-button link type="danger">Sample dangerous action</el-button>
     <el-link type="primary">Sample anchor</el-link>
     <el-table :data="[{ name: 'First' }, { name: 'Second' }]">
       <el-table-column prop="name" label="Name" />

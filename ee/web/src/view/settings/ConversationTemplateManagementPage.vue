@@ -240,7 +240,6 @@ onBeforeUnmount(() => {
       <el-button
         v-if="edition !== 'COMMUNITY'"
         link
-        type="primary"
         :icon="marIcon('share')"
         @click="openGrants(row)"
         >{{ translate('common.grant') }}</el-button

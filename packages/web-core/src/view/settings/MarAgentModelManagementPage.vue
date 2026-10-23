@@ -1555,18 +1555,12 @@ onBeforeUnmount(() => {
           <el-table-column v-if="!sorting" :label="translate('marAgentModels.actions')" width="450">
             <template #default="{ row }">
               <div class="row-actions" @click.stop>
+                <el-button v-if="writable" link :icon="marIcon('edit')" @click="openEdit(row)">{{
+                  translate('marAgentModels.edit')
+                }}</el-button>
                 <el-button
                   v-if="writable"
                   link
-                  type="primary"
-                  :icon="marIcon('edit')"
-                  @click="openEdit(row)"
-                  >{{ translate('marAgentModels.edit') }}</el-button
-                >
-                <el-button
-                  v-if="writable"
-                  link
-                  type="primary"
                   :icon="marIcon('copy')"
                   @click="openEdit(row, true)"
                   >{{ translate('marAgentModels.duplicate') }}</el-button
@@ -1659,7 +1653,6 @@ onBeforeUnmount(() => {
                 <el-button
                   v-if="writable"
                   link
-                  type="primary"
                   :icon="marIcon('edit')"
                   :loading="credentialActionIs(row.id, 'EDIT')"
                   :disabled="credentialActionBusy(row.id)"

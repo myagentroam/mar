@@ -489,7 +489,6 @@ function mcpErrorMessage(error: unknown): string {
                 <el-button
                   v-if="row.catalogAvailable"
                   link
-                  type="primary"
                   :icon="marIcon('retry')"
                   :disabled="!targetReady"
                   @click="install(row.id)"
@@ -512,7 +511,6 @@ function mcpErrorMessage(error: unknown): string {
               <template v-else>
                 <el-button
                   link
-                  type="primary"
                   :icon="marIcon('download')"
                   :disabled="!targetReady"
                   @click="install(row.id)"

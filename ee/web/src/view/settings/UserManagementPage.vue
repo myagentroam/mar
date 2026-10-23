@@ -218,13 +218,9 @@ onUnmounted(() => usersPage.dispose());
       ><el-table-column :label="translate('generated.userManagementPage.actions')" :width="180"
         ><template #default="{ row }"
           ><div class="row-actions" @click.stop>
-            <el-button
-              v-if="!row.isAdmin"
-              link
-              type="primary"
-              :icon="marIcon('key')"
-              @click="confirmReset(row)"
-              >{{ translate('generated.userManagementPage.resetPassword3') }}</el-button
+            <el-button v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
+              translate('generated.userManagementPage.resetPassword3')
+            }}</el-button
             ><el-button
               v-if="!row.isAdmin"
               link

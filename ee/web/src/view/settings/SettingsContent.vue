@@ -192,7 +192,6 @@ function createNodeToken(): void {
               <el-button
                 v-if="!row.bound"
                 link
-                type="primary"
                 :icon="marIcon('link')"
                 :disabled="managementWritable !== true"
                 @click="bindOAuth(row)"

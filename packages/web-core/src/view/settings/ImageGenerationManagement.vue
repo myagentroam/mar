@@ -321,14 +321,9 @@ onMounted(load);
       >
         <template #default="{ row }">
           <div class="row-actions" @click.stop>
-            <el-button
-              link
-              type="primary"
-              :icon="marIcon('edit')"
-              :disabled="busy"
-              @click="edit(row)"
-              >{{ translate('marAgentModels.edit') }}</el-button
-            >
+            <el-button link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
+              translate('marAgentModels.edit')
+            }}</el-button>
             <el-button
               link
               type="danger"
