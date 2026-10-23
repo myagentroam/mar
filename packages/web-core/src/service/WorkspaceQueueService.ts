@@ -3,6 +3,7 @@ import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComputedRef, Ref } from 'vue';
 import type { WorkspaceQueue, WorkspaceQueueItem } from '../model/workbench.js';
 import { translate } from './LocalePreferenceService.js';
+import { errorCode } from '../util/api-error.js';
 
 export function createWorkspaceQueueService(options: {
   readonly queue: Ref<WorkspaceQueue>;
@@ -59,9 +60,12 @@ export function createWorkspaceQueueService(options: {
     } catch (error) {
       if (current(nodeId, workspaceId, sessionId))
         options.notice(
-          translate('generated.workspaceQueueService.theQueueOrderChangedTryAgain', {
-            value0: options.errorMessage(error)
-          }),
+          translate(
+            errorCode(error) === 'QUEUE_VERSION_CONFLICT'
+              ? 'generated.workspaceQueueService.theQueueOrderChangedTryAgain'
+              : 'generated.workspaceQueueService.unableToReorderTheQueuedMessages',
+            { value0: options.errorMessage(error) }
+          ),
           'warning',
           error
         );

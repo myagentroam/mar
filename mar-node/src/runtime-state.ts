@@ -76,6 +76,8 @@ export class NodeRuntimeState {
   private readonly queuedItems = new Map<string, string[]>();
   private readonly receivingQueueItems = new Set<string>();
   private readonly queueVersions = new Map<string, number>();
+  /** Snapshot version of the last FIFO membership or ordering change. */
+  private readonly queueOrderVersions = new Map<string, number>();
   private readonly pausedQueues = new Set<string>();
   /** Bounded tombstones reject stale internal start envelopes after terminal cleanup. */
   private readonly terminalRunIds = new Map<string, NodeAgentRun | undefined>();
@@ -322,6 +324,7 @@ export class NodeRuntimeState {
     const turns = this.turns.get(id) ?? [];
     const queue = this.queuedItems.get(id);
     const queueVersion = this.queueVersions.get(id);
+    const queueOrderVersion = this.queueOrderVersions.get(id);
     const lease = this.leases.get(id);
     const paused = this.pausedQueues.has(id);
 
@@ -356,6 +359,10 @@ export class NodeRuntimeState {
     if (queueVersion !== undefined) {
       this.queueVersions.delete(id);
       this.queueVersions.set(nativeSessionId, queueVersion);
+    }
+    if (queueOrderVersion !== undefined) {
+      this.queueOrderVersions.delete(id);
+      this.queueOrderVersions.set(nativeSessionId, queueOrderVersion);
     }
     if (lease !== undefined) {
       this.leases.delete(id);
@@ -711,12 +718,12 @@ export class NodeRuntimeState {
 
   pauseSessionQueue(sessionId: string): void {
     this.pausedQueues.add(sessionId);
-    this.bumpQueueVersion(sessionId);
+    this.bumpQueueVersion(sessionId, false);
   }
 
   resumeSessionQueue(sessionId: string): void {
     if (!this.pausedQueues.delete(sessionId)) return;
-    this.bumpQueueVersion(sessionId);
+    this.bumpQueueVersion(sessionId, false);
   }
 
   reorderSessionQueue(
@@ -727,7 +734,9 @@ export class NodeRuntimeState {
     const current = this.queuedItems.get(sessionId) ?? [];
     for (const id of current) this.assertQueueItemMutable(id);
     if (
-      this.sessionQueue(sessionId).version !== expectedVersion ||
+      !Number.isInteger(expectedVersion) ||
+      expectedVersion < (this.queueOrderVersions.get(sessionId) ?? 0) ||
+      expectedVersion > this.sessionQueue(sessionId).version ||
       current.length !== itemIds.length ||
       new Set(current).size !== current.length ||
       current.some((itemId) => !itemIds.includes(itemId))
@@ -736,7 +745,10 @@ export class NodeRuntimeState {
     if (itemIds.some((itemId) => this.queueItems.get(itemId)?.sessionId !== sessionId))
       throw new Error('QUEUE_ITEM_INVALID');
     this.queuedItems.set(sessionId, [...itemIds]);
-    this.bumpQueueVersion(sessionId);
+    this.bumpQueueVersion(
+      sessionId,
+      current.some((itemId, index) => itemIds[index] !== itemId)
+    );
   }
 
   prioritizeQueueItem(itemId: string): NodeQueueItem {
@@ -748,7 +760,7 @@ export class NodeRuntimeState {
       itemId,
       ...queue.filter((candidate) => candidate !== itemId)
     ]);
-    this.bumpQueueVersion(item.sessionId);
+    this.bumpQueueVersion(item.sessionId, queue[0] !== itemId);
     return item;
   }
 
@@ -759,7 +771,7 @@ export class NodeRuntimeState {
       throw new Error('QUEUE_ITEM_INVALID');
     const next = { ...item, content };
     this.queueItems.set(itemId, next);
-    this.bumpQueueVersion(item.sessionId);
+    this.bumpQueueVersion(item.sessionId, false);
     return next;
   }
 
@@ -772,7 +784,8 @@ export class NodeRuntimeState {
     const item = this.requireQueueItem(itemId);
     const next = { ...item, attachments, ...(content === undefined ? {} : { content }) };
     this.queueItems.set(itemId, next);
-    if (content !== undefined && content !== item.content) this.bumpQueueVersion(item.sessionId);
+    if (content !== undefined && content !== item.content)
+      this.bumpQueueVersion(item.sessionId, false);
     return next;
   }
 
@@ -1315,6 +1328,7 @@ export class NodeRuntimeState {
     this.queuedItems.delete(sessionId);
     for (const itemId of queued) this.queueItems.delete(itemId);
     this.queueVersions.delete(sessionId);
+    this.queueOrderVersions.delete(sessionId);
     this.pausedQueues.delete(sessionId);
     this.leases.delete(sessionId);
     for (const runId of runIds) {
@@ -1417,6 +1431,7 @@ export class NodeRuntimeState {
       this.queuedItems.delete(sessionId);
       for (const itemId of queued) this.queueItems.delete(itemId);
       this.queueVersions.delete(sessionId);
+      this.queueOrderVersions.delete(sessionId);
       this.pausedQueues.delete(sessionId);
       this.leases.delete(sessionId);
     }
@@ -1452,8 +1467,10 @@ export class NodeRuntimeState {
       : (this.recentUserMessages.get(run.id) ?? this.currentRunMessageText(run.id));
     this.onRunChanged?.(run, session, userMessage.length === 0 ? undefined : userMessage);
   }
-  private bumpQueueVersion(sessionId: string): void {
-    this.queueVersions.set(sessionId, (this.queueVersions.get(sessionId) ?? 0) + 1);
+  private bumpQueueVersion(sessionId: string, orderChanged = true): void {
+    const version = (this.queueVersions.get(sessionId) ?? 0) + 1;
+    this.queueVersions.set(sessionId, version);
+    if (orderChanged) this.queueOrderVersions.set(sessionId, version);
   }
 
   private pruneRetainedExecutionTurns(

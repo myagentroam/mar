@@ -1076,6 +1076,142 @@ describe('Node Session message FIFO', () => {
     }
   );
 
+  it.each(['edit', 'attachments', 'pause', 'resume', 'same-order', 'same-head'] as const)(
+    'accepts a reorder based on an unchanged order after %s updates',
+    (change) => {
+      const runtime = preparedRuntime();
+      const current = session(runtime);
+      const first = runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: 'first',
+        content: 'first'
+      }).item;
+      const second = runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: 'second',
+        content: 'second'
+      }).item;
+      if (change === 'resume') runtime.pauseSessionQueue(current.id);
+      const before = runtime.sessionQueue(current.id);
+      if (change === 'edit') runtime.updateQueueItem(first.id, 'edited');
+      if (change === 'attachments') runtime.updateQueueItemAttachments(first.id, [], 'edited');
+      if (change === 'pause') runtime.pauseSessionQueue(current.id);
+      if (change === 'resume') runtime.resumeSessionQueue(current.id);
+      if (change === 'same-order')
+        runtime.reorderSessionQueue(current.id, before.version, before.itemIds);
+      if (change === 'same-head') runtime.prioritizeQueueItem(first.id);
+      const updatedVersion = runtime.sessionQueue(current.id).version;
+      const service = new WorkspaceQueueWorkbenchService({
+        runtime,
+        resolve: async (id) => runtime.getAgentSession(id),
+        coordinator: {} as never,
+        emit: vi.fn(),
+        prepareInput: (_runner, input) => input
+      });
+      expect(() =>
+        service.operations()['workspace.queue.reorder']!({
+          workspaceId: current.workspaceId,
+          sessionId: current.id,
+          expectedVersion: before.version,
+          queueItemIds: [second.id, first.id]
+        })
+      ).not.toThrow();
+      expect(runtime.sessionQueue(current.id)).toMatchObject({
+        version: updatedVersion + 1,
+        itemIds: [second.id, first.id]
+      });
+      expect(runtime.getQueueItem(first.id)?.content).toBe(
+        change === 'edit' || change === 'attachments' ? 'edited' : 'first'
+      );
+    }
+  );
+
+  it.each([
+    'reorder',
+    'enqueue',
+    'claim',
+    'delete',
+    'receiving',
+    'future',
+    'fractional',
+    'nan'
+  ] as const)('still rejects a reorder after %s without changing the current queue', (change) => {
+    const runtime = preparedRuntime();
+    const current = session(runtime);
+    const first = runtime.createQueueItem({
+      sessionId: current.id,
+      clientMessageId: 'first',
+      content: 'first'
+    }).item;
+    const second = runtime.createQueueItem({
+      sessionId: current.id,
+      clientMessageId: 'second',
+      content: 'second'
+    }).item;
+    const expectedVersion = runtime.sessionQueue(current.id).version;
+    let release: (() => void) | undefined;
+    if (change === 'reorder')
+      runtime.reorderSessionQueue(current.id, expectedVersion, [second.id, first.id]);
+    if (change === 'enqueue')
+      runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: 'third',
+        content: 'third'
+      });
+    if (change === 'claim') {
+      runtime.createMessageRun({
+        sessionId: current.id,
+        clientMessageId: 'active',
+        content: 'active'
+      });
+      runtime.claimNextQueueItem(current.id);
+    }
+    if (change === 'delete') runtime.deleteQueueItem(first.id);
+    if (change === 'receiving') release = runtime.reserveQueueItem(first.id);
+    const before = runtime.sessionQueue(current.id);
+    const version =
+      change === 'future'
+        ? before.version + 1
+        : change === 'fractional'
+          ? expectedVersion + 0.5
+          : change === 'nan'
+            ? NaN
+            : expectedVersion;
+    try {
+      expect(() => runtime.reorderSessionQueue(current.id, version, [second.id, first.id])).toThrow(
+        change === 'receiving' ? 'QUEUE_ITEM_RECEIVING' : 'QUEUE_VERSION_CONFLICT'
+      );
+      expect(runtime.sessionQueue(current.id)).toEqual(before);
+    } finally {
+      release?.();
+    }
+  });
+
+  it('retains reorder conflict protection after session identity promotion', () => {
+    const runtime = preparedRuntime();
+    const current = session(runtime);
+    const add = (id: string) =>
+      runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: id,
+        content: id
+      }).item;
+    const first = add('first');
+    const second = add('second');
+    const before = runtime.sessionQueue(current.id);
+    runtime.reorderSessionQueue(current.id, before.version, [second.id, first.id]);
+    runtime.updateQueueItem(first.id, 'edited');
+    runtime.promoteSessionIdentity(current.id, 'promoted-queue');
+    expect(() =>
+      runtime.reorderSessionQueue('promoted-queue', before.version, [first.id, second.id])
+    ).toThrow('QUEUE_VERSION_CONFLICT');
+    const stable = runtime.sessionQueue('promoted-queue').version;
+    runtime.pauseSessionQueue('promoted-queue');
+    expect(() =>
+      runtime.reorderSessionQueue('promoted-queue', stable, [first.id, second.id])
+    ).not.toThrow();
+  });
+
   it.each(['stale', 'missing', 'duplicate', 'unknown', 'foreign', 'internal', 'full'] as const)(
     'rejects %s public reorder requests without mutating the queue or publishing a snapshot',
     (invalid) => {

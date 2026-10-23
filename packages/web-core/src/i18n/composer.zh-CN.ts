@@ -150,6 +150,7 @@ export const composerZhCN = {
     },
     workspaceQueueService: {
       theQueueOrderChangedTryAgain: '队列顺序已变化，请重试：{value0}',
+      unableToReorderTheQueuedMessages: '无法调整队列顺序：{value0}',
       unableToEditTheQueuedMessage: '无法编辑队列消息：{value0}',
       unableToDeleteTheQueuedMessage: '无法删除队列消息：{value0}',
       unableToRunTheQueuedMessageNow: '无法立即执行队列消息：{value0}'

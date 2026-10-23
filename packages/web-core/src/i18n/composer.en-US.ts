@@ -155,6 +155,7 @@ export const composerEnUS = {
     },
     workspaceQueueService: {
       theQueueOrderChangedTryAgain: 'The queue order changed. Try again: {value0}',
+      unableToReorderTheQueuedMessages: 'Unable to reorder the queued messages: {value0}',
       unableToEditTheQueuedMessage: 'Unable to edit the queued message: {value0}',
       unableToDeleteTheQueuedMessage: 'Unable to delete the queued message: {value0}',
       unableToRunTheQueuedMessageNow: 'Unable to run the queued message now: {value0}'
