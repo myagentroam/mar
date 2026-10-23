@@ -31,6 +31,35 @@ const props = defineProps<{
   readonly workspaces: (nodeId: string) => readonly Workspace[];
 }>();
 const filterQuery = ref('');
+const animateBranches = ref(false);
+
+function enableBranchMotion(): void {
+  animateBranches.value = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Only the render caused by an explicit toggle should animate.
+  void nextTick(() => (animateBranches.value = false));
+}
+
+function enterBranch(element: Element): void {
+  const branch = element as HTMLElement;
+  branch.inert = false;
+  branch.style.setProperty('--workspace-branch-height', `${branch.scrollHeight}px`);
+}
+
+function leaveBranch(element: Element): void {
+  const branch = element as HTMLElement;
+  branch.style.setProperty(
+    '--workspace-branch-height',
+    `${branch.getBoundingClientRect().height}px`
+  );
+  branch.inert = true;
+}
+
+function finishBranchMotion(element: Element): void {
+  const branch = element as HTMLElement;
+  branch.style.removeProperty('--workspace-branch-height');
+  branch.inert = false;
+}
+
 const filterActive = computed(() => filterQuery.value.trim().length > 0);
 const filteredNodes = computed(() =>
   filterWorkspaceTree(
@@ -132,6 +161,7 @@ function groupExpanded(nodeId: string, groupName: string): boolean {
   );
 }
 function toggleGroup(nodeId: string, groupName: string): void {
+  enableBranchMotion();
   const key = workspaceGroupKey(nodeId, groupName);
   expandedWorkspaceGroupKeys.value = expandedWorkspaceGroupKeys.value.includes(key)
     ? expandedWorkspaceGroupKeys.value.filter((value) => value !== key)
@@ -348,6 +378,7 @@ function openWorkspaceActions(event: MouseEvent, nodeId: string, workspaceId: st
 }
 
 function toggleTreeNode(nodeId: string): void {
+  enableBranchMotion();
   emit('toggleNode', nodeId);
 }
 
@@ -403,7 +434,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                 : translate('generated.workspaceTree.expandWorkspaces')
             "
             type="button"
-            @click="emit('toggleNode', result.node.id)"
+            @click="toggleTreeNode(result.node.id)"
           >
             <el-icon class="tree-chevron"><ArrowRight /></el-icon>
           </button>
@@ -479,161 +510,19 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             </template>
           </el-dropdown>
         </div>
-        <ul v-if="nodeExpanded(result.node.id)" class="workspace-branches">
-          <template v-for="group in result.groups" :key="group.groupName ?? '__ungrouped__'">
-            <template v-if="group.groupName === null">
-              <li
-                v-for="(workspace, workspaceIndex) in group.workspaces"
-                :key="workspace.id"
-                :class="{
-                  dragging: draggingWorkspace?.workspaceId === workspace.id,
-                  'drop-target':
-                    workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
-                    workspaceDropPosition === undefined,
-                  'drop-before':
-                    workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
-                    workspaceDropPosition === 'before',
-                  'drop-after':
-                    workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
-                    workspaceDropPosition === 'after',
-                  selected:
-                    workspaceTarget?.nodeId === result.node.id &&
-                    workspaceTarget.workspaceId === workspace.id
-                }"
-                :draggable="nodeDragEnabled"
-                @mouseenter="hoveredWorkspaceKey = workspaceKey(result.node.id, workspace.id)"
-                @mouseleave="hoveredWorkspaceKey = undefined"
-                @focusin="focusedWorkspaceKey = workspaceKey(result.node.id, workspace.id)"
-                @focusout="clearFocus($event, () => (focusedWorkspaceKey = undefined))"
-                @contextmenu="openWorkspaceActions($event, result.node.id, workspace.id)"
-                @dragend.stop="
-                  clearWorkspaceDropTargets();
-                  emit('endWorkspaceDrag');
-                "
-                @dragenter.stop="setWorkspaceDropTarget($event, result.node, workspace)"
-                @dragleave.stop="leaveWorkspaceDropTarget"
-                @dragover.stop="setWorkspaceDropTarget($event, result.node, workspace)"
-                @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
-                @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
-              >
-                <button
-                  :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
-                  class="workspace-branch-button"
-                  type="button"
-                  :title="workspaceLabel(workspace)"
-                  @click="selectWorkspace(result.node.id, workspace.id)"
-                >
-                  <span class="workspace-branch-content">
-                    <span>{{ workspaceLabel(workspace) }}</span>
-                  </span>
-                </button>
-                <el-dropdown
-                  v-if="workspaceActionsVisible(result.node.id, workspace.id)"
-                  class="tree-row-menu workspace-row-actions"
-                  trigger="click"
-                  @command="workspaceCommand(result.node, workspace, $event)"
-                  @visible-change="
-                    openWorkspaceActionsKey = $event
-                      ? workspaceKey(result.node.id, workspace.id)
-                      : undefined
-                  "
-                >
-                  <button
-                    class="tree-more-button utility-control"
-                    :aria-label="translate('generated.workspaceTree.workspaceActions')"
-                    type="button"
-                    @click.stop
-                  >
-                    <el-icon><More /></el-icon>
-                  </button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="details" :icon="View">{{
-                        translate('generated.workspaceTree.workspaceDetails')
-                      }}</el-dropdown-item>
-                      <el-dropdown-item
-                        command="up"
-                        :icon="ArrowUp"
-                        :disabled="filterActive || workspaceIndex === 0"
-                        >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
-                      >
-                      <el-dropdown-item
-                        command="down"
-                        :icon="ArrowDown"
-                        :disabled="filterActive || workspaceIndex === group.workspaces.length - 1"
-                        >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
-                      >
-                      <el-dropdown-item
-                        command="rename"
-                        :icon="Edit"
-                        :disabled="workspace.manageable === false"
-                        >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
-                      >
-                      <el-dropdown-item
-                        command="move-group"
-                        :icon="FolderAdd"
-                        :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
-                        >{{
-                          translate('generated.workspaceTree.moveWorkspaceToGroup')
-                        }}</el-dropdown-item
-                      >
-                      <el-dropdown-item
-                        command="delete"
-                        :icon="Delete"
-                        :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
-                        divided
-                        >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
-                      >
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </li>
-            </template>
-            <li
-              v-else
-              :class="[
-                'workspace-group',
-                {
-                  'drop-target':
-                    workspaceGroupDropTargetKey ===
-                    workspaceGroupKey(result.node.id, group.groupName)
-                }
-              ]"
-            >
-              <button
-                :class="[
-                  'workspace-group-toggle',
-                  { expanded: groupExpanded(result.node.id, group.groupName) }
-                ]"
-                :aria-label="
-                  groupExpanded(result.node.id, group.groupName)
-                    ? translate('generated.workspaceTree.collapseWorkspaceGroup', {
-                        value0: group.groupName
-                      })
-                    : translate('generated.workspaceTree.expandWorkspaceGroup', {
-                        value0: group.groupName
-                      })
-                "
-                :aria-expanded="groupExpanded(result.node.id, group.groupName)"
-                :title="group.groupName"
-                @dragenter.stop="setWorkspaceGroupDropTarget($event, result.node, group.groupName)"
-                @dragleave.stop="leaveWorkspaceDropTarget"
-                @dragover.stop="setWorkspaceGroupDropTarget($event, result.node, group.groupName)"
-                @drop.prevent.stop="moveWorkspaceToGroup(result.node, group.groupName)"
-                type="button"
-                @click="toggleGroup(result.node.id, group.groupName)"
-              >
-                <el-icon class="tree-chevron"><ArrowRight /></el-icon>
-                <el-icon class="tree-type-icon" aria-hidden="true">
-                  <FolderOpened v-if="groupExpanded(result.node.id, group.groupName)" />
-                  <Folder v-else />
-                </el-icon>
-                <span>{{ group.groupName }}</span>
-              </button>
-              <ul
-                v-if="groupExpanded(result.node.id, group.groupName)"
-                class="workspace-branches workspace-group-branches"
-              >
+        <!-- Reset branch motion when entering or leaving filter mode. -->
+        <Transition
+          :key="filterActive ? 'filtered' : 'browsing'"
+          name="workspace-branch"
+          :css="animateBranches"
+          @enter="enterBranch"
+          @before-leave="leaveBranch"
+          @after-enter="finishBranchMotion"
+          @after-leave="finishBranchMotion"
+        >
+          <ul v-if="nodeExpanded(result.node.id)" class="workspace-branches">
+            <template v-for="group in result.groups" :key="group.groupName ?? '__ungrouped__'">
+              <template v-if="group.groupName === null">
                 <li
                   v-for="(workspace, workspaceIndex) in group.workspaces"
                   :key="workspace.id"
@@ -740,10 +629,176 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     </template>
                   </el-dropdown>
                 </li>
-              </ul>
-            </li>
-          </template>
-        </ul>
+              </template>
+              <li
+                v-else
+                :class="[
+                  'workspace-group',
+                  {
+                    'drop-target':
+                      workspaceGroupDropTargetKey ===
+                      workspaceGroupKey(result.node.id, group.groupName)
+                  }
+                ]"
+              >
+                <button
+                  :class="[
+                    'workspace-group-toggle',
+                    { expanded: groupExpanded(result.node.id, group.groupName) }
+                  ]"
+                  :aria-label="
+                    groupExpanded(result.node.id, group.groupName)
+                      ? translate('generated.workspaceTree.collapseWorkspaceGroup', {
+                          value0: group.groupName
+                        })
+                      : translate('generated.workspaceTree.expandWorkspaceGroup', {
+                          value0: group.groupName
+                        })
+                  "
+                  :aria-expanded="groupExpanded(result.node.id, group.groupName)"
+                  :title="group.groupName"
+                  @dragenter.stop="
+                    setWorkspaceGroupDropTarget($event, result.node, group.groupName)
+                  "
+                  @dragleave.stop="leaveWorkspaceDropTarget"
+                  @dragover.stop="setWorkspaceGroupDropTarget($event, result.node, group.groupName)"
+                  @drop.prevent.stop="moveWorkspaceToGroup(result.node, group.groupName)"
+                  type="button"
+                  @click="toggleGroup(result.node.id, group.groupName)"
+                >
+                  <el-icon class="tree-chevron"><ArrowRight /></el-icon>
+                  <el-icon class="tree-type-icon" aria-hidden="true">
+                    <FolderOpened v-if="groupExpanded(result.node.id, group.groupName)" />
+                    <Folder v-else />
+                  </el-icon>
+                  <span>{{ group.groupName }}</span>
+                </button>
+                <Transition
+                  name="workspace-branch"
+                  :css="animateBranches"
+                  @enter="enterBranch"
+                  @before-leave="leaveBranch"
+                  @after-enter="finishBranchMotion"
+                  @after-leave="finishBranchMotion"
+                >
+                  <ul
+                    v-if="groupExpanded(result.node.id, group.groupName)"
+                    class="workspace-branches workspace-group-branches"
+                  >
+                    <li
+                      v-for="(workspace, workspaceIndex) in group.workspaces"
+                      :key="workspace.id"
+                      :class="{
+                        dragging: draggingWorkspace?.workspaceId === workspace.id,
+                        'drop-target':
+                          workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
+                          workspaceDropPosition === undefined,
+                        'drop-before':
+                          workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
+                          workspaceDropPosition === 'before',
+                        'drop-after':
+                          workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id) &&
+                          workspaceDropPosition === 'after',
+                        selected:
+                          workspaceTarget?.nodeId === result.node.id &&
+                          workspaceTarget.workspaceId === workspace.id
+                      }"
+                      :draggable="nodeDragEnabled"
+                      @mouseenter="hoveredWorkspaceKey = workspaceKey(result.node.id, workspace.id)"
+                      @mouseleave="hoveredWorkspaceKey = undefined"
+                      @focusin="focusedWorkspaceKey = workspaceKey(result.node.id, workspace.id)"
+                      @focusout="clearFocus($event, () => (focusedWorkspaceKey = undefined))"
+                      @contextmenu="openWorkspaceActions($event, result.node.id, workspace.id)"
+                      @dragend.stop="
+                        clearWorkspaceDropTargets();
+                        emit('endWorkspaceDrag');
+                      "
+                      @dragenter.stop="setWorkspaceDropTarget($event, result.node, workspace)"
+                      @dragleave.stop="leaveWorkspaceDropTarget"
+                      @dragover.stop="setWorkspaceDropTarget($event, result.node, workspace)"
+                      @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
+                      @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
+                    >
+                      <button
+                        :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
+                        class="workspace-branch-button"
+                        type="button"
+                        :title="workspaceLabel(workspace)"
+                        @click="selectWorkspace(result.node.id, workspace.id)"
+                      >
+                        <span class="workspace-branch-content">
+                          <span>{{ workspaceLabel(workspace) }}</span>
+                        </span>
+                      </button>
+                      <el-dropdown
+                        v-if="workspaceActionsVisible(result.node.id, workspace.id)"
+                        class="tree-row-menu workspace-row-actions"
+                        trigger="click"
+                        @command="workspaceCommand(result.node, workspace, $event)"
+                        @visible-change="
+                          openWorkspaceActionsKey = $event
+                            ? workspaceKey(result.node.id, workspace.id)
+                            : undefined
+                        "
+                      >
+                        <button
+                          class="tree-more-button utility-control"
+                          :aria-label="translate('generated.workspaceTree.workspaceActions')"
+                          type="button"
+                          @click.stop
+                        >
+                          <el-icon><More /></el-icon>
+                        </button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item command="details" :icon="View">{{
+                              translate('generated.workspaceTree.workspaceDetails')
+                            }}</el-dropdown-item>
+                            <el-dropdown-item
+                              command="up"
+                              :icon="ArrowUp"
+                              :disabled="filterActive || workspaceIndex === 0"
+                              >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
+                            >
+                            <el-dropdown-item
+                              command="down"
+                              :icon="ArrowDown"
+                              :disabled="
+                                filterActive || workspaceIndex === group.workspaces.length - 1
+                              "
+                              >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
+                            >
+                            <el-dropdown-item
+                              command="rename"
+                              :icon="Edit"
+                              :disabled="workspace.manageable === false"
+                              >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
+                            >
+                            <el-dropdown-item
+                              command="move-group"
+                              :icon="FolderAdd"
+                              :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
+                              >{{
+                                translate('generated.workspaceTree.moveWorkspaceToGroup')
+                              }}</el-dropdown-item
+                            >
+                            <el-dropdown-item
+                              command="delete"
+                              :icon="Delete"
+                              :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
+                              divided
+                              >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
+                            >
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
+                    </li>
+                  </ul>
+                </Transition>
+              </li>
+            </template>
+          </ul>
+        </Transition>
       </li>
     </ul>
     <p v-else class="tree-filter-empty">
@@ -865,7 +920,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   grid-column: 1;
   flex: 0 0 auto;
   font-size: var(--workspace-tree-control);
-  transition: transform 0.12s ease;
 }
 
 .workspace-group-toggle > span {
@@ -879,8 +933,37 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   white-space: nowrap;
 }
 
-.workspace-group-toggle.expanded .tree-chevron {
+.workspace-group-toggle.expanded .tree-chevron,
+.node-expand-button.expanded .tree-chevron {
   transform: rotate(90deg);
+}
+
+.tree-chevron {
+  transition: transform var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+}
+
+.workspace-branch-enter-active,
+.workspace-branch-leave-active {
+  overflow: hidden;
+  transition: height var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+}
+
+.workspace-branch-enter-from,
+.workspace-branch-leave-to {
+  height: 0;
+}
+
+.workspace-branch-enter-to,
+.workspace-branch-leave-from {
+  height: var(--workspace-branch-height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-chevron,
+  .workspace-branch-enter-active,
+  .workspace-branch-leave-active {
+    transition: none;
+  }
 }
 
 .workspace-branches.workspace-group-branches {
@@ -999,6 +1082,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-branches {
+  display: flow-root;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1250,18 +1334,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </style>
 
 <style scoped>
-.node-expand-button.expanded :deep(.el-icon) {
-  transform: none;
-}
-
-.node-expand-button :deep(.el-icon svg) {
-  transition: transform 0.12s ease;
-}
-
-.node-expand-button.expanded :deep(.el-icon svg) {
-  transform: rotate(90deg);
-}
-
 .node-tree-actions :deep(.icon-button) {
   width: 23px;
   height: 23px;

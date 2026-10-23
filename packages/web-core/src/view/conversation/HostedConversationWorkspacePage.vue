@@ -1449,8 +1449,7 @@ onBeforeUnmount(() => {
 .history-list article.selected .history-open,
 .history-list article.selected .history-title-row strong,
 .history-list article.selected .history-open time,
-.history-list article.selected .history-pin-indicator,
-.history-list article.selected .history-more-button {
+.history-list article.selected .history-pin-indicator {
   color: var(--mar-text-primary);
 }
 

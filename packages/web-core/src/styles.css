@@ -2,6 +2,8 @@
 :root,
 html.console-ui,
 .theme-preview {
+  --mar-motion-duration-collapse: 160ms;
+  --mar-motion-easing-collapse: cubic-bezier(0.2, 0, 0, 1);
   --el-border-radius-base: var(--mar-radius-control);
   --el-font-family: var(--mar-font-sans);
   --el-font-size-base: var(--mar-font-size-body);
@@ -795,9 +797,9 @@ pre {
 }
 
 .utility-control:hover:not(:disabled),
-.utility-control:focus-visible,
-.utility-control.is-active,
-.utility-control[aria-expanded='true'] {
+.utility-control:focus-visible:not(:disabled),
+.utility-control.is-active:not(:disabled),
+.utility-control[aria-expanded='true']:not(:disabled) {
   background: transparent;
   color: var(--mar-color-brand-text);
 }

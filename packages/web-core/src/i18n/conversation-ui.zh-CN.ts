@@ -51,6 +51,7 @@ export const conversationUiZhCN = {
   },
   toolPresentation: {
     calls: '{count} 次调用',
+    moreFiles: '另 {count} 个文件',
     title: {
       READ: '读取文件',
       WEB_SEARCH: '网页搜索',

@@ -105,7 +105,7 @@ watch(open, async () => {
   flex-wrap: nowrap;
   gap: var(--conversation-record-gap, 8px);
   width: 100%;
-  padding: 0.5rem 0;
+  padding: 4px 0;
   border: 0;
   background: transparent;
   color: var(--mar-conversation-text);
@@ -114,6 +114,15 @@ watch(open, async () => {
   line-height: 20px;
   text-align: start;
   cursor: pointer;
+  border-radius: var(--mar-radius-control);
+}
+@media (hover: hover) and (pointer: fine) {
+  .process-heading:hover {
+    background-color: var(--mar-fill-row-hover);
+  }
+}
+.process-heading:active {
+  background-color: var(--mar-fill-row-hover);
 }
 .process-heading:focus-visible {
   outline: 2px solid var(--el-color-primary);
@@ -178,11 +187,11 @@ watch(open, async () => {
 }
 .is-group .process-content {
   overflow: hidden;
-  padding-inline-start: 1.25rem;
+  padding-inline-start: 8px;
 }
 @media (max-width: 767px) {
   .is-group .process-content {
-    padding-inline-start: 0.5rem;
+    padding-inline-start: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

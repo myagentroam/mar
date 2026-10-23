@@ -721,116 +721,156 @@ test('Approval cards emphasize pending states and use neutral terminal states in
   expect(submitted).toEqual({ nodeId: 'node-1', decision: 'APPROVED' });
 });
 
-test('Conversation cards preserve text hierarchy, monospace process cards, and mobile actions across themes', async ({
-  page
-}, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-  await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
-    fulfillMockSessionWatch(
-      page,
-      route,
-      { id: 'session-1', workspaceId: 'workspace-1' },
-      watchedConversation([
-        {
-          id: 'visual:segment:0',
-          turnId: 'visual',
-          index: 0,
-          runId: null,
-          status: 'SUCCEEDED',
-          items: [
+for (const hasTouch of [false, true]) {
+  test.describe(hasTouch ? 'Touch disclosures' : 'Pointer disclosures', () => {
+    test.use({ hasTouch });
+    test('Conversation cards preserve text hierarchy, monospace process cards, and mobile actions across themes', async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
+        fulfillMockSessionWatch(
+          page,
+          route,
+          { id: 'session-1', workspaceId: 'workspace-1' },
+          watchedConversation([
             {
-              id: 'visual-user',
-              kind: 'user_message',
-              status: 'COMPLETED',
-              payload: { text: '检查会话卡片 / Review conversation cards' }
-            },
-            {
-              id: 'visual-reasoning',
-              kind: 'reasoning',
-              processGroup: { id: 'visual-process', isStart: true },
-              status: 'COMPLETED',
-              payload: {
-                representation: 'summary',
-                sections: [{ index: 0, text: '检查正文、过程和操作层级。' }]
-              }
-            },
-            {
-              id: 'visual-command',
-              processGroup: { id: 'visual-process' },
-              kind: 'command_execution',
-              status: 'COMPLETED',
-              payload: { command: 'git status', exitCode: 0 }
-            },
-            {
-              id: 'visual-tool',
-              processGroup: { id: 'visual-process' },
-              kind: 'tool_call',
-              status: 'COMPLETED',
-              payload: { toolName: 'read', input: { path: 'src/main.ts' } }
-            },
-            {
-              id: 'visual-file-change',
-              processGroup: { id: 'visual-process' },
-              kind: 'file_change',
-              status: 'COMPLETED',
-              payload: {
-                changes: [
-                  {
-                    path: 'my-agent-roam/packages/web-core/src/view/workspace/WorkspaceFileTree.vue',
-                    change: 'MODIFIED',
-                    additions: 6,
-                    deletions: 1
+              id: 'visual:segment:0',
+              turnId: 'visual',
+              index: 0,
+              runId: null,
+              status: 'SUCCEEDED',
+              items: [
+                {
+                  id: 'visual-user',
+                  kind: 'user_message',
+                  status: 'COMPLETED',
+                  payload: { text: '检查会话卡片 / Review conversation cards' }
+                },
+                {
+                  id: 'visual-reasoning',
+                  kind: 'reasoning',
+                  processGroup: { id: 'visual-process', isStart: true },
+                  status: 'COMPLETED',
+                  payload: {
+                    representation: 'summary',
+                    sections: [{ index: 0, text: '检查正文、过程和操作层级。' }]
                   }
-                ]
-              }
-            },
-            {
-              id: 'visual-answer',
-              kind: 'assistant_message',
-              status: 'COMPLETED',
-              payload: {
-                text: '## 检查结果 / Review results\n\n已完成 `theme tokens` 检查。正文优先，过程保持紧凑。\n\n- 浅色与深色使用一致布局\n- Links remain interactive: [Documentation](https://example.com)\n\n```ts\nconst theme = "daylight";\n```'
-              }
+                },
+                {
+                  id: 'visual-command',
+                  processGroup: { id: 'visual-process' },
+                  kind: 'command_execution',
+                  status: 'COMPLETED',
+                  payload: { command: 'git status', exitCode: 0 }
+                },
+                {
+                  id: 'visual-tool',
+                  processGroup: { id: 'visual-process' },
+                  kind: 'tool_call',
+                  status: 'COMPLETED',
+                  payload: { toolName: 'read', input: { path: 'src/main.ts' } }
+                },
+                {
+                  id: 'visual-file-change',
+                  processGroup: { id: 'visual-process' },
+                  kind: 'file_change',
+                  status: 'COMPLETED',
+                  payload: {
+                    changes: [
+                      {
+                        path: 'my-agent-roam/packages/web-core/src/view/workspace/WorkspaceFileTree.vue',
+                        change: 'MODIFIED',
+                        additions: 6,
+                        deletions: 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  id: 'visual-answer',
+                  kind: 'assistant_message',
+                  status: 'COMPLETED',
+                  payload: {
+                    text: '## 检查结果 / Review results\n\n已完成 `theme tokens` 检查。正文优先，过程保持紧凑。\n\n- 浅色与深色使用一致布局\n- Links remain interactive: [Documentation](https://example.com)\n\n```ts\nconst theme = "daylight";\n```'
+                  }
+                }
+              ]
             }
-          ]
-        }
-      ])
-    )
-  );
-  await page.goto('/console');
-  await page.getByRole('button', { name: '进入控制台' }).click();
-  await page.getByRole('button', { name: '工作', exact: true }).click();
-  await page
-    .locator('.workspace-tree')
-    .getByRole('button', { name: /node-1/ })
-    .click();
-  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.locator('.session-list .session-link').first().click();
-  await page.locator('.conversation-process.is-group .process-heading').first().click();
-  const reasoning = page.locator('.conversation-item.reasoning-group details');
-  await expect(reasoning).not.toHaveAttribute('open', '');
-  await expect(reasoning.locator('summary > strong')).toHaveText('思考');
-  await reasoning.locator('summary').click();
-  await expect(reasoning).toHaveAttribute('open', '');
-  await expect(reasoning.locator('p')).toContainText('检查正文、过程和操作层级。');
-  await reasoning.locator('summary').click();
-  await expect(reasoning).not.toHaveAttribute('open', '');
-  await verifyConversationThemes(page, testInfo, 'workspace-desktop');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await verifyConversationThemes(page, testInfo, 'workspace-mobile');
-  await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
-  await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
-    'Reasoning'
-  );
-  await expect(page.locator('.conversation-item.reasoning-group details')).not.toHaveAttribute(
-    'open',
-    ''
-  );
-  await verifyConversationThemes(page, testInfo, 'workspace-mobile-en');
-});
+          ])
+        )
+      );
+      await page.goto('/console');
+      await page.getByRole('button', { name: '进入控制台' }).click();
+      await page.getByRole('button', { name: '工作', exact: true }).click();
+      await page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: /node-1/ })
+        .click();
+      await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+      await page.locator('.session-list .session-link').first().click();
+      await page.locator('.conversation-process.is-group .process-heading').first().click();
+      const reasoning = page.locator('.conversation-item.reasoning-group details');
+      await expect(reasoning).not.toHaveAttribute('open', '');
+      await expect(reasoning.locator('summary > strong')).toHaveText('思考');
+      await reasoning.locator('summary').click();
+      await expect(reasoning).toHaveAttribute('open', '');
+      await expect(reasoning.locator('p')).toContainText('检查正文、过程和操作层级。');
+      await reasoning.locator('summary').click();
+      await expect(reasoning).not.toHaveAttribute('open', '');
+      const process = page.locator('.conversation-process.is-group').first();
+      const verifyProcessSpacing = async (mobile: boolean) => {
+        await expect(page.locator('.conversation-item.user_message').first()).toHaveCSS(
+          'padding-top',
+          '12px'
+        );
+        await expect(page.locator('.conversation-item.user_message').first()).toHaveCSS(
+          'padding-left',
+          '14px'
+        );
+        await expect(process.locator('.process-content')).toHaveCSS('gap', '4px');
+        await expect(process.locator('.process-content')).toHaveCSS(
+          'padding-left',
+          mobile ? '4px' : '8px'
+        );
+        await expect(process.locator('.process-heading')).toHaveCSS('padding-top', '4px');
+        const row = reasoning.locator('summary');
+        await expect(row).toHaveCSS('padding-top', '4px');
+        await expect(row).toHaveCSS('padding-bottom', '4px');
+        await expect(row).toHaveCSS('padding-left', mobile ? '8px' : '12px');
+        await expect(row).toHaveCSS('min-height', '0px');
+        await process.locator('.process-heading').click();
+        await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'false');
+        await expect
+          .poll(() =>
+            process
+              .locator('.process-body')
+              .evaluate((element) => element.getBoundingClientRect().height)
+          )
+          .toBe(0);
+        await process.locator('.process-heading').click();
+        await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'true');
+      };
+      await verifyProcessSpacing(false);
+      await verifyConversationThemes(page, testInfo, 'workspace-desktop');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await verifyProcessSpacing(true);
+      await verifyConversationThemes(page, testInfo, 'workspace-mobile');
+      await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
+      await expect(page.locator('.conversation-item.reasoning-group summary')).toContainText(
+        'Reasoning'
+      );
+      await expect(page.locator('.conversation-item.reasoning-group details')).not.toHaveAttribute(
+        'open',
+        ''
+      );
+      await verifyConversationThemes(page, testInfo, 'workspace-mobile-en');
+    });
+  });
+}
 
 for (const locale of ['zh-CN', 'en-US'] as const) {
   test(`Read projections aggregate within a work process with accessible details (${locale})`, async ({
@@ -855,7 +895,16 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       normalizer.normalize({
         ...base,
         type: 'tool.started',
-        input: { reads: [{ path }] }
+        input: {
+          reads:
+            index === 0
+              ? [
+                  { path, offset: 1, limit: 20 },
+                  { path, offset: 90, limit: 10 },
+                  { path: 'test/first.ts' }
+                ]
+              : [{ path }]
+        }
       } as MarAgentEvent);
       const [result] = normalizer.normalize({
         ...base,
@@ -967,6 +1016,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(process.locator('.reasoning-group')).toHaveCount(1);
     await expect(process.locator('.command-group')).toHaveCount(1);
     await expect(process.locator('[data-tool-presentation="SKILL"]')).toHaveCount(2);
+    await expect(
+      process.locator('[data-tool-presentation="SKILL"] summary > .conversation-record-preview')
+    ).toHaveText(['first-skill', 'second-skill']);
     await expect(process.locator('.process-activity + .process-duration')).toHaveText(
       locale === 'zh-CN' ? '· 耗时 7s' : '· Duration 7s'
     );
@@ -1086,7 +1138,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(read).toHaveAttribute('open', '');
     await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
     await expect(read.locator('.conversation-tool-detail > summary > strong')).toHaveCount(0);
-    await expect(read.locator('.conversation-tool-preview').first()).toHaveText('src/first.ts');
+    await expect(read.locator('.conversation-tool-preview').first()).toHaveText(
+      locale === 'zh-CN' ? 'first.ts · 另 1 个文件' : 'first.ts · 1 more file'
+    );
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText('test/first.ts');
+    await expect(read.locator('.conversation-tool-detail').first()).toContainText('"offset":90');
     await expect(read.locator('.conversation-tool-detail').first()).toContainText(
       'Content for src/first.ts'
     );
@@ -1126,15 +1182,29 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           expect(heading.alignment).toBe('center');
           expect(heading.contentWidth).toBeLessThanOrEqual(heading.width + 1);
         }
+        if ((await command.getAttribute('open')) === null) {
+          await expect(command.locator('.conversation-command-preview')).toHaveCSS(
+            'white-space',
+            'nowrap'
+          );
+          await command.locator('summary').click();
+        }
+        await expect(command.locator('.conversation-command-output')).toBeVisible();
+        await expect
+          .poll(() => command.evaluate((element) => element.getAnimations().length))
+          .toBe(0);
         const commandLayout = await process.locator('.command-group').evaluate((group) => {
-          const parent = group.querySelector(':scope > details > summary > strong')!;
+          const parent = group.querySelector(':scope > details > summary')!;
           const summary = group.querySelector('.conversation-command-detail > summary')!;
           const preview = summary.querySelector('.conversation-command-preview')!;
           const range = document.createRange();
           range.selectNodeContents(preview);
           return {
-            indent: preview.getBoundingClientRect().left - parent.getBoundingClientRect().left,
-            parentGrid: getComputedStyle(parent.parentElement!).gridTemplateColumns,
+            indent:
+              summary.getBoundingClientRect().left -
+              parent.getBoundingClientRect().left -
+              Number.parseFloat(getComputedStyle(parent).paddingLeft),
+            parentGrid: getComputedStyle(parent).gridTemplateColumns,
             childGrid: getComputedStyle(summary).gridTemplateColumns,
             childAlignment: getComputedStyle(summary).alignItems,
             childMargin: getComputedStyle(summary.parentElement!).marginLeft,
@@ -1142,9 +1212,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
           };
         });
-        expect(Math.abs(commandLayout.indent), JSON.stringify(commandLayout)).toBeLessThanOrEqual(
-          1
+        const indentStep = await page.evaluate(
+          () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
         );
+        expect(commandLayout.indent, JSON.stringify(commandLayout)).toBeCloseTo(indentStep, 1);
         if (width <= 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
         expect(commandLayout.childAlignment).toBe('start');
         for (const left of commandLayout.lineLefts)
@@ -1153,6 +1224,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         await expect(icon).toHaveAttribute('aria-hidden', 'true');
         if ((await command.getAttribute('open')) === null) await command.locator('summary').click();
         await expect(command.locator('.conversation-command-output')).toContainText('first');
+        const output = await command.locator('.conversation-command-output').boundingBox();
+        const commandBounds = await command.boundingBox();
+        expect(output!.x - commandBounds!.x).toBeCloseTo(indentStep, 1);
+        expect(output!.width).toBeCloseTo(commandBounds!.width - indentStep, 1);
         await expect(command.locator('.conversation-command-output')).toHaveCSS(
           'font-family',
           await command
@@ -1387,7 +1462,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   }));
   expect(previewBounds.clipped).toBe(true);
   expect(previewBounds.right).toBeLessThanOrEqual(previewBounds.cardRight);
-  expect(previewBounds.display).toBe('grid');
+  expect(previewBounds.display).toBe('flex');
   expect(previewBounds.textOverflow).toBe('ellipsis');
   await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
   await expect(card.locator('summary > strong')).toBeVisible();
@@ -1536,12 +1611,27 @@ test.describe('Independent tool presentation', () => {
               index: 0,
               runId: null,
               status: 'RUNNING',
-              items: [...latest.values()].map((item) => ({
-                id: item.itemId,
-                kind: item.kind,
-                status: item.status,
-                payload: item.payload
-              }))
+              items: [...latest.values()]
+                .map((item) => ({
+                  id: item.itemId,
+                  kind: item.kind,
+                  status: item.status,
+                  payload: item.payload
+                }))
+                .concat([
+                  {
+                    id: 'subagent-disclosure',
+                    kind: 'tool_call',
+                    status: 'FAILED',
+                    payload: {
+                      toolName: 'agent_start',
+                      subagentOperation: 'START',
+                      subagentId: 'child-agent',
+                      title: 'Review the complete integration and report actionable findings',
+                      outputSummary: 'Original subagent failure details'
+                    }
+                  }
+                ])
             }
           ]);
         await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
@@ -1571,15 +1661,75 @@ test.describe('Independent tool presentation', () => {
         const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
         const skill = page.locator('[data-tool-presentation="SKILL"]');
         const waiting = page.locator('[data-tool-presentation="SLEEP"]').last();
-        await expect(skill.locator('summary span')).toHaveText('original-skill');
-        await expect(search.locator('summary span')).toHaveText(
-          locale === 'zh-CN'
-            ? '已完成 · Original query · 1 个来源'
-            : 'Completed · Original query · 1 sources'
+        await expect(skill.locator('summary .conversation-record-preview')).toHaveText(
+          'original-skill'
+        );
+        const expectInlineSkill = async () => {
+          const positions = await skill.locator('summary').evaluate((element) => {
+            const title = element.querySelector('strong')!.getBoundingClientRect();
+            const name = element.querySelector('span')!.getBoundingClientRect();
+            return { titleY: title.y, nameY: name.y, titleRight: title.right, nameX: name.x };
+          });
+          expect(Math.abs(positions.titleY - positions.nameY)).toBeLessThan(1);
+          expect(positions.nameX).toBeGreaterThan(positions.titleRight);
+          await expect(skill.locator('summary .conversation-record-preview')).toHaveCSS(
+            'white-space',
+            'nowrap'
+          );
+        };
+        await expectInlineSkill();
+        const expectCompactTools = async () => {
+          const groupMeta = page.locator(
+            '.tool-group > details > summary > .conversation-group-meta'
+          );
+          await expect(groupMeta).toBeVisible();
+          const rightInset = await groupMeta.evaluate((element) => {
+            const summary = element.parentElement!;
+            return (
+              summary.getBoundingClientRect().right -
+              element.getBoundingClientRect().right -
+              Number.parseFloat(getComputedStyle(summary).paddingRight)
+            );
+          });
+          expect(rightInset).toBeCloseTo(0, 1);
+          for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
+            const heading = tool.locator('summary');
+            const status = heading.locator('.conversation-record-meta');
+            await expect(status).toBeVisible();
+            const layout = await heading.evaluate((element) => {
+              const title = element.querySelector('strong')!.getBoundingClientRect();
+              const preview = element
+                .querySelector('.conversation-record-preview')!
+                .getBoundingClientRect();
+              const state = element
+                .querySelector('.conversation-record-meta')!
+                .getBoundingClientRect();
+              return {
+                titleY: title.y,
+                previewY: preview.y,
+                stateY: state.y,
+                stateRight: state.right,
+                right:
+                  element.getBoundingClientRect().right -
+                  Number.parseFloat(getComputedStyle(element).paddingRight)
+              };
+            });
+            expect(Math.abs(layout.titleY - layout.previewY)).toBeLessThan(1);
+            expect(Math.abs(layout.titleY - layout.stateY)).toBeLessThan(3);
+            expect(Math.abs(layout.stateRight - layout.right)).toBeLessThan(1);
+            await expect(heading.locator('.conversation-record-preview')).toHaveCSS(
+              'white-space',
+              'nowrap'
+            );
+          }
+        };
+        await expectCompactTools();
+        await expect(search.locator('summary .conversation-record-preview')).toHaveText(
+          locale === 'zh-CN' ? 'Original query · 1 个来源' : 'Original query · 1 sources'
         );
         expect(
           await search
-            .locator('summary span')
+            .locator('summary .conversation-record-preview')
             .evaluate((element) => getComputedStyle(element).cssFloat)
         ).toBe('none');
         await expect(search.locator('summary')).toContainText(
@@ -1604,8 +1754,40 @@ test.describe('Independent tool presentation', () => {
           'https://example.com/source'
         );
         await expect(search.getByText('Original summary')).toBeVisible();
+        await expect
+          .poll(() =>
+            tools.evaluateAll(
+              (elements) => elements.flatMap((element) => element.getAnimations()).length
+            )
+          )
+          .toBe(0);
         await page.screenshot({ path: testInfo.outputPath('tools-desktop.png') });
+        await page.evaluate(() =>
+          document.documentElement.style.setProperty('--el-transition-duration-fast', '1s')
+        );
+        await skill.locator('summary').evaluate((element: HTMLElement) => element.click());
+        await expect(skill).toHaveAttribute('data-disclosure-closing', '');
+        await skill.evaluate((element) =>
+          element.getAnimations().forEach((animation) => animation.pause())
+        );
+        const skillPreview = skill.locator('.conversation-record-preview');
+        await expect(skillPreview).toHaveCSS('flex-grow', '1');
+        await expect(skillPreview).toHaveCSS('white-space', 'nowrap');
+        const closingWidth = (await skillPreview.boundingBox())!.width;
+        await skill.evaluate((element) =>
+          element.getAnimations().forEach((animation) => animation.finish())
+        );
+        await expect(skill).not.toHaveAttribute('open');
+        expect((await skillPreview.boundingBox())!.width).toBeCloseTo(closingWidth, 1);
+        await page.evaluate(() =>
+          document.documentElement.style.removeProperty('--el-transition-duration-fast')
+        );
+        await search.locator('summary').click();
+        await expect(skill).not.toHaveAttribute('open');
+        await expect(search).not.toHaveAttribute('open');
         await page.setViewportSize({ width: 390, height: 844 });
+        await expectInlineSkill();
+        await expectCompactTools();
         await expect
           .poll(() =>
             page

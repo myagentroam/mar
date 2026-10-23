@@ -97,6 +97,43 @@ describe('independent tool presentation', () => {
     expect(toolPresentationDetails(read)).toBe(details);
   });
   it.each(['zh-CN', 'en-US'] as const)(
+    'deduplicates Read titles by full path without changing the original ranges in %s',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      const paths = ['src/first.ts', 'src/first.ts', 'test/first.ts'];
+      const inputSummary = JSON.stringify({
+        reads: [
+          { path: paths[0], offset: 1, limit: 20 },
+          { path: paths[1], offset: 90, limit: 10 },
+          { path: paths[2] }
+        ]
+      });
+      const read = { ...payload({ kind: 'READ', paths }), inputSummary };
+      const original = structuredClone(read);
+      expect(conversationItemText('tool_call', read)).toBe(
+        locale === 'zh-CN' ? 'first.ts · 另 1 个文件' : 'first.ts · 1 more file'
+      );
+      expect(toolPresentationDetails(read)).toContain(inputSummary);
+      expect(read).toEqual(original);
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: paths.slice(0, 2) }))
+      ).toBe('first.ts');
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: ['C:\\src\\file.ts'] }))
+      ).toBe('file.ts');
+      expect(
+        conversationItemText('tool_call', payload({ kind: 'READ', paths: ['', '目录/文件.ts'] }))
+      ).toBe('文件.ts');
+      expect(conversationItemText('tool_call', payload({ kind: 'READ', paths: [] }))).toBe('');
+      expect(
+        conversationItemText(
+          'tool_call',
+          payload({ kind: 'READ', paths: ['a/x.ts', 'b/y.ts', 'c/z.ts'] })
+        )
+      ).toBe(locale === 'zh-CN' ? 'x.ts · 另 2 个文件' : 'x.ts · 2 more files');
+    }
+  );
+  it.each(['zh-CN', 'en-US'] as const)(
     'preserves free text and distinguishes unknown and empty sources in %s',
     (locale) => {
       localePreferenceService().setLocale(locale);
@@ -106,48 +143,36 @@ describe('independent tool presentation', () => {
           payload({ kind: 'WEB_SEARCH', query: '原始 query', ...facts }),
           status
         );
-      const completed = locale === 'zh-CN' ? '已完成' : 'Completed';
-      const running = locale === 'zh-CN' ? '执行中' : 'Running';
-      expect(text({})).toBe(completed + ' · 原始 query');
+      expect(text({})).toBe('原始 query');
       expect(text({ sourceCount: 0 })).toBe(
-        locale === 'zh-CN'
-          ? '已完成 · 原始 query · 未找到结果'
-          : 'Completed · 原始 query · No results found'
+        locale === 'zh-CN' ? '原始 query · 未找到结果' : '原始 query · No results found'
       );
       expect(text({ sourceCount: 2 })).toBe(
-        locale === 'zh-CN' ? '已完成 · 原始 query · 2 个来源' : 'Completed · 原始 query · 2 sources'
+        locale === 'zh-CN' ? '原始 query · 2 个来源' : '原始 query · 2 sources'
       );
-      expect(text({ sourceCount: 2 }, 'IN_PROGRESS')).toBe(running + ' · 原始 query');
+      expect(text({ sourceCount: 2 }, 'IN_PROGRESS')).toBe('原始 query');
       const fetch = payload({
         kind: 'WEB_FETCH',
         requestUrl: 'https://example.com/a',
         title: '原始 Page Title'
       });
-      expect(conversationItemText('tool_call', fetch, 'IN_PROGRESS')).toBe(
-        running + ' · example.com'
-      );
-      expect(conversationItemText('tool_call', fetch, 'COMPLETED')).toBe(
-        completed + ' · 原始 Page Title'
-      );
+      expect(conversationItemText('tool_call', fetch, 'IN_PROGRESS')).toBe('example.com');
+      expect(conversationItemText('tool_call', fetch, 'COMPLETED')).toBe('原始 Page Title');
       expect(
         conversationItemText('tool_call', payload({ kind: 'SKILL', name: '原始-skill' }))
       ).toBe('原始-skill');
     }
   );
   it.each(['zh-CN', 'en-US'] as const)(
-    'keeps skill and sleep captions quiet but preserves failures in %s',
+    'keeps skill and sleep previews separate from their status labels in %s',
     (locale) => {
       localePreferenceService().setLocale(locale);
       const skill = payload({ kind: 'SKILL', name: 'Original skill' });
       for (const status of ['PENDING', 'IN_PROGRESS', 'COMPLETED'])
         expect(conversationItemText('tool_call', skill, status)).toBe('Original skill');
       for (const status of ['FAILED', 'CANCELLED', 'INTERRUPTED']) {
-        expect(conversationItemText('tool_call', skill, status)).toBe(
-          toolPresentationStatus(status) + ' · Original skill'
-        );
-        expect(conversationItemText('tool_call', payload({ kind: 'SLEEP' }), status)).toBe(
-          toolPresentationStatus(status)
-        );
+        expect(conversationItemText('tool_call', skill, status)).toBe('Original skill');
+        expect(conversationItemText('tool_call', payload({ kind: 'SLEEP' }), status)).toBe('');
       }
     }
   );
