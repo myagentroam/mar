@@ -1084,7 +1084,58 @@ describe('Conversation Show Aggregation', () => {
     }
   );
 
-  it('does not aggregate ordinary tools across special card, permission, or subagent boundaries', () => {
+  it.each(['START', 'STATUS', 'WAIT', 'CANCEL', 'MESSAGE', 'RESUME'])(
+    'keeps subagent %s calls independent without splitting other process categories',
+    (operation) => {
+      const processGroup = { id: 'process-subagent-interleaving' };
+      const categories = [
+        ['reasoning', 'reasoning', { sections: [{ text: 'Thinking' }] }],
+        ['command', 'command_execution', { command: 'pwd' }],
+        ['read', 'tool_call', { toolPresentation: { kind: 'READ', paths: ['file.ts'] } }],
+        ['tool', 'tool_call', { toolName: 'custom' }],
+        ['change', 'file_change', { changes: [{ path: 'file.ts', change: 'MODIFIED' }] }]
+      ] as const;
+      for (const status of ['IN_PROGRESS', 'COMPLETED', 'FAILED'] as const) {
+        const members = (suffix: string) =>
+          categories.map(([id, kind, payload]) =>
+            item(`${id}-${suffix}`, kind, payload, status, processGroup)
+          );
+        const call = (id: string) =>
+          item(
+            id,
+            'tool_call',
+            {
+              subagentOperation: operation === 'WAIT' ? 'STATUS' : operation,
+              subagentWait: operation === 'WAIT',
+              subagentId: 'same-child',
+              title: 'Same task'
+            },
+            status,
+            processGroup
+          );
+        const records = [...members('first'), call('call-1'), ...members('last'), call('call-2')];
+        const original = structuredClone(records);
+        const display = conversationDisplayItems(records);
+        expect(display.map(({ id }) => id)).toEqual([
+          'call-1',
+          ...categories.map(([id]) => `${id}-first`),
+          'call-2'
+        ]);
+        for (const [id] of categories) {
+          expect(display.find((entry) => entry.id === `${id}-first`)).toMatchObject({
+            items: [{ id: `${id}-first` }, { id: `${id}-last` }]
+          });
+        }
+        expect(display.filter((entry) => entry.type === 'subagent_group')).toMatchObject([
+          { id: 'call-1', items: [{ id: 'call-1', status }] },
+          { id: 'call-2', items: [{ id: 'call-2', status }] }
+        ]);
+        expect(records).toEqual(original);
+      }
+    }
+  );
+
+  it('does not aggregate ordinary tools across special card or permission boundaries', () => {
     const processGroup = { id: 'process-boundaries' } as const;
     const permissionStop = {
       ...item('permission-stop', 'tool_call', { toolName: 'write' }, 'COMPLETED', processGroup),
@@ -1117,19 +1168,8 @@ describe('Conversation Show Aggregation', () => {
       },
       { item: permissionStop, type: 'item' },
       {
-        item: item(
-          'subagent',
-          'tool_call',
-          {
-            namespace: 'collaboration',
-            toolName: 'spawn_agent',
-            subagentOperation: 'START',
-            subagentId: 'child'
-          },
-          'COMPLETED',
-          processGroup
-        ),
-        type: 'subagent_group'
+        item: { ...permissionStop, payload: { subagentOperation: 'START', subagentId: 'child' } },
+        type: 'item'
       }
     ];
 

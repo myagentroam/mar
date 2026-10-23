@@ -207,15 +207,16 @@ export function conversationDisplayItems(
     // Independent tool rows do not split other categories in the same process.
     if (
       groupId &&
-      entry.type === 'item' &&
-      item.kind === 'tool_call' &&
-      item.permissionStop === undefined &&
-      toolPresentation(item.payload) !== undefined
+      (entry.type === 'subagent_group' ||
+        (entry.type === 'item' &&
+          item.kind === 'tool_call' &&
+          item.permissionStop === undefined &&
+          toolPresentation(item.payload) !== undefined))
     ) {
       result.push(entry);
       continue;
     }
-    if (!groupId || !('items' in entry) || entry.type === 'subagent_group') {
+    if (!groupId || !('items' in entry)) {
       anchors.clear();
       result.push(entry);
       continue;
