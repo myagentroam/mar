@@ -324,6 +324,7 @@ defineExpose({
 
 .workspace-file-tab {
   display: inline-flex;
+  flex-shrink: 0;
   min-width: 0;
   align-items: center;
   border-radius: var(--mar-radius-selection);

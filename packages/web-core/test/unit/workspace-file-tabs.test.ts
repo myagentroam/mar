@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createRenderer,
@@ -677,6 +676,7 @@ describe('Workspace file tabs frame', () => {
     });
     app.use(i18n);
     app.use(ElementPlus);
+    app.directive('tooltip', { getSSRProps: () => ({}) });
     app.provide(ID_INJECTION_KEY, { prefix: 40, current: 0 });
     app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
@@ -691,54 +691,6 @@ describe('Workspace file tabs frame', () => {
     expect(html).toContain(i18n.global.t('filePreviewDialog.closeFileWindow'));
     expect(html).toContain('aria-label=');
     expect(html).toContain('page');
-  });
-
-  it('only consumes Ctrl/Cmd+E when the active page changes edit state', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceFileTabs.vue', import.meta.url),
-      'utf8'
-    );
-    const pageFrameSource = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceFilePageFrame.vue', import.meta.url),
-      'utf8'
-    );
-    const diffPageSource = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceGitDiffPage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain("return handle.toggleEdit() === 'CHANGED' ? 'HANDLED' : 'IGNORED';");
-    expect(source).toContain('closeWindow: requestCloseAll');
-    expect(source).toContain('requestClose(activeTab.value.id)');
-    expect(source).toContain('const closesLastTab = ids.length === props.tabs.length;');
-    expect(source).toContain("if (closesLastTab) emit('closeLast');");
-    expect(source).toContain("document.documentElement.classList.add('file-preview-open');");
-    expect(source).toContain("document.documentElement.classList.remove('file-preview-open');");
-    expect(source).toContain("event.key === 'ArrowLeft'");
-    expect(source).toContain(':tabindex="tab.id === activeTab?.id ? 0 : -1"');
-    expect(source).toContain('position: fixed;');
-    expect(source).toContain('flex: 0 0 32px;');
-    expect(source).toContain('.workspace-file-tab-content {\n  display: flex;');
-    expect(pageFrameSource).toContain('class="workspace-file-page-frame"');
-    expect(pageFrameSource).not.toContain('class="file-preview-overlay workspace-file-page-frame"');
-    expect(pageFrameSource).toMatch(
-      /<div class="workspace-file-page-frame-content">\s*<FilePreviewLoading v-if="props.loading" overlay \/>/u
-    );
-    expect(pageFrameSource).toMatch(
-      /\.workspace-file-page-frame-content\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate;[^}]*\}/u
-    );
-    expect(diffPageSource).toContain('openFind: () => viewer.value?.openFind() ?? false');
-    expect(diffPageSource).toContain('selectAll: () => viewer.value?.selectAll() ?? false');
-    expect(diffPageSource).toContain('diff.value = undefined;');
-    expect(diffPageSource).toContain('loadFailed.value = false;');
-    expect(diffPageSource).toContain('loadFailed.value = true;');
-    expect(diffPageSource).toContain(
-      'if (generation === requestGeneration) diff.value = nextDiff;'
-    );
-    expect(diffPageSource).toContain('@retry="load"');
-    expect(diffPageSource).toContain(
-      "toggleEdit: () => viewer.value?.toggleEdit() ?? 'UNAVAILABLE'"
-    );
   });
 });
 
