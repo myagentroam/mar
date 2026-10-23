@@ -1,6 +1,52 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
+type BranchMotionSample = {
+  heights: number[];
+  followingNodeTops: number[];
+  inert: boolean;
+  duration: number;
+};
+
+async function branchMotionSamples(page: Page): Promise<BranchMotionSample[]> {
+  return page.evaluate(
+    () => (window as unknown as { branchMotionSamples: BranchMotionSample[] }).branchMotionSamples
+  );
+}
+
+async function observeBranchMotion(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const samples: BranchMotionSample[] = [];
+    Object.assign(window, { branchMotionSamples: samples });
+    document.addEventListener('transitionrun', (event) => {
+      const branch = event.target;
+      if (
+        event.propertyName !== 'height' ||
+        !(branch instanceof HTMLElement) ||
+        !branch.matches('.workspace-tree .workspace-branches')
+      )
+        return;
+      const animation = branch
+        .getAnimations()
+        .find((item) => item instanceof CSSTransition && item.transitionProperty === 'height');
+      if (!animation) return;
+      animation.pause();
+      const duration = Number(animation.effect!.getTiming().duration);
+      const heights: number[] = [];
+      const followingNodeTops: number[] = [];
+      for (const time of [0, duration / 2, duration]) {
+        animation.currentTime = time;
+        heights.push(branch.getBoundingClientRect().height);
+        followingNodeTops.push(
+          document.querySelector('.node-tree > li:nth-child(2)')!.getBoundingClientRect().top
+        );
+      }
+      samples.push({ heights, followingNodeTops, inert: branch.inert, duration });
+      animation.finish();
+    });
+  });
+}
+
 async function mockResourceTree(page: Page, workspaceCreatable = false) {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
   let includeNewNode = false;
@@ -101,6 +147,9 @@ async function dragOverRow(
   target: Locator,
   position: 'before' | 'after'
 ) {
+  // Let Playwright wait for both rows to be actionable before measuring drag coordinates.
+  await source.hover();
+  await target.hover();
   const sourceBounds = await source.boundingBox();
   const targetBounds = await target.boundingBox();
   expect(sourceBounds).not.toBeNull();
@@ -114,6 +163,228 @@ async function dragOverRow(
   await page.mouse.move(sourceX + 8, sourceY, { steps: 3 });
   await page.mouse.move(targetX, targetY, { steps: 5 });
   await page.mouse.move(targetX, targetY);
+}
+
+test('Resource tree filtering settles interrupted motion without animating automatic expansion', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'zh-CN'));
+  await mockResourceTree(page);
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台', exact: true }).click();
+  const tree = page.locator('aside.workspace-tree');
+  await tree.getByRole('button', { name: 'Node 1', exact: true }).click();
+  const group = tree.locator('.workspace-group-toggle[title="Team"]');
+  await expect(group).toBeVisible();
+  await tree.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations({ subtree: true }).map((item) => item.finished));
+    Object.assign(window, { filterChevronMotions: [] as string[] });
+    document.addEventListener('transitionrun', (event) => {
+      if (event.target instanceof Element && event.target.matches('.workspace-tree .tree-chevron'))
+        (window as unknown as { filterChevronMotions: string[] }).filterChevronMotions.push(
+          event.propertyName
+        );
+    });
+  });
+  const filter = tree.locator('.workspace-tree-filter input');
+  for (const query of ['Workspace A', '']) {
+    await filter.fill(query);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    expect
+      .soft(
+        await page.evaluate(
+          () => (window as unknown as { filterChevronMotions: string[] }).filterChevronMotions
+        )
+      )
+      .toEqual([]);
+  }
+
+  // Pause real CSS motion so filtering cannot pass merely by waiting for it to finish.
+  for (const expanded of [true, false]) {
+    const filteredState = await group.evaluate(
+      (button) =>
+        new Promise((resolve) => {
+          const row = button.parentElement!;
+          const pause = (event: Event) => {
+            if (
+              !(event instanceof TransitionEvent) ||
+              event.propertyName !== 'height' ||
+              !(event.target instanceof HTMLElement) ||
+              !event.target.classList.contains('workspace-group-branches')
+            )
+              return;
+            const animation = event.target
+              .getAnimations()
+              .find(
+                (item) => item instanceof CSSTransition && item.transitionProperty === 'height'
+              );
+            if (!animation) return;
+            animation.pause();
+            animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+            row.removeEventListener('transitionrun', pause);
+            const expandedBeforeFilter = button.getAttribute('aria-expanded');
+            const input = document.querySelector<HTMLInputElement>('.workspace-tree-filter input')!;
+            input.value = 'Workspace A';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            // Observe the first filtered render, before Vue's transition timeout can finish it.
+            void Promise.resolve().then(() => {
+              const branch = document
+                .querySelector('.workspace-group-toggle[title="Team"]')!
+                .parentElement!.querySelector<HTMLElement>(':scope > .workspace-group-branches')!;
+              resolve({
+                expandedBeforeFilter,
+                overflow: getComputedStyle(branch).overflow,
+                inert: branch.inert,
+                heightIsNatural:
+                  Math.abs(branch.getBoundingClientRect().height - branch.scrollHeight) < 1,
+                hasMotion: branch.getAnimations().length > 0
+              });
+            });
+          };
+          row.addEventListener('transitionrun', pause);
+          (button as HTMLButtonElement).click();
+        })
+    );
+    expect(filteredState).toEqual({
+      expandedBeforeFilter: String(expanded),
+      overflow: 'visible',
+      inert: false,
+      heightIsNatural: true,
+      hasMotion: false
+    });
+    await filter.fill('');
+    await expect(group).toHaveAttribute('aria-expanded', String(expanded));
+  }
+
+  // Interrupt real transitions without the geometry sampler forcing them to finish.
+  const toggles = await group.evaluate(
+    (button) =>
+      new Promise<number>((resolve) => {
+        const row = button.parentElement!;
+        let count = 0;
+        const interrupt = (event: Event) => {
+          if (
+            !(event instanceof TransitionEvent) ||
+            event.propertyName !== 'height' ||
+            !(event.target instanceof HTMLElement) ||
+            !event.target.classList.contains('workspace-group-branches')
+          )
+            return;
+          const animation = event.target
+            .getAnimations()
+            .find((item) => item instanceof CSSTransition && item.transitionProperty === 'height');
+          if (!animation) return;
+          count += 1;
+          if (count === 3) {
+            row.removeEventListener('transitionrun', interrupt);
+            resolve(count);
+            return;
+          }
+          animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+          (button as HTMLButtonElement).click();
+        };
+        row.addEventListener('transitionrun', interrupt);
+        (button as HTMLButtonElement).click();
+      })
+  );
+  expect(toggles).toBe(3);
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
+  const branches = group.locator('..').locator(':scope > .workspace-group-branches');
+  await expect(branches).toHaveCount(1);
+  await expect(
+    tree.locator('.workspace-branch-enter-active, .workspace-branch-leave-active')
+  ).toHaveCount(0);
+  await expect(branches).toHaveCSS('overflow', 'visible');
+  expect(
+    await branches.evaluate(
+      (branch) =>
+        !(branch as HTMLElement).inert &&
+        (branch as HTMLElement).style.getPropertyValue('--workspace-branch-height') === ''
+    )
+  ).toBe(true);
+  await expect(branches.locator('.workspace-branch-button')).toHaveCount(2);
+});
+
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`Resource tree expansion shares restrained motion and preserves navigation: ${reducedMotion}`, async ({
+    page
+  }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'zh-CN'));
+    await observeBranchMotion(page);
+    const fixture = await mockResourceTree(page);
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台', exact: true }).click();
+    const tree = page.locator('aside.workspace-tree');
+    await tree.getByRole('button', { name: 'Node 1', exact: true }).click();
+    const group = tree.locator('.workspace-group-toggle[title="Team"]');
+    const nodeToggle = tree.locator('.node-expand-button').first();
+    await expect(group).toBeVisible();
+    await expect(tree.locator('.workspace-branch-enter-active')).toHaveCount(0);
+    const initialCount = (await branchMotionSamples(page)).length;
+    const duration = reducedMotion === 'reduce' ? '0s' : '0.16s';
+    for (const toggle of [group, nodeToggle])
+      await expect(toggle.locator('.tree-chevron')).toHaveCSS('transition-duration', duration);
+
+    await group.focus();
+    await group.press('Enter');
+    await expect(group).toHaveAttribute('aria-expanded', 'true');
+    await expect(group).toBeFocused();
+    await expect(tree.getByRole('button', { name: 'Workspace A', exact: true })).toBeVisible();
+    await expect(tree.locator('.workspace-branch-enter-active')).toHaveCount(0);
+    await group.press('Enter');
+    await expect(tree.getByRole('button', { name: 'Workspace A', exact: true })).toHaveCount(0);
+    await expect(group).toBeFocused();
+    await nodeToggle.click();
+    await expect(group).toHaveCount(0);
+    await nodeToggle.click();
+    await expect(group).toBeVisible();
+    await expect(tree.locator('.workspace-branch-enter-active')).toHaveCount(0);
+
+    const samples = (await branchMotionSamples(page)).slice(initialCount);
+    if (reducedMotion === 'reduce') expect(samples).toEqual([]);
+    else {
+      expect(samples).toHaveLength(4);
+      for (const sample of samples) {
+        const [start, middle, end] = sample.heights;
+        expect(middle!).toBeGreaterThan(Math.min(start!, end!));
+        expect(middle!).toBeLessThan(Math.max(start!, end!));
+        const [topBefore, topDuring, topAfter] = sample.followingNodeTops;
+        expect(topDuring!).toBeGreaterThan(Math.min(topBefore!, topAfter!));
+        expect(topDuring!).toBeLessThan(Math.max(topBefore!, topAfter!));
+        expect(sample.inert).toBe(start! > end!);
+        expect(sample.duration).toBe(160);
+      }
+    }
+    const beforeFilter = (await branchMotionSamples(page)).length;
+    const filter = tree.locator('.workspace-tree-filter input');
+    await filter.fill('Workspace A');
+    await expect(tree.getByRole('button', { name: 'Workspace A', exact: true })).toBeVisible();
+    await filter.fill('');
+    await expect(group).toHaveAttribute('aria-expanded', 'false');
+    expect((await branchMotionSamples(page)).length).toBe(beforeFilter);
+    expect(fixture.mutations).toEqual([]);
+
+    await group.click();
+    await tree.getByRole('button', { name: 'Workspace A', exact: true }).click();
+    await group.click();
+    await expect(tree.getByRole('button', { name: 'Workspace A', exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(group).toBeVisible();
+    expect(await branchMotionSamples(page)).toEqual([]);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await expect(tree).toBeVisible();
+    await group.click();
+    await expect(tree.getByRole('button', { name: 'Workspace A', exact: true })).toBeVisible();
+    await expect(tree.locator('.workspace-branch-enter-active')).toHaveCount(0);
+    expect((await branchMotionSamples(page)).length).toBe(reducedMotion === 'reduce' ? 0 : 1);
+  });
 }
 
 for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -417,7 +688,11 @@ test('Real Workspace dragging supports within-group sorting, grouping, and movin
   ).toHaveText(['Workspace A']);
   await expect(tree.locator('.drop-target, .drop-before, .drop-after')).toHaveCount(0);
   await page.reload();
-  await workspace('Node 1').click();
+  const nodeToggle = tree.locator('.node-expand-button').first();
+  await expect(nodeToggle).toHaveAttribute('aria-expanded', 'true');
+  // Reopen the restored Node to fetch its lazy Workspace list without an active Workspace.
+  await nodeToggle.click();
+  await nodeToggle.click();
   await expect(
     tree
       .locator('.node-tree > li')
