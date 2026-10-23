@@ -659,7 +659,7 @@ for (const locale of ['en-US', 'zh-CN']) {
 for (const scheme of ['Light', 'Dark']) {
   test(
     'real controls preserve the built-in ' + scheme + ' palette and respond to custom states',
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       const controls = page.getByRole('region', { name: 'Real theme controls' });
       const row = page.locator('.theme-option').filter({
         has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
@@ -683,6 +683,18 @@ for (const scheme of ['Light', 'Dark']) {
         'background-color',
         scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(36, 95, 168)'
       );
+      const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
+      await primary.scrollIntoViewIfNeeded();
+      const primaryBounds = await primary.boundingBox();
+      await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
+      await primary.hover();
+      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(24, 75, 139)';
+      await expect(primary).toHaveCSS('background-color', hoverColor);
+      await expect(primary).toHaveCSS('border-top-color', hoverColor);
+      await expect(primary).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(primary).toHaveCSS('transform', 'none');
+      expect(await primary.boundingBox()).toEqual(primaryBounds);
+      await primary.screenshot({ path: testInfo.outputPath('primary-hover.png') });
       expect(
         resolvedColorToHex(
           await controls
@@ -713,6 +725,7 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-table-header-bg': '#234567',
         '--mar-table-row-hover-bg': '#345678',
         '--mar-color-on-accent': '#fedcba',
+        '--mar-color-brand-hover': '#234567',
         '--mar-control-link-text': '#abcdef',
         '--mar-control-link-hover': '#bcdefa',
         '--mar-color-brand-disabled': '#cdefab'
@@ -741,6 +754,9 @@ for (const scheme of ['Light', 'Dark']) {
         'color',
         'rgb(254, 220, 186)'
       );
+      await primary.hover();
+      await expect(primary).toHaveCSS('background-color', 'rgb(35, 69, 103)');
+      await expect(primary).toHaveCSS('border-top-color', 'rgb(35, 69, 103)');
       const disabledPrimary = controls.getByRole('button', {
         name: 'Sample disabled primary',
         exact: true

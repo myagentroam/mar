@@ -13,11 +13,13 @@ async function measureRows(page: Page) {
       };
       return {
         title: title.textContent,
+        first: item.matches(':first-child'),
         item: bounds(item),
         row: bounds(row),
         minHeight: getComputedStyle(link).minHeight,
         paddingBlock: getComputedStyle(link).paddingBlock,
         fontSize: getComputedStyle(title).fontSize,
+        fontWeight: getComputedStyle(title).fontWeight,
         titleBounds: bounds(title),
         titleScrollWidth: title.scrollWidth,
         titleClientWidth: title.clientWidth,
@@ -242,9 +244,10 @@ for (const locale of ['zh-CN', 'en-US']) {
         expect(environment.bodyFontSize).toBe('14px');
         for (const row of [...desktop, ...hovered, ...breakpoint]) {
           expect(row.minHeight).toBe('34px');
-          expect(row.fontSize).toBe('13.2px');
+          expect(row.fontSize).toBe('14px');
+          expect(row.fontWeight).toBe('400');
           expect(row.row.height).toBeCloseTo(34, 1);
-          expect(row.item.height).toBeCloseTo(36, 1);
+          expect(row.item.height).toBeCloseTo(row.first ? 40 : 38, 1);
           for (const part of row.parts) {
             expect(part.bounds.x).toBeGreaterThanOrEqual(row.row.x);
             expect(part.bounds.x + part.bounds.width).toBeLessThanOrEqual(
@@ -257,7 +260,7 @@ for (const locale of ['zh-CN', 'en-US']) {
             expect(
               Math.abs(part.bounds.y + part.bounds.height / 2 - (row.row.y + row.row.height / 2))
             ).toBeLessThanOrEqual(1);
-            if (part.className === 'session-relative-time') expect(part.fontSize).toBe('12.1px');
+            if (part.className === 'session-relative-time') expect(part.fontSize).toBe('12px');
             if (part.className?.includes('runner-brand-icon'))
               expect(part.bounds.height).toBeCloseTo(14.42, 1);
           }
@@ -270,8 +273,9 @@ for (const locale of ['zh-CN', 'en-US']) {
           for (const row of sample.rows) {
             expect(row.minHeight).toBe('40px');
             expect(row.fontSize).toBe('13px');
+            expect(row.fontWeight).toBe('400');
             expect(row.row.height).toBeCloseTo(40, 1);
-            expect(row.item.height).toBeCloseTo(42, 1);
+            expect(row.item.height).toBeCloseTo(row.first ? 46 : 44, 1);
           }
         }
       }

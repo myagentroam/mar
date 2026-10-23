@@ -1019,7 +1019,7 @@ function submitSessionSearch(): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--mar-font-size-body);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .session-title-row {
