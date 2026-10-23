@@ -38,7 +38,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
         aria-live="polite"
         :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
       >
-        <BusyIndicator />
+        <BusyIndicator class="history-busy-indicator" />
       </div>
       <el-button
         v-else-if="initialLoadFailed"
@@ -63,7 +63,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
           role="status"
           :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
         >
-          <BusyIndicator />
+          <BusyIndicator class="history-busy-indicator" />
         </div>
         <el-button
           v-else
@@ -152,6 +152,10 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
   color: var(--mar-text-faint);
   font-size: var(--mar-font-size-meta);
   text-align: center;
+}
+
+.history-busy-indicator {
+  color: var(--mar-color-brand-text);
 }
 
 .conversation-latest {

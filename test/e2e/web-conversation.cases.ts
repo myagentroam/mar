@@ -1272,6 +1272,13 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
           status: 'RUNNING',
           items: [
             {
+              id: 'round-input',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              startedAt: now - 11_000,
+              payload: { text: 'Inspect the workspace.' }
+            },
+            {
               id: 'reasoning-first',
               kind: 'reasoning',
               startedAt: now - 8000,
@@ -1361,11 +1368,29 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     'animation-name',
     /busy-indicator-spin/u
   );
+  await expect(page.locator('.composer-working > i')).toHaveCSS('width', '10px');
+  const stroke = await page
+    .locator('.composer-working > i')
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
+  // Fractional borders snap to physical pixels at the current device scale.
+  expect(stroke).toBeGreaterThan(0);
+  expect(stroke).toBeLessThanOrEqual(1.5);
   const indicator = heading.locator('.process-activity-indicator');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(indicator).toBeVisible();
   await expect(indicator).toHaveCSS('animation-name', /busy-indicator-spin/u);
   await expect(indicator).toHaveAttribute('aria-hidden', 'true');
+  await expect(heading.locator('.process-activity-label')).toHaveCSS('font-weight', '600');
+  expect(
+    await heading.locator('.process-activity-label').evaluate((element) => {
+      const expected = document.createElement('span');
+      expected.style.color = 'var(--mar-conversation-text)';
+      element.parentElement!.append(expected);
+      const matches = getComputedStyle(element).color === getComputedStyle(expected).color;
+      expected.remove();
+      return matches;
+    })
+  ).toBe(true);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(indicator).toHaveCSS('animation-name', 'none');
   await expect(page.locator('.composer-working > i')).toHaveCSS('animation-name', 'none');
@@ -1488,6 +1513,21 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await emitMockSessionEvent(page, 'run', {
     run: { ...run, status: 'SUCCEEDED', completedAt: run.startedAt + 20_000 }
   });
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'session-1',
+    turn: {
+      id: 'turn-reasoning',
+      sessionId: 'session-1',
+      runId: run.id,
+      status: 'SUCCEEDED',
+      items: []
+    },
+    segments: segments(true).map((segment) => ({
+      ...segment,
+      status: 'SUCCEEDED',
+      completedAt: now + 10_000
+    }))
+  });
   await expect(heading).toHaveAttribute('aria-expanded', 'true');
   await expect(processes.last().locator('.process-heading')).toHaveAttribute(
     'aria-expanded',
@@ -1495,7 +1535,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   );
   await expect(processes.last().locator('.process-heading')).not.toContainText('有需关注的记录');
   await expect(card.locator('details')).toHaveAttribute('open', '');
-  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 20s');
+  await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 21s');
   await expect(processes.locator('.process-activity-indicator')).toHaveCount(0);
   await expect(processes.last().locator('.process-heading')).toContainText('已完成');
   await expect(activeDuration).toContainText('2s');
@@ -3134,6 +3174,16 @@ test('Opening a session loads only the latest window without initial scroll back
   });
   await page.getByRole('button', { name: '加载更早记录' }).click();
   await expect(page.locator('.conversation-history-control .busy-indicator')).toBeVisible();
+  expect(
+    await page.locator('.conversation-history-control .busy-indicator').evaluate((element) => {
+      const expected = document.createElement('span');
+      expected.style.color = 'var(--mar-color-brand-text)';
+      element.parentElement!.append(expected);
+      const matches = getComputedStyle(element).color === getComputedStyle(expected).color;
+      expected.remove();
+      return matches;
+    })
+  ).toBe(true);
   await expect(page.locator('button.conversation-load-older')).toHaveCount(0);
   releaseOlder();
   await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');

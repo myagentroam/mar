@@ -61,7 +61,9 @@ export function conversationSegments(turn: NodeConversationTurn): ConversationSe
       ...(turn.rewind === undefined ? {} : { rewind: turn.rewind }),
       items: projectedItems,
       startedAt: projectedItems[0]?.startedAt ?? turn.startedAt,
-      completedAt: projectedItems.at(-1)?.completedAt ?? null
+      completedAt: latest
+        ? (turn.completedAt ?? null)
+        : (projectedItems.at(-1)?.completedAt ?? null)
     };
   });
 }

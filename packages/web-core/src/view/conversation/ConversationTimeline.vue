@@ -66,7 +66,10 @@ import type {
 import { userInputOtherAnswerId } from '../../service/ConversationUserInputService.js';
 import { absoluteMessageTime } from '../../util/conversation-presentation.js';
 import type { AgentRun } from '../../model/workbench.js';
-import { completedStepDuration, runDuration } from '../../util/conversation-activity.js';
+import {
+  completedStepDuration,
+  completedConversationDurations
+} from '../../util/conversation-activity.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
 import { isTerminalRunStatus } from '../../service/RunService.js';
 
@@ -470,15 +473,11 @@ function messageTimeTitle(timestamp: number): string {
 
 const runDurations = computed(() => {
   const labels = new Map<string, string>();
-  for (const run of props.runs ?? []) {
-    if (!isTerminalRunStatus(run.status)) continue;
-    const duration = runDuration(run);
-    const last = [...props.turns].reverse().find((turn) => turn.runId === run.id);
-    if (duration !== undefined && last !== undefined)
-      labels.set(
-        last.id,
-        translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
-      );
+  for (const [turnId, duration] of completedConversationDurations(props.turns)) {
+    labels.set(
+      turnId,
+      translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
+    );
   }
   return labels;
 });

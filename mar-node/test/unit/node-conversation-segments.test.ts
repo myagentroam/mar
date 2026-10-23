@@ -48,6 +48,21 @@ function turn(id: string, kinds: readonly string[]) {
 }
 
 describe('Node Conversation Segment', () => {
+  it('preserves the final Turn completion time without changing earlier segment boundaries', () => {
+    const original = turn('finished', [
+      'user_message',
+      'assistant_message',
+      'tool_call',
+      'assistant_message'
+    ]);
+    const segments = conversationSegments({ ...original, runId: null, completedAt: 9000 });
+    expect(segments.map((segment) => segment.completedAt)).toEqual([1, 9000]);
+    expect(segments.map((segment) => segment.turnId)).toEqual(['finished', 'finished']);
+    expect(segments.every((segment) => segment.runId === null)).toBe(true);
+    const withoutEnd = conversationSegments({ ...original, runId: null, completedAt: null });
+    expect(withoutEnd.at(-1)?.completedAt).toBeNull();
+  });
+
   it('keeps the Segment identity stable when Runtime and native history use different Turn IDs', () => {
     const runtime = structuredClone(turn('runtime-turn', ['user_message']));
     const official = structuredClone(turn('native-turn', ['user_message']));

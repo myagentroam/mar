@@ -731,23 +731,78 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain(i18n.global.t('conversationActivity.historyStart'));
   });
 
-  it('renders the completed Run duration once at its last segment and never guesses historical time', async () => {
-    const turns = ['first', 'last'].map((id) =>
-      conversationTurn([conversationItem(id, 'assistant_message', { text: id })], {
-        id,
-        runId: 'run',
-        status: 'SUCCEEDED'
-      })
+  it('renders the same completed round duration with and without runtime Run metadata', async () => {
+    const turns = ['first', 'last'].map((id, index) =>
+      conversationTurn(
+        [
+          {
+            ...conversationItem(id, index === 0 ? 'user_message' : 'assistant_message', {
+              text: id
+            }),
+            startedAt: index === 0 ? 1000 : 20000
+          }
+        ],
+        {
+          id,
+          turnId: 'round',
+          segmentIndex: index,
+          runId: 'run',
+          status: 'SUCCEEDED',
+          completedAt: index === 0 ? 5000 : 21000
+        }
+      )
     );
     const html = await render(ConversationTimeline, {
       ...timelineProps,
       turns,
-      runs: [{ id: 'run', status: 'SUCCEEDED', startedAt: 1_000, completedAt: 21_000 }]
+      runs: [{ id: 'run', status: 'SUCCEEDED', startedAt: 2_000, completedAt: 22_000 }]
     });
     expect(html.match(/class="conversation-run-duration"/gu)).toHaveLength(1);
     expect(html).toContain(i18n.global.t('conversationActivity.total', { value: '20s' }));
-    const historical = await render(ConversationTimeline, { ...timelineProps, turns });
-    expect(historical).not.toContain('class="conversation-run-duration"');
+    const historical = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: turns.map((turn) => ({ ...turn, runId: null }))
+    });
+    expect(historical.match(/class="conversation-run-duration"/gu)).toHaveLength(1);
+    expect(historical).toContain(i18n.global.t('conversationActivity.total', { value: '20s' }));
+  });
+
+  it('renders a completed historical round once without runtime Run metadata', async () => {
+    const turns = [
+      conversationTurn(
+        [
+          {
+            ...conversationItem('input', 'user_message', { text: 'Start' }),
+            startedAt: 1000
+          }
+        ],
+        {
+          id: 'first',
+          turnId: 'original',
+          segmentIndex: 0,
+          runId: null,
+          status: 'SUCCEEDED',
+          completedAt: 5000
+        }
+      ),
+      conversationTurn([conversationItem('answer', 'assistant_message', { text: 'Done' })], {
+        id: 'last',
+        turnId: 'original',
+        segmentIndex: 1,
+        runId: null,
+        status: 'SUCCEEDED',
+        completedAt: 21000
+      })
+    ];
+    const html = await render(ConversationTimeline, { ...timelineProps, turns, runs: [] });
+    expect(html.match(/class="conversation-run-duration"/gu)).toHaveLength(1);
+    expect(html).toContain(i18n.global.t('conversationActivity.total', { value: '20s' }));
+    const partial = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: turns.slice(1),
+      runs: []
+    });
+    expect(partial).not.toContain('class="conversation-run-duration"');
   });
 
   it('leaves the jump-to-latest highlight to Element Plus', () => {
