@@ -149,13 +149,14 @@ const emit = defineEmits<{
 <template>
   <div ref="center" :class="['workbench-notification-center', { 'mobile-mode': mobileMode }]">
     <button
-      class="workbench-notification-trigger icon-button utility-control"
+      :class="['workbench-notification-trigger', 'icon-button', { 'utility-control': !mobileMode }]"
       type="button"
       :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+      :title="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
       :aria-expanded="open"
       @click="toggle"
     >
-      <el-icon><Bell /></el-icon>
+      <el-icon aria-hidden="true"><Bell /></el-icon>
       <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
         triggerLabel
       }}</span>
@@ -301,14 +302,37 @@ const emit = defineEmits<{
 .workbench-notification-trigger-label {
   font-size: var(--mar-font-size-meta);
 }
-.workbench-notification-center.mobile-mode .workbench-notification-trigger {
-  display: grid;
+.workbench-notification-center.mobile-mode {
+  display: flex;
+  box-sizing: border-box;
   width: 52px;
-  min-width: 52px;
   height: var(--sidebar-header-height);
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px 5px;
+}
+.mobile-mode .workbench-notification-trigger {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--mar-radius-selection);
+  padding: 2px 6px;
+}
+.mobile-mode .workbench-notification-trigger .el-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 1.125rem;
+  line-height: 18px;
+}
+.mobile-mode .workbench-notification-trigger:hover {
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
+}
+.mobile-mode .workbench-notification-trigger[aria-expanded='true'] {
+  background: var(--mar-fill-selection);
+  color: var(--mar-color-brand-text);
 }
 .workbench-notification-panel.mobile-mode {
   --notification-panel-header-height: var(--sidebar-header-height);
