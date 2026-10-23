@@ -407,13 +407,6 @@ html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-disabled-text-color: var(--mar-control-disabled-on-accent);
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] .el-message--info {
-  --el-message-bg-color: var(--mar-bg-tab-inactive);
-  --el-message-border-color: var(--mar-border-default);
-  --el-message-text-color: var(--mar-text-primary);
-  background-color: var(--el-message-bg-color);
-}
-
 html.console-ui .el-button--primary.is-link,
 html.console-ui .el-button--primary.is-text,
 html.console-ui .el-link--primary {
@@ -657,14 +650,84 @@ html.console-ui :where(input, textarea)::placeholder {
 }
 
 html.console-ui .el-message {
-  max-width: min(36rem, calc(100vw - 2rem));
+  --el-message-bg-color: var(--mar-control-bg-color-overlay);
+  --el-message-border-color: var(--mar-border-default);
+  --el-message-text-color: var(--mar-text-primary);
+  max-width: min(
+    36rem,
+    calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))
+  );
+  align-items: flex-start;
+  padding: 10px 36px 10px 12px;
+  gap: 8px;
+  border-radius: var(--mar-radius-control);
+  background: var(--el-message-bg-color);
+  box-shadow: 0 4px 12px var(--mar-shadow-medium);
+  font-family: var(--mar-font-sans);
+  font-size: var(--mar-font-size-body);
+  margin-top: env(safe-area-inset-top);
 }
 
 html.console-ui .el-message__content {
   min-width: 0;
+  color: var(--mar-text-primary);
+  font-size: inherit;
+}
+
+html.console-ui .mar-message-text {
+  display: block;
   overflow-wrap: anywhere;
   white-space: pre-line;
   line-height: 1.5;
+  max-height: min(20rem, 50dvh);
+  overflow-y: auto;
+  color: var(--mar-text-primary);
+  font-size: inherit;
+}
+
+html.console-ui .el-message__icon {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+}
+
+html.console-ui .el-message--info .el-message__icon {
+  color: var(--mar-text-secondary);
+}
+html.console-ui .el-message--success .el-message__icon {
+  color: var(--mar-control-color-success);
+}
+html.console-ui .el-message--warning .el-message__icon {
+  color: var(--mar-control-color-warning);
+}
+html.console-ui .el-message--error .el-message__icon {
+  color: var(--mar-control-color-danger);
+}
+
+html.console-ui .el-message__closeBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  transform: none;
+  color: var(--mar-text-secondary);
+}
+
+html.console-ui .el-message__closeBtn:hover {
+  color: var(--mar-text-primary);
+}
+
+html.console-ui .mar-message-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+html.console-ui .mar-message-close:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: 2px;
 }
 
 html.console-ui .el-empty {
@@ -679,13 +742,6 @@ html.console-ui .el-table,
 .theme-preview .el-table {
   --el-table-header-bg-color: var(--mar-table-header-bg);
   --el-table-row-hover-bg-color: var(--mar-table-row-hover-bg);
-}
-
-html.console-ui .el-message--info {
-  --el-message-bg-color: var(--mar-bg-tab-inactive);
-  --el-message-border-color: var(--mar-border-default);
-  --el-message-text-color: var(--mar-text-primary);
-  background-color: var(--el-message-bg-color);
 }
 
 h1,

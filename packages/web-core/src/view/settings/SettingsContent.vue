@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import { iconThemes } from '../../icon-themes/index.js';
@@ -87,7 +89,7 @@ function setTheme(value: ThemePreference): void {
   try {
     themeService.setTheme(value);
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
+    showMessage(t('customThemes.storageFailed'), 'error');
   }
 }
 const webVersion = props.webVersion;
@@ -124,9 +126,9 @@ async function updateLocale(value: AppLocale): Promise<void> {
       method: 'PUT',
       body: JSON.stringify({ locale: value })
     });
-  } catch {
+  } catch (error) {
     localeService.setLocale(previous);
-    ElMessage.error({ icon: marIcon('error'), message: translate('common.localeUpdateFailed') });
+    showMessage(translate('common.localeUpdateFailed'), 'error', error);
   }
 }
 async function submitPasswordChange(): Promise<void> {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
 import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
@@ -162,10 +164,7 @@ const attachmentInput = createComposerAttachmentInputService({
   addFiles: queueFiles,
   confirmDrop: confirmDroppedAttachments,
   rejectDirectory: () =>
-    ElMessage.warning({
-      icon: marIcon('warning'),
-      message: translate('hostedConversations.folderAttachmentUnsupported')
-    }),
+    showMessage(translate('hostedConversations.folderAttachmentUnsupported'), 'warning'),
   setDragging: (dragging) => (draggingAttachments.value = dragging)
 });
 
@@ -187,10 +186,7 @@ function selectedFiles(event: Event): void {
 function queueFiles(files: Iterable<File>): void {
   for (const file of files) {
     if (attachments.value.length >= 32) {
-      ElMessage.warning({
-        icon: marIcon('warning'),
-        message: translate('hostedConversations.attachmentLimit')
-      });
+      showMessage(translate('hostedConversations.attachmentLimit'), 'warning');
       break;
     }
     const attachment: HostedAttachment = {
@@ -342,7 +338,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   }
 }
 
@@ -378,7 +374,7 @@ async function updateModel(modelId: string): Promise<void> {
     await props.workspace.updateConfiguration({ modelId });
     messageIntent = undefined;
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     configurationUpdating.value = false;
   }
@@ -388,7 +384,7 @@ async function stop(): Promise<void> {
   try {
     await props.workspace.interrupt();
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   }
 }
 

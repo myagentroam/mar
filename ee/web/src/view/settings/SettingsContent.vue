@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import { marIcon } from '@myagentroam/web-core/icons';
 import { tooltipOptions } from '@myagentroam/web-core';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
 import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
@@ -90,13 +92,11 @@ async function loadOAuthBindings(): Promise<void> {
       await props.request<{ bindings: readonly OAuthBinding[] }>('/api/oauth-bindings')
     ).bindings;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
-        error,
-        translate('generated.settingsContent.unableToLoadOAuthBindings')
-      )
-    });
+    showMessage(
+      oauthErrorMessage(error, translate('generated.settingsContent.unableToLoadOAuthBindings')),
+      'error',
+      error
+    );
   } finally {
     oauthLoading.value = false;
   }
@@ -109,13 +109,11 @@ async function bindOAuth(provider: OAuthBinding): Promise<void> {
     );
     window.location.assign(result.authorizationUrl);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
-        error,
-        translate('generated.settingsContent.unableToStartOAuthBinding')
-      )
-    });
+    showMessage(
+      oauthErrorMessage(error, translate('generated.settingsContent.unableToStartOAuthBinding')),
+      'error',
+      error
+    );
   }
 }
 async function unbindOAuth(provider: OAuthBinding): Promise<void> {
@@ -129,19 +127,14 @@ async function unbindOAuth(provider: OAuthBinding): Promise<void> {
       method: 'DELETE'
     });
     await loadOAuthBindings();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.settingsContent.oAuthBindingRemoved')
-    });
+    showMessage(translate('generated.settingsContent.oAuthBindingRemoved'), 'success');
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: oauthErrorMessage(
-          error,
-          translate('generated.settingsContent.unableToRemoveOAuthBinding')
-        )
-      });
+      showMessage(
+        oauthErrorMessage(error, translate('generated.settingsContent.unableToRemoveOAuthBinding')),
+        'error',
+        error
+      );
   }
 }
 function createNodeToken(): void {

@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { errorMessage } from '../../util/error-presentation.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import type { Session } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -208,12 +211,13 @@ async function load(page = 1, updateForm = true): Promise<void> {
       notifyOnTerminal.value = false;
     }
     taskLoaded.value = true;
-  } catch {
+  } catch (error) {
     if (sequence === loadSequence)
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('generated.scheduledSession.loadFailed')
-      });
+      showMessage(
+        errorMessage(error, translate('generated.scheduledSession.loadFailed')),
+        'error',
+        error
+      );
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -339,16 +343,14 @@ async function save(): Promise<void> {
         ...(task.value === null ? {} : { expectedRevision: task.value.revision })
       })
     });
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.scheduledSession.saved')
-    });
+    showMessage(translate('generated.scheduledSession.saved'), 'success');
     await load();
-  } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.scheduledSession.saveFailed')
-    });
+  } catch (error) {
+    showMessage(
+      errorMessage(error, translate('generated.scheduledSession.saveFailed')),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -366,16 +368,14 @@ async function remove(): Promise<void> {
         expectedRevision: task.value.revision
       })
     });
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.scheduledSession.removed')
-    });
+    showMessage(translate('generated.scheduledSession.removed'), 'success');
     await load();
-  } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.scheduledSession.removeFailed')
-    });
+  } catch (error) {
+    showMessage(
+      errorMessage(error, translate('generated.scheduledSession.removeFailed')),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -390,11 +390,12 @@ async function resolveProposal(proposalId: string, accept: boolean): Promise<voi
       body: JSON.stringify({ nodeId: props.nodeId, workspaceId: props.workspaceId, accept })
     });
     await load();
-  } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.scheduledSession.proposalFailed')
-    });
+  } catch (error) {
+    showMessage(
+      errorMessage(error, translate('generated.scheduledSession.proposalFailed')),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }

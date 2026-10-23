@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { marIcon } from '../../util/mar-icons.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import {
   computed,
@@ -10,7 +10,7 @@ import {
   watch,
   type CSSProperties
 } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import BusyIndicator from '../common/BusyIndicator.vue';
 import type { PromptCompletionResponse } from '@myagentroam/protocol';
 import {
@@ -119,11 +119,9 @@ const service = new PromptCompletionService({
     else void nextTick(renderPreview);
   },
   feedback(reason, error) {
-    if (error !== undefined)
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
-    else if (feedbackKeys.has(reason))
-      ElMessage.info({ icon: marIcon('info'), message: translate(`promptCompletion.${reason}`) });
-    else ElMessage.error({ icon: marIcon('error'), message: reason });
+    if (error !== undefined) showMessage(errorMessage(error), 'error', error);
+    else if (feedbackKeys.has(reason)) showMessage(translate(`promptCompletion.${reason}`), 'info');
+    else showMessage(reason, 'error');
   }
 });
 

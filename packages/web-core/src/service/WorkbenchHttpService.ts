@@ -1,6 +1,13 @@
 import type { Ref } from 'vue';
 import { apiErrorFromResponse } from '../util/api-error.js';
 
+/** An obsolete identity result, not a user cancellation or a request timeout. */
+export class AuthenticationContextChangedError extends DOMException {
+  constructor() {
+    super('The authentication context changed.', 'AbortError');
+  }
+}
+
 export interface WorkbenchHttpService {
   request<T>(path: string, init?: RequestInit): Promise<T>;
   renewCsrfToken(): Promise<string>;
@@ -25,8 +32,7 @@ export function createWorkbenchHttpService(
   }
 
   function assertCurrent(generation: number): void {
-    if (generation !== authenticationGeneration)
-      throw new DOMException('The authentication context changed.', 'AbortError');
+    if (generation !== authenticationGeneration) throw new AuthenticationContextChangedError();
   }
 
   async function request<T>(

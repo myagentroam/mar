@@ -256,7 +256,8 @@
     "./resource-hosting": "./src/service/ResourceHostingService.ts",
     "./HostingNodeDetailsDialogs.vue": "./src/view/settings/HostingNodeDetailsDialogs.vue",
     "./hosting-management-messages": "./src/i18n/hosting-management.ts",
-    "./management-page": "./src/service/ManagementPageService.ts"
+    "./management-page": "./src/service/ManagementPageService.ts",
+    "./message-feedback": "./src/service/MessageFeedbackService.ts"
   },
   "dependencies": {
     "@myagentroam/code-navigation": "workspace:*",

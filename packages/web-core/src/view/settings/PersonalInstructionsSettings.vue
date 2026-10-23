@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
 import claudeCodeLogo from '../../assets/runner-claude-code.png';
@@ -109,10 +111,7 @@ async function load(): Promise<void> {
     formState.value.content = instructions.value[activeItem.value.property];
   } catch (error) {
     failed.value = true;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('personalInstructions.loadFailed')
-    });
+    showMessage(translate('personalInstructions.loadFailed'), 'error', error);
   } finally {
     loading.value = false;
   }
@@ -130,15 +129,13 @@ async function save(): Promise<void> {
       )
     ).instructions;
     formState.value.content = instructions.value[activeItem.value.property];
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('personalInstructions.saved')
-    });
+    showMessage(translate('personalInstructions.saved'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('personalInstructions.saveFailed', { value0: errorMessage(error) })
-    });
+    showMessage(
+      translate('personalInstructions.saveFailed', { value0: errorMessage(error) }),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -160,16 +157,14 @@ async function clear(): Promise<void> {
     ).instructions;
     formState.value.content = '';
     void form.value?.clearValidate();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('personalInstructions.cleared')
-    });
+    showMessage(translate('personalInstructions.cleared'), 'success');
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('personalInstructions.clearFailed', { value0: errorMessage(error) })
-      });
+      showMessage(
+        translate('personalInstructions.clearFailed', { value0: errorMessage(error) }),
+        'error',
+        error
+      );
   } finally {
     saving.value = false;
   }

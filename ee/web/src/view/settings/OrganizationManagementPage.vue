@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
@@ -101,13 +103,13 @@ async function load(): Promise<void> {
     ).organizations;
     ready.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers'),
+      'error',
+      error
+    );
   } finally {
     loading.value = false;
   }
@@ -138,13 +140,13 @@ async function saveOrganization(): Promise<void> {
     organizationForm.value.name = '';
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToSaveOrganization')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToSaveOrganization'),
+      'error',
+      error
+    );
   }
 }
 async function removeOrganization(organization: Organization): Promise<void> {
@@ -168,8 +170,7 @@ async function removeOrganization(organization: Organization): Promise<void> {
     await props.request(`/api/organizations/${organization.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 onMounted(() => {

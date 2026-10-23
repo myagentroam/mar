@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   organizationCascaderOptions,
@@ -86,13 +88,13 @@ const usersPage = createUserManagementService<EnterpriseUser>({
     sortOrder: sortOrder.value
   }),
   reportError: (error) =>
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    })
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers'),
+      'error',
+      error
+    )
 });
 const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
 const organizationsReady = ref(false);
@@ -183,13 +185,13 @@ async function load(): Promise<void> {
     organizations.value = organizationResult.organizations;
     organizationsReady.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers'),
+      'error',
+      error
+    );
   } finally {
     organizationsLoading.value = false;
   }
@@ -230,13 +232,13 @@ async function createUser(): Promise<void> {
     userOpen.value = false;
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToCreateUser')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToCreateUser'),
+      'error',
+      error
+    );
   }
 }
 function openCreateUser(): void {
@@ -270,19 +272,16 @@ async function saveUser(): Promise<void> {
     });
     userOpen.value = false;
     editingUser.value = undefined;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.organizationUserManagementPage.userUpdated')
-    });
+    showMessage(translate('generated.organizationUserManagementPage.userUpdated'), 'success');
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.organizationUserManagementPage.unableToUpdateUser')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.organizationUserManagementPage.unableToUpdateUser'),
+      'error',
+      error
+    );
   }
 }
 async function resetPassword(user: EnterpriseUser): Promise<void> {
@@ -311,8 +310,7 @@ async function resetPassword(user: EnterpriseUser): Promise<void> {
       password: result.temporaryPassword
     };
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 async function copyCredentials(): Promise<void> {
@@ -325,17 +323,15 @@ async function copyCredentials(): Promise<void> {
         value1: credentials.value.password
       })
     );
-    ElMessage.info({
-      icon: marIcon('info'),
-      message: translate('generated.organizationUserManagementPage.usernameAndPasswordCopied')
-    });
+    showMessage(
+      translate('generated.organizationUserManagementPage.usernameAndPasswordCopied'),
+      'info'
+    );
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate(
-        'generated.organizationUserManagementPage.unableToAccessTheClipboardCopyThe'
-      )
-    });
+    showMessage(
+      translate('generated.organizationUserManagementPage.unableToAccessTheClipboardCopyThe'),
+      'error'
+    );
   }
 }
 async function removeUser(user: EnterpriseUser): Promise<void> {
@@ -367,8 +363,7 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
     await props.request(`/api/management/users/${user.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 onMounted(() => {

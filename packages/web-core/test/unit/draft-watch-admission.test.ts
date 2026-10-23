@@ -21,7 +21,7 @@ function fixture() {
   const selectedSessionId = ref<string>(draft.id);
   const sessions = ref<Session[]>([draft]);
   const draftOpen = ref(true);
-  const notice = ref('');
+  const notice = vi.fn();
   const input = ref('Create a session');
   const view = ref<WorkbenchView>('nodes');
   const connectionId = ref<string | undefined>('connection-1');
@@ -354,7 +354,7 @@ describe('Draft creation Watch admission through the page services', () => {
     expect(f.draftOpen.value).toBe(false);
     f.dispose();
     const before = {
-      notice: f.notice.value,
+      notice: f.notice.mock.calls.slice(),
       input: f.input.value,
       sessions: f.sessions.value,
       selectedSessionId: f.selectedSessionId.value,
@@ -364,7 +364,7 @@ describe('Draft creation Watch admission through the page services', () => {
     await expect(sending.fail()).resolves.toBeUndefined();
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(f.notice.value).toBe(before.notice);
+    expect(f.notice.mock.calls).toEqual(before.notice);
     expect(f.input.value).toBe(before.input);
     expect(f.draftOpen.value).toBe(false);
     expect(f.sessions.value).toBe(before.sessions);

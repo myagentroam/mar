@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
 import {
   createStandaloneFileWindowService,
@@ -47,7 +49,7 @@ async function login(restore = false): Promise<void> {
     await access.authenticate(restore ? undefined : fields.value.password);
     fields.value.password = '';
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   } finally {
     loading.value = false;
   }
@@ -58,10 +60,7 @@ function openFile(path: string, line?: number, column?: number, external?: boole
   if (column !== undefined) intent.set('column', String(column));
   if (external) {
     if (windows.open(`/share/${encodeURIComponent(props.shareId)}?${intent}`) === undefined)
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('sessionShare.previewWindowBlocked')
-      });
+      showMessage(translate('sessionShare.previewWindowBlocked'), 'error');
   } else {
     previewIntent.value = intent;
     previewVersion.value += 1;

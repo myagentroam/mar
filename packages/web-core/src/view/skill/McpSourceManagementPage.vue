@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/LocalePreferenceService';
@@ -359,12 +361,12 @@ async function checkUpdate(entry: CatalogEntry): Promise<void> {
       { method: 'POST' }
     );
     updateChecks.value = { ...updateChecks.value, [entry.id]: result };
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: result.updateAvailable
+    showMessage(
+      result.updateAvailable
         ? translate('generated.mcpSourceManagementPage.updateAvailable')
-        : translate('generated.mcpSourceManagementPage.alreadyUpToDate')
-    });
+        : translate('generated.mcpSourceManagementPage.alreadyUpToDate'),
+      'info'
+    );
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -418,7 +420,7 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
   loading.value = true;
   try {
     await operation();
-    if (success) ElMessage.success({ icon: marIcon('success'), message: success });
+    if (success) showMessage(success, 'success');
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -427,13 +429,13 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
 }
 
 function showOperationError(error: unknown): void {
-  ElMessage.error({
-    icon: marIcon('error'),
-    message:
-      errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
-        ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
-        : displayErrorMessage(error)
-  });
+  showMessage(
+    errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
+      ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
+      : displayErrorMessage(error),
+    'error',
+    error
+  );
 }
 
 function scopeLabel(scope: string): string {

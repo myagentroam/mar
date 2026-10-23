@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
@@ -17,7 +18,7 @@ export function createWorkbenchEntityService(options: {
   readonly sessionTitle: (session: Session) => string;
   readonly canDeleteSession?: (session: Session) => boolean;
   readonly beginSubmission?: (context: string) => (() => boolean) | undefined;
-  readonly notice: (value: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
   async function renameNode(node: NodeSummary): Promise<NodeSummary | undefined> {
@@ -63,7 +64,9 @@ export function createWorkbenchEntityService(options: {
       options.notice(
         translate('generated.workbenchEntityService.unableToUpdateTheNodeName', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       options.loading.value = false;
@@ -116,7 +119,9 @@ export function createWorkbenchEntityService(options: {
       options.notice(
         translate('generated.workbenchEntityService.unableToUpdateTheSessionName', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       options.loading.value = false;
@@ -137,7 +142,9 @@ export function createWorkbenchEntityService(options: {
       options.notice(
         translate(pinned ? 'common.unableToPinSession' : 'common.unableToUnpinSession', {
           reason: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
       return false;
     } finally {
@@ -167,7 +174,9 @@ export function createWorkbenchEntityService(options: {
       options.notice(
         translate('generated.workbenchEntityService.unableToMoveThePinnedSession', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
       return false;
     } finally {
@@ -210,13 +219,18 @@ export function createWorkbenchEntityService(options: {
         `/api/agent-sessions/${options.sessionPathId(session.id)}?nodeId=${encodeURIComponent(nodeId)}`,
         { method: 'DELETE' }
       );
-      options.notice(translate('generated.workbenchEntityService.theNativeSessionWasDeleted'));
+      options.notice(
+        translate('generated.workbenchEntityService.theNativeSessionWasDeleted'),
+        'success'
+      );
       return true;
     } catch (error) {
       options.notice(
         translate('generated.workbenchEntityService.unableToDeleteTheSession', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
       return false;
     } finally {
@@ -256,14 +270,17 @@ export function createWorkbenchEntityService(options: {
         await remove();
       }
       options.notice(
-        translate('generated.workbenchEntityService.nodeDeletedCreateANewRegistrationToken')
+        translate('generated.workbenchEntityService.nodeDeletedCreateANewRegistrationToken'),
+        'success'
       );
       return true;
     } catch (error) {
       options.notice(
         translate('generated.workbenchEntityService.unableToDeleteTheNode', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
       return false;
     } finally {

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,
@@ -89,11 +91,11 @@ async function openGrants(row: ModelSummary): Promise<void> {
     users.value = userResult.users;
   } catch (error) {
     selectedModel.value = undefined;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed'),
+      'error',
+      error
+    );
   } finally {
     grantLoading.value = false;
   }
@@ -126,16 +128,13 @@ async function createGrant(): Promise<void> {
       })
     });
     await refreshGrantState(row.id);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.grantCreated')
-    });
+    showMessage(translate('marAgentModels.grantCreated'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed'),
+      'error',
+      error
+    );
   } finally {
     grantSaving.value = false;
   }
@@ -161,19 +160,16 @@ async function removeGrant(grant: Grant): Promise<void> {
       method: 'DELETE'
     });
     await refreshGrantState(model.id);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.grantRemoved')
-    });
+    showMessage(translate('marAgentModels.grantRemoved'), 'success');
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message:
-          error instanceof Error
-            ? errorMessage(error)
-            : translate('marAgentModels.grantRemoveFailed')
-      });
+      showMessage(
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('marAgentModels.grantRemoveFailed'),
+        'error',
+        error
+      );
   } finally {
     const next = new Set(revokingGrantIds.value);
     next.delete(grant.id);

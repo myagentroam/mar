@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalDirectError } from '../../src/service/TerminalDirectClient.js';
 import { createTerminalService } from '../../src/service/TerminalService.js';
+import { translate } from '../../src/service/LocalePreferenceService.js';
 
 class Socket extends EventTarget {
   static readonly OPEN = 1;
@@ -33,8 +34,7 @@ function fixture() {
     onExited: vi.fn(),
     onTerminalUnavailable: vi.fn(),
     onErrorFrame: vi.fn(),
-    onReconnectStatus: vi.fn(),
-    onNotice: vi.fn()
+    onReconnectStatus: vi.fn()
   };
   const service = createTerminalService({
     terminalId: 'terminal-a',
@@ -119,10 +119,16 @@ describe('Unified Terminal entry', () => {
       .mockResolvedValue(f.directConnection);
     await f.service.attach();
     expect(f.onErrorFrame).not.toHaveBeenCalled();
+    expect(f.onReconnectStatus).toHaveBeenCalledWith(
+      translate('generated.terminalRelayService.terminalConnectionLostReconnectingInSeconds', {
+        value0: 1
+      })
+    );
     await vi.advanceTimersByTimeAsync(7_000);
     expect(f.direct.attach).toHaveBeenCalledTimes(4);
-    expect(f.onNotice).toHaveBeenCalledOnce();
-    expect(f.onReconnectStatus.mock.lastCall?.[0]).toBe(f.onNotice.mock.calls[0]?.[0]);
+    expect(f.onReconnectStatus).toHaveBeenCalledWith(
+      translate('generated.terminalRelayService.terminalOccupiedRetrying')
+    );
     await vi.advanceTimersByTimeAsync(8_000);
     expect(f.direct.attach).toHaveBeenCalledTimes(5);
     f.direct.attach.mock.calls[4]![0].onAttached();

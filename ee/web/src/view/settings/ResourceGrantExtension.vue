@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessage, ElMessageBox, type FormRules, type FormInstance } from 'element-plus';
+import { ElMessageBox, type FormRules, type FormInstance } from 'element-plus';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
@@ -68,13 +70,13 @@ async function openShare(row: EnterpriseResourceRow): Promise<void> {
     ).grants;
   } catch (error) {
     selected.value = undefined;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToLoadGrants')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToLoadGrants'),
+      'error',
+      error
+    );
   }
 }
 async function createGrant(): Promise<void> {
@@ -93,13 +95,13 @@ async function createGrant(): Promise<void> {
     await props.request('/api/resource-grants', { method: 'POST', body: JSON.stringify(body) });
     await openShare(selected.value);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToCreateGrant')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToCreateGrant'),
+      'error',
+      error
+    );
   }
 }
 async function removeGrant(grant: Grant): Promise<void> {
@@ -120,8 +122,7 @@ async function removeGrant(grant: Grant): Promise<void> {
     });
     await openShare(selected.value!);
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 defineExpose({ open: openShare });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { themePreferenceService } from './service/ThemePreferenceService.js';
+import { clearMessages } from './service/MessageFeedbackService.js';
 import {
   computed,
   defineAsyncComponent,
@@ -70,6 +71,7 @@ onMounted(() => {
   document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 onBeforeUnmount(() => {
+  clearMessages();
   document.removeEventListener('contextmenu', preventBrowserContextMenu);
   document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   newOAuthProviderDraft,
@@ -193,13 +195,14 @@ async function load(): Promise<void> {
     ).providers;
     ready.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
+    showMessage(
+      oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.unableToLoadOAuthProviders')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     loading.value = false;
   }
@@ -245,13 +248,6 @@ function providerCallbackUri(provider: OAuthProvider): string {
 async function save(): Promise<void> {
   if (saving.value) return;
   if (!(await formRef.value?.validate().catch(() => false))) return;
-  if (!editing.value && form.value.clientSecret.trim() === '') {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.oAuthManagementPage.enterTheClientSecret2')
-    });
-    return;
-  }
   saving.value = true;
   try {
     const payload = oauthProviderInput(form.value);
@@ -263,18 +259,19 @@ async function save(): Promise<void> {
     );
     open.value = false;
     await load();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling')
-    });
+    showMessage(
+      translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling'),
+      'success'
+    );
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
+    showMessage(
+      oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.unableToSaveOAuthProvider')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -285,18 +282,16 @@ async function test(provider: OAuthProvider): Promise<void> {
       method: 'POST'
     });
     await load();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.oAuthManagementPage.configurationTestPassed')
-    });
+    showMessage(translate('generated.oAuthManagementPage.configurationTestPassed'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
+    showMessage(
+      oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.oAuthConfigurationTestFailed')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   }
 }
 async function confirmProviderStatusChange(provider: OAuthProvider): Promise<void> {
@@ -333,13 +328,14 @@ async function toggle(provider: OAuthProvider): Promise<void> {
     );
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(
+    showMessage(
+      oauthErrorMessage(
         error,
         translate('generated.oAuthManagementPage.unableToUpdateProviderStatus')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   }
 }
 async function remove(provider: OAuthProvider): Promise<void> {
@@ -361,13 +357,14 @@ async function remove(provider: OAuthProvider): Promise<void> {
     await load();
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: oauthErrorMessage(
+      showMessage(
+        oauthErrorMessage(
           error,
           translate('generated.oAuthManagementPage.unableToDeleteOAuthProvider')
-        )
-      });
+        ),
+        'error',
+        error
+      );
   }
 }
 onMounted(() => {

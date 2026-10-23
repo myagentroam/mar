@@ -1,8 +1,9 @@
+import { clearMessages, showMessage } from './MessageFeedbackService.js';
 import { marIcon } from '../util/mar-icons.js';
-import type { WorkspaceTarget } from '../model/workbench.js';
+import type { GoalExitSummary, WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { createHostedConversationSelectionService } from '@myagentroam/web-core/hosted-selection';
 import { createAdminAuthService } from './AdminAuthService.js';
 import { createRunnerUsageService } from './RunnerUsageService.js';
@@ -20,11 +21,9 @@ import {
   currentChangesBranch,
   effortPresentation as effortLabel,
   nodePresentation as nodeLabel,
-  noticePresentation as noticeType,
   runnerLabel,
   sessionActivityDateTime,
   tokenCountLabel as formatTokenCount,
-  preciseElapsedDurationLabel as formatGoalDuration,
   workspaceBranchLabel,
   workspaceKindLabel,
   workspaceTabId,
@@ -106,7 +105,6 @@ import { createWorkbenchNewSessionController } from './WorkbenchNewSessionContro
 import { createWorkbenchComposerInteractionController } from './WorkbenchComposerInteractionController.js';
 import { installWorkbenchPageLifecycle } from './WorkbenchPageLifecycleService.js';
 import { newestRunSnapshot } from './RunService.js';
-import type { GoalExitSummary } from '../model/workbench.js';
 import {
   reconcileWorkspaceQueueSnapshot,
   type WorkspaceQueueSnapshotSource
@@ -243,7 +241,8 @@ export function createWorkbenchPageController<
 
   const { request, renewCsrfToken } = workbenchHttpService;
 
-  const notice = baseState.notice;
+  const notice = showMessage;
+  onBeforeUnmount(clearMessages);
   const submissionService = createWorkbenchSubmissionService();
   const { pending: submissionPending } = submissionService;
 
@@ -373,14 +372,12 @@ export function createWorkbenchPageController<
     currentDetailRequest
   } = conversationState;
 
-  let recoverMissingConversationRun: (runId: string) => void = () => undefined;
   const conversationUserInputService = createConversationUserInputService({
     workspaceTarget,
     notice,
     request,
     errorMessage: message,
     missingRunError: (error) => errorCode(error) === 'RUN_NOT_FOUND',
-    recoverMissingRun: (runId) => recoverMissingConversationRun(runId),
     beginSubmission: submissionService.begin
   });
 
@@ -400,7 +397,7 @@ export function createWorkbenchPageController<
       workspaceNodeId.value === undefined || activeWorkspaceId.value === undefined
         ? undefined
         : { nodeId: workspaceNodeId.value, workspaceId: activeWorkspaceId.value },
-    notice: (value) => (notice.value = value),
+    notice,
     request,
     csrfToken,
     renewCsrfToken,
@@ -457,8 +454,7 @@ export function createWorkbenchPageController<
         });
         return `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/content?${parameters}`;
       },
-      onError: (error, path) =>
-        ElMessage.error({ icon: marIcon('error'), message: filePreviewErrorMessage(error, path) })
+      onError: (error, path) => showMessage(filePreviewErrorMessage(error, path), 'error', error)
     }
   });
   onBeforeUnmount(conversationImageService.dispose);
@@ -497,7 +493,7 @@ export function createWorkbenchPageController<
     loading: runnerProfilesLoading,
     failed: runnerProfilesFailed,
     request,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -874,7 +870,7 @@ export function createWorkbenchPageController<
     serializeEditedContent: composerQueueService.serializeEditedContent,
     request,
     finishEditing: composerQueueService.finishEditing,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message,
     missingQueueItemError: (error) => errorCode(error) === 'QUEUE_ITEM_INVALID',
     beginSubmission: submissionService.begin
@@ -895,7 +891,7 @@ export function createWorkbenchPageController<
     workspaceTarget,
     onNodeConnected: (nodeId) => handleNodeConnected(nodeId, false),
     request,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -952,7 +948,7 @@ export function createWorkbenchPageController<
     sessionPathId: agentSessionPathId,
     nodeLabel,
     sessionTitle,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -1013,9 +1009,13 @@ export function createWorkbenchPageController<
         openHostedConversation: openHostedConversationTarget
       });
     } catch (error) {
-      notice.value = translate('generated.workbenchPageController.unableToOpenTheSessionLinkedTo', {
-        value0: message(error)
-      });
+      notice(
+        translate('generated.workbenchPageController.unableToOpenTheSessionLinkedTo', {
+          value0: message(error)
+        }),
+        'error',
+        error
+      );
     }
   }
 
@@ -1223,7 +1223,7 @@ export function createWorkbenchPageController<
     requestTimeoutMs: SESSION_WATCH_REQUEST_TIMEOUT_MS,
     confirmationTimeoutMs: SESSION_WATCH_CONFIRMATION_TIMEOUT_MS,
     onWatchExpired: () => {
-      notice.value = translate('hostedConversations.watchExpired');
+      notice(translate('hostedConversations.watchExpired'), 'warning');
     }
   });
   const navigationWatchService = createWorkbenchNavigationWatchService({
@@ -1273,11 +1273,10 @@ export function createWorkbenchPageController<
     onNodeReplaced: (nodeId) => {
       directTransport.nodeInvalidated(nodeId);
       if (nodeId !== workspaceNodeId.value) return;
-      ElMessage.warning({
-        icon: marIcon('warning'),
-        message: translate('generated.workbenchPageController.aNewerInstanceWithTheSameIdentity'),
-        duration: 5_000
-      });
+      showMessage(
+        translate('generated.workbenchPageController.aNewerInstanceWithTheSameIdentity'),
+        'warning'
+      );
     },
     onReconnect: () => {
       if (
@@ -1324,7 +1323,7 @@ export function createWorkbenchPageController<
     onTerminalDirectMessage: directTransport.handleTerminalDirect,
     onUnauthenticated: () => returnToLogin(),
     onInvalidMessage: () =>
-      (notice.value = translate('generated.workbenchPageController.receivedAnUnreadableLiveUpdate'))
+      notice(translate('generated.workbenchPageController.receivedAnUnreadableLiveUpdate'), 'error')
   });
 
   const {
@@ -1556,9 +1555,12 @@ export function createWorkbenchPageController<
     request,
     renewCsrfToken,
     onAuthenticated: handleAuthenticated,
-    invalidateRequests: workbenchHttpService.invalidateAuthentication,
+    invalidateRequests: () => {
+      clearMessages();
+      workbenchHttpService.invalidateAuthentication();
+    },
     onSignedOut: handleSignedOut,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -1574,7 +1576,7 @@ export function createWorkbenchPageController<
 
   const runnerUsageService = createRunnerUsageService({
     request,
-    error: (value) => ElMessage.error({ icon: marIcon('error'), message: value }),
+    error: (value, cause) => showMessage(value, 'error', cause),
     errorMessage: message
   });
 
@@ -1616,8 +1618,8 @@ export function createWorkbenchPageController<
       closeWorkspaceRegistration();
       await selectWorkspace({ nodeId, workspaceId });
     },
-    notice: (value) => (notice.value = value),
-    error: (value) => ElMessage.error({ icon: marIcon('error'), message: value }),
+    notice,
+    error: (value, cause) => showMessage(value, 'error', cause),
     errorMessage: message
   });
 
@@ -1646,7 +1648,7 @@ export function createWorkbenchPageController<
     pageSize: WORKSPACE_SESSION_PAGE_SIZE,
     tabId: workspaceTabId,
     request,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -1735,6 +1737,7 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
+    clearMessages();
     authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
@@ -1959,7 +1962,7 @@ export function createWorkbenchPageController<
     clearRunnerCommand,
     request,
     sessionPathId: agentSessionPathId,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -2091,7 +2094,7 @@ export function createWorkbenchPageController<
     refreshManifest: refreshNodeManifest,
     refreshTransport: (nodeId) => void directTransport.refresh(nodeId, true),
     request,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message,
     stopWatch: () => {
       watchCoordinator.current?.stopWorkspace();
@@ -2306,7 +2309,7 @@ export function createWorkbenchPageController<
     },
     applySnapshot: applyConversationSnapshot,
     mergeTurns: mergeLatestConversationTurns,
-    notice: (value) => (notice.value = value),
+    notice,
     errorMessage: message
   });
 
@@ -2330,7 +2333,7 @@ export function createWorkbenchPageController<
       return result.session;
     },
     openDraft: () => openNewSessionComposer(),
-    notice: (error) => (notice.value = message(error)),
+    notice: (error) => notice(message(error), 'error', error),
     currentSelectionRevision: () =>
       currentDetailRequest() + workbenchWorkspaceSelectionService.currentSelectionRevision(),
     rememberSession: workspaceTabService.rememberSession
@@ -2437,7 +2440,7 @@ export function createWorkbenchPageController<
 
   async function createRegistrationToken(context?: NodeRegistrationContext): Promise<void> {
     loading.value = true;
-    notice.value = '';
+
     try {
       registrationToken.value = (
         await (options.submitNodeRegistration === undefined
@@ -2445,9 +2448,12 @@ export function createWorkbenchPageController<
           : options.submitNodeRegistration(request, context))
       ).token;
     } catch (error) {
-      notice.value = translate(
-        'generated.workbenchPageController.unableToCreateARegistrationToken',
-        { value0: message(error) }
+      notice(
+        translate('generated.workbenchPageController.unableToCreateARegistrationToken', {
+          value0: message(error)
+        }),
+        'error',
+        error
       );
     } finally {
       loading.value = false;
@@ -2570,22 +2576,20 @@ export function createWorkbenchPageController<
   async function rewindConversation(turn: ConversationTurn, item: ConversationItem): Promise<void> {
     const result = await sessionHistoryMutation.rewind(turn, item);
     if (result.status === 'APPLIED') {
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('generated.workbenchPageController.fallbackBranchCreated')
-      });
+      showMessage(translate('generated.workbenchPageController.fallbackBranchCreated'), 'success');
     } else if (result.status === 'FAILED') {
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate(
+      showMessage(
+        translate(
           result.phase === 'REQUEST'
             ? 'generated.workbenchPageController.unableToCreateAFallbackBranch'
             : 'generated.workbenchPageController.fallbackBranchCreatedButLoadFailed',
           {
             value0: message(result.error)
           }
-        )
-      });
+        ),
+        'error',
+        result.error
+      );
     }
   }
 
@@ -2595,17 +2599,18 @@ export function createWorkbenchPageController<
   ): Promise<void> {
     const result = await sessionHistoryMutation.rollback(turn, item);
     if (result.status === 'FAILED') {
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate(
+      showMessage(
+        translate(
           result.phase === 'REQUEST'
             ? 'generated.workbenchPageController.unableToRollbackConversation'
             : 'generated.workbenchPageController.rollbackCompletedButLoadFailed',
           {
             value0: message(result.error)
           }
-        )
-      });
+        ),
+        'error',
+        result.error
+      );
     }
   }
 
@@ -2688,7 +2693,7 @@ export function createWorkbenchPageController<
     stageDraftCommand(command, input);
     if (command.id !== 'goal') return;
     if (goalAlreadyActive) {
-      ElMessage.info({ icon: marIcon('info'), message: translate('goal.alreadyActive') });
+      showMessage(translate('goal.alreadyActive'), 'info');
       return;
     }
     if (command.runner === 'mar-agent') return;
@@ -2844,7 +2849,7 @@ export function createWorkbenchPageController<
       });
     }
     if (commandId === 'goal' && result.goalAlreadyActive === true)
-      ElMessage.info({ icon: marIcon('info'), message: translate('goal.alreadyActive') });
+      showMessage(translate('goal.alreadyActive'), 'info');
     if (result.run !== undefined) {
       if (stillSelected) {
         const current = runs.value.find((candidate) => candidate.id === result.run?.id);
@@ -2890,36 +2895,7 @@ export function createWorkbenchPageController<
 
   async function clearGoal(): Promise<void> {
     const session = selectedSession.value;
-    if (session === undefined) return;
-    const nodeId = workspaceNodeId.value;
-    const result = await executeRunnerCommandById(session, 'goal', '/goal --clear');
-    if (
-      result.goalExit !== undefined &&
-      workspaceNodeId.value === nodeId &&
-      selectedSessionId.value === session.id
-    )
-      showGoalExit(result.goalExit);
-  }
-
-  function showGoalExit(summary: GoalExitSummary): void {
-    if (
-      (summary.status !== 'removed' && summary.status !== 'stopped') ||
-      !Number.isSafeInteger(summary.elapsedWallMs) ||
-      summary.elapsedWallMs < 0 ||
-      !Number.isSafeInteger(summary.turns) ||
-      summary.turns < 0
-    )
-      return;
-    ElMessage.info({
-      icon: marIcon('info'),
-      message: translate(
-        summary.status === 'removed' ? 'goal.removedSummary' : 'goal.stoppedSummary',
-        {
-          value0: formatGoalDuration(summary.elapsedWallMs),
-          value1: String(summary.turns)
-        }
-      )
-    });
+    if (session !== undefined) await executeRunnerCommandById(session, 'goal', '/goal --clear');
   }
 
   function onComposerKeydown(event: KeyboardEvent): void {
@@ -3045,7 +3021,7 @@ export function createWorkbenchPageController<
     beginSubmission: submissionService.begin
   });
 
-  const { stopActiveRun, recoverMissingRun } = createWorkbenchRunControlService({
+  const { stopActiveRun } = createWorkbenchRunControlService({
     workspaceTarget,
     selectedSessionId,
     selectedRunId,
@@ -3056,8 +3032,7 @@ export function createWorkbenchPageController<
     request,
     sessionPathId: agentSessionPathId,
     errorMessage: message,
-    beginSubmission: submissionService.begin,
-    onGoalExit: showGoalExit
+    beginSubmission: submissionService.begin
   });
   const selectedSubmissionContext = computed(() =>
     sessionSubmissionContext(selectedSessionId.value)
@@ -3071,7 +3046,6 @@ export function createWorkbenchPageController<
   const canInterruptTurn = computed(
     () => authoritativeCanInterruptTurn.value && !composerSubmitting.value
   );
-  recoverMissingConversationRun = recoverMissingRun;
 
   const workPromptAutomaticEnabled = computed(() =>
     Boolean(
@@ -3207,11 +3181,9 @@ export function createWorkbenchPageController<
     newSessionModel,
     workspaceTarget,
     selectedSessionId,
-    notice,
     conversationTurns,
     conversationScroll,
     followConversation,
-    noticeType,
     persistWorkbenchState,
     persistSessionDraft,
     syncWorkbenchRoute,

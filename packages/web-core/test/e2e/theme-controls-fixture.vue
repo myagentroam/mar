@@ -2,9 +2,25 @@
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
 const value = ref('');
 const message =
   'Body text with **emphasis** and `inline code`.\n\n### Section heading\n\n| Item | Value |\n| --- | --- |\n| Example | Readable content |';
+const dialogOpen = ref(false);
+const longFeedback = Array.from(
+  { length: 36 },
+  (_, index) => `Line ${index + 1}: long feedback remains readable and can be dismissed.`
+).join('\n');
+
+function showRepeatedFeedback(): void {
+  showMessage('Repeated feedback event', 'info');
+  showMessage('Repeated feedback event', 'info');
+}
+
+function saveFeedbackDialog(): void {
+  dialogOpen.value = false;
+  showMessage('Dialog settings saved', 'success');
+}
 </script>
 <template>
   <WorkspaceLabelsFixture />
@@ -26,6 +42,69 @@ const message =
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">
     <AgentMarkdown :content="message" />
     <p class="conversation-metadata">Run duration 11s</p>
+  </section>
+  <section aria-label="Message feedback controls">
+    <button
+      type="button"
+      data-testid="show-info-feedback"
+      @click="showMessage('Theme-aware info feedback', 'info')"
+    >
+      Show info feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-success-feedback"
+      @click="showMessage('Theme-aware success feedback', 'success')"
+    >
+      Show success feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-warning-feedback"
+      @click="showMessage('Theme-aware warning feedback', 'warning')"
+    >
+      Show warning feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-error-feedback"
+      @click="showMessage('Theme-aware error feedback', 'error')"
+    >
+      Show error feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-long-feedback"
+      @click="showMessage(longFeedback, 'error')"
+    >
+      Show long feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-plain-text-feedback"
+      @click="showMessage('Plain text <img data-feedback-payload=unsafe src=x>', 'warning')"
+    >
+      Show plain-text feedback
+    </button>
+    <button type="button" data-testid="show-repeated-feedback" @click="showRepeatedFeedback">
+      Show repeated feedback
+    </button>
+    <button type="button" data-testid="open-feedback-dialog" @click="dialogOpen = true">
+      Open feedback dialog
+    </button>
+    <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
+      <p>Dialog content</p>
+      <button
+        type="button"
+        data-testid="show-dialog-feedback"
+        @click="showMessage(longFeedback, 'error')"
+      >
+        Show dialog feedback
+      </button>
+      <button type="button" data-testid="save-feedback-dialog" @click="saveFeedbackDialog">
+        Save and close
+      </button>
+    </el-dialog>
   </section>
 </template>
 

@@ -509,71 +509,87 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(html).toContain(i18n.global.t('gitWorktrees.clean'));
   });
 
-  it('opens and copies a commit action from the rendered history context menu', async () => {
-    localePreferenceService().setLocale(locale);
-    const commitHash = 'a'.repeat(40);
-    const service = {
-      historyRefs: ref([]),
-      historyCommits: ref([
-        {
-          hash: commitHash,
-          parents: [],
-          subject: 'Update project',
-          authorName: 'Developer',
-          authorEmail: 'developer@example.test',
-          committedAt: 1,
-          refs: []
-        }
-      ]),
-      historyNextCursor: ref(null),
-      historyLoading: ref(false),
-      historyFiles: ref({}),
-      historyFilesLoading: ref([]),
-      historyRepositoryPath: ref(''),
-      selectedHistoryRefs: ref([]),
-      historySource: ref({ repositoryPath: '', refs: [] }),
-      repositories: ref([]),
-      selectHistory: vi.fn(async () => undefined),
-      loadHistoryFiles: vi.fn(async () => true),
-      loadHistory: vi.fn(async () => undefined)
-    };
-    const writeText = vi.fn(async () => undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const app = testRenderer.createApp({
-      render: () => h(WorkspaceGitHistoryClient, { service: service as never })
-    });
-    app.use(i18n);
-    app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
-    app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
-    app.config.warnHandler = () => {};
-    app.mount(new TestHostNode('container'));
-    try {
-      const row = [...hostNodes].find(
-        (node) => node.type === 'button' && String(node.props.class).includes('history-commit-row')
-      );
-      expect(row).toBeDefined();
-      const contextMenu = row?.props.onContextmenu as
-        ((event: { preventDefault(): void; clientX: number; clientY: number }) => void) | undefined;
-      const preventDefault = vi.fn();
-      contextMenu?.({ preventDefault, clientX: 40, clientY: 50 });
-      expect(preventDefault).toHaveBeenCalledOnce();
-      await nextTick();
+  it.each([false, true])(
+    'reports commit copy feedback from the rendered context menu (failure=%s)',
+    async (fails) => {
+      localePreferenceService().setLocale(locale);
+      const commitHash = 'a'.repeat(40);
+      const service = {
+        historyRefs: ref([]),
+        historyCommits: ref([
+          {
+            hash: commitHash,
+            parents: [],
+            subject: 'Update project',
+            authorName: 'Developer',
+            authorEmail: 'developer@example.test',
+            committedAt: 1,
+            refs: []
+          }
+        ]),
+        historyNextCursor: ref(null),
+        historyLoading: ref(false),
+        historyFiles: ref({}),
+        historyFilesLoading: ref([]),
+        historyRepositoryPath: ref(''),
+        selectedHistoryRefs: ref([]),
+        historySource: ref({ repositoryPath: '', refs: [] }),
+        repositories: ref([]),
+        selectHistory: vi.fn(async () => undefined),
+        loadHistoryFiles: vi.fn(async () => true),
+        loadHistory: vi.fn(async () => undefined)
+      };
+      const failure = new Error('Clipboard access denied');
+      const writeText = fails
+        ? vi.fn().mockRejectedValue(failure)
+        : vi.fn().mockResolvedValue(undefined);
+      const notice = vi.fn();
+      vi.stubGlobal('navigator', { clipboard: { writeText } });
+      const app = testRenderer.createApp({
+        render: () => h(WorkspaceGitHistoryClient, { service: service as never, onNotice: notice })
+      });
+      app.use(i18n);
+      app.provide(ssrContextKey, { modules: new Set<string>() });
+      app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.config.warnHandler = () => {};
+      app.mount(new TestHostNode('container'));
+      try {
+        const row = [...hostNodes].find(
+          (node) =>
+            node.type === 'button' && String(node.props.class).includes('history-commit-row')
+        );
+        expect(row).toBeDefined();
+        const contextMenu = row?.props.onContextmenu as
+          | ((event: { preventDefault(): void; clientX: number; clientY: number }) => void)
+          | undefined;
+        const preventDefault = vi.fn();
+        contextMenu?.({ preventDefault, clientX: 40, clientY: 50 });
+        expect(preventDefault).toHaveBeenCalledOnce();
+        await nextTick();
 
-      const menu = [...hostNodes].find((node) => node.props.class === 'history-context-menu');
-      const menuItem = [...hostNodes].find((node) => node.props.role === 'menuitem');
-      expect(menu?.props.role).toBe('menu');
-      expect(menuItem).toBeDefined();
-      expect(
-        [...hostNodes].some((node) => String(node.props.class).includes('history-commit-more'))
-      ).toBe(false);
-      const click = menuItem?.props.onClick as (() => Promise<void>) | undefined;
-      await click?.();
-      expect(writeText).toHaveBeenCalledWith(commitHash);
-    } finally {
-      app.unmount();
+        const menu = [...hostNodes].find((node) => node.props.class === 'history-context-menu');
+        const menuItem = [...hostNodes].find((node) => node.props.role === 'menuitem');
+        expect(menu?.props.role).toBe('menu');
+        expect(menuItem).toBeDefined();
+        expect(
+          [...hostNodes].some((node) => String(node.props.class).includes('history-commit-more'))
+        ).toBe(false);
+        const click = menuItem?.props.onClick as (() => Promise<void>) | undefined;
+        await click?.();
+        expect(writeText).toHaveBeenCalledWith(commitHash);
+        expect(notice).toHaveBeenCalledOnce();
+        expect(notice.mock.calls[0]?.[1]).toBe(fails ? 'error' : 'info');
+        if (fails) expect(notice.mock.calls[0]?.[2]).toBe(failure);
+        await nextTick();
+        expect(
+          [...hostNodes].some((node) => node.parent && node.props.class === 'history-context-menu')
+        ).toBe(false);
+      } finally {
+        app.unmount();
+      }
     }
-  });
+  );
 
   it('renders per-topic loading and failure status from the host instead of fetching its own initial data', async () => {
     localePreferenceService().setLocale(locale);

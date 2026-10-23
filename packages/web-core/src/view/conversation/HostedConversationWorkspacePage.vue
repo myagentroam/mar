@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
@@ -7,7 +9,7 @@ import type {
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createConversationImageService } from '../../service/ConversationImageService.js';
 import { createConversationScrollService } from '../../service/ConversationScrollService.js';
@@ -82,10 +84,7 @@ function openFileChange(entry: FileChangeEntry): void {
 async function openChangeSourceFile(path: string): Promise<void> {
   const file = hostedConversationFileForPath(props.workspace.snapshot.value?.files ?? [], path);
   if (!file) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('presentation.currentFileUnavailable')
-    });
+    showMessage(translate('presentation.currentFileUnavailable'), 'error');
     return;
   }
   await filePreview.openFile(file);
@@ -271,8 +270,7 @@ const conversationImages = createConversationImageService(props.workspace.select
 });
 const filePreview = createHostedConversationFilePreviewService({
   source: props.workspace,
-  onError: (error) =>
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) })
+  onError: (error) => showMessage(hostedErrorMessage(error), 'error', error)
 });
 
 function closeMobileHistory(): void {
@@ -388,8 +386,7 @@ async function loadDirectory(): Promise<void> {
       draftingNewConversation.value = true;
     }
   } catch (error) {
-    if (sequence === directorySequence)
-      ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    if (sequence === directorySequence) showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (sequence === directorySequence) loadingDirectory.value = false;
   }
@@ -411,7 +408,7 @@ async function openConversation(
   try {
     await props.selectConversation(conversation);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (openingConversationKey.value === key) openingConversationKey.value = undefined;
   }
@@ -429,7 +426,7 @@ async function created(snapshot: HostedConversationSnapshot): Promise<void> {
   try {
     await props.selectConversation(snapshot.conversation, snapshot);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     void loadDirectory().catch(() => undefined);
   }
@@ -468,12 +465,8 @@ async function editConversationTitle(conversation: HostedConversationSummary): P
       conversation.nodeId,
       conversation.id
     );
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('hostedConversations.titleUpdated')
-    });
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -488,14 +481,8 @@ async function setConversationPinned(
   mutatingConversationKey.value = key;
   try {
     await props.workspace.updateMetadata({ pinned }, conversation.nodeId, conversation.id);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate(pinned ? 'hostedConversations.pinned' : 'hostedConversations.unpinned', {
-        title: hostedConversationTitle(conversation)
-      })
-    });
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -536,12 +523,9 @@ async function deleteConversation(conversation: HostedConversationSummary): Prom
       closeMobilePanels();
     }
     await refreshDirectory();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('hostedConversations.deleted')
-    });
+    showMessage(translate('hostedConversations.deleted'), 'success');
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (mutatingConversationKey.value === key) mutatingConversationKey.value = undefined;
   }
@@ -612,10 +596,7 @@ async function copyMessage(text: string, onSuccess: () => void): Promise<void> {
     await navigator.clipboard.writeText(text);
     onSuccess();
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('hostedConversations.copyFailed')
-    });
+    showMessage(translate('hostedConversations.copyFailed'), 'error');
   }
 }
 
@@ -664,7 +645,7 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
     if (selectedConversationKey.value === conversationKeyAtConfirmation)
       composer.value?.restoreMessage(text);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     rollbackPending.value = false;
   }
@@ -718,25 +699,26 @@ async function uploadRelatedFiles(selectedFiles: Iterable<File>): Promise<void> 
         await props.workspace.uploadFile(file, crypto.randomUUID());
         uploaded += 1;
       } catch (error) {
-        ElMessage.error({
-          icon: marIcon('error'),
-          message: translate('hostedConversations.fileUploadFailed', {
+        showMessage(
+          translate('hostedConversations.fileUploadFailed', {
             name: file.name,
             message: hostedErrorMessage(error)
-          })
-        });
+          }),
+          'error',
+          error
+        );
       }
     }
   } finally {
     uploadingDroppedFiles.value = false;
   }
   if (uploaded > 0)
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('hostedConversations.filesUploaded', {
+    showMessage(
+      translate('hostedConversations.filesUploaded', {
         count: uploaded
-      })
-    });
+      }),
+      'success'
+    );
 }
 
 function dragContainsFiles(event: DragEvent): boolean {
@@ -764,14 +746,14 @@ async function deleteProjectedFile(file: ConversationFileProjection): Promise<vo
   try {
     await props.workspace.deleteFile(file.id);
     if (filePreview.file.value?.id === file.id) filePreview.close();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('hostedConversations.fileDeleted', {
+    showMessage(
+      translate('hostedConversations.fileDeleted', {
         name: file.displayName
-      })
-    });
+      }),
+      'success'
+    );
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: hostedErrorMessage(error) });
+    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     if (deletingFileId.value === file.id) deletingFileId.value = undefined;
   }
@@ -1362,7 +1344,7 @@ onBeforeUnmount(() => {
       <ToolChangeReviewWindow
         :review="toolReview"
         @open-source="openChangeSourceFile"
-        @error="ElMessage.error(hostedErrorMessage($event))"
+        @error="showMessage(hostedErrorMessage($event), 'error', $event)"
       />
       <ImagePreviewDialogs
         :attachment-open="false"

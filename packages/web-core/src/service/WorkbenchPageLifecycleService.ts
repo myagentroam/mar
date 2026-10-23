@@ -1,7 +1,6 @@
-import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { onBeforeUnmount, onMounted, watch, watchEffect, type Ref, type WatchSource } from 'vue';
-import { ElMessage } from 'element-plus';
+import { onBeforeUnmount, onMounted, watch, type Ref, type WatchSource } from 'vue';
+
 import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutResult
@@ -17,11 +16,9 @@ interface WorkbenchPageLifecycleOptions {
   readonly newSessionModel: WatchSource<unknown>;
   readonly workspaceTarget: WatchSource<WorkspaceTarget | undefined>;
   readonly selectedSessionId: WatchSource<string | undefined>;
-  readonly notice: Ref<string>;
   readonly conversationTurns: WatchSource<unknown>;
   readonly conversationScroll: Ref<HTMLElement | undefined>;
   readonly followConversation: Readonly<Ref<boolean>>;
-  readonly noticeType: (value: string) => 'success' | 'warning' | 'info' | 'error';
   readonly persistWorkbenchState: () => void;
   readonly persistSessionDraft: () => void;
   readonly syncWorkbenchRoute: () => void;
@@ -75,19 +72,6 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
   });
   watch(options.newSessionModel, options.normalizeNewSessionOptions);
   watch(options.workspaceTarget, options.closeFileReferences);
-
-  watchEffect(() => {
-    const value = options.notice.value;
-    if (value.length === 0) return;
-    const type = options.noticeType(value);
-    ElMessage({
-      icon: marIcon(type),
-      message: value,
-      type,
-      grouping: false,
-      showClose: true
-    });
-  });
 
   watch(options.cacheSources, scheduleWorkspaceViewSave, { flush: 'post' });
   watch(

@@ -16,7 +16,7 @@ function fixture() {
   const beginSubmission = vi.fn((): (() => boolean) | undefined => finish);
   const canCompact = ref(true);
   const selectedSession = ref({ id: 'session-1' } as Session);
-  const notice = ref('old');
+  const notice = vi.fn();
   const nodeId = ref('node-1');
   const service = createWorkbenchContextCommandService({
     workspaceTarget: workspaceTargetRef(nodeId),
@@ -46,7 +46,7 @@ describe('shared context command', () => {
       '/compact'
     );
     expect(f.finish).toHaveBeenCalledOnce();
-    expect(f.notice.value).toBe('');
+    expect(f.notice).not.toHaveBeenCalled();
   });
 
   it('does not prompt when compact is unavailable', async () => {
@@ -63,7 +63,7 @@ describe('shared context command', () => {
     await f.service.compactCurrentContext();
     expect(f.beginSubmission).not.toHaveBeenCalled();
     expect(f.execute).not.toHaveBeenCalled();
-    expect(f.notice.value).toBe('old');
+    expect(f.notice).not.toHaveBeenCalled();
   });
 
   it('does not execute while another submission owns the gate', async () => {
@@ -94,9 +94,12 @@ describe('shared context command', () => {
     async (active) => {
       const f = fixture();
       f.finish.mockReturnValue(active);
-      f.execute.mockRejectedValue(new Error('failed'));
+      const error = new Error('failed');
+      f.execute.mockRejectedValue(error);
       await f.service.compactCurrentContext();
-      expect(f.notice.value).toEqual(active ? expect.stringContaining('denied') : '');
+      if (active)
+        expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('denied'), 'error', error);
+      else expect(f.notice).not.toHaveBeenCalled();
     }
   );
 });

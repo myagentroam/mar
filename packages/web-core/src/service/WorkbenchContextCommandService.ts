@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
@@ -10,7 +11,7 @@ interface WorkbenchContextCommandServiceOptions {
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly compactCommand: ComputedRef<RunnerCommand | undefined>;
   readonly canCompact: ComputedRef<boolean>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly execute: (session: Session, command: RunnerCommand, input: string) => Promise<unknown>;
   readonly errorMessage: (error: unknown) => string;
@@ -55,14 +56,17 @@ export function createWorkbenchContextCommandService(
       return;
     const finishSubmission = options.beginSubmission(`session:${session.id}`);
     if (finishSubmission === undefined) return;
-    options.notice.value = '';
+
     try {
       await options.execute(session, command, '/compact');
     } catch (error) {
       if (finishSubmission())
-        options.notice.value = translate(
-          'generated.workbenchContextCommandService.unableToCompactContext',
-          { value0: options.errorMessage(error) }
+        options.notice(
+          translate('generated.workbenchContextCommandService.unableToCompactContext', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
     } finally {
       finishSubmission();

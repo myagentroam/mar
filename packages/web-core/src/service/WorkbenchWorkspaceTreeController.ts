@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
@@ -18,7 +19,7 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly activeTabId: Ref<string | undefined>;
   readonly showWorkbench: () => void;
   readonly loading: Ref<boolean>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly workspacesByNode: Ref<Record<string, readonly Workspace[]>>;
   readonly tabs: ReturnType<typeof createWorkspaceTabService>;
   readonly tree: ReturnType<typeof createWorkspaceTreeService>;
@@ -225,9 +226,12 @@ export function createWorkbenchWorkspaceTreeController(
         options.workspaces.value = result.workspaces;
     } catch (error) {
       if (workspaceRequestIds.get(nodeId) !== requestId || !currentSelection()) return;
-      options.notice.value = translate(
-        'generated.workbenchWorkspaceTreeController.unableToLoadNodeWorkspaces',
-        { value0: options.errorMessage(error) }
+      options.notice(
+        translate('generated.workbenchWorkspaceTreeController.unableToLoadNodeWorkspaces', {
+          value0: options.errorMessage(error)
+        }),
+        'error',
+        error
       );
     }
   }
@@ -280,7 +284,7 @@ export function createWorkbenchWorkspaceTreeController(
       cacheNodeWorkspaces(nodeId, updated);
       if (options.workspaceTarget.value?.nodeId === nodeId) options.workspaces.value = [...updated];
     } catch (error) {
-      options.notice.value = options.errorMessage(error);
+      options.notice(options.errorMessage(error), 'error', error);
     } finally {
       options.loading.value = false;
     }
@@ -367,7 +371,7 @@ export function createWorkbenchWorkspaceTreeController(
       if (options.workspaceTarget.value?.nodeId === nodeId) options.workspaces.value = [...updated];
       options.tabs.updateLabel(nodeId, workspace.id, options.tabLabel(updatedWorkspace));
     } catch (error) {
-      options.notice.value = options.errorMessage(error);
+      options.notice(options.errorMessage(error), 'error', error);
     } finally {
       options.loading.value = false;
     }
@@ -413,13 +417,19 @@ export function createWorkbenchWorkspaceTreeController(
         }
       }
       options.tabs.removeWhere((tab) => tab.nodeId === nodeId && tab.workspaceId === workspace.id);
-      options.notice.value = translate(
-        'generated.workbenchWorkspaceTreeController.theWorkspaceWasUnregisteredItsLocalDirectory'
+      options.notice(
+        translate(
+          'generated.workbenchWorkspaceTreeController.theWorkspaceWasUnregisteredItsLocalDirectory'
+        ),
+        'success'
       );
     } catch (error) {
-      options.notice.value = translate(
-        'generated.workbenchWorkspaceTreeController.unableToUnregisterTheWorkspace',
-        { value0: options.errorMessage(error) }
+      options.notice(
+        translate('generated.workbenchWorkspaceTreeController.unableToUnregisterTheWorkspace', {
+          value0: options.errorMessage(error)
+        }),
+        'error',
+        error
       );
     } finally {
       options.loading.value = false;

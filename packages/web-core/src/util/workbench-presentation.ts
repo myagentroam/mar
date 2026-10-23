@@ -67,16 +67,6 @@ export function contextPercentageLabel(value: number): string {
   return `${Math.max(0, Math.round(value * 10) / 10)}%`;
 }
 
-export function noticePresentation(value: string): 'success' | 'warning' | 'error' | 'info' {
-  if (new RegExp(translate('presentation.noticeErrorPattern'), 'iu').test(value)) return 'error';
-  if (new RegExp(translate('presentation.noticeWarningPattern'), 'iu').test(value))
-    return 'warning';
-  if (new RegExp(translate('presentation.noticeCopyPattern'), 'iu').test(value)) return 'info';
-  if (new RegExp(translate('presentation.noticeSuccessPattern'), 'iu').test(value))
-    return 'success';
-  return 'info';
-}
-
 export function runnerStatusLabel(node: NodeSummary): string {
   const codex = node.capabilities.codex;
   const claude = node.capabilities.claudeCode;

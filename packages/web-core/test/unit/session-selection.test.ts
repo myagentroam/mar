@@ -186,7 +186,13 @@ it.each([false, true])(
     else await expect(result).resolves.toBeUndefined();
     expect(f.options.initialLoadFailed.value).toBe(true);
     expect(f.options.loadingInitial.value).toBe(false);
-    expect(f.options.notice).toHaveBeenCalledTimes(throwOnFailure ? 0 : 1);
+    if (throwOnFailure) expect(f.options.notice).not.toHaveBeenCalled();
+    else
+      expect(f.options.notice).toHaveBeenCalledWith(
+        expect.stringContaining('HISTORY_UNAVAILABLE'),
+        'error',
+        failure
+      );
   }
 );
 
@@ -452,6 +458,7 @@ describe('Shared session selection', () => {
     const requests: string[] = [];
     const saveCurrent = vi.fn();
     let confirmInitialRender!: () => void;
+    const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
     const service = createWorkbenchSessionSelectionService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' },
@@ -692,6 +699,7 @@ describe('Shared session selection', () => {
   it('preserves the initial-load failure state so the user can reload after Session Watch initial fails', async () => {
     const initialLoadFailed = { value: false };
     const notice = vi.fn();
+    const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
     const service = createWorkbenchSessionSelectionService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
@@ -740,7 +748,7 @@ describe('Shared session selection', () => {
       replaceSession: vi.fn(),
       canWatch: () => true,
       beginWatch: async () => {
-        throw new Error('SESSION_HISTORY_INITIAL_FAILED');
+        throw failure;
       },
       applySnapshot: vi.fn(),
       mergeTurns: vi.fn(),
@@ -751,6 +759,10 @@ describe('Shared session selection', () => {
     await service.openSession('session-1');
 
     expect(initialLoadFailed.value).toBe(true);
-    expect(notice).toHaveBeenCalledWith(expect.stringContaining('SESSION_HISTORY_INITIAL_FAILED'));
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining('SESSION_HISTORY_INITIAL_FAILED'),
+      'error',
+      failure
+    );
   });
 });

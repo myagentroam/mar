@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createMcpCenterService, type McpCatalogCard } from '../../service/McpCenterService.js';
 
@@ -32,7 +34,11 @@ const query = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const pagination = service.catalogPage;
-const operationError = ref('');
+const catalogError = computed(() =>
+  service.catalogPage.error.value === undefined
+    ? ''
+    : mcpErrorMessage(service.catalogPage.error.value)
+);
 const installingEntryId = ref('');
 const showInstallProgress = ref(false);
 const detailsOpen = ref(false);
@@ -155,7 +161,6 @@ onMounted(() => {
 onUnmounted(() => pagination.dispose());
 watch([targetKind, targetNodeId, targetWorkspaceId], () => {
   inspectionReady.value = false;
-  operationError.value = '';
   void inspect();
 });
 watch(service.inspection, (inspection) => {
@@ -168,9 +173,6 @@ watch(targetNodes, (nodes) => {
 watch(workspaces, (items) => {
   if (!items.some((item) => item.workspaceId === targetWorkspaceId.value))
     targetWorkspaceId.value = items[0]?.workspaceId ?? '';
-});
-watch(service.catalogPage.error, (error) => {
-  if (error !== undefined) operationError.value = mcpErrorMessage(error);
 });
 watch(activeConfigTab, (tab) => {
   if (tab === 'available') void execute(service.loadCatalog);
@@ -247,12 +249,12 @@ async function remove(serverName: string): Promise<void> {
 }
 
 async function execute(operation: () => Promise<void>, success?: string): Promise<void> {
-  operationError.value = '';
   try {
     await service.run(operation);
-    if (success) ElMessage.success({ icon: marIcon('success'), message: success });
+    if (success) showMessage(success, 'success');
   } catch (error) {
-    operationError.value = mcpErrorMessage(error);
+    if (error !== service.catalogPage.error.value)
+      showMessage(mcpErrorMessage(error), 'error', error);
   }
 }
 
@@ -346,7 +348,12 @@ function mcpErrorMessage(error: unknown): string {
       </el-select>
     </section>
     <el-alert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
-    <el-alert v-if="operationError" :title="operationError" type="error" :closable="false" />
+    <el-alert
+      v-if="activeConfigTab === 'available' && catalogError"
+      :title="catalogError"
+      type="error"
+      :closable="false"
+    />
     <el-tabs v-model="activeConfigTab" class="mcp-config-tabs">
       <el-tab-pane
         :label="translate('generated.mcpCenterPanel.availableMCPServers')"

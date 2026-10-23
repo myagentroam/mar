@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, onBeforeUnmount } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue';
 import type { NodeSummary } from '@/model/workbench';
 import {
@@ -80,10 +82,7 @@ async function openGrants(row: AdminConversationTemplateSummary): Promise<void> 
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(grantRequestContext, context)) return;
     grantDialogOpen.value = false;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.grantsLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.grantsLoadFailed'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(grantRequestContext, context))
       grantLoading.value = false;
@@ -113,16 +112,10 @@ async function createGrant(): Promise<void> {
     )
       return;
     grants.value = nextGrants;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('conversationTemplates.grantCreated')
-    });
+    showMessage(translate('conversationTemplates.grantCreated'), 'success');
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(grantRequestContext, context)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.grantCreateFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.grantCreateFailed'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(grantRequestContext, context))
       grantSaving.value = false;
@@ -154,20 +147,14 @@ async function removeGrant(grant: ConversationTemplateGrant): Promise<void> {
     )
       return;
     grants.value = nextGrants;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('conversationTemplates.grantRemoved')
-    });
+    showMessage(translate('conversationTemplates.grantRemoved'), 'success');
   } catch (error) {
     if (
       !disposed &&
       error !== 'cancel' &&
       sameConversationTemplateRequestContext(grantRequestContext, context)
     )
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: templateError(error, 'conversationTemplates.grantRemoveFailed')
-      });
+      showMessage(templateError(error, 'conversationTemplates.grantRemoveFailed'), 'error', error);
   }
 }
 

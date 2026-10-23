@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/LocalePreferenceService';
 import {
   createMailTemplateManagementService,
@@ -57,7 +59,7 @@ async function openViewer(): Promise<void> {
     selectedId.value = service.templates.value[0]?.id ?? '';
     if (selectedId.value !== '') await preview();
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: failure(error) });
+    showMessage(failure(error), 'error', error);
   }
 }
 function select(template: MailTemplate): void {
@@ -78,8 +80,7 @@ async function preview(): Promise<void> {
     if (viewerOpen.value && sequence === previewSequence && selectedId.value === template.id)
       rendered.value = result;
   } catch (error) {
-    if (sequence === previewSequence)
-      ElMessage.error({ icon: marIcon('error'), message: failure(error) });
+    if (sequence === previewSequence) showMessage(failure(error), 'error', error);
   } finally {
     if (sequence === previewSequence) previewing.value = false;
   }
@@ -96,13 +97,9 @@ async function sendTest(): Promise<void> {
     await testForm.value?.validate();
     await service.test(testAddress.value, testTemplateId.value);
     testOpen.value = false;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.systemConfigurationPage.mailTestAccepted')
-    });
+    showMessage(translate('generated.systemConfigurationPage.mailTestAccepted'), 'success');
   } catch (error) {
-    if (error instanceof Error)
-      ElMessage.error({ icon: marIcon('error'), message: failure(error) });
+    if (error instanceof Error) showMessage(failure(error), 'error', error);
   }
 }
 </script>

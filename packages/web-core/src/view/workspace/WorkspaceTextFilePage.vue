@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { errorMessage } from '../../util/error-presentation.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import {
   computed,
   defineAsyncComponent,
@@ -495,15 +498,18 @@ async function save(): Promise<void> {
           revision: savedRevision
         });
     }
-    ElMessage.success({ icon: marIcon('success'), message: translate('fileEditor.saved') });
+    showMessage(translate('fileEditor.saved'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
+    showMessage(
+      errorMessage(
+        error,
         errorCode(error) === 'FILE_WRITE_CONFLICT'
           ? translate('fileEditor.conflict')
           : translate('fileEditor.saveFailed')
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -554,10 +560,7 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 
@@ -566,10 +569,7 @@ async function pasteSelection(): Promise<void> {
   try {
     codeEditor.value?.insertText(await navigator.clipboard.readText());
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 

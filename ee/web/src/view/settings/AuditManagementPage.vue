@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
 import { currentLocale, translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
@@ -307,13 +309,13 @@ async function openDetail(event: AuditEvent): Promise<void> {
       { cache: 'no-store' }
     );
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.auditManagementPage.unableToLoadAuditEvents')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.auditManagementPage.unableToLoadAuditEvents'),
+      'error',
+      error
+    );
   } finally {
     detailLoading.value = false;
   }
@@ -346,13 +348,13 @@ async function load(page = 1, append = false): Promise<void> {
     pageReady.value = true;
   } catch (error) {
     if (generation !== loadGeneration) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.auditManagementPage.unableToLoadAuditEvents')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.auditManagementPage.unableToLoadAuditEvents'),
+      'error',
+      error
+    );
   } finally {
     if (generation !== loadGeneration) return;
     loading.value = false;

@@ -58,8 +58,6 @@ export function createTerminalService(options: TerminalServiceOptions) {
       attachmentConflicts += 1;
       generation += 1;
       stopPath();
-      if (attachmentConflicts === 3)
-        options.onNotice(translate('generated.terminalRelayService.terminalOccupiedRetrying'));
       scheduleReconnect();
       return true;
     }

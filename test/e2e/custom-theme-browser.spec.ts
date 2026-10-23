@@ -30,6 +30,46 @@ async function useThemeMenu(page: Page, option: Locator, action: string): Promis
   await expect(page.getByRole('menuitem', { name: action, exact: true })).toBeHidden();
 }
 
+async function expectMessageThemeTokens(message: Locator, iconToken: string): Promise<void> {
+  const actual = await message.evaluate((element, statusToken) => {
+    const root = getComputedStyle(document.documentElement);
+    const surface = getComputedStyle(element);
+    const content = element.querySelector('.mar-message-text');
+    const icon = element.querySelector('.el-message__icon');
+    if (!content || !icon) throw new Error('Message content or icon is missing');
+    const colorForToken = (token: string): string => {
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position: fixed; visibility: hidden;';
+      probe.style.color = `var(${token})`;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
+    return {
+      background: surface.backgroundColor,
+      backgroundToken: colorForToken('--mar-control-bg-color-overlay'),
+      border: surface.borderTopColor,
+      borderToken: colorForToken('--mar-border-default'),
+      radius: surface.borderRadius,
+      radiusToken: root.getPropertyValue('--mar-radius-control').trim(),
+      text: getComputedStyle(content).color,
+      textToken: colorForToken('--mar-text-primary'),
+      fontSize: getComputedStyle(content).fontSize,
+      bodyToken: root.getPropertyValue('--mar-font-size-body').trim(),
+      iconColor: getComputedStyle(icon).color,
+      statusColor: colorForToken(statusToken)
+    };
+  }, iconToken);
+
+  expect(resolvedColorToHex(actual.background)).toBe(resolvedColorToHex(actual.backgroundToken));
+  expect(resolvedColorToHex(actual.border)).toBe(resolvedColorToHex(actual.borderToken));
+  expect(actual.radius).toBe(actual.radiusToken);
+  expect(resolvedColorToHex(actual.text)).toBe(resolvedColorToHex(actual.textToken));
+  expect(actual.fontSize).toBe(actual.bodyToken);
+  expect(resolvedColorToHex(actual.iconColor)).toBe(resolvedColorToHex(actual.statusColor));
+}
+
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -960,3 +1000,209 @@ for (const scheme of ['Light', 'Dark']) {
     }
   );
 }
+
+test('real message feedback follows light, dark, and custom theme tokens and keeps duplicates separate', async ({
+  page
+}) => {
+  for (const scheme of ['Light', 'Dark']) {
+    const row = page.locator('.theme-option').filter({
+      has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
+    });
+    await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
+    await page.getByTestId('show-info-feedback').click();
+    const message = page
+      .locator('.el-message--info')
+      .filter({ hasText: 'Theme-aware info feedback' });
+    await expect(message).toContainText('Theme-aware info feedback');
+    await expectMessageThemeTokens(message, '--mar-text-secondary');
+    await message.locator('.mar-message-close').click();
+    await expect(message).toHaveCount(0);
+  }
+
+  const options = page.locator('.theme-option');
+  await useThemeMenu(page, options.first(), 'Duplicate');
+  const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+  await editor.fill(
+    JSON.stringify({
+      version: 1,
+      name: 'Message feedback palette',
+      colors: {
+        '--mar-control-bg-color-overlay': '#263547',
+        '--mar-text-primary': '#f4f6fa',
+        '--mar-text-secondary': '#c3d0df',
+        '--mar-border-default': '#718096',
+        '--mar-color-brand': '#72a9ff',
+        '--mar-control-color-success': '#39a879',
+        '--mar-control-color-warning': '#e2a83b',
+        '--mar-control-color-danger': '#f06a65'
+      }
+    })
+  );
+  await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+  const customTheme = options.filter({ hasText: 'Message feedback palette' });
+  await customTheme.getByRole('button', { name: 'Apply theme', exact: true }).click();
+
+  for (const [testId, type, token] of [
+    ['show-info-feedback', 'info', '--mar-text-secondary'],
+    ['show-success-feedback', 'success', '--mar-control-color-success'],
+    ['show-warning-feedback', 'warning', '--mar-control-color-warning'],
+    ['show-error-feedback', 'error', '--mar-control-color-danger']
+  ] as const) {
+    await page.getByTestId(testId).click();
+    const message = page
+      .locator('.el-message--' + type)
+      .filter({ hasText: 'Theme-aware ' + type + ' feedback' });
+    await expect(message).toBeVisible();
+    await expectMessageThemeTokens(message, token);
+    await message.locator('.mar-message-close').click();
+    await expect(message).toHaveCount(0);
+  }
+
+  await page.getByTestId('show-repeated-feedback').click();
+  const repeated = page.locator('.el-message--info').filter({ hasText: 'Repeated feedback event' });
+  await expect(repeated).toHaveCount(2);
+  await expect
+    .poll(async () => {
+      const tops = await repeated.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().top)
+      );
+      return tops.length === 2 && Math.abs(tops[0]! - tops[1]!) > 1;
+    })
+    .toBe(true);
+  await repeated.first().locator('.mar-message-close').click();
+  await repeated.last().locator('.mar-message-close').click();
+  await expect(repeated).toHaveCount(0);
+});
+
+test('mobile long feedback scrolls without trapping its accessible close control and dialogs close with Escape', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId('show-plain-text-feedback').click();
+  const plainTextMessage = page
+    .locator('.el-message--warning')
+    .filter({ hasText: 'Plain text <img data-feedback-payload=unsafe src=x>' });
+  await expect(plainTextMessage.locator('.mar-message-text')).toHaveText(
+    'Plain text <img data-feedback-payload=unsafe src=x>'
+  );
+  await expect(plainTextMessage.locator('img')).toHaveCount(0);
+  await plainTextMessage.locator('.mar-message-close').click();
+  await expect(plainTextMessage).toHaveCount(0);
+
+  await page.getByTestId('open-feedback-dialog').click();
+  const dialog = page.getByRole('dialog', { name: 'Message feedback dialog', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await page.getByTestId('show-dialog-feedback').click();
+  const message = dialog
+    .locator('.el-message--error')
+    .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
+  const content = message.locator('.mar-message-text');
+  const close = message.locator('.mar-message-close');
+  await expect(content).toContainText(
+    'Line 1: long feedback remains readable and can be dismissed.'
+  );
+  expect(await message.evaluate((element) => element.closest('[role="dialog"]') !== null)).toBe(
+    true
+  );
+  await expect(dialog).toBeVisible();
+
+  const layout = await message.evaluate((element) => {
+    const content = element.querySelector('.mar-message-text')!;
+    const close = element.querySelector('.el-message__closeBtn')!;
+    const rect = (target: Element) => {
+      const { x, y, width, height } = target.getBoundingClientRect();
+      return { x, y, width, height, right: x + width, bottom: y + height };
+    };
+    return {
+      message: rect(element),
+      content: rect(content),
+      close: rect(close),
+      scrollHeight: content.scrollHeight,
+      clientHeight: content.clientHeight,
+      scrollWidth: content.scrollWidth,
+      clientWidth: content.clientWidth,
+      closeOutsideContent: !content.contains(close)
+    };
+  });
+  expect(layout.message.x).toBeGreaterThanOrEqual(16);
+  expect(layout.message.right).toBeLessThanOrEqual(374);
+  expect(layout.content.right).toBeLessThanOrEqual(layout.close.x);
+  expect(layout.closeOutsideContent).toBe(true);
+  expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+
+  await expect(close).toHaveRole('button');
+  await expect(close).toHaveAccessibleName(/close/i);
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(close).toBeVisible();
+  await close.focus();
+  await expect(close).toBeFocused();
+  await close.press('Enter');
+  await expect(message).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('dialog-attached feedback leaves no offset after the dialog closes', async ({ page }) => {
+  await page.getByTestId('show-info-feedback').click();
+  const baselineMessage = page
+    .locator('.el-message--info')
+    .filter({ hasText: 'Theme-aware info feedback' });
+  await expect(baselineMessage).toBeVisible();
+  const baselineTop = await baselineMessage.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).top)
+  );
+  expect(Number.isFinite(baselineTop)).toBe(true);
+  await baselineMessage.locator('.mar-message-close').click();
+  await expect(baselineMessage).toHaveCount(0);
+
+  await page.getByTestId('open-feedback-dialog').click();
+  const dialog = page.getByRole('dialog', { name: 'Message feedback dialog', exact: true });
+  await expect(dialog).toBeVisible();
+  await page.getByTestId('show-dialog-feedback').click();
+  const dialogMessage = dialog
+    .locator('.el-message--error')
+    .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
+  await expect(dialogMessage).toBeVisible();
+
+  await dialog.locator('.el-dialog__headerbtn').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page
+      .locator('.el-message--error')
+      .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' })
+  ).toHaveCount(0);
+
+  await page.getByTestId('show-info-feedback').click();
+  const nextMessage = page
+    .locator('.el-message--info')
+    .filter({ hasText: 'Theme-aware info feedback' });
+  await expect(nextMessage).toBeVisible();
+  const nextTop = await nextMessage.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).top)
+  );
+  expect(nextTop).toBeCloseTo(baselineTop, 1);
+
+  await nextMessage.locator('.mar-message-close').click();
+  await expect(nextMessage).toHaveCount(0);
+});
+
+test('successful dialog saves keep their feedback after the dialog is destroyed', async ({
+  page
+}) => {
+  await page.getByTestId('open-feedback-dialog').click();
+  await page.getByTestId('save-feedback-dialog').click();
+  await expect(
+    page.getByRole('dialog', { name: 'Message feedback dialog', exact: true })
+  ).toHaveCount(0);
+  const message = page.locator('.el-message--success').filter({ hasText: 'Dialog settings saved' });
+  await expect(message).toBeVisible();
+  await expect(message).toHaveJSProperty('isConnected', true);
+  await message.locator('.mar-message-close').click();
+  await expect(message).toHaveCount(0);
+});

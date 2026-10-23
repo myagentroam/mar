@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { ElMessage } from 'element-plus';
+
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
 import { createEffectiveWorkspaceSkillService } from '../../service/EffectiveWorkspaceSkillService.js';
@@ -185,10 +187,10 @@ async function openSkills(): Promise<void> {
   try {
     await skillService.load(props.nodeId, props.workspaceId);
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain')
-    });
+    showMessage(
+      translate('generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain'),
+      'error'
+    );
   }
 }
 
@@ -197,10 +199,10 @@ async function openMcps(): Promise<void> {
   try {
     await mcpService.run(() => mcpService.loadWorkspace(props.nodeId, props.workspaceId));
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry')
-    });
+    showMessage(
+      translate('generated.workspaceSessionList.unableToLoadCurrentMCPServersTry'),
+      'error'
+    );
   }
 }
 

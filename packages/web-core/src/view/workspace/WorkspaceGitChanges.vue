@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from 'element-plus';
@@ -29,7 +30,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [entry: ChangeEntry, external: boolean];
-  notice: [value: string];
+  notice: [value: string, type: MessageType, cause?: unknown];
 }>();
 const {
   repositories: visibleChangeRepositories,
@@ -123,7 +124,8 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     'notice',
     entry.state === 'UNTRACKED'
       ? translate('generated.workspaceInspector.deleted', { value0: workspacePath })
-      : translate('generated.workspaceInspector.reverted', { value0: workspacePath })
+      : translate('generated.workspaceInspector.reverted', { value0: workspacePath }),
+    'success'
   );
 }
 </script>

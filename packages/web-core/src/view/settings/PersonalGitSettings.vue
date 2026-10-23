@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import {
   formatGitRemoteUrl,
   gitCredentialInputSchema,
@@ -79,7 +81,7 @@ async function load(): Promise<void> {
   } catch (error) {
     if (alive) {
       failed.value = true;
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+      showMessage(errorMessage(error), 'error', error);
     }
   } finally {
     if (alive) loading.value = false;
@@ -191,10 +193,7 @@ async function saveCredential(): Promise<void> {
   const parsed = (
     editing.value === undefined ? gitCredentialInputSchema : gitCredentialUpdateSchema
   ).safeParse(credentialInput());
-  if (!parsed.success) {
-    ElMessage.error({ icon: marIcon('error'), message: t('personalGit.invalid') });
-    return;
-  }
+  if (!parsed.success) return;
   saving.value = true;
   try {
     const result =
@@ -204,9 +203,9 @@ async function saveCredential(): Promise<void> {
     if (!alive) return;
     apply(result);
     closeCredential();
-    ElMessage.success({ icon: marIcon('success'), message: t('personalGit.saved') });
+    showMessage(t('personalGit.saved'), 'success');
   } catch (error) {
-    if (alive) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (alive) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (alive) saving.value = false;
   }
@@ -226,7 +225,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
     apply(await service.removeCredential(value.id));
     if (detail.value?.id === value.id) closeCredentialDetail();
   } catch (error) {
-    if (alive) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (alive) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (alive) saving.value = false;
   }

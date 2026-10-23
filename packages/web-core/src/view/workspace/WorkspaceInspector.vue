@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
@@ -208,7 +209,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  notice: [value: string];
+  notice: [value: string, type: MessageType, cause?: unknown];
   branch: [workspaceId: string, value: string | null];
   workspace: [value: WorkspaceFileTreeWorkspace];
   directory: [path: string];
@@ -552,7 +553,11 @@ function onUploadFiles(event: Event): void {
 
 function onTreeFileDrop(directory: string, files: readonly File[]): void {
   if (files.length === 0) {
-    emit('notice', translate('generated.workspaceInspector.onlyFilesCanBeDroppedCompressFolders'));
+    emit(
+      'notice',
+      translate('generated.workspaceInspector.onlyFilesCanBeDroppedCompressFolders'),
+      'warning'
+    );
     return;
   }
   void prepareUploads(files, directory);
@@ -575,7 +580,8 @@ function confirmUploads(): void {
       'notice',
       translate('generated.workspaceInspector.filesWereNotUploadedBecauseOfConflicts', {
         value0: blocked
-      })
+      }),
+      'warning'
     );
   uploadDialogOpen.value = false;
   pendingUploads.value = [];
@@ -592,8 +598,10 @@ function markFailure(error: unknown, action: string, summary?: string): void {
     'notice',
     translate('generated.workspaceInspector.unableToLoad', {
       value0: action,
-      value1: summary ?? errorMessage(error)
-    })
+      value1: errorMessage(error, summary)
+    }),
+    'error',
+    error
   );
 }
 
@@ -881,7 +889,7 @@ async function openFile(path: string, line?: number, column?: number): Promise<v
       fileTree.selectPath(path);
       await fileTreeView.value?.reveal(path, current);
     } catch (error) {
-      if (current()) emit('notice', errorMessage(error));
+      if (current()) emit('notice', errorMessage(error), 'error', error);
     }
   })();
   await opening;
@@ -914,7 +922,11 @@ function openWorkspaceFileExternal(
   });
   const popup = standaloneFileWindow.open(`/console?${parameters.toString()}`);
   if (popup === undefined)
-    emit('notice', translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'));
+    emit(
+      'notice',
+      translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'),
+      'error'
+    );
 }
 
 function openGitDiffExternal(intent: WorkspaceFileOpenIntent): void {
@@ -936,7 +948,11 @@ function openGitDiffExternal(intent: WorkspaceFileOpenIntent): void {
   for (const candidatePath of intent.paths ?? [intent.path])
     parameters.append('paths', candidatePath);
   if (standaloneFileWindow.open(`/console?${parameters.toString()}`) === undefined)
-    emit('notice', translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'));
+    emit(
+      'notice',
+      translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'),
+      'error'
+    );
 }
 
 function openCurrentRenderedPreview(): boolean {
@@ -1047,7 +1063,7 @@ async function onFileTreeAction(
     }
     if (action === 'COPY_PATH') {
       await navigator.clipboard.writeText(node.path);
-      emit('notice', translate('generated.workspaceInspector.relativePathCopied'));
+      emit('notice', translate('generated.workspaceInspector.relativePathCopied'), 'info');
       return;
     }
     if (action === 'DOWNLOAD') {
@@ -1979,7 +1995,8 @@ onBeforeUnmount(() => filePreviews.reset());
             @invalid-drop="
               emit(
                 'notice',
-                translate('generated.workspaceInspector.foldersCannotBeDroppedCompressThemBefore')
+                translate('generated.workspaceInspector.foldersCannotBeDroppedCompressThemBefore'),
+                'warning'
               )
             "
           />
@@ -2065,13 +2082,13 @@ onBeforeUnmount(() => filePreviews.reset());
         :service="git"
         :target="fileOperationTarget()"
         @open="openChange"
-        @notice="emit('notice', $event)"
+        @notice="(value, type, cause) => emit('notice', value, type, cause)"
       />
       <WorkspaceGitHistory
         v-else-if="activeSection === 'history'"
         :service="git"
         @open="openHistoryDiff"
-        @notice="emit('notice', $event)"
+        @notice="(value, type, cause) => emit('notice', value, type, cause)"
       />
     </template>
   </article>

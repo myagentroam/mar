@@ -684,7 +684,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                   )
               "
               @workspace="page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)"
-              @notice="page.notice = $event"
+              @notice="page.notice"
               @uploads="page.queueWorkspaceUploads"
             />
           </aside>
@@ -731,7 +731,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
             :mobile-mode="page.mobileViewport"
             :active="tab.id === page.activeWorkspaceTabId"
             @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
-            @notice="page.notice = $event"
+            @notice="page.notice"
           />
         </div>
       </template>

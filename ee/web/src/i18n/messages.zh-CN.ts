@@ -917,11 +917,7 @@ export const zhCN = {
     fileChangeRenamed: conversationUiZhCN.presentation.fileChangeRenamed,
     fileChangeCopied: conversationUiZhCN.presentation.fileChangeCopied,
     fileChangeTypeChanged: conversationUiZhCN.presentation.fileChangeTypeChanged,
-    unavailableParameters: conversationUiZhCN.presentation.unavailableParameters,
-    noticeErrorPattern: workbenchCompositionZhCN.presentation.noticeErrorPattern,
-    noticeWarningPattern: workbenchCompositionZhCN.presentation.noticeWarningPattern,
-    noticeCopyPattern: workbenchCompositionZhCN.presentation.noticeCopyPattern,
-    noticeSuccessPattern: workbenchCompositionZhCN.presentation.noticeSuccessPattern
+    unavailableParameters: conversationUiZhCN.presentation.unavailableParameters
   },
   nodeMessages: {
     planDetail: composerZhCN.nodeMessages.planDetail,

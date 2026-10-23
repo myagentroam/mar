@@ -72,11 +72,12 @@ describe('public workspace registration', () => {
   it('keeps the selected path and releases loading when submission fails', async () => {
     const loading = ref(false);
     const error = vi.fn();
+    const failure = new Error('FAILED');
     const service = createWorkspaceRegistrationService({
       targetNodeId: ref<string | undefined>('node-a'),
       globalLoading: loading,
       request: async () => {
-        throw new Error('FAILED');
+        throw failure;
       },
       onRegistered: vi.fn(),
       notice: vi.fn(),
@@ -88,6 +89,7 @@ describe('public workspace registration', () => {
     expect(service.path.value).toBe('/project');
     expect(loading.value).toBe(false);
     expect(error).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith(expect.any(String), failure);
   });
 
   it('ignores directory and registration responses after selection changes to another Node', async () => {

@@ -124,7 +124,9 @@ describe('Workbench session message workspace resolution', () => {
   });
 });
 
-function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) {
+function pendingRequestHarness(
+  input: { draft?: boolean; busy?: boolean; attachmentsPending?: boolean } = {}
+) {
   let resolveRequest!: (value: unknown) => void;
   let rejectRequest!: (reason: unknown) => void;
   const requestPending = new Promise((resolve, reject) => {
@@ -180,7 +182,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
   });
   const runs = { value: [] as import('../../src/model/workbench.js').AgentRun[] };
   const submission = createWorkbenchSubmissionService();
-  const notice = { value: '' };
+  const notice = vi.fn();
   const service = createWorkbenchSessionMessageService({
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
@@ -196,7 +198,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     input: inputValue,
     skillTokens,
     attachments,
-    attachmentsPending: { value: false },
+    attachmentsPending: { value: input.attachmentsPending === true },
     composerOpen: { value: true },
     composerBusy: { value: input.busy === true },
     draftOpen,
@@ -710,15 +712,21 @@ describe('Workbench Message Submission Status', () => {
 
   it('Preserves input when sending fails without rolling back business projections', async () => {
     const harness = pendingRequestHarness();
+    const error = new Error('REQUEST_FAILED');
 
     const sending = harness.service.send();
-    harness.rejectRequest(new Error('REQUEST_FAILED'));
+    harness.rejectRequest(error);
     await sending;
 
     expect(harness.removeUserMessage).not.toHaveBeenCalled();
     expect(harness.removeActiveRun).not.toHaveBeenCalled();
     expect(harness.removeQueueItem).not.toHaveBeenCalled();
     expect(harness.inputValue.value).toBe('Immediate Message');
+    expect(harness.notice).toHaveBeenCalledWith(
+      expect.stringContaining('REQUEST_FAILED'),
+      'error',
+      error
+    );
   });
 
   it('submits only the attachment ID without inline content for a Composer attachment', async () => {
@@ -744,6 +752,21 @@ describe('Workbench Message Submission Status', () => {
     expect(body.computerUse).toBe(false);
     harness.resolveRequest(acceptedResult);
     await sending;
+  });
+
+  it('blocks sending while an attachment is still uploading with a warning', async () => {
+    const harness = pendingRequestHarness({ attachmentsPending: true });
+
+    await harness.service.send();
+
+    expect(harness.request).not.toHaveBeenCalled();
+    expect(harness.inputValue.value).toBe('Immediate Message');
+    expect(harness.notice).toHaveBeenCalledWith(
+      translate(
+        'generated.workbenchSessionMessageService.attachmentsAreStillUploadingOrFailedWait'
+      ),
+      'warning'
+    );
   });
 
   it('settles sent attachments after editing and sends the next message without stale IDs', async () => {
@@ -935,6 +958,7 @@ describe('Workbench Message Submission Status', () => {
     expect(harness.request).not.toHaveBeenCalled();
     expect(harness.inputValue.value).toBe('Immediate Message');
     expect(harness.skillTokens.value).toHaveLength(1);
+    expect(harness.notice).toHaveBeenCalledWith(translate('composer.skillUnavailable'), 'warning');
   });
 
   it('Does not clear only the body and leave an orphaned skill token when token state changes during sending', async () => {
@@ -969,7 +993,10 @@ describe('Workbench Message Submission Status', () => {
       expect(harness.submission.pending.value).toBe(false);
       expect(harness.releaseAttachments).not.toHaveBeenCalled();
       expect(harness.inputValue.value).toBe('Immediate Message');
-      expect(harness.notice.value).toBe(translate('workbench.submissionTimedOut'));
+      expect(harness.notice).toHaveBeenCalledWith(
+        translate('workbench.submissionTimedOut'),
+        'warning'
+      );
 
       const second = harness.service.send();
       const firstBody = JSON.parse(String(harness.request.mock.calls[0]?.[1]?.body));
@@ -993,7 +1020,10 @@ describe('Workbench Message Submission Status', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(harness.draftOpen.value).toBe(false);
       expect(harness.selectedSessionId.value).toBe('draft:session-1');
-      expect(harness.notice.value).toBe(translate('workbench.submissionTimedOut'));
+      expect(harness.notice).toHaveBeenCalledWith(
+        translate('workbench.submissionTimedOut'),
+        'warning'
+      );
       const second = harness.service.send();
       await Promise.resolve();
       expect(harness.request.mock.calls.map((call) => call[0])).toEqual([
@@ -1047,7 +1077,7 @@ describe('Workbench Message Submission Status', () => {
         if (target === 'session') harness.selectedSessionId.value = 'other-session';
         if (target === 'new draft') harness.selectedSessionId.value = undefined;
         await vi.advanceTimersByTimeAsync(5_000);
-        expect(harness.notice.value).toBe('');
+        expect(harness.notice).not.toHaveBeenCalled();
         expect(harness.submission.pending.value).toBe(false);
         harness.resolveRequest(acceptedResult);
         await sending;

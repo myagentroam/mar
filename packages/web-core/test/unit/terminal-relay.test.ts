@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTerminalRelayService } from '../../src/service/TerminalRelayService.js';
+import { translate } from '../../src/service/LocalePreferenceService.js';
 
 class FakeSocket extends EventTarget {
   static readonly OPEN = 1;
@@ -30,8 +31,7 @@ function fixture(workspaceId?: string) {
     onExited: vi.fn(),
     onTerminalUnavailable: vi.fn(),
     onErrorFrame: vi.fn(),
-    onReconnectStatus: vi.fn(),
-    onNotice: vi.fn()
+    onReconnectStatus: vi.fn()
   };
   const service = createTerminalRelayService({
     terminalId: 'terminal/a',
@@ -155,10 +155,19 @@ describe('Public Terminal Relay', () => {
     const f = fixture();
     await f.service.attach();
     FakeSocket.instances[0]!.dispatchEvent(new MessageEvent('message', { data: '{' }));
-    expect(f.onNotice).toHaveBeenCalledOnce();
+    expect(f.onErrorFrame).not.toHaveBeenCalled();
+    expect(f.onReconnectStatus).toHaveBeenCalledWith(
+      translate('generated.terminalRelayService.terminalConnectionLostReconnectingInSeconds', {
+        value0: 1
+      })
+    );
     await vi.advanceTimersByTimeAsync(1000);
     FakeSocket.instances[1]!.close();
-    expect(f.onNotice).toHaveBeenCalledOnce();
+    expect(f.onReconnectStatus).toHaveBeenCalledWith(
+      translate('generated.terminalRelayService.terminalConnectionLostReconnectingInSeconds', {
+        value0: 2
+      })
+    );
     await vi.advanceTimersByTimeAsync(2000);
     expect(f.request).toHaveBeenCalledTimes(3);
     f.service.dispose();

@@ -69,7 +69,6 @@ describe('tool change review', () => {
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain('aria-label="Open source file"');
-      expect(html).toContain('Ctrl/⌘+E');
       expect(html).not.toContain('Open current file');
     }
   );

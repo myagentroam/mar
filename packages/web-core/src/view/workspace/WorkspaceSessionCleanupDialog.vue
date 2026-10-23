@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { errorMessage } from '../../util/error-presentation.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import type { FormInstance, FormRules } from 'element-plus';
-import { ElMessage } from 'element-plus';
+
 import { computed, reactive, ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -71,13 +74,13 @@ async function submit(): Promise<void> {
     const nextResult = await props.cleanup(form.inactiveDays);
     if (nextResult !== undefined) result.value = nextResult;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? error.message
-          : translate('generated.workspaceSessionCleanupDialog.cleanupFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.workspaceSessionCleanupDialog.cleanupFailed'),
+      'error',
+      error
+    );
   } finally {
     loading.value = false;
   }

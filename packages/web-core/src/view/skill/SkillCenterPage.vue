@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -103,13 +105,14 @@ watch(activeConfigTab, (tab) => {
 });
 watch(service.catalogPage.error, (error) => {
   if (error !== undefined)
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
-      )
-    });
+      ),
+      'error',
+      error
+    );
 });
 
 async function ensureTargets(): Promise<void> {
@@ -134,15 +137,16 @@ async function ensureTargets(): Promise<void> {
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
   try {
     await operation();
-    if (success !== undefined) ElMessage.success({ icon: marIcon('success'), message: success });
+    if (success !== undefined) showMessage(success, 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillCenterPage.theSkillOperationDidNotCompleteTry')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   }
 }
 
@@ -235,13 +239,14 @@ async function checkEnvironment(): Promise<void> {
     );
   } catch (error) {
     if (!isDialogCancellation(error))
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: skillErrorMessage(
+      showMessage(
+        skillErrorMessage(
           error,
           translate('generated.skillCenterPage.theEnvironmentCheckDidNotCompleteTry')
-        )
-      });
+        ),
+        'error',
+        error
+      );
   }
 }
 
@@ -302,12 +307,12 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
     }, 800);
     operationStarted = true;
     await service.install(favorite.id, nodeId, workspaceId, overwrite);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: overwrite
+    showMessage(
+      overwrite
         ? translate('generated.skillCenterPage.skillUpdated')
-        : translate('generated.skillCenterPage.skillInstalled')
-    });
+        : translate('generated.skillCenterPage.skillInstalled'),
+      'success'
+    );
   } catch (error) {
     if (isDialogCancellation(error)) return;
     if (
@@ -327,29 +332,28 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
           }
         );
         await service.install(favorite.id, nodeId, workspaceId, true);
-        ElMessage.success({
-          icon: marIcon('success'),
-          message: translate('generated.skillCenterPage.skillInstalled2')
-        });
+        showMessage(translate('generated.skillCenterPage.skillInstalled2'), 'success', error);
       } catch (confirmationError) {
         if (!isDialogCancellation(confirmationError))
-          ElMessage.error({
-            icon: marIcon('error'),
-            message: skillErrorMessage(
+          showMessage(
+            skillErrorMessage(
               confirmationError,
               translate('generated.skillCenterPage.skillInstallationDidNotCompleteTryAgain')
-            )
-          });
+            ),
+            'error',
+            confirmationError
+          );
       }
       return;
     }
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillCenterPage.skillInstallationDidNotCompleteTryAgain2')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     if (progressTimer !== undefined) window.clearTimeout(progressTimer);
     targetMutationPending.value = false;
@@ -407,13 +411,14 @@ async function removeInstalled(name: string): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillCenterPage.unableToConfirmDeletionTryAgainLater')
-      )
-    });
+      ),
+      'error',
+      error
+    );
     return;
   }
   await mutateCurrentTarget(
@@ -443,13 +448,14 @@ async function repairGitExclude(): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillCenterPage.unableToConfirmRepairTryAgainLater')
-      )
-    });
+      ),
+      'error',
+      error
+    );
     return;
   }
   await mutateCurrentTarget(
@@ -463,15 +469,16 @@ async function mutateCurrentTarget(operation: () => Promise<void>, success: stri
   targetMutationPending.value = true;
   try {
     await operation();
-    ElMessage.success({ icon: marIcon('success'), message: success });
+    showMessage(success, 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillCenterPage.theSkillOperationDidNotCompleteTry2')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     targetMutationPending.value = false;
     if (`${targetNodeId.value}:${effectiveWorkspaceId.value ?? ''}` === targetKey)

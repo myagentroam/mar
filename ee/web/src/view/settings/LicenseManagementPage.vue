@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { marIcon } from '@myagentroam/web-core/icons';
+import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import { translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
 
@@ -55,19 +55,19 @@ async function load(): Promise<void> {
       requestCode.value = generatedRequest.value.requestCode;
     } else {
       requestCode.value = '';
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode')
-      });
+      showMessage(
+        translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode'),
+        'error'
+      );
     }
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.licenseManagementPage.unableToLoadLicense')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.licenseManagementPage.unableToLoadLicense'),
+      'error',
+      error
+    );
   } finally {
     requestCodeLoading.value = false;
     loading.value = false;
@@ -76,17 +76,12 @@ async function load(): Promise<void> {
 async function copyRequestCode(): Promise<void> {
   try {
     await navigator.clipboard.writeText(requestCode.value);
-    ElMessage.info({
-      icon: marIcon('info'),
-      message: translate('generated.licenseManagementPage.licenseRequestCodeCopied')
-    });
+    showMessage(translate('generated.licenseManagementPage.licenseRequestCodeCopied'), 'info');
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate(
-        'generated.licenseManagementPage.unableToCopyCheckBrowserClipboardPermissions'
-      )
-    });
+    showMessage(
+      translate('generated.licenseManagementPage.unableToCopyCheckBrowserClipboardPermissions'),
+      'error'
+    );
   }
 }
 async function importLicense(): Promise<void> {
@@ -98,19 +93,16 @@ async function importLicense(): Promise<void> {
       body: JSON.stringify({ document: document.value.trim() })
     });
     document.value = '';
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.licenseManagementPage.licenseImported')
-    });
+    showMessage(translate('generated.licenseManagementPage.licenseImported'), 'success');
     emit('imported');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.licenseManagementPage.unableToImportLicense')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.licenseManagementPage.unableToImportLicense'),
+      'error',
+      error
+    );
   } finally {
     loading.value = false;
   }

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage } from 'element-plus';
+
 import { ref, watch } from 'vue';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
 import { runnerUsageWindowLabel, type RunnerUsageName } from '../../service/RunnerUsageService';
@@ -56,7 +58,7 @@ async function setComputerUse(enabled: boolean): Promise<void> {
     computerUseCapability.value = capability;
     emit('computerUseChanged', capability);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   } finally {
     computerUseChanging.value = false;
   }

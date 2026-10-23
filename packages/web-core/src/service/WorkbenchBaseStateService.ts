@@ -1,4 +1,4 @@
-import { computed, customRef, ref, type Ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import {
   createWorkbenchNotificationService,
   type WorkbenchNotification
@@ -20,19 +20,6 @@ export function createWorkbenchBaseStateService<
   WorkspaceType extends Workspace = Workspace
 >(options: { readonly sessionPageSize: number; readonly onUnauthenticated: () => void }) {
   const admin = createAdminSessionStateService();
-  const notice = customRef<string>((track, trigger) => {
-    let value = '';
-    return {
-      get: () => {
-        track();
-        return value;
-      },
-      set: (next) => {
-        value = next;
-        trigger();
-      }
-    };
-  });
   const http = createWorkbenchHttpService({
     csrfToken: admin.csrfToken,
     csrfStorageKey: USER_CSRF_STORAGE_KEY,
@@ -46,7 +33,7 @@ export function createWorkbenchBaseStateService<
   });
   const conversation = createConversationStateService();
   const surface = createWorkbenchSurfaceStateService();
-  return { admin, notice, http, selection, paging, draft, run, conversation, surface };
+  return { admin, http, selection, paging, draft, run, conversation, surface };
 }
 
 /** Composes foreground targets without interpreting host management identifiers. */

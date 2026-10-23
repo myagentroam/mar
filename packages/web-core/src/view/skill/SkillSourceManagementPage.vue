@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -124,13 +126,14 @@ const catalogTags = pagination.tags;
 const filteredFavorites = service.favorites;
 watch(pagination.error, (error) => {
   if (error !== undefined)
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
-      )
-    });
+      ),
+      'error',
+      error
+    );
 });
 
 onMounted(() => {
@@ -155,15 +158,16 @@ async function loadPage(): Promise<void> {
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
   try {
     await operation();
-    if (success !== undefined) ElMessage.success({ icon: marIcon('success'), message: success });
+    if (success !== undefined) showMessage(success, 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
-      )
-    });
+      ),
+      'error',
+      error
+    );
   }
 }
 
@@ -308,13 +312,14 @@ async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void>
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmSourceStatusChange')
-      )
-    });
+      ),
+      'error',
+      error
+    );
     return;
   }
   await run(
@@ -342,12 +347,12 @@ async function checkSkillUpdate(skill: (typeof service.favorites.value)[number])
     await run(async () => {
       const result = await service.checkUpdate(skill.id);
       updateChecks.value = { ...updateChecks.value, [skill.id]: result };
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: result.updateAvailable
+      showMessage(
+        result.updateAvailable
           ? translate('generated.skillSourceManagementPage.updateAvailable')
-          : translate('generated.skillSourceManagementPage.alreadyUpToDate')
-      });
+          : translate('generated.skillSourceManagementPage.alreadyUpToDate'),
+        'info'
+      );
     });
   } finally {
     const remaining = new Set(checkingSkillIds.value);
@@ -389,13 +394,14 @@ async function removeSource(source: SkillSourceCard): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmDeletionTryAgainLater')
-      )
-    });
+      ),
+      'error',
+      error
+    );
     return;
   }
   await run(
@@ -421,13 +427,14 @@ async function removeSkill(id: string, name: string): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: skillErrorMessage(
+    showMessage(
+      skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.unableToConfirmRemovalTryAgainLater')
-      )
-    });
+      ),
+      'error',
+      error
+    );
     return;
   }
   await run(

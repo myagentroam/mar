@@ -262,7 +262,7 @@ describe('Workbench Event Projection', () => {
         ) as never;
       },
       sessionPathId: (value) => value,
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       errorMessage: String
     });
 
@@ -304,7 +304,7 @@ describe('Workbench Event Projection', () => {
         } as never;
       },
       sessionPathId: (value) => value,
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       errorMessage: String
     });
 
@@ -333,7 +333,7 @@ describe('Workbench Event Projection', () => {
       replaceRecent,
       request: () => new Promise((resolve) => pending.push(resolve as (page: never) => void)),
       sessionPathId: (value) => value,
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       errorMessage: String
     });
 

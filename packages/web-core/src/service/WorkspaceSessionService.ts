@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ref, watch, type Ref } from 'vue';
 import type { AgentRun, Session } from '../model/workbench.js';
@@ -26,7 +27,7 @@ export function createWorkspaceSessionService(options: {
   readonly pageSize: number;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
   const refreshing = ref(false);
@@ -248,7 +249,8 @@ export function createWorkspaceSessionService(options: {
       searchResults.value = result.sessions;
       searchNextCursor.value = result.nextCursor;
     } catch (error) {
-      if (generation === searchGeneration) options.notice(options.errorMessage(error));
+      if (generation === searchGeneration)
+        options.notice(options.errorMessage(error), 'error', error);
     } finally {
       if (generation === searchGeneration) searching.value = false;
     }
@@ -340,7 +342,8 @@ export function createWorkspaceSessionService(options: {
         options.notice(
           translate('generated.workspaceSessionService.unableToSynchronizeSessions', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'error'
         );
         return undefined;
       });

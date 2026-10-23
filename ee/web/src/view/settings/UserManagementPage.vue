@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '@myagentroam/web-core/message-feedback';
+
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import { translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
 import { createUserManagementService } from '@/service/UserManagementService';
@@ -34,7 +36,7 @@ const usersPage = createUserManagementService<ManagedUser>({
   request: props.request,
   endpoint: '/api/management/users',
   query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value }),
-  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
+  reportError: (error) => showMessage(errorMessage(error), 'error', error)
 });
 const pageReady = ref(false);
 watch(usersPage.result, (result) => {
@@ -72,13 +74,13 @@ async function create(): Promise<void> {
     createOpen.value = false;
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.userManagementPage.unableToCreateUser')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.userManagementPage.unableToCreateUser'),
+      'error',
+      error
+    );
   }
 }
 async function reset(user: ManagedUser): Promise<void> {
@@ -93,13 +95,13 @@ async function reset(user: ManagedUser): Promise<void> {
       password: result.temporaryPassword
     };
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.userManagementPage.unableToResetPassword')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.userManagementPage.unableToResetPassword'),
+      'error',
+      error
+    );
   }
 }
 async function confirmReset(user: ManagedUser): Promise<void> {
@@ -127,13 +129,13 @@ async function remove(user: ManagedUser): Promise<void> {
     await props.request(`/api/management/users/${user.id}`, { method: 'DELETE' });
     await load();
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.userManagementPage.unableToDeleteUser')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.userManagementPage.unableToDeleteUser'),
+      'error',
+      error
+    );
   }
 }
 async function confirmRemove(user: ManagedUser): Promise<void> {

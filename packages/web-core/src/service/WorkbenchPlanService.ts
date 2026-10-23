@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComputedRef, Ref } from 'vue';
 import type {
@@ -16,7 +17,7 @@ interface WorkbenchPlanServiceOptions {
   readonly input: Ref<string>;
   readonly selectedCommand: Ref<RunnerCommand | undefined>;
   readonly commandPickerOpen: Ref<boolean>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly continuationFor: (
     item: ConversationTurn['items'][number]
   ) => RunnerCommandState | undefined;
@@ -42,7 +43,7 @@ export function createWorkbenchPlanService(options: WorkbenchPlanServiceOptions)
       options.workspaceTarget.value?.nodeId === undefined
     )
       return;
-    options.notice.value = '';
+
     let completedInSubmissionWindow = true;
     try {
       let target = session;
@@ -66,9 +67,12 @@ export function createWorkbenchPlanService(options: WorkbenchPlanServiceOptions)
       }
     } catch (error) {
       if (completedInSubmissionWindow)
-        options.notice.value = translate(
-          'generated.workbenchPlanService.unableToImplementThePlan',
-          { value0: options.errorMessage(error) }
+        options.notice(
+          translate('generated.workbenchPlanService.unableToImplementThePlan', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
     }
   }

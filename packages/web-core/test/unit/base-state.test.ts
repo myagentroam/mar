@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { watchEffect } from 'vue';
 import type { Workspace } from '../../src/model/workbench.js';
 import { createWorkbenchBaseStateService } from '../../src/service/WorkbenchBaseStateService.js';
 
@@ -50,24 +49,6 @@ describe('shared Workbench state composition', () => {
     state.selection.workspaceTarget.value = { nodeId: 'n1', workspaceId: 'w1' };
     state.draft.restore();
     expect(state.draft.input.value).toBe('first draft');
-  });
-
-  it('re-emits repeated notices rather than swallowing repeated failure feedback', () => {
-    const state = createWorkbenchBaseStateService(options());
-    const values: string[] = [];
-    const stop = watchEffect(
-      () => {
-        values.push(state.notice.value);
-      },
-      { flush: 'sync' }
-    );
-    try {
-      state.notice.value = 'denied';
-      state.notice.value = 'denied';
-      expect(values).toEqual(['', 'denied', 'denied']);
-    } finally {
-      stop();
-    }
   });
 
   it('shares the auth CSRF ref with HTTP and routes unauthenticated failure to its owner', async () => {

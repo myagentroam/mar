@@ -117,12 +117,29 @@ describe('Public workbench entity actions', () => {
 
   it('reports non-CSRF failure without retrying or leaving loading set', async () => {
     dialogs.prompt.mockResolvedValue({ value: 'after' });
-    const request = vi.fn().mockRejectedValue(new Error('offline'));
+    const error = new Error('offline');
+    const request = vi.fn().mockRejectedValue(error);
     const current = state(request);
     expect(await current.service.renameNode(node)).toBeUndefined();
     expect(request).toHaveBeenCalledTimes(1);
     expect(current.renewCsrfToken).not.toHaveBeenCalled();
-    expect(current.notice).toHaveBeenCalledOnce();
+    expect(current.notice).toHaveBeenCalledWith(expect.stringContaining('offline'), 'error', error);
+    expect(current.loading.value).toBe(false);
+  });
+
+  it('reports confirmed session deletion as successful feedback', async () => {
+    dialogs.confirm.mockResolvedValue('confirm');
+    const request = vi.fn().mockResolvedValue(undefined);
+    const current = state(request);
+
+    await expect(
+      current.service.deleteSession({ id: 'session/1', runner: 'codex' } as Session)
+    ).resolves.toBe(true);
+
+    expect(request).toHaveBeenCalledWith('/api/agent-sessions/session%2F1?nodeId=node', {
+      method: 'DELETE'
+    });
+    expect(current.notice).toHaveBeenCalledWith(expect.any(String), 'success');
     expect(current.loading.value).toBe(false);
   });
 });

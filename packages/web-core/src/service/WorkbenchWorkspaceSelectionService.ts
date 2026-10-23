@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { ref, type Ref } from 'vue';
 import type {
   Session,
@@ -35,7 +36,7 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly refreshManifest: (nodeId: string) => Promise<void>;
   readonly refreshTransport: (nodeId: string) => void;
   readonly request: <T>(path: string) => Promise<T>;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly stopWatch: () => void;
   readonly startWatch: (workspaceId: string) => Promise<unknown>;
@@ -112,7 +113,7 @@ export function createWorkbenchWorkspaceSelectionService(
     const selected = options.workspaceTarget.value!;
     const current = () =>
       selectionRevision === revision && options.workspaceTarget.value === selected;
-    options.notice('');
+
     options.closeSidebar();
     options.showWorkbench();
     options.workspaces.value = [...options.cachedWorkspaces(target.nodeId)];
@@ -191,7 +192,8 @@ export function createWorkbenchWorkspaceSelectionService(
       if (workspace === undefined) {
         options.invalidateWorkspace(target);
         options.notice(
-          translate('generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe')
+          translate('generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe'),
+          'error'
         );
         return;
       }
@@ -213,7 +215,9 @@ export function createWorkbenchWorkspaceSelectionService(
       options.notice(
         translate('generated.workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (current()) loading.value = false;

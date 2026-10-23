@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { MessageType } from '../../model/message-feedback.js';
+import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -18,7 +20,7 @@ import FileTypeIcon from './FileTypeIcon.vue';
 const props = defineProps<{ readonly service: WorkspaceGitService }>();
 const emit = defineEmits<{
   open: [commit: HistoryCommit, file: HistoryFile, external: boolean];
-  notice: [value: string];
+  notice: [value: string, type: MessageType, cause?: unknown];
 }>();
 const {
   historyRefs,
@@ -123,8 +125,12 @@ async function copyHistoryCommitId(): Promise<void> {
   const commit = historyContextMenu.value?.commit;
   if (commit === undefined) return;
   closeHistoryContextMenu();
-  await navigator.clipboard.writeText(commit.hash);
-  emit('notice', translate('generated.workspaceInspector.commitIdCopied'));
+  try {
+    await navigator.clipboard.writeText(commit.hash);
+    emit('notice', translate('generated.workspaceInspector.commitIdCopied'), 'info');
+  } catch (error) {
+    emit('notice', errorMessage(error), 'error', error);
+  }
 }
 
 function historyTreeIndent(depth: number): string {

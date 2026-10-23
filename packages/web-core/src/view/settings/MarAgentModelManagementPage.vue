@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
@@ -282,10 +284,7 @@ const loginPoller = new CodexLoginAttemptPoller(credentialService, {
   },
   onTerminal: (attempt) => {
     if (attempt.status === 'SUCCEEDED') {
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('marAgentModels.codexLoginSucceeded')
-      });
+      showMessage(translate('marAgentModels.codexLoginSucceeded'), 'success');
       void loadCredentials(false);
     } else if (attempt.status !== 'CANCELLED') {
       showCodexError(attempt.code, attempt.message, 'marAgentModels.codexLoginFailed');
@@ -528,10 +527,11 @@ async function load(showLoading = true) {
     }));
     modelsReady.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed'),
+      'error',
+      error
+    );
   } finally {
     if (showLoading) loading.value = false;
   }
@@ -553,13 +553,13 @@ async function loadPersonalModels(showLoading = true) {
     }));
     personalOrderReady.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('marAgentModels.personalOrderLoadFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('marAgentModels.personalOrderLoadFailed'),
+      'error',
+      error
+    );
   } finally {
     if (showLoading) personalOrderLoading.value = false;
   }
@@ -585,7 +585,7 @@ async function openCreate() {
   try {
     await props.prepareModel?.();
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
     return;
   }
   await ensureCredentials();
@@ -652,17 +652,14 @@ async function saveOrder() {
       body: JSON.stringify({ modelIds: models.value.map((model) => model.id) })
     });
     finishSorting();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.orderSaved')
-    });
+    showMessage(translate('marAgentModels.orderSaved'), 'success');
     await load(false);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error ? errorMessage(error) : translate('marAgentModels.orderSaveFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('marAgentModels.orderSaveFailed'),
+      'error',
+      error
+    );
   } finally {
     savingOrder.value = false;
   }
@@ -676,19 +673,16 @@ async function savePersonalOrder() {
       body: JSON.stringify({ modelIds: personalModels.value.map((model) => model.id) })
     });
     finishPersonalSorting();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.personalOrderSaved')
-    });
+    showMessage(translate('marAgentModels.personalOrderSaved'), 'success');
     await loadPersonalModels(false);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('marAgentModels.personalOrderSaveFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('marAgentModels.personalOrderSaveFailed'),
+      'error',
+      error
+    );
   } finally {
     savingPersonalOrder.value = false;
   }
@@ -698,7 +692,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
   try {
     await props.prepareModel?.(duplicate ? undefined : model);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
     return;
   }
   await ensureCredentials();
@@ -759,16 +753,17 @@ async function save() {
       body: JSON.stringify(modelSaveBody())
     });
     dialog.value = false;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved')
-    });
+    showMessage(
+      translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved'),
+      'success'
+    );
     await load(false);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed'),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -826,15 +821,15 @@ async function remove(model: ModelSummary) {
       }
     );
     await props.request(`/api/admin/mar-agent/models/${model.id}`, { method: 'DELETE' });
-    ElMessage.success({ icon: marIcon('success'), message: translate('marAgentModels.removed') });
+    showMessage(translate('marAgentModels.removed'), 'success');
     await load(false);
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message:
-          error instanceof Error ? errorMessage(error) : translate('marAgentModels.removeFailed')
-      });
+      showMessage(
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.removeFailed'),
+        'error',
+        error
+      );
   }
 }
 
@@ -854,10 +849,7 @@ function openModelTest(model: ModelSummary): void {
       )
     )
   ) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('marAgentModels.modelTestNoNode')
-    });
+    showMessage(translate('marAgentModels.modelTestNoNode'), 'error');
     modelTestModel.value = undefined;
     return;
   }
@@ -873,10 +865,6 @@ async function test(model: ModelSummary) {
     const result = await credentialService.testModel(model.id, modelTestNodeId.value);
     if (requestSequence !== modelTestSequence) return;
     modelTestResult.value = result;
-    const message = result.success
-      ? translate('marAgentModels.testSucceeded')
-      : (result.message ?? translate('marAgentModels.testConnectionFailed'));
-    ElMessage[result.success ? 'success' : 'error'](message);
     await load(false);
   } catch (error) {
     if (requestSequence === modelTestSequence)
@@ -1013,10 +1001,7 @@ async function submitCredentialLogin(): Promise<void> {
         socks5Url: credentialDraft.socks5Url.trim() || null
       });
       credentialDialog.value = false;
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('marAgentModels.codexCredentialUpdated')
-      });
+      showMessage(translate('marAgentModels.codexCredentialUpdated'), 'success');
       await loadCredentials(false);
       return;
     }
@@ -1097,27 +1082,17 @@ async function refreshCredential(credential: CodexCredentialSummary): Promise<vo
         };
       const outcome = credentialRefreshOutcome(credential, refreshed);
       if (outcome === 'DEFERRED')
-        ElMessage.info({
-          icon: marIcon('info'),
-          message: translate('marAgentModels.chatgptRefreshDeferred', {
+        showMessage(
+          translate('marAgentModels.chatgptRefreshDeferred', {
             time: formatTimestamp(refreshed.earliestRefreshAt)
-          })
-        });
+          }),
+          'info'
+        );
       else if (outcome === 'DEGRADED')
-        ElMessage.warning({
-          icon: marIcon('warning'),
-          message: translate('marAgentModels.codexRefreshDegraded')
-        });
+        showMessage(translate('marAgentModels.codexRefreshDegraded'), 'warning');
       else if (outcome === 'UNCHANGED')
-        ElMessage.info({
-          icon: marIcon('info'),
-          message: translate('marAgentModels.codexRefreshUnchanged')
-        });
-      else
-        ElMessage.success({
-          icon: marIcon('success'),
-          message: translate('marAgentModels.codexRefreshSucceeded')
-        });
+        showMessage(translate('marAgentModels.codexRefreshUnchanged'), 'info');
+      else showMessage(translate('marAgentModels.codexRefreshSucceeded'), 'success');
       await loadCredentials(false);
     },
     'marAgentModels.codexRefreshFailed'
@@ -1130,10 +1105,11 @@ async function testCredential(credential: CodexCredentialSummary): Promise<void>
     'TEST',
     async () => {
       const result = await credentialService.testCredential(credential.id);
-      ElMessage[result.success ? 'success' : 'error'](
+      showMessage(
         translate(
           result.success ? 'marAgentModels.codexTestSucceeded' : 'marAgentModels.codexTestFailed'
-        )
+        ),
+        result.success ? 'success' : 'error'
       );
       await loadCredentials(false);
     },
@@ -1160,10 +1136,7 @@ async function removeCredential(credential: CodexCredentialSummary): Promise<voi
       async () => {
         await credentialService.removeCredential(credential.id);
         credentialDetailOpen.value = false;
-        ElMessage.success({
-          icon: marIcon('success'),
-          message: translate('marAgentModels.codexRemoved')
-        });
+        showMessage(translate('marAgentModels.codexRemoved'), 'success');
         await loadCredentials(false);
       },
       'marAgentModels.codexRemoveFailed'
@@ -1259,10 +1232,7 @@ async function importCatalogModels(): Promise<void> {
   const currentCatalog = catalog.value;
   if (credential === undefined || currentCatalog === undefined) return;
   if (selectedCatalogCount.value === 0) {
-    ElMessage.warning({
-      icon: marIcon('warning'),
-      message: translate('marAgentModels.codexCatalogSelectionRequired')
-    });
+    showMessage(translate('marAgentModels.codexCatalogSelectionRequired'), 'warning');
     return;
   }
   if (!(await catalogFormRef.value?.validate().catch(() => false))) return;
@@ -1278,24 +1248,15 @@ async function importCatalogModels(): Promise<void> {
     if (sequence !== catalogSequence) return;
     importResult.value = result;
     catalogDialog.value = false;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.codexImportSucceeded')
-    });
+    showMessage(translate('marAgentModels.codexImportSucceeded'), 'success');
     await Promise.all([load(false), loadCredentials(false)]);
   } catch (error) {
     if (sequence !== catalogSequence) return;
     if (errorCode(error) === 'CODEX_CATALOG_CHANGED') {
-      ElMessage.warning({
-        icon: marIcon('warning'),
-        message: translate('marAgentModels.codexErrorCatalogChanged')
-      });
+      showMessage(translate('marAgentModels.codexErrorCatalogChanged'), 'warning', error);
       await openCatalog(credential);
     } else if (errorCode(error) === 'CODEX_MODEL_IMPORT_LIMIT_REQUIRED') {
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('marAgentModels.codexCatalogLimitsRequired')
-      });
+      showMessage(translate('marAgentModels.codexCatalogLimitsRequired'), 'error', error);
     } else {
       showCodexRequestError(error, 'marAgentModels.codexImportFailed');
     }
@@ -1316,10 +1277,13 @@ function resetCatalogDialog(): void {
 function showCodexRequestError(error: unknown, fallbackKey: string): void {
   const code = errorCode(error);
   const key = code === undefined ? undefined : codexCredentialErrorMessageKey(code);
-  ElMessage.error({
-    icon: marIcon('error'),
-    message: key === undefined ? errorMessageOrFallback(error, fallbackKey) : translate(key)
-  });
+  showMessage(
+    key === undefined
+      ? errorMessageOrFallback(error, fallbackKey)
+      : errorMessage(error, translate(key)),
+    'error',
+    error
+  );
 }
 
 function showCodexError(
@@ -1328,10 +1292,7 @@ function showCodexError(
   fallbackKey: string
 ) {
   const key = code === undefined ? undefined : codexCredentialErrorMessageKey(code);
-  ElMessage.error({
-    icon: marIcon('error'),
-    message: key === undefined ? (message ?? translate(fallbackKey)) : translate(key)
-  });
+  showMessage(key === undefined ? (message ?? translate(fallbackKey)) : translate(key), 'error');
 }
 
 function errorMessageOrFallback(error: unknown, fallbackKey: string): string {

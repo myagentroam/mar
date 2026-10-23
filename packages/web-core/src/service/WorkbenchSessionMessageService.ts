@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
@@ -44,7 +45,7 @@ export interface WorkbenchSessionMessageOptions {
   readonly commandPickerOpen: Ref<boolean>;
   readonly deferredCommands: Ref<readonly { command: RunnerCommand; input: string }[]>;
   readonly fastEnabled: Ref<boolean>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly stageDraftCommand: (command: RunnerCommand, input: string) => void;
   readonly createDraftSession: (title: string) => Promise<Session | undefined>;
@@ -141,7 +142,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       contentOverride === undefined &&
       hasUnavailableSkillToken(options.skillTokens.value)
     ) {
-      options.notice.value = translate('composer.skillUnavailable');
+      options.notice(translate('composer.skillUnavailable'), 'warning');
       return;
     }
     let content: string;
@@ -155,9 +156,12 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           options.references?.value
         );
     } catch (error) {
-      options.notice.value = translate(
-        'generated.workbenchSessionMessageService.unableToSendTheMessage',
-        { value0: options.errorMessage(error) }
+      options.notice(
+        translate('generated.workbenchSessionMessageService.unableToSendTheMessage', {
+          value0: options.errorMessage(error)
+        }),
+        'error',
+        error
       );
       return;
     }
@@ -172,8 +176,11 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       command === undefined &&
       contentOverride === undefined
     ) {
-      options.notice.value = translate(
-        'generated.workbenchSessionMessageService.attachmentsAreStillUploadingOrFailedWait'
+      options.notice(
+        translate(
+          'generated.workbenchSessionMessageService.attachmentsAreStillUploadingOrFailedWait'
+        ),
+        'warning'
       );
       return;
     }
@@ -192,8 +199,9 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         command.interaction === 'IMMEDIATE_ACTION' ||
         command.interaction === 'DESTRUCTIVE_ACTION'
       ) {
-        options.notice.value = translate(
-          'generated.workbenchSessionMessageService.sendARegularMessageToCreateThe'
+        options.notice(
+          translate('generated.workbenchSessionMessageService.sendARegularMessageToCreateThe'),
+          'warning'
         );
         return;
       }
@@ -236,7 +244,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       )
         return;
     }
-    options.notice.value = '';
+
     const outgoing = contentOverride === undefined ? [...options.attachments.value] : [];
     const submittedSkillTokens = options.skillTokens.value;
     const submittedReferences = options.references?.value;
@@ -255,7 +263,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           options.workspaceTarget.value?.workspaceId === submissionWorkspaceId &&
           options.selectedSessionId.value === (submittedSession?.id ?? submissionSessionId)
         )
-          options.notice.value = translate('workbench.submissionTimedOut');
+          options.notice(translate('workbench.submissionTimedOut'), 'warning');
       }
     );
     if (finishSubmission === undefined) return;
@@ -446,9 +454,12 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         }
       }
       if (completedInSubmissionWindow)
-        options.notice.value = translate(
-          'generated.workbenchSessionMessageService.unableToSendTheMessage',
-          { value0: options.errorMessage(error) }
+        options.notice(
+          translate('generated.workbenchSessionMessageService.unableToSendTheMessage', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
     } finally {
       releaseAttachments();

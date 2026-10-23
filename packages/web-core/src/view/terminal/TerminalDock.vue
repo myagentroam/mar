@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MessageType } from '../../model/message-feedback.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
@@ -44,7 +45,10 @@ const props = defineProps<{
   /** Inactive tabs keep their mounted relay without reading or clearing Workspace state. */
   readonly active: boolean;
 }>();
-const emit = defineEmits<{ notice: [message: string]; collapse: [] }>();
+const emit = defineEmits<{
+  notice: [message: string, type: MessageType, cause?: unknown];
+  collapse: [];
+}>();
 
 const selectedProfileId = ref<string>();
 const creating = ref(false);
@@ -170,7 +174,9 @@ async function refreshContext(): Promise<void> {
     if (revision !== refreshRevision) return;
     emit(
       'notice',
-      translate('generated.terminalDock.unableToLoadTerminals', { value0: message(error) })
+      translate('generated.terminalDock.unableToLoadTerminals', { value0: message(error) }),
+      'error',
+      error
     );
   } finally {
     if (revision !== refreshRevision) return;
@@ -202,7 +208,9 @@ async function openTerminal(): Promise<void> {
     if (!props.active || nodeId !== props.nodeId || workspaceId !== props.workspaceId) return;
     emit(
       'notice',
-      translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) })
+      translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) }),
+      'error',
+      error
     );
   } finally {
     creating.value = false;
@@ -245,7 +253,9 @@ async function closeTerminal(terminalId: string): Promise<void> {
   } catch (error) {
     emit(
       'notice',
-      translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) })
+      translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
+      'error',
+      error
     );
   } finally {
     closingId.value = undefined;
@@ -333,7 +343,8 @@ async function release(): Promise<void> {
         translate('generated.terminalDock.unableToReleaseTerminals', {
           value0: failed.length,
           value1: message(firstFailure.reason)
-        })
+        }),
+        'error'
       );
   } finally {
     terminals.value = [];
@@ -459,7 +470,7 @@ defineExpose({ release, toggle: toggleTerminal });
           :active="item.id === activeTerminalId"
           :visible="active && visible && expanded"
           @exited="handleTerminalExited"
-          @notice="emit('notice', $event)"
+          @notice="(message, type, cause) => emit('notice', message, type, cause)"
         />
       </div>
     </div>

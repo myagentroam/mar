@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import 'highlight.js/styles/github.css';
@@ -567,10 +568,7 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(selection.toString());
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 

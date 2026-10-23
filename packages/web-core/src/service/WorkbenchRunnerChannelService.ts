@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComputedRef, Ref } from 'vue';
 import type { Session } from '../model/workbench.js';
@@ -10,7 +11,7 @@ export function createWorkbenchRunnerChannelService(options: {
   readonly token: Ref<string | undefined>;
   readonly input: Ref<string>;
   readonly loading: Ref<boolean>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
   readonly errorMessage: (error: unknown) => string;
@@ -57,14 +58,19 @@ export function createWorkbenchRunnerChannelService(options: {
         }
       );
       options.input.value = '';
-      options.notice.value =
+      options.notice(
         result.delivery === 'STEERED'
           ? translate('generated.workbenchRunnerChannelService.theMessageWasAddedToTheCurrent')
-          : translate('generated.workbenchRunnerChannelService.theMessageWasNotDeliveredToThe');
+          : translate('generated.workbenchRunnerChannelService.theMessageWasNotDeliveredToThe'),
+        result.delivery === 'STEERED' ? 'info' : 'error'
+      );
     } catch (error) {
-      options.notice.value = translate(
-        'generated.workbenchRunnerChannelService.unableToSendThroughTheClaudeChannel',
-        { value0: options.errorMessage(error) }
+      options.notice(
+        translate('generated.workbenchRunnerChannelService.unableToSendThroughTheClaudeChannel', {
+          value0: options.errorMessage(error)
+        }),
+        'error',
+        error
       );
     } finally {
       options.loading.value = false;

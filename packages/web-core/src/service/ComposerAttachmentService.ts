@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, ref, type Ref } from 'vue';
 import type { ComposerAttachment } from '../model/workbench.js';
 import { translate } from './LocalePreferenceService.js';
@@ -13,7 +14,7 @@ const CHUNK_BYTES = 512 * 1024;
 
 export function createComposerAttachmentService(options: {
   readonly context: () => { readonly nodeId: string; readonly workspaceId: string } | undefined;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly resourceUrl?: (path: string) => string;
   readonly csrfToken: Ref<string>;
@@ -53,13 +54,15 @@ export function createComposerAttachmentService(options: {
     for (const file of files) {
       if (visibleAttachments.value.length >= MAX_FILES)
         return options.notice(
-          translate('generated.composerAttachmentService.theFirstMessageCanIncludeUpTo')
+          translate('generated.composerAttachmentService.theFirstMessageCanIncludeUpTo'),
+          'warning'
         );
       if (file.size === 0 || file.size > MAX_FILE_BYTES) {
         options.notice(
           translate('generated.composerAttachmentService.attachmentMustBeLargerThan0And', {
             value0: file.name
-          })
+          }),
+          'warning'
         );
         continue;
       }
@@ -69,14 +72,16 @@ export function createComposerAttachmentService(options: {
       );
       if (total + file.size > MAX_TOTAL_BYTES)
         return options.notice(
-          translate('generated.composerAttachmentService.totalAttachmentSizeCannotExceed10MiB')
+          translate('generated.composerAttachmentService.totalAttachmentSizeCannotExceed10MiB'),
+          'warning'
         );
       const context = options.context();
       if (context === undefined)
         return options.notice(
           translate(
             'generated.composerAttachmentService.selectAnOnlineWorkspaceBeforeAddingAttachments'
-          )
+          ),
+          'warning'
         );
       const attachment: ComposerAttachment = {
         id: crypto.randomUUID(),

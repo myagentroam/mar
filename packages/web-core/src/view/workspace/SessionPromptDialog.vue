@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { createSessionPromptService } from '../../service/SessionPromptService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -41,7 +43,7 @@ onMounted(async () => {
       ready.value = true;
     }
   } catch (error) {
-    if (!disposed) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (!disposed) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (!disposed) loading.value = false;
   }
@@ -54,7 +56,7 @@ async function save(): Promise<void> {
     await service.save(form.prompt);
     if (!disposed) emit('close');
   } catch (error) {
-    if (!disposed) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (!disposed) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (!disposed) saving.value = false;
   }

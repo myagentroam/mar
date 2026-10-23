@@ -1,6 +1,6 @@
 import { createSSRApp, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
@@ -8,7 +8,10 @@ import ManagementPagination from '../../src/view/settings/ManagementPagination.v
 import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue?unit-render';
 import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
 import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
+
+vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
 
 const originalLocale = i18n.global.locale.value;
 
@@ -16,6 +19,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.mocked(showMessage).mockClear();
   i18n.global.locale.value = originalLocale;
 });
 
@@ -69,7 +73,7 @@ describe('shared loading presentation', () => {
       loading: true,
       loadingMore: true
     });
-    expect(html.match(/class="busy-indicator"/gu)).toHaveLength(1);
+    expect(html.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
     expect(html).toContain('role="status"');
     expect(html).toContain('disabled');
     expect(html).not.toMatch(/\bis-loading\b/u);
@@ -115,7 +119,6 @@ describe('shared loading presentation', () => {
         clearTimeout: globalThis.clearTimeout
       });
       i18n.global.locale.value = 'en-US';
-      vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
 
       const entry = {
         id: 'entry-1',
@@ -221,6 +224,8 @@ describe('shared loading presentation', () => {
         else rejectInstall(new Error('MCP_PROTOCOL_VALIDATION_FAILED'));
         await installOperation;
         await flushComponent();
+        if (outcome === 'failure')
+          expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error', expect.any(Error));
         expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
           false
         );
@@ -242,8 +247,6 @@ describe('shared loading presentation', () => {
         clearTimeout: globalThis.clearTimeout
       });
       i18n.global.locale.value = 'en-US';
-      vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-      vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
 
       const favorite = {
         id: 'favorite-1',

@@ -9,10 +9,10 @@ describe('Workbench Run Actions', () => {
   it('Submits only encoded approval identity and decision; does not derive business state from response data', async () => {
     const request = vi.fn<(path: string, init?: RequestInit) => void>();
     const finish = vi.fn(() => true);
-    const notice = { value: '' };
+    const notice = vi.fn();
     const service = createWorkbenchApprovalService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: notice as never,
+      notice,
       request: async <T>(path: string, init?: RequestInit) => {
         request(path, init);
         return undefined as T;
@@ -29,14 +29,15 @@ describe('Workbench Run Actions', () => {
       }
     );
     expect(finish).toHaveBeenCalledOnce();
-    expect(notice.value).toBe('');
+    expect(notice).not.toHaveBeenCalled();
   });
 
   it('An approval timeout error does not overwrite a newer notice', async () => {
-    const notice = { value: 'new notice' };
+    const notice = vi.fn();
+    notice('new notice', 'info');
     const service = createWorkbenchApprovalService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: notice as never,
+      notice,
       request: async () => {
         throw new Error('late failure');
       },
@@ -44,18 +45,19 @@ describe('Workbench Run Actions', () => {
       beginSubmission: () => () => false
     });
     await service.decideApproval('run-1', 'approval-1', 'APPROVED');
-    expect(notice.value).toBe('new notice');
+    expect(notice.mock.calls).toEqual([['new notice', 'info']]);
   });
 
   it('On approval submission failure, shows only the error; does not proactively fetch or mutate Items', async () => {
-    const notice = { value: '' };
+    const notice = vi.fn();
     const requests: string[] = [];
+    const error = Object.assign(new Error('The run has ended.'), { code: 'RUN_NOT_FOUND' });
     const service = createWorkbenchApprovalService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: notice as never,
+      notice,
       request: async (path) => {
         requests.push(path);
-        throw Object.assign(new Error('The run has ended.'), { code: 'RUN_NOT_FOUND' });
+        throw error;
       },
       errorMessage: (error) => String(error),
       beginSubmission: () => () => true
@@ -64,14 +66,18 @@ describe('Workbench Run Actions', () => {
     await service.decideApproval('run-1', 'approval-1', 'APPROVED');
 
     expect(requests).toEqual(['/api/agent-runs/run-1/approvals/approval-1/decision']);
-    expect(notice.value).toContain('The run has ended.');
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining('The run has ended.'),
+      'error',
+      error
+    );
   });
 
   it('Does not submit an approval decision twice when an existing Conversation submission is already in progress', async () => {
     const request = vi.fn();
     const service = createWorkbenchApprovalService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       request,
       errorMessage: String,
       beginSubmission: () => undefined
@@ -292,6 +298,7 @@ describe('Workbench Run Actions', () => {
     const queue = { value: { version: 1, paused: false, items: [item] } };
     const requests: string[] = [];
     const notice = vi.fn();
+    const error = new Error('save failed');
     const finishEditing = vi.fn();
     const finishSubmission = vi.fn(() => true);
     const service = createWorkspaceQueueService({
@@ -303,7 +310,7 @@ describe('Workbench Run Actions', () => {
       editingContent: { value: 'Current edit body' } as never,
       request: async (path) => {
         requests.push(path);
-        throw new Error('save failed');
+        throw error;
       },
       finishEditing,
       notice,
@@ -315,7 +322,7 @@ describe('Workbench Run Actions', () => {
     await service.execute(item as never, 'Current edit body');
 
     expect(requests).toEqual(['/api/queue-items/queue-1']);
-    expect(notice).toHaveBeenCalledOnce();
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('save failed'), 'error', error);
     expect(finishEditing).not.toHaveBeenCalled();
     expect(finishSubmission).toHaveBeenCalledOnce();
   });

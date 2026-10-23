@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
 import { translate } from './LocalePreferenceService.js';
@@ -5,7 +6,7 @@ import { translate } from './LocalePreferenceService.js';
 /** Submits approval decisions; Conversation Item events own the visible state. */
 export function createWorkbenchApprovalService(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly errorMessage: (error: unknown) => string;
   readonly beginSubmission: () => (() => boolean) | undefined;
@@ -26,9 +27,12 @@ export function createWorkbenchApprovalService(options: {
       );
     } catch (error) {
       if (finishSubmission())
-        options.notice.value = translate(
-          'generated.workbenchApprovalService.approvalWasNotSubmitted',
-          { value0: options.errorMessage(error) }
+        options.notice(
+          translate('generated.workbenchApprovalService.approvalWasNotSubmitted', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
     } finally {
       finishSubmission();

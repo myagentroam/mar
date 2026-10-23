@@ -12,7 +12,6 @@ interface TerminalRelayServiceOptions {
   readonly onTerminalUnavailable: (code: string) => void;
   readonly onErrorFrame: (code: string) => void;
   readonly onReconnectStatus: (message: string | undefined) => void;
-  readonly onNotice: (message: string) => void;
   readonly managed?: boolean;
   readonly afterSequence?: () => number;
   readonly onSequence?: (sequence: number) => void;
@@ -160,9 +159,6 @@ export function createTerminalRelayService(options: TerminalRelayServiceOptions)
     try {
       frame = JSON.parse(String(event.data)) as typeof frame;
     } catch {
-      options.onNotice(
-        translate('generated.terminalRelayService.theTerminalRelayReturnedInvalidDataReconnecting')
-      );
       current.close();
       return;
     }

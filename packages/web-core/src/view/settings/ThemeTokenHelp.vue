@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage } from 'element-plus';
+
 import { CUSTOM_THEME_TOKENS } from '../../model/custom-theme.js';
 import { THEME_TOKEN_GROUPS, THEME_TOKEN_HELP } from '../../model/theme-token-help.js';
 
@@ -31,9 +33,9 @@ function show(): void {
 async function copy(token: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(token);
-    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.tokenCopied') });
+    showMessage(t('customThemes.tokenCopied'), 'info');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.tokenCopyFailed') });
+    showMessage(t('customThemes.tokenCopyFailed'), 'error');
   }
 }
 </script>

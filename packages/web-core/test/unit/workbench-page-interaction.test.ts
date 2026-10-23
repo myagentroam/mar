@@ -55,7 +55,7 @@ function fixture() {
     restore: vi.fn(),
     restoreWorkspace: vi.fn()
   });
-  const notice = ref('');
+  const notice = vi.fn();
   const quickOpenFileVisible = ref(false);
   const selectedWorkspaceId = ref<string | undefined>('workspace-1');
   const nodeReady = ref(true);
@@ -785,7 +785,7 @@ describe('Workbench page file interaction', () => {
 
     expect(() => f.service.openQuickWorkspaceFile('src/file.ts')).not.toThrow();
     expect(f.openFile).not.toHaveBeenCalled();
-    expect(f.notice.value).not.toBe('');
+    expect(f.notice).toHaveBeenCalledWith(expect.any(String), 'error');
   });
 
   it('keeps external Agent targets out of the Git Changes path', () => {

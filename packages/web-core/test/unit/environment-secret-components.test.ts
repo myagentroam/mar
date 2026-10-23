@@ -14,6 +14,7 @@ import {
 } from './support/component-renderer.js';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { AuthenticationContextChangedError } from '../../src/service/WorkbenchHttpService.js';
 
 const originalLocale = i18n.global.locale.value;
 beforeEach(() => vi.stubGlobal('HTMLElement', class {}));
@@ -24,6 +25,28 @@ afterEach(() => {
 });
 
 describe('Public environment secret management', () => {
+  it.each([
+    [new AuthenticationContextChangedError(), 0],
+    [new DOMException('Request aborted', 'AbortError'), 1],
+    [new Error('Request failed'), 1]
+  ] as const)('reports only current pagination failures (%s)', async (cause, expectedMessages) => {
+    vi.stubGlobal('window', {
+      location: { search: '', href: 'http://fixture/console' },
+      history: { replaceState: vi.fn() },
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+    const request = vi.fn().mockRejectedValue(cause);
+    const view = renderComponent(SecretManager, { request, scopes: ['PERSONAL'], writable: true });
+    try {
+      await flushComponent();
+      expect(request).toHaveBeenCalledOnce();
+      expect(error).toHaveBeenCalledTimes(expectedMessages);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it.each([undefined, false, true])(
     'reads only the permitted Workspace scope (permission=%s) and resets on target change',
     async (manageable) => {

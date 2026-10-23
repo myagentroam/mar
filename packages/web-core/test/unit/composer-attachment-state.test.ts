@@ -132,7 +132,10 @@ describe('Web Composer Attachment State', () => {
     state.add([file('note.txt', 128)]);
     expect(state.attachments.value).toHaveLength(0);
     expect(request).not.toHaveBeenCalled();
-    expect(notice).toHaveBeenCalledWith('Select an online workspace before adding attachments.');
+    expect(notice).toHaveBeenCalledWith(
+      'Select an online workspace before adding attachments.',
+      'warning'
+    );
   });
 
   it('Hides attachments when switching Workspaces, restores them on return, and leaves the original upload running', () => {

@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
@@ -24,7 +26,7 @@ import { createManagementPaginationService } from '../../service/ManagementPagin
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
 const service = new PersonalUsageService(props.request, (error) =>
-  ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
+  showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
 const busy = computed(() => state.loading || state.loadingPage);
