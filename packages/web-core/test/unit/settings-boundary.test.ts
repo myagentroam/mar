@@ -91,7 +91,11 @@ describe('Public personal settings ownership', () => {
   it('loads and saves personal instructions through the API without persisting their contents', async () => {
     vi.stubGlobal('Document', class {});
     vi.stubGlobal('ShadowRoot', class {});
-    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
     vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
@@ -124,6 +128,7 @@ describe('Public personal settings ownership', () => {
         method: 'PUT',
         body: JSON.stringify({ content: 'Changed API-only instructions' })
       });
+      expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
     } finally {
@@ -133,7 +138,11 @@ describe('Public personal settings ownership', () => {
 
   it('saves quick prompts through the API and refreshes without browser persistence', async () => {
     localePreferenceService().setLocale('en-US');
-    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
     vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
@@ -160,6 +169,7 @@ describe('Public personal settings ownership', () => {
       });
       expect(refresh).toHaveBeenCalledTimes(2);
       expect(view.findAll('ElDialog')).toHaveLength(0);
+      expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
     } finally {

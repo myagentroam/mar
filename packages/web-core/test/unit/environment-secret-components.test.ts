@@ -118,7 +118,11 @@ describe('Public environment secret management', () => {
       history: { replaceState },
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     });
-    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
     const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
@@ -183,6 +187,7 @@ describe('Public environment secret management', () => {
         'onClick'
       );
       expect(view.findAll('ElForm')).toHaveLength(0);
+      expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
     } finally {

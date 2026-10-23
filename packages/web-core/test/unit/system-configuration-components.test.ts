@@ -74,7 +74,11 @@ describe('Public system configuration page', () => {
 
   it('renders the complete configuration and never persists its snapshot in browser storage', async () => {
     vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
-    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
     const settings = Array.from({ length: 25 }, (_, index) => ({
@@ -107,6 +111,7 @@ describe('Public system configuration page', () => {
       expect(textContent(view.root)).toContain('https://preview.example.com');
       expect(view.findAll('ElPagination')).toHaveLength(0);
       expect(request).toHaveBeenCalledWith('/api/system-settings');
+      expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
     } finally {
@@ -115,7 +120,11 @@ describe('Public system configuration page', () => {
   });
   it('cancels without writing and retains failed drafts before applying the authoritative saved snapshot', async () => {
     i18n.global.locale.value = 'en-US';
-    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
     vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
@@ -171,6 +180,7 @@ describe('Public system configuration page', () => {
         false
       );
       expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
     } finally {

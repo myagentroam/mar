@@ -7,6 +7,7 @@ const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
 );
 const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
+const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.
 // Existing SSR and setup-only fixtures keep their original compilation mode.
 const componentFixtures: Plugin = {
@@ -14,9 +15,10 @@ const componentFixtures: Plugin = {
   enforce: 'pre',
   async resolveId(source, importer) {
     if (
-      !importer?.includes('unit-render') ||
+      !importer ||
+      !componentFixtureQuery.test(importer) ||
       !/\.vue(?:\?|$)/u.test(source) ||
-      source.includes('unit-render') ||
+      componentFixtureQuery.test(source) ||
       source.includes('type=style')
     )
       return null;
@@ -33,7 +35,7 @@ if (typeof vueTransform === 'object') {
         this,
         code,
         id,
-        id.includes('unit-render') ? { ...options, ssr: false } : options
+        componentFixtureQuery.test(id) ? { ...options, ssr: false } : options
       );
     }
   };
