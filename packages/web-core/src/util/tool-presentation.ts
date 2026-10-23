@@ -55,12 +55,8 @@ export function toolPresentationText(payload: unknown, status: string): string {
   const value = toolPresentation(payload);
   if (!value) return '';
   const exceptional = ['FAILED', 'DECLINED', 'CANCELLED', 'INTERRUPTED'].includes(status);
-  if (value.kind === 'READ')
-    return [toolPresentationStatus(status), ...(value.paths ?? [])].filter(Boolean).join(' · ');
-  if (value.kind === 'SKILL')
-    return [exceptional ? toolPresentationStatus(status) : '', value.name]
-      .filter(Boolean)
-      .join(' · ');
+  if (value.kind === 'READ') return (value.paths ?? []).join(' · ');
+  if (value.kind === 'SKILL') return value.name ?? '';
   if (value.kind === 'WEB_SEARCH') {
     const sources =
       status !== 'COMPLETED' || value.sourceCount === undefined
@@ -68,16 +64,13 @@ export function toolPresentationText(payload: unknown, status: string): string {
         : value.sourceCount === 0
           ? translate('toolPresentation.noResults')
           : translate('toolPresentation.sources', { count: value.sourceCount });
-    return [toolPresentationStatus(status), value.query, sources].filter(Boolean).join(' · ');
+    return [value.query, sources].filter(Boolean).join(' · ');
   }
   if (value.kind === 'WEB_FETCH')
-    return [
-      toolPresentationStatus(status),
-      status === 'COMPLETED' && value.title ? value.title : host(value.url ?? value.requestUrl)
-    ]
-      .filter(Boolean)
-      .join(' · ');
-  if (exceptional) return toolPresentationStatus(status);
+    return status === 'COMPLETED' && value.title
+      ? value.title
+      : host(value.url ?? value.requestUrl);
+  if (exceptional) return '';
   if (status === 'COMPLETED')
     return value.elapsedMs === undefined
       ? ''

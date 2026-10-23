@@ -114,6 +114,15 @@ watch(open, async () => {
   line-height: 20px;
   text-align: start;
   cursor: pointer;
+  border-radius: var(--mar-radius-control);
+}
+@media (hover: hover) and (pointer: fine) {
+  .process-heading:hover {
+    background-color: var(--mar-fill-row-hover);
+  }
+}
+.process-heading:active {
+  background-color: var(--mar-fill-row-hover);
 }
 .process-heading:focus-visible {
   outline: 2px solid var(--el-color-primary);
@@ -178,7 +187,7 @@ watch(open, async () => {
 }
 .is-group .process-content {
   overflow: hidden;
-  padding-inline-start: 16px;
+  padding-inline-start: 8px;
 }
 @media (max-width: 767px) {
   .is-group .process-content {

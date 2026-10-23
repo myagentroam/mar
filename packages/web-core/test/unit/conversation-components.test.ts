@@ -443,10 +443,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(html).toContain(
         `Review integration · ${i18n.global.t(`presentation.subagentOperation.${operation}`)}`
       );
-    expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
+    expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
     expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
-    expect(html).toContain(i18n.global.t('presentation.subagentCallFailed'));
-    expect(html).not.toContain(i18n.global.t('generated.conversationPresentation.running'));
+    for (const status of ['running', 'failed', 'completed'])
+      expect(html).toContain(i18n.global.t(`toolPresentation.status.${status}`));
     expect(html).not.toContain('conversation-tool-detail');
     const separate = await render(ConversationTimeline, {
       ...timelineProps,

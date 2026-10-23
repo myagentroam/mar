@@ -343,6 +343,87 @@ function updateGroupedItemDisclosure(id: string, event: Event): void {
   groupedItemDisclosure[id] = (event.currentTarget as HTMLDetailsElement).open;
 }
 
+const disclosureMotions = new Map<
+  HTMLDetailsElement,
+  { open: boolean; animation: Animation | undefined }
+>();
+
+onBeforeUnmount(() => {
+  for (const motion of disclosureMotions.values()) motion.animation?.cancel();
+  disclosureMotions.clear();
+});
+
+async function animateDisclosure(event: MouseEvent): Promise<void> {
+  if (event.defaultPrevented || !(event.target instanceof Element)) return;
+  const summary = event.target.closest('summary');
+  const details = summary?.parentElement;
+  if (
+    !summary ||
+    !(details instanceof HTMLDetailsElement) ||
+    !details.closest('.conversation-item') ||
+    event.target.closest('a, button, input, select, textarea')
+  )
+    return;
+  const previous = disclosureMotions.get(details);
+  const motion = {
+    open: !(previous?.open ?? details.open),
+    animation: undefined as Animation | undefined
+  };
+  const startHeight = details.getBoundingClientRect().height;
+  previous?.animation?.cancel();
+  delete details.dataset.disclosureClosing;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (previous) {
+      event.preventDefault();
+      details.open = motion.open;
+      disclosureMotions.delete(details);
+    }
+    return;
+  }
+  event.preventDefault();
+  disclosureMotions.set(details, motion);
+  if (!motion.open) details.dataset.disclosureClosing = '';
+  if (!details.open) {
+    await new Promise<void>((resolve) => {
+      details.addEventListener('toggle', () => resolve(), { once: true });
+      details.open = true;
+    });
+    await nextTick();
+  }
+  if (disclosureMotions.get(details) !== motion) return;
+  if (!details.isConnected) {
+    disclosureMotions.delete(details);
+    return;
+  }
+  const style = getComputedStyle(details);
+  const duration = style.getPropertyValue('--el-transition-duration-fast').trim();
+  const collapsedHeight =
+    summary.getBoundingClientRect().bottom -
+    details.getBoundingClientRect().top +
+    Number.parseFloat(style.paddingBottom) +
+    Number.parseFloat(style.borderBottomWidth);
+  const endHeight = motion.open ? details.getBoundingClientRect().height : collapsedHeight;
+  motion.animation = details.animate(
+    {
+      height: [`${startHeight}px`, `${endHeight}px`],
+      overflow: ['hidden', 'hidden'],
+      boxSizing: ['border-box', 'border-box']
+    },
+    {
+      duration: Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
+      easing: 'ease',
+      fill: 'both'
+    }
+  );
+  motion.animation.onfinish = () => {
+    if (disclosureMotions.get(details) !== motion) return;
+    details.open = motion.open;
+    delete details.dataset.disclosureClosing;
+    motion.animation?.cancel();
+    disclosureMotions.delete(details);
+  };
+}
+
 function rollbackTarget(turn: ConversationTurn, item: ConversationItem): boolean {
   return (
     item.kind === 'user_message' &&
@@ -426,23 +507,15 @@ function stepDuration(item: ConversationItem): string | undefined {
     ? undefined
     : translate('conversationActivity.step', { value: preciseElapsedDurationLabel(duration) });
 }
-
-function aggregateStatus(items: readonly ConversationItem[]): string {
-  const statuses = new Set(items.map((item) => item.status));
-  const visible = [
-    'FAILED',
-    'DECLINED',
-    'IN_PROGRESS',
-    'PENDING',
-    'INTERRUPTED',
-    'CANCELLED'
-  ].filter((status) => statuses.has(status));
-  return [...new Set(visible.map(toolPresentationStatus))].join(' · ');
-}
 </script>
 
 <template>
-  <div v-if="renderedTurns.length" ref="timelineElement" class="conversation-timeline">
+  <div
+    v-if="renderedTurns.length"
+    ref="timelineElement"
+    class="conversation-timeline"
+    @click="animateDisclosure"
+  >
     <ConversationWorkProcess
       v-for="block in processBlocks"
       :key="block.id"
@@ -577,22 +650,20 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
         </template>
         <template v-else-if="displayItem.type === 'subagent_group'">
           <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
-            <summary>
+            <summary class="conversation-record-heading">
+              <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
-              <span>{{
-                `${subagentGroupText(displayItem.items)} · ${translate(
-                  'presentation.subagentOperationCount',
-                  {
-                    count: displayItem.items.length
-                  }
-                )}`
+              <span class="conversation-record-preview">{{
+                subagentGroupText(displayItem.items)
               }}</span>
-              <strong
-                v-if="displayItem.items.some((item) => item.status === 'FAILED')"
-                class="subagent-call-error"
-              >
-                {{ ` ${translate('presentation.subagentCallFailed')}` }}
-              </strong>
+              <span v-if="displayItem.items.length === 1" class="conversation-record-meta">{{
+                toolPresentationStatus(displayItem.items[0]!.status)
+              }}</span>
+              <span v-else class="conversation-group-meta">{{
+                translate('presentation.subagentOperationCount', {
+                  count: displayItem.items.length
+                })
+              }}</span>
             </summary>
             <div v-if="groupedItemDisclosure[displayItem.id]" class="conversation-tool-list">
               <details
@@ -601,10 +672,12 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
                 class="conversation-tool-detail"
               >
                 <summary>
-                  <strong>{{ subagentOperationText(toolItem.payload) }}</strong>
-                  <strong v-if="toolItem.status === 'FAILED'" class="subagent-call-error">
-                    {{ translate('presentation.subagentCallFailed') }}
-                  </strong>
+                  <span class="conversation-tool-preview">{{
+                    subagentOperationText(toolItem.payload)
+                  }}</span>
+                  <span class="conversation-record-meta">{{
+                    toolPresentationStatus(toolItem.status)
+                  }}</span>
                 </summary>
                 <p v-if="conversationItemDetail(toolItem.kind, toolItem.payload)">
                   {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
@@ -635,9 +708,6 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               <span class="conversation-group-meta">
                 <span>{{
                   translate('toolPresentation.calls', { count: displayItem.items.length })
-                }}</span>
-                <span v-if="aggregateStatus(displayItem.items)">{{
-                  aggregateStatus(displayItem.items)
                 }}</span>
               </span>
             </summary>
@@ -684,13 +754,6 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
                 <span>{{
                   translate('toolPresentation.calls', { count: displayItem.items.length })
                 }}</span>
-                <span
-                  v-if="
-                    !displayItem.items.some((item) => item.status === 'FAILED') &&
-                    aggregateStatus(displayItem.items)
-                  "
-                  >{{ aggregateStatus(displayItem.items) }}</span
-                >
               </span>
             </summary>
             <details
@@ -1272,12 +1335,15 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               <strong>{{
                 conversationItemLabel(displayItem.item.kind, displayItem.item.payload)
               }}</strong>
-              <span>{{
+              <span class="conversation-record-preview">{{
                 conversationItemText(
                   displayItem.item.kind,
                   displayItem.item.payload,
                   displayItem.item.status
                 )
+              }}</span>
+              <span class="conversation-record-meta">{{
+                toolPresentationStatus(displayItem.item.status)
               }}</span>
             </summary>
             <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
@@ -1699,9 +1765,10 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 
 .conversation-group-meta {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.25rem 0.5rem;
   min-width: 0;
+  justify-self: end;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1712,9 +1779,33 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   white-space: nowrap;
 }
 
-.conversation-tool-presentation > .conversation-record-heading > span {
-  grid-column: 3 / -1;
+.conversation-tool-presentation > .conversation-record-heading,
+.subagent-group > details > .conversation-record-heading {
+  grid-template-columns: 1em 1.125rem max-content minmax(0, 1fr) max-content;
+}
+
+.conversation-record-heading > .conversation-record-preview {
+  grid-column: 4;
+  grid-row: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-tool-presentation > .conversation-record-heading > .conversation-record-meta,
+.subagent-group > details > .conversation-record-heading > .conversation-record-meta,
+.subagent-group > details > .conversation-record-heading > .conversation-group-meta {
+  grid-column: 5;
+  grid-row: 1;
+}
+
+.conversation-tool-presentation[open]
+  > .conversation-record-heading
+  > .conversation-record-preview {
+  grid-column: 3 / -1;
+  grid-row: 2;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
@@ -1737,8 +1828,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 details.conversation-record-group > details {
-  margin-inline: calc(var(--conversation-item-inset) + 1.125rem + 0.5rem)
-    var(--conversation-item-inset);
+  margin-inline: calc(var(--conversation-item-inset) + 0.5rem) var(--conversation-item-inset);
 }
 
 .conversation-record-group > summary > span + span {
@@ -1782,7 +1872,7 @@ details.conversation-record-group > details {
 
 .conversation-item .conversation-command-output,
 .conversation-item .conversation-record-detail {
-  margin: 0.5rem 0 0 1.375rem;
+  margin: 0.5rem 0 0 0.5rem;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -1796,7 +1886,7 @@ details.conversation-record-group > details {
 
 .conversation-item .conversation-tool-presentation > p,
 .conversation-item .conversation-tool-sources {
-  margin-inline-start: calc(1em + 1.125rem + 1rem);
+  margin-inline-start: 0.5rem;
 }
 
 .conversation-tool-sources {
@@ -2046,6 +2136,62 @@ details.conversation-record-group > details {
   color: var(--mar-conversation-text);
   line-height: 20px;
   list-style: none;
+  border-radius: var(--mar-radius-control);
+}
+
+.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary::before,
+.conversation-item
+  details:is(:not([open]), [data-disclosure-closing])
+  > summary
+  > .conversation-record-icon {
+  flex: none;
+  margin-inline: 0;
+}
+
+.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > strong {
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-inline: 0;
+}
+
+.conversation-item details:is(:not([open]), [data-disclosure-closing]) > summary > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-item
+  details:not([open])
+  > summary
+  > span:not(.conversation-record-meta):not(.conversation-group-meta) {
+  flex: 1;
+}
+
+.conversation-item summary > .conversation-record-meta,
+.conversation-item summary.conversation-record-heading > .conversation-group-meta {
+  flex: none;
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .conversation-item summary:hover {
+    background-color: var(--mar-fill-row-hover);
+  }
+}
+
+.conversation-item summary:active {
+  background-color: var(--mar-fill-row-hover);
 }
 
 .conversation-item summary::-webkit-details-marker {
@@ -2061,10 +2207,17 @@ details.conversation-record-group > details {
   vertical-align: -0.12em;
   background: currentColor;
   mask: var(--conversation-chevron) center / contain no-repeat;
+  transition: transform var(--el-transition-duration-fast);
 }
 
-.conversation-item details[open] > summary::before {
+.conversation-item details[open]:not([data-disclosure-closing]) > summary::before {
   transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-item summary::before {
+    transition: none;
+  }
 }
 
 .conversation-command-status,
@@ -2073,7 +2226,6 @@ details.conversation-record-group > details {
 }
 
 .conversation-item summary:focus-visible {
-  border-radius: 4px;
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
