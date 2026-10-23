@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-23
 ---
 
 # 使用 marctl 管理节点
@@ -8,6 +8,12 @@ lastUpdated: 2026-10-20
 `marctl` 是社区版和企业版的节点命令行工具；Node 安装包自带 `marnodes`、`marssh`、`marscp` 入口，仅供 MAR 内部执行上下文使用。它通过 Server 授权列出节点、打开交互终端、执行一次命令或复制文件；不需要 Node 开放 SSH 端口。`ssh` 是方便记忆的子命令名，**不是系统 SSH 协议**。
 
 在 Node 上由 MAR 打开的普通 Workbench 终端、Workspace Agent Run 及其本地 MCP 子进程中，这些命令会自动加入 `PATH`。脚本可用 `MAR_NODE_CONTEXT=1` 判断 MAR 启动上下文，用 `MAR_USERNAME` 识别当前 MAR 账号的用户名（不是昵称或系统账号）；定时任务使用任务 owner 的用户名。没有可信执行身份时用户名为空，不继承 Node 服务进程的用户名。这些变量只提供上下文信息，不代表已获得节点权限，也不改变托管对话的独立沙箱边界。
+
+## Agent 按需加载指南
+
+在具备 marctl 执行上下文的受管 Workspace 中，MAR Agent 使用内建 `marctl` Skill；Codex、Claude Code 和 OpenCode 使用内建 `mar_cli` MCP 的 `load_guide` 工具按需读取同一份指南。服务与工具描述提供简短提示，客户端是否展示服务描述取决于对应 Runner。
+
+加载指南只返回说明，不执行命令；Agent 仍通过自己的 Shell 工具运行 marctl，必要时查询本地命令帮助。已经加载且仍在上下文中的指南可以直接复用。该入口不增加权限，也不改变协作消息来源或现有定时任务工具。
 
 ## 查看命令帮助
 
@@ -100,7 +106,7 @@ marctl sessions goal clear <session-id> --json
 
 Agent 内执行 `start` 时，CLI 自动携带当前会话作为创建来源，Node 校验同一 Workspace 后以正式 ID 保存 `parentSessionId`；没有来源则为空，不支持手动指定或修改 parent。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它，删除父会话不删除子会话，旧会话不补推关系。
 
-按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池或 Session custom 提示词设置；角色、范围和验收条件放入首条普通消息。MAR Agent 在受权 Workspace 执行中获得内置 `marctl` 技能说明，其他 Runner 不需要该技能也可以作为目标。
+按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池或 Session custom 提示词设置；角色、范围和验收条件放入首条普通消息。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
 `send` 必须显式选择 `--steer` 或 `--queue`，即使空闲也需指定；遗漏、冲突、重复或旧选项会在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，MAR Agent 可原生接收时会立即回显，并在完整回复及工具批次后生效；受管等待可提前返回，后台任务继续，其他工具仍正常完成；其他情况可能切换当前执行，Node 按实际状态裁决；仅用于影响当前工作的必要更新，而非例行汇报。`--queue` 将输入排入后续轮次，有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。`delivery` 为 `ACCEPTED` 表示优先补充已接受，`QUEUED` 表示排队，`STARTED` 表示已进入启动流程；回执不区分原生接管或内部执行切换，也不代表模型已处理或业务已完成。排队回执的 `runId` 可能属于其他活动输入，应以 `queueItemId`/`clientMessageId` 和历史核对。仅在需要时沿历史 `nextCursor` 翻页。
 

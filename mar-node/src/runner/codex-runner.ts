@@ -1,3 +1,4 @@
+import { withMarctlGuide } from '../mcp/marctl-guide.js';
 import {
   CodexAppServerClient,
   CodexAppServerRpcError,
@@ -307,11 +308,14 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     secrets: Readonly<Record<string, string>>,
     executionServers: readonly import('../mcp/model.js').ResolvedMcpServer[] = []
   ): unknown {
-    const servers = super.mcpConfiguration(
-      raw,
-      secrets,
-      executionServers
-    ) as readonly import('../mcp/model.js').ResolvedMcpServer[];
+    const servers = withMarctlGuide(
+      super.mcpConfiguration(
+        raw,
+        secrets,
+        executionServers
+      ) as readonly import('../mcp/model.js').ResolvedMcpServer[],
+      secrets
+    );
     return Object.fromEntries(
       servers.map((server) => [
         server.name,
