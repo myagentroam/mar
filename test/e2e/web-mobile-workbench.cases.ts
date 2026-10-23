@@ -1036,6 +1036,21 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   });
   const pendingWork = page.getByLabel('待执行工作');
   await expect(pendingWork).toContainText('移动端排队消息');
+  async function expectQueueBottomAligned(): Promise<void> {
+    const bottomGap = await pendingWork.evaluate((section) => {
+      const lastItem = section.querySelector('ol')!.lastElementChild!;
+      return (
+        section.getBoundingClientRect().bottom -
+        parseFloat(getComputedStyle(section).borderBottomWidth) -
+        lastItem.getBoundingClientRect().bottom
+      );
+    });
+    expect(bottomGap).toBeCloseTo(0, 1);
+    await pendingWork.screenshot({
+      path: test.info().outputPath('queue-bottom-' + page.viewportSize()!.width + '.png')
+    });
+  }
+  await expectQueueBottomAligned();
   const mobileQueueLayout = await pendingWork.locator('.queue-item').evaluate((item) => {
     const kindElement = item.querySelector('.work-item-kind');
     const contentElement = item.querySelector('.work-item-content');
@@ -1136,6 +1151,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
   expect(mobileGoalLayout.kindFontSize).toBe(mobileGoalLayout.objectiveFontSize);
   expect(mobileGoalLayout.itemHeight).toBeLessThanOrEqual(32);
   await page.setViewportSize({ width: 1280, height: 800 });
+  await expectQueueBottomAligned();
   const desktopQueueLayout = await pendingWork.locator('.queue-item').evaluate((item) => {
     const kind = item.querySelector('.work-item-kind');
     const content = item.querySelector('.work-item-content');
@@ -1267,6 +1283,40 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
       })
     ])
   );
+  await expect(pendingWork.locator('.goal-card')).toHaveCount(0);
+  await emitMockSessionEvent(page, 'queue', {
+    sessionId: 'session-1',
+    queue: {
+      version: 2,
+      paused: false,
+      items: Array.from({ length: 3 }, (_, index) => ({
+        queueItemId: 'alignment-item-' + index,
+        sessionId: 'session-1',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        clientMessageId: 'alignment-message-' + index,
+        sessionTitle: 'Current session',
+        content: 'Queued message ' + (index + 1),
+        createdAt: index + 3
+      }))
+    }
+  });
+  await expect(pendingWork.locator('.queue-item')).toHaveCount(3);
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1280, height: 800 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectQueueBottomAligned();
+    const contentOffsets = await pendingWork.locator('.queue-item').evaluateAll((items) =>
+      items.map((item) => {
+        const row = item.getBoundingClientRect();
+        const content = item.querySelector('.queue-item-content')!.getBoundingClientRect();
+        return (content.top + content.bottom - row.top - row.bottom) / 2;
+      })
+    );
+    for (const offset of contentOffsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
+  }
 });
 
 for (const labels of [

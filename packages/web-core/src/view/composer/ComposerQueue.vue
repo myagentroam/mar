@@ -480,7 +480,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
   overflow: hidden;
   border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
-  padding: 8px 10px 4px;
+  padding: 8px 10px 0;
 }
 
 .composer-queue ~ :deep(.el-input .el-textarea__inner) {
