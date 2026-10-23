@@ -25,6 +25,7 @@ export const THEME_TOKEN_HELP = {
   '--mar-fill-subtle': { group: 'surfaces', description: 'fill-subtle' },
   '--mar-fill-muted': { group: 'surfaces', description: 'fill-muted' },
   '--mar-fill-row-hover': { group: 'surfaces', description: 'fill-row-hover' },
+  '--mar-fill-selection': { group: 'surfaces', description: 'fill-selection' },
   '--mar-fill-soft': { group: 'surfaces', description: 'fill-soft' },
   '--mar-fill-hover': { group: 'surfaces', description: 'fill-hover' },
   '--mar-border-default': { group: 'borders', description: 'border-default' },

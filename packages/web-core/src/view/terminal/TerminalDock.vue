@@ -528,8 +528,8 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab.active {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .terminal-tab:not(.active):hover:not(:disabled) {

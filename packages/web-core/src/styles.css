@@ -160,6 +160,7 @@ html.console-ui,
   --mar-fill-subtle: #f5f7fa;
   --mar-fill-muted: #eaf0f6;
   --mar-fill-row-hover: #e4eaf1;
+  --mar-fill-selection: #dbe2ec;
   --mar-fill-soft: #f0f4f8;
   --mar-fill-hover: #e4eaf1;
   --mar-table-header-bg: #ecf0f4;
@@ -281,7 +282,8 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-bg-tab-inactive: #111720;
   --mar-fill-subtle: #161d28;
   --mar-fill-muted: #182739;
-  --mar-fill-row-hover: #26364a;
+  --mar-fill-row-hover: #202a38;
+  --mar-fill-selection: #2a3748;
   --mar-fill-soft: #152334;
   --mar-fill-hover: #202b3a;
   --mar-table-header-bg: #131922;

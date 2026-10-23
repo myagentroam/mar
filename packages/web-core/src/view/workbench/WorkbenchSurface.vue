@@ -437,7 +437,9 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                 "
                 :working="page.composerWorking"
                 :working-label="page.composerWorkingLabel"
+                :working-busy="page.composerWorkingBusy"
                 :elapsed-label="page.composerElapsedLabel"
+                :connection-busy="!page.liveConnected || page.conversationSyncPending"
                 :connection-label="
                   !page.liveConnected
                     ? translate('conversationActivity.reconnecting')

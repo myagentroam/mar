@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { translate } from '../../service/LocalePreferenceService.js';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { Bottom } from '@element-plus/icons-vue';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -35,8 +36,9 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
         class="conversation-load-older conversation-loading-initial"
         role="status"
         aria-live="polite"
+        :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
       >
-        {{ translate('generated.conversationScroll.loadingConversationHistory') }}
+        <BusyIndicator />
       </div>
       <el-button
         v-else-if="initialLoadFailed"
@@ -55,21 +57,27 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
         :aria-busy="loadingOlder"
       >
         <p v-if="olderError" class="conversation-history-error" role="status">{{ olderError }}</p>
+        <div
+          v-if="loadingOlder"
+          class="conversation-load-older"
+          role="status"
+          :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
+        >
+          <BusyIndicator />
+        </div>
         <el-button
+          v-else
           class="conversation-load-older"
           link
           type="primary"
           size="small"
           native-type="button"
-          :disabled="loadingOlder"
           @click="emit('loadOlder')"
         >
           {{
-            loadingOlder
-              ? translate('generated.conversationScroll.loadingEarlierMessages')
-              : olderError
-                ? translate('conversationActivity.retry')
-                : translate('generated.conversationScroll.loadEarlierMessages')
+            olderError
+              ? translate('conversationActivity.retry')
+              : translate('generated.conversationScroll.loadEarlierMessages')
           }}
         </el-button>
       </div>
@@ -132,6 +140,9 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
 
 .conversation-load-older {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
   width: max-content;
   max-width: 100%;
   margin: 0 auto 0.8rem;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import {
   conversationProcessLabel,
@@ -67,11 +68,7 @@ watch(open, async () => {
         class="process-meta process-activity"
         :class="{ 'is-active': block.active && synchronized }"
       >
-        <i
-          v-if="block.active && synchronized"
-          class="process-activity-indicator"
-          aria-hidden="true"
-        />
+        <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
         <span class="process-activity-label" :title="statusLabel">{{ statusLabel }}</span>
       </span>
       <span v-if="durationMs !== undefined" class="process-duration"
@@ -165,25 +162,6 @@ watch(open, async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.process-activity-indicator {
-  box-sizing: border-box;
-  width: 0.75rem;
-  height: 0.75rem;
-  flex: none;
-  border: 2px solid currentColor;
-  border-inline-end-color: transparent;
-  border-radius: 50%;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .process-activity-indicator {
-    animation: process-activity-spin 1.2s linear infinite;
-  }
-}
-@keyframes process-activity-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 .process-body {
   display: grid;

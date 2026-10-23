@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { translate } from '../../service/LocalePreferenceService.js';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
@@ -41,9 +42,11 @@ const props = withDefaults(
     input: string;
     placeholder: string;
     working: boolean;
+    workingBusy?: boolean;
     workingLabel: string;
     elapsedLabel?: string;
     connectionLabel?: string;
+    connectionBusy?: boolean;
     readonly: boolean;
     dropTarget: boolean;
     mobileViewport: boolean;
@@ -54,7 +57,7 @@ const props = withDefaults(
     completion?: PromptCompletionBinding | undefined;
     completionBlocked?: boolean;
   }>(),
-  { fileReferences: () => [] }
+  { fileReferences: () => [], workingBusy: true }
 );
 
 function requestCompletion(
@@ -152,7 +155,7 @@ const emit = defineEmits<{
         class="composer-working"
         :class="{ 'is-active': working && !connectionLabel }"
       >
-        <i v-if="working && !connectionLabel" aria-hidden="true" />
+        <BusyIndicator v-if="connectionLabel ? connectionBusy : working && workingBusy" />
         <span role="status" aria-live="polite">{{ connectionLabel || workingLabel }}</span>
         <span v-if="elapsedLabel && !connectionLabel" class="composer-elapsed">{{
           elapsedLabel
@@ -330,64 +333,9 @@ const emit = defineEmits<{
   line-height: 1;
 }
 
-.composer-working::before {
-  position: absolute;
-  z-index: -1;
-  top: -35%;
-  bottom: -35%;
-  left: -65%;
-  width: 48%;
-  content: '';
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--mar-color-brand) 4%, transparent),
-    color-mix(in srgb, var(--mar-color-brand) 28%, transparent),
-    color-mix(in srgb, var(--mar-color-brand) 4%, transparent),
-    transparent
-  );
-  transform: skewX(-24deg);
-}
-
-.composer-working > i,
-.composer-working > span {
-  position: relative;
-  z-index: 1;
-}
-
-.composer-working > i {
-  width: 0.38rem;
-  height: 0.38rem;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .composer:focus-within .composer-working {
   border-color: var(--mar-color-brand);
   border-bottom-color: var(--mar-bg-panel);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .composer-working.is-active::before {
-    animation: mar-working-sweep 1.75s linear infinite;
-  }
-  .composer-working > i {
-    animation: mar-working-pulse 1.2s ease-in-out infinite;
-  }
-}
-
-@keyframes mar-working-sweep {
-  to {
-    left: 120%;
-  }
-}
-
-@keyframes mar-working-pulse {
-  50% {
-    opacity: 0.35;
-    transform: scale(0.72);
-  }
 }
 
 .composer-shell {

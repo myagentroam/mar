@@ -204,6 +204,17 @@ export function conversationDisplayItems(
     const item = 'items' in entry ? entry.items[0]! : entry.item;
     if (item.processGroup?.id !== groupId) anchors.clear();
     groupId = item.processGroup?.id;
+    // Independent tool rows do not split other categories in the same process.
+    if (
+      groupId &&
+      entry.type === 'item' &&
+      item.kind === 'tool_call' &&
+      item.permissionStop === undefined &&
+      toolPresentation(item.payload) !== undefined
+    ) {
+      result.push(entry);
+      continue;
+    }
     if (!groupId || !('items' in entry) || entry.type === 'subagent_group') {
       anchors.clear();
       result.push(entry);

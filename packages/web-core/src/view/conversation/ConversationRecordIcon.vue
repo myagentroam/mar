@@ -25,10 +25,13 @@ defineProps<{
       <path d="M20 11a8 8 0 0 1-8 8H5l-2 2v-10a8 8 0 0 1 17 0Z" />
       <path d="M7 10h9m-9 4h6" />
     </template>
-    <template v-else-if="kind === 'READ' || kind === 'file_change'">
+    <template v-else-if="kind === 'READ'">
       <path d="M13 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9l-6-6Zm0 0v6h6" />
-      <path v-if="kind === 'READ'" d="M9 13h6m-6 4h4" />
-      <path v-else d="M9 15h6m-3-3v6" />
+      <path d="M9 13h6m-6 4h4" />
+    </template>
+    <template v-else-if="kind === 'file_change'">
+      <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8l5 5v3M14 3v5h5" />
+      <path d="m17 13 3 3m-8 5 1-4 5-5 3 3-5 5-4 1Z" />
     </template>
     <template v-else-if="kind === 'SKILL'">
       <path d="M12 6C9 4 6 4 3 5v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v14" />

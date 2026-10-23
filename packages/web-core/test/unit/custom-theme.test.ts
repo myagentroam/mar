@@ -15,6 +15,7 @@ const source = (colors: Record<string, unknown> = {}, extra: Record<string, unkn
 const darkPalette = {
   '--mar-bg-page': '#141619',
   '--mar-bg-panel': '#1e2836',
+  '--mar-fill-selection': '#293545',
   '--mar-bg-chrome': '#18263b',
   '--mar-color-brand': '#3071d1',
   '--mar-text-primary': '#e7eaf0'
@@ -22,6 +23,7 @@ const darkPalette = {
 const lightPalette = {
   '--mar-bg-page': '#f3f6f9',
   '--mar-bg-panel': '#ffffff',
+  '--mar-fill-selection': '#dfe5ed',
   '--mar-bg-chrome': '#f5f6f8',
   '--mar-color-brand': '#0a6fd8',
   '--mar-text-primary': '#1c2733'
@@ -59,6 +61,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Custom theme validation', () => {
+  it('round-trips navigation selection independently and defaults missing or invalid values', () => {
+    const service = createThemePreferenceService();
+    const input = source({
+      '--mar-fill-selection': '#dfe5ed',
+      '--mar-color-brand-selected': '#dce8f7'
+    });
+    const colors = analyzeCustomTheme(input).colors;
+    expect(colors['--mar-fill-selection']).toBe('#dfe5ed');
+    expect(colors['--mar-color-brand-selected']).toBe('#dce8f7');
+    expect(analyzeCustomTheme(createThemeSource('Navigation palette', colors)).colors).toEqual(
+      colors
+    );
+    expect(service.resolveColors(input)['--mar-fill-selection']).toBe('#dfe5ed');
+    for (const colors of [{}, { '--mar-fill-selection': 'invalid' }]) {
+      expect(service.resolveColors(source(colors))['--mar-fill-selection']).toBe(
+        darkPalette['--mar-fill-selection']
+      );
+    }
+  });
+
   it('resolves chrome independently and defaults missing or invalid chrome colors', () => {
     const service = createThemePreferenceService();
     expect(service.resolveColors(source())['--mar-bg-chrome']).toBe(darkPalette['--mar-bg-chrome']);
@@ -86,6 +108,24 @@ describe('Custom theme validation', () => {
       code: 'contrast',
       field: '--mar-text-primary / --mar-bg-chrome'
     });
+  });
+
+  it('warns about low-contrast selection titles and metadata without blocking save or apply', () => {
+    const service = createThemePreferenceService();
+    for (const foreground of ['--mar-text-primary', '--mar-text-secondary']) {
+      const input = source({ '--mar-fill-selection': '#777777', [foreground]: '#777777' });
+      const result = analyzeCustomTheme(input);
+      expect(result.validJson).toBe(true);
+      expect(result.warnings).toContainEqual({
+        code: 'contrast',
+        field: `${foreground} / --mar-fill-selection`
+      });
+      const item = service.saveCustomTheme(input);
+      service.setTheme(item.id);
+      expect(item.source).toBe(input);
+      expect(styles.get('--mar-fill-selection')).toBe('#777777');
+      expect(styles.get(foreground)).toBe('#777777');
+    }
   });
 
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {

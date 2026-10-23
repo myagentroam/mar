@@ -177,7 +177,7 @@ function runTime(run: RecentRun): string {
   color: var(--mar-text-primary);
 }
 .recent-sessions-trigger.active {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
   color: var(--mar-color-brand-text);
 }
 .recent-sessions-trigger:focus-visible {

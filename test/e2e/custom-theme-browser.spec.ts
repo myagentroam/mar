@@ -423,6 +423,8 @@ test('expanded and compact previews share the applied palette without changing g
     name: 'Preview',
     colors: {
       '--mar-color-brand': '#ff00ff',
+      '--mar-fill-selection': '#38475a',
+      '--mar-fill-row-hover': '#283442',
       '--mar-color-diff-add-text': '#123456',
       '--mar-conversation-surface': '#16324f',
       '--mar-conversation-text': '#f8eedd'
@@ -430,6 +432,11 @@ test('expanded and compact previews share the applied palette without changing g
   });
   await editor.fill(source);
   const preview = page.locator('.theme-preview');
+  for (const selector of ['.file.selected', '.tab.active']) {
+    await expect(preview.locator(selector)).toHaveCSS('background-color', 'rgb(56, 71, 90)');
+    await preview.locator(selector).hover();
+    await expect(preview.locator(selector)).toHaveCSS('background-color', 'rgb(56, 71, 90)');
+  }
   await expect(preview.locator('.user-message')).toHaveText('This is a sample message.');
   await expect(preview.locator('.assistant-message strong')).toHaveText('Sample heading');
   await expect(preview.locator('.user-message')).toHaveCSS('color', 'rgb(248, 238, 221)');
@@ -456,6 +463,8 @@ test('expanded and compact previews share the applied palette without changing g
   const dialog = page.getByRole('dialog');
   const expanded = dialog.locator('.theme-preview');
   await expect(expanded).toBeVisible();
+  await expect(expanded.locator('.file.selected')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
+  await expect(expanded.locator('.tab.active')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   const dialogPanel = dialog.locator('.el-dialog');
   await expect(dialogPanel).toHaveCSS('border-radius', '12px');
   await dialogPanel.evaluate((element) => element.classList.add('is-fullscreen'));

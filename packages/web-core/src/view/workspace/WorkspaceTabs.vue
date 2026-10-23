@@ -689,13 +689,13 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab.active {
   background:
-    linear-gradient(var(--mar-color-brand-selected), var(--mar-color-brand-selected)),
+    linear-gradient(var(--mar-fill-selection), var(--mar-fill-selection)),
     var(--workspace-tab-base-bg);
 }
 
 .workspace-tab-placeholder {
   align-items: center;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   padding: 3px 12px 2px 8px;
 }
 
@@ -738,7 +738,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab.active > button:first-child {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .workspace-tab small {
@@ -748,6 +748,10 @@ function activate(tab: WorkspaceTab): void {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workspace-tab.active small {
+  color: var(--mar-text-secondary);
 }
 
 @media (min-width: 768px) {

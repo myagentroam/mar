@@ -3,6 +3,7 @@ import type { AgentRun, ConversationItem, ConversationTurn } from '../../src/mod
 import {
   completedStepDuration,
   conversationActivityLabel,
+  conversationActivityBusy,
   conversationElapsedLabel,
   runDuration
 } from '../../src/util/conversation-activity';
@@ -36,6 +37,15 @@ const turn = (
 const label = (key: string) => translate(`conversationActivity.${key}`);
 
 describe('Public activity and duration', () => {
+  it('only animates ongoing work, not terminal or user-wait states', () => {
+    expect(conversationActivityBusy(run, [])).toBe(true);
+    for (const kind of ['approval_request', 'user_input_request'] as const) {
+      const waiting = turn([{ ...item, kind, status: 'PENDING' }]);
+      expect(conversationActivityBusy(run, [waiting])).toBe(false);
+      expect(conversationActivityBusy({ ...run, status: 'CANCELLING' }, [waiting])).toBe(true);
+    }
+    expect(conversationActivityBusy({ ...run, status: 'SUCCEEDED' }, [])).toBe(false);
+  });
   it('uses generic activity without summary or public facts, not synthetic thinking', () => {
     expect(conversationActivityLabel(run, [])).toBe(label('running'));
     expect(conversationActivityLabel(run, [turn([{ ...item, kind: 'reasoning' }])])).toBe(

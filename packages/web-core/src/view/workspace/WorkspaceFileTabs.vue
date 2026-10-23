@@ -349,12 +349,12 @@ defineExpose({
 }
 
 .workspace-file-tab.is-active {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .workspace-file-tab:not(.is-active):hover {
-  background: var(--mar-bg-tab-inactive);
+  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 

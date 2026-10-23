@@ -22,6 +22,7 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-fill-subtle',
   '--mar-fill-muted',
   '--mar-fill-row-hover',
+  '--mar-fill-selection',
   '--mar-fill-soft',
   '--mar-fill-hover',
   '--mar-border-default',

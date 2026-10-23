@@ -73,6 +73,8 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-text-secondary', '--mar-bg-panel'],
     ['--mar-text-primary', '--mar-bg-chrome'],
     ['--mar-text-secondary', '--mar-bg-chrome'],
+    ['--mar-text-primary', '--mar-fill-selection'],
+    ['--mar-text-secondary', '--mar-fill-selection'],
     ['--mar-conversation-text', '--mar-conversation-surface'],
     ['--mar-conversation-muted', '--mar-conversation-surface'],
     ['--mar-color-on-accent', '--mar-color-brand']

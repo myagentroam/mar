@@ -9,6 +9,7 @@ import {
   type CSSProperties
 } from 'vue';
 import { ElMessage } from 'element-plus';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import type { PromptCompletionResponse } from '@myagentroam/protocol';
 import {
   PromptCompletionService,
@@ -443,7 +444,8 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="enabled" class="completion-actions" :data-state="state.kind">
       <span class="completion-status" role="status">
-        <span class="completion-indicator" aria-hidden="true" />
+        <BusyIndicator v-if="state.kind === 'pending'" />
+        <span v-else class="completion-indicator" aria-hidden="true" />
         {{
           translate(
             state.kind === 'pending'
@@ -568,15 +570,6 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: var(--mar-text-faint);
 }
-.completion-actions[data-state='pending'] .completion-indicator {
-  width: 0.625rem;
-  height: 0.625rem;
-  box-sizing: border-box;
-  border: 2px solid var(--mar-color-brand-border);
-  border-top-color: var(--mar-color-brand-text);
-  background: transparent;
-  animation: prediction-spin 800ms linear infinite;
-}
 .completion-actions[data-state='ready'] .completion-indicator {
   background: var(--mar-color-brand-text);
   animation: prediction-ready 240ms ease-out;
@@ -584,11 +577,6 @@ onBeforeUnmount(() => {
 .completion-hint {
   color: var(--mar-text-muted);
   font-size: inherit;
-}
-@keyframes prediction-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 @keyframes prediction-ready {
   from {

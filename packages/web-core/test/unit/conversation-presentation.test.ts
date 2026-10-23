@@ -1022,6 +1022,68 @@ describe('Conversation Show Aggregation', () => {
     }
   });
 
+  it.each(['SKILL', 'WEB_SEARCH', 'WEB_FETCH', 'SLEEP'])(
+    'keeps %s calls independent without splitting process reasoning and commands',
+    (kind) => {
+      const processGroup = { id: 'process-independent-calls' };
+      for (const status of ['IN_PROGRESS', 'COMPLETED', 'FAILED'] as const) {
+        const records = [
+          item(
+            'reasoning-1',
+            'reasoning',
+            { sections: [{ text: 'Before call' }] },
+            'COMPLETED',
+            processGroup
+          ),
+          item('command-1', 'command_execution', { command: 'first' }, 'COMPLETED', processGroup),
+          item(
+            'call-1',
+            'tool_call',
+            { toolName: 'external', toolPresentation: { kind } },
+            'COMPLETED',
+            processGroup
+          ),
+          item(
+            'reasoning-2',
+            'reasoning',
+            { sections: [{ text: 'After call' }] },
+            status,
+            processGroup
+          ),
+          item('command-2', 'command_execution', { command: 'second' }, status, processGroup),
+          item(
+            'call-2',
+            'tool_call',
+            { toolName: 'external', toolPresentation: { kind } },
+            status,
+            processGroup
+          )
+        ];
+        const display = conversationDisplayItems(records);
+        expect(display.map(({ id }) => id)).toEqual([
+          'call-1',
+          'reasoning-1',
+          'command-1',
+          'call-2'
+        ]);
+        expect(display.filter((entry) => entry.type === 'item')).toMatchObject([
+          { id: 'call-1', item: records[2] },
+          { id: 'call-2', item: records[5] }
+        ]);
+        expect(display.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
+          {
+            id: 'reasoning-1',
+            text: 'Before call\n\nAfter call',
+            items: [{ id: 'reasoning-1' }, { id: 'reasoning-2' }]
+          }
+        ]);
+        expect(display.filter((entry) => entry.type === 'command_group')).toMatchObject([
+          { id: 'command-1', items: [{ id: 'command-1' }, { id: 'command-2' }] }
+        ]);
+      }
+    }
+  );
+
   it('does not aggregate ordinary tools across special card, permission, or subagent boundaries', () => {
     const processGroup = { id: 'process-boundaries' } as const;
     const permissionStop = {

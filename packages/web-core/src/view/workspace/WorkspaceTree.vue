@@ -1033,16 +1033,16 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-branches > li.selected {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .workspace-branches > li.selected:hover,
 .workspace-branches > li.selected:focus-within {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .workspace-branches > li.selected .workspace-branch-button {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   font-weight: 400;
 }
 
@@ -1178,20 +1178,20 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-row.selected {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .tree-node-row.selected:hover,
 .tree-node-row.selected:focus-within {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .tree-node-row.selected .tree-node {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .tree-node-row.selected .tree-type-icon {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .tree-node:focus-visible,
