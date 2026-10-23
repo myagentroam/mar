@@ -94,6 +94,7 @@ export function renderComponent(
     'ElTabs',
     'ElTabPane',
     'ElPagination',
+    'ElDatePicker',
     'ElAlert',
     'ElCheckbox',
     'ElProgress',

@@ -2,6 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node", "vitest/globals"]
   },
   "include": [
@@ -9,7 +10,8 @@
     "ee/*/test/unit/**/*.ts",
     "vitest.config.ts",
     "playwright.config.mts",
-    "ee/web/src/vite-env.d.ts"
+    "ee/web/src/vite-env.d.ts",
+    "packages/web-core/test/unit/support/component-fixtures.d.ts"
   ],
   "exclude": ["test/runs"]
 }
