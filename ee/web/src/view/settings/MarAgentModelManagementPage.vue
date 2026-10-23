@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref } from 'vue';
-import { Share } from '@element-plus/icons-vue';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import type { NodeSummary } from '@/model/workbench';
 import CorePage from '@myagentroam/web-core/MarAgentModelManagementPage.vue';
@@ -58,7 +58,12 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
   >
     <template #model-ownership="{ editing }">
       <el-form-item :label="translate('marAgentModels.modelOwnership')">
-        <el-select v-model="modelOwnership.draft.ownerType" :disabled="editing">
+        <el-select
+          v-model="modelOwnership.draft.ownerType"
+          :disabled="editing"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
@@ -82,6 +87,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           filterable
           :options="modelOwnership.organizationOptions.value"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
         />
       </el-form-item>
       <p v-if="!editing" class="ownership-hint">
@@ -90,7 +96,12 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
     </template>
     <template #catalog-ownership>
       <el-form-item :label="translate('marAgentModels.modelOwnership')">
-        <el-select v-model="catalogOwnership.draft.ownerType" :disabled="!writable">
+        <el-select
+          v-model="catalogOwnership.draft.ownerType"
+          :disabled="!writable"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
@@ -114,13 +125,18 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           filterable
           :options="catalogOwnership.organizationOptions.value"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
         />
       </el-form-item>
       <p class="ownership-hint">{{ translate('marAgentModels.modelOwnershipHint') }}</p>
     </template>
     <template #credential-ownership>
       <el-form-item :label="translate('marAgentModels.codexCredentialScope')">
-        <el-select v-model="credentialDraft.ownerType">
+        <el-select
+          v-model="credentialDraft.ownerType"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
@@ -143,6 +159,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           filterable
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
         />
       </el-form-item>
     </template>
@@ -160,7 +177,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
         v-if="model.ownership?.ownerType !== 'PERSONAL'"
         link
         type="primary"
-        :icon="Share"
+        :icon="marIcon('share')"
         @click="grants?.open(model)"
         >{{ translate('common.grant') }}</el-button
       ></template

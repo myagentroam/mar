@@ -1,5 +1,5 @@
 import { serializeComposerTag } from '@myagentroam/protocol';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -532,7 +532,7 @@ describe('scheduled Node session flow', () => {
   });
 
   it('starts the saved objective in the existing Claude Code session and permits schedule edits', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'schedule-success-'));
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-success-')));
     temporaryDirectories.push(directory);
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
@@ -709,7 +709,7 @@ describe('scheduled Node session flow', () => {
     'pins a session and records a scheduled message and %s failure (terminal notifications: %s)',
     async (failureStage, notifyOnTerminal) => {
       const failDuringInputPreparation = failureStage === 'input preparation';
-      const directory = await mkdtemp(join(tmpdir(), 'schedule-failure-'));
+      const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-failure-')));
       temporaryDirectories.push(directory);
       vi.useFakeTimers();
       vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));

@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Delete, Download, Refresh, RefreshRight, Tools } from '@element-plus/icons-vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -103,12 +103,13 @@ watch(activeConfigTab, (tab) => {
 });
 watch(service.catalogPage.error, (error) => {
   if (error !== undefined)
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
       )
-    );
+    });
 });
 
 async function ensureTargets(): Promise<void> {
@@ -133,14 +134,15 @@ async function ensureTargets(): Promise<void> {
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
   try {
     await operation();
-    if (success !== undefined) ElMessage.success(success);
+    if (success !== undefined) ElMessage.success({ icon: marIcon('success'), message: success });
   } catch (error) {
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillCenterPage.theSkillOperationDidNotCompleteTry')
       )
-    );
+    });
   }
 }
 
@@ -225,18 +227,21 @@ async function checkEnvironment(): Promise<void> {
         ? translate('generated.skillCenterPage.environmentCheckFoundIssues')
         : translate('generated.skillCenterPage.environmentCheckPassed'),
       {
+        closeIcon: marIcon('close'),
         confirmButtonText: translate('generated.skillCenterPage.oK'),
+        icon: marIcon(issues > 0 ? 'warning' : 'success'),
         type: issues > 0 ? 'warning' : 'success'
       }
     );
   } catch (error) {
     if (!isDialogCancellation(error))
-      ElMessage.error(
-        skillErrorMessage(
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: skillErrorMessage(
           error,
           translate('generated.skillCenterPage.theEnvironmentCheckDidNotCompleteTry')
         )
-      );
+      });
   }
 }
 
@@ -282,6 +287,8 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
         }),
         translate('generated.skillCenterPage.overwriteSkill'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.skillCenterPage.continue'),
           cancelButtonText: translate('generated.skillCenterPage.cancel')
@@ -295,11 +302,12 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
     }, 800);
     operationStarted = true;
     await service.install(favorite.id, nodeId, workspaceId, overwrite);
-    ElMessage.success(
-      overwrite
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: overwrite
         ? translate('generated.skillCenterPage.skillUpdated')
         : translate('generated.skillCenterPage.skillInstalled')
-    );
+    });
   } catch (error) {
     if (isDialogCancellation(error)) return;
     if (
@@ -311,30 +319,37 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
           translate('generated.skillCenterPage.theTargetContainsGitTrackedFilesOverwritten'),
           translate('generated.skillCenterPage.overwriteTrackedFiles'),
           {
+            closeIcon: marIcon('close'),
+            icon: marIcon('warning'),
             type: 'warning',
             confirmButtonText: translate('generated.skillCenterPage.overwriteFiles'),
             cancelButtonText: translate('generated.skillCenterPage.cancel2')
           }
         );
         await service.install(favorite.id, nodeId, workspaceId, true);
-        ElMessage.success(translate('generated.skillCenterPage.skillInstalled2'));
+        ElMessage.success({
+          icon: marIcon('success'),
+          message: translate('generated.skillCenterPage.skillInstalled2')
+        });
       } catch (confirmationError) {
         if (!isDialogCancellation(confirmationError))
-          ElMessage.error(
-            skillErrorMessage(
+          ElMessage.error({
+            icon: marIcon('error'),
+            message: skillErrorMessage(
               confirmationError,
               translate('generated.skillCenterPage.skillInstallationDidNotCompleteTryAgain')
             )
-          );
+          });
       }
       return;
     }
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillCenterPage.skillInstallationDidNotCompleteTryAgain2')
       )
-    );
+    });
   } finally {
     if (progressTimer !== undefined) window.clearTimeout(progressTimer);
     targetMutationPending.value = false;
@@ -383,6 +398,8 @@ async function removeInstalled(name: string): Promise<void> {
       translate('generated.skillCenterPage.deleteFromTheCurrentTargetTheSystem', { value0: name }),
       translate('generated.skillCenterPage.deleteSkill'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillCenterPage.deleteDirectory'),
         cancelButtonText: translate('generated.skillCenterPage.cancel3')
@@ -390,12 +407,13 @@ async function removeInstalled(name: string): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillCenterPage.unableToConfirmDeletionTryAgainLater')
       )
-    );
+    });
     return;
   }
   await mutateCurrentTarget(
@@ -416,6 +434,8 @@ async function repairGitExclude(): Promise<void> {
       translate('generated.skillCenterPage.repairingTheEnvironmentUpdatesTheWorkspaceS'),
       translate('generated.skillCenterPage.repairSkillEnvironment'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillCenterPage.repair'),
         cancelButtonText: translate('generated.skillCenterPage.cancel4')
@@ -423,12 +443,13 @@ async function repairGitExclude(): Promise<void> {
     );
   } catch (error) {
     if (isDialogCancellation(error)) return;
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillCenterPage.unableToConfirmRepairTryAgainLater')
       )
-    );
+    });
     return;
   }
   await mutateCurrentTarget(
@@ -442,14 +463,15 @@ async function mutateCurrentTarget(operation: () => Promise<void>, success: stri
   targetMutationPending.value = true;
   try {
     await operation();
-    ElMessage.success(success);
+    ElMessage.success({ icon: marIcon('success'), message: success });
   } catch (error) {
-    ElMessage.error(
-      skillErrorMessage(
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: skillErrorMessage(
         error,
         translate('generated.skillCenterPage.theSkillOperationDidNotCompleteTry2')
       )
-    );
+    });
   } finally {
     targetMutationPending.value = false;
     if (`${targetNodeId.value}:${effectiveWorkspaceId.value ?? ''}` === targetKey)
@@ -512,6 +534,8 @@ function scopeLabel(scope: string): string {
           :placeholder="translate('generated.skillCenterPage.selectANode')"
           :aria-label="translate('generated.skillCenterPage.skillNode')"
           @change="selectTargetNode"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="node in targetNodes"
@@ -536,6 +560,8 @@ function scopeLabel(scope: string): string {
           class="target-select"
           :placeholder="translate('generated.skillCenterPage.selectAWorkspace')"
           :aria-label="translate('generated.skillCenterPage.skillWorkspace')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="workspace in targetWorkspaces"
@@ -545,15 +571,16 @@ function scopeLabel(scope: string): string {
           />
         </el-select>
         <el-button
-          :icon="Refresh"
+          :icon="marIcon('refresh')"
           :disabled="!targetReady || service.targetLoading.value"
           :loading="service.targetLoading.value && activeConfigTab !== 'installed'"
           @click="checkEnvironment"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('generated.skillCenterPage.checkEnvironment') }}</el-button
         >
         <el-button
           v-if="targetKind === 'WORKSPACE'"
-          :icon="Tools"
+          :icon="marIcon('tool')"
           :disabled="!targetReady || targetMutationPending"
           @click="repairGitExclude"
           >{{ translate('generated.skillCenterPage.repairEnvironment') }}</el-button
@@ -582,6 +609,7 @@ function scopeLabel(scope: string): string {
               v-model="skillQuery"
               clearable
               :placeholder="translate('generated.skillCenterPage.searchSkillNamesOrDescriptions2')"
+              :clear-icon="marIcon('clear-input')"
             />
             <div
               class="skill-category-strip"
@@ -665,7 +693,7 @@ function scopeLabel(scope: string): string {
                       <el-button
                         link
                         type="primary"
-                        :icon="Download"
+                        :icon="marIcon('download')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="install(row)"
                         >{{ installLabel(row) }}</el-button
@@ -777,7 +805,7 @@ function scopeLabel(scope: string): string {
                         v-if="matchingFavorite(row)"
                         link
                         type="primary"
-                        :icon="RefreshRight"
+                        :icon="marIcon('retry')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="install(matchingFavorite(row)!)"
                         >{{
@@ -789,7 +817,7 @@ function scopeLabel(scope: string): string {
                       <el-button
                         link
                         type="danger"
-                        :icon="Delete"
+                        :icon="marIcon('delete')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="removeInstalled(row.name)"
                         >{{ translate('generated.skillCenterPage.delete') }}</el-button

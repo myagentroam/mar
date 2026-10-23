@@ -1,10 +1,11 @@
 import {
   createRenderer,
-  defineComponent,
   h,
   nextTick,
   shallowRef,
   ssrContextKey,
+  type Component,
+  type SetupContext,
   type VNode
 } from 'vue';
 import { expect, it, vi } from 'vitest';
@@ -46,7 +47,7 @@ it.each(['initial', 'older'] as const)(
         olderError: ''
       };
     });
-    const component = Object.assign({}, ConversationScroll, { render: () => null });
+    const component = { ...ConversationScroll, render: () => null } as Component;
     const app = renderer.createApp({
       render: () =>
         h(component, {
@@ -61,24 +62,18 @@ it.each(['initial', 'older'] as const)(
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.component(
-      'ElButton',
-      defineComponent({
-        setup:
-          (_, { slots }) =>
-          () =>
-            h('button', slots.default?.())
-      })
-    );
-    app.component(
-      'ElIcon',
-      defineComponent({
-        setup:
-          (_, { slots }) =>
-          () =>
-            h('span', slots.default?.())
-      })
-    );
+    app.component('ElButton', {
+      setup:
+        (_: unknown, { slots }: SetupContext) =>
+        () =>
+          h('button', slots.default?.())
+    });
+    app.component('ElIcon', {
+      setup:
+        (_: unknown, { slots }: SetupContext) =>
+        () =>
+          h('span', slots.default?.())
+    });
     app.mount({});
     try {
       const activate = state![kind === 'initial' ? 'reload' : 'loadOlder'] as () => Promise<void>;

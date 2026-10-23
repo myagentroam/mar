@@ -1,16 +1,9 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import {
-  CircleCheck,
-  CollectionTag,
-  Delete,
-  Edit,
-  Plus,
-  Refresh,
-  UploadFilled
-} from '@element-plus/icons-vue';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
@@ -66,7 +59,11 @@ const pagination = createManagementPageService<AdminConversationTemplateSummary>
   read: (page) => service.listAdminPage(page, sortBy.value, sortOrder.value),
   key: (template) => template.id,
   context: () => JSON.stringify([sortBy.value, sortOrder.value]),
-  reportError: (error) => ElMessage.error(templateError(error, 'conversationTemplates.loadFailed'))
+  reportError: (error) =>
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.loadFailed')
+    })
 });
 const templates = pagination.items;
 const models = ref<readonly ConversationTemplateModelOption[]>([]);
@@ -233,7 +230,10 @@ async function loadModelOptions(nodeId: string): Promise<void> {
     )
       return;
     applyModelOptions([]);
-    ElMessage.error(templateError(error, 'conversationTemplates.modelsLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.modelsLoadFailed')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(modelRequestContext, context))
       modelLoading.value = false;
@@ -263,7 +263,10 @@ async function loadWorkspaces(nodeId: string): Promise<void> {
     )
       return;
     workspaces.value = [];
-    ElMessage.error(templateError(error, 'conversationTemplates.workspacesLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.workspacesLoadFailed')
+    });
   }
 }
 
@@ -290,7 +293,10 @@ async function loadMcpOptions(nodeId: string, workspaceId: string): Promise<void
     )
       return;
     mcpOptions.value = [];
-    ElMessage.error(templateError(error, 'conversationTemplates.mcpLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.mcpLoadFailed')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(mcpRequestContext, context))
       mcpLoading.value = false;
@@ -382,7 +388,10 @@ async function openEdit(row: AdminConversationTemplateSummary): Promise<void> {
     editDialogOpen.value = true;
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error(templateError(error, 'conversationTemplates.detailLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.detailLoadFailed')
+    });
   } finally {
     endLoading();
   }
@@ -404,7 +413,10 @@ async function openDetail(row: AdminConversationTemplateSummary): Promise<void> 
     } catch (error) {
       if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context))
         return;
-      ElMessage.error(templateError(error, 'conversationTemplates.workspacesLoadFailed'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: templateError(error, 'conversationTemplates.workspacesLoadFailed')
+      });
     }
     if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context)) return;
     detail.value = current;
@@ -412,7 +424,10 @@ async function openDetail(row: AdminConversationTemplateSummary): Promise<void> 
     detailDialogOpen.value = true;
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context)) return;
-    ElMessage.error(templateError(error, 'conversationTemplates.detailLoadFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.detailLoadFailed')
+    });
   } finally {
     endLoading();
   }
@@ -483,11 +498,17 @@ async function save(): Promise<void> {
     else await service.update(context.resourceId, input);
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
     editDialogOpen.value = false;
-    ElMessage.success(translate('conversationTemplates.saved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('conversationTemplates.saved')
+    });
     await load(false);
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error(templateError(error, 'conversationTemplates.saveFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.saveFailed')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(editRequestContext, context)) saving.value = false;
   }
@@ -511,7 +532,10 @@ async function testDraft(): Promise<void> {
     );
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error(templateError(error, 'conversationTemplates.testFailedFallback'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: templateError(error, 'conversationTemplates.testFailedFallback')
+    });
   } finally {
     if (sameConversationTemplateRequestContext(editRequestContext, context)) testing.value = false;
   }
@@ -530,13 +554,16 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
         options
       )
     ) {
-      ElMessage.error(translate('conversationTemplates.errorModelInvalid'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('conversationTemplates.errorModelInvalid')
+      });
       return;
     }
     await ElMessageBox.confirm(
       translate('conversationTemplates.publishConfirmation', { name: row.name }),
       translate('conversationTemplates.publish'),
-      confirmationOptions('conversationTemplates.publish')
+      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.publish') }
     );
     if (disposed) return;
     publishingIds.value = new Set(publishingIds.value).add(row.id);
@@ -544,17 +571,25 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
     job = await awaitPublish(row.id, job);
     if (disposed) return;
     if (job.status === 'SUCCEEDED')
-      ElMessage.success(translate('conversationTemplates.publishSucceeded'));
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('conversationTemplates.publishSucceeded')
+      });
     else if (job.status === 'FAILED')
-      ElMessage.error(
-        templateFailureMessage(
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: templateFailureMessage(
           job.errorCode,
           translate('conversationTemplates.publishFailed', {
             code: job.errorCode ?? 'CONVERSATION_TEMPLATE_PUBLISH_FAILED'
           })
         )
-      );
-    else ElMessage.info(translate('conversationTemplates.publishStillRunning'));
+      });
+    else
+      ElMessage.info({
+        icon: marIcon('info'),
+        message: translate('conversationTemplates.publishStillRunning')
+      });
     await load(false);
     if (disposed || detail.value?.template.id !== row.id) return;
     const context = detailRequestContext;
@@ -563,7 +598,10 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
       detail.value = current;
   } catch (error) {
     if (!disposed && error !== 'cancel')
-      ElMessage.error(templateError(error, 'conversationTemplates.publishFailedFallback'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: templateError(error, 'conversationTemplates.publishFailedFallback')
+      });
   } finally {
     const next = new Set(publishingIds.value);
     next.delete(row.id);
@@ -632,15 +670,16 @@ async function confirmedMutation(
     await ElMessageBox.confirm(
       translate(confirmationKey, { name: row.name }),
       translate(actionKey),
-      confirmationOptions(actionKey, type)
+      { closeIcon: marIcon('close'), ...confirmationOptions(actionKey, type) }
     );
     if (disposed) return;
     await action();
     if (disposed) return;
-    ElMessage.success(translate(successKey));
+    ElMessage.success({ icon: marIcon('success'), message: translate(successKey) });
     await load(false);
   } catch (error) {
-    if (!disposed && error !== 'cancel') ElMessage.error(templateError(error, fallbackKey));
+    if (!disposed && error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: templateError(error, fallbackKey) });
   }
 }
 
@@ -726,13 +765,17 @@ onMounted(() => {
     :aria-busy="pagination.loading.value && !pageReady"
   >
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
-        translate('conversationTemplates.refresh')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && pageReady"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('conversationTemplates.refresh') }}</el-button
+      >
       <el-button
         v-if="writable"
         type="primary"
-        :icon="Plus"
+        :icon="marIcon('plus')"
         :disabled="eligibleNodes.length === 0"
         @click="openCreate"
         >{{ translate('conversationTemplates.add') }}</el-button
@@ -744,7 +787,8 @@ onMounted(() => {
       :closable="false"
       show-icon
       :title="translate('conversationTemplates.noEligibleNode')"
-    />
+      ><template #icon><MarIcon name="warning" /></template
+    ></el-alert>
     <el-table
       v-loading="
         pagination.loading.value && pageReady && !pagination.loadingMore.value && !refreshLoading
@@ -791,7 +835,7 @@ onMounted(() => {
               v-if="writable && row.status !== 'DELETED'"
               link
               type="primary"
-              :icon="Edit"
+              :icon="marIcon('edit')"
               @click="openEdit(row)"
               >{{ translate('conversationTemplates.edit') }}</el-button
             >
@@ -800,22 +844,23 @@ onMounted(() => {
               v-if="writable && row.status === 'ACTIVE'"
               link
               type="primary"
-              :icon="UploadFilled"
+              :icon="marIcon('upload')"
               :loading="publishingIds.has(row.id)"
               @click="publish(row)"
+              :loading-icon="marIcon('loading-action')"
               >{{ translate('conversationTemplates.publish') }}</el-button
             >
             <el-button
               v-if="writable && row.available"
               link
-              :icon="CircleCheck"
+              :icon="marIcon('success')"
               @click="disable(row)"
               >{{ translate('conversationTemplates.disable') }}</el-button
             >
             <el-button
               v-if="writable && row.status === 'ACTIVE'"
               link
-              :icon="CollectionTag"
+              :icon="marIcon('skill-source')"
               @click="archiveTemplate(row)"
               >{{ translate('conversationTemplates.archive') }}</el-button
             >
@@ -823,7 +868,7 @@ onMounted(() => {
               v-if="writable && row.status !== 'DELETED'"
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               @click="remove(row)"
               >{{ translate('conversationTemplates.remove') }}</el-button
             >
@@ -854,6 +899,7 @@ onMounted(() => {
       width="min(880px, calc(100vw - 32px))"
       destroy-on-close
       @closed="closeEditDialog"
+      :close-icon="marIcon('close')"
     >
       <el-form ref="formRef" :model="draft" :rules="rules" label-position="top">
         <div class="form-grid">
@@ -863,6 +909,8 @@ onMounted(() => {
               filterable
               :disabled="editingTemplateId !== undefined"
               @change="changeNode(String($event))"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
             >
               <el-option
                 v-for="node in eligibleNodes"
@@ -878,6 +926,8 @@ onMounted(() => {
               filterable
               :disabled="editingTemplateId !== undefined"
               @change="changeWorkspace(String($event))"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
             >
               <el-option
                 v-for="workspace in workspaces"
@@ -911,6 +961,8 @@ onMounted(() => {
               filterable
               :loading="modelLoading"
               :disabled="draft.nodeId === ''"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
             >
               <el-option
                 v-for="model in availableModels"
@@ -924,7 +976,11 @@ onMounted(() => {
             :label="translate('conversationTemplates.defaultModel')"
             prop="defaultModelId"
           >
-            <el-select v-model="draft.defaultModelId">
+            <el-select
+              v-model="draft.defaultModelId"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+            >
               <el-option
                 v-for="model in availableModels.filter((item) =>
                   draft.allowedModels.includes(item.modelId)
@@ -944,6 +1000,8 @@ onMounted(() => {
               filterable
               :loading="mcpLoading"
               :disabled="draft.workspaceId === ''"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
             >
               <el-option
                 v-for="option in mcpOptions"
@@ -954,7 +1012,11 @@ onMounted(() => {
             </el-select>
           </el-form-item>
           <el-form-item :label="translate('conversationTemplates.networkMode')">
-            <el-select v-model="draft.networkMode">
+            <el-select
+              v-model="draft.networkMode"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+            >
               <el-option :label="translate('conversationTemplates.networkNone')" value="NONE" />
               <el-option
                 :label="translate('conversationTemplates.networkUnrestricted')"
@@ -968,13 +1030,19 @@ onMounted(() => {
             :label="translate('conversationTemplates.maxStorageBytes')"
             prop="maxStorageMiB"
           >
-            <el-input-number v-model="draft.maxStorageMiB" :min="1" :step="1" />
+            <el-input-number v-model="draft.maxStorageMiB" :min="1" :step="1"
+              ><template #decrease-icon><MarIcon name="subtract" /></template
+              ><template #increase-icon><MarIcon name="plus" /></template
+            ></el-input-number>
           </el-form-item>
           <el-form-item
             :label="translate('conversationTemplates.maxUploadBytes')"
             prop="maxUploadMiB"
           >
-            <el-input-number v-model="draft.maxUploadMiB" :min="1" :step="1" />
+            <el-input-number v-model="draft.maxUploadMiB" :min="1" :step="1"
+              ><template #decrease-icon><MarIcon name="subtract" /></template
+              ><template #increase-icon><MarIcon name="plus" /></template
+            ></el-input-number>
           </el-form-item>
         </div>
       </el-form>
@@ -987,6 +1055,7 @@ onMounted(() => {
           :loading="testing"
           :disabled="!writable || !modelSelectionAvailable"
           @click="testDraft"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('conversationTemplates.testDraft') }}</el-button
         >
         <el-button
@@ -994,6 +1063,7 @@ onMounted(() => {
           :loading="saving"
           :disabled="!writable || !modelSelectionAvailable"
           @click="save"
+          :loading-icon="marIcon('loading-action')"
           >{{ translate('conversationTemplates.save') }}</el-button
         >
       </template>
@@ -1005,6 +1075,7 @@ onMounted(() => {
       :title="detail.template.name"
       width="min(720px, calc(100vw - 32px))"
       @closed="closeDetailDialog"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions :column="2" border>
         <el-descriptions-item :label="translate('conversationTemplates.templateId')">

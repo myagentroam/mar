@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
 import type { Ref } from 'vue';
@@ -337,6 +338,7 @@ export function createWorkbenchWorkspaceTreeController(
           translate('generated.workspaceTree.enterWorkspaceName'),
           translate('generated.workspaceTree.renameWorkspace'),
           {
+            closeIcon: marIcon('close'),
             inputValue: options.tabLabel(workspace),
             inputValidator: (value) => {
               const length = value.trim().length;
@@ -381,6 +383,8 @@ export function createWorkbenchWorkspaceTreeController(
         ),
         translate('generated.workbenchWorkspaceTreeController.unregisterWorkspace'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           confirmButtonText: translate('generated.workbenchWorkspaceTreeController.unregister'),
           cancelButtonText: translate('generated.workbenchWorkspaceTreeController.cancel'),
           type: 'warning'

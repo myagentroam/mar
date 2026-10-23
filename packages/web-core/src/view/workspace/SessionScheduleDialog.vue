@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -209,7 +210,10 @@ async function load(page = 1, updateForm = true): Promise<void> {
     taskLoaded.value = true;
   } catch {
     if (sequence === loadSequence)
-      ElMessage.error(translate('generated.scheduledSession.loadFailed'));
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: translate('generated.scheduledSession.loadFailed')
+      });
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -335,10 +339,16 @@ async function save(): Promise<void> {
         ...(task.value === null ? {} : { expectedRevision: task.value.revision })
       })
     });
-    ElMessage.success(translate('generated.scheduledSession.saved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.scheduledSession.saved')
+    });
     await load();
   } catch {
-    ElMessage.error(translate('generated.scheduledSession.saveFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.scheduledSession.saveFailed')
+    });
   } finally {
     saving.value = false;
   }
@@ -356,10 +366,16 @@ async function remove(): Promise<void> {
         expectedRevision: task.value.revision
       })
     });
-    ElMessage.success(translate('generated.scheduledSession.removed'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.scheduledSession.removed')
+    });
     await load();
   } catch {
-    ElMessage.error(translate('generated.scheduledSession.removeFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.scheduledSession.removeFailed')
+    });
   } finally {
     saving.value = false;
   }
@@ -375,7 +391,10 @@ async function resolveProposal(proposalId: string, accept: boolean): Promise<voi
     });
     await load();
   } catch {
-    ElMessage.error(translate('generated.scheduledSession.proposalFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.scheduledSession.proposalFailed')
+    });
   } finally {
     saving.value = false;
   }
@@ -406,6 +425,7 @@ function occurrenceStatus(status: string): string {
     :title="translate('generated.scheduledSession.title')"
     width="min(560px, calc(100vw - 32px))"
     append-to-body
+    :close-icon="marIcon('close')"
   >
     <el-form
       ref="formRef"
@@ -441,7 +461,12 @@ function occurrenceStatus(status: string): string {
       </el-form-item>
       <template v-if="scheduleMode === 'SIMPLE'">
         <el-form-item :label="translate('generated.scheduledSession.repeat')">
-          <el-select v-model="cadence" :aria-label="translate('generated.scheduledSession.repeat')">
+          <el-select
+            v-model="cadence"
+            :aria-label="translate('generated.scheduledSession.repeat')"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option value="HOURLY" :label="translate('generated.scheduledSession.hourly')" />
             <el-option value="DAILY" :label="translate('generated.scheduledSession.daily')" />
             <el-option value="WEEKLY" :label="translate('generated.scheduledSession.weekly')" />
@@ -455,6 +480,8 @@ function occurrenceStatus(status: string): string {
             <el-select
               v-model="weekday"
               :aria-label="translate('generated.scheduledSession.weekday')"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
             >
               <el-option
                 v-for="index in 7"
@@ -475,6 +502,8 @@ function occurrenceStatus(status: string): string {
               step="00:01"
               end="00:59"
               :aria-label="translate('generated.scheduledSession.minute')"
+              :prefix-icon="marIcon('clock')"
+              :clear-icon="marIcon('clear-input')"
             />
           </el-form-item>
           <el-form-item v-else :label="translate('generated.scheduledSession.time')" prop="time">
@@ -483,6 +512,8 @@ function occurrenceStatus(status: string): string {
               format="HH:mm"
               value-format="HH:mm"
               :aria-label="translate('generated.scheduledSession.time')"
+              :prefix-icon="marIcon('clock')"
+              :clear-icon="marIcon('clear-input')"
             />
           </el-form-item>
         </div>
@@ -587,6 +618,8 @@ function occurrenceStatus(status: string): string {
           :pager-count="5"
           layout="prev, pager, next"
           @current-change="changeOccurrencePage"
+          :prev-icon="marIcon('chevron-left')"
+          :next-icon="marIcon('chevron-right')"
         />
       </div>
     </el-form>
@@ -600,6 +633,7 @@ function occurrenceStatus(status: string): string {
         :loading="saving"
         :disabled="loading || !taskLoaded"
         @click="save"
+        :loading-icon="marIcon('loading-action')"
         >{{ translate('generated.scheduledSession.save') }}</el-button
       >
     </template>

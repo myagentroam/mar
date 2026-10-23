@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
 import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessage } from 'element-plus';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -24,9 +26,15 @@ const emit = defineEmits<{
 async function copySessionId(sessionId: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(sessionId);
-    ElMessage.info(translate('generated.conversationHeader.sessionIdCopied'));
+    ElMessage.info({
+      icon: marIcon('info'),
+      message: translate('generated.conversationHeader.sessionIdCopied')
+    });
   } catch {
-    ElMessage.error(translate('generated.conversationHeader.copySessionIdFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('generated.conversationHeader.copySessionIdFailed')
+    });
   }
 }
 </script>

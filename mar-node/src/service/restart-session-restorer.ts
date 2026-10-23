@@ -10,6 +10,7 @@ import { parseMessageAttachments } from '../util/node-operation-parsers.js';
 import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
 import type { GoalRuntime, GoalState } from './goal-runtime.js';
 import type { SessionMessageService } from './session-message-service.js';
+import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
 import type { ScheduledRunContext } from './scheduled-session-coordinator.js';
 import {
   RESTART_NOTICE,
@@ -123,10 +124,7 @@ export class RestartSessionRestorer {
           __suppressNotifications: input.suppressNotifications === true,
           secretEnvironment: context.secretEnvironment,
           personalInstructions: context.personalInstructions,
-          marAgentModel: context.marAgentModel,
-          marAgentModels: context.marAgentModels,
-          marAgentCompact: context.marAgentCompact,
-          marAgentRuntimeScopeId: context.marAgentRuntimeScopeId,
+          [RUNNER_EXECUTION_CONTEXT]: context.executionContext,
           __usageGrant: context.usageGrant
         })
       );
@@ -171,10 +169,7 @@ ${RESTART_NOTICE}`,
             ...(typeof context.personalInstructions === 'string'
               ? { personalInstructions: context.personalInstructions }
               : {}),
-            marAgentModel: context.marAgentModel,
-            marAgentModels: context.marAgentModels,
-            marAgentCompact: context.marAgentCompact,
-            marAgentRuntimeScopeId: context.marAgentRuntimeScopeId
+            executionContext: context.executionContext
           })
         );
       }

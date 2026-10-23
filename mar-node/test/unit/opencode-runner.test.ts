@@ -27,12 +27,13 @@ describe('OpenCode Runner', () => {
       subscribe: vi.fn(
         async (
           _cwd: string,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           event: (value: unknown) => void,
           ready: () => void
         ) => {
           listener = event;
           ready();
+          await waitForAbort(signal);
         }
       ),
       prompt: vi.fn(async () => undefined),
@@ -1016,12 +1017,13 @@ describe('OpenCode Runner', () => {
       subscribe: vi.fn(
         async (
           _cwd: string,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           event: (value: unknown) => void,
           ready: () => void
         ) => {
           listener = event;
           ready();
+          await waitForAbort(signal);
         }
       ),
       prompt: vi.fn(async () => undefined),
@@ -1156,12 +1158,13 @@ describe('OpenCode Runner', () => {
       subscribe: vi.fn(
         async (
           _cwd: string,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           event: (value: unknown) => void,
           ready: () => void
         ) => {
           event({ type: 'session.idle', properties: { sessionID: 'native-1' } });
           ready();
+          await waitForAbort(signal);
         }
       ),
       prompt: vi.fn(async () => undefined),
@@ -1384,12 +1387,13 @@ describe('OpenCode Runner', () => {
       subscribe: vi.fn(
         async (
           _cwd: string,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           event: (value: unknown) => void,
           ready: () => void
         ) => {
           listener = event;
           ready();
+          await waitForAbort(signal);
         }
       ),
       prompt: vi.fn(async () => undefined),
@@ -1575,12 +1579,13 @@ describe('OpenCode Runner', () => {
       subscribe: vi.fn(
         async (
           _cwd: string,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           event: (value: unknown) => void,
           ready: () => void
         ) => {
           listener = event;
           ready();
+          await waitForAbort(signal);
         }
       ),
       prompt: vi.fn(async () => undefined),
@@ -1752,42 +1757,677 @@ describe('OpenCode Runner', () => {
     }
   );
 
-  it('sends one terminal Run state when the cancellation response races the SSE terminal state', async () => {
+  it('fails without submitting a prompt when the subscription ends before ready', async () => {
+    const subscriptions = createControlledSubscriptions();
     const events: string[] = [];
-    let listener: ((value: unknown) => void) | undefined;
     const fakeClient = {
       configureEnvironment: vi.fn(),
       createSession: vi.fn(async () => ({ id: 'native-1' })),
-      subscribe: vi.fn(
-        async (
-          _cwd: string,
-          _signal: AbortSignal,
-          event: (value: unknown) => void,
-          ready: () => void
-        ) => {
-          listener = event;
-          ready();
-          await new Promise(() => undefined);
-        }
-      ),
+      subscribe: subscriptions.subscribe,
       prompt: vi.fn(async () => undefined),
-      abort: vi.fn(async () => {
-        listener?.({ type: 'session.idle', properties: { sessionID: 'native-1' } });
-      }),
+      sessionStatus: vi.fn(async () => ({ type: 'idle' })),
+      messages: vi.fn(async () => []),
+      abort: vi.fn(async () => undefined),
       stop: vi.fn(async () => undefined)
     } as unknown as OpenCodeServerClient;
     const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
     const active = new Set<string>();
     const controller = new OpenCodeManagedRunController(runner, host(active, events));
 
+    try {
+      controller.start(envelope());
+      await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+      subscriptions.attempts[0]!.end();
+
+      await vi.waitFor(() => expect(events).toContain('run.failed'));
+      expect(fakeClient.prompt).not.toHaveBeenCalled();
+      expect(fakeClient.sessionStatus).not.toHaveBeenCalled();
+      expect(fakeClient.messages).not.toHaveBeenCalled();
+      expect(active).not.toContain('run-1');
+    } finally {
+      await runner.stop();
+    }
+  });
+
+  it.each(['CANCEL', 'INTERRUPT'] as const)(
+    'projects a rejected abort as run.failed without unhandled rejection or reconciliation for %s',
+    async (intent) => {
+      const subscriptions = createControlledSubscriptions();
+      const events: string[] = [];
+      const items: Array<{ readonly kind: string; readonly payload: Record<string, unknown> }> = [];
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(async () => undefined),
+        sessionStatus: vi.fn(async () => ({ type: 'idle' })),
+        messages: vi.fn(async () => []),
+        abort: vi.fn(async () => {
+          throw new Error('ABORT_REJECTED');
+        }),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, {
+        ...host(active, events),
+        emitItem: (_runId, item) =>
+          items.push(item as { readonly kind: string; readonly payload: Record<string, unknown> })
+      });
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+
+        expect(controller.cancel('run-1', intent)).toBe(true);
+        await vi.waitFor(() => expect(events).toContain('run.failed'));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(events.filter((type) => type === 'run.failed')).toHaveLength(1);
+        expect(events).not.toContain('run.completed');
+        expect(items).toContainEqual(
+          expect.objectContaining({
+            kind: 'error',
+            payload: expect.objectContaining({ message: 'ABORT_REJECTED' })
+          })
+        );
+        expect(fakeClient.sessionStatus).not.toHaveBeenCalled();
+        expect(fakeClient.messages).not.toHaveBeenCalled();
+        expect(subscriptions.attempts).toHaveLength(1);
+        expect(active).not.toContain('run-1');
+        expect(runner.execution.has('run-1')).toBe(false);
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+        await runner.stop();
+      }
+    }
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'does not restore admission after a late prompt response follows cancellation %s',
+    async (outcome) => {
+      const subscriptions = createControlledSubscriptions();
+      const prompt = Promise.withResolvers<void>();
+      const events: string[] = [];
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(() => prompt.promise),
+        abort: vi.fn(async () => {
+          if (outcome === 'failure') throw new Error('ABORT_FAILED');
+        }),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(
+        { stop: vi.fn(async () => undefined) } as unknown as OpenCodeServerClient,
+        () => fakeClient
+      );
+      const release = vi.spyOn(runner, 'releaseManagedClient');
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, host(active, events));
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        expect(controller.cancel('run-1', 'CANCEL')).toBe(true);
+        await vi.waitFor(() => expect(active.has('run-1')).toBe(false));
+        prompt.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(events.filter((type) => type === 'run.completed' || type === 'run.failed')).toEqual([
+          outcome === 'success' ? 'run.completed' : 'run.failed'
+        ]);
+        expect(runner.execution.has('run-1')).toBe(false);
+        // Terminal Run IDs must not remain retained by admission bookkeeping.
+        expect(Reflect.get(controller, 'promptAdmitted')).toEqual(new Set());
+        expect(release).toHaveBeenCalledExactlyOnceWith(fakeClient);
+        expect(fakeClient.stop).toHaveBeenCalledOnce();
+      } finally {
+        prompt.resolve();
+        await runner.stop();
+      }
+    }
+  );
+
+  it.each(['beforeReady', 'afterReady', 'duringStatus'] as const)(
+    'lets pending cancellation own termination at %s without continuing reconciliation',
+    async (phase) => {
+      const subscriptions = createControlledSubscriptions();
+      const abortGate = Promise.withResolvers<void>();
+      const statusGate = Promise.withResolvers<{ type: 'idle' }>();
+      const events: string[] = [];
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(async () => undefined),
+        sessionStatus: vi.fn(() => statusGate.promise),
+        messages: vi.fn(async () => []),
+        abort: vi.fn(() => abortGate.promise),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, host(active, events));
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        if (phase !== 'beforeReady') {
+          subscriptions.attempts[0]!.ready();
+          await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        }
+        if (phase === 'duringStatus') {
+          subscriptions.attempts[0]!.end();
+          await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+          subscriptions.attempts[1]!.ready();
+          await vi.waitFor(() => expect(fakeClient.sessionStatus).toHaveBeenCalledOnce());
+        }
+        expect(controller.cancel('run-1', 'CANCEL')).toBe(true);
+        statusGate.resolve({ type: 'idle' });
+        subscriptions.attempts.at(-1)!.end();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(subscriptions.attempts).toHaveLength(phase === 'duringStatus' ? 2 : 1);
+        expect(fakeClient.sessionStatus).toHaveBeenCalledTimes(phase === 'duringStatus' ? 1 : 0);
+        expect(fakeClient.messages).not.toHaveBeenCalled();
+        expect(events).not.toContain('run.failed');
+        expect(events).not.toContain('run.completed');
+        expect(fakeClient.prompt).toHaveBeenCalledTimes(phase === 'beforeReady' ? 0 : 1);
+        abortGate.resolve();
+        await vi.waitFor(() => expect(events).toContain('run.completed'));
+        expect(active).not.toContain('run-1');
+      } finally {
+        statusGate.resolve({ type: 'idle' });
+        abortGate.resolve();
+        await runner.stop();
+      }
+    }
+  );
+
+  it.each(['EOF', 'rejection'] as const)(
+    'reconciles messages and completes from official idle after subscription %s',
+    async (endKind) => {
+      const subscriptions = createControlledSubscriptions();
+      const promptGate = Promise.withResolvers<void>();
+      const events: string[] = [];
+      const items: Array<Record<string, unknown>> = [];
+      let messageCreatedAt = 0;
+      let promptGateResolved = false;
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(() => promptGate.promise),
+        sessionStatus: vi.fn(async (_cwd: string, _sessionId: string, _signal: AbortSignal) => ({
+          type: 'idle' as const
+        })),
+        messages: vi.fn(
+          async (
+            _cwd: string,
+            _sessionId: string,
+            _limit: number,
+            _options: { readonly since: number; readonly signal: AbortSignal }
+          ) => {
+            messageCreatedAt = Date.now();
+            return recoveredAssistantMessage(messageCreatedAt);
+          }
+        ),
+        abort: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, {
+        ...host(active, events),
+        emitItem: (_runId, item) => items.push(item as Record<string, unknown>)
+      });
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        subscriptions.attempts[0]!.end(
+          endKind === 'rejection' ? new Error('INITIAL_SSE_FAILED') : undefined
+        );
+
+        // The initial prompt must settle before a replacement subscription or history query starts.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(subscriptions.attempts).toHaveLength(1);
+        expect(fakeClient.sessionStatus).not.toHaveBeenCalled();
+        expect(fakeClient.messages).not.toHaveBeenCalled();
+        promptGate.resolve();
+        promptGateResolved = true;
+
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+        expect(fakeClient.sessionStatus).not.toHaveBeenCalled();
+        expect(fakeClient.messages).not.toHaveBeenCalled();
+        subscriptions.attempts[1]!.ready();
+        await vi.waitFor(() => expect(events).toContain('run.completed'));
+
+        expect(fakeClient.prompt).toHaveBeenCalledOnce();
+        expect(events).not.toContain('run.performance');
+        expect(events).toContain('run.usage');
+        expect(fakeClient.sessionStatus).toHaveBeenCalledWith(
+          '/workspace',
+          'native-1',
+          expect.any(AbortSignal)
+        );
+        expect(fakeClient.messages).toHaveBeenCalledWith(
+          '/workspace',
+          'native-1',
+          100,
+          expect.objectContaining({ since: expect.any(Number), signal: expect.any(AbortSignal) })
+        );
+        const since = vi.mocked(fakeClient.messages).mock.calls[0]?.[3]?.since;
+        expect(messageCreatedAt).toBeGreaterThanOrEqual(since ?? Infinity);
+        expect(items).toContainEqual(
+          expect.objectContaining({
+            kind: 'assistant_message',
+            payload: expect.objectContaining({ text: 'Recovered output' })
+          })
+        );
+        expect(active).not.toContain('run-1');
+        expect(subscriptions.attempts).toHaveLength(2);
+      } finally {
+        if (!promptGateResolved) promptGate.resolve();
+        await runner.stop();
+      }
+    }
+  );
+
+  it('keeps newer reconciled text when the recovery buffer contains an older Part update', async () => {
+    const subscriptions = createControlledSubscriptions();
+    const historyGate = Promise.withResolvers<readonly unknown[]>();
+    const events: string[] = [];
+    const items: Array<Record<string, unknown>> = [];
+    let historyResolved = false;
+    const fakeClient = {
+      configureEnvironment: vi.fn(),
+      createSession: vi.fn(async () => ({ id: 'native-1' })),
+      subscribe: subscriptions.subscribe,
+      prompt: vi.fn(async () => undefined),
+      sessionStatus: vi.fn(async (_cwd: string, _sessionId: string, _signal: AbortSignal) => ({
+        type: 'busy' as const
+      })),
+      messages: vi.fn(
+        async (
+          _cwd: string,
+          _sessionId: string,
+          _limit: number,
+          _options: { readonly since: number; readonly signal: AbortSignal }
+        ) => historyGate.promise
+      ),
+      abort: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined)
+    } as unknown as OpenCodeServerClient;
+    const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+    const active = new Set<string>();
+    const controller = new OpenCodeManagedRunController(runner, {
+      ...host(active, events),
+      emitItem: (_runId, item) => items.push(item as Record<string, unknown>)
+    });
+
+    try {
+      controller.start(envelope());
+      await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+      subscriptions.attempts[0]!.ready();
+      await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+      subscriptions.attempts[0]!.end();
+      await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+      subscriptions.attempts[1]!.ready();
+      await vi.waitFor(() => expect(fakeClient.messages).toHaveBeenCalledOnce());
+
+      const snapshot = recoveredAssistantMessage(Date.now(), 'Latest full output')[0]!;
+      subscriptions.attempts[1]!.event({
+        type: 'message.updated',
+        properties: { info: snapshot.info }
+      });
+      subscriptions.attempts[1]!.event({
+        type: 'message.part.updated',
+        properties: {
+          part: { ...snapshot.parts[0], text: 'Older short output' }
+        }
+      });
+      historyGate.resolve([snapshot]);
+      historyResolved = true;
+
+      await vi.waitFor(() =>
+        expect(items.filter((item) => item.kind === 'assistant_message')).toHaveLength(2)
+      );
+      expect(items.at(-1)).toMatchObject({
+        kind: 'assistant_message',
+        payload: { text: 'Latest full output' }
+      });
+      expect(events).not.toContain('run.failed');
+      subscriptions.attempts[1]!.event({
+        type: 'session.idle',
+        properties: { sessionID: 'native-1' }
+      });
+      await vi.waitFor(() => expect(events).toContain('run.completed'));
+    } finally {
+      if (!historyResolved) historyGate.resolve([]);
+      await runner.stop();
+    }
+  });
+
+  it.each(['busy', 'retry'] as const)(
+    'continues consuming the recovered SSE stream while official status is %s',
+    async (status) => {
+      const subscriptions = createControlledSubscriptions();
+      const events: string[] = [];
+      const items: Array<Record<string, unknown>> = [];
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(async () => undefined),
+        sessionStatus: vi.fn(async (_cwd: string, _sessionId: string, _signal: AbortSignal) => ({
+          type: status
+        })),
+        messages: vi.fn(
+          async (
+            _cwd: string,
+            _sessionId: string,
+            _limit: number,
+            _options: { readonly since: number; readonly signal: AbortSignal }
+          ) => recoveredAssistantMessage(Date.now())
+        ),
+        abort: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, {
+        ...host(active, events),
+        emitItem: (_runId, item) => items.push(item as Record<string, unknown>)
+      });
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        subscriptions.attempts[0]!.end();
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+        subscriptions.attempts[1]!.ready();
+        await vi.waitFor(() =>
+          expect(items).toContainEqual(
+            expect.objectContaining({
+              kind: 'assistant_message',
+              payload: expect.objectContaining({ text: 'Recovered output' })
+            })
+          )
+        );
+        expect(events).not.toContain('run.completed');
+        expect(active).toContain('run-1');
+
+        const created = Date.now();
+        subscriptions.attempts[1]!.event({
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'live-assistant',
+              sessionID: 'native-1',
+              role: 'assistant',
+              parentID: 'user-live',
+              time: { created }
+            }
+          }
+        });
+        subscriptions.attempts[1]!.event({
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'live-part',
+              messageID: 'live-assistant',
+              sessionID: 'native-1',
+              type: 'text',
+              text: 'Live after recovery',
+              time: { start: created, end: created + 1 }
+            }
+          }
+        });
+        await vi.waitFor(() =>
+          expect(items).toContainEqual(
+            expect.objectContaining({
+              kind: 'assistant_message',
+              payload: expect.objectContaining({ text: 'Live after recovery' })
+            })
+          )
+        );
+        subscriptions.attempts[1]!.event({
+          type: 'session.idle',
+          properties: { sessionID: 'native-1' }
+        });
+        await vi.waitFor(() => expect(events).toContain('run.completed'));
+        expect(fakeClient.prompt).toHaveBeenCalledOnce();
+        expect(subscriptions.attempts).toHaveLength(2);
+      } finally {
+        await runner.stop();
+      }
+    }
+  );
+
+  it.each(['EOF', 'rejection'] as const)(
+    'fails without reconnecting when the recovery subscription ends by %s',
+    async (endKind) => {
+      const subscriptions = createControlledSubscriptions();
+      const events: string[] = [];
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(async () => undefined),
+        sessionStatus: vi.fn(async (_cwd: string, _sessionId: string, _signal: AbortSignal) => ({
+          type: 'busy' as const
+        })),
+        messages: vi.fn(
+          async (
+            _cwd: string,
+            _sessionId: string,
+            _limit: number,
+            _options: { readonly since: number; readonly signal: AbortSignal }
+          ) => recoveredAssistantMessage(Date.now())
+        ),
+        abort: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, host(active, events));
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        subscriptions.attempts[0]!.end();
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+        subscriptions.attempts[1]!.ready();
+        await vi.waitFor(() => expect(fakeClient.messages).toHaveBeenCalledOnce());
+        subscriptions.attempts[1]!.end(
+          endKind === 'rejection' ? new Error('RECOVERY_SSE_FAILED') : undefined
+        );
+
+        await vi.waitFor(() => expect(events).toContain('run.failed'));
+        expect(events).not.toContain('run.completed');
+        expect(fakeClient.prompt).toHaveBeenCalledOnce();
+        expect(subscriptions.attempts).toHaveLength(2);
+        expect(active).not.toContain('run-1');
+      } finally {
+        await runner.stop();
+      }
+    }
+  );
+
+  it.each(['sessionStatus', 'messages'] as const)(
+    'fails without another reconnect when reconciliation %s rejects',
+    async (failure) => {
+      const subscriptions = createControlledSubscriptions();
+      const events: string[] = [];
+      const fakeClient = {
+        configureEnvironment: vi.fn(),
+        createSession: vi.fn(async () => ({ id: 'native-1' })),
+        subscribe: subscriptions.subscribe,
+        prompt: vi.fn(async () => undefined),
+        sessionStatus: vi.fn(async (_cwd: string, _sessionId: string, _signal: AbortSignal) => {
+          if (failure === 'sessionStatus') throw new Error('STATUS_LOOKUP_FAILED');
+          return { type: 'busy' as const };
+        }),
+        messages: vi.fn(
+          async (
+            _cwd: string,
+            _sessionId: string,
+            _limit: number,
+            _options: { readonly since: number; readonly signal: AbortSignal }
+          ) => {
+            if (failure === 'messages') throw new Error('MESSAGE_HISTORY_FAILED');
+            return [];
+          }
+        ),
+        abort: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined)
+      } as unknown as OpenCodeServerClient;
+      const runner = new OpenCodeRunner(fakeClient, () => fakeClient);
+      const active = new Set<string>();
+      const controller = new OpenCodeManagedRunController(runner, host(active, events));
+
+      try {
+        controller.start(envelope());
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+        subscriptions.attempts[0]!.ready();
+        await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
+        subscriptions.attempts[0]!.end();
+        await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(2));
+        subscriptions.attempts[1]!.ready();
+
+        await vi.waitFor(() => expect(events).toContain('run.failed'));
+        expect(fakeClient.sessionStatus).toHaveBeenCalledOnce();
+        expect(fakeClient.messages).toHaveBeenCalledTimes(failure === 'messages' ? 1 : 0);
+        expect(fakeClient.prompt).toHaveBeenCalledOnce();
+        expect(subscriptions.attempts).toHaveLength(2);
+        expect(active).not.toContain('run-1');
+      } finally {
+        await runner.stop();
+      }
+    }
+  );
+
+  it('sends one terminal Run state and releases the Run once when cancellation races the SSE terminal state', async () => {
+    const events: string[] = [];
+    const subscriptions = createControlledSubscriptions();
+    const fakeClient = {
+      configureEnvironment: vi.fn(),
+      createSession: vi.fn(async () => ({ id: 'native-1' })),
+      subscribe: subscriptions.subscribe,
+      prompt: vi.fn(async () => undefined),
+      sessionStatus: vi.fn(async () => ({ type: 'idle' })),
+      messages: vi.fn(async () => []),
+      abort: vi.fn(async () => {
+        subscriptions.attempts[0]?.event({
+          type: 'session.idle',
+          properties: { sessionID: 'native-1' }
+        });
+      }),
+      stop: vi.fn(async () => undefined)
+    } as unknown as OpenCodeServerClient;
+    const runner = new OpenCodeRunner(
+      { stop: vi.fn(async () => undefined) } as unknown as OpenCodeServerClient,
+      () => fakeClient
+    );
+    const release = vi.spyOn(runner, 'releaseManagedClient');
+    const active = new Set<string>();
+    const controller = new OpenCodeManagedRunController(runner, host(active, events));
+
     controller.start(envelope());
+    await vi.waitFor(() => expect(subscriptions.attempts).toHaveLength(1));
+    subscriptions.attempts[0]!.ready();
     await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
     expect(controller.cancel('run-1', 'CANCEL')).toBe(true);
     await vi.waitFor(() => expect(active).not.toContain('run-1'));
     expect(events.filter((event) => event === 'run.completed')).toHaveLength(1);
+    expect(release).toHaveBeenCalledExactlyOnceWith(fakeClient);
+    expect(fakeClient.sessionStatus).not.toHaveBeenCalled();
+    expect(fakeClient.messages).not.toHaveBeenCalled();
+    expect(runner.execution.has('run-1')).toBe(false);
     await runner.stop();
+    expect(fakeClient.stop).toHaveBeenCalledOnce();
   });
 });
+
+type ControlledSubscription = {
+  readonly event: (value: unknown) => void;
+  readonly ready: () => void;
+  readonly end: (error?: unknown) => void;
+};
+
+function createControlledSubscriptions() {
+  const attempts: ControlledSubscription[] = [];
+  const subscribe = vi.fn(
+    (_cwd: string, signal: AbortSignal, event: (value: unknown) => void, ready: () => void) =>
+      new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const end = (error?: unknown) => {
+          if (settled) return;
+          settled = true;
+          if (error === undefined) resolve();
+          else reject(error);
+        };
+        attempts.push({ event, ready, end });
+        void waitForAbort(signal).then(() => end());
+      })
+  );
+  return { attempts, subscribe };
+}
+
+function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    signal.addEventListener('abort', () => resolve(), { once: true });
+  });
+}
+
+function recoveredAssistantMessage(created: number, text = 'Recovered output') {
+  return [
+    {
+      info: {
+        id: 'recovered-assistant',
+        sessionID: 'native-1',
+        role: 'assistant',
+        parentID: 'user-recovered',
+        modelID: 'model-1',
+        providerID: 'provider-1',
+        time: { created }
+      },
+      parts: [
+        {
+          id: 'recovered-part',
+          messageID: 'recovered-assistant',
+          sessionID: 'native-1',
+          type: 'text',
+          text,
+          time: { start: created, end: created + 1 }
+        },
+        {
+          id: 'recovered-step',
+          messageID: 'recovered-assistant',
+          sessionID: 'native-1',
+          type: 'step-finish',
+          tokens: { input: 10, output: 2 }
+        }
+      ]
+    }
+  ];
+}
 
 function host(active: Set<string>, events: string[]) {
   return {

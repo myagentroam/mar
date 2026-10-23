@@ -1,14 +1,18 @@
-import { createSSRApp, h, ref } from 'vue';
+import { createSSRApp, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/ManagementComposition.js';
 import type { WorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import type { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
+import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
+import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
+import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import type { NodeSummary } from '../../src/model/workbench.js';
@@ -20,22 +24,69 @@ vi.mock('../../src/view/workbench/WorkbenchNotificationCenter.vue', () => ({
 const originalLocale = localePreferenceService().locale.value;
 afterEach(() => localePreferenceService().setLocale(originalLocale));
 
+async function renderComponent(component: Component, props: Record<string, unknown>) {
+  const app = createSSRApp({ render: () => h(component, props) });
+  app.use(i18n).use(ElementPlus);
+  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
+  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+  return renderToString(app);
+}
+
+async function renderOfflineSurface() {
+  const page = {
+    view: 'nodes',
+    mobileViewport: false,
+    sidebarCollapsed: true,
+    settingsSection: 'account',
+    settingsItems: [],
+    managementSection: 'overview',
+    managementItems: [],
+    workspaceRegistrationNodeId: undefined,
+    hostedConversationWorkspace: {
+      snapshot: ref({ conversation: undefined }),
+      conversations: ref([] as { nodeId: string; id: string }[]),
+      selectedNodeId: ref(undefined as string | undefined),
+      selectedConversationId: ref(undefined as string | undefined)
+    },
+    setComposerInputFocus: vi.fn(),
+    workspaceHost: { connected: false },
+    workspaceTarget: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+    selectedWorkspace: undefined,
+    workspaceTabs: [],
+    activeWorkspaceTabId: undefined,
+    nodeLabel: () => 'Node',
+    workspaceTabNodeLabel: () => 'Node',
+    workspaceDirectAvailable: () => false,
+    workspaceDirectDescription: () => undefined,
+    workspaceTabService: { move: vi.fn(), setPinned: vi.fn() },
+    workbenchNotificationService: {
+      hasActiveWorkspaceRun: () => false,
+      hasUnreadWorkspace: () => false
+    }
+  };
+  const app = createSSRApp({ render: () => h(WorkbenchSurface, { page: page as never }) });
+  app.use(i18n).use(ElementPlus);
+  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
+  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+  app.provide(MANAGEMENT_COMPOSITION_KEY, {} as never);
+  return renderToString(app);
+}
+
 describe('Shared workbench shell', () => {
   it.each([
     ['en-US', 'Node offline. Waiting for reconnection.'],
     ['zh-CN', '节点离线，等待重新连接。']
-  ] as const)('owns the offline Workspace placeholder message: %s', (locale, message) => {
+  ] as const)('owns the offline Workspace placeholder message: %s', async (locale, message) => {
     expect(commonMessages[locale].generated.workbenchSurface.offlineWorkspace).toBe(message);
-    const surface = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
-      'utf8'
-    );
-    expect(surface).toContain(
-      'v-if="page.workspaceHost?.connected === false"\n          class="workspace-offline-placeholder"'
-    );
-    expect(surface).toContain('class="workspace-offline-placeholder"\n          role="status"');
-    expect(surface).toContain("translate('generated.workbenchSurface.offlineWorkspace')");
-    expect(surface).toContain('aria-hidden="true"><Connection /></el-icon>');
+    localePreferenceService().setLocale(locale);
+    const html = await renderOfflineSurface();
+    const placeholder =
+      /<section\b(?=[^>]*class="[^"]*\bworkspace-offline-placeholder\b)(?=[^>]*role="status")[^>]*>([\s\S]*?)<\/section>/u.exec(
+        html
+      );
+    expect(placeholder).toBeDefined();
+    expect(placeholder?.[1]).toContain(message);
+    expect(placeholder?.[1]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
   });
 
   it('keeps offline placeholders compact across desktop and mobile viewports', () => {
@@ -168,10 +219,6 @@ describe('Shared workbench shell', () => {
         new URL('../../src/view/workbench/WorkbenchNavigation.vue', import.meta.url),
         'utf8'
       );
-      const iconSource = readFileSync(
-        new URL('../../src/view/common/MarIcon.vue', import.meta.url),
-        'utf8'
-      );
 
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).not.toContain(`title="${label}"`);
@@ -192,20 +239,13 @@ describe('Shared workbench shell', () => {
         expect(button[1]).toContain('el-tooltip__trigger');
         expect(button[2]).not.toContain('rail-label');
       }
-      expect(html).toContain('documentation-icon');
-      expect(html).toContain('aria-hidden="true"');
-      expect(html).toContain('viewbox="0 0 24 24"');
-      expect(html).toContain('fill="currentColor"');
-      expect(html).toContain('fill-rule="evenodd"');
-      expect(source).toContain('<MarIcon name="help" />');
-      expect(iconSource).toContain(`readonly name: 'help' | 'info'`);
-      expect(iconSource).toContain('viewBox="0 0 24 24"');
-      expect(source).toContain('.documentation-icon {\n    display: inline-flex;');
-      expect(source).not.toContain('documentation-mobile-label');
-      expect(source).not.toContain('documentation-desktop-label');
-      expect(source).not.toContain('import { ChatDotRound, Help, Monitor, SetUp, Setting }');
+      const helpLink =
+        /<a\b(?=[^>]*class="[^"]*\bdocumentation-link\b)(?=[^>]*aria-label="([^"]+)")[^>]*>([\s\S]*?)<\/a>/u.exec(
+          html
+        );
+      expect(helpLink?.[1]).toBe(label);
+      expect(helpLink?.[2]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
       expect(source).not.toContain('<Help />');
-      expect(source).not.toContain('<circle cx="12" cy="12" r="10" />');
       expect(source).toContain(
         '.activity-rail nav .nav-menu-button .nav-item-content {\n    min-height: 18px;\n    grid-template-rows: 18px;'
       );
@@ -215,9 +255,6 @@ describe('Shared workbench shell', () => {
       expect(source).toContain('padding: 4px 0 5px;');
       expect(source).toContain('margin: 0 1px;');
       expect(source).not.toContain('margin: 5px 1px;');
-      expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .el-icon {\n    display: grid;\n    width: 18px;\n    height: 18px;\n    place-items: center;\n    font-size: 1.125rem;\n    line-height: 18px;'
-      );
       expect(source).toContain(
         '.activity-rail nav .nav-menu-button .rail-label {\n    display: none;'
       );
@@ -345,37 +382,139 @@ describe('Shared workbench shell', () => {
     expect(await renderToString(app)).toBe('<!---->');
   });
 
-  it('keeps directory actions visible and consistently iconified on narrow Workspace pickers', () => {
+  it('keeps directory actions visible and consistently iconified on narrow Workspace pickers', async () => {
+    localePreferenceService().setLocale('en-US');
     const source = readFileSync(
       new URL('../../src/view/workspace/WorkspaceRegistrationPicker.vue', import.meta.url),
       'utf8'
     );
-    expect(source).toContain('class="workspace-picker-toolbar-actions"');
-    expect(source).toContain(':icon="Refresh"');
-    expect(source).toContain(':icon="FolderAdd"');
-    expect(source).toContain(':icon="Check"');
+    const html = await renderComponent(WorkspaceRegistrationPicker, {
+      modelValue: ['register'],
+      directory: {
+        currentPath: '/workspaces/project',
+        parentPath: '/workspaces',
+        browseRoots: ['/workspaces'],
+        selectable: true,
+        entries: [],
+        truncated: false
+      },
+      selectedPath: '/workspaces/project',
+      pendingDirectoryName: '',
+      loadingDirectory: false,
+      loading: false,
+      nodeReady: true,
+      selectedPathValid: true
+    });
+    expect(html).toContain('workspace-picker-toolbar-actions');
+    const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gu)];
+    const refreshLabel = i18n.global.t('generated.workspaceRegistrationPicker.refreshDirectory');
+    const newDirectoryLabel = i18n.global.t('generated.workspaceRegistrationPicker.newDirectory');
+    const selectDirectoryLabel = i18n.global.t(
+      'generated.workspaceRegistrationPicker.selectCurrentDirectory'
+    );
+    const refresh = buttons.find((match) => match[1]!.includes(`aria-label="${refreshLabel}"`));
+    const create = buttons.find((match) => match[2]!.includes(newDirectoryLabel));
+    const select = buttons.find((match) => match[2]!.includes(selectDirectoryLabel));
+    expect(refresh?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="refresh")/u);
+    expect(create?.[2]).toContain(newDirectoryLabel);
+    expect(create?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="folder-add")/u);
+    expect(select?.[2]).toContain(selectDirectoryLabel);
+    expect(select?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="check")/u);
     expect(source).toContain('@media (max-width: 767px)');
     expect(source).toContain('flex-basis: 100%');
     expect(source).not.toContain('min-height: 36px');
   });
 
-  it('uses the Workspace search action to refresh when empty and search when populated', () => {
+  it('uses the Workspace search action to refresh when empty and search when populated', async () => {
+    localePreferenceService().setLocale('en-US');
     const source = readFileSync(
       new URL('../../src/view/workspace/WorkspaceSessionList.vue', import.meta.url),
       'utf8'
     );
-    expect(source).toContain(':prefix-icon="Search"');
-    expect(source).toContain('@submit.prevent="submitSessionSearch"');
-    expect(source).toContain("if (props.searchQuery !== '') emit('search', '');");
-    expect(source).toContain("emit('refresh');");
-    expect(source).toContain("@clear=\"emit('search', '')\"");
-    expect(source).toContain('class="session-search-button utility-control"');
-    expect(source).toContain("'workspaceSessions.searchAction'");
-    expect(source).toContain("'generated.workspaceSessionList.refreshWorkspaceSessions'");
-    expect(source).toContain(':aria-busy="searching || refreshing || undefined"');
-    expect(source).toContain(':disabled="!nodeReady || searching || refreshing"');
-    expect(source).toContain('type="submit"');
-    expect(source).toContain('<el-icon v-else><Refresh /></el-icon>');
+    const props: Record<string, unknown> = {
+      sessions: [],
+      selectedSessionId: undefined,
+      mobileViewport: false,
+      canLoadMore: false,
+      loadingMore: false,
+      active: true,
+      watchStatus: 'ready',
+      nodeReady: true,
+      loading: false,
+      workspaceKind: undefined,
+      workspaceKindLabel: '',
+      workspaceBranch: undefined,
+      title: () => '',
+      runnerIcon: () => '',
+      activity: () => '',
+      activityLabel: () => '',
+      activityDateTime: () => undefined,
+      activityTitle: () => undefined,
+      relativeActivity: () => '',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      skillSupported: false,
+      mcpSupported: false,
+      cleanupSessionsSupported: false,
+      searchSupported: true,
+      searchQuery: '',
+      searching: false,
+      refreshing: false,
+      workspaceManageable: true,
+      request: async () => undefined,
+      hasUnread: () => false
+    };
+    const findSearchButton = (html: string) => {
+      const button = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gu)].find((match) =>
+        match[1]!.includes('session-search-button')
+      );
+      expect(button).toBeDefined();
+      return button!;
+    };
+    const searchLabel = i18n.global.t('workspaceSessions.searchLabel');
+    const searchActionLabel = i18n.global.t('workspaceSessions.searchAction');
+    const refreshActionLabel = i18n.global.t(
+      'generated.workspaceSessionList.refreshWorkspaceSessions'
+    );
+    const emptyHtml = await renderComponent(WorkspaceSessionList, props);
+    expect(emptyHtml).toMatch(/<form\b(?=[^>]*role="search")[^>]*>/u);
+    expect(emptyHtml).toContain('<input');
+    expect(emptyHtml).toContain(`aria-label="${searchLabel}"`);
+    expect(emptyHtml).toContain('data-mar-icon="search"');
+    const emptyButton = findSearchButton(emptyHtml);
+    expect(emptyButton[1]).toContain(`aria-label="${refreshActionLabel}"`);
+    expect(emptyButton[1]).toContain('type="submit"');
+    expect(emptyButton[1]).not.toMatch(/\sdisabled(?:[\s=>])/u);
+    expect(emptyButton[1]).not.toContain('aria-busy');
+    expect(emptyButton[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="refresh")/u);
+
+    const query = 'Existing session';
+    const populatedHtml = await renderComponent(WorkspaceSessionList, {
+      ...props,
+      searchQuery: query
+    });
+    expect(findSearchButton(populatedHtml)[1]).toContain(`aria-label="${searchActionLabel}"`);
+
+    const unavailableHtml = await renderComponent(WorkspaceSessionList, {
+      ...props,
+      nodeReady: false
+    });
+    const unavailableButton = findSearchButton(unavailableHtml);
+    expect(unavailableButton[1]).toMatch(/\sdisabled(?:[\s=>])/u);
+    expect(unavailableButton[1]).not.toContain('aria-busy');
+
+    for (const state of ['searching', 'refreshing'] as const) {
+      const loadingHtml = await renderComponent(WorkspaceSessionList, {
+        ...props,
+        searchQuery: query,
+        [state]: true
+      });
+      const loadingButton = findSearchButton(loadingHtml);
+      expect(loadingButton[1]).toContain('aria-busy="true"');
+      expect(loadingButton[1]).toMatch(/\sdisabled(?:[\s=>])/u);
+      expect(loadingButton[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
+    }
+
     const surface = readFileSync(
       new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
       'utf8'

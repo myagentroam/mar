@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref } from 'vue';
@@ -69,11 +71,13 @@ async function submit(): Promise<void> {
     const nextResult = await props.cleanup(form.inactiveDays);
     if (nextResult !== undefined) result.value = nextResult;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? error.message
-        : translate('generated.workspaceSessionCleanupDialog.cleanupFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? error.message
+          : translate('generated.workspaceSessionCleanupDialog.cleanupFailed')
+    });
   } finally {
     loading.value = false;
   }
@@ -90,6 +94,7 @@ async function submit(): Promise<void> {
     :title="translate('generated.workspaceSessionCleanupDialog.title')"
     width="min(480px, calc(100vw - 32px))"
     @update:model-value="emit('update:modelValue', $event)"
+    :close-icon="marIcon('close')"
   >
     <div v-loading="loading" class="workspace-session-cleanup-content" :aria-busy="loading">
       <template v-if="result === undefined">
@@ -108,7 +113,9 @@ async function submit(): Promise<void> {
               :min="1"
               :step="1"
               step-strictly
-            />
+              ><template #decrease-icon><MarIcon name="subtract" /></template
+              ><template #increase-icon><MarIcon name="plus" /></template
+            ></el-input-number>
           </el-form-item>
         </el-form>
       </template>

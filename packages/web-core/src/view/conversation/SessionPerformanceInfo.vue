@@ -44,7 +44,7 @@ const details = computed(() => {
       type="button"
       :aria-label="`${translate('generated.conversationTimeline.modelPerformanceDetails')}: ${details}`"
     >
-      <el-icon><MarIcon name="info" /></el-icon>
+      <MarIcon name="info" />
     </button>
   </el-tooltip>
 </template>
@@ -61,7 +61,7 @@ const details = computed(() => {
   padding: 0;
 }
 
-.session-performance-info .el-icon {
+.session-performance-info .mar-icon {
   width: 16px;
   height: 16px;
   font-size: 16px;

@@ -103,6 +103,7 @@ export class OpenCodeManagedRunController {
   private readonly startingCwds = new Map<string, string>();
   private readonly promptAdmitted = new Set<string>();
   private readonly pendingIdle = new Set<string>();
+  private readonly cancelling = new Set<string>();
   private readonly messageRoles = new Map<string, Map<string, 'user' | 'assistant'>>();
   private readonly messageParents = new Map<string, Map<string, string>>();
   private readonly compactionPartIds = new Map<string, Map<string, string>>();
@@ -274,11 +275,15 @@ export class OpenCodeManagedRunController {
   cancel(runId: string, intent: 'CANCEL' | 'INTERRUPT'): boolean {
     const execution = this.runner.execution.get(runId);
     if (execution === undefined) return false;
-    void execution.client.abort(execution.cwd, execution.nativeSessionId).finally(() => {
-      this.finish(runId, intent === 'INTERRUPT' ? 'INTERRUPTED' : 'CANCELLED', 'run.completed', {
-        status: intent === 'INTERRUPT' ? 'INTERRUPTED' : 'CANCELLED'
-      });
-    });
+    if (this.cancelling.has(runId)) return true;
+    this.cancelling.add(runId);
+    void execution.client.abort(execution.cwd, execution.nativeSessionId).then(
+      () =>
+        this.finish(runId, intent === 'INTERRUPT' ? 'INTERRUPTED' : 'CANCELLED', 'run.completed', {
+          status: intent === 'INTERRUPT' ? 'INTERRUPTED' : 'CANCELLED'
+        }),
+      (error) => this.finish(runId, 'FAILED', 'run.failed', error, 'OPENCODE_CANCEL_FAILED')
+    );
     return true;
   }
 
@@ -347,6 +352,10 @@ export class OpenCodeManagedRunController {
     this.startingCwds.set(input.runId, input.cwd);
     this.host.active.add(input.runId);
     this.host.emit(input.runId, 'run.started', {}, 'STARTING');
+    let settlePrompt!: () => void;
+    const promptSettled = new Promise<void>((resolve) => {
+      settlePrompt = resolve;
+    });
     try {
       if (hasMcpConfiguration(input.mcp)) await client.configureMcp(input.cwd, input.mcp);
       const nativeSessionId =
@@ -395,15 +404,20 @@ export class OpenCodeManagedRunController {
           (event) => this.event(input.runId, nativeSessionId, event),
           ready
         )
-        .catch((error) => {
-          if (abort.signal.aborted) return;
+        .then(() => {
+          throw new Error('OPENCODE_EVENT_STREAM_ENDED');
+        })
+        .catch(async (error) => {
           if (!subscriptionStarted) {
             rejectReady(error);
             return;
           }
-          this.finish(input.runId, 'FAILED', 'run.failed', error, 'OPENCODE_EVENT_FAILED');
+          await promptSettled;
+          if (abort.signal.aborted || this.cancelling.has(input.runId)) return;
+          await this.recoverSubscription(input.runId);
         });
       await subscriptionReady;
+      if (abort.signal.aborted || this.cancelling.has(input.runId)) return;
       this.host.emit(input.runId, 'run.running', {}, 'RUNNING');
       // The initial SSE snapshot can contain an idle event from before this prompt.
       this.pendingIdle.delete(input.runId);
@@ -424,7 +438,8 @@ export class OpenCodeManagedRunController {
             ? existingImagePaths
             : await this.host.persistAttachments(input.cwd, input.runId, input.attachments);
       const execution = this.runner.execution.get(input.runId);
-      if (execution?.abort !== abort || abort.signal.aborted) return;
+      if (execution?.abort !== abort || abort.signal.aborted || this.cancelling.has(input.runId))
+        return;
       execution.responseLatency = new ResponseLatencyTracker();
       execution.responsePartKinds = new Map();
       execution.responseStartedAt = Date.now();
@@ -440,11 +455,98 @@ export class OpenCodeManagedRunController {
         ...(input.personalInstructions === undefined ? {} : { system: input.personalInstructions }),
         attachments: input.attachments
       });
+      if (this.runner.execution.get(input.runId) !== execution || abort.signal.aborted) return;
       this.promptAdmitted.add(input.runId);
       if (this.pendingIdle.delete(input.runId))
         this.finish(input.runId, 'SUCCEEDED', 'run.completed', { status: 'SUCCEEDED' });
     } catch (error) {
-      this.finish(input.runId, 'FAILED', 'run.failed', error, 'OPENCODE_RUN_START_FAILED');
+      if (!this.cancelling.has(input.runId))
+        this.finish(input.runId, 'FAILED', 'run.failed', error, 'OPENCODE_RUN_START_FAILED');
+    } finally {
+      settlePrompt();
+    }
+  }
+
+  private async recoverSubscription(runId: string): Promise<void> {
+    const execution = this.runner.execution.get(runId);
+    if (execution === undefined) return;
+    const { client, cwd, nativeSessionId, abort } = execution;
+    // A missing event interval and historical replay cannot produce live performance timings.
+    delete execution.responseLatency;
+    delete execution.generationTiming;
+    const buffered: unknown[] = [];
+    let reconciling = true;
+    let reconciliation: Promise<void> | undefined;
+    const fail = (error: unknown) => {
+      if (!abort.signal.aborted && !this.cancelling.has(runId))
+        this.finish(runId, 'FAILED', 'run.failed', error, 'OPENCODE_EVENT_FAILED');
+    };
+    try {
+      await client.subscribe(
+        cwd,
+        abort.signal,
+        (event) => {
+          if (reconciling) buffered.push(event);
+          else this.event(runId, nativeSessionId, event);
+        },
+        () => {
+          reconciliation = (async () => {
+            const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(10_000)]);
+            const status = record(await client.sessionStatus(cwd, nativeSessionId, signal));
+            if (abort.signal.aborted || this.cancelling.has(runId)) return;
+            const messages = await client.messages(cwd, nativeSessionId, 100, {
+              since: execution.responseStartedAt ?? Infinity,
+              signal
+            });
+            if (abort.signal.aborted || this.cancelling.has(runId)) return;
+            // Fold queued content before the authoritative snapshot; terminal events must
+            // wait until the recovered items have been published.
+            const terminalEvents: unknown[] = [];
+            for (const event of buffered) {
+              const type = record(event)?.type;
+              if (type === 'session.idle' || type === 'session.error') terminalEvents.push(event);
+              else this.event(runId, nativeSessionId, event);
+            }
+            buffered.length = 0;
+            for (const value of messages) {
+              const message = record(value);
+              const info = record(message?.info);
+              // Do not replay earlier turns into the current Run.
+              const created = record(info?.time)?.created;
+              if (
+                typeof created !== 'number' ||
+                created < (execution.responseStartedAt ?? Infinity)
+              )
+                continue;
+              this.event(runId, nativeSessionId, { type: 'message.updated', properties: { info } });
+              if (Array.isArray(message?.parts))
+                for (const part of message.parts)
+                  this.event(runId, nativeSessionId, {
+                    type: 'message.part.updated',
+                    properties: { part }
+                  });
+              if (info?.role === 'assistant' && info.error !== undefined) {
+                this.finish(runId, 'FAILED', 'run.failed', info.error);
+                return;
+              }
+            }
+            reconciling = false;
+            for (const event of terminalEvents) this.event(runId, nativeSessionId, event);
+            if (abort.signal.aborted) return;
+            if (status?.type === 'idle')
+              this.event(runId, nativeSessionId, {
+                type: 'session.idle',
+                properties: { sessionID: nativeSessionId }
+              });
+            else if (status?.type !== 'busy' && status?.type !== 'retry')
+              throw new Error('OPENCODE_SESSION_STATUS_INVALID');
+          })().catch(fail);
+        }
+      );
+      await reconciliation;
+      fail(new Error('OPENCODE_EVENT_STREAM_ENDED'));
+    } catch (error) {
+      fail(error);
     }
   }
 
@@ -453,6 +555,7 @@ export class OpenCodeManagedRunController {
     const properties = record(event?.properties);
     const nested = record(properties?.part) ?? record(properties?.info);
     const execution = this.runner.execution.get(runId);
+    if (execution === undefined) return;
     const receiptAt = execution?.generationTiming?.timestamp();
     const sessionID =
       typeof properties?.sessionID === 'string'
@@ -815,6 +918,7 @@ export class OpenCodeManagedRunController {
     this.startingClients.delete(runId);
     this.promptAdmitted.delete(runId);
     this.pendingIdle.delete(runId);
+    this.cancelling.delete(runId);
     this.messageRoles.delete(runId);
     this.messageParents.delete(runId);
     this.compactionPartIds.delete(runId);

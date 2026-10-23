@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { Plus, Edit, Delete } from '@element-plus/icons-vue';
 import {
   formatGitRemoteUrl,
   gitCredentialInputSchema,
@@ -79,7 +79,7 @@ async function load(): Promise<void> {
   } catch (error) {
     if (alive) {
       failed.value = true;
-      ElMessage.error(errorMessage(error));
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
     }
   } finally {
     if (alive) loading.value = false;
@@ -192,7 +192,7 @@ async function saveCredential(): Promise<void> {
     editing.value === undefined ? gitCredentialInputSchema : gitCredentialUpdateSchema
   ).safeParse(credentialInput());
   if (!parsed.success) {
-    ElMessage.error(t('personalGit.invalid'));
+    ElMessage.error({ icon: marIcon('error'), message: t('personalGit.invalid') });
     return;
   }
   saving.value = true;
@@ -204,9 +204,9 @@ async function saveCredential(): Promise<void> {
     if (!alive) return;
     apply(result);
     closeCredential();
-    ElMessage.success(t('personalGit.saved'));
+    ElMessage.success({ icon: marIcon('success'), message: t('personalGit.saved') });
   } catch (error) {
-    if (alive) ElMessage.error(errorMessage(error));
+    if (alive) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (alive) saving.value = false;
   }
@@ -216,7 +216,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
     await ElMessageBox.confirm(
       t('personalGit.removeConfirm', { name: value.name }),
       t('personalGit.remove'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -226,7 +226,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
     apply(await service.removeCredential(value.id));
     if (detail.value?.id === value.id) closeCredentialDetail();
   } catch (error) {
-    if (alive) ElMessage.error(errorMessage(error));
+    if (alive) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (alive) saving.value = false;
   }
@@ -247,9 +247,10 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         <div class="table-actions">
           <el-button
             type="primary"
-            :icon="Plus"
+            :icon="marIcon('plus')"
             :disabled="loading || saving"
             @click="openCredential()"
+            :loading-icon="marIcon('loading-action')"
             >{{ t('personalGit.add') }}</el-button
           >
         </div>
@@ -281,7 +282,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
                 <el-button
                   link
                   type="primary"
-                  :icon="Edit"
+                  :icon="marIcon('edit')"
                   :disabled="saving"
                   @click.stop="openCredential(row)"
                   >{{ t('personalGit.edit') }}</el-button
@@ -289,7 +290,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
                 <el-button
                   link
                   type="danger"
-                  :icon="Delete"
+                  :icon="marIcon('delete')"
                   :disabled="saving"
                   @click.stop="removeCredential(row)"
                   >{{ t('personalGit.remove') }}</el-button
@@ -307,6 +308,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       width="min(720px, calc(100vw - 32px))"
       append-to-body
       @closed="closeCredentialDetail"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions :column="1" border>
         <el-descriptions-item :label="t('personalGit.credentialId')">{{
@@ -359,6 +361,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       :close-on-press-escape="!saving"
       :show-close="!saving"
       @closed="closeCredential"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="credentialForm"
@@ -454,9 +457,13 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         ><el-button :disabled="saving" @click="closeCredential">{{
           t('personalGit.cancel')
         }}</el-button
-        ><el-button type="primary" :loading="saving" @click="saveCredential">{{
-          t('personalGit.save')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :loading="saving"
+          @click="saveCredential"
+          :loading-icon="marIcon('loading-action')"
+          >{{ t('personalGit.save') }}</el-button
+        ></template
       >
     </el-dialog>
   </LoadingPanel>

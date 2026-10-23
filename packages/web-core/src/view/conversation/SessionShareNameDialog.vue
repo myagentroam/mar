@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { ref } from 'vue';
 import { channelDisplayNameSchema } from '@myagentroam/protocol';
 import { type FormInstance, type FormRules } from 'element-plus';
@@ -30,6 +31,7 @@ async function submit(): Promise<void> {
     :title="translate(editing ? 'sessionShare.editName' : 'sessionShare.setName')"
     width="min(420px, calc(100vw - 32px))"
     @close="emit('cancel')"
+    :close-icon="marIcon('close')"
   >
     <el-form
       ref="form"

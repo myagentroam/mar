@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-23
 ---
 
 # Manage Nodes with marctl
@@ -8,6 +8,12 @@ lastUpdated: 2026-10-20
 `marctl` is a Node CLI for the personal and enterprise editions; the Node package includes `marnodes`, `marssh`, and `marscp` entrypoints, for use only in MAR-managed execution contexts. It uses Server authorization to list usable Nodes, open an interactive terminal, run a one-off command, or copy a file. Nodes do not need to expose an SSH port. The `ssh` subcommand is a familiar name, **not the system SSH protocol**.
 
 Ordinary MAR-launched Workbench terminals, Workspace Agent Runs, and their local MCP subprocesses automatically include these commands in `PATH`. Scripts can check `MAR_NODE_CONTEXT=1` for the MAR execution context and `MAR_USERNAME` for the current MAR account username, not a nickname or OS account. Scheduled runs use the task owner's username. Without a trusted execution identity, the username is empty rather than inherited from the Node service process. These variables provide context only: they do not grant permissions or change hosted conversations' separate sandbox boundary.
+
+## Load Agent guidance on demand
+
+In managed Workspaces with a marctl execution context, MAR Agent uses its built-in `marctl` Skill. Codex, Claude Code, and OpenCode load the same guide through the built-in `mar_cli` MCP tool `load_guide`. Server instructions and the tool description provide short discovery hints; whether the client exposes server instructions depends on the Runner.
+
+Loading the guide only returns instructions, not command results. The Agent still runs marctl through its own shell tool and consults local command help when needed. Guidance already loaded and still in context can be reused. This entrypoint does not grant permissions or change collaboration message origins or existing schedule tools.
 
 ## Check command help
 
@@ -100,7 +106,7 @@ For `start`, `send` and `goal set`, use `-m` / `--message` to supply text direct
 
 When an Agent runs `start`, the CLI automatically supplies its current Session as the creation source. The Node checks the same Workspace and stores the canonical ID as `parentSessionId`; without a source it remains null. There is no parent override or editing command. `list --parent <session-id>` pages through direct children, and `graph <session-id>` returns creation descendants including the root. Graph defaults to at most 100 nodes; `--limit` accepts 1..100. Results contain `rootSessionId`, `nodes`, and `truncated`, using only Node-known Sessions without scanning Runners. Parent means creation source, not authorization, current coordinator, or task dependency. Sending messages and taking over work do not change it; deleting a parent does not delete children, and old relationships are not inferred.
 
-Create workers as tasks need them, using `fixer#<task-id> <description>` or `reviewer#<task-or-change-id> <description>`. There is no fixed worker count, role registry, worker pool, or Session custom prompt setting. Put role, scope, and acceptance criteria in the first ordinary message. MAR Agent receives built-in `marctl` skill guidance in authorized Workspace executions; other Runners can be targets without that skill.
+Create workers as tasks need them, using `fixer#<task-id> <description>` or `reviewer#<task-or-change-id> <description>`. There is no fixed worker count, role registry, worker pool, or Session custom prompt setting. Put role, scope, and acceptance criteria in the first ordinary message. Each Runner loads guidance through the entry described above; a target Session does not need to load the guide to receive collaboration messages.
 
 `send` requires exactly one of `--steer` or `--queue`, even when idle; missing, conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context and, when MAR Agent can accept it natively, echoes it immediately and applies it after the complete response and tool batch. Managed waits may return early without stopping background tasks; other tools still finish normally. Other cases may switch the current execution; Node decides delivery from actual state. Reserve it for decision-changing updates rather than routine reports. `--queue` places input in a subsequent turn; an active Goal can delay it until the Goal exits. Start/send generate a `clientMessageId`, or accept `--client-message-id`. `delivery` is `ACCEPTED` for accepted priority context, `QUEUED` for queued input, or `STARTED` when startup has begun. Receipts do not distinguish native steering from internal execution replacement, and do not confirm model processing or business completion. A queued receipt's `runId` may belong to another active input: correlate `queueItemId`/`clientMessageId` with history. Follow history's `nextCursor` only when needed.
 

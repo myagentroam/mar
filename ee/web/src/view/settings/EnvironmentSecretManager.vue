@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
 import type { EnvironmentSecretInput as CoreInput } from '@myagentroam/web-core/environment-secrets';
 import CoreManager from '@myagentroam/web-core/EnvironmentSecretManager.vue';
@@ -101,6 +102,8 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
         <el-select
           v-model="visibility"
           :placeholder="translate('generated.environmentSecretManager.selectVisibility')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             :label="translate('generated.environmentSecretManager.privateThisOrganizationOnly')"
@@ -130,6 +133,7 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
             :placeholder="translate('generated.environmentSecretManager.selectAnOrganization2')"
             :options="organizationOptions"
             :props="{ checkStrictly: true, emitPath: false }"
+            :clear-icon="marIcon('clear-input')"
           />
         </div>
       </el-form-item>

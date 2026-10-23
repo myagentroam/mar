@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+
 import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
-import { CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
@@ -65,9 +66,9 @@ function lastMessageLabel(): string {
 async function copyDiagnostics(): Promise<void> {
   try {
     await navigator.clipboard.writeText(JSON.stringify(props.diagnostics.detail(), null, 2));
-    ElMessage.info(t('performanceDiagnostics.copySucceeded'));
+    ElMessage.info({ icon: marIcon('info'), message: t('performanceDiagnostics.copySucceeded') });
   } catch {
-    ElMessage.error(t('performanceDiagnostics.copyFailed'));
+    ElMessage.error({ icon: marIcon('error'), message: t('performanceDiagnostics.copyFailed') });
   }
 }
 
@@ -89,7 +90,7 @@ onBeforeUnmount(props.diagnostics.dispose);
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
       >
-        <el-icon aria-hidden="true"><MarIcon name="info" /></el-icon>
+        <MarIcon aria-hidden="true" name="info" />
       </button>
     </template>
     <section class="web-performance-panel" :aria-label="t('performanceDiagnostics.title')">
@@ -103,7 +104,7 @@ onBeforeUnmount(props.diagnostics.dispose);
               :aria-label="t('performanceDiagnostics.copy')"
               @click="copyDiagnostics"
             >
-              <el-icon><CopyDocument /></el-icon> </el-button
+              <MarIcon name="copy" /> </el-button
           ></el-tooltip>
         </div>
       </header>
@@ -192,7 +193,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   line-height: 1;
   transform: translateX(-50%);
 }
-.web-performance-indicator .el-icon {
+.web-performance-indicator .mar-icon {
   width: 16px;
   height: 16px;
   font-size: 16px;

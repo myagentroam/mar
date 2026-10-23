@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="ManagementSection extends string">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { ChatDotRound, Monitor, Refresh, SetUp, Setting } from '@element-plus/icons-vue';
 import { nextTick, ref } from 'vue';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
@@ -171,12 +171,14 @@ function openBlankMenu(event: MouseEvent): void {
             @click="emit('selectNavigation', item.id)"
           >
             <span class="nav-item-content">
-              <el-icon aria-hidden="true">
-                <Monitor v-if="item.id === 'nodes'" />
-                <ChatDotRound v-else-if="item.id === 'conversations'" />
-                <Setting v-else-if="item.id === 'settings'" />
-                <SetUp v-else />
-              </el-icon>
+              <MarIcon name="workspace" aria-hidden="true" v-if="item.id === 'nodes'" />
+              <MarIcon
+                name="conversation"
+                aria-hidden="true"
+                v-else-if="item.id === 'conversations'"
+              />
+              <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
+              <MarIcon name="administration" aria-hidden="true" v-else />
             </span></button
         ></el-tooltip>
         <WorkbenchRecentSessions
@@ -199,9 +201,7 @@ function openBlankMenu(event: MouseEvent): void {
           :aria-label="$t('navigation.help')"
         >
           <span class="nav-item-content">
-            <el-icon class="documentation-icon" aria-hidden="true">
-              <MarIcon name="help" />
-            </el-icon>
+            <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
             <span class="rail-label">{{ $t('navigation.help') }}</span>
           </span>
         </el-link></el-tooltip
@@ -236,7 +236,7 @@ function openBlankMenu(event: MouseEvent): void {
       <button ref="blankMenuButton" type="button" tabindex="-1" aria-hidden="true" />
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item command="refresh" :icon="Refresh">{{
+          <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
             $t('generated.workspaceTree.refreshWorkspaces')
           }}</el-dropdown-item>
         </el-dropdown-menu>
@@ -503,7 +503,7 @@ function openBlankMenu(event: MouseEvent): void {
   width: 100%;
 }
 
-.activity-rail nav button .el-icon {
+.activity-rail nav button .mar-icon {
   font-size: 1.25rem;
 }
 
@@ -725,23 +725,13 @@ function openBlankMenu(event: MouseEvent): void {
     gap: 2px;
   }
 
-  .activity-rail nav .nav-menu-button .el-icon {
+  .activity-rail nav .nav-menu-button .mar-icon {
     display: grid;
     width: 18px;
     height: 18px;
     place-items: center;
     font-size: 1.125rem;
     line-height: 18px;
-  }
-
-  .activity-rail nav .nav-menu-button .el-icon > svg {
-    display: block;
-    width: 18px;
-    height: 18px;
-  }
-
-  .activity-rail nav .nav-menu-button .documentation-icon > svg {
-    transform: scale(1.2);
   }
 
   .activity-rail nav .nav-menu-button .rail-label {
@@ -826,7 +816,7 @@ function openBlankMenu(event: MouseEvent): void {
 </style>
 
 <style scoped>
-:global(.nav-item-content > .el-icon) {
+:global(.nav-item-content > .mar-icon) {
   font-size: 1rem;
   line-height: 1;
 }

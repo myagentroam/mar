@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { ref, watch } from 'vue';
-import { Picture } from '@element-plus/icons-vue';
 
 const props = defineProps<{ source: string; name: string }>();
 const emit = defineEmits<{
@@ -39,7 +39,7 @@ function unavailable(): void {
       loading="lazy"
       @error="unavailable"
     />
-    <Picture v-else class="conversation-image-fallback" aria-hidden="true" />
+    <MarIcon name="image" v-else class="conversation-image-fallback" aria-hidden="true" />
   </button>
 </template>
 

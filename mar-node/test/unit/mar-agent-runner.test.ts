@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -1090,10 +1090,11 @@ describe('MAR Agent Node Runner', () => {
   });
 
   it('preserves a user title when an external session resumes as managed', async () => {
+    const workspacePath = await realpath(await mkdtemp(join(tmpdir(), 'mar-title-workspace-')));
     const database = new NodeDatabase(':memory:', 'node-mar-agent-title');
     try {
       const workspace = database.saveWorkspace({
-        path: '/workspace',
+        path: workspacePath,
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -1153,14 +1154,16 @@ describe('MAR Agent Node Runner', () => {
       });
     } finally {
       database.close();
+      await rm(workspacePath, { recursive: true, force: true });
     }
   });
 
   it('preserves a user title when a metadata projection is promoted as managed', async () => {
+    const workspacePath = await realpath(await mkdtemp(join(tmpdir(), 'mar-metadata-workspace-')));
     const database = new NodeDatabase(':memory:', 'node-mar-agent-metadata-title');
     try {
       const workspace = database.saveWorkspace({
-        path: '/workspace',
+        path: workspacePath,
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -1231,6 +1234,7 @@ describe('MAR Agent Node Runner', () => {
       });
     } finally {
       database.close();
+      await rm(workspacePath, { recursive: true, force: true });
     }
   });
 
@@ -1657,7 +1661,8 @@ describe('MAR Agent Node Runner', () => {
     ]);
   });
 
-  it('normalizes unsupported legacy metadata and rejects unsupported access for new sessions', () => {
+  it('normalizes unsupported legacy metadata and rejects unsupported access for new sessions', async () => {
+    const workspacePath = await realpath(await mkdtemp(join(tmpdir(), 'mar-access-workspace-')));
     const runner = new MarAgentRunner();
     runner.configureModels([
       {
@@ -1690,7 +1695,7 @@ describe('MAR Agent Node Runner', () => {
     const projection = new NativeSessionProjectionService({
       database: () =>
         ({
-          getWorkspace: () => ({ id: 'workspace' }),
+          getWorkspace: () => ({ id: 'workspace', path: workspacePath }),
           getRunnerDefaults: () => []
         }) as never,
       nodeId: () => 'node',
@@ -1711,7 +1716,7 @@ describe('MAR Agent Node Runner', () => {
     const lifecycle = new SessionLifecycleService({
       database: () =>
         ({
-          getWorkspace: () => ({ id: 'workspace' }),
+          getWorkspace: () => ({ id: 'workspace', path: workspacePath }),
           getRunnerDefaults: () => [],
           saveRunnerDefaults: vi.fn()
         }) as never,
@@ -1727,17 +1732,18 @@ describe('MAR Agent Node Runner', () => {
     });
 
     for (const access of ['on-request']) {
-      expect(() =>
+      await expect(
         lifecycle.operations()['session.create']?.({
           workspaceId: 'workspace',
           runner: 'mar-agent',
-          cwd: '/workspace',
+          cwd: workspacePath,
           model: 'coding',
           effort: 'high',
           access
         })
-      ).toThrow('SESSION_INVALID');
+      ).rejects.toThrow('SESSION_INVALID');
     }
+    await rm(workspacePath, { recursive: true, force: true });
   });
 
   it.each(['auto', 'full-access'])(

@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { Close, Upload } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { ref, watch } from 'vue';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
@@ -56,7 +56,7 @@ async function setComputerUse(enabled: boolean): Promise<void> {
     computerUseCapability.value = capability;
     emit('computerUseChanged', capability);
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     computerUseChanging.value = false;
   }
@@ -119,6 +119,7 @@ function usagePercentageLabel(value: number): string {
     :title="translate('generated.nodeDetailsDialogs.nodeDetails')"
     width="min(720px, calc(100vw - 32px))"
     @update:model-value="emit('update:nodeOpen', $event)"
+    :close-icon="marIcon('close')"
   >
     <el-descriptions v-if="node !== undefined" class="mar-detail-descriptions" :column="1" border>
       <el-descriptions-item :label="translate('common.nodeId')"
@@ -228,6 +229,7 @@ function usagePercentageLabel(value: number): string {
                 :loading="usageLoading === entry.runner"
                 :disabled="usageDisabledReason(entry.runner) !== ''"
                 @click="emit('usage', entry.runner)"
+                :loading-icon="marIcon('loading-action')"
               >
                 {{ translate('common.usage') }}
               </el-button>
@@ -254,12 +256,12 @@ function usagePercentageLabel(value: number): string {
     </div>
     <template #footer>
       <div v-if="upgrade?.canUpgrade || upgrade?.waitingForRuns" class="node-detail-actions">
-        <el-button v-if="upgrade?.canUpgrade" :icon="Upload" @click="emit('upgrade')">{{
+        <el-button v-if="upgrade?.canUpgrade" :icon="marIcon('upload')" @click="emit('upgrade')">{{
           translate('generated.resourceSharingPage.pushUpgrade2')
         }}</el-button>
         <el-button
           v-if="upgrade?.waitingForRuns"
-          :icon="Close"
+          :icon="marIcon('close')"
           :disabled="!upgrade.canCancelUpgrade"
           @click="emit('cancelUpgrade')"
           >{{ translate('generated.resourceSharingPage.cancelUpgrade') }}</el-button
@@ -277,6 +279,7 @@ function usagePercentageLabel(value: number): string {
     :title="translate('generated.resourceSharingPage.workspaceDetails')"
     width="min(720px, calc(100vw - 32px))"
     @update:model-value="emit('update:workspaceOpen', $event)"
+    :close-icon="marIcon('close')"
   >
     <el-descriptions
       v-if="workspace !== undefined"
@@ -372,6 +375,7 @@ function usagePercentageLabel(value: number): string {
     "
     width="min(460px, calc(100vw - 32px))"
     @update:model-value="emit('update:usageOpen', $event)"
+    :close-icon="marIcon('close')"
   >
     <el-descriptions v-if="usage !== undefined" class="mar-detail-descriptions" :column="1" border>
       <el-descriptions-item

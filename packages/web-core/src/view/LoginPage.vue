@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../util/mar-icons.js';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElButton, ElInput } from 'element-plus';
@@ -36,9 +37,13 @@ function submit(): void {
         >{{ t('auth.password')
         }}<el-input v-model="password" type="password" autocomplete="current-password"
       /></label>
-      <el-button :loading="loading" native-type="submit" type="primary">{{
-        t('auth.login')
-      }}</el-button>
+      <el-button
+        :loading="loading"
+        native-type="submit"
+        type="primary"
+        :loading-icon="marIcon('loading-action')"
+        >{{ t('auth.login') }}</el-button
+      >
     </form>
     <slot name="identity-extension" />
   </section>

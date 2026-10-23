@@ -112,6 +112,18 @@ export class OpenCodeServerClient {
     return unwrap(await client.session.get({ directory, sessionID }));
   }
 
+  async sessionStatus(
+    directory: string,
+    sessionID: string,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    const client = await this.requireClient();
+    const statuses = unwrap<Record<string, unknown>>(
+      await client.session.status({ directory }, { signal: signal ?? null })
+    );
+    return statuses[sessionID] ?? { type: 'idle' };
+  }
+
   async createSession(directory: string, title?: string): Promise<unknown> {
     const client = await this.requireClient();
     return unwrap(
@@ -124,17 +136,48 @@ export class OpenCodeServerClient {
     return unwrap(await client.session.fork({ directory, sessionID, messageID }));
   }
 
-  async messages(directory: string, sessionID: string, limit = 100): Promise<readonly unknown[]> {
-    return (await this.messagePage(directory, sessionID, { limit })).messages;
+  async messages(
+    directory: string,
+    sessionID: string,
+    limit = 100,
+    recovery?: { readonly since: number; readonly signal: AbortSignal }
+  ): Promise<readonly unknown[]> {
+    let page = await this.messagePage(directory, sessionID, { limit }, recovery?.signal);
+    const messages = [...page.messages];
+    const cursors = new Set<string>();
+    while (recovery !== undefined && page.nextCursor !== null) {
+      if (
+        page.messages.some((value) => {
+          const created = (value as { info?: { time?: { created?: number } } })?.info?.time
+            ?.created;
+          return typeof created === 'number' && created < recovery.since;
+        })
+      )
+        break;
+      if (cursors.has(page.nextCursor)) throw new Error('OPENCODE_MESSAGE_CURSOR_REPEATED');
+      cursors.add(page.nextCursor);
+      page = await this.messagePage(
+        directory,
+        sessionID,
+        { limit, before: page.nextCursor },
+        recovery.signal
+      );
+      messages.unshift(...page.messages);
+    }
+    return messages;
   }
 
   async messagePage(
     directory: string,
     sessionID: string,
-    input: { readonly limit: number; readonly before?: string }
+    input: { readonly limit: number; readonly before?: string },
+    signal?: AbortSignal
   ): Promise<{ readonly messages: readonly unknown[]; readonly nextCursor: string | null }> {
     const client = await this.requireClient();
-    const result = await client.session.messages({ directory, sessionID, ...input });
+    const result = await client.session.messages(
+      { directory, sessionID, ...input },
+      { signal: signal ?? null }
+    );
     return {
       messages: unwrap<readonly unknown[]>(result),
       nextCursor: result.response.headers.get('x-next-cursor') || null
@@ -256,9 +299,35 @@ export class OpenCodeServerClient {
     onReady?: () => void
   ): Promise<void> {
     const client = await this.requireClient();
-    const stream = await client.event.subscribe({ directory }, { signal });
-    onReady?.();
-    for await (const event of stream.stream) onEvent(event);
+    const connection = new AbortController();
+    const timeout = setTimeout(
+      () => connection.abort(new Error('OPENCODE_EVENT_CONNECT_TIMEOUT')),
+      this.options.startTimeoutMs ?? START_TIMEOUT_MS
+    );
+    try {
+      const stream = await client.event.subscribe(
+        { directory },
+        {
+          signal: AbortSignal.any([signal, connection.signal]),
+          // The SDK starts its SSE request only when the iterator is consumed.
+          fetch: async (request, init) => {
+            const response = await fetch(request, init);
+            if (response.ok && response.body !== null) {
+              clearTimeout(timeout);
+              onReady?.();
+            }
+            return response;
+          },
+          // The Run controller owns bounded reconnection and authoritative reconciliation.
+          onSseError: (error) => {
+            throw error;
+          }
+        }
+      );
+      for await (const event of stream.stream) onEvent(event);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async stop(): Promise<void> {
