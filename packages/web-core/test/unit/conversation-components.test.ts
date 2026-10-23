@@ -19,6 +19,8 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
+import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
+import MarIcon from '../../src/view/common/MarIcon.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
@@ -34,6 +36,23 @@ vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
 }));
 
 const originalLocale = localePreferenceService().locale.value;
+
+it('uses the shared decorative reasoning icon without changing help and info icons', async () => {
+  const reasoning = await renderToString(
+    createSSRApp(ConversationRecordIcon, { kind: 'reasoning' })
+  );
+  expect(reasoning).toContain('mar-icon');
+  expect(reasoning).toMatch(/viewBox="0 0 24 24"/iu);
+  expect(reasoning).toContain('aria-hidden="true"');
+  expect(reasoning).toContain('focusable="false"');
+  expect(reasoning).toContain('fill="none" stroke="currentColor"');
+  expect(reasoning.match(/<svg\b/gu)).toHaveLength(1);
+  for (const name of ['info', 'help']) {
+    const html = await renderToString(createSSRApp(MarIcon, { name }));
+    expect(html).toContain('fill-rule="evenodd"');
+    expect(html).toContain('<circle');
+  }
+});
 
 describe('Message image attachment cards', () => {
   const image = {

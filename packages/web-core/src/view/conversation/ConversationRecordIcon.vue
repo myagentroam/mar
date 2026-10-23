@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ToolPresentation } from '@myagentroam/protocol';
+import MarIcon from '../common/MarIcon.vue';
 
 defineProps<{
   kind: 'reasoning' | 'command_execution' | 'tool_call' | 'file_change' | ToolPresentation['kind'];
@@ -7,7 +8,9 @@ defineProps<{
 </script>
 
 <template>
+  <MarIcon v-if="kind === 'reasoning'" name="reasoning" />
   <svg
+    v-else
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -20,10 +23,6 @@ defineProps<{
     <template v-if="kind === 'command_execution'">
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="m7 9 3 3-3 3m6 0h4" />
-    </template>
-    <template v-else-if="kind === 'reasoning'">
-      <path d="M20 11a8 8 0 0 1-8 8H5l-2 2v-10a8 8 0 0 1 17 0Z" />
-      <path d="M7 10h9m-9 4h6" />
     </template>
     <template v-else-if="kind === 'READ'">
       <path d="M13 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9l-6-6Zm0 0v6h6" />
