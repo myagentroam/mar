@@ -1,8 +1,20 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationTemplateSummary } from '@myagentroam/protocol';
 import { createHostedConversationEntryService } from '../../src/service/HostedConversationEntryService.js';
+import Entry from '../../src/view/conversation/HostedConversationEntryPage.vue?unit-render';
+import { i18n } from '../../src/service/LocalePreferenceService.js';
+import {
+  renderComponent,
+  flushComponent,
+  trigger,
+  textContent
+} from './support/component-renderer.js';
+
+const initialLocale = i18n.global.locale.value;
+afterEach(() => {
+  i18n.global.locale.value = initialLocale;
+  vi.restoreAllMocks();
+});
 
 const template: ConversationTemplateSummary = {
   id: 'template-1',
@@ -28,6 +40,7 @@ const snapshot = {
     titleSource: 'DEFAULT',
     pinnedAt: null,
     status: 'ACTIVE',
+    activity: { status: 'IDLE', updatedAt: 0, version: 0 },
     modelId: 'model-1',
     createdAt: 1,
     updatedAt: 1,
@@ -68,17 +81,63 @@ function preferenceStorage(initialValue: string | null = null) {
 }
 
 describe('Web Hosted Conversation Portal', () => {
-  it('Do not derive template availability from ordinary Node directories or capability projections', async () => {
-    const page = await readFile(
-      resolve(process.cwd(), 'src/view/conversation/HostedConversationEntryPage.vue'),
-      'utf8'
-    );
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders inline template availability and creates without a Node directory in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const created = vi.fn();
+      const pending = deferred<unknown>();
+      const request = vi.fn(async (path: string) =>
+        path === '/api/conversation-templates'
+          ? { templates: [template, { ...template, id: 'unavailable', available: false }] }
+          : pending.promise
+      );
+      const view = renderComponent(Entry, { request, onCreated: created });
+      try {
+        await flushComponent();
+        expect(request).toHaveBeenCalledTimes(1);
+        const options = view.findAll('ElOption');
+        expect(options.map((option) => option.props.disabled)).toEqual([false, true]);
+        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(textContent(view.root)).toContain(i18n.global.t('hostedConversations.start'));
+        const select = view.findAll('ElSelect')[0]!;
+        await trigger(select, 'onUpdate:modelValue', template.id);
+        await trigger(select, 'onChange', template.id);
+        const event = { preventDefault() {}, stopPropagation() {} };
+        // Do not await the gated response while checking duplicate-submit suppression.
+        const submit = trigger(view.findAll('ElForm')[0]!, 'onSubmit', event);
+        await flushComponent();
+        await trigger(view.findAll('ElForm')[0]!, 'onSubmit', event);
+        expect(view.findAll('ElSelect')[0]!.props.disabled).toBe(true);
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(request.mock.calls[1]![0]).toBe('/api/nodes/node-1/hosted-conversations');
+        pending.resolve(snapshot);
+        await submit;
+        await flushComponent();
+        expect(created).toHaveBeenCalledWith(snapshot);
+        expect(view.findAll('ElSelect')[0]!.props.disabled).toBe(false);
+      } finally {
+        pending.resolve(snapshot);
+        view.unmount();
+      }
+    }
+  );
 
-    expect(page).not.toContain('props.nodes');
-    expect(page).not.toContain('hostedConversationEntryAvailability');
-    expect(page).not.toContain('NodeSummary');
-    expect(page).toContain(':disabled="creating || !template.available"');
-  });
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders the empty template state inline in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const view = renderComponent(Entry, { request: async () => ({ templates: [] }) });
+      try {
+        await flushComponent();
+        expect(textContent(view.root)).toContain(i18n.global.t('hostedConversations.noTemplates'));
+        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(view.findAll('ElSelect')).toHaveLength(0);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
 
   it('Preselect a single template without sending a request until conversation creation', async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
