@@ -616,13 +616,20 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
               <summary>
                 <Monitor class="conversation-record-icon" aria-hidden="true" />
                 <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
-                <span>{{ conversationItemText(commandItem.kind, commandItem.payload) }}</span>
-                <span class="conversation-command-status">{{
-                  toolPresentationStatus(commandItem.status)
+                <span class="conversation-command-preview">{{
+                  conversationItemText(commandItem.kind, commandItem.payload)
                 }}</span>
-                <span v-if="stepDuration(commandItem)" class="conversation-step-duration">{{
-                  stepDuration(commandItem)
-                }}</span>
+                <span
+                  v-if="toolPresentationStatus(commandItem.status) || stepDuration(commandItem)"
+                  class="conversation-command-meta"
+                >
+                  <span class="conversation-command-status">{{
+                    toolPresentationStatus(commandItem.status)
+                  }}</span>
+                  <span v-if="stepDuration(commandItem)" class="conversation-step-duration">{{
+                    stepDuration(commandItem)
+                  }}</span>
+                </span>
               </summary>
               <p
                 v-if="
@@ -1589,18 +1596,41 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 details.conversation-record-group > details {
-  margin-inline: 0.875rem;
+  margin-inline: calc(0.875rem + 1rem) 0.875rem;
 }
 
 .conversation-record-group > summary > span + span {
   margin-inline-start: 0.4em;
 }
 
-.conversation-tool-detail summary,
-.conversation-command-detail summary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.conversation-record-group > details > summary {
+  display: grid;
+  grid-template-columns: 1em 1em max-content minmax(0, 1fr);
+  column-gap: 0.4rem;
+  align-items: start;
+  white-space: normal;
+}
+
+.conversation-record-group > details > summary::before,
+.conversation-record-group > details > summary > .conversation-record-icon,
+.conversation-record-group > details > summary > strong {
+  margin-inline: 0;
+}
+
+.conversation-record-group > details > summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-command-meta {
+  grid-column: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.conversation-command-meta > span {
+  margin-inline: 0;
 }
 
 .conversation-file-change-list {

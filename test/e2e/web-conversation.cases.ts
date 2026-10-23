@@ -802,7 +802,12 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         id: 'command-a',
         kind: 'command_execution',
         status: 'COMPLETED',
-        payload: { command: 'echo first', outputPreview: 'first', durationMs: 1500 }
+        payload: {
+          command:
+            'node -e "console.log(\'Long command preview with enough arguments to wrap across several lines on a mobile viewport without returning to the disclosure arrow\')"',
+          outputPreview: 'first',
+          durationMs: 1500
+        }
       },
       reads[1]!,
       {
@@ -986,6 +991,26 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         }, dark);
         const icon = read.locator(':scope > summary .conversation-record-icon');
         await expect(icon).toBeVisible();
+        const commandLayout = await process.locator('.command-group').evaluate((group) => {
+          const parent = group.querySelector(
+            ':scope > details > summary .conversation-record-icon'
+          )!;
+          const summary = group.querySelector('.conversation-command-detail > summary')!;
+          const child = summary.querySelector('.conversation-record-icon')!;
+          const preview = summary.querySelector('.conversation-command-preview')!;
+          const range = document.createRange();
+          range.selectNodeContents(preview);
+          return {
+            indent: child.getBoundingClientRect().left - parent.getBoundingClientRect().left,
+            textLeft: preview.getBoundingClientRect().left,
+            lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
+          };
+        });
+        expect(commandLayout.indent).toBeGreaterThanOrEqual(12);
+        expect(commandLayout.indent).toBeLessThanOrEqual(20);
+        if (width === 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
+        for (const left of commandLayout.lineLefts)
+          expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
         expect(await process.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
         await process.screenshot({
           path: testInfo.outputPath(`read-${locale}-${width}-${dark ? 'dark' : 'light'}.png`),
