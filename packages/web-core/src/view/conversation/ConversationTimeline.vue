@@ -1598,6 +1598,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   border-left-color: var(--mar-color-warning-accent);
 }
 
+.conversation-item:has(> details.conversation-tool-presentation),
 .conversation-item:where(
   .reasoning-group,
   .tool-group,
@@ -1608,6 +1609,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   padding: 0;
 }
 
+.conversation-item:has(> details.conversation-tool-presentation) > details > summary,
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -1622,6 +1624,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   box-sizing: border-box;
 }
 
+.conversation-item:has(> details.conversation-tool-presentation) > details > :not(summary),
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -1785,8 +1788,8 @@ details.conversation-record-group[open] > details:last-child {
   padding: 4px var(--conversation-item-inset);
 }
 
-details.conversation-record-group > details {
-  margin-inline: calc(var(--conversation-item-inset) + 0.5rem) var(--conversation-item-inset);
+.conversation-item details.conversation-record-group > details {
+  margin-inline: 0.5rem 0;
 }
 
 .conversation-record-group > summary > span + span {
@@ -1794,13 +1797,7 @@ details.conversation-record-group > details {
 }
 
 .conversation-record-group > details > summary {
-  padding-block: 2px;
-  padding-inline: 0 8px;
-  display: grid;
-  grid-template-columns: 1em minmax(0, 1fr) max-content;
-  column-gap: 0.5rem;
-  align-items: start;
-  white-space: normal;
+  padding: 4px var(--conversation-item-inset);
 }
 
 .conversation-record-group > details > summary::before {
@@ -2194,14 +2191,6 @@ details.conversation-record-group > details {
 @media (max-width: 767px) {
   .conversation-timeline {
     --conversation-item-inset: 8px;
-  }
-
-  .conversation-record-group > details > summary {
-    grid-template-columns: 1em minmax(0, 1fr);
-  }
-
-  .conversation-record-meta {
-    grid-column: 2;
   }
 
   .conversation-file-change-list li {

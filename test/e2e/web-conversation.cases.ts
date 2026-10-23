@@ -906,6 +906,10 @@ for (const hasTouch of [false, true]) {
           mobile ? '4px' : '8px'
         );
         await expect(process.locator('.process-heading')).toHaveCSS('padding-top', '4px');
+        await expect(process.locator('.process-heading')).toHaveCSS(
+          'padding-left',
+          mobile ? '8px' : '12px'
+        );
         const row = reasoning.locator('summary');
         await expect(row).toHaveCSS('padding-top', '4px');
         await expect(row).toHaveCSS('padding-bottom', '4px');
@@ -1228,7 +1232,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         const icon = read.locator(':scope > summary .conversation-record-icon');
         await expect(icon).toBeVisible();
         await expect(read).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        await expect(read.locator(':scope > summary')).toHaveCSS('display', 'grid');
+        await expect(read.locator(':scope > summary')).toHaveCSS('display', 'flex');
         const headingLayout = await process
           .locator('.conversation-record-heading')
           .evaluateAll((elements) =>
@@ -1271,26 +1275,38 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           const range = document.createRange();
           range.selectNodeContents(preview);
           return {
-            indent:
-              summary.getBoundingClientRect().left -
-              parent.getBoundingClientRect().left -
-              Number.parseFloat(getComputedStyle(parent).paddingLeft),
+            indent: summary.getBoundingClientRect().left - parent.getBoundingClientRect().left,
             parentGrid: getComputedStyle(parent).gridTemplateColumns,
             childGrid: getComputedStyle(summary).gridTemplateColumns,
             childAlignment: getComputedStyle(summary).alignItems,
+            parentHeight: parent.getBoundingClientRect().height,
+            childHeight: summary.getBoundingClientRect().height,
+            parentPadding: getComputedStyle(parent).padding,
+            childPadding: getComputedStyle(summary).padding,
             childMargin: getComputedStyle(summary.parentElement!).marginLeft,
             textLeft: preview.getBoundingClientRect().left,
-            lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
+            textRects: Array.from(range.getClientRects(), (rect) => ({
+              left: rect.left,
+              top: rect.top
+            }))
           };
         });
         const indentStep = await page.evaluate(
           () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
         );
         expect(commandLayout.indent, JSON.stringify(commandLayout)).toBeCloseTo(indentStep, 1);
-        if (width <= 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
-        expect(commandLayout.childAlignment).toBe('start');
-        for (const left of commandLayout.lineLefts)
-          expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
+        expect(commandLayout.textRects.length).toBeGreaterThan(0);
+        await expect(command.locator('.conversation-command-preview')).toHaveCSS(
+          'white-space',
+          'nowrap'
+        );
+        expect(commandLayout.childAlignment).toBe('center');
+        expect(commandLayout.childHeight).toBeCloseTo(commandLayout.parentHeight, 1);
+        expect(commandLayout.childPadding).toBe(commandLayout.parentPadding);
+        for (const rect of commandLayout.textRects) {
+          expect(Math.abs(rect.top - commandLayout.textRects[0]!.top)).toBeLessThanOrEqual(1);
+          expect(rect.left).toBeGreaterThanOrEqual(commandLayout.textLeft - 1);
+        }
         await expect(icon).toHaveAttribute('fill', 'none');
         await expect(icon).toHaveAttribute('aria-hidden', 'true');
         if ((await command.getAttribute('open')) === null) await command.locator('summary').click();
@@ -1803,6 +1819,40 @@ test.describe('Independent tool presentation', () => {
             );
           });
           expect(rightInset).toBeCloseTo(0, 1);
+          const rows = page.locator(
+            '.conversation-item > details > summary, .conversation-record-group > details > summary'
+          );
+          const metrics = [];
+          for (const row of await rows.all()) {
+            if (!(await row.isVisible())) continue;
+            metrics.push(
+              await row.evaluate((element) => {
+                const style = getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return {
+                  height: rect.height,
+                  padding: style.padding,
+                  radius: style.borderRadius,
+                  left: rect.left,
+                  right: rect.right,
+                  nested: element.parentElement!.parentElement!.matches(
+                    'details.conversation-record-group'
+                  )
+                };
+              })
+            );
+          }
+          const baseline = metrics.find((row) => !row.nested)!;
+          for (const row of metrics) {
+            expect(row.height).toBeCloseTo(baseline.height, 1);
+            expect(row.padding).toBe(baseline.padding);
+            expect(row.radius).toBe(baseline.radius);
+            expect(row.right).toBeCloseTo(baseline.right, 1);
+            if (row.nested) {
+              expect(row.left).toBeGreaterThan(baseline.left);
+              expect(row.left - baseline.left).toBeLessThanOrEqual(12);
+            } else expect(row.left).toBeCloseTo(baseline.left, 1);
+          }
           for (const tool of await tools.or(page.locator('.subagent-group > details')).all()) {
             const heading = tool.locator(':scope > summary');
             const status = heading.locator('.conversation-record-meta');
@@ -1835,6 +1885,20 @@ test.describe('Independent tool presentation', () => {
           }
         };
         await expectCompactTools();
+        const groupHeading = page.locator('.tool-group > details > summary');
+        const skillHeading = skill.locator(':scope > summary');
+        await groupHeading.hover();
+        const groupHover = await groupHeading.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        await skillHeading.hover();
+        await expect(skillHeading).toHaveCSS('background-color', groupHover);
+        expect(groupHover).not.toBe('rgba(0, 0, 0, 0)');
+        await skillHeading.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(skillHeading).toBeFocused();
+        await expect(skillHeading).toHaveCSS('outline-style', 'solid');
         await expect(search.locator('summary .conversation-record-preview')).toHaveText(
           locale === 'zh-CN' ? 'Original query · 1 个来源' : 'Original query · 1 sources'
         );

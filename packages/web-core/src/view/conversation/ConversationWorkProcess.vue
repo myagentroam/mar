@@ -105,7 +105,7 @@ watch(open, async () => {
   flex-wrap: nowrap;
   gap: var(--conversation-record-gap, 8px);
   width: 100%;
-  padding: 4px 0;
+  padding: 4px var(--conversation-item-inset, 12px);
   border: 0;
   background: transparent;
   color: var(--mar-conversation-text);
