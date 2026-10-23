@@ -749,7 +749,7 @@ function activate(tab: WorkspaceTab): void {
   display: grid;
   min-width: 0;
   gap: 0;
-  line-height: 1.18;
+  line-height: normal;
 }
 
 .workspace-tab-content > span {
@@ -875,7 +875,6 @@ function activate(tab: WorkspaceTab): void {
   .workspace-tab-content {
     display: grid;
     gap: 1px;
-    line-height: 1.2;
   }
 }
 
