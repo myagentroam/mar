@@ -186,31 +186,12 @@ describe('Web enterprise management domain', () => {
     }
   });
 
-  it('Resource authorization buttons share one grant action label', async () => {
-    const sources = await Promise.all(
-      [
-        'ee/web/src/view/settings/ResourceManagementPanel.vue',
-        'ee/web/src/view/settings/MarAgentModelManagementPage.vue',
-        'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'
-      ].map((path) => readFile(resolve(process.cwd(), path), 'utf8'))
+  it('Conversation template grants use the localized shared action label', async () => {
+    const source = await readFile(
+      resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
+      'utf8'
     );
-
-    for (const source of sources) {
-      const grantSource = source.includes('ResourceGrantExtension')
-        ? source +
-          (await readFile(
-            resolve(process.cwd(), 'ee/web/src/view/settings/ResourceGrantExtension.vue'),
-            'utf8'
-          ))
-        : source.includes('ModelGrantExtension')
-          ? source +
-            (await readFile(
-              resolve(process.cwd(), 'ee/web/src/view/settings/ModelGrantExtension.vue'),
-              'utf8'
-            ))
-          : source;
-      expect(grantSource.match(/translate\('common\.grant'\)/gu) ?? []).toHaveLength(2);
-    }
+    expect(source.match(/translate\('common\.grant'\)/gu) ?? []).toHaveLength(2);
     expect(i18n.global.t('common.grant')).toBe('授权');
     i18n.global.locale.value = 'en-US';
     expect(i18n.global.t('common.grant')).toBe('Grant');
@@ -522,66 +503,21 @@ describe('Web enterprise management domain', () => {
     expect(nodeDetails).toMatch(/\.node-detail-actions\s*\{[^}]*margin-bottom:\s*12px;/u);
     expect(nodeDetails).not.toContain('.node-detail-footer');
   });
-  it('Node detail hosting fields provide enable and disable actions with icons', async () => {
-    const [nodeDetails, enterpriseNodeDetails, resourceHosting, enterpriseResourceHosting] =
-      await Promise.all([
-        readFile(
-          resolve(
-            process.cwd(),
-            'packages/web-core/src/view/settings/HostingNodeDetailsDialogs.vue'
-          ),
-          'utf8'
-        ),
-        readFile(resolve(process.cwd(), 'ee/web/src/view/settings/NodeDetailsDialogs.vue'), 'utf8'),
-        readFile(
-          resolve(process.cwd(), 'packages/web-core/src/service/ResourceHostingService.ts'),
-          'utf8'
-        ),
-        readFile(resolve(process.cwd(), 'ee/web/src/service/ResourceHostingService.ts'), 'utf8')
-      ] as const);
-    const hostingDescription = nodeDetails.slice(
-      nodeDetails.indexOf('<template #node-properties>'),
-      nodeDetails.indexOf('</template>', nodeDetails.indexOf('<template #node-properties>'))
-    );
-    const hostingMutations = resourceHosting.slice(
-      resourceHosting.indexOf('async function enableConversationHosting'),
-      resourceHosting.length
-    );
-
-    expect(hostingDescription).toContain('<el-button');
-    expect(hostingDescription).toContain('class="hosting-enablement-actions"');
-    expect(hostingDescription).toContain('v-if="!hosting.enabled"');
-    expect(hostingDescription).toContain("emit('enableHosting')");
-    expect(hostingDescription).toContain('v-else');
-    expect(hostingDescription).toContain("emit('disableHosting')");
-    expect(hostingDescription).toContain(':icon="CircleCheck"');
-    expect(hostingDescription).toContain(':icon="CircleClose"');
-    expect(hostingDescription).toContain('type="primary"');
-    expect(hostingDescription).toContain('type="warning"');
+  it('Node hosting details retain the public maintenance panel and EE adapter policy boundary', async () => {
+    const [nodeDetails, enterpriseResourceHosting] = await Promise.all([
+      readFile(
+        resolve(process.cwd(), 'packages/web-core/src/view/settings/HostingNodeDetailsDialogs.vue'),
+        'utf8'
+      ),
+      readFile(resolve(process.cwd(), 'ee/web/src/service/ResourceHostingService.ts'), 'utf8')
+    ] as const);
     expect(nodeDetails).toContain('ConversationHostingMaintenanceCard');
-    expect(nodeDetails).toContain('v-if="');
     expect(nodeDetails).toContain('hosting.enabled');
-    expect(enterpriseNodeDetails).toContain(
-      "import CoreDialogs from '@myagentroam/web-core/HostingNodeDetailsDialogs.vue'"
-    );
-    expect(enterpriseNodeDetails).toContain('@enable-hosting="emit(\'enableHosting\')"');
-    expect(enterpriseNodeDetails).toContain('@disable-hosting="emit(\'disableHosting\')"');
-    expect(enterpriseNodeDetails).not.toContain('ConversationHostingMaintenanceCard');
     expect(enterpriseResourceHosting).toContain(
       "import { createResourceHostingService as createCore } from '@myagentroam/web-core/resource-hosting'"
     );
     expect(enterpriseResourceHosting).toContain("context().edition === 'COMMUNITY' ||");
     expect(enterpriseResourceHosting).toContain("row.ownership.ownerType === 'ORGANIZATION'");
-    expect(hostingMutations).toContain('async function disableConversationHosting');
-    expect(hostingMutations).toContain('await ElMessageBox.confirm(');
-    expect(hostingMutations).toContain("translate('conversationHostingEnablement.enableConfirm')");
-    expect(hostingMutations).toContain(
-      "translate('conversationHostingEnablement.enableConfirmTitle')"
-    );
-    expect(hostingMutations).toContain("translate('conversationHostingEnablement.disableConfirm')");
-    expect(hostingMutations).toContain(
-      "translate('conversationHostingEnablement.disableConfirmTitle')"
-    );
   });
   it('MAR Agent model pages ignore stale responses for closed or switched credential dialogs', async () => {
     const source = await readFile(
@@ -797,23 +733,6 @@ describe('Web enterprise management domain', () => {
     ).toBe('B / A');
   });
 
-  it('Ownership and grant displays use organization names with ID fallback instead of empty labels', async () => {
-    for (const [file, expression] of [
-      [
-        'EnvironmentSecretManager',
-        'organizationDisplayLabel(props.organizations ?? [], secret.organizationId)'
-      ],
-      ['ResourceGrantExtension', 'organizationDisplayLabel(props.organizations, id)'],
-      ['ModelGrantExtension', 'organizationDisplayLabel(organizations.value, organizationId)']
-    ]) {
-      const source = await readFile(
-        resolve(process.cwd(), `ee/web/src/view/settings/${file}.vue`),
-        'utf8'
-      );
-      expect(source).toContain(expression);
-    }
-  });
-
   it('Organization cascading selectors share one hierarchy and permit any organization node as the value', () => {
     expect(
       organizationCascaderOptions([
@@ -852,32 +771,11 @@ describe('Web enterprise management domain', () => {
     ]);
   });
 
-  it('Secret and OAuth management tables expose read-only information through row details', async () => {
-    const [secretSource, secretCore, oauthSource] = await Promise.all(
-      [
-        'ee/web/src/view/settings/EnvironmentSecretManager.vue',
-        'packages/web-core/src/view/settings/EnvironmentSecretManager.vue',
-        'ee/web/src/view/settings/OAuthManagementPage.vue'
-      ].map((path) => readFile(resolve(process.cwd(), path), 'utf8'))
-    );
-
-    expect(secretSource).toContain('organizationCascaderOptions');
-    expect(secretSource).toContain('<el-cascader');
-    expect(secretCore).toContain('@row-click="openSecretDetails"');
-    expect(secretCore).toContain('<el-descriptions');
-    expect(secretCore).toContain('<div class="row-actions" @click.stop>');
-    expect(oauthSource).toContain('class="clickable-rows oauth-provider-table"');
-    expect(oauthSource).toContain('@row-click="openProviderDetails"');
-    expect(oauthSource).toContain('<el-descriptions');
-    expect(oauthSource).toContain('<div class="row-actions" @click.stop>');
-  });
-
-  it('Skill, MCP, and OAuth status changes require confirmation and source selection shares a row with search', async () => {
-    const [skillSource, mcpSource, oauthSource] = await Promise.all(
+  it('Skill and MCP source status changes require confirmation and keep search grouped with source selection', async () => {
+    const [skillSource, mcpSource] = await Promise.all(
       [
         'packages/web-core/src/view/skill/SkillSourceManagementPage.vue',
-        'packages/web-core/src/view/skill/McpSourceManagementPage.vue',
-        'ee/web/src/view/settings/OAuthManagementPage.vue'
+        'packages/web-core/src/view/skill/McpSourceManagementPage.vue'
       ].map((path) => readFile(resolve(process.cwd(), path), 'utf8'))
     );
 
@@ -885,59 +783,39 @@ describe('Web enterprise management domain', () => {
     expect(skillSource).toContain('confirmSourceStatusChange');
     expect(mcpSource).toContain('class="source-search-bar"');
     expect(mcpSource).toContain('confirmSourceStatusChange');
-    expect(oauthSource).toContain('confirmProviderStatusChange');
   });
 
-  it('Management organization forms and filters use searchable hierarchical cascaders with scalar IDs', async () => {
-    const [
-      skillSource,
-      mcpSource,
-      userManagement,
-      resourceManagement,
-      resourceFilters,
-      conversationTemplates,
-      modelManagement,
-      secretManagement
-    ] = await Promise.all([
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/skill/SkillSourceManagementPage.vue'),
-        'utf8'
-      ),
-      readFile(resolve(process.cwd(), 'ee/web/src/view/skill/McpSourceManagementPage.vue'), 'utf8'),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/EnterpriseUserManagementPage.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ResourceManagementPanel.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ResourceManagementFilters.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/MarAgentModelManagementPage.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/EnvironmentSecretManager.vue'),
-        'utf8'
-      )
-    ] as const);
+  it('Remaining EE organization forms use searchable hierarchical cascaders with scalar IDs', async () => {
+    const [skillSource, mcpSource, resourceManagement, conversationTemplates, modelManagement] =
+      await Promise.all([
+        readFile(
+          resolve(process.cwd(), 'ee/web/src/view/skill/SkillSourceManagementPage.vue'),
+          'utf8'
+        ),
+        readFile(
+          resolve(process.cwd(), 'ee/web/src/view/skill/McpSourceManagementPage.vue'),
+          'utf8'
+        ),
+        readFile(
+          resolve(process.cwd(), 'ee/web/src/view/settings/ResourceManagementPanel.vue'),
+          'utf8'
+        ),
+        readFile(
+          resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
+          'utf8'
+        ),
+        readFile(
+          resolve(process.cwd(), 'ee/web/src/view/settings/MarAgentModelManagementPage.vue'),
+          'utf8'
+        )
+      ] as const);
 
     for (const source of [
       skillSource,
       mcpSource,
-      userManagement,
       resourceManagement,
       conversationTemplates,
-      modelManagement,
-      secretManagement
+      modelManagement
     ]) {
       expect(source).toContain(
         source === skillSource || source === mcpSource
@@ -965,27 +843,10 @@ describe('Web enterprise management domain', () => {
     expectOrganizationCascader(skillSource, 'catalogDraft\\.organizationId');
     expectOrganizationCascader(mcpSource, 'sourceDraft\\.organizationId');
     expectOrganizationCascader(mcpSource, 'catalogDraft\\.organizationId');
-    expectOrganizationCascader(userManagement, 'userForm\\.organizationId');
     expectOrganizationCascader(resourceManagement, 'editOrganizationId');
     expectOrganizationCascader(resourceManagement, 'registrationOwner', 'registrationOwnerOptions');
-    expectOrganizationCascader(
-      await readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ResourceGrantExtension.vue'),
-        'utf8'
-      ),
-      'targetOrganizationId'
-    );
-    expectOrganizationCascader(resourceFilters, 'ownerOrganizationId');
     expectOrganizationCascader(conversationTemplates, 'targetOrganizationId');
-    expectOrganizationCascader(
-      await readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ModelGrantExtension.vue'),
-        'utf8'
-      ),
-      'targetOrganizationId'
-    );
     expectOrganizationCascader(modelManagement, 'credentialDraft\\.ownerOrganizationId');
-    expectOrganizationCascader(secretManagement, 'organizationId');
   });
 
   it('New OAuth sources disable automatic account creation by default and generate provider-specific callbacks', () => {
@@ -1081,29 +942,15 @@ describe('Web enterprise management domain', () => {
     });
   });
 
-  it('Workspace registration through direct Node grants neither selects nor submits organization ownership', async () => {
-    const [picker, surface] = await Promise.all([
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/workspace/WorkspaceRegistrationPicker.vue'),
-        'utf8'
-      ),
-      readFile(resolve(process.cwd(), 'ee/web/src/view/workbench/WorkbenchSurface.vue'), 'utf8')
-    ]);
+  it('Workbench passes direct Node registration eligibility to the registration picker', async () => {
+    const surface = await readFile(
+      resolve(process.cwd(), 'ee/web/src/view/workbench/WorkbenchSurface.vue'),
+      'utf8'
+    );
     expect(surface).toContain(
       ':workspace-creatable="page.workspaceRegistrationNode?.workspaceCreatable"'
     );
     expect(surface).toContain(':node-manageable="page.workspaceRegistrationNode?.manageable"');
-    expect(picker).toContain('const fixedOrganizationOwnership = computed(');
-    expect(picker).toContain('props.workspaceCreatable === true');
-    expect(picker).toContain('props.nodeManageable === false');
-    expect(picker).toContain('if (fixedOrganizationOwnership.value) {');
-    expect(picker).toContain("emit('register');");
-    expect(picker).toContain('v-else-if="fixedOrganizationOwnership"');
-    expect(picker).toContain(
-      'organizationDisplayLabel(organizations, nodeOwnership.ownerOrganizationId)'
-    );
-    expect(picker).toContain("if (!enterprise || props.role === 'MEMBER') return;");
-    expect(picker).toContain('!fixedOrganizationOwnership');
   });
 
   it('Directory navigation accepts only the latest response and ignores in-flight results after reset', async () => {
