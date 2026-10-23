@@ -198,7 +198,7 @@ function runTime(run: RecentRun): string {
   right: calc(50% - 14px);
   min-width: 14px;
   border: 1px solid var(--mar-bg-panel);
-  border-radius: 9px;
+  border-radius: var(--mar-radius-marker);
   background: var(--mar-color-brand);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);
