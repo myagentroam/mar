@@ -137,12 +137,17 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           </div>
           <p>{{ prompt.prompt }}</p>
           <div class="prompt-actions">
-            <el-button :icon="EditPen" text :disabled="loading" @click="openEdit(prompt)">{{
-              translate('quickPrompts.edit')
-            }}</el-button>
+            <el-button
+              :icon="EditPen"
+              link
+              type="primary"
+              :disabled="loading"
+              @click="openEdit(prompt)"
+              >{{ translate('quickPrompts.edit') }}</el-button
+            >
             <el-button
               :icon="Delete"
-              text
+              link
               type="danger"
               :disabled="loading"
               @click="remove(prompt)"
@@ -195,7 +200,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 .quick-prompts-content {
   box-sizing: border-box;
   max-width: 960px;
-  padding: 14px 16px;
+  padding: 0.875rem 1rem;
 }
 
 .quick-prompts-content > header {
@@ -234,17 +239,8 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 }
 
 .prompt-empty {
-  display: flex;
-  min-height: 150px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.8rem;
-  border: 1px dashed var(--mar-border-medium);
-  border-radius: 6px;
-  background: var(--mar-fill-subtle);
+  padding: 0.75rem 0;
   color: var(--mar-text-secondary);
-  text-align: center;
 }
 
 .prompt-empty p {
@@ -253,14 +249,15 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 }
 
 .prompt-list {
-  display: grid;
-  gap: 0.55rem;
+  border-top: 1px solid var(--mar-border-subtle);
 }
 
 .prompt-item {
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 6px;
-  padding: 0.7rem 0.8rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  padding: 0.75rem 0;
 }
 
 .prompt-heading,
@@ -271,32 +268,44 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 }
 
 .prompt-heading code {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
+  font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .prompt-item p {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
   display: -webkit-box;
-  margin: 0.4rem 0 0.55rem;
+  margin: 0;
   overflow: hidden;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
+  line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .prompt-actions {
-  justify-content: flex-end;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  gap: 0.625rem;
+  white-space: nowrap;
 }
-@media (max-width: 767px) {
-  .quick-prompts-content > header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .quick-prompts-content > header :deep(.el-button) {
-    align-self: flex-start;
-    min-height: 36px;
-  }
+
+.prompt-actions :deep(.el-button) {
+  min-height: var(--mar-compact-control-size);
+  padding-inline: 2px;
+  font-size: var(--mar-font-size-body);
+}
+
+.prompt-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 </style>

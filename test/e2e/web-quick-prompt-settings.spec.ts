@@ -37,6 +37,90 @@ async function edit(page: Page, phrase: string) {
   return dialog;
 }
 
+for (const viewport of [
+  { width: 1440, height: 900, theme: 'vscode-dark-2026' },
+  { width: 390, height: 844, theme: 'daylight' }
+]) {
+  test(`Quick prompt settings keep compact rows and reachable actions at ${viewport.width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: viewport.height });
+    await prepare(page);
+    await page.addInitScript((theme) => localStorage.setItem('mar.theme', theme), viewport.theme);
+    const longBody = 'Review this prompt without losing any content.\n'.repeat(20);
+    const prompts = [
+      { id: 'short', phrase: 'review', prompt: 'Review and fix related issues.', updatedAt: 1 },
+      { id: 'long', phrase: 'long'.repeat(20), prompt: longBody, updatedAt: 2 }
+    ];
+    const writes: string[] = [];
+    await page.route('**/api/quick-prompts**', (route) => {
+      if (route.request().method() !== 'GET') writes.push(route.request().method());
+      return json(route, { prompts });
+    });
+    await openSettings(page);
+    await page.setViewportSize(viewport);
+    const rows = page.locator('.prompt-item');
+    await expect(rows).toHaveCount(2);
+    const editAction = rows.first().getByRole('button', { name: 'Edit', exact: true });
+    const deleteAction = rows.first().getByRole('button', { name: 'Delete', exact: true });
+    await expect(editAction).toHaveClass(/el-button--primary/);
+    await expect(deleteAction).toHaveClass(/el-button--danger/);
+    expect(
+      await deleteAction.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return (
+          style.getPropertyValue('--el-button-text-color').trim() ===
+          style.getPropertyValue('--el-color-danger').trim()
+        );
+      })
+    ).toBe(true);
+    const geometry = await rows.first().evaluate((row) => {
+      const heading = row.querySelector('.prompt-heading')!.getBoundingClientRect();
+      const actions = row.querySelector('.prompt-actions')!.getBoundingClientRect();
+      const body = row.querySelector('p')!.getBoundingClientRect();
+      const style = getComputedStyle(row);
+      return {
+        height: row.getBoundingClientRect().height,
+        headingTop: heading.top,
+        actionsTop: actions.top,
+        headingRight: heading.right,
+        actionsLeft: actions.left,
+        bodyTop: body.top,
+        borderLeft: style.borderLeftWidth,
+        borderRadius: style.borderRadius
+      };
+    });
+    expect(geometry.height).toBeLessThan(100);
+    expect(Math.abs(geometry.headingTop - geometry.actionsTop)).toBeLessThan(4);
+    expect(geometry.headingRight).toBeLessThanOrEqual(geometry.actionsLeft);
+    expect(geometry.actionsTop).toBeLessThan(geometry.bodyTop);
+    expect(geometry.borderLeft).toBe('0px');
+    expect(geometry.borderRadius).toBe('0px');
+    for (const row of await rows.all()) {
+      expect(await row.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true
+      );
+      await expect(row.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+      await expect(row.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
+    }
+    await page.screenshot({
+      path: testInfo.outputPath('quick-prompts.png'),
+      animations: 'disabled'
+    });
+    const editButton = rows.last().getByRole('button', { name: 'Edit', exact: true });
+    await editButton.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog').getByRole('textbox', { name: /Prompt$/ })).toHaveValue(
+      longBody
+    );
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+    await rows.first().getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('#review');
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(writes).toEqual([]);
+  });
+}
+
 test('Quick prompt settings create, edit, and retain failed drafts for retry', async ({ page }) => {
   await prepare(page);
   const prompts: { id: string; phrase: string; prompt: string; updatedAt: number }[] = [];
