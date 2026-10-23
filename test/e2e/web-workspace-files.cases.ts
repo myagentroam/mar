@@ -681,9 +681,17 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('treeitem', { name: 'main.ts', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
-  const sourcePreview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
+  const filePage = (name: string) =>
+    page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name, exact: true })
+    });
+  const sourcePreview = filePage('main.ts');
+  await expect(sourcePreview.getByRole('heading')).toHaveAttribute(
+    'aria-description',
+    'src/main.ts'
+  );
   const callSite = sourcePreview.locator('.cm-line').filter({ hasText: 'target();' });
   await expect(callSite).toBeVisible();
   await page.keyboard.down('Control');
@@ -734,7 +742,7 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
 
   await callSite.click({ position: { x: 16, y: 10 }, modifiers: ['Control'] });
   await navigation.getByRole('option').filter({ hasText: 'src/definition.ts' }).click();
-  const definitionPreview = page.getByRole('dialog', { name: 'src/definition.ts 文件预览' });
+  const definitionPreview = filePage('definition.ts');
   await expect(definitionPreview.locator('.cm-content')).toContainText(
     'export function target() { return 7; }'
   );
@@ -812,7 +820,7 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
   await expect
     .poll(() => requestsForSpecifier('./definition.js'))
     .toHaveLength(relativeRequestBaseline + 1);
-  const relativePreview = page.getByRole('dialog', { name: 'src/definition.ts 文件预览' });
+  const relativePreview = filePage('definition.ts');
   await expect(relativePreview.locator('.cm-content')).toContainText(
     'export function target() { return 7; }'
   );
@@ -826,9 +834,11 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
   await expect
     .poll(() => requestsForSpecifier('@myagentroam/web-core/management'))
     .toHaveLength(packageRequestBaseline + 1);
-  const packagePreview = page.getByRole('dialog', {
-    name: 'packages/web-core/src/management.ts 文件预览'
-  });
+  const packagePreview = filePage('management.ts');
+  await expect(packagePreview.getByRole('heading')).toHaveAttribute(
+    'aria-description',
+    'packages/web-core/src/management.ts'
+  );
   await expect(packagePreview.locator('.cm-content')).toContainText(
     'export const management = true;'
   );
@@ -981,8 +991,11 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   let contentSearchUrl: URL | undefined;
-  await page.route(/\/api\/workspaces\/workspace-1\/content\/search(?:\?.*)?$/, (route) => {
+  let searchGate: Promise<void> | undefined;
+  let releaseSearch: (() => void) | undefined;
+  await page.route(/\/api\/workspaces\/workspace-1\/content\/search(?:\?.*)?$/, async (route) => {
     contentSearchUrl = new URL(route.request().url());
+    await searchGate;
     return json(route, {
       search: {
         matches: [{ path: 'src/main.ts', line: 2, column: 7, preview: 'const 中文内容 = true;' }],
@@ -1032,15 +1045,34 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   await search.fill('中文内容');
   await search.press('Enter');
   await expect.poll(() => contentSearchUrl?.searchParams.get('regex')).toBe('true');
-  await expect(page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ })).toBeVisible();
-  const searchResult = page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ });
+  const searchResult = page
+    .locator('.content-search-results')
+    .getByRole('button', { name: 'src/main.ts', exact: true });
+  await expect(searchResult).toBeVisible();
+  await expect(searchResult.locator('small')).toHaveText('第 2 行');
+  await expect(searchResult.locator('code')).toHaveText('const 中文内容 = true;');
+  await expect(searchResult.locator('code mark')).toHaveCount(0);
+  await page.locator('.content-search-options .el-checkbox').click();
+  searchGate = new Promise((resolve) => {
+    releaseSearch = resolve;
+  });
+  await search.press('Enter');
+  await expect.poll(() => contentSearchUrl?.searchParams.get('regex')).toBeNull();
+  // Changing the draft cannot reinterpret the in-flight plain-text result.
+  await page.locator('.content-search-options .el-checkbox').click();
+  await expect(regex).toBeChecked();
+  releaseSearch!();
+  await expect(searchResult.locator('code mark')).toHaveText('中文内容');
   await searchResult.hover();
   await expect(searchResult).toHaveCSS('border-radius', '6px');
   await searchResult.focus();
   await expect(searchResult).toHaveCSS('border-radius', '6px');
-  await page.getByRole('button', { name: /src\/main\.ts.*第 2 行/ }).click();
-  const preview = page.getByRole('dialog', { name: 'main.ts 文件预览' });
+  await searchResult.click();
+  const preview = page
+    .getByRole('dialog')
+    .filter({ has: page.getByRole('heading', { name: 'main.ts', exact: true }) });
   await expect(preview).toBeVisible();
+  await expect(preview.getByRole('heading')).toHaveAttribute('aria-description', 'src/main.ts');
   await expect(preview.locator('.cm-content')).toContainText('export {}');
   await expect(preview.locator('.cm-activeLine')).toContainText('const 中文内容 = true;');
 });

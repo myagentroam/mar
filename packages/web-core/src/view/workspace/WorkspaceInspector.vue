@@ -2,18 +2,17 @@
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessageBox } from 'element-plus';
+import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
+import type {
+  FileNavigationRequest,
+  WorkspaceNavigationTarget as NavigationTarget
+} from '../../model/workspace-navigation.js';
+import { createWorkspaceCodeNavigationService } from '../../service/WorkspaceCodeNavigationService.js';
 import {
-  isComposerAttachmentResourcePath,
-  publicErrorSchema,
-  workspaceGitTrackingSchema,
-  workspaceSymbolDefinitionSchema,
-  workspaceSymbolIndexPreparationSchema,
-  type PublicError,
-  type WorkspaceGitTracking
-} from '@myagentroam/protocol';
-import type { FileNavigationRequest } from './CodeFileEditor.vue';
+  createWorkspaceContentSearchService,
+  type WorkspaceContentMatch as ContentMatch
+} from '../../service/WorkspaceContentSearchService.js';
 import {
   computed,
   nextTick,
@@ -44,30 +43,42 @@ import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import type { DirtyTextDraft } from './WorkspaceTextFilePage.vue';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import WorkspaceGitDiffPage from './WorkspaceGitDiffPage.vue';
+import WorkspaceGitChanges from './WorkspaceGitChanges.vue';
+import WorkspaceGitHistory from './WorkspaceGitHistory.vue';
+import {
+  createWorkspaceGitService,
+  type WorkspaceGitSnapshot
+} from '../../service/WorkspaceGitService.js';
+import {
+  createWorkspaceFileOperationService,
+  filePageWorkspace,
+  isFilePage,
+  type WorkspaceFileOperationTarget
+} from '../../service/WorkspaceFileOperationService.js';
+import type { ChangeEntry, HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
+import { workspaceChangePath, changeFileName } from '../../util/workspace-git.js';
 import { loadToolChangeDiff } from '../../service/ToolChangeReviewService.js';
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { createTrailingTask } from '../../util/trailing-task.js';
-import { currentChangesBranch, fileSizeLabel } from '../../util/file-presentation.js';
+import { fileSizeLabel } from '../../util/file-presentation.js';
 import { errorMessage, filePreviewErrorMessage } from '../../util/error-presentation.js';
 import { ApiError, errorCode } from '../../util/api-error.js';
 import {
-  binaryFilePreviewKind,
-  decodeFilePreviewText,
   filePreviewKind,
   isHtmlFile,
   isMarkdownFile,
   shouldReadTextFilePreview,
-  TEXT_FILE_PREVIEW_LIMIT_BYTES,
-  type FilePreviewKind,
-  usesRawFilePreview
+  type FilePreviewKind
 } from '../../util/file-preview.js';
 import {
-  revokeWorkspaceDirectObjectUrl,
-  triggerBrowserFileDownload
-} from '../../service/WorkspaceDirectObjectUrlService.js';
-import { directFileContentRevision } from '../../service/WorkspaceDirectFileReadService.js';
-import { readFilePreview, readFilePreviewObject } from '../../service/FilePreviewReadService.js';
+  createWorkspaceFilePreviewService,
+  workspaceFilePreviewUrl
+} from '../../service/WorkspaceFilePreviewService.js';
+import type {
+  WorkspaceFilePreviewContent,
+  WorkspaceFilePreviewTarget
+} from '../../model/workspace-file-preview.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { createStandaloneFileWindowService } from '../../service/StandaloneFileWindowService.js';
 import type {
@@ -75,12 +86,6 @@ import type {
   WorkspaceFileTab,
   WorkspaceFileTabsSnapshot
 } from '../../util/workspace-file-tab.js';
-import {
-  buildGitHistoryGraph,
-  gitGraphNodeX,
-  gitGraphWidth
-} from '../../util/git-history-graph.js';
-
 type FileEntry = WorkspaceFileTreeEntry;
 
 interface PendingUpload {
@@ -93,88 +98,22 @@ interface PendingUpload {
 
 type InspectorSection = 'files' | 'search' | 'changes' | 'history';
 
-interface ContentMatch {
-  readonly path: string;
-  readonly line: number;
-  readonly column: number;
-  readonly preview: string;
-}
-interface NavigationTarget {
-  readonly source: 'DEFINITION' | 'REFERENCE' | 'FILE';
-  readonly path: string;
-  readonly line: number;
-  readonly column?: number | undefined;
-  readonly kind?: string | undefined;
-  readonly scope?: string | undefined;
-  readonly preview?: string | undefined;
-}
-
-interface FilePreviewContent {
-  readonly path: string;
-  readonly size?: number;
-  readonly encoding: 'utf-8' | 'base64';
-  readonly content: string;
-  readonly truncated: boolean;
-  readonly revision?: string;
-}
-
-interface PreviewFrame {
-  repositoryPath?: string | undefined;
+type FilePreviewContent = WorkspaceFilePreviewContent;
+interface PreviewFrame extends ReturnType<
+  ReturnType<typeof createWorkspaceFilePreviewService>['page']
+> {
   readonly id: number;
-  readonly fileContent: Ref<FilePreviewContent | undefined>;
-  readonly contentUrl: Ref<string | undefined>;
-  readonly worktreePath: Ref<string | undefined>;
-  readonly loading: Ref<boolean>;
+  readonly repositoryPath: string | undefined;
+  readonly worktreePath: Readonly<Ref<string | undefined>>;
+  readonly historySource: WorkspaceFilePreviewTarget['history'];
   readonly targetLine: Ref<number | undefined>;
   readonly targetColumn: Ref<number | undefined>;
-  readonly navigationLoading: Ref<boolean>;
-  readonly navigationTargets: Ref<readonly NavigationTarget[]>;
-  readonly navigationNoDefinition: Ref<boolean>;
-  readonly downloading: Ref<boolean>;
-  historySource:
-    | {
-        readonly commit: string;
-        readonly repositoryPath: string;
-        readonly refs: readonly string[];
-      }
-    | undefined;
-  directIdentity: { readonly revision: string; readonly size: number } | undefined;
-  directReadStarted: boolean;
-  textDecoder: TextDecoder;
-  requestGeneration: number;
+  readonly navigationLoading: Readonly<Ref<boolean>>;
+  readonly navigationTargets: Readonly<Ref<readonly NavigationTarget[]>>;
+  readonly navigationNoDefinition: Readonly<Ref<boolean>>;
 }
 interface LoadedPreviewFrame extends PreviewFrame {
-  readonly fileContent: Ref<FilePreviewContent>;
-}
-
-interface HistoryRef {
-  readonly name: string;
-  readonly displayName: string;
-  readonly kind: 'LOCAL' | 'REMOTE';
-  readonly hash: string;
-  readonly current: boolean;
-}
-
-interface HistoryCommit {
-  readonly hash: string;
-  readonly parents: readonly string[];
-  readonly subject: string;
-  readonly authorName: string;
-  readonly authorEmail: string;
-  readonly committedAt: number;
-  readonly refs: readonly string[];
-}
-
-interface HistoryFile {
-  readonly path: string;
-  readonly previousPath?: string;
-  readonly change: string;
-}
-
-interface HistoryContextMenu {
-  readonly commit: HistoryCommit;
-  readonly x: number;
-  readonly y: number;
+  readonly fileContent: Readonly<Ref<FilePreviewContent>>;
 }
 
 const props = defineProps<{
@@ -396,152 +335,107 @@ const activeDiffTab = computed(() => {
   const tab = workspaceFileTabService.activeTab.value;
   return tab?.kind === 'WORKTREE_DIFF' || tab?.kind === 'HISTORY_DIFF' ? tab : undefined;
 });
-const fileContent = computed({
-  get: () => activePreview.value?.fileContent.value,
-  set: (value: FilePreviewContent | undefined) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.fileContent.value = value;
+const fileContent = computed(() => activePreview.value?.fileContent.value);
+const previewWorktreePath = computed(() => activePreview.value?.worktreePath.value);
+const previewTargetLine = computed(() => activePreview.value?.targetLine.value);
+const filePreviews = createWorkspaceFilePreviewService({
+  http,
+  transfers: () => ({
+    directFileReadRange: props.directFileReadRange,
+    directFileObjectUrl: props.directFileObjectUrl,
+    directFileDownload: props.directFileDownload,
+    directGitFileReadRange: props.directGitFileReadRange,
+    directGitFileObjectUrl: props.directGitFileObjectUrl,
+    directGitFileDownload: props.directGitFileDownload
+  }),
+  onFailure: (error, target) =>
+    markFailure(
+      error,
+      translate('generated.workspaceInspector.files'),
+      filePreviewErrorMessage(error, target.path)
+    ),
+  onWritten: (target) => {
+    if (
+      inspectorDisposed ||
+      target.nodeId !== props.nodeId ||
+      target.workspaceId !== props.workspaceId
+    )
+      return;
+    void refreshFileTree();
+    if (props.workspaceKind === 'GIT_WORKSPACE') void loadChanges();
   }
 });
-const previewContentUrl = computed({
-  get: () => activePreview.value?.contentUrl.value,
-  set: (value: string | undefined) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.contentUrl.value = value;
-  }
+const git = createWorkspaceGitService({
+  http,
+  target: fileOperationTarget,
+  gitEnabled: () => props.workspaceKind === 'GIT_WORKSPACE',
+  historyEnabled: () => historyAvailable.value,
+  onWorkspace: (workspace) => emit('workspace', workspace),
+  onBranch: (workspaceId, branch) => emit('branch', workspaceId, branch),
+  onFailure: (error, operation) =>
+    markFailure(
+      error,
+      translate(
+        {
+          CHANGES: 'generated.workspaceInspector.gitChanges',
+          HISTORY: 'generated.workspaceInspector.gitHistory',
+          FILES: 'generated.workspaceInspector.commitFiles',
+          RESTORE: 'generated.workspaceInspector.revertingChanges'
+        }[operation]
+      )
+    )
 });
-const previewWorktreePath = computed({
-  get: () => activePreview.value?.worktreePath.value,
-  set: (value: string | undefined) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.worktreePath.value = value;
-  }
-});
-const previewLoading = computed({
-  get: () => activePreview.value?.loading.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.loading.value = value;
-  }
-});
-const previewTargetLine = computed({
-  get: () => activePreview.value?.targetLine.value,
-  set: (value: number | undefined) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.targetLine.value = value;
-  }
-});
-const navigationLoading = computed({
-  get: () => activePreview.value?.navigationLoading.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationLoading.value = value;
-  }
-});
-const navigationTargets = computed({
-  get: () => activePreview.value?.navigationTargets.value ?? [],
-  set: (value: readonly NavigationTarget[]) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationTargets.value = value;
-  }
-});
-const navigationNoDefinition = computed({
-  get: () => activePreview.value?.navigationNoDefinition.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationNoDefinition.value = value;
-  }
-});
-const downloading = computed({
-  get: () => activePreview.value?.downloading.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.downloading.value = value;
-  }
-});
-const changes = ref<unknown>();
-const restoringPath = ref<string>();
+const changes = git.changes;
 const unavailable = ref(false);
 const filesRefreshing = ref(false);
-const changesRefreshing = ref(false);
 const filesBusy = computed(() => filesRefreshing.value);
 const activeSection = ref<InspectorSection>('files');
 const fileDisplayFilter = ref('');
 const contentQuery = ref('');
-const contentAppliedQuery = ref('');
 const contentUseRegex = ref(false);
-const contentAppliedUseRegex = ref(false);
-const contentMatches = ref<ContentMatch[]>([]);
-const contentSearchLoading = ref(false);
-const contentSearchTruncated = ref(false);
-const contentSearchInput = ref<HTMLInputElement>();
-let contentSearchGeneration = 0;
-const historyRepositoryPath = ref('');
-const historyRefs = ref<HistoryRef[]>([]);
-const selectedHistoryRefs = ref<string[]>([]);
-const historyCommits = ref<HistoryCommit[]>([]);
-const historyGraphRows = computed(() => {
-  const rows = buildGitHistoryGraph(historyCommits.value);
-  return historyCommits.value.map((commit, index) => ({ commit, graph: rows[index]! }));
+const contentSearch = createWorkspaceContentSearchService({
+  http,
+  onFailure: (error) => markFailure(error, translate('generated.workspaceInspector.contentSearch'))
 });
-const historyNextCursor = ref<string | null>(null);
-const historyLoading = ref(false);
-const historyFilesLoading = ref<string>();
-const expandedHistoryCommits = ref<string[]>([]);
-const expandedHistoryDirectories = ref<Record<string, readonly string[]>>({});
-const historyFiles = ref<Record<string, readonly HistoryFile[]>>({});
-const historyContextMenu = ref<HistoryContextMenu>();
+const contentAppliedQuery = contentSearch.appliedQuery;
+const contentAppliedUseRegex = contentSearch.appliedUseRegex;
+const contentMatches = contentSearch.matches;
+const contentSearchLoading = contentSearch.loading;
+const contentSearchTruncated = contentSearch.truncated;
+const contentSearchInput = ref<HTMLInputElement>();
+const codeNavigation = createWorkspaceCodeNavigationService({
+  http,
+  onFailure: (error) => markFailure(error, translate('fileEditor.definitions')),
+  onFileTarget: (target, pageId) => {
+    const preview = filePageFrames.value.find((candidate) => candidate.id === pageId);
+    if (preview !== undefined) openNavigationTarget(target, preview);
+  }
+});
+const historyRepositoryPath = git.historyRepositoryPath;
+const selectedHistoryRefs = git.selectedHistoryRefs;
+const historyCommits = git.historyCommits;
+const historyNextCursor = git.historyNextCursor;
 const uploadInput = ref<HTMLInputElement>();
 const fileTreeView = ref<{ reveal(path: string, current?: () => boolean): Promise<void> }>();
 const uploadDialogOpen = ref(false);
 const pendingUploads = ref<PendingUpload[]>([]);
 const pendingUploadDirectory = ref('.');
 const preparingUploads = ref(false);
+let uploadGeneration = 0;
 let inspectorGeneration = 0;
-let filePreviewRequestGeneration = 0;
-let codeNavigationRequestGeneration = 0;
-let nextPreviewFrameId = 0;
+let inspectorDisposed = false;
 let appliedFilesWatchRevision = -1;
-let appliedChangesWatchRevision = -1;
-const visibleChanges = computed(() => changeEntries(changes.value));
-const visibleChangeRepositories = computed(() => changeRepositories(changes.value));
-const changeDiscoveryErrors = computed(() => {
-  const value = changes.value as { readonly errors?: unknown } | undefined;
-  return Array.isArray(value?.errors)
-    ? value.errors.flatMap((error: unknown) => {
-        const parsed = publicErrorSchema.safeParse(error);
-        return parsed.success ? [parsed.data] : [];
-      })
-    : [];
-});
-const visibleGitWorktrees = computed(() =>
-  hasExplicitChangeRepositoryGroups(changes.value) ? [] : changeWorktrees(changes.value)
-);
-const gitWorktreesTruncated = computed(() => changeWorktreesTruncated(changes.value));
+const visibleChanges = git.visibleChanges;
 const diffFiles = computed(() => visibleChanges.value.filter((entry) => entry.diffAvailable));
 const historyAvailable = computed(
   () => props.workspaceKind === 'GIT_WORKSPACE' && props.historyCapability === true
 );
-const historyRepositories = computed(() =>
-  visibleChangeRepositories.value
-    .filter((repository) => repository.source !== 'WORKTREE' && repository.status !== 'UNAVAILABLE')
-    .map((repository) => ({
-      value: repository.repositoryPath === '' ? '__ROOT_REPOSITORY__' : repository.repositoryPath,
-      label: repository.repositoryName
-    }))
-);
 const previewFileWriteEnabled = (preview: PreviewFrame): boolean =>
   props.fileWriteEnabled &&
+  preview.historySource === undefined &&
   preview.worktreePath.value === undefined &&
   preview.repositoryPath === undefined &&
   !isComposerAttachmentResourcePath(preview.fileContent.value?.path ?? '');
-const historyRepositorySelection = computed({
-  get: () =>
-    historyRepositoryPath.value === '' ? '__ROOT_REPOSITORY__' : historyRepositoryPath.value,
-  set: (value: string) => {
-    historyRepositoryPath.value = value === '__ROOT_REPOSITORY__' ? '' : value;
-  }
-});
 const previewKind = computed<FilePreviewKind>(() => {
   if (fileContent.value === undefined) return 'unsupported';
   return filePreviewKind(fileContent.value.path, fileContent.value.encoding);
@@ -553,23 +447,21 @@ function previewKindFor(preview: PreviewFrame): FilePreviewKind {
 }
 
 function createPreviewFrame(id: number): PreviewFrame {
+  const page = filePreviews.page(id);
+  const navigation = codeNavigation.page(id);
   return {
+    ...page,
     id,
-    fileContent: ref<FilePreviewContent>(),
-    contentUrl: ref<string>(),
-    worktreePath: ref<string>(),
-    loading: ref(false),
+    get repositoryPath() {
+      return page.target.value?.repositoryPath;
+    },
+    worktreePath: computed(() => page.target.value?.worktreePath),
+    get historySource() {
+      return page.target.value?.history;
+    },
     targetLine: ref<number>(),
     targetColumn: ref<number>(),
-    navigationLoading: ref(false),
-    navigationTargets: ref<readonly NavigationTarget[]>([]),
-    navigationNoDefinition: ref(false),
-    downloading: ref(false),
-    historySource: undefined,
-    directIdentity: undefined,
-    directReadStarted: false,
-    textDecoder: new TextDecoder('utf-8', { fatal: true }),
-    requestGeneration: 0
+    ...navigation
   };
 }
 
@@ -584,75 +476,21 @@ const fileTree = createWorkspaceFileTreeService({
   list: listTreeDirectory
 });
 
-function queryUrl(
-  pathname: string,
-  values: Record<string, string | undefined>,
-  nodeId = props.nodeId ?? ''
-): string {
-  const parameters = new URLSearchParams({ nodeId });
-  for (const [key, value] of Object.entries(values))
-    if (value !== undefined) parameters.set(key, value);
-  return `${pathname}?${parameters.toString()}`;
-}
-
-async function get(pathname: string): Promise<unknown> {
-  return http.request(pathname);
-}
-
 async function searchContent(): Promise<void> {
-  const value = contentQuery.value;
-  if (!props.contentSearchEnabled || base.value === undefined || value === '') return;
-  const generation = ++contentSearchGeneration;
-  contentSearchLoading.value = true;
-  try {
-    const result = await get(
-      queryUrl(`${base.value}/content/search`, {
-        q: value,
-        ...(contentUseRegex.value ? { regex: 'true' } : {})
-      })
-    );
-    if (generation !== contentSearchGeneration) return;
-    const search = (result as { search?: unknown }).search;
-    if (!isContentSearch(search)) throw new Error('NODE_RESPONSE_INVALID');
-    contentMatches.value = [...search.matches];
-    contentSearchTruncated.value = search.truncated;
-    contentAppliedQuery.value = value;
-    contentAppliedUseRegex.value = contentUseRegex.value;
-  } catch (error) {
-    if (generation === contentSearchGeneration)
-      markFailure(error, translate('generated.workspaceInspector.contentSearch'));
-  } finally {
-    if (generation === contentSearchGeneration) contentSearchLoading.value = false;
-  }
+  if (!props.contentSearchEnabled || props.nodeId === undefined || props.workspaceId === undefined)
+    return;
+  await contentSearch.search({
+    nodeId: props.nodeId,
+    workspaceId: props.workspaceId,
+    query: contentQuery.value,
+    useRegex: contentUseRegex.value
+  });
 }
 
 function openSearch(): void {
   if (!props.contentSearchEnabled) return;
   activeSection.value = 'search';
   void nextTick(() => contentSearchInput.value?.focus());
-}
-
-function isContentSearch(value: unknown): value is {
-  readonly matches: readonly ContentMatch[];
-  readonly truncated: boolean;
-} {
-  if (typeof value !== 'object' || value === null) return false;
-  const search = value as { matches?: unknown; truncated?: unknown };
-  return (
-    Array.isArray(search.matches) &&
-    search.matches.every(
-      (match) =>
-        typeof match === 'object' &&
-        match !== null &&
-        typeof (match as ContentMatch).path === 'string' &&
-        Number.isInteger((match as ContentMatch).line) &&
-        (match as ContentMatch).line > 0 &&
-        Number.isInteger((match as ContentMatch).column) &&
-        (match as ContentMatch).column > 0 &&
-        typeof (match as ContentMatch).preview === 'string'
-    ) &&
-    typeof search.truncated === 'boolean'
-  );
 }
 
 function contentMatchFragments(
@@ -669,13 +507,6 @@ function contentMatchFragments(
   ].filter((fragment) => fragment.text !== '');
 }
 
-async function post(pathname: string, body: unknown): Promise<unknown> {
-  return http.request(pathname, {
-    method: 'POST',
-    body: JSON.stringify(body)
-  });
-}
-
 function chooseUploadFiles(): void {
   uploadInput.value?.click();
 }
@@ -684,40 +515,32 @@ async function prepareUploads(
   files: Iterable<File>,
   directory = fileTree.uploadDirectory()
 ): Promise<void> {
-  if (!ready.value || base.value === undefined) return;
+  const target = fileOperationTarget();
+  if (target === undefined) return;
   const selected = [...files];
   if (selected.length === 0) return;
+  const generation = ++uploadGeneration;
   preparingUploads.value = true;
   try {
-    const result = await post(`${base.value}/uploads/preflight`, {
-      nodeId: props.nodeId,
+    const uploads = await fileOperations.preflight(
+      target,
       directory,
-      files: selected.map((file) => ({ name: file.name }))
-    });
-    const uploads = (result as { uploads?: unknown }).uploads;
-    if (!Array.isArray(uploads)) throw new Error('NODE_RESPONSE_INVALID');
-    pendingUploads.value = selected.map((file, index) => {
-      const value = uploads[index] as { status?: unknown; path?: unknown } | undefined;
-      const status =
-        value?.status === 'READY' ||
-        value?.status === 'EXISTS_FILE' ||
-        value?.status === 'EXISTS_DIRECTORY'
-          ? value.status
-          : 'INVALID_NAME';
-      return {
-        id: crypto.randomUUID(),
-        file,
-        status,
-        path: typeof value?.path === 'string' ? value.path : null,
-        overwrite: false
-      };
-    });
+      selected.map((file) => file.name)
+    );
+    if (generation !== uploadGeneration) return;
+    pendingUploads.value = selected.map((file, index) => ({
+      ...uploads[index]!,
+      id: crypto.randomUUID(),
+      file,
+      overwrite: false
+    }));
     pendingUploadDirectory.value = directory;
     uploadDialogOpen.value = true;
   } catch (error) {
-    markFailure(error, translate('generated.workspaceInspector.uploadPreflight'));
+    if (generation === uploadGeneration)
+      markFailure(error, translate('generated.workspaceInspector.uploadPreflight'));
   } finally {
-    preparingUploads.value = false;
+    if (generation === uploadGeneration) preparingUploads.value = false;
   }
 }
 
@@ -758,54 +581,11 @@ function confirmUploads(): void {
   pendingUploads.value = [];
 }
 
-function isFilePage(
-  value: unknown
-): value is { readonly files: WorkspaceFileTreePage; readonly workspace?: unknown } {
-  if (typeof value !== 'object' || value === null || !('files' in value)) return false;
-  const files = (value as { readonly files?: unknown }).files;
-  return (
-    typeof files === 'object' &&
-    files !== null &&
-    Array.isArray((files as { readonly entries?: unknown }).entries) &&
-    ((files as { readonly nextCursor?: unknown }).nextCursor === null ||
-      typeof (files as { readonly nextCursor?: unknown }).nextCursor === 'string')
-  );
-}
-
-function filePageWorkspace(value: unknown): WorkspaceFileTreeWorkspace | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const workspace = value as {
-    readonly id?: unknown;
-    readonly path?: unknown;
-    readonly kind?: unknown;
-    readonly gitSummary?: unknown;
-  };
-  if (
-    typeof workspace.id !== 'string' ||
-    typeof workspace.path !== 'string' ||
-    (workspace.kind !== 'DIRECTORY' && workspace.kind !== 'GIT_WORKSPACE')
-  )
-    return undefined;
-  const branch =
-    typeof workspace.gitSummary === 'object' &&
-    workspace.gitSummary !== null &&
-    'branch' in workspace.gitSummary &&
-    (typeof workspace.gitSummary.branch === 'string' || workspace.gitSummary.branch === null)
-      ? workspace.gitSummary.branch
-      : undefined;
-  return {
-    id: workspace.id,
-    path: workspace.path,
-    kind: workspace.kind,
-    ...(branch === undefined ? {} : { gitSummary: { branch } })
-  };
-}
-
 function markFailure(error: unknown, action: string, summary?: string): void {
   const code = errorCode(error);
   if (code === 'CAPABILITY_UNAVAILABLE') {
     unavailable.value = true;
-    changes.value = undefined;
+    git.reset(true);
     return;
   }
   emit(
@@ -818,18 +598,17 @@ function markFailure(error: unknown, action: string, summary?: string): void {
 }
 
 async function listTreeDirectory(path: string, cursor?: string): Promise<WorkspaceFileTreePage> {
-  if (!ready.value || base.value === undefined) throw new Error('FILE_TREE_NOT_READY');
+  if (inspectorDisposed || !ready.value || base.value === undefined)
+    throw new Error('FILE_TREE_NOT_READY');
   const generation = inspectorGeneration;
   const requestBase = base.value;
   const requestNodeId = props.nodeId ?? '';
   try {
-    const result = await get(queryUrl(`${requestBase}/files`, { path, cursor }, requestNodeId));
-    if (!isFilePage(result)) throw new Error('NODE_RESPONSE_INVALID');
-    const workspace = filePageWorkspace(result.workspace);
-    return {
-      ...result.files,
-      ...(workspace === undefined ? {} : { workspace })
-    };
+    return await fileOperations.list(
+      { nodeId: requestNodeId, workspaceId: props.workspaceId ?? '' },
+      path,
+      cursor
+    );
   } catch (error) {
     if (
       generation === inspectorGeneration &&
@@ -842,6 +621,7 @@ async function listTreeDirectory(path: string, cursor?: string): Promise<Workspa
 }
 
 async function refreshFileTree(): Promise<void> {
+  if (inspectorDisposed) return;
   const page = await fileTree.refresh();
   if (page?.workspace !== undefined) emit('workspace', page.workspace);
 }
@@ -867,7 +647,6 @@ async function open(
 ): Promise<void> {
   if (entry.kind === 'DIRECTORY') return;
   if (!ready.value || base.value === undefined) return;
-  const generation = inspectorGeneration;
   const textPreview = shouldReadTextFilePreview(entry.path);
   const tab = workspaceFileTabService.open({
     kind: textPreview ? 'WORKTREE_TEXT' : 'WORKTREE_PREVIEW',
@@ -889,131 +668,32 @@ async function open(
     if (!filePageFrames.value.includes(preview))
       filePageFrames.value = [...filePageFrames.value, preview];
   }
-  const requestGeneration = ++filePreviewRequestGeneration;
-  preview.requestGeneration = requestGeneration;
-  const requestBase = base.value;
-  const requestNodeId = props.nodeId ?? '';
+  codeNavigation.clear(preview.id);
   preview.targetLine.value = targetLine;
   preview.targetColumn.value = targetColumn;
-  preview.worktreePath.value = worktreePath;
-  preview.repositoryPath = repositoryPath;
-  preview.historySource = undefined;
-  preview.directIdentity = undefined;
-  preview.directReadStarted = false;
-  preview.textDecoder = new TextDecoder('utf-8', { fatal: true });
-  revokePreviewObjectUrl(preview);
-  preview.fileContent.value = {
+  const target = {
+    nodeId: props.nodeId ?? '',
+    workspaceId: props.workspaceId ?? '',
     path: entry.path,
-    ...(entry.size === null ? {} : { size: entry.size }),
-    encoding: textPreview ? 'utf-8' : 'base64',
-    content: '',
-    truncated: false
+    ...(worktreePath === undefined ? {} : { worktreePath }),
+    ...(repositoryPath === undefined ? {} : { repositoryPath })
   };
-  preview.contentUrl.value = undefined;
-  preview.loading.value = true;
-  await nextTick();
-  try {
-    if (generation !== inspectorGeneration || requestGeneration !== preview.requestGeneration)
-      return;
-    if (usesRawFilePreview(entry.path)) {
-      const direct = serverOnly
-        ? undefined
-        : await readFilePreviewObject(entry.path, async () =>
-            props.directFileObjectUrl?.(entry.path, worktreePath, repositoryPath)
-          );
-      if (generation !== inspectorGeneration || requestGeneration !== preview.requestGeneration) {
-        if (direct?.startsWith('blob:')) revokeWorkspaceDirectObjectUrl(direct);
-        return;
-      }
-      preview.contentUrl.value =
-        direct ?? workspaceFileContentUrl(entry.path, worktreePath, false, repositoryPath);
-      return;
-    }
-    const first = await readFilePreview(
-      (limit) =>
-        readFileRange(
-          preview,
-          entry.path,
-          0,
-          limit,
-          requestBase,
-          requestNodeId,
-          worktreePath,
-          !serverOnly
-        ),
-      () => generation === inspectorGeneration && requestGeneration === preview.requestGeneration
-    );
-    const read = { path: entry.path, ...first };
-    const encoding = read.encoding === 'base64' ? 'base64' : 'utf-8';
-    const revision = typeof read.revision === 'string' ? read.revision : undefined;
-    let content = read.content;
-    let truncated = read.nextOffset !== null;
-    if (encoding === 'base64') {
-      if (generation !== inspectorGeneration || requestGeneration !== preview.requestGeneration)
-        return;
-      content = '';
-      truncated = false;
-    } else {
-      revokePreviewObjectUrl(preview);
-      preview.contentUrl.value = undefined;
-      truncated = read.nextOffset !== null;
-    }
-    if (generation !== inspectorGeneration || requestGeneration !== preview.requestGeneration)
-      return;
-    preview.fileContent.value = {
-      path: read.path,
-      size: read.size,
-      encoding,
-      content,
-      truncated,
-      ...(revision === undefined ? {} : { revision })
-    };
-    if (encoding === 'utf-8' && worktreePath === undefined && repositoryPath === undefined)
-      prewarmCodeNavigation(entry.path, requestBase, requestNodeId);
-  } catch (error) {
-    if (
-      !serverOnly &&
-      preview.directReadStarted &&
-      generation === inspectorGeneration &&
-      requestGeneration === preview.requestGeneration
-    ) {
-      return await open(
-        entry,
-        targetLine,
-        worktreePath,
-        true,
-        stacked,
-        preview,
-        targetColumn,
-        repositoryPath
-      );
-    }
-    if (
-      generation === inspectorGeneration &&
-      requestGeneration === preview.requestGeneration &&
-      errorCode(error) === 'FILE_TOO_LARGE'
-    ) {
-      preview.fileContent.value = {
-        path: entry.path,
-        ...(entry.size === null ? {} : { size: entry.size }),
-        encoding: 'base64',
-        content: '',
-        truncated: false
-      };
-    } else if (
-      generation === inspectorGeneration &&
-      requestGeneration === preview.requestGeneration
-    ) {
-      markFailure(
-        error,
-        translate('generated.workspaceInspector.files'),
-        filePreviewErrorMessage(error, entry.path)
-      );
-    }
-  } finally {
-    if (generation === inspectorGeneration && requestGeneration === preview.requestGeneration)
-      preview.loading.value = false;
-  }
+  const opened = await filePreviews.open(
+    preview.id,
+    {
+      ...target
+    },
+    { textPreview, serverOnly, ...(entry.size === null ? {} : { size: entry.size }) }
+  );
+  if (
+    target.nodeId === props.nodeId &&
+    target.workspaceId === props.workspaceId &&
+    opened?.encoding === 'utf-8' &&
+    filePageFrames.value.includes(preview) &&
+    worktreePath === undefined &&
+    repositoryPath === undefined
+  )
+    prewarmCodeNavigation(entry.path, target.nodeId);
 }
 
 function workspaceFileContentUrl(
@@ -1022,231 +702,53 @@ function workspaceFileContentUrl(
   download = false,
   repositoryPath?: string
 ): string {
-  if (base.value === undefined) throw new Error('NODE_RESPONSE_INVALID');
-  return queryUrl(`${base.value}/files/content`, {
-    path,
-    ...(repositoryPath === undefined ? {} : { repositoryPath }),
-    ...(worktreePath === undefined ? {} : { worktreePath }),
-    ...(download ? { download: '1' } : {})
-  });
+  if (props.nodeId === undefined || props.workspaceId === undefined)
+    throw new Error('NODE_RESPONSE_INVALID');
+  return workspaceFilePreviewUrl(
+    {
+      nodeId: props.nodeId,
+      workspaceId: props.workspaceId,
+      path,
+      ...(worktreePath === undefined ? {} : { worktreePath }),
+      ...(repositoryPath === undefined ? {} : { repositoryPath })
+    },
+    download
+  );
 }
 
-async function navigateSymbol(symbol: string): Promise<void> {
+function navigationSource() {
   const preview = activePreview.value;
   if (
     !props.codeNavigationEnabled ||
     preview?.repositoryPath !== undefined ||
-    base.value === undefined ||
-    preview === undefined ||
-    preview.fileContent.value === undefined ||
-    symbol.length === 0
+    preview?.worktreePath.value !== undefined ||
+    preview?.fileContent.value === undefined ||
+    props.nodeId === undefined ||
+    props.workspaceId === undefined
   )
-    return;
-  const generation = ++codeNavigationRequestGeneration;
-  const previewGeneration = preview.requestGeneration;
-  const path = preview.fileContent.value.path;
-  const requestBase = base.value;
-  const requestNodeId = props.nodeId ?? '';
-  preview.navigationLoading.value = true;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-  try {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const result = await get(
-        queryUrl(
-          `${requestBase}/symbols/definition`,
-          { path, symbol, references: '0' },
-          requestNodeId
-        )
-      );
-      const parsed = workspaceSymbolDefinitionSchema.safeParse(
-        (result as { readonly definition?: unknown }).definition
-      );
-      if (!parsed.success) throw new Error('NODE_RESPONSE_INVALID');
-      if (
-        generation !== codeNavigationRequestGeneration ||
-        previewGeneration !== preview.requestGeneration ||
-        preview !== activePreview.value
-      )
-        return;
-      if (parsed.data.state === 'BUILDING') {
-        await waitForNavigationPoll(generation, preview, previewGeneration);
-        continue;
-      }
-      if (parsed.data.state === 'FAILED')
-        throw new Error(parsed.data.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED');
-      if (parsed.data.state === 'UNAVAILABLE') throw new Error('SYMBOL_INDEX_UNAVAILABLE');
-      const definitions: NavigationTarget[] = parsed.data.targets.map((target) => ({
-        ...target,
-        source: 'DEFINITION' as const
-      }));
-      preview.navigationTargets.value = definitions;
-      preview.navigationLoading.value = false;
-      void loadSymbolReferences({
-        generation,
-        preview,
-        previewGeneration,
-        requestBase,
-        requestNodeId,
-        path,
-        symbol,
-        definitions
-      });
-      return;
-    }
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
-  } catch (error) {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      markFailure(error, translate('fileEditor.definitions'));
-  } finally {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      preview.navigationLoading.value = false;
-  }
+    return undefined;
+  return {
+    pageId: preview.id,
+    nodeId: props.nodeId,
+    workspaceId: props.workspaceId,
+    path: preview.fileContent.value.path
+  };
 }
 
-async function loadSymbolReferences(input: {
-  readonly generation: number;
-  readonly preview: PreviewFrame;
-  readonly previewGeneration: number;
-  readonly requestBase: string;
-  readonly requestNodeId: string;
-  readonly path: string;
-  readonly symbol: string;
-  readonly definitions: readonly NavigationTarget[];
-}): Promise<void> {
-  try {
-    const result = await get(
-      queryUrl(
-        `${input.requestBase}/symbols/definition`,
-        { path: input.path, symbol: input.symbol, references: '1' },
-        input.requestNodeId
-      )
-    );
-    const parsed = workspaceSymbolDefinitionSchema.safeParse(
-      (result as { readonly definition?: unknown }).definition
-    );
-    if (
-      !parsed.success ||
-      input.generation !== codeNavigationRequestGeneration ||
-      input.previewGeneration !== input.preview.requestGeneration ||
-      input.preview !== activePreview.value
-    )
-      return;
-    if (parsed.data.state !== 'READY' && parsed.data.state !== 'STALE') {
-      if (input.definitions.length === 0) input.preview.navigationNoDefinition.value = true;
-      return;
-    }
-    const references: NavigationTarget[] = parsed.data.references.map((target) => ({
-      ...target,
-      source: 'REFERENCE' as const
-    }));
-    const definitions =
-      parsed.data.targets.length === 0
-        ? input.definitions
-        : parsed.data.targets.map((target) => ({
-            ...target,
-            source: 'DEFINITION' as const
-          }));
-    input.preview.navigationTargets.value = [...definitions, ...references];
-    input.preview.navigationNoDefinition.value =
-      definitions.length === 0 && references.length === 0;
-  } catch {
-    if (
-      input.generation === codeNavigationRequestGeneration &&
-      input.previewGeneration === input.preview.requestGeneration &&
-      input.preview === activePreview.value &&
-      input.definitions.length === 0
-    )
-      input.preview.navigationNoDefinition.value = true;
-  }
+async function navigateSymbol(symbol: string): Promise<void> {
+  const source = navigationSource();
+  if (source !== undefined && symbol.length > 0) await codeNavigation.navigate(source, { symbol });
 }
 
 async function navigateFile(request: FileNavigationRequest): Promise<void> {
-  const preview = activePreview.value;
-  if (
-    !props.codeNavigationEnabled ||
-    base.value === undefined ||
-    preview === undefined ||
-    preview.fileContent.value === undefined ||
-    request.reference.value.length === 0
-  )
-    return;
-  const generation = ++codeNavigationRequestGeneration;
-  const previewGeneration = preview.requestGeneration;
-  preview.navigationLoading.value = true;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-  try {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const result = await http.request(`${base.value}/symbols/definition`, {
-        method: 'POST',
-        body: JSON.stringify({
-          nodeId: props.nodeId ?? '',
-          path: preview.fileContent.value.path,
-          reference: { ...request.reference, sourceContext: request.sourceContext }
-        })
-      });
-      const parsed = workspaceSymbolDefinitionSchema.safeParse(
-        (result as { readonly definition?: unknown }).definition
-      );
-      if (!parsed.success) throw new Error('NODE_RESPONSE_INVALID');
-      if (
-        generation !== codeNavigationRequestGeneration ||
-        previewGeneration !== preview.requestGeneration ||
-        preview !== activePreview.value
-      )
-        return;
-      if (parsed.data.state === 'BUILDING') {
-        await waitForNavigationPoll(generation, preview, previewGeneration);
-        continue;
-      }
-      if (parsed.data.state === 'FAILED')
-        throw new Error(parsed.data.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED');
-      if (parsed.data.state === 'UNAVAILABLE') throw new Error('SYMBOL_INDEX_UNAVAILABLE');
-      const targets = parsed.data.paths.map((target) => ({ ...target, source: 'FILE' as const }));
-      if (targets.length === 0) preview.navigationNoDefinition.value = true;
-      else if (targets.length === 1) openNavigationTarget(targets[0]!, preview);
-      else preview.navigationTargets.value = targets;
-      return;
-    }
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
-  } catch (error) {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      markFailure(error, translate('fileEditor.definitions'));
-  } finally {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      preview.navigationLoading.value = false;
-  }
+  const source = navigationSource();
+  if (source !== undefined && request.reference.value.length > 0)
+    await codeNavigation.navigate(source, request);
 }
 
-function prewarmCodeNavigation(path: string, requestBase: string, requestNodeId: string): void {
-  if (!props.codeNavigationPrewarmEnabled) return;
-  void get(queryUrl(`${requestBase}/symbols/prepare`, { path }, requestNodeId))
-    .then((result) => {
-      if (
-        !workspaceSymbolIndexPreparationSchema.safeParse(
-          (result as { readonly preparation?: unknown }).preparation
-        ).success
-      )
-        throw new Error('NODE_RESPONSE_INVALID');
-    })
-    .catch(() => undefined);
+function prewarmCodeNavigation(path: string, requestNodeId: string): void {
+  if (!props.codeNavigationPrewarmEnabled || props.workspaceId === undefined) return;
+  void codeNavigation.prewarm({ nodeId: requestNodeId, workspaceId: props.workspaceId, path });
 }
 
 function openNavigationTarget(target: NavigationTarget, preview = activePreview.value): void {
@@ -1264,25 +766,7 @@ function openNavigationTarget(target: NavigationTarget, preview = activePreview.
 }
 
 function clearCodeNavigation(preview = activePreview.value): void {
-  codeNavigationRequestGeneration += 1;
-  if (preview === undefined) return;
-  preview.navigationLoading.value = false;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-}
-
-async function waitForNavigationPoll(
-  generation: number,
-  preview: PreviewFrame,
-  previewGeneration: number
-): Promise<void> {
-  await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 1_000));
-  if (
-    generation !== codeNavigationRequestGeneration ||
-    previewGeneration !== preview.requestGeneration ||
-    preview !== activePreview.value
-  )
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
+  codeNavigation.clear(preview?.id);
 }
 
 function textLineCount(content: string): number {
@@ -1338,10 +822,11 @@ async function openFile(path: string, line?: number, column?: number): Promise<v
     base.value !== undefined
   ) {
     try {
-      const result = await get(
-        queryUrl(`${base.value}/files/read`, { path, offset: '0', limit: '1' }, props.nodeId ?? '')
-      );
-      if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
+      await filePreviews.checkReadable({
+        nodeId: nodeId ?? '',
+        workspaceId: workspaceId ?? '',
+        path
+      });
     } catch (error) {
       if (generation === inspectorGeneration && navigation === fileOpenGeneration)
         markFailure(
@@ -1475,20 +960,40 @@ function childPath(directory: string, name: string): string {
   return directory === '.' ? name : `${directory}/${name}`;
 }
 
+function fileOperationTarget(): WorkspaceFileOperationTarget | undefined {
+  if (
+    inspectorDisposed ||
+    !ready.value ||
+    props.nodeId === undefined ||
+    props.workspaceId === undefined
+  )
+    return undefined;
+  return { nodeId: props.nodeId, workspaceId: props.workspaceId };
+}
+const fileOperations = createWorkspaceFileOperationService({
+  http,
+  onWritten: async (target) => {
+    if (
+      inspectorDisposed ||
+      target.nodeId !== props.nodeId ||
+      target.workspaceId !== props.workspaceId
+    )
+      return;
+    await refreshFileTree();
+    if (target.nodeId !== props.nodeId || target.workspaceId !== props.workspaceId) return;
+    if (props.workspaceKind === 'GIT_WORKSPACE') await git.loadChanges();
+  }
+});
 async function mutateFile(
   action: 'CREATE_FILE' | 'CREATE_DIRECTORY' | 'MOVE' | 'DELETE',
   path: string,
   destination?: string
 ): Promise<string | undefined> {
-  if (base.value === undefined) return undefined;
-  const result = (await post(`${base.value}/files/mutate`, {
-    nodeId: props.nodeId,
-    action,
-    path,
-    ...(destination === undefined ? {} : { destination })
-  })) as { readonly file?: { readonly path?: unknown } };
-  await refreshFileTree();
-  return typeof result.file?.path === 'string' ? result.file.path : undefined;
+  const target = fileOperationTarget(),
+    generation = inspectorGeneration;
+  if (target === undefined) return undefined;
+  const result = await fileOperations.mutate(target, action, path, destination);
+  return generation === inspectorGeneration ? result : undefined;
 }
 
 async function promptName(title: string, initialValue = ''): Promise<string | undefined> {
@@ -1529,6 +1034,8 @@ async function onFileTreeAction(
     | 'UPLOAD',
   node: WorkspaceFileTreeNode
 ): Promise<void> {
+  const generation = inspectorGeneration;
+  const current = () => generation === inspectorGeneration;
   try {
     if (action === 'OPEN') {
       await openTreeFile(node);
@@ -1558,26 +1065,28 @@ async function onFileTreeAction(
           ? translate('generated.workspaceInspector.newFile')
           : translate('generated.workspaceInspector.newFolder')
       );
-      if (name === undefined) return;
+      if (name === undefined || !current()) return;
       const created = await mutateFile(action, childPath(node.path, name));
       if (created !== undefined) {
         await fileTree.reveal(created);
+        if (!current()) return;
         fileTree.selectPath(created);
-        await fileTreeView.value?.reveal(created);
+        await fileTreeView.value?.reveal(created, current);
       }
       return;
     }
     if (action === 'RENAME') {
       const name = await promptName(translate('generated.workspaceInspector.rename'), node.name);
-      if (name === undefined || name === node.name) return;
+      if (name === undefined || name === node.name || !current()) return;
       const parent = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : '.';
       const previousSelection = fileTree.selectedPath.value;
       const renamed = await mutateFile('MOVE', node.path, childPath(parent, name));
       if (renamed !== undefined) {
         const selected = movedSelectionPath(previousSelection, node.path, renamed);
         await fileTree.reveal(selected);
+        if (!current()) return;
         fileTree.selectPath(selected);
-        await fileTreeView.value?.reveal(selected);
+        await fileTreeView.value?.reveal(selected, current);
       }
       return;
     }
@@ -1596,16 +1105,18 @@ async function onFileTreeAction(
         cancelButtonText: translate('generated.workspaceInspector.cancel2')
       }
     );
+    if (!current()) return;
     const selected = fileTree.selectedPath.value;
     const deletingSelection =
       selected === node.path || (selected !== undefined && selected.startsWith(`${node.path}/`));
     await mutateFile('DELETE', node.path);
+    if (!current()) return;
     if (deletingSelection) {
       closeAllFilePreviews();
     }
   } catch (error) {
     if (error === 'cancel' || error === 'close') return;
-    markFailure(error, translate('generated.workspaceInspector.fileOperation'));
+    if (current()) markFailure(error, translate('generated.workspaceInspector.fileOperation'));
   }
 }
 
@@ -1613,17 +1124,20 @@ async function moveTreeNode(
   source: WorkspaceFileTreeNode,
   directory: WorkspaceFileTreeNode
 ): Promise<void> {
+  const generation = inspectorGeneration;
+  const current = () => generation === inspectorGeneration;
   try {
     const previousSelection = fileTree.selectedPath.value;
     const moved = await mutateFile('MOVE', source.path, childPath(directory.path, source.name));
     if (moved !== undefined) {
       const selected = movedSelectionPath(previousSelection, source.path, moved);
       await fileTree.reveal(selected);
+      if (!current()) return;
       fileTree.selectPath(selected);
-      await fileTreeView.value?.reveal(selected);
+      await fileTreeView.value?.reveal(selected, current);
     }
   } catch (error) {
-    markFailure(error, translate('generated.workspaceInspector.movingFile'));
+    if (current()) markFailure(error, translate('generated.workspaceInspector.movingFile'));
   }
 }
 
@@ -1662,7 +1176,7 @@ async function revealAndOpenWorkspaceFile(path: string, line?: number): Promise<
   await openWorkspaceFileComparison(path, line);
 }
 
-interface WorkspaceInspectorSnapshot {
+interface WorkspaceInspectorSnapshot extends WorkspaceGitSnapshot {
   readonly activeSection: InspectorSection;
   readonly fileTree: WorkspaceFileTreeSnapshot;
   readonly contentQuery: string;
@@ -1671,11 +1185,6 @@ interface WorkspaceInspectorSnapshot {
   readonly contentAppliedUseRegex: boolean;
   readonly contentMatches: readonly ContentMatch[];
   readonly contentSearchTruncated: boolean;
-  readonly changes: unknown;
-  readonly historyRepositoryPath: string;
-  readonly selectedHistoryRefs: readonly string[];
-  readonly historyCommits: readonly HistoryCommit[];
-  readonly historyNextCursor: string | null;
   readonly fileTabs: WorkspaceFileTabsSnapshot;
   readonly dirtyTextDrafts: readonly DirtyTextDraft[];
 }
@@ -1704,11 +1213,7 @@ function snapshot(): WorkspaceInspectorSnapshot {
     contentAppliedUseRegex: contentAppliedUseRegex.value,
     contentMatches: [...contentMatches.value],
     contentSearchTruncated: contentSearchTruncated.value,
-    changes: changes.value,
-    historyRepositoryPath: historyRepositoryPath.value,
-    selectedHistoryRefs: [...selectedHistoryRefs.value],
-    historyCommits: [...historyCommits.value],
-    historyNextCursor: historyNextCursor.value,
+    ...git.snapshot(),
     fileTabs: workspaceFileTabService.snapshot(),
     dirtyTextDrafts: [...drafts.values()]
   };
@@ -1735,30 +1240,9 @@ function restore(snapshot: unknown): void {
       : value.activeSection;
   fileTree.restore(value.fileTree);
   contentQuery.value = typeof value.contentQuery === 'string' ? value.contentQuery : '';
-  contentAppliedQuery.value =
-    typeof value.contentAppliedQuery === 'string' ? value.contentAppliedQuery : '';
   contentUseRegex.value = value.contentUseRegex === true;
-  contentAppliedUseRegex.value = value.contentAppliedUseRegex === true;
-  contentMatches.value = Array.isArray(value.contentMatches)
-    ? value.contentMatches.filter((match): match is ContentMatch =>
-        isContentSearch({ matches: [match], truncated: false })
-      )
-    : [];
-  contentSearchTruncated.value = value.contentSearchTruncated === true;
-  changes.value = props.workspaceKind === 'GIT_WORKSPACE' ? value.changes : undefined;
-  const gitWorkspace = props.workspaceKind === 'GIT_WORKSPACE';
-  historyRepositoryPath.value =
-    gitWorkspace && typeof value.historyRepositoryPath === 'string'
-      ? value.historyRepositoryPath
-      : '';
-  selectedHistoryRefs.value =
-    gitWorkspace && Array.isArray(value.selectedHistoryRefs)
-      ? value.selectedHistoryRefs.filter((item): item is string => typeof item === 'string')
-      : [];
-  historyCommits.value =
-    gitWorkspace && Array.isArray(value.historyCommits) ? value.historyCommits : [];
-  historyNextCursor.value =
-    gitWorkspace && typeof value.historyNextCursor === 'string' ? value.historyNextCursor : null;
+  contentSearch.restore(value);
+  git.restore(value);
   if (
     typeof value.fileTabs === 'object' &&
     value.fileTabs !== null &&
@@ -1860,219 +1344,41 @@ defineExpose({
   restoreWorkspace
 });
 
-function isFileRead(value: unknown): value is {
-  readonly file: {
-    readonly path: string;
-    readonly size: number;
-    readonly encoding: 'utf-8' | 'base64';
-    readonly content: string;
-    readonly nextOffset: number | null;
-    readonly revision?: string;
-  };
-} {
-  if (typeof value !== 'object' || value === null || !('file' in value)) return false;
-  const file = (value as { readonly file?: unknown }).file;
-  return (
-    typeof file === 'object' &&
-    file !== null &&
-    typeof (file as { readonly path?: unknown }).path === 'string' &&
-    ((file as { readonly encoding?: unknown }).encoding === 'utf-8' ||
-      (file as { readonly encoding?: unknown }).encoding === 'base64') &&
-    Number.isSafeInteger((file as { readonly size?: unknown }).size) &&
-    (file as { readonly size: number }).size >= 0 &&
-    typeof (file as { readonly content?: unknown }).content === 'string' &&
-    ((file as { readonly nextOffset?: unknown }).nextOffset === null ||
-      Number.isSafeInteger((file as { readonly nextOffset?: unknown }).nextOffset))
-  );
-}
-
-async function readFileRange(
-  preview: PreviewFrame,
-  filePath: string,
-  offset: number,
-  limit: number,
-  requestBase = base.value,
-  requestNodeId = props.nodeId ?? '',
-  worktreePath = preview.worktreePath.value,
-  allowDirect = true
-): Promise<{
-  readonly encoding: 'utf-8' | 'base64';
-  readonly size: number;
-  readonly content: string;
-  readonly nextOffset: number | null;
-  readonly revision?: string;
-}> {
-  if (requestBase === undefined) throw new Error('NODE_RESPONSE_INVALID');
-  const direct = allowDirect
-    ? await props.directFileReadRange?.(
-        filePath,
-        offset,
-        limit,
-        worktreePath,
-        preview.directIdentity,
-        preview.repositoryPath
-      )
-    : undefined;
-  if (direct !== undefined) {
-    preview.directReadStarted = true;
-    preview.directIdentity = {
-      revision: direct.revision,
-      size: direct.size
-    };
-    const revision = await directFileContentRevision(direct);
-    if (offset === 0) preview.textDecoder = new TextDecoder('utf-8', { fatal: true });
-    const content = decodeFilePreviewText(
-      direct.bytes,
-      direct.nextOffset === null,
-      preview.textDecoder
-    );
-    if (content !== undefined) {
-      return {
-        encoding: 'utf-8',
-        size: direct.size,
-        content,
-        nextOffset: direct.nextOffset,
-        ...(revision === undefined ? {} : { revision })
-      };
-    }
-    preview.directIdentity = undefined;
-    preview.textDecoder = new TextDecoder('utf-8', { fatal: true });
-    return {
-      encoding: 'base64',
-      size: direct.size,
-      content: '',
-      nextOffset: direct.nextOffset,
-      ...(revision === undefined ? {} : { revision })
-    };
-  }
-  if (allowDirect && preview.directReadStarted) throw new Error('DIRECT_FILE_READ_FAILED');
-  const result = await get(
-    queryUrl(
-      `${requestBase}/files/read`,
-      {
-        path: filePath,
-        offset: String(offset),
-        limit: String(limit),
-        ...(preview.repositoryPath === undefined ? {} : { repositoryPath: preview.repositoryPath }),
-        ...(worktreePath === undefined ? {} : { worktreePath })
-      },
-      requestNodeId
-    )
-  );
-  if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
-  return result.file;
-}
-
 async function savePreviewFile(
   preview: PreviewFrame,
   content: string,
   expectedRevision: string
 ): Promise<string> {
-  if (
-    base.value === undefined ||
-    preview.fileContent.value === undefined ||
-    preview.worktreePath.value !== undefined
-  )
-    throw new Error('FILE_WRITE_INVALID');
-  const result = (await http.request(`${base.value}/files/write`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      nodeId: props.nodeId,
-      path: preview.fileContent.value.path,
-      content,
-      expectedRevision
-    })
-  })) as { readonly file?: { readonly revision?: unknown; readonly size?: unknown } };
-  const revision = result.file?.revision;
-  const size = result.file?.size;
-  if (
-    typeof revision !== 'string' ||
-    typeof size !== 'number' ||
-    !Number.isSafeInteger(size) ||
-    size < 0
-  )
-    throw new Error('NODE_RESPONSE_INVALID');
-  preview.fileContent.value = { ...preview.fileContent.value, content, revision, size };
-  void Promise.allSettled([refreshFileTree(), loadChanges()]);
-  return revision;
-}
-
-function saveVisiblePreviewFile(content: string, expectedRevision: string): Promise<string> {
-  const preview = visiblePreview.value;
-  if (preview === undefined) return Promise.reject(new Error('FILE_WRITE_INVALID'));
-  return savePreviewFile(preview, content, expectedRevision);
+  if (!ready.value || !props.fileWriteEnabled) throw new Error('FILE_WRITE_INVALID');
+  return filePreviews.save(preview.id, content, expectedRevision);
 }
 
 async function downloadFile(
-  path: string | undefined,
+  path: string,
   worktreePath?: string,
   preview?: PreviewFrame
 ): Promise<void> {
-  if (path === undefined || !ready.value || base.value === undefined) return;
-  if (preview !== undefined) preview.downloading.value = true;
+  if (!ready.value || props.nodeId === undefined || props.workspaceId === undefined) return;
   try {
-    const direct = await props.directFileDownload?.(path, worktreePath, preview?.repositoryPath);
-    if (direct !== undefined && direct !== 'UNAVAILABLE') return;
-    const anchor = document.createElement('a');
-    anchor.href = workspaceFileContentUrl(path, worktreePath, true, preview?.repositoryPath);
-    anchor.download = path.split('/').at(-1) ?? 'download.txt';
-    anchor.click();
+    if (preview?.fileContent.value?.path === path) await filePreviews.download(preview.id);
+    else
+      await filePreviews.downloadTarget({
+        nodeId: props.nodeId,
+        workspaceId: props.workspaceId,
+        path,
+        ...(worktreePath === undefined ? {} : { worktreePath })
+      });
   } catch (error) {
-    markFailure(error, translate('generated.workspaceInspector.fileDownload'));
-  } finally {
-    if (preview !== undefined) preview.downloading.value = false;
+    markFailure(error, path);
   }
 }
 
 async function downloadPreviewFile(preview: PreviewFrame): Promise<void> {
-  if (preview.contentUrl.value === undefined || preview.fileContent.value === undefined) {
-    await downloadFile(preview.fileContent.value?.path, preview.worktreePath.value, preview);
-    return;
-  }
-  preview.downloading.value = true;
   try {
-    if (preview.contentUrl.value.startsWith('blob:')) {
-      triggerBrowserFileDownload(
-        preview.contentUrl.value,
-        preview.fileContent.value.path.split('/').at(-1) ?? 'download'
-      );
-      return;
-    }
-    if (preview.historySource !== undefined) {
-      const direct = await props.directGitFileDownload?.(
-        preview.historySource.commit,
-        preview.fileContent.value.path,
-        preview.historySource.repositoryPath,
-        preview.historySource.refs
-      );
-      if (direct !== undefined && direct !== 'UNAVAILABLE') return;
-      if (base.value === undefined) return;
-      const parameters = new URLSearchParams({
-        nodeId: props.nodeId ?? '',
-        path: preview.fileContent.value.path,
-        download: '1'
-      });
-      if (preview.historySource.repositoryPath.length > 0)
-        parameters.set('repositoryPath', preview.historySource.repositoryPath);
-      for (const refName of preview.historySource.refs) parameters.append('refs', refName);
-      const anchor = document.createElement('a');
-      anchor.href = `${base.value}/git/commits/${encodeURIComponent(preview.historySource.commit)}/files/content?${parameters.toString()}`;
-      anchor.download = preview.fileContent.value.path.split('/').at(-1) ?? 'download';
-      anchor.click();
-      return;
-    }
-    await downloadFile(preview.fileContent.value.path, preview.worktreePath.value, preview);
+    await filePreviews.download(preview.id);
   } catch (error) {
     markFailure(error, translate('generated.workspaceInspector.fileDownload'));
-  } finally {
-    preview.downloading.value = false;
   }
-}
-
-function revokePreviewObjectUrl(preview = activePreview.value): void {
-  if (preview?.contentUrl.value?.startsWith('blob:'))
-    revokeWorkspaceDirectObjectUrl(preview.contentUrl.value);
-  if (preview !== undefined) preview.contentUrl.value = undefined;
 }
 
 function closeAllFilePreviews(): void {
@@ -2080,21 +1386,19 @@ function closeAllFilePreviews(): void {
   fileNavigationHistory.clear();
   fileNavigationRevision.value += 1;
   for (const preview of filePageFrames.value) {
-    preview.requestGeneration = ++filePreviewRequestGeneration;
-    revokePreviewObjectUrl(preview);
+    filePreviews.close(preview.id);
     workspaceFileTabService.remove(preview.id);
   }
   filePageFrames.value = [];
-  codeNavigationRequestGeneration += 1;
+  codeNavigation.reset();
 }
 
 function closeFilePreview(preview: PreviewFrame): void {
   const index = filePageFrames.value.indexOf(preview);
   if (index < 0) return;
   const wasActive = activePreview.value === preview;
-  preview.requestGeneration = ++filePreviewRequestGeneration;
-  clearCodeNavigation(preview);
-  revokePreviewObjectUrl(preview);
+  filePreviews.close(preview.id);
+  codeNavigation.release(preview.id);
   filePageFrames.value = filePageFrames.value.filter((item) => item !== preview);
   workspaceFileTabService.remove(preview.id);
   fileNavigationHistory.remove(preview.id);
@@ -2108,8 +1412,6 @@ function closeFilePreview(preview: PreviewFrame): void {
 function activateFilePreview(id: number): void {
   const preview = filePageFrames.value.find((candidate) => candidate.id === id);
   if (preview === undefined || preview === activePreview.value) return;
-  codeNavigationRequestGeneration += 1;
-  if (activePreview.value !== undefined) activePreview.value.navigationLoading.value = false;
   workspaceFileTabService.activate(preview.id);
 }
 
@@ -2209,7 +1511,7 @@ async function previewDiffFile(tab: WorkspaceFileTab, diff: unknown): Promise<vo
 }
 
 async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<void> {
-  if (tab.kind !== 'HISTORY_DIFF' || tab.commit === undefined || base.value === undefined) return;
+  if (tab.kind !== 'HISTORY_DIFF' || tab.commit === undefined || !ready.value) return;
   const source = currentFilePosition();
   const historyTab = workspaceFileTabService.open({
     kind: 'HISTORY_TEXT',
@@ -2223,81 +1525,21 @@ async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<v
   });
   recordFileNavigation(source, historyTab.id);
   const preview =
-    filePageFrames.value.find((candidate) => candidate.id === historyTab.id) ??
+    filePageFrames.value.find((frame) => frame.id === historyTab.id) ??
     createPreviewFrame(historyTab.id);
-  const requestGeneration = ++filePreviewRequestGeneration;
-  preview.requestGeneration = requestGeneration;
-  preview.historySource = {
-    commit: tab.commit,
-    repositoryPath: tab.repositoryPath,
-    refs: tab.refs ?? []
-  };
+  codeNavigation.clear(preview.id);
   if (!filePageFrames.value.includes(preview))
     filePageFrames.value = [...filePageFrames.value, preview];
-  const binaryKind = binaryFilePreviewKind(tab.path);
-  const textPreview = diff === undefined || !isBinaryDiff(diff);
-  preview.fileContent.value = {
-    path: tab.path,
-    encoding: textPreview ? 'utf-8' : 'base64',
-    content: '',
-    truncated: false
-  };
-  preview.loading.value = textPreview || binaryKind !== 'unsupported';
-  if (!preview.loading.value) return;
-  const parameters = new URLSearchParams({ nodeId: props.nodeId ?? '', path: tab.path });
-  if (tab.repositoryPath.length > 0) parameters.set('repositoryPath', tab.repositoryPath);
-  for (const refName of tab.refs ?? []) parameters.append('refs', refName);
-  const fallback = `${base.value}/git/commits/${encodeURIComponent(tab.commit)}/files/content?${parameters.toString()}`;
-  try {
-    if (textPreview) {
-      const range = await readGitHistoryTextRange(
-        tab.commit,
-        tab.path,
-        tab.repositoryPath,
-        tab.refs ?? [],
-        fallback
-      );
-      if (requestGeneration !== preview.requestGeneration) return;
-      preview.fileContent.value = {
-        path: tab.path,
-        size: range.size,
-        encoding: 'utf-8',
-        content: range.content,
-        truncated: range.truncated
-      };
-      return;
-    }
-    if (binaryKind === 'unsupported') return;
-    const size = await readGitHistoryFileSize(
-      tab.commit,
-      tab.path,
-      tab.repositoryPath,
-      tab.refs ?? [],
-      fallback
-    ).catch(() => undefined);
-    if (requestGeneration !== preview.requestGeneration) return;
-    preview.fileContent.value = {
+  await filePreviews.open(
+    historyTab.id,
+    {
+      nodeId: props.nodeId ?? '',
+      workspaceId: props.workspaceId ?? '',
       path: tab.path,
-      ...(size === undefined ? {} : { size }),
-      encoding: 'base64',
-      content: '',
-      truncated: false
-    };
-    const commit = tab.commit;
-    const direct = await readFilePreviewObject(tab.path, async () =>
-      props.directGitFileObjectUrl?.(commit, tab.path, tab.repositoryPath, tab.refs ?? [])
-    );
-    if (requestGeneration !== preview.requestGeneration) {
-      if (direct?.startsWith('blob:')) revokeWorkspaceDirectObjectUrl(direct);
-      return;
-    }
-    preview.contentUrl.value = direct ?? fallback;
-  } catch (error) {
-    if (requestGeneration === preview.requestGeneration)
-      markFailure(error, translate('generated.workspaceInspector.files'));
-  } finally {
-    if (requestGeneration === preview.requestGeneration) preview.loading.value = false;
-  }
+      history: { commit: tab.commit, repositoryPath: tab.repositoryPath, refs: tab.refs ?? [] }
+    },
+    { textPreview: diff === undefined || !isBinaryDiff(diff) }
+  );
 }
 
 async function navigateDiffSymbol(tab: WorkspaceFileTab, symbol: string): Promise<void> {
@@ -2315,65 +1557,6 @@ async function navigateDiffFile(
   await navigateFile(request);
 }
 
-async function readGitHistoryTextRange(
-  commit: string,
-  path: string,
-  repositoryPath: string,
-  refs: readonly string[],
-  fallbackUrl: string
-): Promise<{ readonly content: string; readonly size: number; readonly truncated: boolean }> {
-  const direct = await props.directGitFileReadRange?.(
-    commit,
-    path,
-    repositoryPath,
-    refs,
-    0,
-    TEXT_FILE_PREVIEW_LIMIT_BYTES
-  );
-  if (direct !== undefined) {
-    return {
-      content: new TextDecoder('utf-8', { fatal: true }).decode(direct.bytes),
-      size: direct.size,
-      truncated: direct.nextOffset !== null
-    };
-  }
-  const response = await fetch(fallbackUrl, {
-    credentials: 'same-origin',
-    headers: { range: `bytes=0-${TEXT_FILE_PREVIEW_LIMIT_BYTES - 1}` }
-  });
-  if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
-  const size = total === undefined ? bytes.byteLength : Number(total);
-  if (!Number.isSafeInteger(size) || size < bytes.byteLength)
-    throw new Error('NODE_RESPONSE_INVALID');
-  return {
-    content: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    size,
-    truncated: bytes.byteLength < size
-  };
-}
-
-async function readGitHistoryFileSize(
-  commit: string,
-  path: string,
-  repositoryPath: string,
-  refs: readonly string[],
-  fallbackUrl: string
-): Promise<number> {
-  const direct = await props.directGitFileReadRange?.(commit, path, repositoryPath, refs, 0, 1);
-  if (direct !== undefined) return direct.size;
-  const response = await fetch(fallbackUrl, {
-    credentials: 'same-origin',
-    headers: { range: 'bytes=0-0' }
-  });
-  if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
-  const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
-  const size = total === undefined ? Number(response.headers.get('content-length')) : Number(total);
-  if (!Number.isSafeInteger(size) || size < 0) throw new Error('NODE_RESPONSE_INVALID');
-  return size;
-}
-
 function isBinaryDiff(value: unknown): boolean {
   return (
     typeof value === 'object' &&
@@ -2382,38 +1565,7 @@ function isBinaryDiff(value: unknown): boolean {
   );
 }
 
-async function performChangesRefresh(): Promise<void> {
-  if (!ready.value || base.value === undefined || props.workspaceKind !== 'GIT_WORKSPACE') return;
-  const generation = inspectorGeneration;
-  const requestBase = base.value;
-  const requestNodeId = props.nodeId ?? '';
-  const workspaceId = props.workspaceId;
-  if (workspaceId === undefined) return;
-  try {
-    const result = await get(queryUrl(`${requestBase}/changes`, {}, requestNodeId));
-    if (generation === inspectorGeneration && props.workspaceKind === 'GIT_WORKSPACE') {
-      changes.value = result;
-      const branch = currentChangesBranch(result);
-      if (branch !== undefined) emit('branch', workspaceId, branch);
-    }
-  } catch (error) {
-    if (generation === inspectorGeneration)
-      markFailure(error, translate('generated.workspaceInspector.gitChanges'));
-  }
-}
-
-const changesRefreshTask = createTrailingTask(async () => {
-  changesRefreshing.value = true;
-  try {
-    await performChangesRefresh();
-  } finally {
-    changesRefreshing.value = false;
-  }
-});
-
-function loadChanges(): Promise<void> {
-  return changesRefreshTask.request();
-}
+const loadChanges = git.loadChanges;
 
 function refreshVisibleSection(nodeId: string, workspaceId: string): void {
   if (props.nodeId !== nodeId || props.workspaceId !== workspaceId || !ready.value) return;
@@ -2426,177 +1578,32 @@ function openChanges(): void {
   void loadChanges();
 }
 
-function gitHistoryUrl(pathname: string, values: Record<string, string | undefined> = {}): string {
-  const parameters = new URLSearchParams({ nodeId: props.nodeId ?? '' });
-  if (historyRepositoryPath.value.length > 0)
-    parameters.set('repositoryPath', historyRepositoryPath.value);
-  for (const refName of selectedHistoryRefs.value) parameters.append('refs', refName);
-  for (const [key, value] of Object.entries(values))
-    if (value !== undefined) parameters.set(key, value);
-  return `${pathname}?${parameters.toString()}`;
-}
-
-async function loadHistoryRefs(generation = inspectorGeneration): Promise<HistoryRef[]> {
-  if (!ready.value || base.value === undefined || !historyAvailable.value) return [];
-  const result = await get(gitHistoryUrl(`${base.value}/git/refs`));
-  if (generation !== inspectorGeneration) return [];
-  const values =
-    typeof result === 'object' && result !== null ? (result as { refs?: unknown }).refs : undefined;
-  if (!Array.isArray(values)) throw new Error('NODE_RESPONSE_INVALID');
-  return values.filter(
-    (entry): entry is HistoryRef =>
-      typeof entry === 'object' &&
-      entry !== null &&
-      typeof (entry as HistoryRef).name === 'string' &&
-      typeof (entry as HistoryRef).displayName === 'string' &&
-      ((entry as HistoryRef).kind === 'LOCAL' || (entry as HistoryRef).kind === 'REMOTE')
-  );
-}
-
-async function loadHistory(reset = false): Promise<void> {
-  if (!ready.value || base.value === undefined || !historyAvailable.value) return;
-  if (!reset && historyLoading.value) return;
-  if (reset) inspectorGeneration += 1;
-  const generation = inspectorGeneration;
-  historyLoading.value = true;
-  try {
-    const refs = reset ? await loadHistoryRefs(generation) : undefined;
-    if (generation !== inspectorGeneration) return;
-    const result = await get(
-      gitHistoryUrl(`${base.value}/git/history`, {
-        limit: '50',
-        ...(reset || historyNextCursor.value === null ? {} : { cursor: historyNextCursor.value })
-      })
-    );
-    if (generation !== inspectorGeneration) return;
-    if (
-      typeof result !== 'object' ||
-      result === null ||
-      !Array.isArray((result as { commits?: unknown }).commits)
-    )
-      throw new Error('NODE_RESPONSE_INVALID');
-    const page = (result as { commits: HistoryCommit[]; nextCursor?: unknown }).commits;
-    const nextCursor =
-      typeof (result as { nextCursor?: unknown }).nextCursor === 'string'
-        ? (result as { nextCursor: string }).nextCursor
-        : null;
-    if (reset) {
-      historyRefs.value = refs ?? [];
-      historyCommits.value = page;
-      historyNextCursor.value = nextCursor;
-      expandedHistoryCommits.value = [];
-      expandedHistoryDirectories.value = {};
-      historyFiles.value = {};
-    } else {
-      historyCommits.value = [...historyCommits.value, ...page];
-      historyNextCursor.value = nextCursor;
-    }
-  } catch (error) {
-    if (generation === inspectorGeneration)
-      markFailure(error, translate('generated.workspaceInspector.gitHistory'));
-  } finally {
-    if (generation === inspectorGeneration) historyLoading.value = false;
-  }
-}
-
 async function openHistory(): Promise<void> {
   activeSection.value = 'history';
-  if (changes.value === undefined) await loadChanges();
-  await loadHistory(true);
-}
-
-async function resetHistory(): Promise<void> {
-  await loadHistory(true);
-}
-
-async function changeHistoryRepository(): Promise<void> {
-  selectedHistoryRefs.value = [];
-  await resetHistory();
-}
-
-async function toggleHistoryCommit(commit: HistoryCommit): Promise<void> {
-  if (expandedHistoryCommits.value.includes(commit.hash)) {
-    expandedHistoryCommits.value = expandedHistoryCommits.value.filter(
-      (hash) => hash !== commit.hash
-    );
-    return;
-  }
-  expandedHistoryCommits.value = [...expandedHistoryCommits.value, commit.hash];
-  if (expandedHistoryDirectories.value[commit.hash] === undefined)
-    expandedHistoryDirectories.value = { ...expandedHistoryDirectories.value, [commit.hash]: [] };
-  if (historyFiles.value[commit.hash] !== undefined || base.value === undefined) return;
-  historyFilesLoading.value = commit.hash;
-  const generation = inspectorGeneration;
-  try {
-    const result = await get(gitHistoryUrl(`${base.value}/git/commits/${commit.hash}/files`));
-    if (generation !== inspectorGeneration) return;
-    const files =
-      typeof result === 'object' && result !== null
-        ? (result as { files?: unknown }).files
-        : undefined;
-    if (!Array.isArray(files)) throw new Error('NODE_RESPONSE_INVALID');
-    historyFiles.value = { ...historyFiles.value, [commit.hash]: files as HistoryFile[] };
-  } catch (error) {
-    if (generation !== inspectorGeneration) return;
-    expandedHistoryCommits.value = expandedHistoryCommits.value.filter(
-      (hash) => hash !== commit.hash
-    );
-    const { [commit.hash]: _removed, ...directories } = expandedHistoryDirectories.value;
-    expandedHistoryDirectories.value = directories;
-    markFailure(error, translate('generated.workspaceInspector.commitFiles'));
-  } finally {
-    if (generation === inspectorGeneration) historyFilesLoading.value = undefined;
-  }
+  await git.openHistory();
 }
 
 async function loadDiff(tab: WorkspaceFileTab, signal?: AbortSignal): Promise<unknown> {
-  if (tab.kind === 'TOOL_CHANGE_DIFF') return loadToolChangeDiff(tab, get, signal);
-  if (base.value === undefined) throw new Error('FILE_TREE_NOT_READY');
-  if (tab.kind === 'HISTORY_DIFF') {
-    if (tab.commit === undefined) throw new Error('NODE_RESPONSE_INVALID');
-    const parameters = new URLSearchParams({ nodeId: props.nodeId ?? '', path: tab.path });
-    if (tab.repositoryPath.length > 0) parameters.set('repositoryPath', tab.repositoryPath);
-    if (tab.previousPath !== undefined) parameters.set('previousPath', tab.previousPath);
-    for (const refName of tab.refs ?? []) parameters.append('refs', refName);
-    const result = await get(
-      `${base.value}/git/commits/${encodeURIComponent(tab.commit)}/diff?${parameters.toString()}`
-    );
-    if (typeof result !== 'object' || result === null || !('diff' in result))
-      throw new Error('NODE_RESPONSE_INVALID');
-    return (result as { readonly diff: unknown }).diff;
-  }
-  if (tab.kind !== 'WORKTREE_DIFF') throw new Error('NODE_RESPONSE_INVALID');
-  const result = await get(
-    queryUrl(
-      `${base.value}/changes/diff`,
-      {
-        path: tab.path,
-        ...(tab.repositoryPath === '' ? {} : { repositoryPath: tab.repositoryPath }),
-        ...(tab.worktreePath === '' ? {} : { worktreePath: tab.worktreePath })
-      },
-      props.nodeId ?? ''
-    )
-  );
-  if (typeof result !== 'object' || result === null || !('diff' in result))
-    throw new Error('NODE_RESPONSE_INVALID');
-  return (result as { readonly diff: unknown }).diff;
+  return tab.kind === 'TOOL_CHANGE_DIFF'
+    ? loadToolChangeDiff(tab, (path) => http.request(path), signal)
+    : git.loadDiff(tab, signal);
 }
 
-function openHistoryDiff(commit: HistoryCommit, file: HistoryFile, event?: MouseEvent): void {
+function openHistoryDiff(commit: HistoryCommit, file: HistoryFile, external = false): void {
   if (base.value === undefined) return;
   const intent: WorkspaceFileOpenIntent = {
     kind: 'HISTORY_DIFF',
     nodeId: props.nodeId ?? '',
     workspaceId: props.workspaceId ?? '',
     path: file.path,
-    repositoryPath: historyRepositoryPath.value,
+    repositoryPath: git.historySource.value.repositoryPath,
     worktreePath: '',
     commit: commit.hash,
     ...(file.previousPath === undefined ? {} : { previousPath: file.previousPath }),
-    refs: [...selectedHistoryRefs.value],
+    refs: [...git.historySource.value.refs],
     paths: [file.path]
   };
-  if (event?.ctrlKey || event?.metaKey) {
+  if (external) {
     openGitDiffExternal(intent);
     return;
   }
@@ -2656,13 +1663,13 @@ function gitFileRepositoryPath(repositoryPath: string, worktreePath?: string): s
     : undefined;
 }
 
-function openChange(entry: ChangeEntry, event?: MouseEvent): void {
+function openChange(entry: ChangeEntry, external = false): void {
   const repositoryPath = gitFileRepositoryPath(entry.repositoryPath, entry.worktreePath);
   const path =
     repositoryPath === undefined && entry.worktreePath === undefined
       ? workspaceChangePath(entry)
       : entry.path;
-  if (event?.ctrlKey || event?.metaKey) {
+  if (external) {
     if (entry.diffAvailable) openGitDiffExternal(changeDiffIntent(entry));
     else
       openWorkspaceFileExternal(
@@ -2682,63 +1689,10 @@ function openChange(entry: ChangeEntry, event?: MouseEvent): void {
   void openChangeDiff(entry);
 }
 
-async function restoreChange(entry: ChangeEntry): Promise<void> {
-  if (!ready.value || base.value === undefined || restoringPath.value !== undefined) return;
-  const workspacePath = workspaceChangePath(entry);
-  const action =
-    entry.state === 'UNTRACKED'
-      ? translate('generated.workspaceInspector.deleteUntrackedFile')
-      : translate('generated.workspaceInspector.revertChanges');
-  try {
-    await ElMessageBox.confirm(
-      translate('generated.workspaceInspector.thisActionCannotBeUndone', {
-        value0: action,
-        value1: workspacePath
-      }),
-      action,
-      {
-        closeIcon: marIcon('close'),
-        icon: marIcon('warning'),
-        confirmButtonText:
-          entry.state === 'UNTRACKED'
-            ? translate('generated.workspaceInspector.delete2')
-            : translate('generated.workspaceInspector.revert'),
-        cancelButtonText: translate('generated.workspaceInspector.cancel3'),
-        type: 'warning'
-      }
-    );
-  } catch {
-    return;
-  }
-  restoringPath.value = changeKey(entry);
-  try {
-    await post(queryUrl(`${base.value}/changes/restore`, {}), {
-      path: entry.path,
-      state: entry.state,
-      nodeId: props.nodeId,
-      ...(entry.repositoryPath === '' ? {} : { repositoryPath: entry.repositoryPath }),
-      ...(entry.worktreePath === undefined ? {} : { worktreePath: entry.worktreePath })
-    });
-    emit(
-      'notice',
-      entry.state === 'UNTRACKED'
-        ? translate('generated.workspaceInspector.deleted', { value0: workspacePath })
-        : translate('generated.workspaceInspector.reverted', { value0: workspacePath })
-    );
-    await loadChanges();
-  } catch (error) {
-    markFailure(error, translate('generated.workspaceInspector.revertingChanges'));
-  } finally {
-    restoringPath.value = undefined;
-  }
-}
-
 function resetGitState(): void {
-  inspectorGeneration += 1;
+  git.reset(true);
   if (activeSection.value === 'changes' || activeSection.value === 'history')
     activeSection.value = 'files';
-  changes.value = undefined;
-  changesRefreshing.value = false;
   for (const preview of [...filePageFrames.value])
     if (
       preview.repositoryPath !== undefined ||
@@ -2755,17 +1709,6 @@ function resetGitState(): void {
       tab.kind === 'HISTORY_TEXT'
     )
       workspaceFileTabService.remove(tab.id);
-  restoringPath.value = undefined;
-  historyRepositoryPath.value = '';
-  historyRefs.value = [];
-  selectedHistoryRefs.value = [];
-  historyCommits.value = [];
-  historyNextCursor.value = null;
-  historyLoading.value = false;
-  historyFilesLoading.value = undefined;
-  expandedHistoryCommits.value = [];
-  expandedHistoryDirectories.value = {};
-  historyFiles.value = {};
 }
 
 function reset(): void {
@@ -2773,390 +1716,18 @@ function reset(): void {
   closeAllFilePreviews();
   workspaceFileTabService.clear();
   appliedFilesWatchRevision = -1;
-  appliedChangesWatchRevision = -1;
   unavailable.value = false;
   activeSection.value = 'files';
-  changes.value = undefined;
-  historyRepositoryPath.value = '';
-  historyRefs.value = [];
-  selectedHistoryRefs.value = [];
-  historyCommits.value = [];
-  historyNextCursor.value = null;
-  expandedHistoryCommits.value = [];
-  expandedHistoryDirectories.value = {};
-  historyFiles.value = {};
-  contentSearchGeneration += 1;
+  git.reset();
+  uploadGeneration += 1;
+  preparingUploads.value = false;
+  uploadDialogOpen.value = false;
+  pendingUploads.value = [];
+  contentSearch.reset();
   fileDisplayFilter.value = '';
   contentQuery.value = '';
-  contentAppliedQuery.value = '';
   contentUseRegex.value = false;
-  contentAppliedUseRegex.value = false;
-  contentMatches.value = [];
-  contentSearchLoading.value = false;
-  contentSearchTruncated.value = false;
   fileTree.reset();
-}
-
-interface ChangeEntry {
-  readonly repositoryPath: string;
-  readonly repositoryName: string;
-  readonly source: 'ROOT' | 'SUBMODULE' | 'WORKTREE';
-  readonly worktreePath?: string;
-  readonly path: string;
-  readonly state: 'STAGED' | 'UNSTAGED' | 'UNTRACKED';
-  readonly change: string;
-  readonly diffAvailable: boolean;
-}
-
-interface ChangeRepository {
-  readonly repositoryPath: string;
-  readonly repositoryName: string;
-  readonly source: 'ROOT' | 'SUBMODULE' | 'WORKTREE';
-  readonly worktreePath?: string;
-  readonly physicalPath?: string;
-  readonly current: boolean;
-  readonly branch: string | null;
-  readonly tracking?: WorkspaceGitTracking;
-  readonly head?: string;
-  readonly status?: 'CLEAN' | 'DIRTY' | 'UNAVAILABLE';
-  readonly locked: boolean;
-  readonly prunable: boolean;
-  readonly error?: PublicError;
-  readonly changes: readonly ChangeEntry[];
-}
-
-interface GitWorktreeSummary {
-  readonly directoryName: string;
-  readonly branch: string | null;
-  readonly head: string;
-  readonly current: boolean;
-  readonly status: 'CLEAN' | 'DIRTY' | 'UNAVAILABLE';
-  readonly locked: boolean;
-  readonly prunable: boolean;
-}
-
-function parseChangeEntries(
-  value: unknown,
-  repositoryPath: string,
-  repositoryName: string,
-  source: ChangeRepository['source'],
-  worktreePath?: string
-): readonly ChangeEntry[] {
-  if (typeof value !== 'object' || value === null) return [];
-  const raw = (value as { readonly changes?: unknown }).changes;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((item) => {
-    if (typeof item !== 'object' || item === null) return [];
-    const entry = item as Record<string, unknown>;
-    return typeof entry.path === 'string'
-      ? [
-          {
-            repositoryPath,
-            repositoryName,
-            source,
-            ...(worktreePath === undefined ? {} : { worktreePath }),
-            path: entry.path,
-            state:
-              entry.state === 'STAGED' || entry.state === 'UNSTAGED' || entry.state === 'UNTRACKED'
-                ? entry.state
-                : 'UNTRACKED',
-            change: typeof entry.change === 'string' ? entry.change : 'MODIFIED',
-            diffAvailable: entry.diffAvailable === true
-          }
-        ]
-      : [];
-  });
-}
-
-function changeRepositories(value: unknown): readonly ChangeRepository[] {
-  if (typeof value !== 'object' || value === null) return [];
-  const record = value as {
-    readonly repositories?: unknown;
-  };
-  if (!Array.isArray(record.repositories)) return [];
-  const repositories = record.repositories.flatMap((item) => {
-    if (typeof item !== 'object' || item === null) return [];
-    const repository = item as Record<string, unknown>;
-    if (typeof repository.repositoryPath !== 'string') return [];
-    if (
-      repository.source !== 'ROOT' &&
-      repository.source !== 'SUBMODULE' &&
-      repository.source !== 'WORKTREE'
-    )
-      return [];
-    const source: ChangeRepository['source'] = repository.source;
-    const worktreePath =
-      source === 'WORKTREE' && typeof repository.worktreePath === 'string'
-        ? repository.worktreePath
-        : undefined;
-    if (source === 'WORKTREE' && worktreePath === undefined) return [];
-    const repositoryName =
-      typeof repository.repositoryName === 'string' && repository.repositoryName.length > 0
-        ? repository.repositoryName
-        : repository.repositoryPath || translate('generated.workspaceInspector.rootRepository');
-    const groupError = publicErrorSchema.safeParse(repository.error);
-    const tracking = workspaceGitTrackingSchema.safeParse(repository.tracking);
-    const parsed: ChangeRepository = {
-      repositoryPath: repository.repositoryPath,
-      repositoryName,
-      source,
-      ...(worktreePath === undefined ? {} : { worktreePath }),
-      ...(typeof repository.physicalPath === 'string'
-        ? { physicalPath: repository.physicalPath }
-        : {}),
-      current: repository.current === true || source === 'ROOT',
-      branch: typeof repository.branch === 'string' ? repository.branch : null,
-      ...(tracking.success && repository.status !== 'UNAVAILABLE'
-        ? { tracking: tracking.data }
-        : {}),
-      ...(typeof repository.head === 'string' ? { head: repository.head } : {}),
-      ...(repository.status === 'CLEAN' ||
-      repository.status === 'DIRTY' ||
-      repository.status === 'UNAVAILABLE'
-        ? { status: repository.status }
-        : {}),
-      locked: repository.locked === true,
-      prunable: repository.prunable === true,
-      ...(groupError.success ? { error: groupError.data } : {}),
-      changes:
-        repository.status === 'UNAVAILABLE'
-          ? []
-          : parseChangeEntries(
-              repository,
-              repository.repositoryPath,
-              repositoryName,
-              source,
-              worktreePath
-            )
-    };
-    return [parsed];
-  });
-  const root = repositories.find((repository) => repository.source === 'ROOT');
-  return root === undefined
-    ? repositories
-    : [root, ...repositories.filter((repository) => repository !== root)];
-}
-
-function gitGroupErrorMessage(error: PublicError): string {
-  return errorMessage(new ApiError(error.code, error.message, error.parameters, error.details));
-}
-
-function changeEntries(value: unknown): readonly ChangeEntry[] {
-  return changeRepositories(value).flatMap((repository) => repository.changes);
-}
-
-function hasExplicitChangeRepositoryGroups(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) return false;
-  const repositories = (value as { readonly repositories?: unknown }).repositories;
-  if (!Array.isArray(repositories)) return false;
-  return repositories.some(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
-      ((item as { readonly source?: unknown }).source === 'ROOT' ||
-        (item as { readonly source?: unknown }).source === 'SUBMODULE' ||
-        (item as { readonly source?: unknown }).source === 'WORKTREE')
-  );
-}
-
-function changeWorktrees(value: unknown): readonly GitWorktreeSummary[] {
-  if (typeof value !== 'object' || value === null) return [];
-  const worktrees = (value as { readonly worktrees?: unknown }).worktrees;
-  if (!Array.isArray(worktrees)) return [];
-  return worktrees.flatMap((item) => {
-    if (typeof item !== 'object' || item === null) return [];
-    const worktree = item as Record<string, unknown>;
-    if (
-      typeof worktree.directoryName !== 'string' ||
-      worktree.directoryName.length === 0 ||
-      (typeof worktree.branch !== 'string' && worktree.branch !== null) ||
-      typeof worktree.head !== 'string' ||
-      !/^[0-9a-f]{40,64}$/u.test(worktree.head) ||
-      typeof worktree.current !== 'boolean' ||
-      (worktree.status !== 'CLEAN' &&
-        worktree.status !== 'DIRTY' &&
-        worktree.status !== 'UNAVAILABLE') ||
-      typeof worktree.locked !== 'boolean' ||
-      typeof worktree.prunable !== 'boolean'
-    )
-      return [];
-    return [worktree as unknown as GitWorktreeSummary];
-  });
-}
-
-function changeWorktreesTruncated(value: unknown): boolean {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { readonly worktreesTruncated?: unknown }).worktreesTruncated === true
-  );
-}
-
-function worktreeReference(worktree: GitWorktreeSummary): string {
-  return (
-    worktree.branch ??
-    translate('gitWorktrees.detachedHead', {
-      head: worktree.head.slice(0, 8)
-    })
-  );
-}
-
-function worktreeStatusLabel(status: GitWorktreeSummary['status']): string {
-  if (status === 'CLEAN') return translate('gitWorktrees.clean');
-  if (status === 'DIRTY') return translate('gitWorktrees.dirty');
-  return translate('gitWorktrees.unavailable');
-}
-
-function worktreeStatusType(status: GitWorktreeSummary['status']): 'success' | 'warning' | 'info' {
-  if (status === 'CLEAN') return 'success';
-  if (status === 'DIRTY') return 'warning';
-  return 'info';
-}
-
-function repositoryKey(repository: ChangeRepository): string {
-  return `${repository.source}:${repository.worktreePath ?? repository.repositoryPath}`;
-}
-
-function changeKey(
-  entry: Pick<ChangeEntry, 'repositoryPath' | 'worktreePath' | 'path' | 'state'>
-): string {
-  return `${entry.worktreePath ?? entry.repositoryPath}:${entry.state}:${entry.path}`;
-}
-
-function workspaceChangePath(
-  entry: Pick<ChangeEntry, 'repositoryPath' | 'repositoryName' | 'worktreePath' | 'path'>
-): string {
-  if (entry.worktreePath !== undefined)
-    return `${entry.worktreePath.replace(/[\\/]+$/u, '')}/${entry.path}`;
-  return entry.repositoryPath.length === 0 ? entry.path : `${entry.repositoryPath}/${entry.path}`;
-}
-
-function repositoryKindLabel(source: ChangeRepository['source']): string {
-  if (source === 'ROOT') return translate('gitWorktrees.rootRepository');
-  if (source === 'SUBMODULE') return translate('gitWorktrees.submodule');
-  return translate('gitWorktrees.worktree');
-}
-
-function repositoryReference(repository: ChangeRepository): string | undefined {
-  if (repository.branch !== null) return repository.branch;
-  if (repository.head === undefined) return undefined;
-  return translate('gitWorktrees.detachedHead', { head: repository.head.slice(0, 8) });
-}
-
-function shortChange(change: string): string {
-  return (
-    {
-      ADDED: 'A',
-      MODIFIED: 'M',
-      DELETED: 'D',
-      RENAMED: 'R',
-      COPIED: 'C',
-      TYPE_CHANGED: 'T'
-    }[change] ?? '?'
-  );
-}
-
-function shortState(state: ChangeEntry['state']): string {
-  return { STAGED: 'S', UNSTAGED: 'W', UNTRACKED: '?' }[state];
-}
-
-function changeFileName(changePath: string): string {
-  return changePath.split('/').at(-1) ?? changePath;
-}
-
-function changeDirectory(changePath: string): string {
-  const separator = changePath.lastIndexOf('/');
-  return separator > 0 ? changePath.slice(0, separator) : '';
-}
-
-function historyTime(value: number): string {
-  return Number.isFinite(value) ? managementDateTime(value) : '-';
-}
-
-function openHistoryContextMenu(commit: HistoryCommit, event: MouseEvent): void {
-  event.preventDefault();
-  const width = 176;
-  const height = 38;
-  historyContextMenu.value = {
-    commit,
-    x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
-    y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))
-  };
-}
-
-function closeHistoryContextMenu(): void {
-  historyContextMenu.value = undefined;
-}
-
-function closeHistoryContextMenuOnPointerDown(event: PointerEvent): void {
-  if (event.target instanceof Element && event.target.closest('.history-context-menu') !== null)
-    return;
-  closeHistoryContextMenu();
-}
-
-async function copyHistoryCommitId(): Promise<void> {
-  const commit = historyContextMenu.value?.commit;
-  if (commit === undefined) return;
-  closeHistoryContextMenu();
-  await navigator.clipboard.writeText(commit.hash);
-  emit('notice', translate('generated.workspaceInspector.commitIdCopied'));
-}
-
-function historyTreeIndent(depth: number): string {
-  const safeDepth = Math.min(8, Math.max(0, depth));
-  return `${safeDepth * 10 + 2}px`;
-}
-
-type HistoryFileRow =
-  | {
-      readonly kind: 'DIRECTORY';
-      readonly path: string;
-      readonly name: string;
-      readonly depth: number;
-    }
-  | {
-      readonly kind: 'FILE';
-      readonly file: HistoryFile;
-      readonly name: string;
-      readonly depth: number;
-    };
-
-function isVisibleHistoryPath(path: string, expandedDirectories: readonly string[]): boolean {
-  const parts = path.split('/').filter(Boolean);
-  return parts
-    .slice(0, -1)
-    .every((_, index) => expandedDirectories.includes(parts.slice(0, index + 1).join('/')));
-}
-
-function historyFileRows(
-  files: readonly HistoryFile[],
-  expandedDirectories: readonly string[]
-): readonly HistoryFileRow[] {
-  const directories = new Set<string>();
-  const rows: HistoryFileRow[] = [];
-  for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
-    const parts = file.path.split('/').filter(Boolean);
-    for (let depth = 0; depth < parts.length - 1; depth += 1) {
-      const path = parts.slice(0, depth + 1).join('/');
-      if (directories.has(path)) continue;
-      directories.add(path);
-      if (!isVisibleHistoryPath(path, expandedDirectories)) continue;
-      rows.push({ kind: 'DIRECTORY', path, name: parts[depth] ?? path, depth });
-    }
-    if (!isVisibleHistoryPath(file.path, expandedDirectories)) continue;
-    rows.push({ kind: 'FILE', file, name: parts.at(-1) ?? file.path, depth: parts.length - 1 });
-  }
-  return rows;
-}
-
-function toggleHistoryDirectory(commitHash: string, path: string): void {
-  const expanded = expandedHistoryDirectories.value[commitHash] ?? [];
-  expandedHistoryDirectories.value = {
-    ...expandedHistoryDirectories.value,
-    [commitHash]: expanded.includes(path)
-      ? expanded.filter((item) => item !== path)
-      : [...expanded, path]
-  };
 }
 
 watch(
@@ -3179,6 +1750,7 @@ watch(
     if (!enabled && activeSection.value === 'search') activeSection.value = 'files';
   }
 );
+watch(activePreviewId, () => codeNavigation.cancel(), { flush: 'sync' });
 watch(
   () => props.filesRevision,
   () => {
@@ -3207,23 +1779,8 @@ function applySubscriptionSnapshot(snapshot = props.subscriptionSnapshot): void 
     if (workspace !== undefined) emit('workspace', workspace);
     appliedFilesWatchRevision = appliedWatchRevision(snapshot.filesWatchRevision);
   }
-  if (
-    snapshot.changes !== undefined &&
-    isNewerWatchRevision(snapshot.changesWatchRevision, appliedChangesWatchRevision)
-  ) {
-    const workspace = filePageWorkspace(
-      (snapshot.changes as { workspace?: unknown } | null)?.workspace
-    );
-    appliedChangesWatchRevision = appliedWatchRevision(snapshot.changesWatchRevision);
-    if (workspace !== undefined) emit('workspace', workspace);
-    if ((workspace?.kind ?? props.workspaceKind) !== 'GIT_WORKSPACE') {
-      resetGitState();
-      return;
-    }
-    changes.value = snapshot.changes;
-    const branch = currentChangesBranch(snapshot.changes);
-    if (branch !== undefined) emit('branch', snapshot.workspaceId, branch);
-  }
+  if (snapshot.changes !== undefined)
+    git.applyWatch(snapshot.changes, snapshot.changesWatchRevision);
 }
 
 function isNewerWatchRevision(revision: number | undefined, applied: number): boolean {
@@ -3238,25 +1795,17 @@ onMounted(() => {
   reset();
   applySubscriptionSnapshot();
 });
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return;
-  closeHistoryContextMenu();
-}
-onMounted(() => {
-  window.addEventListener('keydown', closeOnEscape);
-  window.addEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
-  window.addEventListener('resize', closeHistoryContextMenu);
-  window.addEventListener('scroll', closeHistoryContextMenu, true);
-});
 onBeforeUnmount(() => {
+  inspectorDisposed = true;
+  inspectorGeneration += 1;
+  fileTree.reset();
   fileOpenGeneration += 1;
-  clearCodeNavigation();
-  window.removeEventListener('keydown', closeOnEscape);
-  window.removeEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
-  window.removeEventListener('resize', closeHistoryContextMenu);
-  window.removeEventListener('scroll', closeHistoryContextMenu, true);
+  uploadGeneration += 1;
+  git.reset();
+  codeNavigation.reset();
+  contentSearch.reset();
 });
-onBeforeUnmount(revokePreviewObjectUrl);
+onBeforeUnmount(() => filePreviews.reset());
 </script>
 
 <template>
@@ -3511,472 +2060,19 @@ onBeforeUnmount(revokePreviewObjectUrl);
           </li>
         </ul>
       </section>
-      <section v-else-if="activeSection === 'changes'" class="current-changes">
-        <div v-if="visibleGitWorktrees.length > 0" class="git-worktrees">
-          <div class="git-worktree-heading">
-            <strong>{{ translate('gitWorktrees.title') }}</strong>
-            <small v-if="gitWorktreesTruncated">
-              {{ translate('gitWorktrees.truncated') }}
-            </small>
-          </div>
-          <ul class="git-worktree-list" :aria-label="translate('gitWorktrees.title')">
-            <li
-              v-for="(worktree, index) in visibleGitWorktrees"
-              :key="`${worktree.directoryName}:${worktree.head}:${index}`"
-            >
-              <el-tooltip v-bind="tooltipOptions" :content="worktree.directoryName"
-                ><strong class="git-worktree-name">
-                  {{ worktree.directoryName }}
-                </strong></el-tooltip
-              >
-              <el-tooltip v-bind="tooltipOptions" :content="worktreeReference(worktree)"
-                ><code>
-                  {{ worktreeReference(worktree) }}
-                </code></el-tooltip
-              >
-              <span class="git-worktree-statuses">
-                <el-tag v-if="worktree.current" effect="plain" size="small">
-                  {{ translate('gitWorktrees.current') }}
-                </el-tag>
-                <el-tag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
-                  {{ worktreeStatusLabel(worktree.status) }}
-                </el-tag>
-                <el-tag v-if="worktree.locked" type="warning" effect="plain" size="small">
-                  {{ translate('gitWorktrees.locked') }}
-                </el-tag>
-                <el-tag v-if="worktree.prunable" type="info" effect="plain" size="small">
-                  {{ translate('gitWorktrees.prunable') }}
-                </el-tag>
-              </span>
-            </li>
-          </ul>
-        </div>
-        <p v-else-if="gitWorktreesTruncated" class="git-worktrees-truncated" role="status">
-          {{ translate('gitWorktrees.truncated') }}
-        </p>
-        <p
-          v-for="(error, index) in changeDiscoveryErrors"
-          :key="index"
-          class="change-repository-empty"
-          role="status"
-        >
-          {{ gitGroupErrorMessage(error) }}
-        </p>
-        <p v-if="visibleChangeRepositories.length === 0" class="empty">
-          {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
-        </p>
-        <ul v-else class="change-list">
-          <template
-            v-for="repository in visibleChangeRepositories"
-            :key="repositoryKey(repository)"
-          >
-            <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
-              <div class="repository-heading-content">
-                <div class="repository-title-row">
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    :content="repository.physicalPath || repository.repositoryPath"
-                    ><strong>
-                      {{ repository.repositoryName }}
-                    </strong></el-tooltip
-                  >
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    v-if="repositoryReference(repository)"
-                    :content="repositoryReference(repository)"
-                    ><code class="repository-branch current-branch">
-                      {{ repositoryReference(repository) }}
-                    </code></el-tooltip
-                  >
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    v-if="repository.source === 'ROOT'"
-                    :content="translate('generated.workspaceInspector.refreshGitChanges2')"
-                    ><button
-                      class="changes-refresh-button file-explorer-utility-button utility-control"
-                      :disabled="changesRefreshing"
-                      :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-                      :aria-busy="changesRefreshing || undefined"
-                      type="button"
-                      @click="loadChanges()"
-                    >
-                      <MarIcon name="loading-action" v-if="changesRefreshing" />
-                      <MarIcon name="refresh" v-else /></button
-                  ></el-tooltip>
-                </div>
-                <div class="repository-tags-row">
-                  <el-tag class="repository-kind" type="info" effect="plain" size="small">
-                    {{ repositoryKindLabel(repository.source) }}
-                  </el-tag>
-                  <el-tag v-if="repository.current" effect="plain" size="small">
-                    {{ translate('gitWorktrees.current') }}
-                  </el-tag>
-                  <el-tag
-                    v-if="repository.status"
-                    :type="worktreeStatusType(repository.status)"
-                    effect="plain"
-                    size="small"
-                  >
-                    {{ worktreeStatusLabel(repository.status) }}
-                  </el-tag>
-                  <el-tag v-if="repository.locked" type="warning" effect="plain" size="small">
-                    {{ translate('gitWorktrees.locked') }}
-                  </el-tag>
-                  <el-tag v-if="repository.prunable" type="info" effect="plain" size="small">
-                    {{ translate('gitWorktrees.prunable') }}
-                  </el-tag>
-                  <el-tag
-                    v-if="
-                      repository.tracking &&
-                      (repository.tracking.ahead > 0 || repository.tracking.behind > 0)
-                    "
-                    class="repository-sync-tag"
-                    effect="plain"
-                    size="small"
-                    :title="translate('gitSync.description', repository.tracking)"
-                    :aria-label="translate('gitSync.description', repository.tracking)"
-                  >
-                    <span aria-hidden="true"
-                      >↓ {{ repository.tracking.behind }} ↑ {{ repository.tracking.ahead }}</span
-                    >
-                  </el-tag>
-                </div>
-                <el-tooltip
-                  v-bind="tooltipOptions"
-                  v-if="repository.source === 'SUBMODULE' && repository.repositoryPath"
-                  :content="repository.repositoryPath"
-                  ><code class="repository-relative-path">
-                    {{ repository.repositoryPath }}
-                  </code></el-tooltip
-                >
-                <el-tooltip
-                  v-bind="tooltipOptions"
-                  v-if="
-                    (repository.source === 'WORKTREE' || repository.source === 'ROOT') &&
-                    repository.physicalPath
-                  "
-                  :content="repository.physicalPath"
-                  ><code class="repository-physical-path">
-                    {{ repository.physicalPath }}
-                  </code></el-tooltip
-                >
-              </div>
-            </li>
-            <li v-if="repository.changes.length === 0" class="change-repository-empty">
-              {{
-                repository.error !== undefined
-                  ? gitGroupErrorMessage(repository.error)
-                  : repository.status === 'UNAVAILABLE'
-                    ? translate('gitWorktrees.unavailable')
-                    : translate('generated.workspaceInspector.noUncommittedChanges')
-              }}
-            </li>
-            <li v-for="entry in repository.changes" :key="changeKey(entry)" class="change-entry">
-              <el-tooltip v-bind="tooltipOptions" :content="workspaceChangePath(entry)"
-                ><button
-                  class="change-path"
-                  type="button"
-                  :aria-label="
-                    entry.diffAvailable
-                      ? translate('generated.workspaceInspector.viewDiffFor', {
-                          value0: workspaceChangePath(entry)
-                        })
-                      : translate('generated.workspaceInspector.preview', {
-                          value0: workspaceChangePath(entry)
-                        })
-                  "
-                  @click="openChange(entry, $event)"
-                >
-                  <span class="change-path-content">
-                    <span class="change-file-heading"
-                      ><FileTypeIcon :name="changeFileName(entry.path)" /><strong
-                        class="change-file-name"
-                        >{{ changeFileName(entry.path) }}</strong
-                      ></span
-                    >
-                    <small v-if="changeDirectory(entry.path)" class="change-directory">
-                      {{ changeDirectory(entry.path) }}
-                    </small>
-                  </span>
-                </button></el-tooltip
-              >
-              <el-tooltip v-bind="tooltipOptions" :content="entry.change"
-                ><span>{{ shortChange(entry.change) }}</span></el-tooltip
-              >
-              <el-tooltip v-bind="tooltipOptions" :content="entry.state"
-                ><small>{{ shortState(entry.state) }}</small></el-tooltip
-              >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="
-                  entry.state === 'UNTRACKED'
-                    ? translate('generated.workspaceInspector.deleteUntrackedFile2')
-                    : translate('generated.workspaceInspector.revertChanges2')
-                "
-                ><el-button
-                  class="change-restore utility-control"
-                  text
-                  :icon="marIcon('undo')"
-                  :loading="restoringPath === changeKey(entry)"
-                  :disabled="restoringPath !== undefined"
-                  :aria-label="
-                    entry.state === 'UNTRACKED'
-                      ? translate('generated.workspaceInspector.deleteChangesTo', {
-                          value0: workspaceChangePath(entry)
-                        })
-                      : translate('generated.workspaceInspector.revertChangesTo', {
-                          value0: workspaceChangePath(entry)
-                        })
-                  "
-                  size="small"
-                  @click="restoreChange(entry)"
-                  :loading-icon="marIcon('loading-action')"
-              /></el-tooltip>
-            </li>
-          </template>
-        </ul>
-      </section>
-      <section v-else-if="activeSection === 'history'" class="git-history">
-        <div class="history-toolbar">
-          <el-select
-            v-model="historyRepositorySelection"
-            class="history-filter"
-            :aria-label="translate('generated.workspaceInspector.selectGitRepository')"
-            :placeholder="translate('generated.workspaceInspector.selectAGitRepository')"
-            size="small"
-            @change="changeHistoryRepository"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-          >
-            <el-option
-              v-for="repository in historyRepositories"
-              :key="repository.value"
-              :label="repository.label"
-              :value="repository.value"
-            />
-          </el-select>
-          <el-select
-            v-model="selectedHistoryRefs"
-            class="history-filter"
-            :aria-label="translate('generated.workspaceInspector.selectGitBranch')"
-            :placeholder="translate('generated.workspaceInspector.allBranches')"
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            clearable
-            size="small"
-            @change="resetHistory"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-          >
-            <el-option-group :label="translate('generated.workspaceInspector.localBranches')">
-              <el-option
-                v-for="item in historyRefs.filter((entry) => entry.kind === 'LOCAL')"
-                :key="item.name"
-                :label="item.displayName"
-                :value="item.name"
-              />
-            </el-option-group>
-            <el-option-group :label="translate('generated.workspaceInspector.remoteBranches')">
-              <el-option
-                v-for="item in historyRefs.filter((entry) => entry.kind === 'REMOTE')"
-                :key="item.name"
-                :label="item.displayName"
-                :value="item.name"
-              />
-            </el-option-group>
-          </el-select>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.workspaceInspector.refreshGitHistory2')"
-            ><button
-              class="history-refresh file-explorer-utility-button utility-control"
-              :disabled="historyLoading"
-              :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
-              :aria-busy="historyLoading || undefined"
-              type="button"
-              @click="resetHistory"
-            >
-              <MarIcon name="loading-action" v-if="historyLoading" />
-              <MarIcon name="refresh" v-else /></button
-          ></el-tooltip>
-        </div>
-        <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
-          {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
-        </p>
-        <ul v-else class="history-list">
-          <li
-            v-for="{ commit, graph } in historyGraphRows"
-            :key="commit.hash"
-            class="history-commit"
-          >
-            <button
-              :aria-label="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
-              class="history-commit-row"
-              type="button"
-              @click="toggleHistoryCommit(commit)"
-              @contextmenu="openHistoryContextMenu(commit, $event)"
-            >
-              <svg
-                class="history-graph"
-                :style="{ width: `${gitGraphWidth(graph)}px` }"
-                :viewBox="`0 0 ${gitGraphWidth(graph)} 38`"
-                aria-hidden="true"
-              >
-                <path
-                  v-for="(edge, edgeIndex) in graph.edges"
-                  :key="`${commit.hash}:${edgeIndex}`"
-                  class="history-graph-edge"
-                  :class="`history-graph-color-${edge.color % 6}`"
-                  :d="edge.path"
-                />
-                <circle
-                  class="history-graph-node-ring"
-                  :cx="gitGraphNodeX(graph)"
-                  cy="19"
-                  r="4.5"
-                />
-                <circle
-                  class="history-graph-node"
-                  :class="`history-graph-color-${graph.lane % 6}`"
-                  :cx="gitGraphNodeX(graph)"
-                  cy="19"
-                  r="3"
-                />
-              </svg>
-              <span class="history-content">
-                <span class="history-title-row">
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    :content="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
-                    ><span class="history-subject">{{
-                      commit.subject || translate('generated.workspaceInspector.untitled2')
-                    }}</span></el-tooltip
-                  >
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    v-for="refName in commit.refs"
-                    :key="refName"
-                    :content="refName"
-                    ><span class="history-ref">{{ refName }}</span></el-tooltip
-                  >
-                </span>
-                <small>{{ commit.authorName }} · {{ historyTime(commit.committedAt) }}</small>
-              </span>
-            </button>
-            <div
-              v-if="expandedHistoryCommits.includes(commit.hash)"
-              class="history-expanded"
-              :style="{ gridTemplateColumns: `${gitGraphWidth(graph)}px minmax(0, 1fr)` }"
-            >
-              <svg
-                class="history-graph-continuation"
-                :style="{ width: `${gitGraphWidth(graph)}px` }"
-                aria-hidden="true"
-              >
-                <line
-                  v-for="lane in graph.outgoingLaneCount"
-                  :key="lane"
-                  :class="`history-graph-color-${(lane - 1) % 6}`"
-                  :x1="(lane - 1) * 14 + 7"
-                  y1="0"
-                  :x2="(lane - 1) * 14 + 7"
-                  y2="100%"
-                />
-              </svg>
-              <ul class="history-files">
-                <li v-if="historyFilesLoading === commit.hash" class="empty" role="status">
-                  <MarIcon name="loading-action" />
-                  {{ translate('generated.workspaceInspector.loadingCommitFiles') }}
-                </li>
-                <li
-                  v-for="row in historyFileRows(
-                    historyFiles[commit.hash] ?? [],
-                    expandedHistoryDirectories[commit.hash] ?? []
-                  )"
-                  :key="
-                    row.kind === 'DIRECTORY'
-                      ? `directory:${row.path}`
-                      : `file:${row.file.previousPath ?? ''}:${row.file.path}`
-                  "
-                >
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    v-if="row.kind === 'DIRECTORY'"
-                    :content="row.path"
-                    ><span class="mar-tooltip-control"
-                      ><el-button
-                        text
-                        size="small"
-                        class="history-directory"
-                        :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                        :aria-expanded="
-                          (expandedHistoryDirectories[commit.hash] ?? []).includes(row.path)
-                        "
-                        @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
-                      >
-                        <MarIcon
-                          name="chevron-right"
-                          class="history-directory-toggle"
-                          :class="{
-                            'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
-                              row.path
-                            )
-                          }"
-                        />
-                        <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
-                      </el-button></span
-                    ></el-tooltip
-                  >
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    v-else
-                    :content="
-                      row.file.previousPath
-                        ? `${row.file.previousPath} → ${row.file.path}`
-                        : row.file.path
-                    "
-                    ><el-button
-                      text
-                      size="small"
-                      :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                      @click.stop="openHistoryDiff(commit, row.file, $event)"
-                    >
-                      <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
-                      <FileTypeIcon :name="row.name" />
-                      <span class="history-file-path">{{ row.name }}</span>
-                    </el-button></el-tooltip
-                  >
-                </li>
-              </ul>
-            </div>
-          </li>
-        </ul>
-        <Teleport to="body">
-          <div
-            v-if="historyContextMenu !== undefined"
-            class="history-context-menu"
-            :style="{ left: `${historyContextMenu.x}px`, top: `${historyContextMenu.y}px` }"
-            role="menu"
-          >
-            <button type="button" role="menuitem" @click="copyHistoryCommitId">
-              <MarIcon name="paste" />
-              {{ translate('generated.workspaceInspector.copyCommitId') }}
-            </button>
-          </div>
-        </Teleport>
-        <el-button
-          v-if="historyNextCursor !== null"
-          class="history-load-more"
-          link
-          :loading="historyLoading"
-          :disabled="historyLoading"
-          @click="loadHistory(false)"
-          :loading-icon="marIcon('loading-action')"
-        >
-          {{ translate('generated.workspaceInspector.loadMore') }}
-        </el-button>
-      </section>
+      <WorkspaceGitChanges
+        v-else-if="activeSection === 'changes'"
+        :service="git"
+        :target="fileOperationTarget()"
+        @open="openChange"
+        @notice="emit('notice', $event)"
+      />
+      <WorkspaceGitHistory
+        v-else-if="activeSection === 'history'"
+        :service="git"
+        @open="openHistoryDiff"
+        @notice="emit('notice', $event)"
+      />
     </template>
   </article>
   <Teleport to="body">
@@ -4107,6 +2203,7 @@ onBeforeUnmount(revokePreviewObjectUrl);
     </WorkspaceFileTabs>
   </Teleport>
   <el-dialog
+    v-if="uploadDialogOpen"
     v-model="uploadDialogOpen"
     class="upload-confirm-dialog"
     :title="translate('generated.workspaceInspector.confirmFileUpload')"
@@ -4192,7 +2289,6 @@ onBeforeUnmount(revokePreviewObjectUrl);
     min-height: 100%;
     max-height: none;
   }
-
   :global(.upload-confirm-dialog.el-dialog),
   :global(.upload-confirm-dialog .el-dialog) {
     width: calc(100vw - 32px) !important;
@@ -4322,15 +2418,15 @@ onBeforeUnmount(revokePreviewObjectUrl);
   font-weight: 600;
   line-height: 1.25;
 }
-.content-search-name,
-.change-file-heading {
+
+.content-search-name {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 0.35rem;
 }
-.content-search-name strong,
-.change-file-heading strong {
+
+.content-search-name strong {
   min-width: 0;
 }
 
@@ -4420,285 +2516,9 @@ onBeforeUnmount(revokePreviewObjectUrl);
   font-size: var(--mar-font-size-meta);
 }
 
-.git-worktrees {
-  flex: 0 0 auto;
-  border-bottom: 1px solid var(--mar-border-strong);
-  padding: 0.15rem 2px 0.4rem;
-}
-
-.git-worktree-heading {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-  justify-content: space-between;
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-}
-
-.git-worktree-heading small {
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 400;
-}
-
-.git-worktree-list {
-  display: grid;
-  gap: 0.25rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  max-height: min(18rem, 35vh);
-  margin: 0.3rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.git-worktree-list li {
-  display: grid;
-  grid-template-columns: minmax(6rem, 0.8fr) minmax(7rem, 1fr) auto;
-  gap: 0.45rem;
-  align-items: center;
-  min-width: 0;
-}
-
-.git-worktree-name,
-.git-worktree-list code {
-  overflow: hidden;
-  min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.git-worktree-name {
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-}
-
-.git-worktree-list code {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-}
-
-.git-worktree-statuses {
-  display: flex;
-  gap: 0.25rem;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.git-worktree-statuses :deep(.el-tag) {
-  height: 1.25rem;
-  padding-inline: 0.3rem;
-  font-size: var(--mar-font-size-meta);
-}
-
-.git-worktrees-truncated {
-  margin: 0;
-  border-bottom: 1px solid var(--mar-border-strong);
-  padding: 0.25rem 2px 0.4rem;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-}
-
-.change-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.change-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 7px;
-  align-items: center;
-  border-top: 1px solid var(--mar-fill-hover);
-  padding: 5px 2px;
-}
-
-.change-list .change-repository-heading {
-  grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 1fr);
-  margin-top: 0.75rem;
-  border-top: 1px solid var(--mar-border-default);
-  padding: 0.5rem 0.25rem 0.35rem;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  font-weight: 600;
-}
-
-.change-list > .change-repository-heading:first-child {
-  margin-top: 0;
-  border-top: 0;
-  padding-top: 0.2rem;
-}
-
-.change-list .change-repository-empty {
-  grid-column: 1 / -1;
-  border-top: 0;
-  padding: 0.2rem 2px 0.25rem;
-  color: var(--mar-text-faint);
-  font-size: var(--mar-font-size-meta);
-}
-
-.change-repository-heading strong {
-  color: var(--mar-text-primary);
-}
-
-.repository-heading-content {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.repository-title-row {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  min-width: 0;
-}
-
-.repository-title-row strong {
-  flex: 0 1 auto;
-  overflow: hidden;
-  min-width: 0;
-  max-width: 60%;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repository-title-row .repository-branch {
-  flex: 0 1 auto;
-}
-
-.repository-title-row .changes-refresh-button {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.repository-tags-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.repository-tags-row :deep(.el-tag) {
-  height: 1.3rem;
-  padding-inline: 0.28rem;
-  font-size: var(--mar-font-size-meta);
-  font-weight: 500;
-}
-
-.repository-sync-tag {
-  font-variant-numeric: tabular-nums;
-}
-
-.change-repository-heading code {
-  margin-left: 0;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 400;
-}
-
-.current-branch {
-  display: block;
-  width: fit-content;
-  overflow: hidden;
-  min-width: 0;
-  max-width: min(46vw, 20rem);
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repository-physical-path,
-.repository-relative-path {
-  display: block;
-  overflow-wrap: anywhere;
-  color: var(--mar-text-faint);
-  line-height: 1.35;
-  white-space: normal;
-}
-
-.change-list .change-path {
-  justify-content: flex-start;
-  overflow: hidden;
-  min-width: 0;
-  height: auto;
-  padding: 0;
-  color: var(--mar-text-primary);
-  font-family: var(--mar-font-mono);
-  font-size: var(--mar-font-size-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.change-list .change-entry,
-.change-list .change-path,
-.history-commit-row,
-.history-files :deep(.el-button) {
-  border-radius: var(--mar-radius-selection);
-}
-
-.change-list .change-entry:hover,
-.change-list .change-entry:focus-within {
-  background: var(--mar-fill-row-hover);
-}
-
-.change-list .change-path:not(.is-disabled):hover {
-  color: var(--mar-text-primary);
-}
-
-.change-list .change-restore {
-  min-width: 1.4rem;
-  padding: 0.15rem;
-}
-
-.change-list > li > span {
-  color: var(--mar-color-brand-text);
-  font-size: var(--mar-font-size-meta);
-}
-
-.change-list small {
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-}
-
-.current-changes {
-  margin-top: 0.2rem;
-  padding-top: 0;
-}
-
-.workspace-inspector .current-changes {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-}
-
-.workspace-inspector .current-changes .change-list {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-}
-
 @media (max-width: 767px) {
   .workspace-inspector .run-form {
     grid-template-columns: 1fr auto;
-  }
-
-  .git-worktree-list li {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .git-worktree-list code {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .git-worktree-statuses {
-    flex-wrap: wrap;
   }
 }
 
@@ -4774,444 +2594,5 @@ button.file-explorer-utility-button:disabled {
 :global(.explorer-toolbar .el-input__wrapper:focus-within) {
   background: var(--mar-bg-panel);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
-}
-
-button.changes-refresh-button {
-  min-width: var(--mar-compact-control-size);
-  min-height: var(--mar-compact-control-size);
-  margin-left: 0.15rem;
-}
-</style>
-
-<style scoped>
-.change-list li {
-  gap: 3px;
-  border-top: 0;
-  min-height: 18px;
-  color: var(--mar-text-primary);
-  padding: 0 2px;
-}
-.change-list .change-path {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 18px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 1px 2px;
-  line-height: 1.1;
-  font-size: var(--mar-font-size-meta);
-  text-align: left;
-  cursor: pointer;
-}
-.change-list .change-path:hover:not(:disabled),
-.change-list .change-path:focus-visible {
-  background: var(--mar-fill-hover);
-}
-.change-list .change-path:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-.change-path-content {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.change-file-heading {
-  flex: 0 0 auto;
-  overflow: hidden;
-  max-width: 60%;
-}
-.change-file-heading .change-file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.change-list .change-file-name,
-.change-list .change-directory {
-  display: inline;
-}
-.change-list .change-file-name {
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 500;
-}
-.change-list .change-directory {
-  flex: 1 1 auto;
-  overflow: hidden;
-  min-width: 0;
-  margin-left: 0.45rem;
-  color: var(--mar-text-faint);
-  font-family: inherit;
-  font-size: var(--mar-font-size-nano);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.change-list > li > small {
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1;
-}
-.change-entry > span {
-  font-size: var(--mar-font-size-nano);
-}
-.change-list .change-restore {
-  min-width: 1.25rem;
-  min-height: 18px;
-  padding: 0.1rem;
-}
-:deep(.change-list .change-restore.el-button) {
-  min-height: 18px;
-}
-
-.git-history {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 6px;
-}
-
-.history-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) auto;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-}
-
-.history-toolbar :deep(.el-select) {
-  min-width: 0;
-}
-
-.history-filter :deep(.el-select__wrapper) {
-  min-height: 26px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  padding-inline: 6px;
-}
-
-.history-filter :deep(.el-select__wrapper:hover),
-.history-filter :deep(.el-select__wrapper.is-focused) {
-  background: var(--mar-fill-hover);
-  box-shadow: none;
-}
-
-button.history-refresh {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-  color: var(--mar-text-tertiary);
-}
-
-.history-list,
-.history-files {
-  width: 100%;
-  min-width: 0;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.history-commit {
-  min-width: 0;
-}
-
-.history-commit-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 0 2px;
-  text-align: left;
-  cursor: pointer;
-  min-height: 38px;
-}
-
-.history-graph {
-  display: block;
-  height: 38px;
-  min-width: 14px;
-  overflow: visible;
-}
-
-.history-expanded {
-  display: grid;
-  min-width: 0;
-  position: relative;
-  padding-inline: 2px;
-}
-
-.history-graph-continuation {
-  display: block;
-  position: absolute;
-  inset-block: 0;
-  left: 2px;
-  height: 100%;
-  overflow: visible;
-}
-
-.history-graph-continuation line {
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-width: 1.6;
-}
-
-.history-graph-edge {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-width: 1.6;
-}
-
-.history-graph-node-ring {
-  fill: var(--mar-bg-panel);
-  stroke: var(--mar-bg-panel);
-  stroke-width: 3;
-}
-
-.history-graph-node {
-  fill: currentColor;
-  stroke: currentColor;
-}
-
-.history-graph-color-0 {
-  color: var(--mar-color-brand-text);
-}
-
-.history-graph-color-1 {
-  color: var(--mar-color-success-text);
-}
-
-.history-graph-color-2 {
-  color: var(--mar-color-accent);
-}
-
-.history-graph-color-3 {
-  color: var(--mar-color-warning-text);
-}
-
-.history-graph-color-4 {
-  color: var(--mar-text-secondary);
-}
-
-.history-graph-color-5 {
-  color: var(--mar-color-danger-text);
-}
-
-.history-context-menu {
-  position: fixed;
-  z-index: 5000;
-  min-width: 176px;
-  overflow: hidden;
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 5px;
-  background: var(--mar-bg-panel);
-  box-shadow: var(--el-box-shadow-light);
-  padding: 4px;
-}
-
-.history-context-menu button {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 28px;
-  gap: 7px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--mar-text-primary);
-  font: inherit;
-  font-size: var(--mar-font-size-meta);
-  padding: 4px 8px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.history-context-menu button:hover,
-.history-context-menu button:focus-visible {
-  background: var(--mar-fill-hover);
-  outline: none;
-}
-
-.history-commit-row:hover {
-  background: var(--mar-fill-row-hover);
-}
-
-.history-content,
-.history-title-row {
-  display: flex;
-  min-width: 0;
-}
-
-.history-content {
-  flex-direction: column;
-  gap: 1px;
-  padding-block: 4px;
-}
-
-.history-title-row {
-  align-items: center;
-  gap: 4px;
-}
-
-.history-subject {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--mar-font-size-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-ref {
-  flex: 0 1 auto;
-  max-width: 92px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
-  font-size: var(--mar-font-size-nano);
-  padding: 1px 5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-content small {
-  overflow: hidden;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-nano);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-files {
-  grid-column: 2;
-  min-width: 0;
-  margin: 0;
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 5px;
-  padding: 3px 0;
-}
-
-.history-files > .empty {
-  padding: 1px 2px;
-  font-size: var(--mar-font-size-meta);
-  line-height: 18px;
-}
-
-.history-directory {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  min-height: 20px;
-  gap: 4px;
-  overflow: hidden;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-files :deep(.history-directory.el-button) {
-  justify-content: flex-start;
-}
-
-.history-directory .mar-icon {
-  flex: none;
-  font-size: 10px;
-}
-
-.history-directory-toggle {
-  margin-right: 2px;
-  transition: transform 120ms ease;
-}
-
-.history-directory-toggle.is-expanded {
-  transform: rotate(90deg);
-}
-
-.history-files :deep(.el-button) {
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 20px;
-  overflow: hidden;
-  padding: 1px 2px;
-  font-size: var(--mar-font-size-body);
-  line-height: 18px;
-}
-
-.history-files :deep(.el-button span) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-file-path {
-  flex: 1;
-  text-align: left;
-}
-
-.history-file-status {
-  display: inline-block;
-  flex: none;
-  width: 16px;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-nano);
-}
-
-.history-files :deep(.file-type-icon) {
-  width: 12px;
-  flex-basis: 12px;
-  margin-right: 3px;
-  overflow: visible;
-  font-size: var(--mar-font-size-meta);
-}
-
-.history-load-more {
-  justify-self: center;
-  color: var(--mar-color-brand-text);
-  font-size: var(--mar-font-size-meta);
-  line-height: 20px;
-  text-decoration: none;
-}
-
-.history-load-more:hover {
-  text-decoration: underline;
-}
-
-.history-load-more[aria-disabled='true'] {
-  color: var(--mar-text-faint);
-  cursor: default;
-  text-decoration: none;
-}
-
-@media (max-width: 767px) {
-  .history-toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .history-toolbar > .history-filter:nth-child(2) {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .history-toolbar > .history-refresh {
-    grid-column: 2;
-    grid-row: 1;
-  }
 }
 </style>
