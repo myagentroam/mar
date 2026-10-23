@@ -685,9 +685,14 @@ it.each([
   }
 );
 
-it.each([false, true])(
-  'keeps navigation results per file tab (mobile=%s)',
-  async (mobileViewport) => {
+it.each([
+  [false, false],
+  [true, false],
+  [false, true],
+  [true, true]
+])(
+  'keeps navigation results per file tab (mobile=%s, history=%s)',
+  async (mobileViewport, history) => {
     vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
     vi.stubGlobal('Node', TestHostNode);
     let finishOld: ((value: unknown) => void) | undefined;
@@ -729,6 +734,8 @@ it.each([false, true])(
     app.mount(new TestHostNode('container'));
     type Page = {
       id: number;
+      repositoryPath?: string;
+      historySource?: { commit: string; repositoryPath: string; refs: readonly string[] };
       fileContent: Ref<unknown>;
       navigationLoading: Readonly<Ref<boolean>>;
       navigationTargets: Readonly<Ref<readonly { path: string; line: number }[]>>;
@@ -743,20 +750,26 @@ it.each([false, true])(
     };
     const addPage = (path: string) => {
       const tab = state.workspaceFileTabService.open({
-        kind: 'WORKTREE_TEXT',
+        kind: history ? 'HISTORY_TEXT' : 'WORKTREE_TEXT',
         nodeId: 'node-1',
         workspaceId: 'workspace-1',
         path,
         repositoryPath: '',
-        worktreePath: ''
+        worktreePath: '',
+        ...(history ? { commit: 'a'.repeat(40), refs: [] } : {})
       });
       const page = state.createPreviewFrame(tab.id);
+      if (history) page.historySource = { commit: 'a'.repeat(40), repositoryPath: '', refs: [] };
       page.fileContent.value = { path, encoding: 'utf-8', content: 'thing' };
       state.filePageFrames.push(page);
       return page;
     };
     try {
       const first = addPage('first.ts');
+      first.repositoryPath = '';
+      await state.navigateSymbol('blocked');
+      expect(fetchRequest).not.toHaveBeenCalled();
+      delete first.repositoryPath;
       await state.navigateSymbol('thing');
       expect(first.navigationTargets.value[0]).toMatchObject({ path: 'target.ts', line: 3 });
       const second = addPage('second.ts');

@@ -984,7 +984,6 @@ function navigationSource() {
     !props.codeNavigationEnabled ||
     preview?.repositoryPath !== undefined ||
     preview?.worktreePath.value !== undefined ||
-    preview?.historySource !== undefined ||
     preview?.fileContent.value === undefined ||
     props.nodeId === undefined ||
     props.workspaceId === undefined
