@@ -3246,7 +3246,9 @@ test('Opening a session loads only the latest window without initial scroll back
       await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
     }
   });
-  await page.getByRole('button', { name: '加载更早记录' }).click();
+  const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
+  await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
+  await loadOlderButton.press('Enter');
   await expect(page.locator('.conversation-history-control .busy-indicator')).toBeVisible();
   expect(
     await page.locator('.conversation-history-control .busy-indicator').evaluate((element) => {
@@ -3258,11 +3260,15 @@ test('Opening a session loads only the latest window without initial scroll back
       return matches;
     })
   ).toBe(true);
-  await expect(page.locator('button.conversation-load-older')).toHaveCount(0);
+  await expect(loadOlderButton).toBeFocused();
+  await expect(loadOlderButton).toHaveAttribute('aria-disabled', 'true');
+  await loadOlderButton.press('Enter');
+  expect(olderAttempts).toBe(1);
   releaseOlder();
   await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
   await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
   await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeFocused();
   expect(olderAttempts).toBe(1);
   await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.getByText('已到最早消息', { exact: true })).toBeVisible();
