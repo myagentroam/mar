@@ -14,9 +14,9 @@ export const iconShapes = {
   settings:
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
   'recent-sessions':
-    '<rect x="4" y="8" width="16" height="12" rx="2.5"/><path d="M6 4h12M4 6h16m-11 6h6m-6 4h4" />',
+    '<rect x="4" y="7.5" width="16" height="12" rx="2.5"/><path d="M7 4.5h10M9 11.5h6m-6 4h4"/>',
   notification:
-    '<path d="M6.5 10a5.5 5.5 0 0 1 11 0v3.5l2 3a.7.7 0 0 1-.6 1H5.1a.7.7 0 0 1-.6-1l2-3V10Zm3 11h5" />',
+    '<path d="M6.5 9.5a5.5 5.5 0 0 1 11 0V13l2 3a.7.7 0 0 1-.6 1H5.1a.7.7 0 0 1-.6-1l2-3V9.5Zm3 11h5"/>',
   menu: '<path d="M4 6.5h16M4 12h16M4 17.5h16" />',
   help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4 0c0 1.4-1.2 1.9-2 2.5-.5.4-.7.8-.7 1.5" /><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/><path d="M12 11v5.5" />',
@@ -34,7 +34,7 @@ export const iconShapes = {
   'document-save':
     '<path d="M13.5 3.5H6A2 2 0 0 0 4 5.5v13A2 2 0 0 0 6 20.5h12a2 2 0 0 0 2-2v-8.5l-6.5-6.5Zm0 0V8a2 2 0 0 0 2 2H20" /><path d="m8.5 15 2.5 2.5 5-5" />',
   collection:
-    '<rect x="6" y="6.5" width="14" height="14" rx="2.2"/><path d="M16 3.5H5a2 2 0 0 0-2 2v11m7-6h6m-6 4h4" />',
+    '<rect x="6.5" y="7" width="13.5" height="13.5" rx="2.2"/><path d="M16 4H5.5a2 2 0 0 0-2 2v10m6.75-5h6m-6 4h4"/>',
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',
@@ -51,7 +51,7 @@ export const iconShapes = {
   paste:
     '<path d="M8 5H6a2 2 0 0 0-2 2v11.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="8" y="3" width="8" height="4" rx="1.3"/><path d="M8 12h8m-8 4h5" />',
   clear:
-    '<path d="m13 4 7 7M5 17l8-13a1.8 1.8 0 0 1 2.5-.4l5 5a1.8 1.8 0 0 1-.4 2.5L12 20H8l-3-3Zm3-5 8 5M5 20h15" />',
+    '<path d="m4 14 9-9a1.8 1.8 0 0 1 2.5 0l4 4a1.8 1.8 0 0 1 0 2.5L11 20H8l-4-4a1.4 1.4 0 0 1 0-2ZM8.25 9.75l6.5 6.5M5 20h14.5"/>',
   'chevron-left': '<path d="m14.5 6-6 6 6 6" />',
   'chevron-right': '<path d="m9.5 6 6 6-6 6" />',
   'chevron-up': '<path d="m6 14.5 6-6 6 6" />',
@@ -76,10 +76,11 @@ export const iconShapes = {
     '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.7 7.6-4.4m-7.6 7 7.6 4.4" />',
   link: '<path d="m10 7 2.5-2.5a5 5 0 0 1 7 7L17 14m-3 3-2.5 2.5a5 5 0 0 1-7-7L7 10m1.5 5.5 7-7" />',
   upload: '<path d="M12 16V3.5m-5 5 5-5 5 5M4 15v3.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V15" />',
-  download: '<path d="M12 3.5V16m-5-5 5 5 5-5M4 15v3.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V15" />',
+  download:
+    '<path d="M12 3.5V14m-4.5-4.5 4.5 4.5 4.5-4.5M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5"/>',
   attachment:
     '<path d="m8.5 12.5 6-6a3.5 3.5 0 0 1 5 5l-8 8a5 5 0 0 1-7-7L12.5 4m-4 8.5a1.5 1.5 0 0 0 2.1 2.1l6-6" />',
-  send: '<path d="M4 4 21 12 4 20V4ZM4 12h11" />',
+  send: '<path d="M4.75 4 21.75 12 4.75 20V4ZM4.75 12h11"/>',
   stop: '<rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor" stroke="none"/>',
   queue:
     '<path d="M8 5h12M8 12h12M8 19h8" /><circle cx="3.5" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="19" r="0.9" fill="currentColor" stroke="none"/>',
@@ -97,7 +98,7 @@ export const iconShapes = {
   tool: '<path d="M14 4a5.5 5.5 0 0 0-5.5 7.5l-5 5a2.5 2.5 0 0 0 3.5 3.5l5-5A5.5 5.5 0 0 0 20 9.5L16.5 12 12 7.5 14 4Z" />',
   refresh: '<path d="M20 9a8 8 0 0 0-13.5-3L4 8m0-4v4h4m-4 7a8 8 0 0 0 13.5 3L20 16m0 4v-4h-4" />',
   retry: '<path d="M4 9a8 8 0 1 1 .5 7M4 4v5h5" />',
-  undo: '<path d="m8 4-5 5 5 5M3 9h10a7 7 0 0 1 0 14" transform="translate(1 -1) scale(.92)"/>',
+  undo: '<path d="m8.75 3.5-4.5 4.5 4.5 4.5M4.25 8h9a6.25 6.25 0 0 1 0 12.5"/>',
   success: '<circle cx="12" cy="12" r="8.5"/><path d="m7.5 12 3 3 6-6" />',
   error: '<circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6m0-6-6 6" />',
   warning:
@@ -125,7 +126,7 @@ export const iconShapes = {
     '<path d="m3.5 10 3-5h11l3 5v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V10Zm0 0H8l1.5 4h5L16 10h4.5" />',
   'source-code': '<path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 4l-4 16" />',
   symbols:
-    '<path d="M9 5h11M9 12h11M9 19h7" /><rect x="3" y="3.5" width="2.5" height="3" rx="0.7"/><rect x="3" y="10.5" width="2.5" height="3" rx="0.7"/><rect x="3" y="17.5" width="2.5" height="3" rx="0.7"/>',
+    '<path d="M9 5.5h11M9 12h11M9 18.5h8"/><rect x="3.5" y="4.25" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/><rect x="3.5" y="10.75" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/><rect x="3.5" y="17.25" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/>',
   user: '<circle cx="12" cy="7.5" r="3.5"/><path d="M4.5 20v-1.5a5 5 0 0 1 5-5h5a5 5 0 0 1 5 5V20" />',
   users:
     '<circle cx="9" cy="7.5" r="3.5"/><path d="M3.5 20v-2a4.5 4.5 0 0 1 4.5-4.5h3a4.5 4.5 0 0 1 4.5 4.5v2M16 4.5a3.5 3.5 0 0 1 0 7m2 3a3.5 3.5 0 0 1 2.5 3.5V20" />',
@@ -135,7 +136,7 @@ export const iconShapes = {
     '<path d="M12 3.5 20 7v5.5c0 4-3.5 6.7-8 8.5-4.5-1.8-8-4.5-8-8.5V7l8-3.5Z" /><path d="M12 8v7" />',
   grant:
     '<path d="M12 3.5 20 7v5.5c0 4-3.5 6.7-8 8.5-4.5-1.8-8-4.5-8-8.5V7l8-3.5Z" /><path d="m8.5 12 2.5 2.5 4.5-4.5" />',
-  oauth: '<path d="M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5M4 12h11m-4-4 4 4-4 4" />',
+  oauth: '<path d="M12.5 4.5H17a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-4.5M4 12h10.5m-4-4 4 4-4 4"/>',
   license:
     '<path d="M10 20H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v5M8 7h7m-7 4h3" /><circle cx="16" cy="14.5" r="3.5"/><path d="m13.5 17-1 4 3.5-1.5 3.5 1.5-1-4" />',
   audit:
