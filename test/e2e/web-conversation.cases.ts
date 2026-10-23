@@ -498,16 +498,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             rgb(style.backgroundColor),
             rgb(style.getPropertyValue('--mar-conversation-surface'))
           ),
-          titleColor: getComputedStyle(element.querySelector('strong')!).color,
-          mutedColor: style.getPropertyValue('--mar-conversation-muted').trim()
+          titleColor: rgb(getComputedStyle(element.querySelector('strong')!).color),
+          mutedColor: rgb(style.getPropertyValue('--mar-conversation-muted').trim())
         };
       });
       expect(colors.borderDistance).toBeLessThan(colors.oldBorderDistance);
       expect(colors.surfaceDistance).toBeLessThan(30);
-      await expect(card.locator('strong').first()).toHaveCSS(
-        'color',
-        dark ? 'rgb(159, 176, 199)' : 'rgb(82, 100, 118)'
-      );
+      expect(colors.titleColor).toEqual(colors.mutedColor);
       await page.screenshot({
         path: testInfo.outputPath(`attachment-${dark ? 'dark' : 'light'}.png`)
       });
