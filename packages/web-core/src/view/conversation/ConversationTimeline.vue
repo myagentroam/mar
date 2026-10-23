@@ -1467,6 +1467,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
 
 .conversation-timeline {
   --conversation-record-gap: 4px;
+  --conversation-item-inset: 12px;
   --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
@@ -1505,17 +1506,18 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   justify-self: start;
   border: 0;
   background: transparent;
-  padding-block: 8px;
+  padding: 4px var(--conversation-item-inset);
 }
 
 .conversation-item:where(:not(.user_message):not(.assistant_message)) {
   justify-self: start;
   border: 0;
   background: transparent;
-  padding: 8px 14px;
+  padding: 4px var(--conversation-item-inset);
 }
 
 .conversation-item:where(.approval_request, .user_input_request, .error) {
+  padding-block: 8px;
   border: 1px solid var(--mar-conversation-process-border);
   background: var(--mar-conversation-process);
 }
@@ -1561,8 +1563,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   > details
   > summary,
 .conversation-reasoning-status {
-  padding: 8px 14px;
-  min-height: 38px;
+  padding: 4px var(--conversation-item-inset);
   box-sizing: border-box;
 }
 
@@ -1575,7 +1576,7 @@ function aggregateStatus(items: readonly ConversationItem[]): string {
   )
   > details
   > :not(summary) {
-  margin: 0 14px 12px;
+  margin: 0 var(--conversation-item-inset) 8px;
 }
 
 .conversation-item > details > summary > span,
@@ -1732,11 +1733,12 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-record-group > summary {
-  padding: 0.5rem 14px;
+  padding: 4px var(--conversation-item-inset);
 }
 
 details.conversation-record-group > details {
-  margin-inline: calc(14px + 1.125rem + 0.5rem) 14px;
+  margin-inline: calc(var(--conversation-item-inset) + 1.125rem + 0.5rem)
+    var(--conversation-item-inset);
 }
 
 .conversation-record-group > summary > span + span {
@@ -2081,6 +2083,10 @@ details.conversation-record-group > details {
 }
 
 @media (max-width: 767px) {
+  .conversation-timeline {
+    --conversation-item-inset: 8px;
+  }
+
   .conversation-record-group > details > summary {
     grid-template-columns: 1em minmax(0, 1fr);
   }

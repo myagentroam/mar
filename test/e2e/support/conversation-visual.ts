@@ -54,9 +54,18 @@ export async function verifyConversationThemes(
       const groupBox = await processHeading.boundingBox();
       expect(Math.abs(bodyBox!.width - groupBox!.width)).toBeLessThan(1);
       expect(Math.abs(bodyBox!.x - groupBox!.x)).toBeLessThan(1);
-      const processHeight = Math.round(processBox!.height);
-      expect(processHeight).toBeGreaterThanOrEqual(38);
-      expect(processHeight).toBeLessThanOrEqual(40);
+      const naturalHeight = await summary.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          Math.max(
+            Number.parseFloat(style.lineHeight),
+            ...Array.from(element.children, (child) => child.getBoundingClientRect().height)
+          ) +
+          Number.parseFloat(style.paddingTop) +
+          Number.parseFloat(style.paddingBottom)
+        );
+      });
+      expect(Math.abs(processBox!.height - naturalHeight)).toBeLessThan(1);
       const headings = await page
         .locator(
           '.conversation-item:is(.reasoning-group, .command-group, .tool-group, .file-change-group) > details > summary'
@@ -130,13 +139,10 @@ export async function verifyConversationThemes(
       await expect(list).toBeVisible();
       const bounds = await details.boundingBox();
       const listBounds = await list.boundingBox();
-      expect(listBounds!.x - bounds!.x).toBeGreaterThanOrEqual(12);
-      expect(bounds!.x + bounds!.width - listBounds!.x - listBounds!.width).toBeGreaterThanOrEqual(
-        12
-      );
-      expect(
-        bounds!.y + bounds!.height - listBounds!.y - listBounds!.height
-      ).toBeGreaterThanOrEqual(10);
+      const inset = page.viewportSize()!.width < 768 ? 8 : 12;
+      expect(listBounds!.x - bounds!.x).toBeCloseTo(inset, 1);
+      expect(bounds!.x + bounds!.width - listBounds!.x - listBounds!.width).toBeCloseTo(inset, 1);
+      expect(bounds!.y + bounds!.height - listBounds!.y - listBounds!.height).toBeCloseTo(8, 1);
       const row = list.locator('li').first();
       await expect(row.locator('.conversation-file-change-stats')).toContainText('+6');
       await expect(row.locator('.conversation-file-change-stats')).toContainText('-1');

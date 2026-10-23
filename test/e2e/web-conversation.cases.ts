@@ -816,8 +816,43 @@ test('Conversation cards preserve text hierarchy, monospace process cards, and m
   await expect(reasoning.locator('p')).toContainText('检查正文、过程和操作层级。');
   await reasoning.locator('summary').click();
   await expect(reasoning).not.toHaveAttribute('open', '');
+  const process = page.locator('.conversation-process.is-group').first();
+  const verifyProcessSpacing = async (mobile: boolean) => {
+    await expect(page.locator('.conversation-item.user_message').first()).toHaveCSS(
+      'padding-top',
+      '12px'
+    );
+    await expect(page.locator('.conversation-item.user_message').first()).toHaveCSS(
+      'padding-left',
+      '14px'
+    );
+    await expect(process.locator('.process-content')).toHaveCSS('gap', '4px');
+    await expect(process.locator('.process-content')).toHaveCSS(
+      'padding-left',
+      mobile ? '4px' : '16px'
+    );
+    await expect(process.locator('.process-heading')).toHaveCSS('padding-top', '4px');
+    const row = reasoning.locator('summary');
+    await expect(row).toHaveCSS('padding-top', '4px');
+    await expect(row).toHaveCSS('padding-bottom', '4px');
+    await expect(row).toHaveCSS('padding-left', mobile ? '8px' : '12px');
+    await expect(row).toHaveCSS('min-height', '0px');
+    await process.locator('.process-heading').click();
+    await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'false');
+    await expect
+      .poll(() =>
+        process
+          .locator('.process-body')
+          .evaluate((element) => element.getBoundingClientRect().height)
+      )
+      .toBe(0);
+    await process.locator('.process-heading').click();
+    await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'true');
+  };
+  await verifyProcessSpacing(false);
   await verifyConversationThemes(page, testInfo, 'workspace-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
+  await verifyProcessSpacing(true);
   await verifyConversationThemes(page, testInfo, 'workspace-mobile');
   await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();

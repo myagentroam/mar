@@ -105,7 +105,7 @@ watch(open, async () => {
   flex-wrap: nowrap;
   gap: var(--conversation-record-gap, 8px);
   width: 100%;
-  padding: 0.5rem 0;
+  padding: 4px 0;
   border: 0;
   background: transparent;
   color: var(--mar-conversation-text);
@@ -178,11 +178,11 @@ watch(open, async () => {
 }
 .is-group .process-content {
   overflow: hidden;
-  padding-inline-start: 1.25rem;
+  padding-inline-start: 16px;
 }
 @media (max-width: 767px) {
   .is-group .process-content {
-    padding-inline-start: 0.5rem;
+    padding-inline-start: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
