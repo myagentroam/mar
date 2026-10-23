@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { Check, Refresh } from '@element-plus/icons-vue';
 import {
   resolveMarAgentDefaultReasoningEffort,
   type PromptCompletionConfiguration,
@@ -91,7 +91,8 @@ async function load(showRefresh = false) {
     Object.assign(draft, result.configuration);
     ready.value = true;
   } catch (error) {
-    if (!lifetime.signal.aborted) ElMessage.error(errorMessage(error));
+    if (!lifetime.signal.aborted)
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     busy.value = false;
     if (showRefresh) refreshing.value = false;
@@ -106,9 +107,10 @@ async function save() {
     const configuration = await service.save({ ...draft }, lifetime.signal);
     if (lifetime.signal.aborted) return;
     Object.assign(draft, configuration);
-    ElMessage.success(translate('promptCompletion.saved'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('promptCompletion.saved') });
   } catch (error) {
-    if (!lifetime.signal.aborted) ElMessage.error(errorMessage(error));
+    if (!lifetime.signal.aborted)
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     busy.value = false;
     saving.value = false;
@@ -144,6 +146,8 @@ onBeforeUnmount(() => lifetime.abort());
           clearable
           @change="modelChanged"
           @clear="draft.modelId = null"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="model in candidates"
@@ -155,7 +159,12 @@ onBeforeUnmount(() => lifetime.abort());
         </el-select>
       </el-form-item>
       <el-form-item :label="translate('promptCompletion.effort')" prop="reasoningEffort">
-        <el-select v-model="draft.reasoningEffort" :disabled="!selected">
+        <el-select
+          v-model="draft.reasoningEffort"
+          :disabled="!selected"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             v-for="effort in efforts"
             :key="effort"
@@ -165,12 +174,21 @@ onBeforeUnmount(() => lifetime.abort());
         </el-select>
       </el-form-item>
       <div class="compact-actions">
-        <el-button type="primary" :icon="Check" :loading="saving" @click="save">{{
-          translate('promptCompletion.save')
-        }}</el-button>
-        <el-button :icon="Refresh" :loading="refreshing && ready" @click="load(true)">{{
-          translate('promptCompletion.refresh')
-        }}</el-button>
+        <el-button
+          type="primary"
+          :icon="marIcon('check')"
+          :loading="saving"
+          @click="save"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('promptCompletion.save') }}</el-button
+        >
+        <el-button
+          :icon="marIcon('refresh')"
+          :loading="refreshing && ready"
+          @click="load(true)"
+          :loading-icon="marIcon('loading-action')"
+          >{{ translate('promptCompletion.refresh') }}</el-button
+        >
       </div>
     </el-form>
   </section>

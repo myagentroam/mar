@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/SkillSourceManagementPage.vue';
 import { createSkillCatalogSubmissions } from '@/service/SkillCenterService';
@@ -50,7 +51,10 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
   >
     <template #source-ownership>
       <el-form-item :label="translate('generated.skillSourceManagementPage.scope2')" prop="scope"
-        ><el-select v-model="sourceDraft.scope"
+        ><el-select
+          v-model="sourceDraft.scope"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.skillSourceManagementPage.personal2')"
             value="PERSONAL" /><el-option
@@ -71,13 +75,17 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
           "
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
     <template #catalog-ownership>
       <el-form-item
         :label="translate('generated.skillSourceManagementPage.availability')"
         prop="scope"
-        ><el-select v-model="catalogDraft.scope"
+        ><el-select
+          v-model="catalogDraft.scope"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.skillSourceManagementPage.personal3')"
             value="PERSONAL" /><el-option
@@ -98,6 +106,7 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
           "
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
       /></el-form-item>
     </template>
   </CorePage>

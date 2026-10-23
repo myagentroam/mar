@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { Message } from '@element-plus/icons-vue';
 import { translate } from '../../service/LocalePreferenceService';
 import {
   createMailTemplateManagementService,
@@ -57,7 +57,7 @@ async function openViewer(): Promise<void> {
     selectedId.value = service.templates.value[0]?.id ?? '';
     if (selectedId.value !== '') await preview();
   } catch (error) {
-    ElMessage.error(failure(error));
+    ElMessage.error({ icon: marIcon('error'), message: failure(error) });
   }
 }
 function select(template: MailTemplate): void {
@@ -78,7 +78,8 @@ async function preview(): Promise<void> {
     if (viewerOpen.value && sequence === previewSequence && selectedId.value === template.id)
       rendered.value = result;
   } catch (error) {
-    if (sequence === previewSequence) ElMessage.error(failure(error));
+    if (sequence === previewSequence)
+      ElMessage.error({ icon: marIcon('error'), message: failure(error) });
   } finally {
     if (sequence === previewSequence) previewing.value = false;
   }
@@ -95,15 +96,19 @@ async function sendTest(): Promise<void> {
     await testForm.value?.validate();
     await service.test(testAddress.value, testTemplateId.value);
     testOpen.value = false;
-    ElMessage.success(translate('generated.systemConfigurationPage.mailTestAccepted'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.systemConfigurationPage.mailTestAccepted')
+    });
   } catch (error) {
-    if (error instanceof Error) ElMessage.error(failure(error));
+    if (error instanceof Error)
+      ElMessage.error({ icon: marIcon('error'), message: failure(error) });
   }
 }
 </script>
 
 <template>
-  <el-button :icon="Message" @click="openViewer">
+  <el-button :icon="marIcon('mail')" @click="openViewer">
     {{ translate('generated.systemConfigurationPage.mailTemplateView') }}
   </el-button>
   <el-dialog
@@ -112,6 +117,7 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTemplates')"
     width="min(780px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
   >
     <div v-loading="service.loading.value" class="template-viewer">
       <p class="template-description">
@@ -194,6 +200,7 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTest')"
     width="min(480px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
   >
     <el-form ref="testForm" :model="testModel" :rules="testRules" label-position="top">
       <el-form-item
@@ -206,7 +213,12 @@ async function sendTest(): Promise<void> {
         :label="translate('generated.systemConfigurationPage.mailTemplate')"
         prop="templateId"
       >
-        <el-select v-model="testTemplateId" class="template-test-select">
+        <el-select
+          v-model="testTemplateId"
+          class="template-test-select"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             v-for="template in testTemplates"
             :key="template.id"
@@ -218,7 +230,12 @@ async function sendTest(): Promise<void> {
     </el-form>
     <template #footer>
       <el-button @click="testOpen = false">{{ translate('common.cancel') }}</el-button>
-      <el-button type="primary" :loading="service.busy.value" @click="sendTest">
+      <el-button
+        type="primary"
+        :loading="service.busy.value"
+        @click="sendTest"
+        :loading-icon="marIcon('loading-action')"
+      >
         {{ translate('generated.systemConfigurationPage.mailTestSend') }}
       </el-button>
     </template>

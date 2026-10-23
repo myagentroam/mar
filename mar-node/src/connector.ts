@@ -929,7 +929,7 @@ export class NodeConnector {
       resolveExecutionDirectory,
       runtime: this.runtime,
       steer: (prepared, item, executionId) => {
-        const runner = this.runners.optional(prepared.runner);
+        const runner = this.runners.optional(prepared.executionContext.runner);
         if (!runner?.supportsNativeSteer()) return undefined;
         const images = item.attachments.filter(isImageAttachment).map((image) => ({
           name: image.name,
@@ -1183,7 +1183,15 @@ export class NodeConnector {
       coordinator: this.continuousRunCoordinator,
       messages: this.sessionMessageService,
       resolve: (id) => this.externalSessionResumeService.resolveForMessage(id),
-      authorize: (request) => this.restartAuthorization.authorize(request),
+      authorize: async (request) => {
+        const context = await this.restartAuthorization.authorize(request);
+        return {
+          secretEnvironment: context.secretEnvironment,
+          personalInstructions: context.personalInstructions,
+          usageGrant: context.usageGrant,
+          executionContext: this.runners.require(request.runner).prepareExecutionContext(context)
+        };
+      },
       inputState,
       withGrant: (context, work) => this.modelUsage.withGrant(context.usageGrant, work),
       publishGoal: (session, goal) => this.goalCoordinator.publishGoalState(session, goal),
@@ -1516,7 +1524,7 @@ export class NodeConnector {
           throw new Error('SCHEDULE_SESSION_NOT_FOUND');
         const configuredSession =
           this.nativeSessionProjectionService.ensureResumedConfiguration(session);
-        return this.scheduledRunAuthorization.authorize({
+        const context = await this.scheduledRunAuthorization.authorize({
           taskId: task.id,
           revision: task.revision,
           occurrenceId,
@@ -1526,6 +1534,12 @@ export class NodeConnector {
           runner: task.runner,
           model: configuredSession.model
         });
+        return {
+          secretEnvironment: context.secretEnvironment,
+          personalInstructions: context.personalInstructions,
+          usageGrant: context.usageGrant,
+          executionContext: this.runners.require(task.runner).prepareExecutionContext(context)
+        };
       },
       submit: async (task, occurrenceId, context) => {
         const result = (await this.sessionMessageService.submitScheduled({
@@ -1535,11 +1549,8 @@ export class NodeConnector {
           initiatedByUserId: task.ownerUserId,
           secretEnvironment: context.secretEnvironment,
           personalInstructions: context.personalInstructions,
-          marAgentModel: context.marAgentModel,
-          marAgentModels: context.marAgentModels,
-          marAgentCompact: context.marAgentCompact,
           ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant }),
-          marAgentRuntimeScopeId: context.marAgentRuntimeScopeId
+          executionContext: context.executionContext
         })) as { run: { id: string } };
         return { runId: result.run.id };
       },

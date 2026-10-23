@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { CopyDocument, Delete } from '@element-plus/icons-vue';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/SessionShareManagementService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -44,7 +45,7 @@ async function create(): Promise<void> {
   try {
     await service.create(values.value.expiresAt?.toISOString() ?? null);
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 async function remove(id: string): Promise<void> {
@@ -52,27 +53,32 @@ async function remove(id: string): Promise<void> {
     await ElMessageBox.confirm(
       translate('sessionShare.deleteWarning'),
       translate('sessionShare.delete'),
-      { type: 'warning' }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
   }
   try {
     await service.remove(id);
-    ElMessage.success(translate('sessionShare.deleted'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('sessionShare.deleted') });
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 async function copy(value: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
-    ElMessage.success(translate('sessionShare.copied'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('sessionShare.copied') });
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
-onMounted(() => void service.load().catch((error) => ElMessage.error(errorMessage(error))));
+onMounted(
+  () =>
+    void service
+      .load()
+      .catch((error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) }))
+);
 async function copyRecord(id: string): Promise<void> {
   try {
     let password = await service.copyPassword(id);
@@ -81,6 +87,7 @@ async function copyRecord(id: string): Promise<void> {
         translate('sessionShare.restorePassword'),
         translate('sessionShare.password'),
         {
+          closeIcon: marIcon('close'),
           inputType: 'password',
           inputPattern: /^[0-9]{6}$/u,
           inputErrorMessage: translate('sessionShare.passwordFormat')
@@ -91,7 +98,8 @@ async function copyRecord(id: string): Promise<void> {
     if (password !== null)
       await copy(translate('sessionShare.shareText', { link: link(id), password }));
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel' && error !== 'close')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 </script>
@@ -103,6 +111,7 @@ async function copyRecord(id: string): Promise<void> {
     width="min(1000px, calc(100vw - 32px))"
     append-to-body
     @close="emit('close')"
+    :close-icon="marIcon('close')"
   >
     <el-form
       ref="form"
@@ -117,15 +126,25 @@ async function copyRecord(id: string): Promise<void> {
           type="datetime"
           :placeholder="translate('sessionShare.permanent')"
           clearable
-        />
+          :prefix-icon="marIcon('calendar')"
+          :clear-icon="marIcon('clear-input')"
+          ><template #prev-month><MarIcon name="chevron-left" /></template
+          ><template #next-month><MarIcon name="chevron-right" /></template
+          ><template #prev-year><MarIcon name="chevrons-left" /></template
+          ><template #next-year><MarIcon name="chevrons-right" /></template
+        ></el-date-picker>
       </el-form-item>
-      <el-button type="primary" native-type="submit" :loading="busy">{{
-        translate('sessionShare.create')
-      }}</el-button>
+      <el-button
+        type="primary"
+        native-type="submit"
+        :loading="busy"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('sessionShare.create') }}</el-button
+      >
     </el-form>
     <section v-if="created" class="created-share" aria-live="polite">
       <p class="share-text">{{ shareText }}</p>
-      <el-button :icon="CopyDocument" @click="copy(shareText)">{{
+      <el-button :icon="marIcon('copy')" @click="copy(shareText)">{{
         translate('sessionShare.copy')
       }}</el-button>
     </section>
@@ -174,12 +193,17 @@ async function copyRecord(id: string): Promise<void> {
       >
       <el-table-column :label="translate('sessionShare.actions')" min-width="180"
         ><template #default="{ row }">
-          <el-button link :icon="CopyDocument" :disabled="busy" @click="copyRecord(row.id)">{{
+          <el-button link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
             translate('sessionShare.copy')
           }}</el-button>
-          <el-button link type="danger" :icon="Delete" :disabled="busy" @click="remove(row.id)">{{
-            translate('sessionShare.delete')
-          }}</el-button>
+          <el-button
+            link
+            type="danger"
+            :icon="marIcon('delete')"
+            :disabled="busy"
+            @click="remove(row.id)"
+            >{{ translate('sessionShare.delete') }}</el-button
+          >
         </template></el-table-column
       >
     </el-table>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Download, Refresh } from '@element-plus/icons-vue';
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
 import { currentLocale, translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
@@ -302,11 +303,13 @@ async function openDetail(event: AuditEvent): Promise<void> {
       { cache: 'no-store' }
     );
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.auditManagementPage.unableToLoadAuditEvents')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.auditManagementPage.unableToLoadAuditEvents')
+    });
   } finally {
     detailLoading.value = false;
   }
@@ -339,11 +342,13 @@ async function load(page = 1, append = false): Promise<void> {
     pageReady.value = true;
   } catch (error) {
     if (generation !== loadGeneration) return;
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.auditManagementPage.unableToLoadAuditEvents')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.auditManagementPage.unableToLoadAuditEvents')
+    });
   } finally {
     if (generation !== loadGeneration) return;
     loading.value = false;
@@ -391,13 +396,23 @@ onUnmounted(() => pagination.dispose());
           :end-placeholder="translate('generated.auditManagementPage.endTime')"
           class="audit-range-picker"
           @change="load()"
-      /></label>
+          :prefix-icon="marIcon('calendar')"
+          :clear-icon="marIcon('clear-input')"
+          ><template #prev-month><MarIcon name="chevron-left" /></template
+          ><template #next-month><MarIcon name="chevron-right" /></template
+          ><template #prev-year><MarIcon name="chevrons-left" /></template
+          ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
+      ></label>
     </div>
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
-        translate('generated.auditManagementPage.refresh')
-      }}</el-button>
-      <el-button tag="a" :icon="Download" :href="exportUrl">{{
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && pageReady"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.auditManagementPage.refresh') }}</el-button
+      >
+      <el-button tag="a" :icon="marIcon('download')" :href="exportUrl">{{
         translate('generated.auditManagementPage.exportCSV')
       }}</el-button>
     </div>
@@ -446,6 +461,7 @@ onUnmounted(() => pagination.dispose());
       :title="translate('generated.auditManagementPage.auditDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="selected = undefined"
+      :close-icon="marIcon('close')"
     >
       <el-descriptions
         v-if="selected"

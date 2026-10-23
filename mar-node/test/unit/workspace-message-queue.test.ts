@@ -675,6 +675,92 @@ describe('Node Session message FIFO', () => {
     });
   });
 
+  it.each([false, true])(
+    'returns the latest Session activity after asynchronous message delivery (queued: %s)',
+    async (queued) => {
+      let now = 100;
+      const runtime = preparedRuntime(() => now);
+      const current = session(runtime);
+      if (queued)
+        runtime.createMessageRun({
+          sessionId: current.id,
+          clientMessageId: 'active-message',
+          content: 'current message'
+        });
+      let releaseDelivery!: () => void;
+      const delivery = new Promise<void>((resolve) => {
+        releaseDelivery = resolve;
+      });
+      let deliveryStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        deliveryStarted = resolve;
+      });
+      const service = new SessionMessageService({
+        runtime,
+        uploads: {} as never,
+        attachments: {
+          protectSession: () => () => undefined,
+          persistFiles: async () => [],
+          retainSessionFiles: vi.fn(),
+          acceptSessionInput: vi.fn(),
+          cache: vi.fn()
+        } as never,
+        commands: { list: () => [] } as never,
+        coordinator: {
+          accept(input: Parameters<NodeRuntimeState['createMessageRun']>[0]) {
+            if (!queued) return runtime.createMessageRun(input);
+            const created = runtime.createQueueItem(input);
+            return {
+              run: runtime.activeSessionRun(current.id),
+              queueItem: created.item,
+              created: created.created
+            };
+          },
+          prepare: vi.fn(),
+          publishCurrentTurn: vi.fn(),
+          async settle() {
+            deliveryStarted();
+            await delivery;
+            return queued ? 'QUEUED' : 'STARTED';
+          }
+        } as never,
+        runners: {
+          require: () => ({
+            prepareMessageInput: (input: string) => input,
+            serviceTier: () => undefined
+          })
+        } as never,
+        resolve: async () => ({ session: current }),
+        present: (value) => value,
+        emitSession: vi.fn(),
+        channelToken: () => undefined,
+        goalMessage: () => undefined,
+        prepareGoalInsertion: () => true,
+        goalPreparationFailed: vi.fn()
+      });
+      const response = service.operations()['session.message']!({
+        sessionId: current.id,
+        clientMessageId: 'pending-message',
+        content: 'next message'
+      });
+      await started;
+      now += 8 * 60_000;
+      if (!queued)
+        runtime.createQueueItem({
+          sessionId: current.id,
+          clientMessageId: 'following-message',
+          content: 'following message'
+        });
+      expect(runtime.claimNextQueueItem(current.id)).toBeDefined();
+      expect(runtime.getAgentSession(current.id)?.lastActivityAt).toBe(now);
+      releaseDelivery();
+      await expect(response).resolves.toMatchObject({
+        session: { id: current.id, lastActivityAt: now },
+        delivery: queued ? 'QUEUED' : 'STARTED'
+      });
+    }
+  );
+
   it.each(
     [undefined, false, true].flatMap((activated) =>
       ['QUEUE', 'REPLACE_CURRENT'].map((intent) => ({ activated, intent }))

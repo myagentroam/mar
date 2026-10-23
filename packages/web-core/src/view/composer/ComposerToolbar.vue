@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Loading, Paperclip, Promotion } from '@element-plus/icons-vue';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
@@ -135,7 +136,7 @@ function selectFiles(event: Event): void {
           :aria-label="translate('generated.composerToolbar.addAttachment')"
           @click="fileInput?.click()"
         >
-          <el-icon><Paperclip /></el-icon></button
+          <MarIcon name="attachment" /></button
       ></el-tooltip>
       <div
         v-if="draftSessionOpen"
@@ -152,6 +153,8 @@ function selectFiles(event: Event): void {
           :disabled="runnerLoading || runnerDisabled"
           :loading="runnerLoading"
           @change="emit('updateRunner', $event as Session['runner'])"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in runnerOptions"
@@ -182,6 +185,8 @@ function selectFiles(event: Event): void {
             teleported
             @change="emit('updateModelEffort', String($event))"
             @keydown="onModelMenuKeydown"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option-group :label="translate('common.reasoning')">
               <el-option
@@ -218,6 +223,8 @@ function selectFiles(event: Event): void {
           size="small"
           teleported
           @change="emit('updateAccess', String($event))"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option
             v-for="option in accessOptions"
@@ -274,7 +281,7 @@ function selectFiles(event: Event): void {
         :aria-label="translate('generated.composerToolbar.stopRun')"
         @click="emit('stop')"
       >
-        <i class="composer-stop-square" aria-hidden="true" /></button
+        <MarIcon name="stop" /></button
     ></el-tooltip>
     <el-tooltip
       v-bind="tooltipOptions"
@@ -292,10 +299,8 @@ function selectFiles(event: Event): void {
         :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
         :aria-busy="submitting || undefined"
       >
-        <el-icon :class="{ 'is-loading': submitting }" aria-hidden="true">
-          <Loading v-if="submitting" />
-          <Promotion v-else />
-        </el-icon></button
+        <MarIcon name="loading-action" aria-hidden="true" v-if="submitting" />
+        <MarIcon name="send" aria-hidden="true" v-else /></button
     ></el-tooltip>
   </div>
 </template>
@@ -516,14 +521,6 @@ function selectFiles(event: Event): void {
   color: var(--mar-text-faint);
 }
 
-.composer-stop-square {
-  display: block;
-  width: 0.58rem;
-  height: 0.58rem;
-  border-radius: 1px;
-  background: currentcolor;
-}
-
 @media (max-width: 767px) {
   .composer-context-button {
     min-height: 36px;
@@ -582,8 +579,8 @@ function selectFiles(event: Event): void {
     background: var(--mar-fill-soft);
   }
 
-  .composer-send-button :deep(.el-icon),
-  .composer-stop-button .composer-stop-square {
+  .composer-send-button :deep(.mar-icon),
+  .composer-stop-button :deep(.mar-icon) {
     position: relative;
     z-index: 1;
   }
@@ -833,8 +830,8 @@ function selectFiles(event: Event): void {
   padding-top: 0.25rem;
 }
 
-:global(.composer-send-button .el-icon),
-:global(.composer-stop-button .el-icon) {
+:global(.composer-send-button .mar-icon),
+:global(.composer-stop-button .mar-icon) {
   font-size: 0.92rem;
 }
 </style>

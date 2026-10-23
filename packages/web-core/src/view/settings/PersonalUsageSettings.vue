@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { Refresh } from '@element-plus/icons-vue';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
@@ -21,7 +22,7 @@ import { createManagementPaginationService } from '../../service/ManagementPagin
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
 const service = new PersonalUsageService(props.request, (error) =>
-  ElMessage.error(errorMessage(error))
+  ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
 );
 const state = service.state;
 const busy = computed(() => state.loading || state.loadingPage);
@@ -228,10 +229,11 @@ onUnmounted(() => {
             }}
           </span>
           <el-button
-            :icon="Refresh"
+            :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
             @click="refresh()"
+            :loading-icon="marIcon('loading-action')"
             >{{ t('modelUsage.refresh') }}</el-button
           >
         </div>
@@ -309,7 +311,13 @@ onUnmounted(() => {
         @submit.prevent="refresh()"
       >
         <el-form-item :label="t('modelUsage.range')"
-          ><el-select v-model="draft.period" :aria-label="t('modelUsage.range')" @change="change">
+          ><el-select
+            v-model="draft.period"
+            :aria-label="t('modelUsage.range')"
+            @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option :label="t('modelUsage.last24Hours')" value="24h" /><el-option
               :label="t('modelUsage.last7Days')"
               value="7d"
@@ -325,6 +333,8 @@ onUnmounted(() => {
               draft.model = '';
               change();
             "
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="runner in runners"
               :key="runner"
@@ -338,6 +348,8 @@ onUnmounted(() => {
             :placeholder="t('modelUsage.all')"
             :aria-label="t('modelUsage.model')"
             @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="model in modelOptions"
               :key="model.key"
@@ -351,6 +363,8 @@ onUnmounted(() => {
             :placeholder="t('modelUsage.all')"
             :aria-label="t('modelUsage.mode')"
             @change="change"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="mode in ['work', 'conversation']"
               :key="mode"
@@ -370,7 +384,13 @@ onUnmounted(() => {
             :start-placeholder="t('modelUsage.from')"
             :end-placeholder="t('modelUsage.to')"
             @change="change"
-        /></el-form-item>
+            :prefix-icon="marIcon('calendar')"
+            :clear-icon="marIcon('clear-input')"
+            ><template #prev-month><MarIcon name="chevron-left" /></template
+            ><template #next-month><MarIcon name="chevron-right" /></template
+            ><template #prev-year><MarIcon name="chevrons-left" /></template
+            ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
+        ></el-form-item>
       </el-form>
       <template v-if="state.overview">
         <div class="section-heading">
@@ -424,6 +444,7 @@ onUnmounted(() => {
             <span class="output-key" />{{ t('modelUsage.output') }}
           </div>
           <svg
+            class="usage-trend-chart"
             viewBox="0 0 800 170"
             role="img"
             :aria-label="t('modelUsage.trend')"
@@ -901,7 +922,7 @@ p {
 .bucket-hit-area {
   fill: transparent;
 }
-svg {
+.usage-trend-chart {
   width: 100%;
   height: 8rem;
 }

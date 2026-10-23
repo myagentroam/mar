@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Delete, Refresh, View } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type {
   ConversationHostingCleanupPreview,
@@ -131,11 +132,13 @@ async function loadStorage(): Promise<void> {
     )
       return;
     loadFailed.value = true;
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('conversationHostingMaintenance.loadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('conversationHostingMaintenance.loadFailed')
+    });
   } finally {
     if (
       sameConversationHostingMaintenanceContext(
@@ -182,11 +185,13 @@ async function previewCleanup(): Promise<void> {
       })
     )
       return;
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('conversationHostingMaintenance.previewFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('conversationHostingMaintenance.previewFailed')
+    });
   } finally {
     if (requestSequence === previewRequestSequence) previewing.value = false;
   }
@@ -217,6 +222,8 @@ async function executeCleanup(): Promise<void> {
       }),
       translate('conversationHostingMaintenance.executeConfirmTitle'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('conversationHostingMaintenance.execute'),
         cancelButtonText: translate('conversationHostingMaintenance.cancel')
@@ -250,7 +257,10 @@ async function executeCleanup(): Promise<void> {
       return;
     lastResult.value = nextResult;
     clearPreview();
-    ElMessage.success(translate('conversationHostingMaintenance.cleanupComplete'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('conversationHostingMaintenance.cleanupComplete')
+    });
     try {
       const nextStorage = await service.storage(requestContext.nodeId);
       if (
@@ -275,11 +285,13 @@ async function executeCleanup(): Promise<void> {
       )
         return;
       loadFailed.value = true;
-      ElMessage.error(
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('conversationHostingMaintenance.loadFailed')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message:
+          error instanceof Error
+            ? errorMessage(error)
+            : translate('conversationHostingMaintenance.loadFailed')
+      });
     }
   } catch (error) {
     if (
@@ -291,11 +303,13 @@ async function executeCleanup(): Promise<void> {
       })
     )
       return;
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('conversationHostingMaintenance.executeFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('conversationHostingMaintenance.executeFailed')
+    });
   } finally {
     if (requestSequence === executeRequestSequence) executing.value = false;
   }
@@ -353,12 +367,13 @@ onBeforeUnmount(() => {
         <p>{{ translate('conversationHostingMaintenance.summary') }}</p>
       </div>
       <el-button
-        :icon="Refresh"
+        :icon="marIcon('refresh')"
         circle
         :loading="loading"
         :disabled="!available || previewing || executing"
         :aria-label="translate('conversationHostingMaintenance.refresh')"
         @click="loadStorage"
+        :loading-icon="marIcon('loading-action')"
       />
     </header>
 
@@ -455,20 +470,27 @@ onBeforeUnmount(() => {
             step-strictly
             :disabled="previewing || executing"
             :aria-label="translate('conversationHostingMaintenance.inactiveDays')"
-          />
+            ><template #decrease-icon><MarIcon name="subtract" /></template
+            ><template #increase-icon><MarIcon name="plus" /></template
+          ></el-input-number>
         </div>
         <p class="cleanup-range">{{ translate('conversationHostingMaintenance.rangeHint') }}</p>
         <div class="cleanup-actions">
-          <el-button :icon="View" :loading="previewing" @click="previewCleanup">{{
-            translate('conversationHostingMaintenance.preview')
-          }}</el-button>
+          <el-button
+            :icon="marIcon('view')"
+            :loading="previewing"
+            @click="previewCleanup"
+            :loading-icon="marIcon('loading-action')"
+            >{{ translate('conversationHostingMaintenance.preview') }}</el-button
+          >
           <el-button
             type="danger"
             plain
-            :icon="Delete"
+            :icon="marIcon('delete')"
             :loading="executing"
             :disabled="!canExecuteCleanup"
             @click="executeCleanup"
+            :loading-icon="marIcon('loading-action')"
             >{{ translate('conversationHostingMaintenance.permanentCleanup') }}</el-button
           >
         </div>

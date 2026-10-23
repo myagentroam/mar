@@ -58,7 +58,8 @@ function fixture() {
     sessionId: session.id,
     runId: 'execution',
     goal: coordinator.reference(session.id),
-    secretEnvironment: {}
+    secretEnvironment: {},
+    executionContext: { runner: 'mar-agent' }
   } as PreparedExecutionInput<unknown>;
   return { coordinator, goals, runtime, session, input, commands, emitSession, submit, queue };
 }
@@ -68,6 +69,16 @@ afterEach(() => {
 });
 
 describe('Goal transient orchestration', () => {
+  it('passes the accepted Runner context unchanged into the next Goal execution', async () => {
+    const f = fixture();
+    await f.coordinator.maintainGoalContinuation(f.input, true);
+    expect(f.submit).toHaveBeenCalledOnce();
+    expect((f.submit.mock.calls[0]![0] as { executionContext: unknown }).executionContext).toBe(
+      f.input.executionContext
+    );
+    f.coordinator.dispose();
+  });
+
   it('does not republish a retired Goal when an admitted continuation settles late', async () => {
     const f = fixture();
     const pending = gate<unknown>();

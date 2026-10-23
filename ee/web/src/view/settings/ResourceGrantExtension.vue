@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
 import { ElMessage, ElMessageBox, type FormRules, type FormInstance } from 'element-plus';
-import { Delete, Share } from '@element-plus/icons-vue';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
@@ -68,11 +68,13 @@ async function openShare(row: EnterpriseResourceRow): Promise<void> {
     ).grants;
   } catch (error) {
     selected.value = undefined;
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToLoadGrants')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToLoadGrants')
+    });
   }
 }
 async function createGrant(): Promise<void> {
@@ -91,11 +93,13 @@ async function createGrant(): Promise<void> {
     await props.request('/api/resource-grants', { method: 'POST', body: JSON.stringify(body) });
     await openShare(selected.value);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToCreateGrant')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToCreateGrant')
+    });
   }
 }
 async function removeGrant(grant: Grant): Promise<void> {
@@ -104,6 +108,8 @@ async function removeGrant(grant: Grant): Promise<void> {
       translate('generated.resourceSharingPage.afterRevocationTheTargetImmediatelyLosesDirect'),
       translate('generated.resourceSharingPage.revokeGrant'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.revoke'),
         cancelButtonText: translate('generated.resourceSharingPage.cancel3')
@@ -114,7 +120,8 @@ async function removeGrant(grant: Grant): Promise<void> {
     });
     await openShare(selected.value!);
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 defineExpose({ open: openShare });
@@ -125,6 +132,7 @@ defineExpose({ open: openShare });
     v-model="shareOpen"
     :title="translate('generated.resourceSharingPage.resourceGrants')"
     width="min(620px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
     ><div v-if="selected" class="resource-context">
       <strong>{{ selected.label }}</strong
       ><code
@@ -142,6 +150,8 @@ defineExpose({ open: openShare });
         <el-select
           v-model="targetType"
           :placeholder="translate('generated.resourceSharingPage.selectATargetType')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             :label="translate('generated.resourceSharingPage.organization3')"
             value="ORGANIZATION" /><el-option
@@ -161,6 +171,7 @@ defineExpose({ open: openShare });
           :placeholder="translate('generated.resourceSharingPage.selectATargetOrganization2')"
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
         />
       </el-form-item>
       <el-form-item
@@ -171,6 +182,8 @@ defineExpose({ open: openShare });
         <el-select
           v-model="targetUserId"
           :placeholder="translate('generated.resourceSharingPage.selectATargetUser2')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
           ><el-option
             v-for="user in users"
             :key="user.id"
@@ -197,7 +210,7 @@ defineExpose({ open: openShare });
           ><el-button
             link
             type="danger"
-            :icon="Delete"
+            :icon="marIcon('delete')"
             :disabled="!writable"
             @click="removeGrant(row)"
             >{{ translate('generated.resourceSharingPage.revoke2') }}</el-button
@@ -209,7 +222,7 @@ defineExpose({ open: openShare });
       <el-button @click="shareOpen = false">{{
         translate('generated.resourceSharingPage.close4')
       }}</el-button>
-      <el-button type="primary" :icon="Share" :disabled="!writable" @click="createGrant">
+      <el-button type="primary" :icon="marIcon('share')" :disabled="!writable" @click="createGrant">
         {{ translate('common.grant') }}
       </el-button>
     </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Expand, Fold } from '@element-plus/icons-vue';
 import { computed, ref, useSlots } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
@@ -94,7 +94,8 @@ defineExpose({ root });
             "
             @click="toggleMobileActions"
           >
-            <el-icon><Fold v-if="mobileActionsExpanded" /><Expand v-else /></el-icon></button></span
+            <MarIcon name="menu" v-if="mobileActionsExpanded" />
+            <MarIcon name="menu" v-else /></button></span
       ></el-tooltip>
     </div>
   </section>

@@ -1,9 +1,10 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Delete, Edit, Link, Plus, Refresh, Upload } from '@element-plus/icons-vue';
 import {
   managementUrlValues,
   replaceManagementUrlValues
@@ -174,7 +175,7 @@ const pagination = createManagementPageService<Row>({
       sortBy.value,
       sortOrder.value
     ]),
-  reportError: (error) => ElMessage.error(errorMessage(error))
+  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
 });
 const resources = pagination.items;
 const loading = pagination.loading;
@@ -389,7 +390,7 @@ async function pushAllUpgrades(): Promise<void> {
       (row) => row.resourceType === 'NODE' && canUpgrade(row)
     );
   } catch (error) {
-    ElMessage.error(errorMessage(error));
+    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
     pushingAllUpgrades.value = false;
     return;
   }
@@ -404,6 +405,8 @@ async function pushAllUpgrades(): Promise<void> {
       }),
       translate('generated.resourceSharingPage.confirmPushAllUpgrades'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.pushAllUpgrades'),
         cancelButtonText: translate('generated.resourceSharingPage.cancel')
@@ -428,11 +431,12 @@ async function pushAllUpgrades(): Promise<void> {
     if (details.value?.resourceType === 'NODE')
       details.value = resources.value.find((item) => item.key === details.value?.key);
     if (failures.length === 0)
-      ElMessage.success(
-        translate('generated.resourceSharingPage.pushAllUpgradesSucceeded', {
+      ElMessage.success({
+        icon: marIcon('success'),
+        message: translate('generated.resourceSharingPage.pushAllUpgradesSucceeded', {
           value0: succeeded
         })
-      );
+      });
     else
       await ElMessageBox.alert(
         h(
@@ -446,6 +450,8 @@ async function pushAllUpgrades(): Promise<void> {
         ),
         translate('generated.resourceSharingPage.pushAllUpgrades'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           customClass: 'bulk-upgrade-result',
           confirmButtonText: translate('generated.resourceSharingPage.close2')
@@ -464,20 +470,24 @@ async function pushUpgrade(row: Row): Promise<void> {
       }),
       translate('generated.resourceSharingPage.pushNodeUpgrade'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.pushUpgrade'),
         cancelButtonText: translate('generated.resourceSharingPage.cancel')
       }
     );
     await requestUpgrade(row);
-    ElMessage.success(
-      translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen')
-    );
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen')
+    });
     await load();
     if (details.value?.nodeId === row.nodeId)
       details.value = resources.value.find((item) => item.key === row.key);
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 async function cancelUpgrade(row: Row): Promise<void> {
@@ -485,16 +495,21 @@ async function cancelUpgrade(row: Row): Promise<void> {
     await props.request(`/api/nodes/${encodeURIComponent(row.nodeId)}/upgrade/cancel`, {
       method: 'POST'
     });
-    ElMessage.success(translate('generated.resourceSharingPage.pendingUpgradeCanceled'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.resourceSharingPage.pendingUpgradeCanceled')
+    });
     await load();
     if (details.value?.nodeId === row.nodeId)
       details.value = resources.value.find((item) => item.key === row.key);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToCancelUpgrade')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToCancelUpgrade')
+    });
   }
 }
 function openEdit(row: Row): void {
@@ -544,11 +559,13 @@ async function refreshNodeDetails(row = details.value): Promise<void> {
     if (details.value?.key === row.key)
       details.value = resources.value.find((current) => current.key === row.key);
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.nodeDetailsDialogs.unableToRefreshCapabilities')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.nodeDetailsDialogs.unableToRefreshCapabilities')
+    });
   } finally {
     if (requestId === detailsRefreshRequest) detailsRefreshing.value = false;
   }
@@ -569,13 +586,18 @@ async function saveEdit(): Promise<void> {
     editing.value = undefined;
     await load();
     emit('changed');
-    ElMessage.success(translate('generated.resourceSharingPage.resourceUpdated'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.resourceSharingPage.resourceUpdated')
+    });
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToUpdateResource')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToUpdateResource')
+    });
   }
 }
 async function registerNode(): Promise<void> {
@@ -595,11 +617,13 @@ async function registerNode(): Promise<void> {
     ).token;
     registrationOpen.value = false;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToCreateRegistrationToken')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToCreateRegistrationToken')
+    });
   } finally {
     creatingRegistrationToken.value = false;
   }
@@ -622,6 +646,8 @@ async function removeResource(row: Row): Promise<void> {
         ? translate('generated.resourceSharingPage.deleteNode')
         : translate('generated.resourceSharingPage.unregisterWorkspace'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: isNode
           ? translate('generated.resourceSharingPage.deleteNode2')
@@ -639,7 +665,8 @@ async function removeResource(row: Row): Promise<void> {
     await load();
     emit('changed');
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(errorMessage(error));
+    if (error !== 'cancel')
+      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   }
 }
 async function showUsage(runner: RunnerUsageName): Promise<void> {
@@ -654,11 +681,13 @@ async function showUsage(runner: RunnerUsageName): Promise<void> {
     ).usage;
     usageOpen.value = true;
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.resourceSharingPage.unableToLoadUsage')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('generated.resourceSharingPage.unableToLoadUsage')
+    });
   } finally {
     usageLoading.value = undefined;
   }
@@ -695,23 +724,28 @@ onUnmounted(() => pagination.dispose());
       />
     </slot>
     <div class="table-actions">
-      <el-button :icon="Refresh" :loading="refreshLoading && pageReady" @click="refresh">{{
-        translate('generated.resourceSharingPage.refresh')
-      }}</el-button>
+      <el-button
+        :icon="marIcon('refresh')"
+        :loading="refreshLoading && pageReady"
+        @click="refresh"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.resourceSharingPage.refresh') }}</el-button
+      >
       <el-button
         v-if="resourceType === 'NODE'"
         type="primary"
-        :icon="Plus"
+        :icon="marIcon('plus')"
         :disabled="!writable"
         @click="openRegistration"
         >{{ translate('generated.resourceSharingPage.registerNode') }}</el-button
       >
       <el-button
         v-if="resourceType === 'NODE'"
-        :icon="Upload"
+        :icon="marIcon('upload')"
         :loading="pushingAllUpgrades"
         :disabled="!writable"
         @click="pushAllUpgrades"
+        :loading-icon="marIcon('loading-action')"
         >{{ translate('generated.resourceSharingPage.pushAllUpgrades') }}</el-button
       >
     </div>
@@ -792,7 +826,7 @@ onUnmounted(() => pagination.dispose());
             <el-button
               link
               type="primary"
-              :icon="Edit"
+              :icon="marIcon('edit')"
               :disabled="!writable"
               @click="openEdit(row)"
               >{{ translate('generated.resourceSharingPage.edit') }}</el-button
@@ -800,7 +834,7 @@ onUnmounted(() => pagination.dispose());
             <el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable"
               @click="removeResource(row)"
               >{{ translate('common.delete') }}</el-button
@@ -828,6 +862,7 @@ onUnmounted(() => pagination.dispose());
       "
       width="min(460px, calc(100vw - 32px))"
       @update:model-value="editing = undefined"
+      :close-icon="marIcon('close')"
       ><el-form
         v-if="editing"
         ref="editFormRef"
@@ -901,6 +936,7 @@ onUnmounted(() => pagination.dispose());
       :show-close="!creatingRegistrationToken"
       :close-on-click-modal="!creatingRegistrationToken"
       :close-on-press-escape="!creatingRegistrationToken"
+      :close-icon="marIcon('close')"
       ><el-form
         ref="registrationFormRef"
         :model="{ name: registrationName }"
@@ -928,8 +964,9 @@ onUnmounted(() => pagination.dispose());
           type="primary"
           :disabled="!writable"
           :loading="creatingRegistrationToken"
-          :icon="Plus"
+          :icon="marIcon('plus')"
           @click="registerNode"
+          :loading-icon="marIcon('loading-action')"
           >{{
             translate('generated.resourceSharingPage.createOneTimeRegistrationToken')
           }}</el-button
@@ -943,13 +980,15 @@ onUnmounted(() => pagination.dispose());
       width="min(460px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       @update:model-value="registrationToken = ''"
+      :close-icon="marIcon('close')"
     >
       <el-alert
         :title="translate('generated.resourceSharingPage.registrationTokenCreated')"
         type="success"
         show-icon
         :closable="false"
-      />
+        ><template #icon><MarIcon name="success" /></template
+      ></el-alert>
       <p class="registration-instructions">
         {{ translate('generated.resourceSharingPage.registrationTokenInstructions') }}
       </p>
@@ -961,7 +1000,7 @@ onUnmounted(() => pagination.dispose());
         v-if="documentationAvailable"
         class="registration-help-link"
         type="primary"
-        :icon="Link"
+        :icon="marIcon('link')"
         :underline="false"
         :href="translate('generated.resourceSharingPage.docsEnUSDeploymentNodeInstallation')"
         target="_blank"

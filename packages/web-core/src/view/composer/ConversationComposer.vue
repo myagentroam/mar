@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
-import { Collection } from '@element-plus/icons-vue';
 import type { ComposerFileReference } from '@myagentroam/protocol';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import PromptCompletionEditor from './PromptCompletionEditor.vue';
@@ -111,7 +111,7 @@ function onEditorCursor(event: MouseEvent | KeyboardEvent): void {
 
 function syncMobileComposerHeight(): void {
   mobileComposerHeight.value = props.mobileViewport
-    ? Math.ceil(composerElement.value?.getBoundingClientRect().height ?? 0)
+    ? (composerElement.value?.getBoundingClientRect().height ?? 0)
     : 0;
 }
 
@@ -197,9 +197,8 @@ const emit = defineEmits<{
               @click="emit('closeCommand', state)"
             >
               <span>{{ state.label }}</span
-              ><span v-if="state.closable">×</span>
-            </button></el-tooltip
-          >
+              ><MarIcon v-if="state.closable" name="close" /></button
+          ></el-tooltip>
           <el-tooltip
             v-bind="tooltipOptions"
             v-for="token in skillTokens"
@@ -217,11 +216,10 @@ const emit = defineEmits<{
               :aria-label="translate('composer.removeSkill', { name: token.name })"
               @click="emit('removeSkill', token.name)"
             >
-              <el-icon><Collection /></el-icon>
+              <MarIcon name="collection" />
               <span>{{ token.name }}</span
-              ><span>×</span>
-            </button></el-tooltip
-          >
+              ><MarIcon name="close" /></button
+          ></el-tooltip>
           <el-tooltip
             v-bind="tooltipOptions"
             v-for="reference in fileReferences"
@@ -239,9 +237,8 @@ const emit = defineEmits<{
                 :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
               />
               <span>{{ reference.label }}</span
-              ><span>×</span>
-            </button></el-tooltip
-          >
+              ><MarIcon name="close" /></button
+          ></el-tooltip>
         </div>
         <slot name="queue" />
         <slot name="attachments" />

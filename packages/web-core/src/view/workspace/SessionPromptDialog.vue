@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { createSessionPromptService } from '../../service/SessionPromptService.js';
@@ -40,7 +41,7 @@ onMounted(async () => {
       ready.value = true;
     }
   } catch (error) {
-    if (!disposed) ElMessage.error(errorMessage(error));
+    if (!disposed) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (!disposed) loading.value = false;
   }
@@ -53,7 +54,7 @@ async function save(): Promise<void> {
     await service.save(form.prompt);
     if (!disposed) emit('close');
   } catch (error) {
-    if (!disposed) ElMessage.error(errorMessage(error));
+    if (!disposed) ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
   } finally {
     if (!disposed) saving.value = false;
   }
@@ -73,6 +74,7 @@ async function save(): Promise<void> {
       }
     "
     @closed="emit('close')"
+    :close-icon="marIcon('close')"
   >
     <p class="session-prompt-description">{{ translate('generated.sessionPrompt.description') }}</p>
     <el-form
@@ -97,9 +99,14 @@ async function save(): Promise<void> {
       <el-button :disabled="saving" @click="emit('close')">{{
         translate('generated.sessionPrompt.cancel')
       }}</el-button>
-      <el-button type="primary" :disabled="!ready" :loading="saving" @click="save">{{
-        translate('generated.sessionPrompt.save')
-      }}</el-button>
+      <el-button
+        type="primary"
+        :disabled="!ready"
+        :loading="saving"
+        @click="save"
+        :loading-icon="marIcon('loading-action')"
+        >{{ translate('generated.sessionPrompt.save') }}</el-button
+      >
     </template>
   </el-dialog>
 </template>

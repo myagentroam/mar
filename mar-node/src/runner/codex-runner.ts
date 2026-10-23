@@ -1,3 +1,4 @@
+import { withMarctlGuide } from '../mcp/marctl-guide.js';
 import {
   CodexAppServerClient,
   CodexAppServerRpcError,
@@ -13,6 +14,7 @@ import {
   type RunnerDiscoveryContext,
   type RunnerConversationHistoryPage,
   type RunnerConversationHistoryReaders,
+  type RunnerConversationRewindInput,
   type RunnerHistoryImageRegistrar,
   type RunnerSessionPresentationContext,
   type RunnerSessionPresentation,
@@ -44,6 +46,8 @@ import {
 import { codexSessionControl } from '../codex-app-server.js';
 import { extractId } from '../util/runner-native-session-parsers.js';
 import { nodeLog } from '../operational.js';
+import { conversationClientMessageId } from '../util/conversation-identity.js';
+import type { NodeConversationTurn } from '../runtime-model.js';
 import type { ResponseLatencyTracker } from '../service/response-latency-tracker.js';
 import type { GenerationTimingTracker } from '../service/generation-timing-tracker.js';
 
@@ -304,11 +308,14 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     secrets: Readonly<Record<string, string>>,
     executionServers: readonly import('../mcp/model.js').ResolvedMcpServer[] = []
   ): unknown {
-    const servers = super.mcpConfiguration(
-      raw,
-      secrets,
-      executionServers
-    ) as readonly import('../mcp/model.js').ResolvedMcpServer[];
+    const servers = withMarctlGuide(
+      super.mcpConfiguration(
+        raw,
+        secrets,
+        executionServers
+      ) as readonly import('../mcp/model.js').ResolvedMcpServer[],
+      secrets
+    );
     return Object.fromEntries(
       servers.map((server) => [
         server.name,
@@ -393,6 +400,39 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   ): Promise<RunnerConversationHistoryPage | undefined> {
     const page = await readers.official();
     return page === undefined ? undefined : { ...page, source: 'official' };
+  }
+
+  override async readConversationRewind(
+    input: RunnerConversationRewindInput
+  ): Promise<ReadonlyMap<NodeConversationTurn['id'], NonNullable<NodeConversationTurn['rewind']>>> {
+    const supplements = new Map<
+      NodeConversationTurn['id'],
+      NonNullable<NodeConversationTurn['rewind']>
+    >();
+    if (!input.firstPage || input.session.externalSessionId === null || !input.managedActive)
+      return supplements;
+    const candidates = input.turns.filter(
+      (turn) =>
+        turn.rewind === undefined &&
+        ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(turn.status) &&
+        conversationClientMessageId(turn) !== null
+    );
+    if (candidates.length === 0) return supplements;
+    const authoritative = await input.readHistory({
+      limit: Math.min(500, Math.max(30, input.turns.length + 1))
+    });
+    if (authoritative === undefined) return supplements;
+    for (const turn of candidates) {
+      const messageId = conversationClientMessageId(turn);
+      const native = authoritative.turns.find(
+        (candidate) =>
+          candidate.rewind !== undefined &&
+          candidate.userItemId !== null &&
+          conversationClientMessageId(candidate) === messageId
+      );
+      if (native?.rewind !== undefined) supplements.set(turn.id, native.rewind);
+    }
+    return supplements;
   }
 
   override async readOfficialConversation(

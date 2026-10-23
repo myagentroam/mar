@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import type { OrganizationCascaderOption } from '@/service/EnterpriseManagementService';
 import { translate } from '@/service/LocalePreferenceService';
 
@@ -28,6 +29,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :aria-label="translate('generated.resourceSharingPage.keyword')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.enterANameOrID')"
+        :clear-icon="marIcon('clear-input')"
       />
     </label>
     <label class="filter-field">
@@ -37,6 +39,8 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :aria-label="translate('generated.resourceSharingPage.ownerType')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAnOwnerType')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option :label="translate('generated.resourceSharingPage.personal2')" value="PERSONAL" />
         <el-option
@@ -55,6 +59,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :placeholder="translate('generated.resourceSharingPage.selectAnOwnerOrganization')"
         :options="organizationOptions"
         :props="{ checkStrictly: true, emitPath: false }"
+        :clear-icon="marIcon('clear-input')"
       />
     </label>
     <label v-if="ownerType === 'PERSONAL'" class="filter-field">
@@ -65,6 +70,8 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         clearable
         filterable
         :placeholder="translate('generated.resourceSharingPage.selectAnOwner')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option
           v-for="user in userOptions"
@@ -81,6 +88,8 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :aria-label="translate('generated.resourceSharingPage.status')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAStatus')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option :label="translate('generated.resourceSharingPage.online2')" value="online" />
         <el-option :label="translate('generated.resourceSharingPage.offline2')" value="offline" />

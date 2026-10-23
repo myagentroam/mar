@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from 'element-plus';
 import type { Ref } from 'vue';
@@ -27,6 +28,7 @@ export function createWorkbenchEntityService(options: {
           translate('generated.workbenchEntityService.leaveBlankToDisplayTheRegisteredAddress'),
           translate('generated.workbenchEntityService.renameNode'),
           {
+            closeIcon: marIcon('close'),
             inputValue: node.displayName ?? '',
             inputPlaceholder:
               node.registeredAddress || translate('generated.workbenchEntityService.nodeName'),
@@ -79,6 +81,7 @@ export function createWorkbenchEntityService(options: {
           translate('generated.workbenchEntityService.enterANonEmptySessionName'),
           translate('generated.workbenchEntityService.renameSession'),
           {
+            closeIcon: marIcon('close'),
             inputValue: currentTitle,
             inputPlaceholder:
               session.runnerTitle ?? translate('generated.workbenchEntityService.sessionName'),
@@ -183,6 +186,8 @@ export function createWorkbenchEntityService(options: {
         }),
         translate('generated.workbenchEntityService.deleteSession'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.workbenchEntityService.deleteSession2'),
           cancelButtonText: translate('generated.workbenchEntityService.cancel3'),
@@ -228,6 +233,8 @@ export function createWorkbenchEntityService(options: {
         }),
         translate('generated.workbenchEntityService.deleteNode'),
         {
+          closeIcon: marIcon('close'),
+          icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.workbenchEntityService.deleteNode2'),
           cancelButtonText: translate('generated.workbenchEntityService.cancel4'),

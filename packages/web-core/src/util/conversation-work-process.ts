@@ -217,6 +217,44 @@ export function conversationWorkProcessBlocks(
   return blocks;
 }
 
+/** Advance history by visible work, including newly mounted process headings and summaries. */
+export function nextConversationRenderItemCount(
+  turns: readonly ConversationTurn[],
+  renderedCount: number,
+  blocks: readonly ConversationProcessBlock[],
+  processOpen: (id: string) => boolean | undefined,
+  budget: number
+): number {
+  const groups = new Map(blocks.filter((block) => block.groupId).map((block) => [block.id, block]));
+  const introduced = new Set<string>();
+  let scanned = 0;
+  let added = 0;
+  let work = 0;
+  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex--) {
+    const turn = turns[turnIndex]!;
+    for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
+      if (scanned++ < renderedCount) continue;
+      const item = turn.items[itemIndex]!;
+      const group = item.processGroup
+        ? groups.get(`${turn.sessionId}:${item.processGroup.id}`)
+        : undefined;
+      let cost = 1;
+      if (group) {
+        const open = processOpen(group.id);
+        cost = (open ?? group.active) ? 1 : 0;
+        // Summaries remain outside the collapsed body, including during history backfill.
+        if (group.summary?.id === item.id) cost = 1;
+        if (open === undefined && !introduced.has(group.id)) cost++;
+      }
+      if (work + cost > budget) return renderedCount + added;
+      work += cost;
+      added++;
+      if (group) introduced.add(group.id);
+    }
+  }
+  return renderedCount + added;
+}
+
 /** Estimate live elapsed time; use recorded endpoints outside synchronized activity. */
 export function conversationProcessDuration(
   block: ConversationProcessBlock,

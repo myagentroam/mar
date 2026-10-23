@@ -58,7 +58,7 @@ function fixture() {
       runId: id,
       sessionId: session.id,
       workspaceId: session.workspaceId,
-      runner: 'mar-agent',
+      executionContext: { runner: 'mar-agent' },
       input: id,
       attachments: [],
       attachmentPaths: [],

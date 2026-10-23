@@ -1,15 +1,7 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Close,
-  FolderAdd,
-  Refresh,
-  Search
-} from '@element-plus/icons-vue';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, reactive, ref, watch } from 'vue';
@@ -150,6 +142,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
     <el-collapse-item
       name="register"
       :title="translate('generated.workspaceRegistrationPicker.registerANewWorkspace')"
+      :icon="marIcon('chevron-right')"
     >
       <form class="workspace-picker" @submit.prevent="emit('register')">
         <slot name="ownership" />
@@ -160,7 +153,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             :content="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
             ><el-button
               :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
-              :icon="ArrowLeft"
+              :icon="marIcon('chevron-left')"
               :disabled="directory.parentPath === null || loadingDirectory"
               native-type="button"
               text
@@ -177,7 +170,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           >
             <el-button native-type="button" text>
               {{ translate('generated.workspaceRegistrationPicker.roots')
-              }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              }}<MarIcon name="chevron-down" class="mar-icon--right" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -216,14 +209,14 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
               :content="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
               ><el-button
                 :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
-                :icon="Refresh"
+                :icon="marIcon('refresh')"
                 :disabled="loadingDirectory"
                 native-type="button"
                 text
                 @click="emit('navigate', directory.currentPath)"
             /></el-tooltip>
             <el-button
-              :icon="FolderAdd"
+              :icon="marIcon('folder-add')"
               :disabled="!canCreateDirectory || loadingDirectory"
               native-type="button"
               @click="openDirectoryDialog"
@@ -233,7 +226,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             <el-button
               :class="{ selected: selectedPath === directory.currentPath }"
               :disabled="loadingDirectory || !directory.selectable"
-              :icon="Check"
+              :icon="marIcon('check')"
               native-type="button"
               @click="emit('select', directory.currentPath)"
             >
@@ -250,10 +243,9 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           clearable
           :placeholder="translate('workspaceDisplayFilter.placeholder')"
           size="small"
+          :clear-icon="marIcon('clear-input')"
         >
-          <template #prefix
-            ><el-icon><Search /></el-icon
-          ></template>
+          <template #prefix><MarIcon name="search" /></template>
         </el-input>
 
         <ul v-if="directory !== undefined" class="workspace-directory-list">
@@ -273,7 +265,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
                 type="button"
                 @click="emit('discard-pending')"
               >
-                <el-icon><Close /></el-icon></button
+                <MarIcon name="close" /></button
             ></el-tooltip>
           </li>
           <li v-for="entry in filteredEntries" :key="entry.path">
@@ -303,7 +295,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
                 type="button"
                 @click="emit('navigate', entry.path)"
               >
-                <el-icon><ArrowRight /></el-icon></button
+                <MarIcon name="chevron-right" /></button
             ></el-tooltip>
           </li>
           <li
@@ -355,6 +347,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             :loading="loading"
             native-type="submit"
             type="primary"
+            :loading-icon="marIcon('loading-action')"
           >
             {{
               pendingDirectoryName
@@ -372,6 +365,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
     v-model="directoryDialogOpen"
     :title="translate('generated.workspaceRegistrationPicker.newDirectory2')"
     width="min(460px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
   >
     <el-form
       ref="directoryForm"

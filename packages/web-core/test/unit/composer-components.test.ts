@@ -651,7 +651,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
       expect(submitting).toMatch(
         /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)(?=[^>]*aria-busy="true")(?=[^>]*\sdisabled)[^>]*>/u
       );
-      expect(submitting).toContain('is-loading');
+      const sendButton =
+        /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)[^>]*>([\s\S]*?)<\/button>/u.exec(
+          submitting
+        );
+      expect(sendButton?.[1]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
   );
 

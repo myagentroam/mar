@@ -566,7 +566,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expectUnifiedButtonHints(html);
     expect(html).toContain(i18n.global.t('generated.filePreviewDialog.onlyTheFirst512KiBIsShown'));
     expect(html).not.toContain('code-file-editor');
-    expect(html).not.toContain('aria-hidden="true"');
+    // Decorative SVGs are hidden, but the preview and its controls must remain exposed.
+    expect(html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gu, '')).not.toContain('aria-hidden="true"');
     expect(html).not.toContain('inert');
     expect(html).not.toContain(i18n.global.t('fileEditor.editing'));
     expect(html).not.toMatch(/(?:fileEditor|filePreviewDialog|generated)\./u);

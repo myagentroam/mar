@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
-import { CircleCheck, CircleClose } from '@element-plus/icons-vue';
 import type { ConversationHostingCapability } from '@myagentroam/protocol';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
 import CoreDialogs from './NodeDetailsDialogs.vue';
@@ -59,20 +59,22 @@ const coreProps = computed(() => props);
             <el-button
               v-if="!hosting.enabled"
               type="primary"
-              :icon="CircleCheck"
+              :icon="marIcon('success')"
               :loading="hosting.changing"
               :disabled="!hosting.canEnable"
               @click="emit('enableHosting')"
+              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('conversationHostingEnablement.enable') }}
             </el-button>
             <el-button
               v-else
               type="warning"
-              :icon="CircleClose"
+              :icon="marIcon('error')"
               :loading="hosting.changing"
               :disabled="!hosting.canDisable"
               @click="emit('disableHosting')"
+              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('conversationHostingEnablement.disable') }}
             </el-button>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeDatabase } from '../../src/database.js';
@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'mar-auto-session-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'mar-auto-session-')));
   const database = new NodeDatabase(':memory:', 'node-auto-session');
   const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
   const connector = new NodeConnector({
@@ -136,7 +136,7 @@ describe('MAR Auto session boundaries', () => {
       runId: accepted.run.id,
       sessionId: session.id,
       workspaceId: stored.workspaceId,
-      runner: 'mar-agent',
+      executionContext: { runner: 'mar-agent' },
       input: 'Goal Start',
       clientMessageId: 'goal-auto',
       attachments: [],

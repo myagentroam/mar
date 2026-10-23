@@ -1,3 +1,4 @@
+import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
@@ -210,6 +211,8 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           translate('generated.workbenchSessionMessageService.clearSessionConfirmation'),
           translate('generated.workbenchSessionMessageService.clearSession'),
           {
+            closeIcon: marIcon('close'),
+            icon: marIcon('warning'),
             type: 'warning',
             confirmButtonText: translate(
               'generated.workbenchSessionMessageService.confirmClearSession'

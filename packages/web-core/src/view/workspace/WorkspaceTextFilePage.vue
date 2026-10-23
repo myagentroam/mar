@@ -1,17 +1,8 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import {
-  Close,
-  DocumentChecked,
-  Download,
-  EditPen,
-  Lock,
-  Search,
-  Setting,
-  Tickets,
-  View
-} from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   computed,
@@ -504,13 +495,15 @@ async function save(): Promise<void> {
           revision: savedRevision
         });
     }
-    ElMessage.success(translate('fileEditor.saved'));
+    ElMessage.success({ icon: marIcon('success'), message: translate('fileEditor.saved') });
   } catch (error) {
-    ElMessage.error(
-      errorCode(error) === 'FILE_WRITE_CONFLICT'
-        ? translate('fileEditor.conflict')
-        : translate('fileEditor.saveFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        errorCode(error) === 'FILE_WRITE_CONFLICT'
+          ? translate('fileEditor.conflict')
+          : translate('fileEditor.saveFailed')
+    });
   } finally {
     saving.value = false;
   }
@@ -524,7 +517,7 @@ async function canClose(): Promise<boolean> {
       await ElMessageBox.confirm(
         translate('fileEditor.unsavedMessage'),
         translate('fileEditor.unsavedTitle'),
-        { type: 'warning' }
+        { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
       );
     } catch {
       return false;
@@ -561,7 +554,10 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    ElMessage.error(translate('filePreviewContext.clipboardFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('filePreviewContext.clipboardFailed')
+    });
   }
 }
 
@@ -570,7 +566,10 @@ async function pasteSelection(): Promise<void> {
   try {
     codeEditor.value?.insertText(await navigator.clipboard.readText());
   } catch {
-    ElMessage.error(translate('filePreviewContext.clipboardFailed'));
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: translate('filePreviewContext.clipboardFailed')
+    });
   }
 }
 
@@ -580,7 +579,7 @@ async function reloadContent(): Promise<void> {
       await ElMessageBox.confirm(
         translate('filePreviewContext.reloadUnsaved'),
         translate('fileEditor.unsavedTitle'),
-        { type: 'warning' }
+        { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
       );
     } catch {
       return;
@@ -682,7 +681,7 @@ defineExpose({
           :aria-label="translate('inlineFind.label')"
           @click="openFind"
         >
-          <el-icon><Search /></el-icon> </el-button
+          <MarIcon name="search" /> </el-button
       ></el-tooltip>
       <template v-if="codeEditorEnabled">
         <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.symbols')"
@@ -693,7 +692,7 @@ defineExpose({
             :aria-label="translate('fileEditor.symbols')"
             @click="symbolsOpen ? closeSymbols() : openSymbols()"
           >
-            <el-icon><Tickets /></el-icon> </el-button
+            <MarIcon name="symbols" /> </el-button
         ></el-tooltip>
         <el-tooltip
           v-bind="tooltipOptions"
@@ -705,7 +704,8 @@ defineExpose({
             :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
             @click="editing = !editing"
           >
-            <el-icon><Lock v-if="editing" /><EditPen v-else /></el-icon> </el-button
+            <MarIcon name="lock" v-if="editing" />
+            <MarIcon name="edit" v-else /> </el-button
         ></el-tooltip>
         <el-tooltip v-bind="tooltipOptions" v-if="editing" :content="translate('common.save')"
           ><el-button
@@ -716,8 +716,9 @@ defineExpose({
             :loading="saving"
             :aria-label="translate('common.save')"
             @click="save"
+            :loading-icon="marIcon('loading-action')"
           >
-            <el-icon><DocumentChecked /></el-icon> </el-button
+            <MarIcon name="document-save" /> </el-button
         ></el-tooltip>
       </template>
       <template v-if="html">
@@ -727,7 +728,7 @@ defineExpose({
             size="small"
             :aria-label="translate('htmlPreview.open')"
             @click="emit('open-html-preview')"
-            ><el-icon><View /></el-icon></el-button
+            ><MarIcon name="view" /></el-button
         ></el-tooltip>
       </template>
       <template v-if="markdown && !renderMarkdown">
@@ -737,7 +738,7 @@ defineExpose({
             size="small"
             :aria-label="translate('markdownPreview.open')"
             @click="emit('open-markdown-preview')"
-            ><el-icon><View /></el-icon></el-button
+            ><MarIcon name="view" /></el-button
         ></el-tooltip>
         <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.settings')"
           ><el-button
@@ -745,7 +746,7 @@ defineExpose({
             size="small"
             :aria-label="translate('markdownPreview.settings')"
             @click="openSettings"
-            ><el-icon><Setting /></el-icon></el-button
+            ><MarIcon name="settings" /></el-button
         ></el-tooltip>
       </template>
     </template>
@@ -759,8 +760,9 @@ defineExpose({
           circle
           size="small"
           @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
         >
-          <el-icon><Download /></el-icon> </el-button
+          <MarIcon name="download" /> </el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -773,7 +775,7 @@ defineExpose({
           type="primary"
           @click="requestClose"
         >
-          <el-icon><Close /></el-icon> </el-button
+          <MarIcon name="close" /> </el-button
       ></el-tooltip>
     </template>
     <template #mobile-actions>
@@ -787,7 +789,7 @@ defineExpose({
           size="small"
           :aria-label="translate('inlineFind.label')"
           @click="openFind"
-          ><el-icon><Search /></el-icon></el-button
+          ><MarIcon name="search" /></el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -798,7 +800,7 @@ defineExpose({
           size="small"
           :aria-label="translate('fileEditor.symbols')"
           @click="symbolsOpen ? closeSymbols() : openSymbols()"
-          ><el-icon><Tickets /></el-icon></el-button
+          ><MarIcon name="symbols" /></el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -809,7 +811,7 @@ defineExpose({
           size="small"
           :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           @click="editing = !editing"
-          ><el-icon><Lock v-if="editing" /><EditPen v-else /></el-icon></el-button
+          ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else /></el-button
       ></el-tooltip>
       <el-tooltip v-bind="tooltipOptions" v-if="editing" :content="translate('common.save')"
         ><el-button
@@ -820,7 +822,8 @@ defineExpose({
           :loading="saving"
           :aria-label="translate('common.save')"
           @click="save"
-          ><el-icon><DocumentChecked /></el-icon></el-button
+          :loading-icon="marIcon('loading-action')"
+          ><MarIcon name="document-save" /></el-button
       ></el-tooltip>
       <template v-if="html">
         <el-tooltip v-bind="tooltipOptions" :content="translate('htmlPreview.open')"
@@ -829,7 +832,7 @@ defineExpose({
             size="small"
             :aria-label="translate('htmlPreview.open')"
             @click="emit('open-html-preview')"
-            ><el-icon><View /></el-icon></el-button
+            ><MarIcon name="view" /></el-button
         ></el-tooltip>
       </template>
       <template v-if="markdown && !renderMarkdown">
@@ -839,7 +842,7 @@ defineExpose({
             size="small"
             :aria-label="translate('markdownPreview.open')"
             @click="emit('open-markdown-preview')"
-            ><el-icon><View /></el-icon></el-button
+            ><MarIcon name="view" /></el-button
         ></el-tooltip>
         <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.settings')"
           ><el-button
@@ -847,7 +850,7 @@ defineExpose({
             size="small"
             :aria-label="translate('markdownPreview.settings')"
             @click="openSettings"
-            ><el-icon><Setting /></el-icon></el-button
+            ><MarIcon name="settings" /></el-button
         ></el-tooltip>
       </template>
       <el-tooltip
@@ -859,8 +862,9 @@ defineExpose({
           circle
           size="small"
           @click="emit('download')"
+          :loading-icon="marIcon('loading-action')"
         >
-          <el-icon><Download /></el-icon> </el-button
+          <MarIcon name="download" /> </el-button
       ></el-tooltip>
       <el-tooltip
         v-bind="tooltipOptions"
@@ -873,7 +877,7 @@ defineExpose({
           type="primary"
           @click="requestClose"
         >
-          <el-icon><Close /></el-icon> </el-button
+          <MarIcon name="close" /> </el-button
       ></el-tooltip>
     </template>
     <div
@@ -892,6 +896,7 @@ defineExpose({
           visibleSymbols.length === 0 ? undefined : `file-symbol-${selectedSymbolIndex}`
         "
         @keydown="onSymbolKeydown"
+        :clear-icon="marIcon('clear-input')"
       />
       <div id="file-symbol-list" ref="symbolList" class="file-symbol-list" role="listbox">
         <button
@@ -1016,7 +1021,8 @@ defineExpose({
       class="file-preview-content"
       :class="{
         'file-preview-content-code':
-          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing)
+          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing),
+        'file-preview-content-fallback': !codeEditorEnabled
       }"
       @click="!editing && focus()"
     >
@@ -1076,6 +1082,7 @@ defineExpose({
       v-model="settingsOpen"
       :title="translate('markdownPreview.settings')"
       width="min(28rem, calc(100vw - 2rem))"
+      :close-icon="marIcon('close')"
     >
       <el-form
         ref="form"
@@ -1122,6 +1129,18 @@ defineExpose({
 .file-preview-content-code {
   overflow: hidden;
   padding: 0;
+}
+
+.file-preview-content-fallback {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.file-preview-content-fallback > .empty {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
 }
 
 .file-symbol-list {
@@ -1307,7 +1326,7 @@ defineExpose({
 .file-text-preview {
   display: block;
   width: 100%;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   box-sizing: border-box;
   margin: 0;

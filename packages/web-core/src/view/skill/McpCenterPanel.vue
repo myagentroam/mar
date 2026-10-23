@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '../../util/mar-icons.js';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Delete, Download, RefreshRight, SwitchButton } from '@element-plus/icons-vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createMcpCenterService, type McpCatalogCard } from '../../service/McpCenterService.js';
 
@@ -230,6 +230,8 @@ async function remove(serverName: string): Promise<void> {
       translate('generated.mcpCenterPanel.removeFromTheCurrentTarget', { value0: serverName }),
       translate('generated.mcpCenterPanel.removeMCPServer'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpCenterPanel.remove'),
         cancelButtonText: translate('generated.mcpCenterPanel.cancel')
@@ -248,7 +250,7 @@ async function execute(operation: () => Promise<void>, success?: string): Promis
   operationError.value = '';
   try {
     await service.run(operation);
-    if (success) ElMessage.success(success);
+    if (success) ElMessage.success({ icon: marIcon('success'), message: success });
   } catch (error) {
     operationError.value = mcpErrorMessage(error);
   }
@@ -308,6 +310,8 @@ function mcpErrorMessage(error: unknown): string {
       <el-select
         v-model="targetNodeId"
         :placeholder="translate('generated.mcpCenterPanel.selectANode2')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option
           v-for="node in targetNodes"
@@ -330,6 +334,8 @@ function mcpErrorMessage(error: unknown): string {
         v-if="targetKind === 'WORKSPACE'"
         v-model="targetWorkspaceId"
         :placeholder="translate('generated.mcpCenterPanel.selectAWorkspace2')"
+        :clear-icon="marIcon('clear-input')"
+        :suffix-icon="marIcon('chevron-down')"
       >
         <el-option
           v-for="workspace in workspaces"
@@ -356,6 +362,7 @@ function mcpErrorMessage(error: unknown): string {
         v-model="query"
         clearable
         :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
+        :clear-icon="marIcon('clear-input')"
       />
       <div
         class="mcp-category-strip"
@@ -461,7 +468,7 @@ function mcpErrorMessage(error: unknown): string {
               <template v-if="activeConfigTab === 'installed'">
                 <el-button
                   link
-                  :icon="SwitchButton"
+                  :icon="marIcon('power')"
                   :disabled="!targetReady || !row.catalogAvailable"
                   @click="install(row.id, !installedByName.get(row.serverName)?.enabled)"
                   >{{
@@ -474,7 +481,7 @@ function mcpErrorMessage(error: unknown): string {
                   v-if="row.catalogAvailable"
                   link
                   type="primary"
-                  :icon="RefreshRight"
+                  :icon="marIcon('retry')"
                   :disabled="!targetReady"
                   @click="install(row.id)"
                   >{{
@@ -487,7 +494,7 @@ function mcpErrorMessage(error: unknown): string {
                   v-if="installedByName.get(row.serverName)?.origin === targetKind"
                   link
                   type="danger"
-                  :icon="Delete"
+                  :icon="marIcon('delete')"
                   :disabled="!targetReady"
                   @click="remove(row.serverName)"
                   >{{ translate('generated.mcpCenterPanel.delete') }}</el-button
@@ -497,7 +504,7 @@ function mcpErrorMessage(error: unknown): string {
                 <el-button
                   link
                   type="primary"
-                  :icon="Download"
+                  :icon="marIcon('download')"
                   :disabled="!targetReady"
                   @click="install(row.id)"
                   >{{

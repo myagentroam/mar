@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import MarIcon from '../common/MarIcon.vue';
 import { tooltipOptions } from '../../util/tooltip.js';
-import { Expand, Fold } from '@element-plus/icons-vue';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 type ManagementSection = string;
@@ -36,8 +36,8 @@ const emit = defineEmits<{
       type="button"
       @click="emit('toggleSidebar')"
     >
-      <el-icon v-if="sidebarCollapsed"><Expand /></el-icon>
-      <el-icon v-else><Fold /></el-icon>
+      <MarIcon name="menu" v-if="sidebarCollapsed" />
+      <MarIcon name="menu" v-else />
     </button>
     <div
       v-if="view === 'conversations' && conversationTitle"
@@ -104,7 +104,7 @@ const emit = defineEmits<{
   color: var(--mar-text-secondary);
 }
 
-.workbench-tree-toggle :deep(.el-icon) {
+.workbench-tree-toggle :deep(.mar-icon) {
   display: grid;
   place-items: center;
 }

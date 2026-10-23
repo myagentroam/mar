@@ -3,12 +3,142 @@ import type { ConversationItem, ConversationTurn } from '../../src/model/workben
 import {
   conversationProcessLabel,
   conversationProcessDuration,
-  conversationWorkProcessBlocks
+  conversationWorkProcessBlocks,
+  nextConversationRenderItemCount
 } from '../../src/util/conversation-work-process.js';
 import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
+
+describe('Visible history render budget', () => {
+  const commands = (group: string, count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      item(`${group}-${index}`, 'command_execution', {
+        processGroup: { id: group, ...(index === 0 ? { isStart: true } : {}) },
+        payload: { command: 'echo test' }
+      })
+    );
+
+  it('skips folded contents but budgets each newly mounted heading', () => {
+    const turns = [
+      turn(Array.from({ length: 20 }, (_, index) => commands(`g${index}`, 30)).flat())
+    ];
+    const blocks = conversationWorkProcessBlocks(turns);
+    expect(nextConversationRenderItemCount(turns, 0, blocks, () => undefined, 8)).toBe(240);
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        40,
+        blocks,
+        (id) => (['session-1:g18', 'session-1:g19'].includes(id) ? false : undefined),
+        8
+      )
+    ).toBe(300);
+  });
+
+  it('budgets visible summaries as well as process headings', () => {
+    const turns = [
+      turn(
+        Array.from({ length: 10 }, (_, index) => [
+          item(`summary-${index}`, 'reasoning', {
+            processGroup: { id: `g${index}`, isStart: true },
+            payload: { representation: 'summary', sections: [{ text: 'Visible summary' }] }
+          }),
+          ...commands(`g${index}`, 10)
+        ]).flat()
+      )
+    ];
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        0,
+        conversationWorkProcessBlocks(turns),
+        () => undefined,
+        8
+      )
+    ).toBe(44);
+  });
+
+  it('uses actual manual/focus disclosure state instead of terminal status', () => {
+    const turns = [turn(commands('group', 50))];
+    const blocks = conversationWorkProcessBlocks(turns);
+    expect(nextConversationRenderItemCount(turns, 10, blocks, () => true, 8)).toBe(18);
+    expect(nextConversationRenderItemCount(turns, 10, blocks, () => false, 8)).toBe(50);
+    const active = conversationWorkProcessBlocks(turns, [{ id: runId, status: 'RUNNING' }]);
+    expect(nextConversationRenderItemCount(turns, 0, active, () => undefined, 8)).toBe(7);
+    expect(nextConversationRenderItemCount(turns, 10, active, () => false, 8)).toBe(50);
+  });
+
+  it('budgets newly backfilled summaries of already mounted folded processes', () => {
+    const summaries = Array.from({ length: 10 }, (_, index) =>
+      item(`summary-${index}`, 'reasoning', {
+        processGroup: { id: `g${index}`, isStart: true },
+        payload: { representation: 'summary', sections: [{ text: 'Visible summary' }] }
+      })
+    );
+    const turns = [
+      turn([
+        ...summaries,
+        ...Array.from({ length: 10 }, (_, index) => commands(`g${index}`, 1)).flat()
+      ])
+    ];
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        10,
+        conversationWorkProcessBlocks(turns),
+        () => false,
+        8
+      )
+    ).toBe(18);
+  });
+
+  it('preserves the raw-item budget for ordinary visible records', () => {
+    const turns = [
+      turn(
+        Array.from({ length: 40 }, (_, index) =>
+          item(`reply-${index}`, 'assistant_message', { payload: { text: 'Reply' } })
+        )
+      )
+    ];
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        10,
+        conversationWorkProcessBlocks(turns),
+        () => undefined,
+        8
+      )
+    ).toBe(18);
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        38,
+        conversationWorkProcessBlocks(turns),
+        () => undefined,
+        8
+      )
+    ).toBe(40);
+  });
+
+  it('does not share group visibility across session identities', () => {
+    const turns = [
+      turn(commands('same', 20)),
+      turn(commands('same', 20), { sessionId: 'session-2' })
+    ];
+    const blocks = conversationWorkProcessBlocks(turns);
+    expect(
+      nextConversationRenderItemCount(
+        turns,
+        20,
+        blocks,
+        (id) => (id === 'session-1:same' ? true : false),
+        8
+      )
+    ).toBe(28);
+  });
+});
 
 describe('Latest work process labels', () => {
   it.each([

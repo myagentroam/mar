@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { tooltipOptions } from '@myagentroam/web-core';
-import { Link, Refresh, Unlock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
@@ -90,9 +90,13 @@ async function loadOAuthBindings(): Promise<void> {
       await props.request<{ bindings: readonly OAuthBinding[] }>('/api/oauth-bindings')
     ).bindings;
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(error, translate('generated.settingsContent.unableToLoadOAuthBindings'))
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
+        error,
+        translate('generated.settingsContent.unableToLoadOAuthBindings')
+      )
+    });
   } finally {
     oauthLoading.value = false;
   }
@@ -105,9 +109,13 @@ async function bindOAuth(provider: OAuthBinding): Promise<void> {
     );
     window.location.assign(result.authorizationUrl);
   } catch (error) {
-    ElMessage.error(
-      oauthErrorMessage(error, translate('generated.settingsContent.unableToStartOAuthBinding'))
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message: oauthErrorMessage(
+        error,
+        translate('generated.settingsContent.unableToStartOAuthBinding')
+      )
+    });
   }
 }
 async function unbindOAuth(provider: OAuthBinding): Promise<void> {
@@ -115,20 +123,25 @@ async function unbindOAuth(provider: OAuthBinding): Promise<void> {
     await ElMessageBox.confirm(
       translate('generated.settingsContent.unbindFromTheCurrentAccount', { value0: provider.name }),
       translate('generated.settingsContent.unbindOAuth'),
-      {
-        type: 'warning'
-      }
+      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/oauth-bindings/${encodeURIComponent(provider.providerKey)}`, {
       method: 'DELETE'
     });
     await loadOAuthBindings();
-    ElMessage.success(translate('generated.settingsContent.oAuthBindingRemoved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('generated.settingsContent.oAuthBindingRemoved')
+    });
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(
-        oauthErrorMessage(error, translate('generated.settingsContent.unableToRemoveOAuthBinding'))
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message: oauthErrorMessage(
+          error,
+          translate('generated.settingsContent.unableToRemoveOAuthBinding')
+        )
+      });
   }
 }
 function createNodeToken(): void {
@@ -159,7 +172,7 @@ function createNodeToken(): void {
             :content="translate('generated.settingsContent.refresh')"
             ><el-button
               class="utility-control"
-              :icon="Refresh"
+              :icon="marIcon('refresh')"
               :aria-label="translate('generated.settingsContent.refresh')"
               text
               @click="loadOAuthBindings"
@@ -187,7 +200,7 @@ function createNodeToken(): void {
                 v-if="!row.bound"
                 link
                 type="primary"
-                :icon="Link"
+                :icon="marIcon('link')"
                 :disabled="managementWritable !== true"
                 @click="bindOAuth(row)"
                 >{{ translate('generated.settingsContent.bind') }}</el-button
@@ -196,7 +209,7 @@ function createNodeToken(): void {
                 v-else
                 link
                 type="danger"
-                :icon="Unlock"
+                :icon="marIcon('unlock')"
                 :disabled="managementWritable !== true"
                 @click="unbindOAuth(row)"
                 >{{ translate('generated.settingsContent.unbind') }}</el-button
@@ -212,6 +225,8 @@ function createNodeToken(): void {
         <el-select
           v-model="registrationOwner"
           :placeholder="translate('generated.settingsContent.selectOwnership')"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
         >
           <el-option :label="translate('generated.settingsContent.personal')" value="PERSONAL" />
           <el-option

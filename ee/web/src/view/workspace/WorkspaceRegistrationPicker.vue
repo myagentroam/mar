@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, watch } from 'vue';
 import CorePicker from '@myagentroam/web-core/WorkspaceRegistrationPicker.vue';
 import type { WorkspaceDirectoryListing } from '@myagentroam/web-core/workspace-registration';
@@ -122,7 +123,13 @@ function submit(): void {
         <strong v-else-if="fixedOrganizationOwnership">{{
           organizationDisplayLabel(organizations, nodeOwnership.ownerOrganizationId)
         }}</strong>
-        <el-select v-else v-model="ownerOrganizationId" :disabled="role === 'MEMBER'">
+        <el-select
+          v-else
+          v-model="ownerOrganizationId"
+          :disabled="role === 'MEMBER'"
+          :clear-icon="marIcon('clear-input')"
+          :suffix-icon="marIcon('chevron-down')"
+        >
           <el-option
             v-for="organization in organizationOptions"
             :key="organization.id"

@@ -1,3 +1,4 @@
+import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import { composerVisibleText, type RunnerCommandState } from '@myagentroam/protocol';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
@@ -174,16 +175,7 @@ export class GoalContinuationCoordinator {
           ...(pending.personalInstructions === undefined
             ? {}
             : { personalInstructions: pending.personalInstructions }),
-          ...(pending.marAgentModel === undefined ? {} : { marAgentModel: pending.marAgentModel }),
-          ...(pending.marAgentModels === undefined
-            ? {}
-            : { marAgentModels: pending.marAgentModels }),
-          ...(pending.marAgentCompact === undefined
-            ? {}
-            : { marAgentCompact: pending.marAgentCompact }),
-          ...(pending.marAgentRuntimeScopeId === undefined
-            ? {}
-            : { marAgentRuntimeScopeId: pending.marAgentRuntimeScopeId }),
+          executionContext: pending.executionContext,
           continuationEpoch,
           deliveryIntent: 'SEND'
         });
@@ -252,10 +244,7 @@ export class GoalContinuationCoordinator {
     suppressNotifications,
     secretEnvironment,
     personalInstructions,
-    marAgentModel,
-    marAgentModels,
-    marAgentCompact,
-    marAgentRuntimeScopeId,
+    executionContext,
     usageGrant
   }: GoalStartInput): Promise<unknown> {
     this.invalidateGoalContinuation(session.id);
@@ -284,10 +273,7 @@ export class GoalContinuationCoordinator {
         ...(initiatedByUserId === undefined ? {} : { initiatedByUserId }),
         secretEnvironment,
         ...(personalInstructions === undefined ? {} : { personalInstructions }),
-        ...(marAgentModel === undefined ? {} : { marAgentModel }),
-        ...(marAgentModels === undefined ? {} : { marAgentModels }),
-        ...(marAgentCompact === undefined ? {} : { marAgentCompact }),
-        ...(marAgentRuntimeScopeId === undefined ? {} : { marAgentRuntimeScopeId })
+        executionContext
       });
       if (!this.goalGenerationCurrent(attempt.sessionId, goalRef)) {
         this.removeStaleGoalSubmission(attempt.sessionId, result);
@@ -412,12 +398,7 @@ export class GoalContinuationCoordinator {
       ...(input.personalInstructions === undefined
         ? {}
         : { personalInstructions: input.personalInstructions }),
-      ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-      ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-      ...(input.marAgentCompact === undefined ? {} : { marAgentCompact: input.marAgentCompact }),
-      ...(input.marAgentRuntimeScopeId === undefined
-        ? {}
-        : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId })
+      executionContext: input.executionContext
     });
     if (
       updated !== undefined &&
@@ -532,10 +513,7 @@ export class GoalContinuationCoordinator {
     readonly initiatedByUserId?: number;
     readonly secretEnvironment: Readonly<Record<string, string>>;
     readonly personalInstructions?: string;
-    readonly marAgentModel?: unknown;
-    readonly marAgentModels?: unknown;
-    readonly marAgentCompact?: unknown;
-    readonly marAgentRuntimeScopeId?: unknown;
+    readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
     readonly failedAttempts?: number;
     readonly continuationEpoch?: number;
@@ -564,12 +542,7 @@ export class GoalContinuationCoordinator {
         ...(input.personalInstructions === undefined
           ? {}
           : { personalInstructions: input.personalInstructions }),
-        ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-        ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-        ...(input.marAgentCompact === undefined ? {} : { marAgentCompact: input.marAgentCompact }),
-        ...(input.marAgentRuntimeScopeId === undefined
-          ? {}
-          : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId })
+        executionContext: input.executionContext
       });
       if (!this.goalGenerationCurrent(attempt.sessionId, generation)) {
         this.removeStaleGoalSubmission(attempt.sessionId, result);

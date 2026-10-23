@@ -1,5 +1,5 @@
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import type { RunnerName } from '@myagentroam/protocol';
+import type { RegisteredRunnerName } from '../runner/abstract-runner.js';
 import { steerComposerMessage } from '@myagentroam/protocol';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NodeAgentSession } from '../database.js';
@@ -18,7 +18,7 @@ export interface WorkspaceQueueWorkbenchServiceOptions {
   readonly coordinator: ContinuousRunCoordinator<unknown>;
   readonly emit: (workspaceId: string, sessionId: string) => void;
   readonly prepareInput: (
-    runner: RunnerName,
+    runner: RegisteredRunnerName,
     input: string,
     collaborationMode: 'default' | 'plan'
   ) => string;
@@ -172,7 +172,7 @@ export class WorkspaceQueueWorkbenchService {
       prepared === undefined
         ? undefined
         : this.options.prepareInput(
-            prepared.runner,
+            prepared.executionContext.runner,
             withNonImageAttachmentPrompt(
               steering ? steerComposerMessage(content) : content,
               prepared.attachmentPaths,

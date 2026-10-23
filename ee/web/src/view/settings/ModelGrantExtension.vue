@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MarIcon from '@myagentroam/web-core/MarIcon.vue';
+import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
-import { Delete, Share } from '@element-plus/icons-vue';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,
@@ -88,9 +89,11 @@ async function openGrants(row: ModelSummary): Promise<void> {
     users.value = userResult.users;
   } catch (error) {
     selectedModel.value = undefined;
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed')
+    });
   } finally {
     grantLoading.value = false;
   }
@@ -123,11 +126,16 @@ async function createGrant(): Promise<void> {
       })
     });
     await refreshGrantState(row.id);
-    ElMessage.success(translate('marAgentModels.grantCreated'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('marAgentModels.grantCreated')
+    });
   } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed')
-    );
+    ElMessage.error({
+      icon: marIcon('error'),
+      message:
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed')
+    });
   } finally {
     grantSaving.value = false;
   }
@@ -141,6 +149,8 @@ async function removeGrant(grant: Grant): Promise<void> {
       translate('marAgentModels.confirmRevoke'),
       translate('marAgentModels.revoke'),
       {
+        closeIcon: marIcon('close'),
+        icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.revoke'),
         cancelButtonText: translate('marAgentModels.cancel')
@@ -151,12 +161,19 @@ async function removeGrant(grant: Grant): Promise<void> {
       method: 'DELETE'
     });
     await refreshGrantState(model.id);
-    ElMessage.success(translate('marAgentModels.grantRemoved'));
+    ElMessage.success({
+      icon: marIcon('success'),
+      message: translate('marAgentModels.grantRemoved')
+    });
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error(
-        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantRemoveFailed')
-      );
+      ElMessage.error({
+        icon: marIcon('error'),
+        message:
+          error instanceof Error
+            ? errorMessage(error)
+            : translate('marAgentModels.grantRemoveFailed')
+      });
   } finally {
     const next = new Set(revokingGrantIds.value);
     next.delete(grant.id);
@@ -183,6 +200,7 @@ defineExpose({ open: openGrants });
     v-model="grantOpen"
     :title="translate('marAgentModels.accessDialogTitle')"
     width="min(640px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
   >
     <div v-if="selectedModel" class="model-access-context">
       <strong>{{ selectedModel.name }}</strong>
@@ -193,7 +211,8 @@ defineExpose({ open: openGrants });
       type="info"
       :closable="false"
       show-icon
-    />
+      ><template #icon><MarIcon name="info" /></template
+    ></el-alert>
     <div v-loading="grantLoading">
       <el-form
         ref="grantFormRef"
@@ -203,7 +222,12 @@ defineExpose({ open: openGrants });
         label-position="top"
       >
         <el-form-item :label="translate('marAgentModels.targetType')">
-          <el-select v-model="targetType" :disabled="!writable">
+          <el-select
+            v-model="targetType"
+            :disabled="!writable"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
             <el-option :label="translate('marAgentModels.organization')" value="ORGANIZATION" />
             <el-option :label="translate('marAgentModels.user')" value="USER" />
           </el-select>
@@ -221,6 +245,7 @@ defineExpose({ open: openGrants });
             filterable
             :options="organizationOptions"
             :props="{ checkStrictly: true, emitPath: false }"
+            :clear-icon="marIcon('clear-input')"
           />
         </el-form-item>
         <el-form-item
@@ -233,6 +258,8 @@ defineExpose({ open: openGrants });
             :disabled="!writable"
             :placeholder="translate('marAgentModels.selectUser')"
             filterable
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
               v-for="user in users"
@@ -261,10 +288,11 @@ defineExpose({ open: openGrants });
             <el-button
               link
               type="danger"
-              :icon="Delete"
+              :icon="marIcon('delete')"
               :disabled="!writable"
               :loading="revokingGrantIds.has(row.id)"
               @click="removeGrant(row)"
+              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('marAgentModels.revoke') }}
             </el-button>
@@ -276,10 +304,11 @@ defineExpose({ open: openGrants });
       <el-button @click="grantOpen = false">{{ translate('marAgentModels.close') }}</el-button>
       <el-button
         type="primary"
-        :icon="Share"
+        :icon="marIcon('share')"
         :disabled="!writable || grantLoading"
         :loading="grantSaving"
         @click="createGrant"
+        :loading-icon="marIcon('loading-action')"
       >
         {{ translate('common.grant') }}
       </el-button>

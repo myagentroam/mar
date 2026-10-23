@@ -1,3 +1,4 @@
+import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import type { FakeRunnerStatus } from '../fake-runner.js';
 import type { ScheduledSessionTask } from './scheduled-session-store.js';
@@ -10,10 +11,7 @@ export interface ScheduledRunContext {
   readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant | undefined;
   readonly secretEnvironment: Readonly<Record<string, string>>;
   readonly personalInstructions?: unknown;
-  readonly marAgentModel?: unknown;
-  readonly marAgentModels?: unknown;
-  readonly marAgentCompact?: unknown;
-  readonly marAgentRuntimeScopeId?: unknown;
+  readonly executionContext: RunnerExecutionContext;
 }
 
 interface ScheduledSessionCoordinatorOptions {

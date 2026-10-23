@@ -8,6 +8,124 @@ import {
 
 // Files, Git, uploads, and the resource tree
 
+test('Quick Open filters match Workspace Tab selection and tab labels keep their descenders', async ({
+  page
+}, testInfo) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/workspaces?nodeId=node-1', (route) =>
+    json(route, {
+      workspaces: [{ id: 'workspace-1', path: '/MyAgentRoam-gypqj', kind: 'GIT_WORKSPACE' }]
+    })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'MyAgentRoam-gypqj' }).click();
+
+  for (const width of [1365, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate(() => document.fonts.ready);
+    const workspaceTab = page.locator('.workspace-tab.active:visible').first();
+    const label = workspaceTab.locator('.workspace-tab-content > span');
+    await expect(label).toHaveText('MyAgentRoam-gypqj');
+    const tabText = workspaceTab.locator(
+      '.workspace-tab-content > span, .workspace-tab-node:not(.direct-available-node), .workspace-tab-node-label'
+    );
+    for (const textElement of await tabText.all()) {
+      const labelBounds = await textElement.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        const clip = element.getBoundingClientRect();
+        const tab = element.closest('.workspace-tab')!.getBoundingClientRect();
+        let clipTop = clip.top;
+        let clipBottom = clip.bottom;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          if (!['hidden', 'auto', 'scroll', 'clip'].includes(getComputedStyle(parent).overflowY))
+            continue;
+          const bounds = parent.getBoundingClientRect();
+          clipTop = Math.max(clipTop, bounds.top);
+          clipBottom = Math.min(clipBottom, bounds.bottom);
+        }
+        return {
+          textTop: text.top,
+          textBottom: text.bottom,
+          clipTop,
+          clipBottom,
+          tabTop: tab.top,
+          tabBottom: tab.bottom
+        };
+      });
+      expect(labelBounds.textTop).toBeGreaterThanOrEqual(labelBounds.clipTop);
+      expect(labelBounds.textBottom).toBeLessThanOrEqual(labelBounds.clipBottom);
+      expect(labelBounds.clipTop).toBeGreaterThanOrEqual(labelBounds.tabTop);
+      expect(labelBounds.clipBottom).toBeLessThanOrEqual(labelBounds.tabBottom);
+    }
+    await workspaceTab.screenshot({
+      path: testInfo.outputPath('workspace-descenders-' + width + '.png')
+    });
+
+    for (const scheme of ['daylight', 'vscode-dark-2026', 'custom']) {
+      await page.evaluate((value) => {
+        document.documentElement.setAttribute(
+          'data-theme',
+          value === 'custom' ? 'vscode-dark-2026' : value
+        );
+        document.documentElement.classList.toggle('dark', value !== 'daylight');
+        if (value === 'custom') {
+          document.documentElement.style.setProperty('--mar-fill-selection', '#294039');
+          document.documentElement.style.setProperty('--mar-text-primary', '#d8e9df');
+        } else {
+          document.documentElement.style.removeProperty('--mar-fill-selection');
+          document.documentElement.style.removeProperty('--mar-text-primary');
+        }
+      }, scheme);
+      const reference = await workspaceTab.evaluate((element) => {
+        const swatch = document.createElement('span');
+        swatch.style.backgroundColor = 'var(--mar-fill-selection)';
+        element.append(swatch);
+        const background = getComputedStyle(swatch).backgroundColor;
+        swatch.remove();
+        return {
+          background,
+          color: getComputedStyle(element.querySelector('button')!).color,
+          weight: getComputedStyle(element.querySelector('.workspace-tab-content > span')!)
+            .fontWeight,
+          radius: getComputedStyle(element).borderRadius
+        };
+      });
+      await page.keyboard.press('Control+Shift+O');
+      const dialog = page.getByRole('dialog', { name: '快速打开', exact: true });
+      const filters = dialog.getByRole('tablist');
+      await expect(filters).toBeVisible();
+      for (const filter of await filters.getByRole('tab').all()) {
+        await filter.click();
+        await expect(filter).toHaveAttribute('aria-selected', 'true');
+        await expect(filter).toHaveCSS('background-color', reference.background);
+        await expect(filter).toHaveCSS('color', reference.color);
+        await expect(filter).toHaveCSS('font-weight', reference.weight);
+        await expect(filter).toHaveCSS('border-radius', reference.radius);
+        await filter.hover();
+        await expect(filter).toHaveCSS('background-color', reference.background);
+        await filter.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(filter).toBeFocused();
+        await expect(filter).toHaveCSS('outline-style', 'solid');
+        await expect(filter).toHaveCSS('outline-width', '2px');
+      }
+      await dialog.screenshot({
+        path: testInfo.outputPath('quick-open-tabs-' + scheme + '-' + width + '.png')
+      });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    }
+  }
+});
+
 test('File navigation uses rounded selection and the editor fills its surface with themed text selection', async ({
   page
 }, testInfo) => {
