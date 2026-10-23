@@ -3,9 +3,9 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { showMessage } from '../../service/MessageFeedbackService.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
@@ -119,7 +119,7 @@ const pagination = createManagementPageService<Secret>({
       sortBy.value,
       sortOrder.value
     ]),
-  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: message(error) })
+  reportError: (error) => showMessage(message(error), 'error', error)
 });
 const loading = computed(
   () => operationLoading.value || (!targetScoped.value && pagination.loading.value)
@@ -154,7 +154,7 @@ async function load(): Promise<void> {
     const result = await service.list(props.nodeId, props.workspaceId);
     secrets.value = result.secrets;
   } catch (caught) {
-    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
+    showMessage(message(caught), 'error', caught);
   } finally {
     operationLoading.value = false;
   }
@@ -237,7 +237,7 @@ async function save(): Promise<void> {
     clearForm();
     await load();
   } catch (caught) {
-    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
+    showMessage(message(caught), 'error', caught);
   } finally {
     operationLoading.value = false;
   }
@@ -267,7 +267,7 @@ async function remove(secret: Secret): Promise<void> {
     await service.remove(secret.id);
     await load();
   } catch (caught) {
-    ElMessage.error({ icon: marIcon('error'), message: message(caught) });
+    showMessage(message(caught), 'error', caught);
   } finally {
     operationLoading.value = false;
   }
@@ -360,9 +360,7 @@ function message(error: unknown): string {
         min-width="150"
       >
         <template #default="{ row }">
-          <el-tooltip v-bind="tooltipOptions" :content="row.name"
-            ><span>{{ row.name }}</span></el-tooltip
-          >
+          <span v-tooltip="row.name">{{ row.name }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -372,9 +370,7 @@ function message(error: unknown): string {
         min-width="170"
       >
         <template #default="{ row }">
-          <el-tooltip v-bind="tooltipOptions" :content="row.value"
-            ><code class="secret-value">{{ row.value }}</code></el-tooltip
-          >
+          <code v-tooltip="row.value" class="secret-value">{{ row.value }}</code>
         </template>
       </el-table-column>
       <el-table-column
@@ -411,7 +407,6 @@ function message(error: unknown): string {
           <div class="row-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('edit')"
               :disabled="writable === false"
               @click="openReplace(row)"

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { marIcon } from '@myagentroam/web-core/icons';
+import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import type { OrganizationSummary } from '@/service/EnterpriseManagementService';
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
 import CorePage from '@myagentroam/web-core/SecretManagementPage.vue';
@@ -24,13 +24,13 @@ onMounted(async () => {
       await props.request<{ organizations: readonly OrganizationSummary[] }>('/api/organizations')
     ).organizations;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.secretManagementPage.unableToLoadOrganizations')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.secretManagementPage.unableToLoadOrganizations'),
+      'error',
+      error
+    );
   }
 });
 </script>

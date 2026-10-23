@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import type { HostedConversationSnapshot } from '@myagentroam/protocol';
 import { createHostedConversationEntryService } from '../../service/HostedConversationEntryService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -51,11 +53,11 @@ async function load(): Promise<void> {
     formRef.value?.clearValidate();
   } catch (error) {
     if (sequence !== loadSequence) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed'),
+      'error',
+      error
+    );
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -82,11 +84,11 @@ async function create(): Promise<void> {
     service.selectTemplate(form.templateId);
     emit('created', await service.create());
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed')
-    });
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed'),
+      'error',
+      error
+    );
   } finally {
     creating.value = false;
   }

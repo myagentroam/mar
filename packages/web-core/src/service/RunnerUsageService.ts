@@ -43,7 +43,7 @@ export function runnerUsageTitle(runner: RunnerUsageName | undefined): string {
 
 export function createRunnerUsageService(options: {
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  readonly error: (message: string) => void;
+  readonly error: (message: string, cause?: unknown) => void;
   readonly errorMessage: (error: unknown) => string;
 }) {
   const nodeDetails = ref<NodeSummary>();
@@ -107,7 +107,8 @@ export function createRunnerUsageService(options: {
       options.error(
         translate('generated.runnerUsageService.unableToQueryUsage', {
           value0: options.errorMessage(error)
-        })
+        }),
+        error
       );
       void loadStatuses(node.id);
     } finally {

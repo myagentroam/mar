@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import {
   type BuiltinTheme,
   type CustomTheme,
@@ -108,7 +109,7 @@ async function selectTheme(item: ThemeRow): Promise<void> {
       item.builtin ? (item.id as BuiltinTheme) : undefined
     );
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.paletteFailed') });
+    showMessage(t('customThemes.paletteFailed'), 'error');
   }
 }
 async function reset(): Promise<void> {
@@ -131,7 +132,7 @@ function applyTheme(item: ThemeRow): void {
   try {
     service.setTheme(item.id);
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
+    showMessage(t('customThemes.storageFailed'), 'error');
   }
 }
 function themeAction(item: ThemeRow, command: string): void {
@@ -145,9 +146,9 @@ async function save(): Promise<void> {
     const item = service.saveCustomTheme(draft.source, selectedId.value);
     selectedId.value = item.id;
     baseline.value = draft.source;
-    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.saved') });
+    showMessage(t('customThemes.saved'), 'success');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
+    showMessage(t('customThemes.storageFailed'), 'error');
   }
 }
 async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
@@ -168,9 +169,9 @@ async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
       selectedId.value = undefined;
       baseline.value = draft.source;
     }
-    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.deleted') });
+    showMessage(t('customThemes.deleted'), 'success');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.storageFailed') });
+    showMessage(t('customThemes.storageFailed'), 'error');
   }
 }
 function duplicate(item: ThemeRow): void {
@@ -179,7 +180,7 @@ function duplicate(item: ThemeRow): void {
       service.duplicateSource(rowSource(item), t('customThemes.copyName', { name: item.name }))
     );
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.paletteFailed') });
+    showMessage(t('customThemes.paletteFailed'), 'error');
   }
 }
 async function importFile(event: Event): Promise<void> {
@@ -190,15 +191,15 @@ async function importFile(event: Event): Promise<void> {
   try {
     await load(await file.text());
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.importFailed') });
+    showMessage(t('customThemes.importFailed'), 'error');
   }
 }
 async function copy(): Promise<void> {
   try {
     await navigator.clipboard.writeText(draft.source);
-    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.copied') });
+    showMessage(t('customThemes.copied'), 'info');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.copyFailed') });
+    showMessage(t('customThemes.copyFailed'), 'error');
   }
 }
 async function exportFile(): Promise<void> {
@@ -285,16 +286,12 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           </el-button>
           <el-dropdown trigger="click" @command="themeAction(item, $event)">
             <el-button
+              v-tooltip="t('customThemes.moreActions', { name: item.name })"
               class="utility-control"
               text
               :aria-label="t('customThemes.moreActions', { name: item.name })"
             >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="t('customThemes.moreActions', { name: item.name })"
-              >
-                <MarIcon name="more" />
-              </el-tooltip>
+              <MarIcon name="more" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>

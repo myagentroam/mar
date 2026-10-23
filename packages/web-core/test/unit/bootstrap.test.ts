@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus';
 import { bootstrapConsole } from '../../src/bootstrap.js';
 import AppShell from '../../src/App.vue';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { tooltipPlugin } from '../../src/directive/tooltip.js';
 import {
   createManagementComposition,
   MANAGEMENT_COMPOSITION_KEY
@@ -43,7 +44,7 @@ describe('shared Console bootstrap', () => {
       expect(bootstrapConsole({ ...pages, management })).toBe(app);
       expect(createApp).toHaveBeenCalledWith(AppShell, pages);
       expect(app.provide).toHaveBeenCalledWith(MANAGEMENT_COMPOSITION_KEY, management);
-      expect(app.use.mock.calls).toEqual([[i18n], [ElementPlus]]);
+      expect(app.use.mock.calls).toEqual([[i18n], [ElementPlus], [tooltipPlugin]]);
       expect(app.mount).toHaveBeenCalledWith('#app');
       expect(register).not.toHaveBeenCalled();
       window.dispatchEvent(new Event('load'));

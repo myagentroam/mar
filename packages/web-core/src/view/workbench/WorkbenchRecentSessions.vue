@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type {
@@ -90,10 +89,13 @@ function runTime(run: RecentRun): string {
       popper-class="recent-sessions-popover"
     >
       <template #reference>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('workbenchNotificationCenter.recentSessions')"
-          ><span class="mar-tooltip-control"
+        <span class="recent-sessions-reference">
+          <span
+            v-tooltip="{
+              content: translate('workbenchNotificationCenter.recentSessions'),
+              placement: mobileMode ? 'bottom' : 'right'
+            }"
+            class="mar-tooltip-control"
             ><button
               type="button"
               :class="['recent-sessions-trigger', { active: open }]"
@@ -111,8 +113,8 @@ function runTime(run: RecentRun): string {
                 activeSessionCount
               }}</span>
             </button></span
-          ></el-tooltip
-        >
+          >
+        </span>
       </template>
       <section
         class="recent-sessions-panel"
@@ -125,28 +127,26 @@ function runTime(run: RecentRun): string {
         </p>
         <ul v-else class="recent-sessions-list">
           <li v-for="run in service.recentRuns.value" :key="`${run.nodeId}:${run.runId}`">
-            <button type="button" @click="openSession(run)">
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="
-                  translate('workbenchNotificationCenter.recentRunTitle', {
-                    value0: run.workspaceName ?? run.workspaceId,
-                    value1: run.sessionTitle
-                  })
-                "
-                ><span class="recent-session-title">{{
-                  translate('workbenchNotificationCenter.recentRunTitle', {
-                    value0: run.workspaceName ?? run.workspaceId,
-                    value1: run.sessionTitle
-                  })
-                }}</span></el-tooltip
-              >
+            <button
+              v-tooltip="
+                translate('workbenchNotificationCenter.recentRunTitle', {
+                  value0: run.workspaceName ?? run.workspaceId,
+                  value1: run.sessionTitle
+                })
+              "
+              type="button"
+              @click="openSession(run)"
+            >
+              <span class="recent-session-title">{{
+                translate('workbenchNotificationCenter.recentRunTitle', {
+                  value0: run.workspaceName ?? run.workspaceId,
+                  value1: run.sessionTitle
+                })
+              }}</span>
               <el-tag size="small" :type="runStatusType(run.status)">{{
                 translate(RUN_STATUS_KEYS[run.status])
               }}</el-tag>
-              <el-tooltip v-bind="tooltipOptions" :content="run.userMessage"
-                ><small>{{ run.userMessage }}</small></el-tooltip
-              >
+              <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
               <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{
                 runTime(run)
               }}</time>
@@ -163,13 +163,21 @@ function runTime(run: RecentRun): string {
   flex: none;
   width: 100%;
 }
+.recent-sessions-reference {
+  display: flex;
+  width: calc(100% - 4px);
+  margin: 0 2px;
+}
+.recent-sessions-reference > .mar-tooltip-control {
+  width: 100%;
+}
 .recent-sessions-trigger {
   position: relative;
   display: grid;
   place-items: center;
-  width: calc(100% - 4px);
+  width: 100%;
   min-height: var(--mar-rail-item-height);
-  margin: 0 2px;
+  margin: 0;
   padding: 3px 0;
   border: 0;
   border-radius: var(--mar-radius-selection);
@@ -198,7 +206,7 @@ function runTime(run: RecentRun): string {
   right: calc(50% - 14px);
   min-width: 14px;
   border: 1px solid var(--mar-bg-panel);
-  border-radius: 9px;
+  border-radius: var(--mar-radius-marker);
   background: var(--mar-color-brand);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);
@@ -208,11 +216,15 @@ function runTime(run: RecentRun): string {
 .mobile-mode {
   width: 36px;
 }
+.mobile-mode .recent-sessions-reference {
+  width: 100%;
+  margin: 0;
+}
 .mobile-mode .recent-sessions-trigger {
   width: 36px;
   min-height: 0;
   height: 36px;
-  margin: 0 1px;
+  margin: 0;
   padding: 2px 6px;
 }
 .mobile-mode .recent-sessions-trigger .mar-icon {

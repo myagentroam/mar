@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { tooltipOptions } from '../../util/tooltip.js';
 import { onBeforeUnmount, ref } from 'vue';
 
 const props = defineProps<{
@@ -22,6 +21,11 @@ function start(event: PointerEvent): void {
   event.preventDefault();
   const handle = event.currentTarget as HTMLElement;
   handle.setPointerCapture(event.pointerId);
+  // A drag takes over from the settled layout, not an intermediate collapse frame.
+  for (const animation of props.target.getAnimations()) {
+    if (animation instanceof CSSTransition && animation.transitionProperty === 'width')
+      animation.finish();
+  }
   drag = {
     pointerId: event.pointerId,
     x: event.clientX,
@@ -49,19 +53,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-tooltip v-bind="tooltipOptions" :content="label"
-    ><div
-      class="panel-resize-handle"
-      :class="{ dragging }"
-      role="separator"
-      aria-orientation="vertical"
-      :aria-label="label"
-      @pointerdown="start"
-      @pointermove="move"
-      @pointerup="finish"
-      @pointercancel="finish"
-      @lostpointercapture="finish"
-  /></el-tooltip>
+  <div
+    v-tooltip="label"
+    class="panel-resize-handle"
+    :class="{ dragging }"
+    role="separator"
+    aria-orientation="vertical"
+    :aria-label="label"
+    @pointerdown="start"
+    @pointermove="move"
+    @pointerup="finish"
+    @pointercancel="finish"
+    @lostpointercapture="finish"
+  />
 </template>
 
 <style scoped>

@@ -66,24 +66,30 @@ for (const english of [false, true]) {
     page
   }) => {
     await setup(page, english);
-    await page.route('**/api/admin/conversation-templates', (route) =>
-      json(route, {
-        templates: [
-          {
-            id: 'template-1',
-            nodeId: 'node-1',
-            name: 'Organization template',
-            description: '',
-            status: 'ACTIVE',
-            currentVersionId: 'version-1',
-            available: true,
-            createdAt: 1,
-            updatedAt: 2,
-            draftRevision: 1,
-            publishedVersion: 1
-          }
-        ]
-      })
+    await page.route(
+      (url) => url.pathname === '/api/admin/conversation-templates',
+      (route) =>
+        json(route, {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          hasMore: false,
+          templates: [
+            {
+              id: 'template-1',
+              nodeId: 'node-1',
+              name: 'Organization template',
+              description: '',
+              status: 'ACTIVE',
+              currentVersionId: 'version-1',
+              available: true,
+              createdAt: 1,
+              updatedAt: 2,
+              draftRevision: 1,
+              publishedVersion: 1
+            }
+          ]
+        })
     );
     const grants = [7, 8, 9, 99].map((id) => ({
       id: `grant-${id}`,
@@ -95,7 +101,28 @@ for (const english of [false, true]) {
       createdByUserId: 1,
       createdAt: 1
     }));
-    await page.route('**/api/resource-grants**', (route) => json(route, { grants }));
+    const writes: Record<string, unknown>[] = [];
+    const revoked: string[] = [];
+    await page.route('**/api/resource-grants**', (route) => {
+      if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        writes.push(body);
+        grants.push({
+          ...grants[0]!,
+          id: 'grant-created',
+          targetOrganizationId: Number(body['targetOrganizationId'])
+        });
+        return json(route, { id: 'grant-created' }, 201);
+      }
+      if (route.request().method() === 'DELETE') {
+        const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+        revoked.push(id);
+        const index = grants.findIndex((grant) => grant.id === id);
+        if (index >= 0) grants.splice(index, 1);
+        return route.fulfill({ status: 204 });
+      }
+      return json(route, { grants });
+    });
     await page.goto('/console?view=management&management=conversation-templates');
     const row = page.locator('.el-table__row').filter({ hasText: 'Organization template' });
     await row.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
@@ -112,6 +139,23 @@ for (const english of [false, true]) {
     await expect(
       page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' })
     ).toBeVisible();
+    await page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' }).click();
+    await dialog.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
+    await expect
+      .poll(() => writes)
+      .toEqual([
+        {
+          resourceType: 'TEMPLATE',
+          templateId: 'template-1',
+          targetType: 'ORGANIZATION',
+          targetOrganizationId: 8
+        }
+      ]);
+    await expect(dialog.locator('.el-table__row')).toHaveCount(5);
+    await dialog.locator('.el-table__row').last().getByRole('button').click();
+    await page.locator('.el-message-box .el-button--primary').click();
+    await expect.poll(() => revoked).toEqual(['grant-created']);
+    await expect(dialog.locator('.el-table__row')).toHaveCount(4);
   });
 
   test(`Organization names appear in resource detail grants and fixed-Workspace registration ${language}`, async ({

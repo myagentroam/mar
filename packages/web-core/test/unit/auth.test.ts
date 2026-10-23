@@ -83,9 +83,10 @@ describe('shared browser authentication lifecycle', () => {
 
   it('does not report password success on request failure or replace the current CSRF', async () => {
     const f = authFixture();
+    const error = new Error('PASSWORD_MISMATCH');
     f.state.csrfToken.value = 'current-csrf';
     f.state.newPassword.value = 'updated-password';
-    f.request.mockRejectedValueOnce(new Error('PASSWORD_MISMATCH'));
+    f.request.mockRejectedValueOnce(error);
     await expect(
       f.service.changePassword({
         currentPassword: 'wrong-password',
@@ -96,20 +97,26 @@ describe('shared browser authentication lifecycle', () => {
     expect(f.state.csrfToken.value).toBe('current-csrf');
     expect(f.state.newPassword.value).toBe('updated-password');
     expect(f.restore).not.toHaveBeenCalled();
-    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('PASSWORD_MISMATCH'));
+    expect(f.notice).toHaveBeenCalledWith(
+      expect.stringContaining('PASSWORD_MISMATCH'),
+      'error',
+      error
+    );
     expect(f.loading.value).toBe(false);
   });
 
   it('reports a confirmed password change even if workbench or session recovery fails', async () => {
     const f = authFixture();
+    const recoveryError = new Error('NODE_UNAVAILABLE');
+    const sessionsError = new Error('SESSIONS_UNAVAILABLE');
     f.request
       .mockResolvedValueOnce({
         authenticated: true,
         mustChangePassword: false,
         csrfToken: 'updated-csrf'
       })
-      .mockRejectedValueOnce(new Error('SESSIONS_UNAVAILABLE'));
-    f.restore.mockRejectedValueOnce(new Error('NODE_UNAVAILABLE'));
+      .mockRejectedValueOnce(sessionsError);
+    f.restore.mockRejectedValueOnce(recoveryError);
     await expect(
       f.service.changePassword({
         currentPassword: 'old-password',
@@ -119,18 +126,23 @@ describe('shared browser authentication lifecycle', () => {
     ).resolves.toBe(true);
     expect(f.state.csrfToken.value).toBe('updated-csrf');
     expect(f.notice).toHaveBeenCalledWith(
-      f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+      f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere'),
+      'success'
     );
     await vi.waitFor(() => expect(f.loading.value).toBe(false));
     expect(f.notice).toHaveBeenCalledWith(
       f.i18n.global.t('generated.adminAuthService.workbenchRecoveryFailed', {
         value0: 'NODE_UNAVAILABLE'
-      })
+      }),
+      'error',
+      recoveryError
     );
     expect(f.notice).toHaveBeenCalledWith(
       f.i18n.global.t('generated.adminAuthService.unableToLoadSignInSessions', {
         value0: 'SESSIONS_UNAVAILABLE'
-      })
+      }),
+      'error',
+      sessionsError
     );
   });
 
@@ -184,7 +196,8 @@ describe('shared browser authentication lifecycle', () => {
         await vi.waitFor(() => expect(completion).toBe(true));
         expect(f.loading.value).toBe(true);
         expect(f.notice).toHaveBeenCalledWith(
-          f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+          f.i18n.global.t('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere'),
+          'success'
         );
         if (delayedStep === 'workbench recovery') expect(f.request).toHaveBeenCalledTimes(1);
       } finally {
@@ -199,16 +212,19 @@ describe('shared browser authentication lifecycle', () => {
     const f = authFixture();
     f.storage.set('mar.user.csrf-token', 'csrf');
     f.request.mockResolvedValue({ authenticated: true, mustChangePassword: false });
+    const error = new Error('NODE_REQUEST_TIMEOUT');
     f.restore.mockImplementation(async () => {
       expect(f.state.loaded.value).toBe(true);
-      throw new Error('NODE_REQUEST_TIMEOUT');
+      throw error;
     });
     await f.service.refresh();
     expect(f.state.admin.value.authenticated).toBe(true);
     expect(f.notice).toHaveBeenCalledWith(
       f.i18n.global.t('generated.adminAuthService.workbenchRecoveryFailed', {
         value0: 'NODE_REQUEST_TIMEOUT'
-      })
+      }),
+      'error',
+      error
     );
     expect(f.renew).not.toHaveBeenCalled();
   });
@@ -258,7 +274,9 @@ describe('shared browser authentication lifecycle', () => {
         expect(f.notice).toHaveBeenLastCalledWith(
           locale === 'zh-CN'
             ? `无法确认登录状态，请刷新重试：${error.message}`
-            : `Unable to verify sign-in status. Refresh to retry: ${error.message}`
+            : `Unable to verify sign-in status. Refresh to retry: ${error.message}`,
+          'error',
+          error
         );
       }
     }
@@ -291,14 +309,19 @@ describe('shared browser authentication lifecycle', () => {
       mustChangePassword: false,
       username: 'other'
     });
-    f.renew.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const error = new TypeError('Failed to fetch');
+    f.renew.mockRejectedValueOnce(error);
     await f.service.refresh();
     expect(f.state.admin.value).toEqual(identity);
     expect(f.state.csrfToken.value).toBe('current-csrf');
     expect(f.state.loaded.value).toBe(true);
     expect(f.signedOut).not.toHaveBeenCalled();
     expect(f.restore).not.toHaveBeenCalled();
-    expect(f.notice).toHaveBeenCalledWith('无法确认登录状态，请刷新重试：Failed to fetch');
+    expect(f.notice).toHaveBeenCalledWith(
+      '无法确认登录状态，请刷新重试：Failed to fetch',
+      'error',
+      error
+    );
   });
 
   it.each(['response', 'error'] as const)(
@@ -347,11 +370,14 @@ describe('shared browser authentication lifecycle', () => {
     async (locale) => {
       const f = authFixture(locale);
       f.state.admin.value = { authenticated: true, mustChangePassword: false };
-      f.request.mockRejectedValueOnce(new Error('NETWORK_FAILED'));
+      const error = new Error('NETWORK_FAILED');
+      f.request.mockRejectedValueOnce(error);
       await f.service.logout();
       expect(f.state.admin.value.authenticated).toBe(true);
       expect(f.signedOut).not.toHaveBeenCalled();
       expect(f.notice.mock.calls.at(-1)![0]).toContain('NETWORK_FAILED');
+      expect(f.notice.mock.calls.at(-1)![1]).toBe('error');
+      expect(f.notice.mock.calls.at(-1)![2]).toBe(error);
       expect(f.loading.value).toBe(false);
       f.request.mockResolvedValueOnce(undefined);
       await f.service.logout();

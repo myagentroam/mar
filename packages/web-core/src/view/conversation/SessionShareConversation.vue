@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ClickOutside as vClickOutside, ElMessage, type ButtonInstance } from 'element-plus';
+import { ClickOutside as vClickOutside, type ButtonInstance } from 'element-plus';
 import { createSessionShareConversationService } from '../../service/SessionShareConversationService.js';
 import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
 import { createConversationImageService } from '../../service/ConversationImageService.js';
@@ -35,7 +36,7 @@ const emit = defineEmits<{
 const chat = createSessionShareConversationService({
   access: props.access,
   beforeSend: props.access.ensureNamed,
-  notice: (value) => ElMessage.error({ icon: marIcon('error'), message: value })
+  notice: showMessage
 });
 const {
   input,
@@ -142,7 +143,7 @@ async function copyMessage(text: string, done: () => void): Promise<void> {
     await navigator.clipboard.writeText(text);
     done();
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   }
 }
 function confirmName(value: string): void {
@@ -394,17 +395,15 @@ onBeforeUnmount(() => {
       </div>
       <div v-for="visitor in participants" :key="visitor.visitorId" class="share-person">
         <span class="presence" aria-hidden="true" /><span>{{ name(visitor) }}</span>
-        <el-tooltip
-          v-bind="tooltipOptions"
+        <el-button
+          v-tooltip="translate('sessionShare.editName')"
           v-if="chat.canRename.value && visitor.visitorId === access.visitor.value.visitorId"
-          :content="translate('sessionShare.editName')"
-          ><el-button
-            class="share-edit-name"
-            :icon="marIcon('edit')"
-            :aria-label="translate('sessionShare.editName')"
-            link
-            @click="editingName = true"
-        /></el-tooltip>
+          class="share-edit-name"
+          :icon="marIcon('edit')"
+          :aria-label="translate('sessionShare.editName')"
+          link
+          @click="editingName = true"
+        />
       </div>
     </aside>
     <SessionShareNameDialog

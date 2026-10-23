@@ -1,6 +1,5 @@
 <script setup lang="ts" generic="ManagementSection extends string">
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, ref } from 'vue';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
@@ -138,12 +137,13 @@ function openBlankMenu(event: MouseEvent): void {
     :class="['workbench-brand', { collapsed: sidebarCollapsed }]"
     data-testid="workbench-brand"
   >
-    <a class="brand-home-link" href="/" :aria-label="$t('navigation.home')">
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="$t('common.productVersion', { version: webVersion })"
-        ><img :src="logoIcon" :alt="$t('common.productName')"
-      /></el-tooltip>
+    <a
+      v-tooltip="$t('common.productVersion', { version: webVersion })"
+      class="brand-home-link"
+      href="/"
+      :aria-label="$t('navigation.home')"
+    >
+      <img :src="logoIcon" :alt="$t('common.productName')" />
     </a>
     <div class="brand-copy">
       <div class="brand-heading">
@@ -156,31 +156,31 @@ function openBlankMenu(event: MouseEvent): void {
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
       <template v-for="item in navigationItems" :key="item.id">
-        <el-tooltip v-bind="tooltipOptions" :content="item.label"
-          ><button
-            :class="[
-              'nav-menu-button',
-              {
-                active: view === item.id,
-                utility: item.id === 'management' || item.id === 'settings'
-              }
-            ]"
-            :aria-label="item.label"
-            :aria-current="view === item.id ? 'page' : undefined"
-            type="button"
-            @click="emit('selectNavigation', item.id)"
-          >
-            <span class="nav-item-content">
-              <MarIcon name="workspace" aria-hidden="true" v-if="item.id === 'nodes'" />
-              <MarIcon
-                name="conversation"
-                aria-hidden="true"
-                v-else-if="item.id === 'conversations'"
-              />
-              <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
-              <MarIcon name="administration" aria-hidden="true" v-else />
-            </span></button
-        ></el-tooltip>
+        <button
+          v-tooltip="{ content: item.label, placement: mobileViewport ? 'bottom' : 'right' }"
+          :class="[
+            'nav-menu-button',
+            {
+              active: view === item.id,
+              utility: item.id === 'management' || item.id === 'settings'
+            }
+          ]"
+          :aria-label="item.label"
+          :aria-current="view === item.id ? 'page' : undefined"
+          type="button"
+          @click="emit('selectNavigation', item.id)"
+        >
+          <span class="nav-item-content">
+            <MarIcon name="workspace" aria-hidden="true" v-if="item.id === 'nodes'" />
+            <MarIcon
+              name="conversation"
+              aria-hidden="true"
+              v-else-if="item.id === 'conversations'"
+            />
+            <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
+            <MarIcon name="administration" aria-hidden="true" v-else />
+          </span>
+        </button>
         <WorkbenchRecentSessions
           v-if="item.id === 'conversations'"
           :service="notificationService"
@@ -188,24 +188,21 @@ function openBlankMenu(event: MouseEvent): void {
           @open-recent-run="emit('openRecentRun', $event)"
         />
       </template>
-      <el-tooltip
-        v-bind="tooltipOptions"
+      <el-link
+        v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
-        :content="$t('navigation.help')"
-        ><el-link
-          class="nav-menu-button documentation-link"
-          :href="localizedDocsPath(locale, 'getting-started/overview')"
-          underline="never"
-          target="_blank"
-          rel="noopener noreferrer"
-          :aria-label="$t('navigation.help')"
-        >
-          <span class="nav-item-content">
-            <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
-            <span class="rail-label">{{ $t('navigation.help') }}</span>
-          </span>
-        </el-link></el-tooltip
+        class="nav-menu-button documentation-link"
+        :href="localizedDocsPath(locale, 'getting-started/overview')"
+        underline="never"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="$t('navigation.help')"
       >
+        <span class="nav-item-content">
+          <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
+          <span class="rail-label">{{ $t('navigation.help') }}</span>
+        </span>
+      </el-link>
       <WorkbenchNotificationCenter
         class="global-notification-center"
         :service="notificationService"
@@ -347,13 +344,13 @@ function openBlankMenu(event: MouseEvent): void {
   gap: 10px;
   background: var(--mar-bg-chrome);
   padding: 0 18px;
-  transition: padding 0.16s ease;
+  overflow: hidden;
 }
 
 .workbench-brand.collapsed {
   width: var(--mar-activity-rail-width);
   gap: 0;
-  overflow: visible;
+  overflow: hidden;
   padding: 0 8px;
 }
 
@@ -526,6 +523,21 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (min-width: 768px) {
+  .workbench-brand {
+    transition:
+      width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
+      padding var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .workspace-tree {
+    transition: width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .console-shell:has(.workspace-tree-resize.dragging) .workbench-brand,
+  .console-shell:has(.workspace-tree-resize.dragging) .workspace-tree {
+    transition: none;
+  }
+
   .activity-rail nav .nav-menu-button.utility {
     margin-top: auto;
   }
@@ -809,8 +821,17 @@ function openBlankMenu(event: MouseEvent): void {
 
 <style scoped>
 @media (prefers-reduced-motion: reduce) {
-  .workspace-tree {
+  .workspace-tree,
+  .workbench-brand {
     transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .activity-rail nav button {
+    transition:
+      background-color var(--mar-motion-duration-collapse) ease,
+      color var(--mar-motion-duration-collapse) ease;
   }
 }
 </style>

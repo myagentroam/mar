@@ -71,14 +71,6 @@ export const workbenchCompositionZhCN = {
   workspace: {
     directory: '目录'
   },
-  presentation: {
-    noticeErrorPattern:
-      '无法|失败|拒绝|失效|未投递|未提交|未接收|错误|failed|failure|rejected|invalid|error',
-    noticeWarningPattern:
-      '正在恢复|需要|不能|只读|未知|不可用|recovering|required|cannot|read-only|unknown|unavailable',
-    noticeCopyPattern: '已复制|copied',
-    noticeSuccessPattern: '^(?:已|saved|updated|deleted|completed|connected)'
-  },
   nodeMessages: {
     fiveHourLimit: '5 小时额度',
     sevenDayLimit: '7 天额度',

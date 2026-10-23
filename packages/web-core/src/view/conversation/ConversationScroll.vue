@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
         >
-          <BusyIndicator class="history-busy-indicator" />
+          <BusyIndicator class="history-busy-indicator read-loading-indicator" />
         </div>
         <el-button
           v-if="initialLoadFailed || reloading"
@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
             role="status"
             :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
           >
-            <BusyIndicator class="history-busy-indicator" />
+            <BusyIndicator class="history-busy-indicator read-loading-indicator" />
           </div>
           <el-button
             v-if="!loadingOlder || olderAction !== undefined"
@@ -221,10 +221,6 @@ onBeforeUnmount(() => {
   color: var(--mar-text-faint);
   font-size: var(--mar-font-size-meta);
   text-align: center;
-}
-
-.history-busy-indicator {
-  color: var(--mar-color-brand-text);
 }
 
 .conversation-latest {

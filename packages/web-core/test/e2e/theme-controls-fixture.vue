@@ -1,13 +1,45 @@
 <script setup lang="ts">
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
+import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
 const value = ref('');
+async function refreshPrompts(): Promise<void> {}
+async function requestPrompt<T>(): Promise<T> {
+  throw new Error('This visual fixture does not persist prompts');
+}
 const message =
   'Body text with **emphasis** and `inline code`.\n\n### Section heading\n\n| Item | Value |\n| --- | --- |\n| Example | Readable content |';
+const dialogOpen = ref(false);
+const longFeedback = Array.from(
+  { length: 36 },
+  (_, index) => `Line ${index + 1}: long feedback remains readable and can be dismissed.`
+).join('\n');
+
+function showRepeatedFeedback(): void {
+  showMessage('Repeated feedback event', 'info');
+  showMessage('Repeated feedback event', 'info');
+}
+
+function saveFeedbackDialog(): void {
+  dialogOpen.value = false;
+  showMessage('Dialog settings saved', 'success');
+}
 </script>
 <template>
   <WorkspaceLabelsFixture />
+  <section aria-label="Real management actions">
+    <QuickPromptSettings
+      :prompts="[
+        { id: 'visual-prompt', phrase: 'review', prompt: 'Review this change', updatedAt: 0 }
+      ]"
+      :loading="false"
+      :failed="false"
+      :refresh="refreshPrompts"
+      :request="requestPrompt"
+    />
+  </section>
   <section aria-label="Real theme controls">
     <el-input v-model="value" aria-label="Sample input" />
     <el-select v-model="value" aria-label="Sample select">
@@ -18,6 +50,9 @@ const message =
     <el-button type="primary" disabled>Sample disabled primary</el-button>
     <el-button type="primary" link>Sample link</el-button>
     <el-button type="primary" link disabled>Sample disabled link</el-button>
+    <el-button link>Sample neutral action</el-button>
+    <el-button link disabled>Sample disabled neutral action</el-button>
+    <el-button link type="danger">Sample dangerous action</el-button>
     <el-link type="primary">Sample anchor</el-link>
     <el-table :data="[{ name: 'First' }, { name: 'Second' }]">
       <el-table-column prop="name" label="Name" />
@@ -26,6 +61,69 @@ const message =
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">
     <AgentMarkdown :content="message" />
     <p class="conversation-metadata">Run duration 11s</p>
+  </section>
+  <section aria-label="Message feedback controls">
+    <button
+      type="button"
+      data-testid="show-info-feedback"
+      @click="showMessage('Theme-aware info feedback', 'info')"
+    >
+      Show info feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-success-feedback"
+      @click="showMessage('Theme-aware success feedback', 'success')"
+    >
+      Show success feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-warning-feedback"
+      @click="showMessage('Theme-aware warning feedback', 'warning')"
+    >
+      Show warning feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-error-feedback"
+      @click="showMessage('Theme-aware error feedback', 'error')"
+    >
+      Show error feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-long-feedback"
+      @click="showMessage(longFeedback, 'error')"
+    >
+      Show long feedback
+    </button>
+    <button
+      type="button"
+      data-testid="show-plain-text-feedback"
+      @click="showMessage('Plain text <img data-feedback-payload=unsafe src=x>', 'warning')"
+    >
+      Show plain-text feedback
+    </button>
+    <button type="button" data-testid="show-repeated-feedback" @click="showRepeatedFeedback">
+      Show repeated feedback
+    </button>
+    <button type="button" data-testid="open-feedback-dialog" @click="dialogOpen = true">
+      Open feedback dialog
+    </button>
+    <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
+      <p>Dialog content</p>
+      <button
+        type="button"
+        data-testid="show-dialog-feedback"
+        @click="showMessage(longFeedback, 'error')"
+      >
+        Show dialog feedback
+      </button>
+      <button type="button" data-testid="save-feedback-dialog" @click="saveFeedbackDialog">
+        Save and close
+      </button>
+    </el-dialog>
   </section>
 </template>
 

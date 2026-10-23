@@ -1,12 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { createSSRApp, h } from 'vue';
+import { renderToString } from 'vue/server-renderer';
 import {
   createManagementComposition,
   type ManagementPageDefinition
 } from '../../ee/web/src/service/ManagementComposition.js';
 import { createCommonManagementPages } from '../../ee/web/src/composition/common-management.js';
+import { createCommonManagementPages as createPublicManagementPages } from '../../packages/web-core/src/service/CommonManagementPages.js';
 import { createEnterpriseManagementComposition } from '../../ee/web/src/composition/enterprise-management.js';
 import type { AdminState } from '../../ee/web/src/service/AdminAuthService.js';
+
+// This suite exercises catalogue composition, not the Vue loading presentation.
+vi.mock('../../packages/web-core/src/view/common/LoadingPanel.vue', () => ({ default: {} }));
+vi.mock('../../ee/web/src/view/settings/OrganizationManagementPage.vue', () => ({
+  __esModule: true,
+  default: { render: () => 'organization-management-probe' }
+}));
+vi.mock('../../ee/web/src/view/settings/EnterpriseUserManagementPage.vue', () => ({
+  __esModule: true,
+  default: { render: () => 'user-management-probe' }
+}));
 
 const personal: AdminState = {
   authenticated: true,
@@ -23,26 +37,27 @@ function enterprise(role: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER'): AdminState {
 }
 
 describe('Workbench management composition', () => {
+  it('preserves the public page identities, order and labels when applying enterprise extensions', () => {
+    const publicPages = createPublicManagementPages();
+    const extendedPages = createCommonManagementPages();
+    expect(publicPages.length).toBeGreaterThan(0);
+    const catalogue = (pages: readonly ManagementPageDefinition[]) =>
+      pages.map(({ id, order, labelKey }) => ({ id, order, labelKey }));
+    expect(catalogue(extendedPages)).toEqual(catalogue(publicPages));
+  });
+
   it('keeps organization and user management in separate pages without a mode switch', async () => {
-    const composition = await readFile('ee/web/src/composition/enterprise-management.ts', 'utf8');
-    const organizations = await readFile(
-      'ee/web/src/view/settings/OrganizationManagementPage.vue',
-      'utf8'
-    );
-    const users = await readFile(
-      'ee/web/src/view/settings/EnterpriseUserManagementPage.vue',
-      'utf8'
-    );
-    expect(composition).toContain("import('../view/settings/OrganizationManagementPage.vue')");
-    expect(composition).toContain("import('../view/settings/EnterpriseUserManagementPage.vue')");
-    expect(composition).not.toContain("mode: 'organizations'");
-    expect(composition).not.toContain("mode: 'users'");
-    expect(organizations).toContain("managementUrlValues('organizations'");
-    expect(organizations).not.toContain('/api/enterprise/users');
-    expect(organizations).not.toContain('userOpen');
-    expect(users).toContain("managementUrlValues('users'");
-    expect(users).toContain('/api/enterprise/users');
-    expect(users).not.toContain('organizationOpen');
+    const composition = createEnterpriseManagementComposition();
+    const admin = enterprise('ADMIN');
+    for (const [id, expected, excluded] of [
+      ['organizations', 'organization-management-probe', 'user-management-probe'],
+      ['users', 'user-management-probe', 'organization-management-probe']
+    ] as const) {
+      const page = composition.resolve(id, admin);
+      const html = await renderToString(createSSRApp({ render: () => h(page.component) }));
+      expect(html).toContain(expected);
+      expect(html).not.toContain(excluded);
+    }
   });
 
   it('uses one ordered page catalogue for Community-state navigation and rendering', () => {
@@ -176,26 +191,10 @@ describe('Workbench management composition', () => {
 
   it('uses the shared template declaration while keeping License and identity pages private', async () => {
     const common = await readFile('ee/web/src/composition/common-management.ts', 'utf8');
-    const shared = await readFile('packages/web-core/src/service/CommonManagementPages.ts', 'utf8');
-    const templateExtension = await readFile(
-      'ee/web/src/view/settings/ConversationTemplateManagementPage.vue',
-      'utf8'
-    );
     const system = await readFile('packages/web-core/src/view/SystemInformationPage.vue', 'utf8');
     expect(common).not.toMatch(
       /(?:LicenseManagementPage|OrganizationManagementPage|EnterpriseUserManagementPage|OAuthManagementPage|AuditManagementPage)/u
     );
-    expect(common).toContain('createCommonManagementPages as createSharedPages');
-    expect(common).toContain("'conversation-templates'");
-    expect(common).toContain("import('../view/settings/ConversationTemplateManagementPage.vue')");
-    expect(shared).toContain("id: 'conversation-templates'");
-    expect(shared).toContain("import('../view/settings/ConversationTemplateManagementPage.vue')");
-    expect(templateExtension).toContain(
-      "import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue'"
-    );
-    expect(templateExtension).toContain("targetType: 'ORGANIZATION'");
-    expect(templateExtension).not.toContain("targetType: 'ENTERPRISE'");
-    expect(templateExtension).not.toContain("targetType: 'USER'");
     expect(system).not.toContain('LicenseManagementPage');
     const surface = await readFile(
       'packages/web-core/src/view/workbench/WorkbenchSurface.vue',

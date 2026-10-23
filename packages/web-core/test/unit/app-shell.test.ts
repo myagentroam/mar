@@ -1,13 +1,20 @@
 import { createRenderer, createSSRApp, defineComponent, h, ssrContextKey } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ElementPlus from 'element-plus';
+import ElementPlus, { ZINDEX_INJECTION_KEY } from 'element-plus';
 import { readFileSync } from 'node:fs';
 import AppShell from '../../src/App.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { useDocumentationAvailability } from '../../src/service/DocumentationAvailability.js';
+import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/TooltipService.js';
 
 afterEach(() => vi.unstubAllGlobals());
+
+function registerTooltipSSRFixture(app: ReturnType<typeof createSSRApp>): void {
+  app.provide(TOOLTIP_SERVICE_KEY, new TooltipService(document));
+  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+  app.directive('tooltip', { getSSRProps: () => ({}) });
+}
 
 describe('shared product application shell', () => {
   it.each([
@@ -159,6 +166,7 @@ describe('shared product application shell', () => {
         documentationAvailable: available
       });
       app.use(i18n).use(ElementPlus);
+      registerTooltipSSRFixture(app);
       expect(await renderToString(app)).toContain(`>${available}</div>`);
     }
   );
@@ -202,6 +210,7 @@ describe('shared product application shell', () => {
       });
       app.use(i18n);
       app.use(ElementPlus);
+      registerTooltipSSRFixture(app);
       const html = await renderToString(app);
       expect(html).toContain(`data-page="${target}"`);
       expect(selected).toEqual([target]);
@@ -226,6 +235,7 @@ describe('shared product application shell', () => {
     const app = createSSRApp(AppShell, { workbench: page, filePreview: page });
     app.use(i18n);
     app.use(ElementPlus);
+    registerTooltipSSRFixture(app);
     expect(await renderToString(app)).toContain(locale);
   });
 });

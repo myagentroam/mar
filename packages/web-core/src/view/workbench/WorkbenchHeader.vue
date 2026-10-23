@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 type ManagementSection = string;
@@ -45,9 +44,7 @@ const emit = defineEmits<{
       :aria-label="$t('navigation.currentLocation')"
     >
       <span>{{ $t('navigation.conversations') }}</span>
-      <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"
-        ><strong>{{ conversationTitle }}</strong></el-tooltip
-      >
+      <strong v-tooltip="conversationTitle">{{ conversationTitle }}</strong>
     </div>
     <div v-else-if="view === 'nodes'" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>

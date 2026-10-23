@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import {
   resolveMarAgentDefaultReasoningEffort,
   type MarAgentCompactConfiguration,
@@ -91,8 +93,7 @@ async function load(showRefresh = false) {
     Object.assign(draft, result.configuration);
     ready.value = true;
   } catch (error) {
-    if (!lifetime.signal.aborted)
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (!lifetime.signal.aborted) showMessage(errorMessage(error), 'error', error);
   } finally {
     busy.value = false;
     if (showRefresh) refreshing.value = false;
@@ -107,13 +108,9 @@ async function save() {
     const configuration = await service.save({ ...draft }, lifetime.signal);
     if (lifetime.signal.aborted) return;
     Object.assign(draft, configuration);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.compactSaved')
-    });
+    showMessage(translate('marAgentModels.compactSaved'), 'success');
   } catch (error) {
-    if (!lifetime.signal.aborted)
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (!lifetime.signal.aborted) showMessage(errorMessage(error), 'error', error);
   } finally {
     busy.value = false;
     saving.value = false;

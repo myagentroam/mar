@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { marIcon } from '../../util/mar-icons.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { computed, onBeforeUnmount } from 'vue';
 import { marIconSvg } from '../../util/icon-shapes.js';
 import DOMPurify from 'dompurify';
-import { ElMessage } from 'element-plus';
+
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
@@ -218,10 +218,7 @@ async function onCopyClick(event: MouseEvent): Promise<void> {
       }, 500)
     );
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('generated.conversationTimeline.copyCodeFailed')
-    });
+    showMessage(translate('generated.conversationTimeline.copyCodeFailed'), 'error');
   }
 }
 

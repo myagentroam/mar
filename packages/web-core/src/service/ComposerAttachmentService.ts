@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, ref, type Ref } from 'vue';
 import type { ComposerAttachment } from '../model/workbench.js';
 import { translate } from './LocalePreferenceService.js';
@@ -13,7 +14,7 @@ const CHUNK_BYTES = 512 * 1024;
 
 export function createComposerAttachmentService(options: {
   readonly context: () => { readonly nodeId: string; readonly workspaceId: string } | undefined;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly resourceUrl?: (path: string) => string;
   readonly csrfToken: Ref<string>;
@@ -32,6 +33,9 @@ export function createComposerAttachmentService(options: {
   };
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
+  const submissions = new Map<string, number>();
+  const attachmentKey = (attachment: ComposerAttachment) =>
+    JSON.stringify([attachment.nodeId, attachment.workspaceId, attachment.id]);
   const visibleAttachments = computed(() => {
     const context = options.context();
     return context === undefined
@@ -50,13 +54,15 @@ export function createComposerAttachmentService(options: {
     for (const file of files) {
       if (visibleAttachments.value.length >= MAX_FILES)
         return options.notice(
-          translate('generated.composerAttachmentService.theFirstMessageCanIncludeUpTo')
+          translate('generated.composerAttachmentService.theFirstMessageCanIncludeUpTo'),
+          'warning'
         );
       if (file.size === 0 || file.size > MAX_FILE_BYTES) {
         options.notice(
           translate('generated.composerAttachmentService.attachmentMustBeLargerThan0And', {
             value0: file.name
-          })
+          }),
+          'warning'
         );
         continue;
       }
@@ -66,14 +72,16 @@ export function createComposerAttachmentService(options: {
       );
       if (total + file.size > MAX_TOTAL_BYTES)
         return options.notice(
-          translate('generated.composerAttachmentService.totalAttachmentSizeCannotExceed10MiB')
+          translate('generated.composerAttachmentService.totalAttachmentSizeCannotExceed10MiB'),
+          'warning'
         );
       const context = options.context();
       if (context === undefined)
         return options.notice(
           translate(
             'generated.composerAttachmentService.selectAnOnlineWorkspaceBeforeAddingAttachments'
-          )
+          ),
+          'warning'
         );
       const attachment: ComposerAttachment = {
         id: crypto.randomUUID(),
@@ -120,6 +128,38 @@ export function createComposerAttachmentService(options: {
       void cancel(attachment);
     }
     attachments.value = [];
+  }
+
+  function retainForSubmission(submitted: readonly ComposerAttachment[]): () => void {
+    const keys = submitted.map(attachmentKey);
+    for (const key of keys) submissions.set(key, (submissions.get(key) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const key of keys) {
+        const remaining = submissions.get(key)! - 1;
+        if (remaining === 0) submissions.delete(key);
+        else submissions.set(key, remaining);
+      }
+    };
+  }
+
+  function consume(submitted: readonly ComposerAttachment[]): void {
+    attachments.value = attachments.value.filter((attachment) => {
+      if (
+        !submitted.some(
+          (item) =>
+            item.id === attachment.id &&
+            item.nodeId === attachment.nodeId &&
+            item.workspaceId === attachment.workspaceId
+        )
+      )
+        return true;
+      if (preview.value?.id === attachment.id) previewOpen.value = false;
+      if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
+      return false;
+    });
   }
 
   function openPreview(attachment: ComposerAttachment): void {
@@ -284,6 +324,9 @@ export function createComposerAttachmentService(options: {
   }
 
   async function cancel(attachment: ComposerAttachment): Promise<void> {
+    // Removing a draft attachment must not cancel a message already in flight.
+    // Unconsumed uploads removed in flight are left to Node's expiry cleanup.
+    if (submissions.has(attachmentKey(attachment))) return;
     directRequests.get(attachment.id)?.abort();
     directRequests.delete(attachment.id);
     const uploadId = attachment.status === 'COMPLETED' ? attachment.id : attachment.uploadId;
@@ -305,6 +348,8 @@ export function createComposerAttachmentService(options: {
     remove,
     clear,
     clearAll,
+    retainForSubmission,
+    consume,
     openPreview
   };
 }

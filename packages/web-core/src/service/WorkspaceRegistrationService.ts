@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, ref, type Ref } from 'vue';
 import { translate } from './LocalePreferenceService.js';
 
@@ -33,8 +34,8 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
   readonly globalLoading: Ref<boolean>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly onRegistered: (nodeId: string, workspaceId: string) => Promise<void>;
-  readonly notice: (message: string) => void;
-  readonly error: (message: string) => void;
+  readonly notice: MessageFeedback;
+  readonly error: (message: string, cause?: unknown) => void;
   readonly errorMessage: (error: unknown) => string;
 }) {
   const path = ref('');
@@ -90,7 +91,8 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
       options.error(
         translate('generated.workspaceRegistrationService.unableToLoadAvailableDirectories', {
           value0: options.errorMessage(error)
-        })
+        }),
+        error
       );
     } finally {
       if (revision === directoryRequestRevision) loadingDirectory.value = false;
@@ -122,7 +124,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
     const parentPath = directory.value?.currentPath;
     if (pendingDirectoryName.value.length > 0 && parentPath === undefined) return;
     options.globalLoading.value = true;
-    options.notice('');
+
     try {
       const input: WorkspaceRegistrationInput = {
         nodeId,
@@ -146,7 +148,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
       reset();
       await options.onRegistered(nodeId, workspaceId);
     } catch (error) {
-      options.error(registrationFailureMessage(options.errorMessage(error)));
+      options.error(registrationFailureMessage(options.errorMessage(error)), error);
     } finally {
       options.globalLoading.value = false;
     }

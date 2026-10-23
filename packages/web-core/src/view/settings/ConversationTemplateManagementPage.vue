@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
@@ -60,10 +62,7 @@ const pagination = createManagementPageService<AdminConversationTemplateSummary>
   key: (template) => template.id,
   context: () => JSON.stringify([sortBy.value, sortOrder.value]),
   reportError: (error) =>
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.loadFailed')
-    })
+    showMessage(templateError(error, 'conversationTemplates.loadFailed'), 'error', error)
 });
 const templates = pagination.items;
 const models = ref<readonly ConversationTemplateModelOption[]>([]);
@@ -230,10 +229,7 @@ async function loadModelOptions(nodeId: string): Promise<void> {
     )
       return;
     applyModelOptions([]);
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.modelsLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.modelsLoadFailed'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(modelRequestContext, context))
       modelLoading.value = false;
@@ -263,10 +259,7 @@ async function loadWorkspaces(nodeId: string): Promise<void> {
     )
       return;
     workspaces.value = [];
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.workspacesLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.workspacesLoadFailed'), 'error', error);
   }
 }
 
@@ -293,10 +286,7 @@ async function loadMcpOptions(nodeId: string, workspaceId: string): Promise<void
     )
       return;
     mcpOptions.value = [];
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.mcpLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.mcpLoadFailed'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(mcpRequestContext, context))
       mcpLoading.value = false;
@@ -388,10 +378,7 @@ async function openEdit(row: AdminConversationTemplateSummary): Promise<void> {
     editDialogOpen.value = true;
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.detailLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.detailLoadFailed'), 'error', error);
   } finally {
     endLoading();
   }
@@ -413,10 +400,11 @@ async function openDetail(row: AdminConversationTemplateSummary): Promise<void> 
     } catch (error) {
       if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context))
         return;
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: templateError(error, 'conversationTemplates.workspacesLoadFailed')
-      });
+      showMessage(
+        templateError(error, 'conversationTemplates.workspacesLoadFailed'),
+        'error',
+        error
+      );
     }
     if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context)) return;
     detail.value = current;
@@ -424,10 +412,7 @@ async function openDetail(row: AdminConversationTemplateSummary): Promise<void> 
     detailDialogOpen.value = true;
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(detailRequestContext, context)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.detailLoadFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.detailLoadFailed'), 'error', error);
   } finally {
     endLoading();
   }
@@ -498,17 +483,11 @@ async function save(): Promise<void> {
     else await service.update(context.resourceId, input);
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
     editDialogOpen.value = false;
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('conversationTemplates.saved')
-    });
+    showMessage(translate('conversationTemplates.saved'), 'success');
     await load(false);
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.saveFailed')
-    });
+    showMessage(templateError(error, 'conversationTemplates.saveFailed'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(editRequestContext, context)) saving.value = false;
   }
@@ -523,19 +502,17 @@ async function testDraft(): Promise<void> {
   try {
     const inspection = await service.test(templateId, input);
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage[inspection.valid ? 'success' : 'error'](
+    showMessage(
       inspection.valid
         ? translate('conversationTemplates.testSucceeded')
         : translate('conversationTemplates.testFailed', {
             message: templateFailureMessage(inspection.code, inspection.message)
-          })
+          }),
+      inspection.valid ? 'success' : 'error'
     );
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: templateError(error, 'conversationTemplates.testFailedFallback')
-    });
+    showMessage(templateError(error, 'conversationTemplates.testFailedFallback'), 'error', error);
   } finally {
     if (sameConversationTemplateRequestContext(editRequestContext, context)) testing.value = false;
   }
@@ -554,10 +531,7 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
         options
       )
     ) {
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('conversationTemplates.errorModelInvalid')
-      });
+      showMessage(translate('conversationTemplates.errorModelInvalid'), 'error');
       return;
     }
     await ElMessageBox.confirm(
@@ -571,25 +545,18 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
     job = await awaitPublish(row.id, job);
     if (disposed) return;
     if (job.status === 'SUCCEEDED')
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('conversationTemplates.publishSucceeded')
-      });
+      showMessage(translate('conversationTemplates.publishSucceeded'), 'success');
     else if (job.status === 'FAILED')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: templateFailureMessage(
+      showMessage(
+        templateFailureMessage(
           job.errorCode,
           translate('conversationTemplates.publishFailed', {
             code: job.errorCode ?? 'CONVERSATION_TEMPLATE_PUBLISH_FAILED'
           })
-        )
-      });
-    else
-      ElMessage.info({
-        icon: marIcon('info'),
-        message: translate('conversationTemplates.publishStillRunning')
-      });
+        ),
+        'error'
+      );
+    else showMessage(translate('conversationTemplates.publishStillRunning'), 'info');
     await load(false);
     if (disposed || detail.value?.template.id !== row.id) return;
     const context = detailRequestContext;
@@ -598,10 +565,11 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
       detail.value = current;
   } catch (error) {
     if (!disposed && error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: templateError(error, 'conversationTemplates.publishFailedFallback')
-      });
+      showMessage(
+        templateError(error, 'conversationTemplates.publishFailedFallback'),
+        'error',
+        error
+      );
   } finally {
     const next = new Set(publishingIds.value);
     next.delete(row.id);
@@ -675,11 +643,11 @@ async function confirmedMutation(
     if (disposed) return;
     await action();
     if (disposed) return;
-    ElMessage.success({ icon: marIcon('success'), message: translate(successKey) });
+    showMessage(translate(successKey), 'success');
     await load(false);
   } catch (error) {
     if (!disposed && error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: templateError(error, fallbackKey) });
+      showMessage(templateError(error, fallbackKey), 'error', error);
   }
 }
 
@@ -834,7 +802,6 @@ onMounted(() => {
             <el-button
               v-if="writable && row.status !== 'DELETED'"
               link
-              type="primary"
               :icon="marIcon('edit')"
               @click="openEdit(row)"
               >{{ translate('conversationTemplates.edit') }}</el-button
@@ -843,7 +810,6 @@ onMounted(() => {
             <el-button
               v-if="writable && row.status === 'ACTIVE'"
               link
-              type="primary"
               :icon="marIcon('upload')"
               :loading="publishingIds.has(row.id)"
               @click="publish(row)"

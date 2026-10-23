@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { errorMessage } from '../../util/error-presentation.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import {
   computed,
   defineAsyncComponent,
@@ -495,15 +497,18 @@ async function save(): Promise<void> {
           revision: savedRevision
         });
     }
-    ElMessage.success({ icon: marIcon('success'), message: translate('fileEditor.saved') });
+    showMessage(translate('fileEditor.saved'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
+    showMessage(
+      errorMessage(
+        error,
         errorCode(error) === 'FILE_WRITE_CONFLICT'
           ? translate('fileEditor.conflict')
           : translate('fileEditor.saveFailed')
-    });
+      ),
+      'error',
+      error
+    );
   } finally {
     saving.value = false;
   }
@@ -554,10 +559,7 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 
@@ -566,10 +568,7 @@ async function pasteSelection(): Promise<void> {
   try {
     codeEditor.value?.insertText(await navigator.clipboard.readText());
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 
@@ -671,150 +670,41 @@ defineExpose({
       >
     </template>
     <template #primary-actions>
-      <el-tooltip
-        v-bind="tooltipOptions"
+      <el-button
+        v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
-        :content="translate('inlineFind.label')"
-        ><el-button
-          circle
-          size="small"
-          :aria-label="translate('inlineFind.label')"
-          @click="openFind"
-        >
-          <MarIcon name="search" /> </el-button
-      ></el-tooltip>
+        circle
+        size="small"
+        :aria-label="translate('inlineFind.label')"
+        @click="openFind"
+      >
+        <MarIcon name="search" />
+      </el-button>
       <template v-if="codeEditorEnabled">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.symbols')"
-          ><el-button
-            data-file-symbol-toggle
-            circle
-            size="small"
-            :aria-label="translate('fileEditor.symbols')"
-            @click="symbolsOpen ? closeSymbols() : openSymbols()"
-          >
-            <MarIcon name="symbols" /> </el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          v-if="canWrite"
-          :content="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
-            @click="editing = !editing"
-          >
-            <MarIcon name="lock" v-if="editing" />
-            <MarIcon name="edit" v-else /> </el-button
-        ></el-tooltip>
-        <el-tooltip v-bind="tooltipOptions" v-if="editing" :content="translate('common.save')"
-          ><el-button
-            circle
-            size="small"
-            type="primary"
-            :disabled="!dirty"
-            :loading="saving"
-            :aria-label="translate('common.save')"
-            @click="save"
-            :loading-icon="marIcon('loading-action')"
-          >
-            <MarIcon name="document-save" /> </el-button
-        ></el-tooltip>
-      </template>
-      <template v-if="html">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('htmlPreview.open')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('htmlPreview.open')"
-            @click="emit('open-html-preview')"
-            ><MarIcon name="view" /></el-button
-        ></el-tooltip>
-      </template>
-      <template v-if="markdown && !renderMarkdown">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.open')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('markdownPreview.open')"
-            @click="emit('open-markdown-preview')"
-            ><MarIcon name="view" /></el-button
-        ></el-tooltip>
-        <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.settings')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('markdownPreview.settings')"
-            @click="openSettings"
-            ><MarIcon name="settings" /></el-button
-        ></el-tooltip>
-      </template>
-    </template>
-    <template #secondary-actions>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="translate('generated.filePreviewDialog.downloadFile')"
-        ><el-button
-          :loading="downloading"
-          :aria-label="translate('generated.filePreviewDialog.downloadFile')"
-          circle
-          size="small"
-          @click="emit('download')"
-          :loading-icon="marIcon('loading-action')"
-        >
-          <MarIcon name="download" /> </el-button
-      ></el-tooltip>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        v-if="fullscreen"
-        :content="translate('generated.filePreviewDialog.closePreview')"
-        ><el-button
-          :aria-label="translate('generated.filePreviewDialog.closePreview')"
-          circle
-          size="small"
-          type="primary"
-          @click="requestClose"
-        >
-          <MarIcon name="close" /> </el-button
-      ></el-tooltip>
-    </template>
-    <template #mobile-actions>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        v-if="props.kind === 'text'"
-        :content="translate('inlineFind.label')"
-        ><el-button
+        <el-button
+          v-tooltip="translate('fileEditor.symbols')"
           data-file-symbol-toggle
-          circle
-          size="small"
-          :aria-label="translate('inlineFind.label')"
-          @click="openFind"
-          ><MarIcon name="search" /></el-button
-      ></el-tooltip>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        v-if="codeEditorEnabled"
-        :content="translate('fileEditor.symbols')"
-        ><el-button
           circle
           size="small"
           :aria-label="translate('fileEditor.symbols')"
           @click="symbolsOpen ? closeSymbols() : openSymbols()"
-          ><MarIcon name="symbols" /></el-button
-      ></el-tooltip>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        v-if="canWrite"
-        :content="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
-        ><el-button
+        >
+          <MarIcon name="symbols" />
+        </el-button>
+        <el-button
+          v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
+          v-if="canWrite"
           circle
           size="small"
           :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           @click="editing = !editing"
-          ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else /></el-button
-      ></el-tooltip>
-      <el-tooltip v-bind="tooltipOptions" v-if="editing" :content="translate('common.save')"
-        ><el-button
+        >
+          <MarIcon name="lock" v-if="editing" />
+          <MarIcon name="edit" v-else />
+        </el-button>
+        <el-button
+          v-tooltip="translate('common.save')"
+          v-if="editing"
           circle
           size="small"
           type="primary"
@@ -823,62 +713,155 @@ defineExpose({
           :aria-label="translate('common.save')"
           @click="save"
           :loading-icon="marIcon('loading-action')"
-          ><MarIcon name="document-save" /></el-button
-      ></el-tooltip>
+        >
+          <MarIcon name="document-save" />
+        </el-button>
+      </template>
       <template v-if="html">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('htmlPreview.open')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('htmlPreview.open')"
-            @click="emit('open-html-preview')"
-            ><MarIcon name="view" /></el-button
-        ></el-tooltip>
+        <el-button
+          v-tooltip="translate('htmlPreview.open')"
+          circle
+          size="small"
+          :aria-label="translate('htmlPreview.open')"
+          @click="emit('open-html-preview')"
+          ><MarIcon name="view"
+        /></el-button>
       </template>
       <template v-if="markdown && !renderMarkdown">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.open')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('markdownPreview.open')"
-            @click="emit('open-markdown-preview')"
-            ><MarIcon name="view" /></el-button
-        ></el-tooltip>
-        <el-tooltip v-bind="tooltipOptions" :content="translate('markdownPreview.settings')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('markdownPreview.settings')"
-            @click="openSettings"
-            ><MarIcon name="settings" /></el-button
-        ></el-tooltip>
+        <el-button
+          v-tooltip="translate('markdownPreview.open')"
+          circle
+          size="small"
+          :aria-label="translate('markdownPreview.open')"
+          @click="emit('open-markdown-preview')"
+          ><MarIcon name="view"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('markdownPreview.settings')"
+          circle
+          size="small"
+          :aria-label="translate('markdownPreview.settings')"
+          @click="openSettings"
+          ><MarIcon name="settings"
+        /></el-button>
       </template>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="translate('generated.filePreviewDialog.downloadFile2')"
-        ><el-button
-          :loading="downloading"
-          :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
-          circle
-          size="small"
-          @click="emit('download')"
-          :loading-icon="marIcon('loading-action')"
-        >
-          <MarIcon name="download" /> </el-button
-      ></el-tooltip>
-      <el-tooltip
-        v-bind="tooltipOptions"
+    </template>
+    <template #secondary-actions>
+      <el-button
+        v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
+        :loading="downloading"
+        :aria-label="translate('generated.filePreviewDialog.downloadFile')"
+        circle
+        size="small"
+        @click="emit('download')"
+        :loading-icon="marIcon('loading-action')"
+      >
+        <MarIcon name="download" />
+      </el-button>
+      <el-button
+        v-tooltip="translate('generated.filePreviewDialog.closePreview')"
         v-if="fullscreen"
-        :content="translate('generated.filePreviewDialog.closePreview2')"
-        ><el-button
-          :aria-label="translate('generated.filePreviewDialog.closePreview2')"
+        :aria-label="translate('generated.filePreviewDialog.closePreview')"
+        circle
+        size="small"
+        type="primary"
+        @click="requestClose"
+      >
+        <MarIcon name="close" />
+      </el-button>
+    </template>
+    <template #mobile-actions>
+      <el-button
+        v-tooltip="translate('inlineFind.label')"
+        v-if="props.kind === 'text'"
+        data-file-symbol-toggle
+        circle
+        size="small"
+        :aria-label="translate('inlineFind.label')"
+        @click="openFind"
+        ><MarIcon name="search"
+      /></el-button>
+      <el-button
+        v-tooltip="translate('fileEditor.symbols')"
+        v-if="codeEditorEnabled"
+        circle
+        size="small"
+        :aria-label="translate('fileEditor.symbols')"
+        @click="symbolsOpen ? closeSymbols() : openSymbols()"
+        ><MarIcon name="symbols"
+      /></el-button>
+      <el-button
+        v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
+        v-if="canWrite"
+        circle
+        size="small"
+        :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
+        @click="editing = !editing"
+        ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else
+      /></el-button>
+      <el-button
+        v-tooltip="translate('common.save')"
+        v-if="editing"
+        circle
+        size="small"
+        type="primary"
+        :disabled="!dirty"
+        :loading="saving"
+        :aria-label="translate('common.save')"
+        @click="save"
+        :loading-icon="marIcon('loading-action')"
+        ><MarIcon name="document-save"
+      /></el-button>
+      <template v-if="html">
+        <el-button
+          v-tooltip="translate('htmlPreview.open')"
           circle
           size="small"
-          type="primary"
-          @click="requestClose"
-        >
-          <MarIcon name="close" /> </el-button
-      ></el-tooltip>
+          :aria-label="translate('htmlPreview.open')"
+          @click="emit('open-html-preview')"
+          ><MarIcon name="view"
+        /></el-button>
+      </template>
+      <template v-if="markdown && !renderMarkdown">
+        <el-button
+          v-tooltip="translate('markdownPreview.open')"
+          circle
+          size="small"
+          :aria-label="translate('markdownPreview.open')"
+          @click="emit('open-markdown-preview')"
+          ><MarIcon name="view"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('markdownPreview.settings')"
+          circle
+          size="small"
+          :aria-label="translate('markdownPreview.settings')"
+          @click="openSettings"
+          ><MarIcon name="settings"
+        /></el-button>
+      </template>
+      <el-button
+        v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
+        :loading="downloading"
+        :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
+        circle
+        size="small"
+        @click="emit('download')"
+        :loading-icon="marIcon('loading-action')"
+      >
+        <MarIcon name="download" />
+      </el-button>
+      <el-button
+        v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
+        v-if="fullscreen"
+        :aria-label="translate('generated.filePreviewDialog.closePreview2')"
+        circle
+        size="small"
+        type="primary"
+        @click="requestClose"
+      >
+        <MarIcon name="close" />
+      </el-button>
     </template>
     <div
       v-if="symbolsOpen && codeEditorEnabled"
@@ -925,7 +908,7 @@ defineExpose({
       @pointerdown.stop
     >
       <p v-if="navigationLoading" class="file-navigation-loading" role="status">
-        <BusyIndicator />
+        <MarIcon name="loading-action" />
         {{ translate('fileEditor.preparingNavigation') }}
       </p>
       <template v-else>

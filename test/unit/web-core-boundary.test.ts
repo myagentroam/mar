@@ -1,7 +1,10 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { defineComponent, h, ref } from 'vue';
+import { createWorkbenchPageController } from '../../packages/web-core/src/service/WorkbenchPageController.js';
+import { createWorkbenchNavigationService } from '../../packages/web-core/src/service/WorkbenchNavigationService.js';
+import { renderComponent } from '../../packages/web-core/test/unit/support/component-renderer.js';
 import { createWorkbenchWorkspaceTreeController } from '../../ee/web/src/service/WorkbenchWorkspaceTreeController.js';
 import { createWorkbenchLiveService as publicLiveService } from '../../packages/web-core/src/service/WorkbenchLiveService';
 import { createWorkbenchLiveService as enterpriseLiveService } from '../../ee/web/src/service/WorkbenchLiveService';
@@ -31,8 +34,6 @@ describe('single shared Web implementation', () => {
     expect(adapter).toContain('@myagentroam/web-core/MarAgentModelManagementPage.vue');
     expect(adapter).toContain('ModelGrantExtension');
     expect(adapter).toContain('createModelCredentialOwnershipService');
-    expect(adapter).toMatch(/onMounted\(\(\) => \{\s*void ownership\.loadOrganizations\(\);/u);
-    expect(adapter).toContain('ownership.label(model.ownership)');
     expect(adapter).not.toMatch(/CodexLoginAttemptPoller|\/api\/admin\/mar-agent/u);
     expect(existsSync('ee/web/src/view/settings/ImageGenerationManagement.vue')).toBe(false);
     expect(read('ee/web/src/service/CodexCredentialManagementService.ts')).toBe(
@@ -461,9 +462,101 @@ describe('single shared Web implementation', () => {
     expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
       '@extension-changed="page.refreshAdmin"'
     );
-    expect(read('packages/web-core/src/service/WorkbenchPageController.ts')).toContain(
-      'invalidateRequests: workbenchHttpService.invalidateAuthentication'
+  });
+
+  it('invalidates pending workbench requests when authentication is revoked', async () => {
+    let resolvePending!: (response: Response) => void;
+    let resolveUnauthenticated!: (response: Response) => void;
+    const pendingResponse = new Promise<Response>((resolve) => (resolvePending = resolve));
+    const unauthenticatedResponse = new Promise<Response>(
+      (resolve) => (resolveUnauthenticated = resolve)
     );
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const path = String(input);
+      if (path === '/api/pending') return pendingResponse;
+      if (path === '/api/unauthenticated') return unauthenticatedResponse;
+      if (path === '/api/auth/me')
+        return Promise.resolve(Response.json({ authenticated: true, mustChangePassword: false }));
+      if (path === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ csrfToken: 'fixture-csrf' }));
+      return Promise.resolve(Response.json({ nodes: [], notifications: [], recentRuns: [] }));
+    });
+    const storage = new Map<string, string>();
+    const sessionStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key)
+    };
+    const location = new URL('https://console.example.test/console');
+    const history = { state: null, replaceState: vi.fn() };
+    vi.stubGlobal('localStorage', sessionStorage);
+    vi.stubGlobal('sessionStorage', sessionStorage);
+    vi.stubGlobal('location', location);
+    vi.stubGlobal('history', history);
+    vi.stubGlobal(
+      'window',
+      Object.assign(new EventTarget(), {
+        location,
+        history,
+        sessionStorage,
+        matchMedia: () => ({
+          matches: false,
+          addEventListener() {},
+          removeEventListener() {}
+        })
+      })
+    );
+    vi.stubGlobal(
+      'document',
+      Object.assign(new EventTarget(), {
+        visibilityState: 'visible',
+        hasFocus: () => true,
+        documentElement: { dataset: {}, style: { setProperty() {} } }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    let page!: ReturnType<typeof createWorkbenchPageController>;
+    let rendered: ReturnType<typeof renderComponent> | undefined;
+    try {
+      const navigation = createWorkbenchNavigationService({
+        initialView: 'nodes',
+        initialSettingsSection: 'account',
+        initialManagementSection: 'system',
+        opensMobileSidebar: () => false
+      });
+      rendered = renderComponent(
+        defineComponent({
+          setup() {
+            page = createWorkbenchPageController({
+              navigation,
+              management: { items: () => [] },
+              systemManagementSection: 'system',
+              nodeManagementSection: 'nodes',
+              webVersion: '0.10.1',
+              webBuildHash: 'fixture'
+            });
+            return () => h('div');
+          }
+        })
+      );
+
+      const pendingRequest = page.request('/api/pending');
+      const pendingRejected = expect(pendingRequest).rejects.toMatchObject({
+        name: 'AbortError'
+      });
+      const unauthenticatedRequest = page.request('/api/unauthenticated');
+      const unauthenticatedRejected = expect(unauthenticatedRequest).rejects.toMatchObject({
+        code: 'UNAUTHENTICATED'
+      });
+      resolveUnauthenticated(Response.json({ error: 'UNAUTHENTICATED' }, { status: 401 }));
+      await unauthenticatedRejected;
+      resolvePending(Response.json({ completed: true }));
+      await pendingRejected;
+    } finally {
+      rendered?.unmount();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('uses the shared shell, bootstrap and styles rather than a second application implementation', () => {

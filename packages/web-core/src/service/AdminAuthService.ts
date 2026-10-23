@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { Ref } from 'vue';
 import type { AppLocale } from '../i18n/locale-config.js';
 import { ApiError } from '../util/api-error.js';
@@ -44,7 +45,7 @@ export interface AdminAuthStateOptions {
   readonly invalidateRequests: () => void;
   readonly onAuthenticated: () => Promise<void>;
   readonly onSignedOut: () => void;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }
 
@@ -70,7 +71,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
           body: JSON.stringify({ locale })
         });
       } catch {
-        if (isCurrent()) options.notice(translate('common.localeUpdateFailed'));
+        if (isCurrent()) options.notice(translate('common.localeUpdateFailed'), 'error');
         return;
       }
       serverLocale = locale;
@@ -92,7 +93,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.workbenchRecoveryFailed', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     }
   }
@@ -138,7 +141,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         options.notice(
           translate('generated.adminAuthService.authenticationRecoveryFailed', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'error',
+          error
         );
     }
   }
@@ -163,7 +168,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.unableToLoadSignInSessions', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     }
   }
@@ -183,7 +190,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.unableToRevokeTheSignInSession', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (generation === identityGeneration) options.loading.value = false;
@@ -196,7 +205,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   }): Promise<void> {
     const generation = replaceIdentity();
     options.loading.value = true;
-    options.notice('');
+
     try {
       const result = await options.request<AdminState & { csrfToken: string }>('/api/auth/login', {
         method: 'POST',
@@ -216,7 +225,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.signInFailed', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (generation === identityGeneration) options.loading.value = false;
@@ -233,7 +244,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.unableToUpdateThePassword', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (generation === identityGeneration) options.loading.value = false;
@@ -262,7 +275,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     let recoveryStarted = false;
     options.passwordError.value = '';
     options.loading.value = true;
-    options.notice('');
+
     try {
       const result = await options.request<AdminState & { csrfToken: string }>(
         '/api/auth/change-password',
@@ -279,7 +292,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.admin.value = result;
       options.password.value = '';
       options.notice(
-        translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere')
+        translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere'),
+        'success'
       );
       recoveryStarted = true;
       void recoverPasswordChange(generation);
@@ -289,7 +303,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.unableToUpdateThePassword', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
       return false;
     } finally {
@@ -309,7 +325,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.notice(
         translate('generated.adminAuthService.unableToSignOut', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (generation === identityGeneration) options.loading.value = false;

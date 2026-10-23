@@ -23,6 +23,7 @@ async function fixture() {
   roots.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
+  await mkdir(join(workspace, '.git'));
   await writeFile(join(workspace, 'input.txt'), 'hello\n');
   return { home, workspace };
 }

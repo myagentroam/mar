@@ -14,6 +14,7 @@ interface PromptCompletionHarness {
   reviseContext(key: string): void;
   selectContext(key: string, automaticKey?: string | null, terminalKey?: string | null): void;
   restoreFocus(): void;
+  setSubmitting(value: boolean, accepted?: boolean): void;
   foreground(visible: boolean, focused: boolean): void;
   resolve(index: number, suggestion: string | null): void;
 }
@@ -33,6 +34,29 @@ for (const mode of ['workspace'] as const) {
     test.beforeEach(async ({ page }) => {
       await page.clock.install();
       await openComposer(page);
+    });
+
+    test('submission keeps the previous message read-only and restores editing without switching sessions', async ({
+      page
+    }) => {
+      const editor = page.locator('textarea.composer-input');
+      await editor.fill('Previous message');
+      await page.evaluate(() => window.__promptCompletionHarness.setSubmitting(true));
+      await expect(editor).not.toBeEditable();
+      await editor.press('End');
+      await page.keyboard.type(' accidental next message');
+      await editor.press('Backspace');
+      await expect(editor).toHaveValue('Previous message');
+      await page.evaluate(() => window.__promptCompletionHarness.setSubmitting(false, true));
+      await expect(editor).toBeEditable();
+      await expect(editor).toHaveValue('');
+      await page.keyboard.type('Next message');
+      await expect(editor).toHaveValue('Next message');
+      await page.evaluate(() => window.__promptCompletionHarness.setSubmitting(true));
+      await expect(editor).not.toBeEditable();
+      await page.evaluate(() => window.__promptCompletionHarness.setSubmitting(false));
+      await expect(editor).toBeEditable();
+      await expect(editor).toHaveValue('Next message');
     });
 
     test('empty prediction stays inline and restores Generate without retrying', async ({

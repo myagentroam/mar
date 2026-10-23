@@ -22,13 +22,8 @@ export interface EditorSymbol {
   readonly from: number;
   readonly depth: number;
 }
-export interface FileNavigationRequest {
-  readonly reference: FileReference;
-  readonly sourceContext: {
-    readonly text: string;
-    readonly position: number;
-  };
-}
+export type { FileNavigationRequest } from '../../model/workspace-navigation.js';
+import type { FileNavigationRequest } from '../../model/workspace-navigation.js';
 
 type EditorNavigationTarget =
   | {

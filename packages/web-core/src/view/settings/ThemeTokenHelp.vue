@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage } from 'element-plus';
+
 import { CUSTOM_THEME_TOKENS } from '../../model/custom-theme.js';
 import { THEME_TOKEN_GROUPS, THEME_TOKEN_HELP } from '../../model/theme-token-help.js';
 
@@ -31,22 +32,22 @@ function show(): void {
 async function copy(token: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(token);
-    ElMessage.success({ icon: marIcon('success'), message: t('customThemes.tokenCopied') });
+    showMessage(t('customThemes.tokenCopied'), 'info');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('customThemes.tokenCopyFailed') });
+    showMessage(t('customThemes.tokenCopyFailed'), 'error');
   }
 }
 </script>
 
 <template>
-  <el-tooltip v-bind="tooltipOptions" :content="t('customThemes.tokenHelp')"
-    ><el-button
-      class="utility-control"
-      text
-      :icon="marIcon('help')"
-      :aria-label="t('customThemes.tokenHelp')"
-      @click="show"
-  /></el-tooltip>
+  <el-button
+    v-tooltip="t('customThemes.tokenHelp')"
+    class="utility-control"
+    text
+    :icon="marIcon('help')"
+    :aria-label="t('customThemes.tokenHelp')"
+    @click="show"
+  />
   <el-dialog
     v-if="open"
     v-model="open"
@@ -77,16 +78,14 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="t('customThemes.tokenCopy', { token: item.token })"
-                ><el-button
-                  class="utility-control"
-                  link
-                  :icon="marIcon('copy')"
-                  :aria-label="t('customThemes.tokenCopy', { token: item.token })"
-                  @click="copy(item.token)"
-              /></el-tooltip>
+              <el-button
+                v-tooltip="t('customThemes.tokenCopy', { token: item.token })"
+                class="utility-control"
+                link
+                :icon="marIcon('copy')"
+                :aria-label="t('customThemes.tokenCopy', { token: item.token })"
+                @click="copy(item.token)"
+              />
             </dt>
             <dd>{{ item.description }}</dd>
           </div>

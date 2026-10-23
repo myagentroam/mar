@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -85,14 +87,15 @@ async function save(): Promise<void> {
     if (generation !== editorGeneration.value) return;
     await props.refresh();
     if (generation !== editorGeneration.value) return;
-    ElMessage.success({ icon: marIcon('success'), message: translate('quickPrompts.saved') });
+    showMessage(translate('quickPrompts.saved'), 'success');
     close();
   } catch (error) {
     if (generation === editorGeneration.value)
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('quickPrompts.saveFailed', { value0: errorMessage(error) })
-      });
+      showMessage(
+        translate('quickPrompts.saveFailed', { value0: errorMessage(error) }),
+        'error',
+        error
+      );
   } finally {
     if (generation === editorGeneration.value) saving.value = false;
   }
@@ -108,13 +111,14 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       method: 'DELETE'
     });
     await props.refresh();
-    ElMessage.success({ icon: marIcon('success'), message: translate('quickPrompts.removed') });
+    showMessage(translate('quickPrompts.removed'), 'success');
   } catch (error) {
     if (error !== 'cancel')
-      ElMessage.error({
-        icon: marIcon('error'),
-        message: translate('quickPrompts.removeFailed', { value0: errorMessage(error) })
-      });
+      showMessage(
+        translate('quickPrompts.removeFailed', { value0: errorMessage(error) }),
+        'error',
+        error
+      );
   }
 }
 </script>
@@ -146,14 +150,9 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           </div>
           <p>{{ prompt.prompt }}</p>
           <div class="prompt-actions">
-            <el-button
-              :icon="marIcon('edit')"
-              link
-              type="primary"
-              :disabled="loading"
-              @click="openEdit(prompt)"
-              >{{ translate('quickPrompts.edit') }}</el-button
-            >
+            <el-button :icon="marIcon('edit')" link :disabled="loading" @click="openEdit(prompt)">{{
+              translate('quickPrompts.edit')
+            }}</el-button>
             <el-button
               :icon="marIcon('delete')"
               link

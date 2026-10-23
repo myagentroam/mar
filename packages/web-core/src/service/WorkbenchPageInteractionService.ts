@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import { nextTick, type Ref } from 'vue';
@@ -37,7 +38,7 @@ interface WorkbenchPageInteractionOptions {
   readonly openAttachmentImage?: (attachment: ComposerAttachmentFile) => Promise<void>;
   readonly toggleTerminal: () => void;
   readonly sessionActivityClockNow: Readonly<Ref<number>>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly formatSessionTime: (value: number) => string;
 }
 
@@ -116,8 +117,9 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     preferGitChanges = false
   ): void {
     if (options.workspaceInspector.value == null) {
-      options.notice.value = translate(
-        'generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'
+      options.notice(
+        translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
+        'error'
       );
       return;
     }
@@ -302,8 +304,11 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       await navigator.clipboard.writeText(text);
       onSuccess();
     } catch {
-      options.notice.value = translate(
-        'generated.workbenchPageInteractionService.copyFailedCheckTheBrowserClipboardPermission'
+      options.notice(
+        translate(
+          'generated.workbenchPageInteractionService.copyFailedCheckTheBrowserClipboardPermission'
+        ),
+        'error'
       );
     }
   }

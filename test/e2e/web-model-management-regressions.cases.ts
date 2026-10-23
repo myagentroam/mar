@@ -272,6 +272,11 @@ for (const english of [false, true]) {
     await expect(modelRows).toHaveCount(21);
     await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
     await expect(modelRows.last()).toContainText('Model 21');
+    const actionsBounds = await modelPanel.locator('.table-actions').boundingBox();
+    const tableBounds = await modelPanel.locator('.el-table').boundingBox();
+    expect(actionsBounds).not.toBeNull();
+    expect(tableBounds).not.toBeNull();
+    expect(tableBounds!.y - actionsBounds!.y - actionsBounds!.height).toBeGreaterThan(0);
 
     const lastModel = page.locator('.el-table__row').filter({ hasText: 'Model 21' });
     await lastModel.getByRole('button', { name: strings.edit, exact: true }).click();

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import {
   toolPresentation,
@@ -574,7 +573,11 @@ function stepDuration(item: ConversationItem): string | undefined {
             <span>{{ displayItem.item.permissionStop.source.toolName }}</span>
             <p>{{ displayItem.item.permissionStop.reason }}</p>
             <details class="permission-call-details" open>
-              <summary>{{ permissionStopDetail(displayItem.item).label }}</summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                  permissionStopDetail(displayItem.item).label
+                }}
+              </summary>
               <pre class="approval-detail">{{ permissionStopDetail(displayItem.item).text }}</pre>
               <span v-if="conversationPayload(displayItem.item.payload)?.truncated === true">
                 {{ translate('presentation.truncated') }}
@@ -591,7 +594,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="reasoningDisclosure[displayItem.id]"
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="reasoning" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('reasoning') }}</strong>
               <span
@@ -608,7 +612,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.type === 'image_generation'">
           <details v-if="hasConversationDetail(displayItem.item)">
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{ translate('presentation.imageGeneration') }}</strong>
               <span>{{
                 conversationItemText(
@@ -657,29 +662,37 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.type === 'subagent_group'">
-          <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
-            <summary class="conversation-record-heading">
+          <details
+            class="conversation-record-group"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+          >
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
               <span class="conversation-record-preview">{{
                 subagentGroupText(displayItem.items)
               }}</span>
-              <span v-if="displayItem.items.length === 1" class="conversation-record-meta">{{
-                toolPresentationStatus(displayItem.items[0]!.status)
-              }}</span>
-              <span v-else class="conversation-group-meta">{{
+              <span class="conversation-group-meta">{{
                 translate('presentation.subagentOperationCount', {
                   count: displayItem.items.length
                 })
               }}</span>
             </summary>
-            <div v-if="groupedItemDisclosure[displayItem.id]" class="conversation-tool-list">
+            <div
+              v-if="groupedItemDisclosure[`group:${displayItem.id}`]"
+              class="conversation-tool-list"
+            >
               <details
                 v-for="toolItem in displayItem.items"
                 :key="toolItem.id"
                 class="conversation-tool-detail"
+                :open="groupedItemDisclosure[toolItem.id] === true"
+                @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
               >
-                <summary>
+                <summary class="mar-disclosure-summary">
+                  <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                   <span class="conversation-tool-preview">{{
                     subagentOperationText(toolItem.payload)
                   }}</span>
@@ -703,7 +716,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon
                 :kind="displayItem.type === 'read_group' ? 'READ' : 'tool_call'"
                 class="conversation-record-icon"
@@ -728,7 +742,8 @@ function stepDuration(item: ConversationItem): string | undefined {
               :open="groupedItemDisclosure[toolItem.id] === true"
               @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
             >
-              <summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                 <span class="conversation-tool-preview">{{
                   conversationItemText(toolItem.kind, toolItem.payload, toolItem.status) ||
                   conversationItemLabel(toolItem.kind, toolItem.payload)
@@ -755,7 +770,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="command_execution" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('command_execution') }}</strong>
               <span class="conversation-group-meta">
@@ -773,7 +789,8 @@ function stepDuration(item: ConversationItem): string | undefined {
               :open="groupedItemDisclosure[commandItem.id] === true"
               @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
             >
-              <summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                 <span class="conversation-command-preview">{{
                   conversationItemText(commandItem.kind, commandItem.payload) ||
                   conversationItemLabel(commandItem.kind)
@@ -808,7 +825,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-file-change-details"
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="file_change" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
               <span class="conversation-group-meta"
@@ -827,9 +845,8 @@ function stepDuration(item: ConversationItem): string | undefined {
                   :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
                   >{{ entry.status }}</span
                 >
-                <el-tooltip
-                  v-bind="tooltipOptions"
-                  :content="
+                <button
+                  v-tooltip="
                     translate(
                       entry.diff?.status === 'available' && toolChangeEnabled
                         ? 'presentation.viewThisChange'
@@ -839,41 +856,37 @@ function stepDuration(item: ConversationItem): string | undefined {
                       }
                     )
                   "
-                  ><button
-                    class="conversation-file-change-button"
-                    type="button"
-                    :aria-label="
-                      translate(
-                        entry.diff?.status === 'available' && toolChangeEnabled
-                          ? 'presentation.viewThisChange'
-                          : 'presentation.openCurrentFile',
-                        {
-                          value0: entry.path
-                        }
-                      )
-                    "
-                    @click.stop="
-                      entry.diff?.status === 'available' && entry.changeId && toolChangeEnabled
-                        ? emit('openFileChange', entry)
-                        : emit(
-                            'openFile',
-                            entry.path,
-                            undefined,
-                            undefined,
-                            $event.ctrlKey || $event.metaKey
-                          )
-                    "
-                  >
-                    {{ entry.path }}
-                  </button></el-tooltip
+                  class="conversation-file-change-button"
+                  type="button"
+                  :aria-label="
+                    translate(
+                      entry.diff?.status === 'available' && toolChangeEnabled
+                        ? 'presentation.viewThisChange'
+                        : 'presentation.openCurrentFile',
+                      {
+                        value0: entry.path
+                      }
+                    )
+                  "
+                  @click.stop="
+                    entry.diff?.status === 'available' && entry.changeId && toolChangeEnabled
+                      ? emit('openFileChange', entry)
+                      : emit(
+                          'openFile',
+                          entry.path,
+                          undefined,
+                          undefined,
+                          $event.ctrlKey || $event.metaKey
+                        )
+                  "
                 >
-                <el-tooltip
-                  v-bind="tooltipOptions"
+                  {{ entry.path }}
+                </button>
+                <span
+                  v-tooltip="translate(`presentation.diffUnavailable.${entry.diff.reason}`)"
                   v-if="entry.diff?.status === 'unavailable'"
-                  :content="translate(`presentation.diffUnavailable.${entry.diff.reason}`)"
-                  ><span class="conversation-file-change-note">{{
-                    translate('presentation.diffUnavailableLabel')
-                  }}</span></el-tooltip
+                  class="conversation-file-change-note"
+                  >{{ translate('presentation.diffUnavailableLabel') }}</span
                 >
                 <span class="conversation-file-change-stats">
                   <span
@@ -898,13 +911,13 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.item.kind === 'user_message'">
           <div class="conversation-item-heading">
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="messageHeading(displayItem.item.payload).title"
-              :disabled="!messageHeading(displayItem.item.payload).title"
-              ><strong :aria-description="messageHeading(displayItem.item.payload).title">{{
-                messageHeading(displayItem.item.payload).label
-              }}</strong></el-tooltip
+            <strong
+              v-tooltip="{
+                content: messageHeading(displayItem.item.payload).title,
+                disabled: !messageHeading(displayItem.item.payload).title
+              }"
+              :aria-description="messageHeading(displayItem.item.payload).title"
+              >{{ messageHeading(displayItem.item.payload).label }}</strong
             >
           </div>
           <p
@@ -957,73 +970,61 @@ function stepDuration(item: ConversationItem): string | undefined {
             "
             class="conversation-message-actions"
           >
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <time
+              v-tooltip="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
               v-if="messageTimestamp(turn, displayItem.item) !== undefined"
-              :content="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
-              ><time
-                class="conversation-message-time"
-                :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
-                >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
-              ></el-tooltip
+              class="conversation-message-time"
+              :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
+              >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
-              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              :content="
+            <button
+              v-tooltip="
                 translate(
                   copiedMessage === `${turn.id}:${displayItem.item.id}`
                     ? 'generated.conversationTimeline.copiedMessage'
                     : 'generated.conversationTimeline.copyMessage2'
                 )
               "
-              ><button
-                class="conversation-message-action icon-button utility-control"
-                type="button"
-                :aria-label="
-                  copiedMessage === `${turn.id}:${displayItem.item.id}`
-                    ? translate('generated.conversationTimeline.copiedMessage')
-                    : translate('generated.conversationTimeline.copyMessage', {
-                        value0: conversationItemLabel(displayItem.item.kind)
-                      })
-                "
-                @click.stop="copyItem(turn, displayItem.item)"
-              >
-                <MarIcon
-                  name="check"
-                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
-                />
-                <MarIcon name="copy" v-else /></button
-            ></el-tooltip>
-            <el-tooltip
-              v-bind="tooltipOptions"
+              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :aria-label="
+                copiedMessage === `${turn.id}:${displayItem.item.id}`
+                  ? translate('generated.conversationTimeline.copiedMessage')
+                  : translate('generated.conversationTimeline.copyMessage', {
+                      value0: conversationItemLabel(displayItem.item.kind)
+                    })
+              "
+              @click.stop="copyItem(turn, displayItem.item)"
+            >
+              <MarIcon name="check" v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" />
+              <MarIcon name="copy" v-else />
+            </button>
+            <button
+              v-tooltip="translate('generated.conversationTimeline.rollBackBeforeThisMessage')"
               v-if="props.rewindEnabled && turn.rewind"
-              :content="translate('generated.conversationTimeline.rollBackBeforeThisMessage')"
-              ><button
-                class="conversation-message-action icon-button utility-control"
-                type="button"
-                :aria-label="
-                  translate('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
-                "
-                @click.stop="emit('rewind', turn, displayItem.item)"
-              >
-                <MarIcon name="undo" /></button
-            ></el-tooltip>
-            <el-tooltip
-              v-bind="tooltipOptions"
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :aria-label="
+                translate('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+              "
+              @click.stop="emit('rewind', turn, displayItem.item)"
+            >
+              <MarIcon name="undo" />
+            </button>
+            <button
+              v-tooltip="translate('generated.conversationTimeline.rollbackConversation')"
               v-if="props.rollbackEnabled && turn.rewind && rollbackTarget(turn, displayItem.item)"
-              :content="translate('generated.conversationTimeline.rollbackConversation')"
-              ><button
-                class="conversation-message-action icon-button utility-control"
-                type="button"
-                :disabled="props.loading"
-                :aria-label="
-                  translate('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
-                "
-                @click.stop="emit('rollback', turn, displayItem.item)"
-              >
-                <MarIcon name="back" /></button
-            ></el-tooltip>
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :disabled="props.loading"
+              :aria-label="
+                translate('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
+              "
+              @click.stop="emit('rollback', turn, displayItem.item)"
+            >
+              <MarIcon name="back" />
+            </button>
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
@@ -1044,58 +1045,48 @@ function stepDuration(item: ConversationItem): string | undefined {
             "
             class="conversation-message-actions"
           >
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <time
+              v-tooltip="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
               v-if="messageTimestamp(turn, displayItem.item) !== undefined"
-              :content="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
-              ><time
-                class="conversation-message-time"
-                :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
-                >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
-              ></el-tooltip
+              class="conversation-message-time"
+              :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
+              >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
-              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              :content="
+            <button
+              v-tooltip="
                 translate(
                   copiedMessage === `${turn.id}:${displayItem.item.id}`
                     ? 'generated.conversationTimeline.copiedMessage'
                     : 'generated.conversationTimeline.copyMessage4'
                 )
               "
-              ><button
-                class="conversation-message-action icon-button utility-control"
-                type="button"
-                :aria-label="
-                  copiedMessage === `${turn.id}:${displayItem.item.id}`
-                    ? translate('generated.conversationTimeline.copiedMessage')
-                    : translate('generated.conversationTimeline.copyMessage3', {
-                        value0: conversationItemLabel(displayItem.item.kind)
-                      })
-                "
-                @click.stop="copyItem(turn, displayItem.item)"
-              >
-                <MarIcon
-                  name="check"
-                  v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`"
-                />
-                <MarIcon name="copy" v-else /></button
-            ></el-tooltip>
-            <el-tooltip
-              v-bind="tooltipOptions"
+              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :aria-label="
+                copiedMessage === `${turn.id}:${displayItem.item.id}`
+                  ? translate('generated.conversationTimeline.copiedMessage')
+                  : translate('generated.conversationTimeline.copyMessage3', {
+                      value0: conversationItemLabel(displayItem.item.kind)
+                    })
+              "
+              @click.stop="copyItem(turn, displayItem.item)"
+            >
+              <MarIcon name="check" v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" />
+              <MarIcon name="copy" v-else />
+            </button>
+            <button
+              v-tooltip="translate('generated.conversationTimeline.rollBackAfterThisMessage')"
               v-if="props.rewindEnabled && turn.rewind"
-              :content="translate('generated.conversationTimeline.rollBackAfterThisMessage')"
-              ><button
-                class="conversation-message-action icon-button utility-control"
-                type="button"
-                :aria-label="
-                  translate('generated.conversationTimeline.createARollbackBranchAfterThisMessage')
-                "
-                @click.stop="emit('rewind', turn, displayItem.item)"
-              >
-                <MarIcon name="undo" /></button
-            ></el-tooltip>
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :aria-label="
+                translate('generated.conversationTimeline.createARollbackBranchAfterThisMessage')
+              "
+              @click.stop="emit('rewind', turn, displayItem.item)"
+            >
+              <MarIcon name="undo" />
+            </button>
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'user_input_request'">
@@ -1232,7 +1223,11 @@ function stepDuration(item: ConversationItem): string | undefined {
               {{ approvalReason(conversationApproval(displayItem.item)!) }}
             </p>
             <details class="permission-call-details" open>
-              <summary>{{ approvalDetail(conversationApproval(displayItem.item)!).label }}</summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                  approvalDetail(conversationApproval(displayItem.item)!).label
+                }}
+              </summary>
               <pre class="approval-detail">{{
                 approvalDetail(conversationApproval(displayItem.item)!).text
               }}</pre>
@@ -1306,7 +1301,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.item.kind === 'plan'">
           <details v-if="hasPlanContent(displayItem.item)" open>
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
               <span
                 v-if="planSteps(displayItem.item.payload).length"
@@ -1365,7 +1361,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-tool-presentation"
             :data-tool-presentation="toolPresentation(displayItem.item.payload)?.kind"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon
                 :kind="toolPresentation(displayItem.item.payload)?.kind ?? 'tool_call'"
                 class="conversation-record-icon"
@@ -1411,7 +1408,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else>
           <details v-if="hasConversationDetail(displayItem.item)">
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{
                 conversationItemLabel(displayItem.item.kind, displayItem.item.payload)
               }}</strong>
@@ -1572,7 +1570,6 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-timeline {
   --conversation-record-gap: 4px;
   --conversation-item-inset: 12px;
-  --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
   gap: var(--conversation-record-gap);
@@ -1785,7 +1782,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-conversation-muted);
 }
 
-.conversation-item summary.conversation-record-heading::before,
+.conversation-item summary.conversation-record-heading > .mar-disclosure-icon,
 .conversation-item summary.conversation-record-heading > .conversation-record-icon,
 .conversation-item summary.conversation-record-heading > strong,
 .conversation-item summary.conversation-record-heading > span {
@@ -1849,7 +1846,7 @@ details.conversation-record-group[open] > details:last-child {
   padding: 4px var(--conversation-item-inset);
 }
 
-.conversation-record-group > details > summary::before {
+.conversation-record-group > details > summary > .mar-disclosure-icon {
   margin-inline: 0;
   color: var(--mar-conversation-muted);
 }
@@ -2152,7 +2149,7 @@ details.conversation-record-group[open] > details:last-child {
   white-space: nowrap;
 }
 
-.conversation-item details > summary::before,
+.conversation-item details > summary > .mar-disclosure-icon,
 .conversation-item details > summary > .conversation-record-icon {
   flex: none;
   margin-inline: 0;
@@ -2195,32 +2192,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item summary:active {
   background-color: var(--mar-fill-row-hover);
-}
-
-.conversation-item summary::-webkit-details-marker {
-  display: none;
-}
-
-.conversation-item summary::before {
-  content: '';
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  margin-inline-end: 0.5rem;
-  vertical-align: -0.12em;
-  background: currentColor;
-  mask: var(--conversation-chevron) center / contain no-repeat;
-  transition: transform var(--el-transition-duration-fast);
-}
-
-.conversation-item details[open]:not([data-disclosure-closing]) > summary::before {
-  transform: rotate(90deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .conversation-item summary::before {
-    transition: none;
-  }
 }
 
 .conversation-command-status,

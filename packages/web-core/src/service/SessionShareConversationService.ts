@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
   sessionShareVisitorSchema,
@@ -46,7 +47,7 @@ import { createWorkbenchApprovalService } from './WorkbenchApprovalService.js';
 export function createSessionShareConversationService(options: {
   access: ReturnType<typeof createSessionShareAccessService>;
   beforeSend: () => Promise<boolean>;
-  notice: (message: string) => void;
+  notice: MessageFeedback;
 }) {
   const access = options.access;
   const target = access.session.value!.share;
@@ -71,7 +72,7 @@ export function createSessionShareConversationService(options: {
   const sharerOnline = ref(false);
   const canRename = ref(false);
   const input = ref('');
-  const notice = ref('');
+  const notice = options.notice;
   const skillTokens = ref<readonly ComposerSkillToken[]>([]);
   const references = ref<readonly ComposerFileReference[]>([]);
   const skills = ref<readonly EffectiveWorkspaceSkill[]>([]);
@@ -196,7 +197,8 @@ export function createSessionShareConversationService(options: {
     } catch (error) {
       state.loadingInitial.value = false;
       state.initialLoadFailed.value = true;
-      if (errorCode(error) !== 'WATCH_CANCELLED') options.notice(errorMessage(error));
+      if (errorCode(error) !== 'WATCH_CANCELLED')
+        options.notice(errorMessage(error), 'error', error);
     }
   }
   let restartQueued = false;
@@ -342,7 +344,8 @@ export function createSessionShareConversationService(options: {
     replaceSession: (_previous, value) => mergeSessions([value]),
     sessionPathId: encodeURIComponent,
     temporaryTitle: (value) => value,
-    clearAttachments: attachments.clear,
+    consumeAttachments: attachments.consume,
+    retainAttachments: attachments.retainForSubmission,
     clearSkillTokens: () => {
       skillTokens.value = [];
     },
@@ -393,7 +396,6 @@ export function createSessionShareConversationService(options: {
     request,
     errorMessage,
     missingRunError: (error) => errorCode(error) === 'RUN_NOT_FOUND',
-    recoverMissingRun: controls.recoverMissingRun,
     beginSubmission: submission.begin
   });
   const approvals = createWorkbenchApprovalService({
@@ -402,9 +404,6 @@ export function createSessionShareConversationService(options: {
     request,
     errorMessage,
     beginSubmission: submission.begin
-  });
-  const stopNotice = watch(notice, (value) => {
-    if (value) options.notice(value);
   });
   const stopVisitor = watch(access.visitor, (value) => live.updateShareVisitor(value));
   const stopAccess = watch(
@@ -438,7 +437,7 @@ export function createSessionShareConversationService(options: {
       profiles.value = (await access.request<{ profiles: RunnerProfile[] }>('/profiles')).profiles;
     } catch (error) {
       profilesFailed.value = true;
-      options.notice(errorMessage(error));
+      options.notice(errorMessage(error), 'error', error);
     } finally {
       profilesLoading.value = false;
     }
@@ -460,7 +459,6 @@ export function createSessionShareConversationService(options: {
   }
   function dispose(): void {
     stop();
-    stopNotice();
     stopVisitor();
     stopAccess();
     fileReferences.close();

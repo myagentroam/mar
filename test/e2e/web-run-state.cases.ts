@@ -7,6 +7,126 @@ import {
   json,
   write
 } from './support/web-console-api.js';
+
+test('A fresh Watch snapshot restores process activity after observed session idle', async ({
+  page
+}) => {
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'events.live', 'turn.start', 'turn.interrupt'],
+    []
+  );
+  const session = {
+    id: 'session-1',
+    workspaceId: 'workspace-1',
+    runner: 'codex',
+    externalSessionId: 'vscode-thread-1',
+    activity: 'MANAGED_ACTIVE',
+    control: {
+      level: 'MANAGED',
+      capabilities: ['history.read', 'events.live', 'turn.start', 'turn.interrupt']
+    }
+  };
+  const startedAt = Date.now() - 5000;
+  const run = {
+    id: 'run-1',
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    status: 'RUNNING',
+    version: 2,
+    startedAt,
+    createdAt: startedAt
+  };
+  const snapshot = {
+    kind: 'session-watch-snapshot',
+    sequence: 1,
+    session,
+    runs: [run],
+    queue: { version: 0, paused: false, items: [] },
+    context: null,
+    conversation: {
+      unit: 'SEGMENT',
+      source: 'runtime',
+      nextCursor: null,
+      snapshotSequence: 1,
+      segments: [
+        {
+          id: 'segment-1',
+          turnId: 'turn-1',
+          index: 0,
+          sessionId: session.id,
+          runId: run.id,
+          status: 'RUNNING',
+          startedAt,
+          items: [
+            {
+              id: 'command-1',
+              kind: 'command_execution',
+              status: 'COMPLETED',
+              startedAt,
+              completedAt: startedAt + 100,
+              processGroup: { id: 'process-1', isStart: true },
+              payload: { command: 'pwd' }
+            }
+          ]
+        }
+      ]
+    }
+  };
+  await page.route('**/api/agent-sessions/session-1?nodeId=node-1', (route) =>
+    json(route, { session })
+  );
+  await page.route('**/api/agent-sessions/session-1/watch', (route) =>
+    fulfillMockSessionWatch(page, route, session, snapshot)
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
+  await page.locator('.session-list button').first().click();
+  const heading = page.locator('.process-heading');
+  await expect(heading).toContainText('正在运行命令');
+  await expect(page.locator('.composer-working')).toBeVisible();
+  await emitMockSessionEvent(page, 'session', { session: { ...session, activity: 'IDLE' } });
+  await expect(heading).toContainText('状态未知');
+  await expect(page.locator('.composer-working')).toHaveCount(0);
+  await page.evaluate((payload) => {
+    const socket = (
+      window as unknown as {
+        __consoleMockWorkbenchWebSocket: {
+          activeWatch: Record<string, unknown>;
+          dispatch(event: unknown): void;
+        };
+      }
+    ).__consoleMockWorkbenchWebSocket;
+    socket.dispatch({
+      type: 'watch.session.snapshot',
+      workbenchConnectionId: 'mock-workbench-connection',
+      ...socket.activeWatch,
+      revision: 1,
+      snapshotSequence: 2,
+      expiresAt: Date.now() + 30_000,
+      payload: {
+        ...payload,
+        sequence: 20,
+        conversation: { ...payload.conversation, snapshotSequence: 20 }
+      }
+    });
+  }, snapshot);
+  await expect(heading).toContainText('正在运行命令');
+  await expect(heading).not.toContainText('状态未知');
+  await expect(page.locator('.composer-working')).toBeVisible();
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
+});
+
 // Optimistic Run state and late responses
 test('Idle transitions preserve input and late responses cannot switch back to the previous session', async ({
   page

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessage } from 'element-plus';
+
 import { promptCompletionPreferenceService } from '../../service/PromptCompletionPreferenceService';
 import { translate } from '../../service/LocalePreferenceService';
 import { errorMessage } from '../../util/workbench-presentation';
@@ -10,7 +12,7 @@ function setEnabled(value: boolean) {
   try {
     service.setEnabled(value);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   }
 }
 </script>

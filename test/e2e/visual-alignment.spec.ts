@@ -9,6 +9,75 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Shared tooltip keeps one active instance for thousands of targets and preserves ARIA', async ({
+  page
+}) => {
+  const warnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'warning' || message.type() === 'error') warnings.push(message.text());
+  });
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const first = page.locator('[data-row="1"]');
+  const second = page.locator('[data-row="2"]');
+  const hint = page.locator('.mar-tooltip:visible');
+  await expect(page.locator('[data-row]')).toHaveCount(1000);
+  await expect(page.getByTestId('tooltip-created')).toHaveText('0');
+  await page.getByTestId('grow').click();
+  await expect(page.locator('[data-row]')).toHaveCount(2000);
+  await expect(page.getByTestId('tooltip-created')).toHaveText('0');
+  await first.locator('span').hover();
+  await expect(hint).toHaveText('Original 1');
+  await expect(page.getByTestId('tooltip-live')).toHaveText('1');
+  await expect(first).toHaveAccessibleDescription('Existing description Original 1');
+  await expect(first).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(first).toHaveAttribute('aria-expanded', 'false');
+  await second.hover();
+  await expect(hint).toHaveText('Original 2');
+  await expect(hint).toHaveCount(1);
+  await expect(first).toHaveAttribute('aria-describedby', 'existing-description');
+  await second.focus();
+  await second.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute('aria-describedby', 'existing-description');
+  await expect(page.getByTestId('tooltip-live')).toHaveText('0');
+  expect(warnings).toEqual([]);
+});
+
+test('Shared tooltip cancels stale targets and follows content, hidden, removed and scrolling state', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const first = page.locator('[data-row="1"]');
+  const second = page.locator('[data-row="2"]');
+  const hint = page.locator('.mar-tooltip:visible');
+  await first.hover();
+  await second.hover();
+  await expect(hint).toHaveText('Original 2');
+  await page.getByTestId('rename').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveText('Updated 2');
+  await page.getByTestId('disable').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveCount(0);
+  await expect(second).toHaveAttribute('aria-describedby', 'existing-description');
+  await page.getByTestId('disable').click();
+  await first.focus();
+  await expect(hint).toHaveText('Updated 1');
+  await page.getByTestId('hide').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveCount(0);
+  await page.getByTestId('hide').click();
+  await first.hover();
+  await expect(hint).toHaveText('Updated 1');
+  await page.getByTestId('tooltip-list').evaluate((list) => {
+    list.scrollTop = 80;
+  });
+  await expect(hint).toHaveCount(0);
+  await page.locator('[data-row="5"]').hover();
+  await expect(hint).toHaveText('Updated 5');
+  await page.getByTestId('remove').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveCount(0);
+  await expect(page.getByTestId('tooltip-live')).toHaveText('0');
+});
+
 test('Table overflow hints share the theme without template-ref warnings', async ({ page }) => {
   const warnings: string[] = [];
   page.on('console', (message) => {
@@ -17,6 +86,15 @@ test('Table overflow hints share the theme without template-ref warnings', async
   await page.goto(`${fixture.url}visual-alignment.html`);
   await page.locator('.el-table__body .cell').hover();
   await expect(page.locator('.mar-tooltip:visible')).toContainText(
+    'A complete long table cell description'
+  );
+  const hint = page.locator('.mar-tooltip:visible');
+  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await expect(hint).toHaveCSS('pointer-events', 'auto');
+  await hint.hover();
+  await expect(hint).toBeVisible();
+  await hint.click({ clickCount: 3, position: { x: 24, y: 12 } });
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain(
     'A complete long table cell description'
   );
   expect(warnings.filter((message) => /ref owner|Missing ref|unmounted/i.test(message))).toEqual(
@@ -93,11 +171,31 @@ test('Theme action hints do not replace dropdown semantics', async ({ page }) =>
   await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await trigger.focus();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText(
+    (await trigger.getAttribute('aria-label')) ?? ''
+  );
   await trigger.press('Enter');
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('menuitem', { name: /duplicate/i })).toBeVisible();
   await page.getByRole('menuitem', { name: /duplicate/i }).press('Escape');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const row = page.getByRole('treeitem', { name: 'Fixture workspace' });
+  await row.focus();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Fixture workspace');
+  await row.hover();
+  await page.mouse.move(0, 0);
+  await expect(row).toBeFocused();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Fixture workspace');
+  await page.goto(`${fixture.url}workspace-tabs.html?locale=en-US`);
+  const tab = page.getByRole('tab', { name: 'Workspace one', exact: true });
+  await tab.focus();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Workspace one');
 });
 
 test('Performance hover displays the details panel without a second hint', async ({ page }) => {
@@ -214,6 +312,79 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await second.press('Tab');
     await page.keyboard.press('Shift+Tab');
     await expect(second).toHaveCSS('outline-style', 'solid');
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`Notification long content wraps completely and remains scrollable: mobile=${mobile}`, async ({
+    browser
+  }, testInfo) => {
+    const viewport = mobile ? { width: 320, height: 480 } : { width: 1280, height: 720 };
+    const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}visual-alignment.html?long-notification=1${mobile ? '&mobile=1&theme=daylight' : ''}`
+      );
+      await page.locator('.workbench-notification-center button').first().click();
+      const panel = page.locator('.workbench-notification-panel');
+      const item = panel.locator('.workbench-notification-list > li').first();
+      const title = item.locator('strong');
+      const message = item.locator('small');
+      await expect(message).toContainText('End of notification.');
+      for (const text of [title, message]) {
+        const metrics = await text.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const box = element.getBoundingClientRect();
+          const lines = [...range.getClientRects()];
+          return {
+            lines: lines.length,
+            width: box.width,
+            contentWidth: range.getBoundingClientRect().width,
+            allLinesInside: lines.every((line) => {
+              const center = line.top + line.height / 2;
+              return center >= box.top && center <= box.bottom;
+            })
+          };
+        });
+        expect(metrics.lines).toBeGreaterThan(1);
+        expect(metrics.contentWidth).toBeLessThanOrEqual(metrics.width + 1);
+        expect(metrics.allLinesInside).toBe(true);
+      }
+      const font = await message.evaluate((element) => ({
+        actual: getComputedStyle(element).fontSize,
+        expected: getComputedStyle(document.documentElement)
+          .getPropertyValue('--mar-font-size-meta')
+          .trim()
+      }));
+      expect(font.actual).toBe(font.expected);
+      const messageBox = (await message.boundingBox())!;
+      const time = item.locator('time');
+      const timeBox = (await time.boundingBox())!;
+      expect(timeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
+      const section = panel.locator('.workbench-notification-section');
+      await section.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(time).toBeInViewport();
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+      await page.screenshot({
+        path: testInfo.outputPath('notification-long.png'),
+        animations: 'disabled'
+      });
+      const remove = item.locator('.workbench-notification-delete');
+      await remove.scrollIntoViewIfNeeded();
+      await expect(remove).toBeInViewport({ ratio: 1 });
+      if (mobile) await remove.tap();
+      else await remove.click();
+      await expect(item).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
   });
 }
 

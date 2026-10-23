@@ -130,10 +130,6 @@ describe('Web theme preference', () => {
     expect(daylight['--mar-text-tertiary']).toBe('#5d6d80');
     expect(daylight['--mar-text-muted']).toBe('#5d6d80');
     expect(daylight['--mar-text-faint']).toBe('#5d6d80');
-    expect(source).toContain('html.console-ui .el-message--info {');
-    expect(source).toMatch(
-      /html\.console-ui \.el-message__content\s*\{[^}]*white-space:\s*pre-line;[^}]*line-height:\s*1\.5;/u
-    );
 
     for (const state of [
       '--mar-color-brand',
@@ -219,8 +215,6 @@ describe('Web theme preference', () => {
     expect(dark['--mar-shadow-medium']).toBe('#00000047');
     expect(dark['--mar-overlay-scrim']).toBe('#0000007a');
     expect(dark['--mar-text-neutral-control']).toBe('#8799b1');
-    expect(source).toContain("html.console-ui[data-theme='vscode-dark-2026'] .el-message--info {");
-    expect(source).toContain('--el-message-bg-color: var(--mar-bg-tab-inactive);');
   });
 
   it('keeps navigation selection separate from brand interactions and stronger than hover', () => {

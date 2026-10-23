@@ -5,7 +5,7 @@ import { createRunService } from '../../src/service/RunService.js';
 import { createWorkbenchRunControlService } from '../../src/service/WorkbenchRunControlService.js';
 
 describe('Shared Run interrupt control', () => {
-  it('shows a Node-confirmed Goal stop only for the still-selected session', async () => {
+  it('does not show Goal-exit feedback when a stop succeeds and applies the Run state', async () => {
     const selectedNodeId = ref<string | undefined>('node-1');
     const selectedSessionId = ref<string | undefined>('session-1');
     const runService = createRunService(selectedSessionId);
@@ -18,49 +18,44 @@ describe('Shared Run interrupt control', () => {
     };
     runService.runs.value = [run];
     let resolveRequest!: (value: unknown) => void;
-    const onGoalExit = vi.fn();
+    const notice = vi.fn();
     const controller = createWorkbenchRunControlService({
       workspaceTarget: workspaceTargetRef(selectedNodeId, ref<string | undefined>('workspace-1')),
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => runService.runs.value[0]),
       runs: runService.runs,
-      notice: ref(''),
+      notice,
       runService,
       request: vi.fn(() => new Promise((resolve) => (resolveRequest = resolve))) as never,
       sessionPathId: (value) => value,
       errorMessage: () => 'error',
-      beginSubmission: () => () => true,
-      onGoalExit
+      beginSubmission: () => () => true
     });
 
     const firstStop = controller.stopActiveRun();
     resolveRequest({
-      run: { ...run, status: 'CANCELLING' },
-      goalExit: { status: 'stopped', turns: 2, elapsedWallMs: 4_000 }
+      run: { ...run, status: 'CANCELLING' }
     });
     await firstStop;
-    expect(onGoalExit).toHaveBeenCalledWith({
-      status: 'stopped',
-      turns: 2,
-      elapsedWallMs: 4_000
-    });
+    expect(runService.runs.value[0]?.status).toBe('CANCELLING');
+    expect(notice).not.toHaveBeenCalled();
 
     const secondStop = controller.stopActiveRun();
     selectedSessionId.value = 'session-2';
     resolveRequest({
-      run: { ...run, status: 'CANCELLING' },
-      goalExit: { status: 'stopped', turns: 2, elapsedWallMs: 5_000 }
+      run: { ...run, status: 'CANCELLING' }
     });
     await secondStop;
-    expect(onGoalExit).toHaveBeenCalledTimes(1);
+    expect(runService.runs.value[0]?.status).toBe('CANCELLING');
+    expect(notice).not.toHaveBeenCalled();
     expect(selectedNodeId.value).toBe('node-1');
   });
 
-  it('reports Goal stop from a session interrupt before its Run snapshot arrives', async () => {
+  it('applies a successful session interrupt before its Run snapshot arrives without feedback', async () => {
     const selectedSessionId = ref<string | undefined>('session-1');
     const runService = createRunService(selectedSessionId);
-    const onGoalExit = vi.fn();
+    const notice = vi.fn();
     const controller = createWorkbenchRunControlService({
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
@@ -70,7 +65,7 @@ describe('Shared Run interrupt control', () => {
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => undefined),
       runs: runService.runs,
-      notice: ref(''),
+      notice,
       runService,
       request: vi.fn(async () => ({
         run: {
@@ -79,21 +74,17 @@ describe('Shared Run interrupt control', () => {
           status: 'CANCELLING',
           recoveryState: 'ACTIVE',
           clientMessageId: 'message-1'
-        },
-        goalExit: { status: 'stopped', turns: 1, elapsedWallMs: 500 }
+        }
       })) as never,
       sessionPathId: (value) => value,
       errorMessage: () => 'error',
-      beginSubmission: () => () => true,
-      onGoalExit
+      beginSubmission: () => () => true
     });
 
     await controller.stopActiveRun();
-    expect(onGoalExit).toHaveBeenCalledWith({
-      status: 'stopped',
-      turns: 1,
-      elapsedWallMs: 500
-    });
+    expect(runService.runs.value[0]?.status).toBe('CANCELLING');
+    expect(runService.selectedRunId.value).toBe('run-1');
+    expect(notice).not.toHaveBeenCalled();
   });
 
   it('Stops without settling business state early when the session is active but no Run snapshot has arrived', async () => {
@@ -115,7 +106,7 @@ describe('Shared Run interrupt control', () => {
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => undefined),
       runs: runService.runs,
-      notice: ref(''),
+      notice: vi.fn(),
       runService,
       request: request as never,
       sessionPathId: (value) => value,
@@ -152,6 +143,8 @@ describe('Shared Run interrupt control', () => {
       }
     ];
     runService.selectedRunId.value = 'run-1';
+    const notice = vi.fn();
+    const error = new Error('INTERRUPT_DENIED');
     let rejectRequest!: (error: Error) => void;
     const controller = createWorkbenchRunControlService({
       workspaceTarget: workspaceTargetRef(
@@ -162,7 +155,7 @@ describe('Shared Run interrupt control', () => {
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => runService.runs.value[0]),
       runs: runService.runs,
-      notice: ref(''),
+      notice,
       runService,
       request: vi.fn(() => new Promise((_resolve, reject) => (rejectRequest = reject))) as never,
       sessionPathId: (value) => value,
@@ -172,16 +165,70 @@ describe('Shared Run interrupt control', () => {
 
     const stopping = controller.stopActiveRun();
     expect(runService.runs.value[0]?.status).toBe('RUNNING');
-    rejectRequest(new Error('INTERRUPT_DENIED'));
+    rejectRequest(error);
     await stopping;
     expect(runService.runs.value[0]?.status).toBe('RUNNING');
     expect(runService.sessionInterruptionSettled('session-1')).toBe(false);
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining('INTERRUPT_DENIED'),
+      'error',
+      error
+    );
   });
+
+  it.each(['no Run snapshot', 'known Run'] as const)(
+    'ignores a missing Run without changing local run history or showing feedback (%s)',
+    async (snapshot) => {
+      const selectedSessionId = ref<string | undefined>('session-1');
+      const runService = createRunService(selectedSessionId);
+      const run = {
+        id: 'run-1',
+        sessionId: 'session-1',
+        status: 'RUNNING' as const,
+        recoveryState: 'ACTIVE' as const,
+        clientMessageId: 'message-1'
+      };
+      if (snapshot === 'known Run') {
+        runService.runs.value = [run];
+        runService.selectedRunId.value = run.id;
+      }
+      const notice = vi.fn();
+      const error = Object.assign(new Error('RUN_NOT_FOUND'), {
+        code: 'RUN_NOT_FOUND'
+      });
+      const controller = createWorkbenchRunControlService({
+        workspaceTarget: workspaceTargetRef(
+          ref<string | undefined>('node-1'),
+          ref<string | undefined>('workspace-1')
+        ),
+        selectedSessionId,
+        selectedRunId: runService.selectedRunId,
+        activeRun: computed(() => runService.runs.value[0]),
+        runs: runService.runs,
+        notice,
+        runService,
+        request: vi.fn(async () => {
+          throw error;
+        }) as never,
+        sessionPathId: (value) => value,
+        errorMessage: String,
+        beginSubmission: () => () => true
+      });
+
+      await controller.stopActiveRun();
+
+      expect(runService.runs.value).toEqual(snapshot === 'known Run' ? [run] : []);
+      expect(runService.selectedRunId.value).toBe(snapshot === 'known Run' ? run.id : undefined);
+      expect(runService.sessionInterruptionSettled('session-1')).toBe(false);
+      expect(notice).not.toHaveBeenCalled();
+    }
+  );
 
   it('Does not roll back business state when a session-level stop is rejected', async () => {
     const selectedSessionId = ref<string | undefined>('session-1');
     const runService = createRunService(selectedSessionId);
-    const notice = ref('');
+    const notice = vi.fn();
+    const error = new Error('INTERRUPT_DENIED');
     const controller = createWorkbenchRunControlService({
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
@@ -194,7 +241,7 @@ describe('Shared Run interrupt control', () => {
       notice,
       runService,
       request: vi.fn(async () => {
-        throw new Error('INTERRUPT_DENIED');
+        throw error;
       }) as never,
       sessionPathId: (value) => value,
       errorMessage: () => 'INTERRUPT_DENIED',
@@ -208,6 +255,10 @@ describe('Shared Run interrupt control', () => {
     expect(runService.runs.value).toEqual([]);
     expect(runService.selectedRunId.value).toBeUndefined();
     expect(runService.sessionInterruptionSettled('session-1')).toBe(false);
-    expect(notice.value).toContain('INTERRUPT_DENIED');
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining('INTERRUPT_DENIED'),
+      'error',
+      error
+    );
   });
 });

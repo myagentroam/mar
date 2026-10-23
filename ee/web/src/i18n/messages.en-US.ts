@@ -926,11 +926,7 @@ export const enUS = {
     fileChangeRenamed: conversationUiEnUS.presentation.fileChangeRenamed,
     fileChangeCopied: conversationUiEnUS.presentation.fileChangeCopied,
     fileChangeTypeChanged: conversationUiEnUS.presentation.fileChangeTypeChanged,
-    unavailableParameters: conversationUiEnUS.presentation.unavailableParameters,
-    noticeErrorPattern: workbenchCompositionEnUS.presentation.noticeErrorPattern,
-    noticeWarningPattern: workbenchCompositionEnUS.presentation.noticeWarningPattern,
-    noticeCopyPattern: workbenchCompositionEnUS.presentation.noticeCopyPattern,
-    noticeSuccessPattern: workbenchCompositionEnUS.presentation.noticeSuccessPattern
+    unavailableParameters: conversationUiEnUS.presentation.unavailableParameters
   },
   nodeMessages: {
     planDetail: composerEnUS.nodeMessages.planDetail,

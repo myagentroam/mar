@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { marIcon } from '../../util/mar-icons.js';
+import { showMessage } from '../../service/MessageFeedbackService.js';
 
-import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import { useI18n } from 'vue-i18n';
 import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -66,9 +65,9 @@ function lastMessageLabel(): string {
 async function copyDiagnostics(): Promise<void> {
   try {
     await navigator.clipboard.writeText(JSON.stringify(props.diagnostics.detail(), null, 2));
-    ElMessage.info({ icon: marIcon('info'), message: t('performanceDiagnostics.copySucceeded') });
+    showMessage(t('performanceDiagnostics.copySucceeded'), 'info');
   } catch {
-    ElMessage.error({ icon: marIcon('error'), message: t('performanceDiagnostics.copyFailed') });
+    showMessage(t('performanceDiagnostics.copyFailed'), 'error');
   }
 }
 
@@ -98,14 +97,14 @@ onBeforeUnmount(props.diagnostics.dispose);
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
-          <el-tooltip v-bind="tooltipOptions" :content="t('performanceDiagnostics.copy')"
-            ><el-button
-              link
-              :aria-label="t('performanceDiagnostics.copy')"
-              @click="copyDiagnostics"
-            >
-              <MarIcon name="copy" /> </el-button
-          ></el-tooltip>
+          <el-button
+            v-tooltip="t('performanceDiagnostics.copy')"
+            link
+            :aria-label="t('performanceDiagnostics.copy')"
+            @click="copyDiagnostics"
+          >
+            <MarIcon name="copy" />
+          </el-button>
         </div>
       </header>
       <dl>

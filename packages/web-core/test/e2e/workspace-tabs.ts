@@ -1,4 +1,5 @@
-import { createApp, h, ref } from 'vue';
+import { createTooltipApp as createApp } from './tooltip-app.js';
+import { h, ref } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';

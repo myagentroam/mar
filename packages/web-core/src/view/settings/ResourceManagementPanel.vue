@@ -1,9 +1,11 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   managementUrlValues,
@@ -175,7 +177,7 @@ const pagination = createManagementPageService<Row>({
       sortBy.value,
       sortOrder.value
     ]),
-  reportError: (error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
+  reportError: (error) => showMessage(errorMessage(error), 'error', error)
 });
 const resources = pagination.items;
 const loading = pagination.loading;
@@ -390,7 +392,7 @@ async function pushAllUpgrades(): Promise<void> {
       (row) => row.resourceType === 'NODE' && canUpgrade(row)
     );
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
     pushingAllUpgrades.value = false;
     return;
   }
@@ -431,12 +433,12 @@ async function pushAllUpgrades(): Promise<void> {
     if (details.value?.resourceType === 'NODE')
       details.value = resources.value.find((item) => item.key === details.value?.key);
     if (failures.length === 0)
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('generated.resourceSharingPage.pushAllUpgradesSucceeded', {
+      showMessage(
+        translate('generated.resourceSharingPage.pushAllUpgradesSucceeded', {
           value0: succeeded
-        })
-      });
+        }),
+        'success'
+      );
     else
       await ElMessageBox.alert(
         h(
@@ -478,16 +480,15 @@ async function pushUpgrade(row: Row): Promise<void> {
       }
     );
     await requestUpgrade(row);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen')
-    });
+    showMessage(
+      translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen'),
+      'success'
+    );
     await load();
     if (details.value?.nodeId === row.nodeId)
       details.value = resources.value.find((item) => item.key === row.key);
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 async function cancelUpgrade(row: Row): Promise<void> {
@@ -495,21 +496,18 @@ async function cancelUpgrade(row: Row): Promise<void> {
     await props.request(`/api/nodes/${encodeURIComponent(row.nodeId)}/upgrade/cancel`, {
       method: 'POST'
     });
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.resourceSharingPage.pendingUpgradeCanceled')
-    });
+    showMessage(translate('generated.resourceSharingPage.pendingUpgradeCanceled'), 'success');
     await load();
     if (details.value?.nodeId === row.nodeId)
       details.value = resources.value.find((item) => item.key === row.key);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToCancelUpgrade')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToCancelUpgrade'),
+      'error',
+      error
+    );
   }
 }
 function openEdit(row: Row): void {
@@ -559,13 +557,13 @@ async function refreshNodeDetails(row = details.value): Promise<void> {
     if (details.value?.key === row.key)
       details.value = resources.value.find((current) => current.key === row.key);
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.nodeDetailsDialogs.unableToRefreshCapabilities')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.nodeDetailsDialogs.unableToRefreshCapabilities'),
+      'error',
+      error
+    );
   } finally {
     if (requestId === detailsRefreshRequest) detailsRefreshing.value = false;
   }
@@ -586,18 +584,15 @@ async function saveEdit(): Promise<void> {
     editing.value = undefined;
     await load();
     emit('changed');
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('generated.resourceSharingPage.resourceUpdated')
-    });
+    showMessage(translate('generated.resourceSharingPage.resourceUpdated'), 'success');
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToUpdateResource')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToUpdateResource'),
+      'error',
+      error
+    );
   }
 }
 async function registerNode(): Promise<void> {
@@ -617,13 +612,13 @@ async function registerNode(): Promise<void> {
     ).token;
     registrationOpen.value = false;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToCreateRegistrationToken')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToCreateRegistrationToken'),
+      'error',
+      error
+    );
   } finally {
     creatingRegistrationToken.value = false;
   }
@@ -665,8 +660,7 @@ async function removeResource(row: Row): Promise<void> {
     await load();
     emit('changed');
   } catch (error) {
-    if (error !== 'cancel')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
 }
 async function showUsage(runner: RunnerUsageName): Promise<void> {
@@ -681,13 +675,13 @@ async function showUsage(runner: RunnerUsageName): Promise<void> {
     ).usage;
     usageOpen.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.resourceSharingPage.unableToLoadUsage')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.resourceSharingPage.unableToLoadUsage'),
+      'error',
+      error
+    );
   } finally {
     usageLoading.value = undefined;
   }
@@ -823,14 +817,9 @@ onUnmounted(() => pagination.dispose());
       <el-table-column :label="translate('generated.resourceSharingPage.actions')" :width="290"
         ><template #default="{ row }"
           ><div class="row-actions" @click.stop>
-            <el-button
-              link
-              type="primary"
-              :icon="marIcon('edit')"
-              :disabled="!writable"
-              @click="openEdit(row)"
-              >{{ translate('generated.resourceSharingPage.edit') }}</el-button
-            >
+            <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
+              translate('generated.resourceSharingPage.edit')
+            }}</el-button>
             <el-button
               link
               type="danger"

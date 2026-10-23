@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
 import { watch } from 'vue';
@@ -9,7 +10,7 @@ interface RunnerProfileServiceOptions {
   readonly loading: ValueRef<boolean>;
   readonly failed: ValueRef<boolean>;
   readonly request: (path: string, init?: RequestInit) => Promise<unknown>;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly supportsAuto?: (nodeId: string) => boolean;
 }
@@ -253,7 +254,9 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
             options.notice(
               translate('generated.runnerProfileService.unableToSaveTheNodeDefaultSession', {
                 value0: options.errorMessage(error)
-              })
+              }),
+              'error',
+              error
             );
         }
       });

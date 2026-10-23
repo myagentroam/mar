@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, type Ref } from 'vue';
 import type {
@@ -33,7 +34,7 @@ interface WorkbenchNewSessionControllerOptions {
   readonly runnerProfiles: Ref<readonly RunnerProfile[]>;
   readonly draggingComposerAttachments: Ref<boolean>;
   readonly canUseComposer: Readonly<Ref<boolean>>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly closeMobileWorkspaceSurface: () => void;
   readonly stopSelectedSessionWatch: () => void;
   readonly nextDetailRequest: () => void;
@@ -48,8 +49,11 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
     canAcceptFiles: () => true,
     addFiles: options.addNewSessionFiles,
     rejectDirectory: () => {
-      options.notice.value = translate(
-        'generated.workbenchNewSessionController.foldersCannotBeAttachedCompressTheFolder'
+      options.notice(
+        translate(
+          'generated.workbenchNewSessionController.foldersCannotBeAttachedCompressTheFolder'
+        ),
+        'warning'
       );
     },
     setDragging: (dragging) => (options.draggingComposerAttachments.value = dragging)

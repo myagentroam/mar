@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { marIcon } from '@myagentroam/web-core/icons';
+import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import { ElMessage } from 'element-plus';
 import { proxyRefs, watch } from 'vue';
 import EnterpriseLoginExtension from '@/view/auth/EnterpriseLoginExtension.vue';
 import { createWorkbenchPageController } from '@/service/WorkbenchPageController';
@@ -20,10 +19,7 @@ watch(
     if (!loaded || oauthErrorHandled) return;
     if (oauthError === null) return;
     oauthErrorHandled = true;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: oauthErrorMessage(oauthError, t('workbench.oauthFailure'))
-    });
+    showMessage(oauthErrorMessage(oauthError, t('workbench.oauthFailure')), 'error');
     const url = new URL(window.location.href);
     url.searchParams.delete('oauthError');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);

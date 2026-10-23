@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
+import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { type FormInstance, type FormRules } from 'element-plus';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
+  type PersonalUsageRecords,
   type PersonalUsageOverview,
   type UsageGroup
 } from '@myagentroam/protocol';
@@ -22,7 +26,7 @@ import { createManagementPaginationService } from '../../service/ManagementPagin
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
 const service = new PersonalUsageService(props.request, (error) =>
-  ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) })
+  showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
 const busy = computed(() => state.loading || state.loadingPage);
@@ -47,6 +51,14 @@ function selectPurpose(purpose: (typeof purposes)[number]): void {
 }
 const metric = ref<'totalTokens' | 'requests'>('totalTokens');
 const tokenColumns = ['inputTokens', 'cacheReadTokens', 'outputTokens', 'totalTokens'] as const;
+const usageStateTypes: Record<PersonalUsageRecords['records'][number]['state'], TagProps['type']> =
+  {
+    running: 'primary',
+    succeeded: 'info',
+    failed: 'danger',
+    cancelled: 'info',
+    interrupted: 'warning'
+  };
 const activeBucket = ref<PersonalUsageOverview['buckets'][number]>();
 const bucketAnchor = shallowRef<SVGElement>();
 function showBucket(bucket: PersonalUsageOverview['buckets'][number], event: Event): void {
@@ -255,47 +267,27 @@ onUnmounted(() => {
           <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
           <p>
             {{ t('modelUsage.input') }}
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="number(card.value.inputTokens)"
-              :trigger="['hover', 'focus']"
-            >
-              <span class="usage-count" tabindex="0">{{
-                number(card.value.inputTokens, true)
-              }}</span>
-            </el-tooltip>
+            <span v-tooltip="number(card.value.inputTokens)" class="usage-count" tabindex="0">{{
+              number(card.value.inputTokens, true)
+            }}</span>
             · {{ t('modelUsage.cache') }}
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="cacheTooltip(card.value)"
-              :disabled="!hasCacheDetails(card.value)"
-              :trigger="['hover', 'focus']"
+            <span
+              v-tooltip="{
+                content: cacheTooltip(card.value),
+                disabled: !hasCacheDetails(card.value)
+              }"
+              :class="{ 'usage-count': hasCacheDetails(card.value) }"
+              :tabindex="hasCacheDetails(card.value) ? 0 : undefined"
+              >{{ cacheLabel(card.value, true) }}</span
             >
-              <span
-                :class="{ 'usage-count': hasCacheDetails(card.value) }"
-                :tabindex="hasCacheDetails(card.value) ? 0 : undefined"
-                >{{ cacheLabel(card.value, true) }}</span
-              >
-            </el-tooltip>
             · {{ t('modelUsage.output') }}
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="number(card.value.outputTokens)"
-              :trigger="['hover', 'focus']"
-            >
-              <span class="usage-count" tabindex="0">{{
-                number(card.value.outputTokens, true)
-              }}</span>
-            </el-tooltip>
+            <span v-tooltip="number(card.value.outputTokens)" class="usage-count" tabindex="0">{{
+              number(card.value.outputTokens, true)
+            }}</span>
           </p>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="number(card.value.totalTokens)"
-            :trigger="['hover', 'focus']"
-          >
-            <strong class="usage-count" tabindex="0">{{
-              number(card.value.totalTokens, true)
-            }}</strong> </el-tooltip
+          <strong v-tooltip="number(card.value.totalTokens)" class="usage-count" tabindex="0">{{
+            number(card.value.totalTokens, true)
+          }}</strong
           ><span>{{ t('modelUsage.totalTokens') }}</span>
           <span class="metadata">
             · {{ t('modelUsage.requests') }} {{ number(card.value.requests) }}</span
@@ -395,9 +387,8 @@ onUnmounted(() => {
       <template v-if="state.overview">
         <div class="section-heading">
           <h3>{{ t('modelUsage.trend') }}</h3>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="
+          <span
+            v-tooltip="
               t('modelUsage.selected', {
                 tokens: number(state.overview.selected.totalTokens),
                 input: number(state.overview.selected.inputTokens),
@@ -406,9 +397,9 @@ onUnmounted(() => {
                 requests: number(state.overview.selected.requests)
               })
             "
-            :trigger="['hover', 'focus']"
-          >
-            <span class="usage-count" tabindex="0">{{
+            class="usage-count"
+            tabindex="0"
+            >{{
               t('modelUsage.selected', {
                 tokens: number(state.overview.selected.totalTokens, true),
                 input: number(state.overview.selected.inputTokens, true),
@@ -416,8 +407,8 @@ onUnmounted(() => {
                 output: number(state.overview.selected.outputTokens, true),
                 requests: number(state.overview.selected.requests)
               })
-            }}</span>
-          </el-tooltip>
+            }}</span
+          >
         </div>
         <p class="metadata">
           {{ t('modelUsage.timeZone', { zone: timeZone }) }}
@@ -429,18 +420,15 @@ onUnmounted(() => {
           <div class="legend">
             <span class="input-key" />{{ t('modelUsage.input') }}
             <span class="cache-key" />
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="cacheTooltip(state.overview.selected)"
-              :disabled="!hasCacheDetails(state.overview.selected)"
-              :trigger="['hover', 'focus']"
+            <span
+              v-tooltip="{
+                content: cacheTooltip(state.overview.selected),
+                disabled: !hasCacheDetails(state.overview.selected)
+              }"
+              :class="{ 'usage-count': hasCacheDetails(state.overview.selected) }"
+              :tabindex="hasCacheDetails(state.overview.selected) ? 0 : undefined"
+              >{{ t('modelUsage.cache') }}</span
             >
-              <span
-                :class="{ 'usage-count': hasCacheDetails(state.overview.selected) }"
-                :tabindex="hasCacheDetails(state.overview.selected) ? 0 : undefined"
-                >{{ t('modelUsage.cache') }}</span
-              >
-            </el-tooltip>
             <span class="output-key" />{{ t('modelUsage.output') }}
           </div>
           <svg
@@ -524,7 +512,11 @@ onUnmounted(() => {
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
           </div>
           <details>
-            <summary>{{ t('modelUsage.chartData') }}</summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                t('modelUsage.chartData')
+              }}
+            </summary>
             <el-table :data="state.overview.buckets" :empty-text="t('modelUsage.empty')"
               ><el-table-column :label="t('modelUsage.time')"
                 ><template #default="{ row }"
@@ -537,27 +529,24 @@ onUnmounted(() => {
                 :min-width="key === 'cacheReadTokens' ? 170 : 110"
               >
                 <template #default="{ row }">
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
-                    :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
-                    :trigger="['hover', 'focus']"
+                  <span
+                    v-tooltip="{
+                      content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
+                      disabled: key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
+                    }"
+                    :class="{
+                      'usage-count':
+                        key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
+                    }"
+                    :tabindex="
+                      (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
+                        ? 0
+                        : undefined
+                    "
+                    >{{
+                      key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
+                    }}</span
                   >
-                    <span
-                      :class="{
-                        'usage-count':
-                          key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                      }"
-                      :tabindex="
-                        (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                          ? 0
-                          : undefined
-                      "
-                      >{{
-                        key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                      }}</span
-                    >
-                  </el-tooltip>
                 </template>
               </el-table-column></el-table
             >
@@ -587,31 +576,19 @@ onUnmounted(() => {
                 </div>
                 <div class="distribution-cache metadata">
                   {{ t('modelUsage.cache') }}
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    :content="cacheTooltip(group)"
-                    :disabled="!hasCacheDetails(group)"
-                    :trigger="['hover', 'focus']"
+                  <span
+                    v-tooltip="{ content: cacheTooltip(group), disabled: !hasCacheDetails(group) }"
+                    :class="{ 'usage-count': hasCacheDetails(group) }"
+                    :tabindex="hasCacheDetails(group) ? 0 : undefined"
+                    >{{ cacheLabel(group, true) }}</span
                   >
-                    <span
-                      :class="{ 'usage-count': hasCacheDetails(group) }"
-                      :tabindex="hasCacheDetails(group) ? 0 : undefined"
-                      >{{ cacheLabel(group, true) }}</span
-                    >
-                  </el-tooltip>
                   ·
                   {{
                     t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
                   }}
-                  <el-tooltip
-                    v-bind="tooltipOptions"
-                    :content="number(group[metric])"
-                    :trigger="['hover', 'focus']"
-                  >
-                    <strong class="usage-count" tabindex="0">{{
-                      number(group[metric], true)
-                    }}</strong>
-                  </el-tooltip>
+                  <strong v-tooltip="number(group[metric])" class="usage-count" tabindex="0">{{
+                    number(group[metric], true)
+                  }}</strong>
                 </div>
                 <div class="bar-track" aria-hidden="true">
                   <span
@@ -662,30 +639,26 @@ onUnmounted(() => {
                   :key="key"
                   ><dt>{{ t(`modelUsage.${key}`) }}</dt>
                   <dd>
-                    <el-tooltip
-                      v-bind="tooltipOptions"
+                    <span
+                      v-tooltip="{
+                        content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
+                        disabled:
+                          key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
+                      }"
                       v-if="key.endsWith('Tokens')"
-                      :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
-                      :disabled="
-                        key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
+                      :class="{
+                        'usage-count':
+                          key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
+                      }"
+                      :tabindex="
+                        (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
+                          ? 0
+                          : undefined
                       "
-                      :trigger="['hover', 'focus']"
+                      >{{
+                        key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
+                      }}</span
                     >
-                      <span
-                        :class="{
-                          'usage-count':
-                            key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                        }"
-                        :tabindex="
-                          (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                            ? 0
-                            : undefined
-                        "
-                        >{{
-                          key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                        }}</span
-                      >
-                    </el-tooltip>
                     <template v-else>{{ row[key] ?? t('modelUsage.unknown') }}</template>
                   </dd></template
                 >
@@ -725,32 +698,29 @@ onUnmounted(() => {
             :min-width="key === 'cacheReadTokens' ? 170 : 110"
           >
             <template #default="{ row }">
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key])"
-                :disabled="key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null"
-                :trigger="['hover', 'focus']"
+              <span
+                v-tooltip="{
+                  content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
+                  disabled: key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
+                }"
+                :class="{
+                  'usage-count': key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
+                }"
+                :tabindex="
+                  (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
+                    ? 0
+                    : undefined
+                "
+                >{{
+                  key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
+                }}</span
               >
-                <span
-                  :class="{
-                    'usage-count':
-                      key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                  }"
-                  :tabindex="
-                    (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                      ? 0
-                      : undefined
-                  "
-                  >{{
-                    key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                  }}</span
-                >
-              </el-tooltip>
             </template>
           </el-table-column>
           <el-table-column :label="t('modelUsage.state')" min-width="105"
             ><template #default="{ row }"
               ><el-tag
+                :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
                 effect="plain"
                 role="status"
                 :aria-label="t(`modelUsage.states.${row.state}`)"

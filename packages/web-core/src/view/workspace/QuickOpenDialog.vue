@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
 import {
@@ -420,7 +420,7 @@ function onKeydown(event: KeyboardEvent): void {
       </li>
     </ul>
     <p v-else-if="loading" class="empty" role="status">
-      <BusyIndicator /> {{ translate('generated.quickOpenDialog.searching') }}
+      <MarIcon name="loading-action" /> {{ translate('generated.quickOpenDialog.searching') }}
     </p>
     <p v-else-if="statusNotices.length === 0" class="empty">
       {{ translate('generated.quickOpenDialog.noMatches') }}
@@ -434,7 +434,11 @@ function onKeydown(event: KeyboardEvent): void {
       >
         <span>{{ translate(notice.label) }}: {{ statusText(notice.status) }}</span>
         <details v-if="notice.status.error !== undefined">
-          <summary>{{ translate('generated.quickOpenDialog.details') }}</summary>
+          <summary class="mar-disclosure-summary">
+            <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+              translate('generated.quickOpenDialog.details')
+            }}
+          </summary>
           <pre>{{ errorMessage(notice.status.error) }}</pre>
         </details>
         <button

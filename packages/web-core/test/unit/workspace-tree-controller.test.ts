@@ -58,7 +58,7 @@ function fixture() {
   });
   const showWorkbench = vi.fn();
   const loading = ref(false);
-  const notice = ref('');
+  const notice = vi.fn();
   const releaseTerminalDock = vi.fn();
   const deleteTerminalDock = vi.fn();
   const request = vi.fn(async (_path: string) => ({}));
@@ -763,10 +763,11 @@ describe('Public Workspace tree controller', () => {
 
   it('keeps the visible list after a failed refresh and ignores an older response', async () => {
     const f = fixture();
-    f.request.mockRejectedValueOnce(new Error('offline'));
+    const error = new Error('offline');
+    f.request.mockRejectedValueOnce(error);
     await f.controller.refreshNodeWorkspaces('node-1');
     expect(f.workspaces.value).toEqual([workspace('workspace-1')]);
-    expect(f.notice.value).toContain('offline');
+    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('offline'), 'error', error);
 
     let finishOldRequest: ((value: { workspaces: Workspace[] }) => void) | undefined;
     f.request.mockImplementationOnce(() => new Promise((resolve) => (finishOldRequest = resolve)));
@@ -796,14 +797,15 @@ describe('Public Workspace tree controller', () => {
       await f.controller.openWorkspaceFromTree('node-1', 'workspace-1');
       const current = workspace('workspace-1', { displayName: 'Current metadata' });
       f.workspaces.value = [current];
-      f.notice.value = 'Current notice';
+      f.notice('Current notice', 'info');
+      const previousFeedback = f.notice.mock.calls.slice();
 
       if (outcome === 'success') resolve({ workspaces: [workspace('workspace-1')] });
       else reject(new Error('Old failure'));
       await pending;
 
       expect(f.workspaces.value).toEqual([current]);
-      expect(f.notice.value).toBe('Current notice');
+      expect(f.notice.mock.calls).toEqual(previousFeedback);
     }
   );
 
@@ -918,7 +920,8 @@ describe('Public Workspace tree controller', () => {
     vi.mocked(ElMessageBox.confirm).mockResolvedValue(
       'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
     );
-    f.request.mockRejectedValue(new Error('network unavailable'));
+    const error = new Error('network unavailable');
+    f.request.mockRejectedValue(error);
 
     await f.controller.removeWorkspace('node-1', value);
 
@@ -927,7 +930,11 @@ describe('Public Workspace tree controller', () => {
     expect(f.selectedRunId.value).toBe('run-1');
     expect(f.tabs.tabs.value).toEqual([tab]);
     expect(f.loading.value).toBe(false);
-    expect(f.notice.value).toContain('network unavailable');
+    expect(f.notice).toHaveBeenCalledWith(
+      expect.stringContaining('network unavailable'),
+      'error',
+      error
+    );
   });
 
   it('preserves selection, releases loading, and skips list refresh when session cleanup fails', async () => {

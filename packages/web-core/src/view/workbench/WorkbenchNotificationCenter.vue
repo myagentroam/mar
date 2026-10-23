@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -149,30 +148,28 @@ const emit = defineEmits<{
 
 <template>
   <div ref="center" :class="['workbench-notification-center', { 'mobile-mode': mobileMode }]">
-    <el-tooltip
-      v-bind="tooltipOptions"
-      :content="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-      ><span class="mar-tooltip-control"
-        ><button
-          :class="[
-            'workbench-notification-trigger',
-            'icon-button',
-            { 'utility-control': !mobileMode }
-          ]"
-          type="button"
-          :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-          :aria-expanded="open"
-          @click="toggle"
-        >
-          <MarIcon name="notification" aria-hidden="true" />
-          <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
-            triggerLabel
-          }}</span>
-          <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
-            service.unreadCount.value
-          }}</span>
-        </button></span
-      ></el-tooltip
+    <span
+      v-tooltip="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+      class="mar-tooltip-control"
+      ><button
+        :class="[
+          'workbench-notification-trigger',
+          'icon-button',
+          { 'utility-control': !mobileMode }
+        ]"
+        type="button"
+        :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+        :aria-expanded="open"
+        @click="toggle"
+      >
+        <MarIcon name="notification" aria-hidden="true" />
+        <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
+          triggerLabel
+        }}</span>
+        <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
+          service.unreadCount.value
+        }}</span>
+      </button></span
     >
     <Teleport to="body" :disabled="!mobileMode">
       <Transition name="workbench-notification-panel">
@@ -206,9 +203,7 @@ const emit = defineEmits<{
               >
                 <MarIcon name="upload" />
                 <div>
-                  <el-tooltip v-bind="tooltipOptions" :content="task.name"
-                    ><strong>{{ task.name }}</strong></el-tooltip
-                  >
+                  <strong v-tooltip="task.name">{{ task.name }}</strong>
                   <small>
                     <span class="workbench-upload-size"
                       >{{ fileSizeLabel(task.receivedBytes) }} /
@@ -457,9 +452,7 @@ const emit = defineEmits<{
   gap: 0.2rem;
 }
 .workbench-notification-upload strong,
-.workbench-notification-upload small,
-.workbench-notification-list strong,
-.workbench-notification-list small {
+.workbench-notification-upload small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -475,8 +468,9 @@ const emit = defineEmits<{
   line-height: 1.35;
 }
 .workbench-notification-list > li > button:first-child small {
-  font-size: var(--mar-font-size-body);
-  line-height: 1.35;
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 .workbench-upload-size {
   display: inline-block;
@@ -495,18 +489,19 @@ const emit = defineEmits<{
 .workbench-notification-list > li > button:first-child {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 0.6rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.2rem;
+  padding: 0;
   text-align: left;
 }
 .workbench-notification-list > li > button:first-child strong,
 .workbench-notification-list > li > button:first-child small {
-  grid-column: 1;
+  overflow-wrap: anywhere;
 }
 .workbench-notification-title {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   color: var(--el-text-color-primary);
 }
@@ -526,9 +521,6 @@ const emit = defineEmits<{
   padding: 2px 4px;
 }
 .workbench-notification-list time {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  align-self: center;
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;

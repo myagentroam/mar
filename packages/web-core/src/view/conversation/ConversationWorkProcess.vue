@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -60,6 +59,7 @@ watch(open, async () => {
   >
     <p v-if="block.groupId && block.summary" class="process-summary">{{ block.summary.text }}</p>
     <button
+      v-tooltip="statusLabel"
       v-if="block.groupId"
       type="button"
       class="process-heading"
@@ -72,9 +72,7 @@ watch(open, async () => {
         :class="{ 'is-active': block.active && synchronized }"
       >
         <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
-        <el-tooltip v-bind="tooltipOptions" :content="statusLabel"
-          ><span class="process-activity-label">{{ statusLabel }}</span></el-tooltip
-        >
+        <span class="process-activity-label">{{ statusLabel }}</span>
       </span>
       <span v-if="durationMs !== undefined" class="process-duration"
         >·

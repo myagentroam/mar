@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { onUnmounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import { PersonalGitService } from '../../service/PersonalGitService.js';
 import { translate as t } from '../../service/LocalePreferenceService.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -45,8 +47,7 @@ async function load(): Promise<void> {
     includeParent.value = result.includeParentRepository;
     loaded.value = true;
   } catch (error) {
-    if (current === generation)
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (current === generation) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (current === generation) loading.value = false;
   }
@@ -65,11 +66,10 @@ async function save(): Promise<void> {
     if (current === generation) {
       preserve.value = result.preserveGitConfig;
       includeParent.value = result.includeParentRepository;
-      ElMessage.success({ icon: marIcon('success'), message: t('personalGit.saved') });
+      showMessage(t('personalGit.saved'), 'success');
     }
   } catch (error) {
-    if (current === generation)
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (current === generation) showMessage(errorMessage(error), 'error', error);
   } finally {
     if (current === generation) saving.value = false;
   }

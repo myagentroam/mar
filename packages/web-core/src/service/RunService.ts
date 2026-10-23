@@ -32,7 +32,7 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
   const settledSessionInterruptions = new Set<string>();
   const pendingSessionInterruptions = new Set<string>();
   const requestedSessionInterruptions = new Set<string>();
-  const suppressedInterruptedRunIds = new Map<string, string>();
+  const suppressedInterruptedRunIds = new Map<string, { sessionId: string; requested: boolean }>();
 
   function mergeSnapshots(next: readonly AgentRun[]): void {
     const currentById = new Map(runs.value.map((run) => [run.id, run]));
@@ -62,6 +62,19 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     next: readonly AgentRun[],
     baselineRuns: readonly AgentRun[]
   ): void {
+    // A fresh Watch snapshot can supersede observed idle, but not a requested stop.
+    for (const run of next) {
+      const suppressed = suppressedInterruptedRunIds.get(run.id);
+      if (
+        suppressed !== undefined &&
+        !suppressed.requested &&
+        suppressed.sessionId === run.sessionId &&
+        ACTIVE_RUN_STATUSES.has(run.status) &&
+        !requestedSessionInterruptions.has(suppressed.sessionId) &&
+        !pendingSessionInterruptions.has(suppressed.sessionId)
+      )
+        suppressedInterruptedRunIds.delete(run.id);
+    }
     const baselineById = new Map(baselineRuns.map((run) => [run.id, run]));
     const currentById = new Map(runs.value.map((run) => [run.id, run]));
     const snapshotRunIds = new Set(next.map((run) => run.id));
@@ -111,7 +124,7 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     settledSessionInterruptions.add(sessionId);
     if (runId !== undefined) {
       pendingSessionInterruptions.delete(sessionId);
-      suppressedInterruptedRunIds.set(runId, sessionId);
+      suppressedInterruptedRunIds.set(runId, { sessionId, requested: true });
     }
   }
 
@@ -119,6 +132,8 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     settledSessionInterruptions.add(sessionId);
     pendingSessionInterruptions.add(sessionId);
     requestedSessionInterruptions.add(sessionId);
+    for (const suppressed of suppressedInterruptedRunIds.values())
+      if (suppressed.sessionId === sessionId) suppressed.requested = true;
   }
 
   function settleSessionRuns(sessionId: string, requested = false): boolean {
@@ -132,12 +147,14 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     if (selectedRunId.value !== undefined && activeRunIds.has(selectedRunId.value))
       selectedRunId.value = undefined;
     if (activeRunIds.size > 0) settledSessionInterruptions.add(sessionId);
-    if (requested) {
-      settledSessionInterruptions.add(sessionId);
-      pendingSessionInterruptions.add(sessionId);
-      requestedSessionInterruptions.add(sessionId);
-    }
-    for (const runId of activeRunIds) suppressedInterruptedRunIds.set(runId, sessionId);
+    if (requested) markSessionInterruptionPending(sessionId);
+    for (const runId of activeRunIds)
+      suppressedInterruptedRunIds.set(runId, {
+        sessionId,
+        requested:
+          requestedSessionInterruptions.has(sessionId) ||
+          suppressedInterruptedRunIds.get(runId)?.requested === true
+      });
     return activeRunIds.size > 0;
   }
 
@@ -150,8 +167,8 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     settledSessionInterruptions.delete(sessionId);
     pendingSessionInterruptions.delete(sessionId);
     requestedSessionInterruptions.delete(sessionId);
-    for (const [runId, suppressedSessionId] of suppressedInterruptedRunIds)
-      if (suppressedSessionId === sessionId) suppressedInterruptedRunIds.delete(runId);
+    for (const [runId, suppressed] of suppressedInterruptedRunIds)
+      if (suppressed.sessionId === sessionId) suppressedInterruptedRunIds.delete(runId);
   }
 
   function resumeSessionAfterInterruption(sessionId: string): void {

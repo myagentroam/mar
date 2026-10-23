@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Panel resize fixture</title>
+    <style>
+      #panel {
+        height: 200px;
+        background: #ddd;
+        transition: width 160ms ease;
+      }
+      .fixture-handle {
+        left: 450px;
+        top: 20px;
+        height: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { h, ref } from 'vue';
+      import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
+      import ElementPlus from 'element-plus';
+      import 'element-plus/dist/index.css';
+      import PanelResizeHandle from '/packages/web-core/src/view/workbench/PanelResizeHandle.vue';
+
+      createApp({
+        setup() {
+          const panel = ref();
+          const width = ref(100);
+          return () => [
+            h('button', { onClick: () => (width.value = 300) }, 'Expand'),
+            h('div', {
+              id: 'panel',
+              ref: panel,
+              style: { width: `${width.value}px` },
+              'data-width': width.value
+            }),
+            h(PanelResizeHandle, {
+              class: 'fixture-handle',
+              target: panel.value,
+              label: 'Resize panel',
+              min: 180,
+              max: 420,
+              direction: 1,
+              onResize: (value) => (width.value = value)
+            })
+          ];
+        }
+      })
+        .use(ElementPlus)
+        .mount('#app');
+    </script>
+  </body>
+</html>

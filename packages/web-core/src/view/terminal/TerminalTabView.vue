@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { FitAddon } from '@xterm/addon-fit';
@@ -25,7 +26,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   exited: [terminalId: string];
-  notice: [message: string];
+  notice: [message: string, type: MessageType, cause?: unknown];
 }>();
 
 const host = ref<HTMLElement>();
@@ -56,8 +57,7 @@ const terminalService = createTerminalService({
     if (code === 'TERMINAL_FRAME_REJECTED') reconnectRelay?.();
     else xterm?.writeln(`\r\n[MyAgentRoam] ${code}`);
   },
-  onReconnectStatus: (message) => (reconnectStatus.value = message),
-  onNotice: (notice) => emit('notice', notice)
+  onReconnectStatus: (message) => (reconnectStatus.value = message)
 });
 reconnectRelay = terminalService.reconnect;
 function send(frame: object): void {
@@ -134,7 +134,8 @@ async function copySelection(): Promise<void> {
   } catch {
     emit(
       'notice',
-      translate('generated.terminalTabView.terminalCopyFailedCheckBrowserClipboardPermissions')
+      translate('generated.terminalTabView.terminalCopyFailedCheckBrowserClipboardPermissions'),
+      'error'
     );
   }
 }
@@ -149,7 +150,8 @@ async function pasteFromClipboard(): Promise<void> {
   } catch {
     emit(
       'notice',
-      translate('generated.terminalTabView.terminalPasteFailedCheckClipboardPermissions')
+      translate('generated.terminalTabView.terminalPasteFailedCheckClipboardPermissions'),
+      'error'
     );
   }
 }

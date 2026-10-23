@@ -548,18 +548,19 @@ test('Skill source management discovers external entries and adds them to the pe
     await existingCheckUpdateBlocked;
     return json(route, { updateAvailable: false, latestCommitSha: 'c'.repeat(40) });
   });
-  await page.route('**/api/skill-favorites', (route) => {
-    if (route.request().method() === 'POST') {
-      added = true;
-      addedBody = route.request().postDataJSON() as Record<string, unknown>;
-      presentation = {
-        featured: Boolean(addedBody['featured']),
-        tags: Array.isArray(addedBody['tags']) ? addedBody['tags'].map(String) : []
-      };
-      return json(route, { favorite: { id: 'favorite-1' } }, 201);
-    }
-    return json(route, {
-      favorites: [
+  await page.route(
+    (url) => url.pathname === '/api/skill-favorites',
+    (route) => {
+      if (route.request().method() === 'POST') {
+        added = true;
+        addedBody = route.request().postDataJSON() as Record<string, unknown>;
+        presentation = {
+          featured: Boolean(addedBody['featured']),
+          tags: Array.isArray(addedBody['tags']) ? addedBody['tags'].map(String) : []
+        };
+        return json(route, { favorite: { id: 'favorite-1' } }, 201);
+      }
+      const favorites = [
         {
           id: 'favorite-existing',
           sourceId: 'skills-sh',
@@ -596,9 +597,19 @@ test('Skill source management discovers external entries and adds them to the pe
               }
             ]
           : [])
-      ]
-    });
-  });
+      ];
+      const keyword = new URL(route.request().url()).searchParams.get('keyword') ?? '';
+      const matches = favorites.filter((favorite) => JSON.stringify(favorite).includes(keyword));
+      return json(route, {
+        favorites: matches,
+        page: 1,
+        pageSize: 20,
+        total: matches.length,
+        hasMore: false,
+        facets: { tags: [...new Set(['Java', ...presentation.tags])] }
+      });
+    }
+  );
   await page.route('**/api/skill-favorites/favorite-1', (route) => {
     if (route.request().method() !== 'PATCH') return route.fallback();
     editedBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -923,39 +934,46 @@ test('MCP source tables open source, discovery, and catalog details through clic
     await secondCheckUpdateBlocked;
     return json(route, { updateAvailable: false, latestVersion: '1.2.0' });
   });
-  await page.route('**/api/mcp-catalog', (route) =>
-    json(route, {
-      entries: [
-        {
-          id: 'catalog-1',
-          sourceId: 'acme-registry',
-          serverName: 'acme-existing',
-          displayName: 'Acme Existing',
-          description: 'Existing catalog MCP server',
-          version: '1.0.0',
-          runtime: { transport: 'HTTP' },
-          scope: 'PERSONAL',
-          featured: true,
-          tags: ['backend'],
-          manageable: true,
-          updatedAt: 1_700_000_000_000
-        },
-        {
-          id: 'catalog-2',
-          sourceId: 'acme-registry',
-          serverName: 'acme-tools',
-          displayName: 'Acme Tools',
-          description: 'Auxiliary MCP server',
-          version: '1.2.0',
-          runtime: { transport: 'STDIO' },
-          scope: 'PERSONAL',
-          featured: false,
-          tags: ['tools'],
-          manageable: true,
-          updatedAt: 1_700_000_000_000
-        }
-      ]
-    })
+  await page.route(
+    (url) => url.pathname === '/api/mcp-catalog',
+    (route) =>
+      json(route, {
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        hasMore: false,
+        facets: { tags: ['backend', 'tools'] },
+        entries: [
+          {
+            id: 'catalog-1',
+            sourceId: 'acme-registry',
+            serverName: 'acme-existing',
+            displayName: 'Acme Existing',
+            description: 'Existing catalog MCP server',
+            version: '1.0.0',
+            runtime: { transport: 'HTTP' },
+            scope: 'PERSONAL',
+            featured: true,
+            tags: ['backend'],
+            manageable: true,
+            updatedAt: 1_700_000_000_000
+          },
+          {
+            id: 'catalog-2',
+            sourceId: 'acme-registry',
+            serverName: 'acme-tools',
+            displayName: 'Acme Tools',
+            description: 'Auxiliary MCP server',
+            version: '1.2.0',
+            runtime: { transport: 'STDIO' },
+            scope: 'PERSONAL',
+            featured: false,
+            tags: ['tools'],
+            manageable: true,
+            updatedAt: 1_700_000_000_000
+          }
+        ]
+      })
   );
   await page.route('**/api/mcp-sources/acme-registry/servers?*', (route) =>
     json(route, {

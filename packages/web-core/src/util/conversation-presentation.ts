@@ -207,15 +207,17 @@ export function conversationDisplayItems(
     // Independent tool rows do not split other categories in the same process.
     if (
       groupId &&
-      entry.type === 'item' &&
-      item.kind === 'tool_call' &&
-      item.permissionStop === undefined &&
-      toolPresentation(item.payload) !== undefined
+      ((entry.type === 'subagent_group' &&
+        !stringField(conversationPayload(item.payload) ?? {}, 'subagentId')) ||
+        (entry.type === 'item' &&
+          item.kind === 'tool_call' &&
+          item.permissionStop === undefined &&
+          toolPresentation(item.payload) !== undefined))
     ) {
       result.push(entry);
       continue;
     }
-    if (!groupId || !('items' in entry) || entry.type === 'subagent_group') {
+    if (!groupId || !('items' in entry)) {
       anchors.clear();
       result.push(entry);
       continue;
@@ -224,7 +226,10 @@ export function conversationDisplayItems(
     const key = JSON.stringify([
       entry.type,
       item.parentItemId ?? null,
-      entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null
+      entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null,
+      entry.type === 'subagent_group'
+        ? stringField(conversationPayload(item.payload) ?? {}, 'subagentId')
+        : null
     ]);
     const index = anchors.get(key);
     const previous = index === undefined ? undefined : result[index];
@@ -624,9 +629,7 @@ export function subagentGroupText(items: readonly ConversationItem[]): string {
     );
   });
   const value = conversationPayload((named ?? latest).payload) ?? {};
-  return [subagentTaskTitle(value), subagentOperationText(latest.payload)]
-    .filter(Boolean)
-    .join(' · ');
+  return subagentTaskTitle(value);
 }
 
 function subagentToolDetail(value: Record<string, unknown>): string {

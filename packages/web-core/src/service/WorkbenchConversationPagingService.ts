@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, ref, watch, type Ref } from 'vue';
 import type {
@@ -26,7 +27,7 @@ export function createWorkbenchConversationPagingService(options: {
   readonly replaceRecent: (page: ConversationTurnPage) => boolean | void;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
   let refreshingRecent = false;

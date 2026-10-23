@@ -57,7 +57,7 @@ describe('Conversation History Pagination', () => {
           finish = resolve;
         }) as never,
       sessionPathId: (value) => value,
-      notice: ref(''),
+      notice: vi.fn(),
       errorMessage: String
     });
     const pending = service.loadOlderConversationTurns();
@@ -74,7 +74,7 @@ describe('Conversation History Pagination', () => {
     for (const outcome of ['resolve', 'reject'] as const) {
       const turns = { value: [turn('current')] };
       const nextCursor = { value: 'runtime-cursor' as string | null };
-      const notice = { value: '' };
+      const notice = vi.fn();
       let resolveRequest!: (value: unknown) => void;
       let rejectRequest!: (error: Error) => void;
       const service = createWorkbenchConversationPagingService({
@@ -93,7 +93,7 @@ describe('Conversation History Pagination', () => {
             rejectRequest = reject;
           }) as never,
         sessionPathId: (value) => value,
-        notice: notice as never,
+        notice,
         errorMessage: String
       });
 
@@ -111,14 +111,14 @@ describe('Conversation History Pagination', () => {
 
       expect(turns.value.map((candidate) => candidate.id)).toEqual(['current']);
       expect(nextCursor.value).toBe('official-cursor');
-      expect(notice.value).toBe('');
+      expect(notice).not.toHaveBeenCalled();
     }
   });
 
   it('Keeps displayed history when the page cursor expires and retries once with the latest cursor', async () => {
     const turns = { value: [turn('already-loaded'), turn('current')] };
     const nextCursor = { value: 'expired-cursor' as string | null };
-    const notice = { value: '' };
+    const notice = vi.fn();
     const requests: string[] = [];
     const scrollElement = {
       scrollTop: 50,
@@ -145,7 +145,7 @@ describe('Conversation History Pagination', () => {
         return segmentPage([turn('older')], null) as never;
       },
       sessionPathId: (value) => value,
-      notice: notice as never,
+      notice,
       errorMessage: String
     });
 
@@ -162,14 +162,14 @@ describe('Conversation History Pagination', () => {
       'latest'
     ]);
     expect(nextCursor.value).toBeNull();
-    expect(notice.value).toBe('');
+    expect(notice).not.toHaveBeenCalled();
     expect(scrollElement.scrollTop).toBe(150);
   });
 
   it('Reports cursor-repair failure until a later explicit load retries successfully', async () => {
     const turns = { value: [turn('current')] };
     const nextCursor = { value: 'expired-cursor' as string | null };
-    const notice = { value: '' };
+    const notice = vi.fn();
     const requests: string[] = [];
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
@@ -189,7 +189,7 @@ describe('Conversation History Pagination', () => {
         return segmentPage([turn('older')], null) as never;
       },
       sessionPathId: (value) => value,
-      notice: notice as never,
+      notice,
       errorMessage: String
     });
 
@@ -199,7 +199,7 @@ describe('Conversation History Pagination', () => {
     expect(turns.value.map((candidate) => candidate.id)).toEqual(['current']);
     expect(nextCursor.value).toBe('expired-cursor');
     expect(service.olderHistoryError.value).toContain('EVENT_CURSOR_INVALID');
-    expect(notice.value).toBe('');
+    expect(notice).not.toHaveBeenCalled();
 
     await service.loadOlderConversationTurns();
 
@@ -237,7 +237,7 @@ describe('Conversation History Pagination', () => {
       },
       request: (path) => (path.includes('cursor=older-cursor') ? olderPage : recentPage) as never,
       sessionPathId: (value) => value,
-      notice: ref(''),
+      notice: vi.fn(),
       errorMessage: String
     });
 
@@ -278,7 +278,7 @@ describe('Conversation History Pagination', () => {
       replaceRecent,
       request: () => recentPage as never,
       sessionPathId: (value) => value,
-      notice: ref(''),
+      notice: vi.fn(),
       errorMessage: String
     });
 
@@ -296,7 +296,7 @@ describe('Conversation History Pagination', () => {
   it('Invalidates old recovery when the authoritative window changes during cursor repair', async () => {
     const turns = { value: [turn('current')] };
     const nextCursor = { value: 'expired-cursor' as string | null };
-    const notice = { value: '' };
+    const notice = vi.fn();
     const requests: string[] = [];
     let resolveRecovery!: (value: unknown) => void;
     const service = createWorkbenchConversationPagingService({
@@ -317,7 +317,7 @@ describe('Conversation History Pagination', () => {
         }) as never;
       },
       sessionPathId: (value) => value,
-      notice: notice as never,
+      notice,
       errorMessage: String
     });
 
@@ -331,7 +331,7 @@ describe('Conversation History Pagination', () => {
     expect(requests).toHaveLength(2);
     expect(nextCursor.value).toBe('authoritative-cursor');
     expect(turns.value.map((candidate) => candidate.id)).toEqual(['current']);
-    expect(notice.value).toBe('');
+    expect(notice).not.toHaveBeenCalled();
   });
 
   it('Do not fold missing runId historical Segment errors into the same Turn', () => {

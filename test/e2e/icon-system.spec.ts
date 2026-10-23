@@ -9,6 +9,151 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['dark', 'light']) {
+  test(`Navigation hints show themed arrows without capturing adjacent actions: ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1&count=6&theme=${theme}`);
+    await page.getByRole('button', { name: 'Work', exact: true }).hover();
+    const hint = page.locator('.mar-tooltip:visible');
+    await expect(hint).toHaveText('Work');
+    await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+    await expect(hint).toHaveCSS('pointer-events', 'none');
+    const colors = await hint.evaluate((el) => {
+      const surface = getComputedStyle(el);
+      const arrow = getComputedStyle(el.querySelector('.el-popper__arrow')!, '::before');
+      return {
+        surface: surface.backgroundColor,
+        arrow: arrow.backgroundColor,
+        border: surface.borderTopColor,
+        visibleArrowBorders: [
+          arrow.borderTopColor,
+          arrow.borderRightColor,
+          arrow.borderBottomColor,
+          arrow.borderLeftColor
+        ].filter((color) => color !== 'rgba(0, 0, 0, 0)')
+      };
+    });
+    expect(colors.arrow).toBe(colors.surface);
+    expect(colors.visibleArrowBorders).toEqual([colors.border, colors.border]);
+    const next = page.getByRole('button', { name: 'Conversations', exact: true });
+    const nextBounds = (await next.boundingBox())!;
+    const hintBounds = (await hint.boundingBox())!;
+    expect(hintBounds.x).toBeGreaterThanOrEqual(nextBounds.x + nextBounds.width);
+    await next.click();
+    await expect(next).toBeFocused();
+    await expect(page.locator('.mar-tooltip:visible')).not.toHaveText('Work');
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`Navigation icons stay centered with recent-session badges: ${mobile ? 'mobile' : 'desktop'}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: mobile ? 390 : 1280, height: 900 });
+    for (const count of [0, 6, 12]) {
+      await page.goto(
+        `${fixture.url}icon-system.html?navigation=1&count=${count}${mobile ? '&mobile=1' : ''}`
+      );
+      const trigger = page.locator('.recent-sessions-trigger');
+      const icon = trigger.locator('[data-mar-icon="recent-sessions"]');
+      await expect(icon).toBeVisible();
+      const bounds = await trigger.boundingBox();
+      const entry = await page.locator('.recent-sessions-entry').boundingBox();
+      const graphic = await icon.boundingBox();
+      expect(bounds!.width).toBeGreaterThanOrEqual(entry!.width - 4);
+      expect(
+        Math.abs(graphic!.x + graphic!.width / 2 - entry!.x - entry!.width / 2)
+      ).toBeLessThanOrEqual(1);
+      if (count) {
+        const badge = trigger.locator('.recent-sessions-badge');
+        await expect(badge).toHaveText(String(count));
+        const badgeBounds = await badge.boundingBox();
+        expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+      } else await expect(trigger.locator('.recent-sessions-badge')).toHaveCount(0);
+      await trigger.click();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await trigger.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      const focusableTags = await page.locator('.recent-sessions-entry').evaluate((el) =>
+        Array.from(el.querySelectorAll<HTMLElement>('*'))
+          .filter((child) => child.tabIndex >= 0)
+          .map((child) => child.tagName)
+      );
+      expect(focusableTags).toEqual(['BUTTON']);
+      for (const key of ['Enter', 'Space']) {
+        await trigger.press(key);
+        await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        await trigger.press('Escape');
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      }
+    }
+  });
+}
+
+test('Conversation disclosure arrows share MAR geometry and retain nested keyboard toggles', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}icon-system.html?disclosure=1`);
+  const details = page.locator('.conversation-record-group').first();
+  const summary = details.locator(':scope > summary');
+  const icon = summary.locator(':scope > svg[data-mar-icon="chevron-right"]');
+  await expect(icon).toBeVisible();
+  await expect(icon).toHaveAttribute('aria-hidden', 'true');
+  expect(await summary.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none');
+  await icon.click();
+  await expect(details).toHaveAttribute('open', '');
+  await expect
+    .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+    .toBe('matrix(0, 1, -1, 0, 0, 0)');
+  const nested = details.locator(':scope > details').first();
+  const nestedSummary = nested.locator(':scope > summary');
+  await expect(nestedSummary.locator('svg[data-mar-icon="chevron-right"]')).toBeVisible();
+  await nestedSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(nested).toHaveAttribute('open', '');
+  await summary.focus();
+  await page.keyboard.press('Space');
+  await expect(details).not.toHaveAttribute('open');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await icon.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
+});
+
+test('Usage and quick-open disclosures replace browser markers without losing keyboard access', async ({
+  page
+}) => {
+  for (const mode of ['usage', 'quick-open']) {
+    if (mode === 'quick-open') {
+      await page.route('**/api/**', (route) =>
+        route.fulfill({
+          status: 503,
+          json: { code: 'FIXTURE_QUERY_FAILED', message: 'Fixture query unavailable' }
+        })
+      );
+    }
+    await page.goto(`${fixture.url}icon-system.html?${mode}=1`);
+    if (mode === 'quick-open')
+      await page.getByRole('textbox', { name: 'Quick Open', exact: true }).fill('missing');
+    const details = page.locator('details').first();
+    const summary = details.locator(':scope > summary');
+    const icon = summary.locator('svg[data-mar-icon="chevron-right"]');
+    await expect(icon).toBeVisible();
+    expect(await summary.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('none');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('open', '');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeVisible();
+    await expect
+      .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+      .toBe('matrix(0, 1, -1, 0, 0, 0)');
+    await page.keyboard.press('Space');
+    await expect(details).not.toHaveAttribute('open');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
+  }
+});
+
 test('Terminal close icons preserve accessible names and close only the selected terminal', async ({
   page
 }) => {

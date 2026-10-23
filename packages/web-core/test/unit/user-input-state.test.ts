@@ -35,17 +35,17 @@ describe('Web Conversation user input state', () => {
   it.each(['missing-answer', 'failure', 'timeout'] as const)(
     'does not mark an answer complete when submission fails: %s',
     async (scenario) => {
-      const notice = { value: '' };
+      const notice = vi.fn();
+      const error = new Error('denied');
       const request = vi.fn(async () => {
-        throw new Error('denied');
+        throw error;
       });
       const state = createConversationUserInputService({
         workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-        notice: notice as never,
+        notice,
         request,
         errorMessage: String,
         missingRunError: () => false,
-        recoverMissingRun: vi.fn(),
         beginSubmission: () => () => scenario !== 'timeout'
       });
       if (scenario !== 'missing-answer') state.setAnswer('item-1', 'q1', 'yes');
@@ -63,15 +63,16 @@ describe('Web Conversation user input state', () => {
       expect(state.submitted('item-1')).toBe(false);
       if (scenario === 'missing-answer') {
         expect(request).not.toHaveBeenCalled();
-        expect(notice.value).toBe('Answer every question before submitting.');
+        expect(notice).toHaveBeenCalledWith('Answer every question before submitting.', 'warning');
       } else {
         expect(request).toHaveBeenCalledWith(
           '/api/agent-runs/run%2F1/user-input/request%2F1',
           expect.anything()
         );
         expect(state.answer('item-1', 'q1')).toBe('yes');
-        if (scenario === 'failure') expect(notice.value).toContain('denied');
-        else expect(notice.value).toBe('');
+        if (scenario === 'failure')
+          expect(notice).toHaveBeenCalledWith(expect.stringContaining('denied'), 'error', error);
+        else expect(notice).not.toHaveBeenCalled();
       }
     }
   );
@@ -97,11 +98,10 @@ describe('Web Conversation user input state', () => {
     };
     const state = createConversationUserInputService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       request,
       errorMessage: String,
       missingRunError: () => false,
-      recoverMissingRun: () => undefined,
       beginSubmission: () => () => true
     });
     state.setAnswer('input-1', 'question-1', ['Option A']);
@@ -142,11 +142,10 @@ describe('Web Conversation user input state', () => {
     const request = vi.fn();
     const state = createConversationUserInputService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       request,
       errorMessage: String,
       missingRunError: () => false,
-      recoverMissingRun: () => undefined,
       beginSubmission: () => undefined
     });
     state.setAnswer('input-1', 'question-1', 'Continue');
@@ -183,11 +182,10 @@ describe('Web Conversation user input state', () => {
     };
     const state = createConversationUserInputService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: { value: '' } as never,
+      notice: vi.fn(),
       request,
       errorMessage: String,
       missingRunError: () => false,
-      recoverMissingRun: () => undefined,
       beginSubmission: () => () => true
     });
     state.setAnswer('input-1', userInputOtherAnswerId('question-1'), 'Custom only');
@@ -217,14 +215,14 @@ describe('Web Conversation user input state', () => {
     });
   });
 
-  it('silently recovers the conversation when its Run has ended', async () => {
-    const notice = { value: '' };
-    const recoverMissingRun = vi.fn();
+  it('preserves the answer and submitted history silently when its Run has ended', async () => {
+    const notice = vi.fn();
+    const error = Object.assign(new Error('The run has ended.'), { code: 'RUN_NOT_FOUND' });
     const state = createConversationUserInputService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      notice: notice as never,
+      notice,
       request: async () => {
-        throw Object.assign(new Error('The run has ended.'), { code: 'RUN_NOT_FOUND' });
+        throw error;
       },
       errorMessage: String,
       missingRunError: (error) =>
@@ -232,7 +230,6 @@ describe('Web Conversation user input state', () => {
         error !== null &&
         'code' in error &&
         error.code === 'RUN_NOT_FOUND',
-      recoverMissingRun,
       beginSubmission: () => () => true
     });
     state.setAnswer('input-1', 'question-1', 'Continue');
@@ -258,8 +255,8 @@ describe('Web Conversation user input state', () => {
       } as never
     );
 
-    expect(recoverMissingRun).toHaveBeenCalledWith('run-1');
-    expect(notice.value).toBe('');
+    expect(notice).not.toHaveBeenCalled();
     expect(state.submitted('input-1')).toBe(false);
+    expect(state.answer('input-1', 'question-1')).toBe('Continue');
   });
 });

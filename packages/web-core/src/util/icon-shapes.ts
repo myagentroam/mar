@@ -4,12 +4,13 @@ export const iconShapes = {
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4m8-4v4" />',
   'chevrons-left': '<path d="m11 6-6 6 6 6m8-12-6 6 6 6" />',
   'chevrons-right': '<path d="m5 6 6 6-6 6m8-12 6 6-6 6" />',
-  workspace: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="M3 9h18M8.5 9v10.5" />',
-  node: '<rect x="6" y="3.5" width="12" height="17" rx="2.8"/><path d="M9 8h6" /><rect x="10" y="15.5" width="4" height="2" rx="1"/>',
+  workspace:
+    '<rect x="3.5" y="4" width="17" height="12.5" rx="2.5"/><path d="m7 8 2.75 2.25L7 12.5m5.5 0h4M12 16.5v4M8 20.5h8"/>',
+  node: '<rect x="3" y="4" width="18" height="6.5" rx="2.25"/><rect x="3" y="13.5" width="18" height="6.5" rx="2.25"/><path d="M7 7.25h5m-5 9.5h5"/><circle cx="16.5" cy="7.25" r=".65" fill="currentColor" stroke="none"/><circle cx="16.5" cy="16.75" r=".65" fill="currentColor" stroke="none"/>',
   conversation:
     '<path d="M9 4h6a6 6 0 0 1 6 6v3a6 6 0 0 1-6 6H9l-5 2v-5.5A6 6 0 0 1 3 12v-2a6 6 0 0 1 6-6Z" /><circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="0.9" fill="currentColor" stroke="none"/>',
   administration:
-    '<rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.8"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.8"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.8"/><rect x="14" y="14" width="6.5" height="6.5" rx="1.8"/>',
+    '<rect x="3" y="3.5" width="18" height="17" rx="2.5"/><path d="M3 8h18M8.5 11v3m0 3v1M15.5 11v1m0 3v3"/><circle cx="8.5" cy="15.5" r="1.5"/><circle cx="15.5" cy="13.5" r="1.5"/>',
   settings:
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
   'recent-sessions':

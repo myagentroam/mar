@@ -684,7 +684,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
                   )
               "
               @workspace="page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)"
-              @notice="page.notice = $event"
+              @notice="page.notice"
               @uploads="page.queueWorkspaceUploads"
             />
           </aside>
@@ -731,7 +731,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
             :mobile-mode="page.mobileViewport"
             :active="tab.id === page.activeWorkspaceTabId"
             @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
-            @notice="page.notice = $event"
+            @notice="page.notice"
           />
         </div>
       </template>
@@ -1070,6 +1070,16 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 .workbench.compact {
   margin-left: var(--mar-activity-rail-width);
+}
+
+@media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .workbench {
+    transition: margin-left var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+
+  .console-shell:has(.workspace-tree-resize.dragging) .workbench {
+    transition: none;
+  }
 }
 
 .workbench.standalone {

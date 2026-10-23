@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/SessionShareManagementService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -45,7 +47,7 @@ async function create(): Promise<void> {
   try {
     await service.create(values.value.expiresAt?.toISOString() ?? null);
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   }
 }
 async function remove(id: string): Promise<void> {
@@ -60,24 +62,21 @@ async function remove(id: string): Promise<void> {
   }
   try {
     await service.remove(id);
-    ElMessage.success({ icon: marIcon('success'), message: translate('sessionShare.deleted') });
+    showMessage(translate('sessionShare.deleted'), 'success');
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   }
 }
 async function copy(value: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
-    ElMessage.success({ icon: marIcon('success'), message: translate('sessionShare.copied') });
+    showMessage(translate('sessionShare.copied'), 'info');
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   }
 }
 onMounted(
-  () =>
-    void service
-      .load()
-      .catch((error) => ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) }))
+  () => void service.load().catch((error) => showMessage(errorMessage(error), 'error', error))
 );
 async function copyRecord(id: string): Promise<void> {
   try {
@@ -98,8 +97,7 @@ async function copyRecord(id: string): Promise<void> {
     if (password !== null)
       await copy(translate('sessionShare.shareText', { link: link(id), password }));
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close')
-      ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    if (error !== 'cancel' && error !== 'close') showMessage(errorMessage(error), 'error', error);
   }
 }
 </script>

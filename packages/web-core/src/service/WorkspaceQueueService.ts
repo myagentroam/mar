@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComputedRef, Ref } from 'vue';
 import type { WorkspaceQueue, WorkspaceQueueItem } from '../model/workbench.js';
@@ -13,7 +14,7 @@ export function createWorkspaceQueueService(options: {
   readonly serializeEditedContent?: (content: string) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly finishEditing: () => void;
-  readonly notice: (value: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly missingQueueItemError: (error: unknown) => boolean;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
@@ -60,7 +61,9 @@ export function createWorkspaceQueueService(options: {
         options.notice(
           translate('generated.workspaceQueueService.theQueueOrderChangedTryAgain', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'warning',
+          error
         );
     } finally {
       if (options.draggingQueueItemId.value === sourceQueueItemId)
@@ -99,7 +102,9 @@ export function createWorkspaceQueueService(options: {
         options.notice(
           translate('generated.workspaceQueueService.unableToEditTheQueuedMessage', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'error',
+          error
         );
       return false;
     }
@@ -121,7 +126,9 @@ export function createWorkspaceQueueService(options: {
         options.notice(
           translate('generated.workspaceQueueService.unableToDeleteTheQueuedMessage', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'error',
+          error
         );
     }
   }
@@ -152,7 +159,9 @@ export function createWorkspaceQueueService(options: {
         options.notice(
           translate('generated.workspaceQueueService.unableToRunTheQueuedMessageNow', {
             value0: options.errorMessage(error)
-          })
+          }),
+          'error',
+          error
         );
     } finally {
       finishSubmission();

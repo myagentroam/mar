@@ -1,7 +1,9 @@
+import { createTooltipApp as createApp } from './tooltip-app.js';
 import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
-import { createApp, h, ref } from 'vue';
-import ElementPlus, { ElDialog, ElTable, ElTableColumn, ElTooltip } from 'element-plus';
-import { tableTooltipOptions, tooltipOptions } from '../../src/util/tooltip.js';
+import { h, ref, resolveDirective, withDirectives } from 'vue';
+import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
+import { tableTooltipOptions } from '../../src/util/tooltip.js';
+import SharedTooltipFixture from './shared-tooltip-fixture.vue';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -10,6 +12,7 @@ import HostedConversationComposer from '../../src/view/conversation/HostedConver
 import ThemeSettings from '../../src/view/settings/ThemeSettings.vue';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
+import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
@@ -23,15 +26,24 @@ localePreferenceService().setLocale('en-US');
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );
+let notificationRemoved = false;
 const service = createWorkbenchNotificationService(ref('fixture'), {
-  request: async <T>() =>
-    ({
+  request: async <T>(path: string, init?: RequestInit) => {
+    if (path === '/api/notifications/notice' && init?.method === 'DELETE') {
+      notificationRemoved = true;
+    }
+    if (notificationRemoved) return { notifications: [] } as T;
+    return {
       notifications: [
         {
           id: 'notice',
           kind: 'agent',
-          title: 'Review ready',
-          message: 'A complete notification message',
+          title: new URLSearchParams(location.search).has('long-notification')
+            ? 'MyAgentRoam: 检查通知布局与完整内容 Review notification layout and complete content'
+            : 'Review ready',
+          message: new URLSearchParams(location.search).has('long-notification')
+            ? `Run completed. Open the related session to review all results.\n完整通知内容不应被截断。${'LongUnbrokenDetail'.repeat(20)}\nEnd of notification.`
+            : 'A complete notification message',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           expiresAt: Date.now() + 60000,
@@ -44,7 +56,8 @@ const service = createWorkbenchNotificationService(ref('fixture'), {
           }
         }
       ]
-    }) as T
+    } as T;
+  }
 });
 const compactCount = ref(0);
 const canCompact = ref(true);
@@ -79,7 +92,7 @@ const hostedWorkspace = {
 } as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
 const toolbar = {
   draftSessionOpen: false,
-  runner: 'MAR_AGENT' as const,
+  runner: 'mar-agent' as const,
   runnerOptions: [],
   runnerLoading: false,
   runnerLabel: 'MAR Agent',
@@ -189,9 +202,9 @@ const app = createApp({
               'onUpdate:modelValue': (value: boolean) => (hintDialogOpen.value = value)
             },
             () =>
-              h(ElTooltip, { ...tooltipOptions, content: 'Dialog action details' }, () =>
-                h('button', {}, 'Dialog action')
-              )
+              withDirectives(h('button', {}, 'Dialog action'), [
+                [resolveDirective('tooltip')!, 'Dialog action details']
+              ])
           )
         : null,
       h(
@@ -230,9 +243,13 @@ const app = createApp({
       })
     ])
 });
-(new URLSearchParams(location.search).has('session-performance')
-  ? createApp(sessionPerformanceFixture)
-  : app
+(new URLSearchParams(location.search).has('shared-tooltip')
+  ? createApp(SharedTooltipFixture)
+  : new URLSearchParams(location.search).has('loading-feedback')
+    ? createApp(LoadingFeedbackFixture)
+    : new URLSearchParams(location.search).has('session-performance')
+      ? createApp(sessionPerformanceFixture)
+      : app
 )
   .use(i18n)
   .use(ElementPlus)

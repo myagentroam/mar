@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import 'highlight.js/styles/github.css';
@@ -567,10 +567,7 @@ async function copySelection(): Promise<void> {
   try {
     await navigator.clipboard.writeText(selection.toString());
   } catch {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message: translate('filePreviewContext.clipboardFailed')
-    });
+    showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
 }
 
@@ -667,121 +664,103 @@ defineExpose({
   >
     <template #status>
       <div class="diff-mobile-summary" :aria-label="translate('gitDiffViewer.mobileSummary')">
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
-          ><span>
-            {{
-              translate('gitDiffViewer.mobileFileSummary', {
-                value0: currentFileNumber,
-                value1: paths.length
-              })
-            }}
-          </span></el-tooltip
+        <span
+          v-tooltip="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
         >
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
-          ><span>
-            {{
-              translate('gitDiffViewer.mobileChangeSummary', {
-                value0: activeDiffNumber,
-                value1: hunks.length
-              })
-            }}
-          </span></el-tooltip
-        >
+          {{
+            translate('gitDiffViewer.mobileFileSummary', {
+              value0: currentFileNumber,
+              value1: paths.length
+            })
+          }}
+        </span>
+        <span v-tooltip="translate('generated.gitDiffViewer.changes', { value0: hunks.length })">
+          {{
+            translate('gitDiffViewer.mobileChangeSummary', {
+              value0: activeDiffNumber,
+              value1: hunks.length
+            })
+          }}
+        </span>
       </div>
     </template>
     <template #mobile-actions>
       <div class="diff-mobile-action-row diff-mobile-navigation">
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.previousFile')"
-          ><el-button
-            circle
-            size="small"
-            :disabled="props.paths.length < 2 || props.loading"
-            :aria-label="translate('generated.gitDiffViewer.previousFile')"
-            @click="emit('moveFile', -1)"
-            ><MarIcon name="chevron-left" /></el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.previousChange')"
-          ><el-button
-            circle
-            size="small"
-            :disabled="hunks.length === 0"
-            :aria-label="translate('generated.gitDiffViewer.previousChange')"
-            @click="moveDiff(-1)"
-            ><MarIcon name="chevron-up" /></el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.nextChange')"
-          ><el-button
-            circle
-            size="small"
-            :disabled="hunks.length === 0"
-            :aria-label="translate('generated.gitDiffViewer.nextChange')"
-            @click="moveDiff(1)"
-            ><MarIcon name="chevron-down" /></el-button
-        ></el-tooltip>
-        <el-tooltip v-bind="tooltipOptions" :content="translate('generated.gitDiffViewer.nextFile')"
-          ><el-button
-            circle
-            size="small"
-            :disabled="props.paths.length < 2 || props.loading"
-            :aria-label="translate('generated.gitDiffViewer.nextFile')"
-            @click="emit('moveFile', 1)"
-            ><MarIcon name="chevron-right" /></el-button
-        ></el-tooltip>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.previousFile')"
+          circle
+          size="small"
+          :disabled="props.paths.length < 2 || props.loading"
+          :aria-label="translate('generated.gitDiffViewer.previousFile')"
+          @click="emit('moveFile', -1)"
+          ><MarIcon name="chevron-left"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.previousChange')"
+          circle
+          size="small"
+          :disabled="hunks.length === 0"
+          :aria-label="translate('generated.gitDiffViewer.previousChange')"
+          @click="moveDiff(-1)"
+          ><MarIcon name="chevron-up"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.nextChange')"
+          circle
+          size="small"
+          :disabled="hunks.length === 0"
+          :aria-label="translate('generated.gitDiffViewer.nextChange')"
+          @click="moveDiff(1)"
+          ><MarIcon name="chevron-down"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.nextFile')"
+          circle
+          size="small"
+          :disabled="props.paths.length < 2 || props.loading"
+          :aria-label="translate('generated.gitDiffViewer.nextFile')"
+          @click="emit('moveFile', 1)"
+          ><MarIcon name="chevron-right"
+        /></el-button>
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
-        <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.openSourceShortcut')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('fileEditor.openSource')"
-            @click="toggleEdit"
-            ><MarIcon name="source-code" /></el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
+        <el-button
+          v-tooltip="translate('fileEditor.openSourceShortcut')"
+          circle
+          size="small"
+          :aria-label="translate('fileEditor.openSource')"
+          @click="toggleEdit"
+          ><MarIcon name="source-code"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('inlineFind.label')"
           v-if="findAvailable"
-          :content="translate('inlineFind.label')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('inlineFind.label')"
-            @click="openInternalFind"
-            ><MarIcon name="search" /></el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.downloadDiff')"
-          ><el-button
-            :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
-            circle
-            size="small"
-            @click="emit('download')"
-          >
-            <MarIcon name="download" /> </el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
+          circle
+          size="small"
+          :aria-label="translate('inlineFind.label')"
+          @click="openInternalFind"
+          ><MarIcon name="search"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.downloadDiff')"
+          :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
+          circle
+          size="small"
+          @click="emit('download')"
+        >
+          <MarIcon name="download" />
+        </el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview2')"
           v-if="!embedded"
-          :content="translate('generated.gitDiffViewer.closeDiffPreview2')"
-          ><el-button
-            :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
-            circle
-            size="small"
-            type="primary"
-            @click="emit('close')"
-          >
-            <MarIcon name="close" /> </el-button
-        ></el-tooltip>
+          :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
+          circle
+          size="small"
+          type="primary"
+          @click="emit('close')"
+        >
+          <MarIcon name="close" />
+        </el-button>
       </div>
     </template>
     <template #primary-actions>
@@ -789,91 +768,79 @@ defineExpose({
         class="file-preview-actions diff-preview-toolbar"
         :aria-label="translate('generated.gitDiffViewer.diffToolbar')"
       >
-        <el-tooltip v-bind="tooltipOptions" :content="translate('fileEditor.openSourceShortcut')"
-          ><el-button
-            circle
-            size="small"
-            :aria-label="translate('fileEditor.openSource')"
-            @click="toggleEdit"
-            ><MarIcon name="source-code" /></el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.previousFile2')"
-          ><el-button
-            :disabled="paths.length < 2 || loading"
-            :aria-label="translate('generated.gitDiffViewer.previousFile')"
-            circle
-            size="small"
-            @click="emit('moveFile', -1)"
-          >
-            <MarIcon name="chevron-left" /> </el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
-          ><span class="diff-toolbar-count">
-            {{ currentFileNumber }} / {{ paths.length }}
-          </span></el-tooltip
+        <el-button
+          v-tooltip="translate('fileEditor.openSourceShortcut')"
+          circle
+          size="small"
+          :aria-label="translate('fileEditor.openSource')"
+          @click="toggleEdit"
+          ><MarIcon name="source-code"
+        /></el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.previousFile2')"
+          :disabled="paths.length < 2 || loading"
+          :aria-label="translate('generated.gitDiffViewer.previousFile')"
+          circle
+          size="small"
+          @click="emit('moveFile', -1)"
         >
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.nextFile2')"
-          ><el-button
-            :disabled="paths.length < 2 || loading"
-            :aria-label="translate('generated.gitDiffViewer.nextFile')"
-            circle
-            size="small"
-            @click="emit('moveFile', 1)"
-          >
-            <MarIcon name="chevron-right" /> </el-button
-        ></el-tooltip>
+          <MarIcon name="chevron-left" />
+        </el-button>
+        <span
+          v-tooltip="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
+          class="diff-toolbar-count"
+        >
+          {{ currentFileNumber }} / {{ paths.length }}
+        </span>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.nextFile2')"
+          :disabled="paths.length < 2 || loading"
+          :aria-label="translate('generated.gitDiffViewer.nextFile')"
+          circle
+          size="small"
+          @click="emit('moveFile', 1)"
+        >
+          <MarIcon name="chevron-right" />
+        </el-button>
         <span class="diff-toolbar-divider" aria-hidden="true" />
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.previousChange2')"
-          ><el-button
-            :disabled="hunks.length === 0"
-            :aria-label="translate('generated.gitDiffViewer.previousChange')"
-            circle
-            size="small"
-            @click="moveDiff(-1)"
-          >
-            <MarIcon name="chevron-up" /> </el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
-          ><span class="diff-toolbar-count">
-            {{ activeDiffNumber }} / {{ hunks.length }}
-          </span></el-tooltip
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.previousChange2')"
+          :disabled="hunks.length === 0"
+          :aria-label="translate('generated.gitDiffViewer.previousChange')"
+          circle
+          size="small"
+          @click="moveDiff(-1)"
         >
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('generated.gitDiffViewer.nextChange2')"
-          ><el-button
-            :disabled="hunks.length === 0"
-            :aria-label="translate('generated.gitDiffViewer.nextChange')"
-            circle
-            size="small"
-            @click="moveDiff(1)"
-          >
-            <MarIcon name="chevron-down" /> </el-button
-        ></el-tooltip>
-        <el-tooltip
-          v-bind="tooltipOptions"
+          <MarIcon name="chevron-up" />
+        </el-button>
+        <span
+          v-tooltip="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
+          class="diff-toolbar-count"
+        >
+          {{ activeDiffNumber }} / {{ hunks.length }}
+        </span>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.nextChange2')"
+          :disabled="hunks.length === 0"
+          :aria-label="translate('generated.gitDiffViewer.nextChange')"
+          circle
+          size="small"
+          @click="moveDiff(1)"
+        >
+          <MarIcon name="chevron-down" />
+        </el-button>
+        <el-button
+          v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview')"
           v-if="!embedded"
-          :content="translate('generated.gitDiffViewer.closeDiffPreview')"
-          ><el-button
-            class="diff-close-button"
-            :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
-            circle
-            size="small"
-            type="primary"
-            @click="emit('close')"
-          >
-            <MarIcon name="close" /> </el-button
-        ></el-tooltip>
+          class="diff-close-button"
+          :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
+          circle
+          size="small"
+          type="primary"
+          @click="emit('close')"
+        >
+          <MarIcon name="close" />
+        </el-button>
       </div>
     </template>
     <InlineFindBar
@@ -901,28 +868,26 @@ defineExpose({
         </section>
         <section v-else-if="value?.binary === true" class="binary-diff-preview">
           <p>{{ translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff') }}</p>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="
-              previewEnabled
+          <span
+            v-tooltip="{
+              content: previewEnabled
                 ? undefined
-                : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
-            "
-            :disabled="previewEnabled"
-            ><span class="mar-tooltip-control"
-              ><el-button
-                type="primary"
-                :disabled="!previewEnabled"
-                :aria-description="
-                  previewEnabled
-                    ? undefined
-                    : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
-                "
-                @click="emit('preview')"
-              >
-                {{ translate('generated.gitDiffViewer.openFilePreview') }}
-              </el-button></span
-            ></el-tooltip
+                : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode'),
+              disabled: previewEnabled
+            }"
+            class="mar-tooltip-control"
+            ><el-button
+              type="primary"
+              :disabled="!previewEnabled"
+              :aria-description="
+                previewEnabled
+                  ? undefined
+                  : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
+              "
+              @click="emit('preview')"
+            >
+              {{ translate('generated.gitDiffViewer.openFilePreview') }}
+            </el-button></span
           >
         </section>
         <section v-else-if="hasWorkingTreeFullText" class="unified-diff-pane">

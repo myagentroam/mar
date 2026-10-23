@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
 import {
   isTerminalRunStatus,
   newestRunSnapshot,
@@ -6,6 +7,93 @@ import {
 } from '../../src/service/RunService.js';
 
 describe('Shared Run State Convergence', () => {
+  it.each([2, 3])(
+    'restores an observed-idle Run from an authoritative snapshot at revision %s',
+    (version) => {
+      const state = createRunService({ value: 'session-1' } as never);
+      const run = {
+        id: 'run-1',
+        sessionId: 'session-1',
+        status: 'RUNNING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: 'message-1',
+        version: 2
+      };
+      state.runs.value = [run];
+      state.settleSessionRuns('session-1');
+      state.observeManagedSessionActive('session-1');
+      // An ordinary response is not authority to revive a settled Run.
+      state.mergeSnapshots([{ ...run, version }]);
+      expect(state.runs.value).toEqual([]);
+      state.mergeAuthoritativeSnapshot([{ ...run, version }], [...state.runs.value]);
+      expect(state.runs.value).toEqual([{ ...run, version }]);
+      expect(state.sessionInterruptionSettled('session-1')).toBe(false);
+      const blocks = conversationWorkProcessBlocks(
+        [
+          {
+            id: 'segment-1',
+            sessionId: 'session-1',
+            runId: run.id,
+            status: 'RUNNING',
+            items: [
+              {
+                id: 'command-1',
+                kind: 'command_execution',
+                status: 'COMPLETED',
+                processGroup: { id: 'process-1', isStart: true },
+                payload: { command: 'pwd' }
+              }
+            ]
+          }
+        ] as never,
+        state.runs.value
+      );
+      expect(blocks[0]).toMatchObject({ active: true, status: 'running' });
+    }
+  );
+
+  it('preserves stop protection when a user stops an already observed-idle session', () => {
+    const state = createRunService({ value: 'session-1' } as never);
+    const run = {
+      id: 'run-1',
+      sessionId: 'session-1',
+      status: 'RUNNING',
+      recoveryState: 'ACTIVE',
+      clientMessageId: 'message-1',
+      version: 2
+    };
+    state.runs.value = [run];
+    state.settleSessionRuns('session-1');
+    state.markSessionInterruptionPending('session-1');
+    state.resumeSessionAfterInterruption('session-1');
+    state.mergeAuthoritativeSnapshot([run], []);
+    expect(state.runs.value).toEqual([]);
+  });
+
+  it.each(['settled', 'acknowledged', 'resumed'])(
+    'does not restore a user-stopped Run from an authoritative snapshot after %s',
+    (phase) => {
+      const state = createRunService({ value: 'session-1' } as never);
+      const run = {
+        id: 'run-1',
+        sessionId: 'session-1',
+        status: 'RUNNING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: 'message-1',
+        version: 2
+      };
+      state.runs.value = [run];
+      state.settleSessionRuns('session-1', true);
+      if (phase !== 'settled') state.markSessionInterrupted('session-1', run.id);
+      if (phase === 'resumed') state.resumeSessionAfterInterruption('session-1');
+      state.observeManagedSessionActive('session-1');
+      state.mergeAuthoritativeSnapshot([{ ...run, version: 3 }], []);
+      expect(state.runs.value).toEqual([]);
+      state.mergeAuthoritativeSnapshot([{ ...run, status: 'CANCELLED', version: 4 }], []);
+      expect(state.runs.value).toEqual([{ ...run, status: 'CANCELLED', version: 4 }]);
+    }
+  );
+
   it('Compares Run revisions first; an old terminal state cannot overwrite a newer active state, and equal revisions cannot move the state backward', () => {
     const current = {
       id: 'run-1',

@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
 import type {
@@ -74,7 +75,7 @@ export interface WorkbenchSessionSelectionOptions {
   readonly beginWatch: (sessionId: string) => Promise<boolean>;
   readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
   readonly mergeTurns: (page: ConversationTurnPage) => boolean;
-  readonly notice: (value: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }
 
@@ -227,7 +228,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       options.notice(
         translate('generated.workbenchSessionSelectionService.unableToLoadConversationHistory', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (isCurrent()) {

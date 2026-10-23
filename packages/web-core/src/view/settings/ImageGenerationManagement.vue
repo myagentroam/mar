@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
 import { createCodexCredentialManagementService } from '../../service/CodexCredentialManagementService';
@@ -117,7 +119,7 @@ async function load(showRefresh = false) {
     ready.value = true;
     credentials.value = await service.listCredentials();
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
   } finally {
     busy.value = false;
     if (showRefresh) refreshing.value = false;
@@ -152,13 +154,10 @@ async function persist(next: ImageGenerationModel[]) {
   busy.value = true;
   try {
     models.value = await service.updateImageGenerationConfiguration(next);
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('marAgentModels.imageGenerationSaved')
-    });
+    showMessage(translate('marAgentModels.imageGenerationSaved'), 'success');
     return true;
   } catch (error) {
-    ElMessage.error({ icon: marIcon('error'), message: errorMessage(error) });
+    showMessage(errorMessage(error), 'error', error);
     return false;
   } finally {
     busy.value = false;
@@ -322,14 +321,9 @@ onMounted(load);
       >
         <template #default="{ row }">
           <div class="row-actions" @click.stop>
-            <el-button
-              link
-              type="primary"
-              :icon="marIcon('edit')"
-              :disabled="busy"
-              @click="edit(row)"
-              >{{ translate('marAgentModels.edit') }}</el-button
-            >
+            <el-button link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
+              translate('marAgentModels.edit')
+            }}</el-button>
             <el-button
               link
               type="danger"

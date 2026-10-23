@@ -1,11 +1,27 @@
-import { readFileSync } from 'node:fs';
 import { createSSRApp, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
+import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue?unit-render';
+import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue?unit-render';
+import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
+
+vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+
+const originalLocale = i18n.global.locale.value;
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.mocked(showMessage).mockClear();
+  i18n.global.locale.value = originalLocale;
+});
 
 async function render(
   component: Component,
@@ -57,7 +73,7 @@ describe('shared loading presentation', () => {
       loading: true,
       loadingMore: true
     });
-    expect(html.match(/class="busy-indicator"/gu)).toHaveLength(1);
+    expect(html.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
     expect(html).toContain('role="status"');
     expect(html).toContain('disabled');
     expect(html).not.toMatch(/\bis-loading\b/u);
@@ -91,15 +107,249 @@ describe('shared loading presentation', () => {
     expect(html).not.toMatch(/\bis-loading\b/u);
   });
 
-  it('does not expose fabricated percentages for indeterminate install progress', () => {
-    for (const name of ['McpCenterPanel', 'SkillCenterPage']) {
-      const source = readFileSync(
-        new URL(`../../src/view/skill/${name}.vue`, import.meta.url),
-        'utf8'
-      );
-      expect(source).toContain('role="progressbar"');
-      expect(source).not.toContain('aria-valuenow');
-      expect(source).not.toContain('<el-progress');
+  it.each(['success', 'failure'] as const)(
+    'shows indeterminate MCP installation feedback after the delay and clears it on %s',
+    async (outcome) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+        addEventListener() {},
+        removeEventListener() {},
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout
+      });
+      i18n.global.locale.value = 'en-US';
+
+      const entry = {
+        id: 'entry-1',
+        sourceId: 'source-1',
+        scope: 'PERSONAL',
+        serverName: 'fixture-mcp',
+        displayName: 'Fixture MCP',
+        description: 'MCP installation fixture',
+        version: '1.0.0',
+        featured: false,
+        tags: [],
+        runtime: { transport: 'STDIO' as const }
+      };
+      const installation = {
+        catalogEntryId: entry.id,
+        serverName: entry.serverName,
+        displayName: entry.displayName,
+        version: entry.version,
+        origin: 'NODE' as const,
+        enabled: true,
+        status: 'CURRENT' as const,
+        installedAt: 1
+      };
+      let resolveInstall!: (value: {
+        targetKind: 'NODE';
+        installations: (typeof installation)[];
+      }) => void;
+      let rejectInstall!: (reason: Error) => void;
+      const pendingInstall = new Promise<{
+        targetKind: 'NODE';
+        installations: (typeof installation)[];
+      }>((resolve, reject) => {
+        resolveInstall = resolve;
+        rejectInstall = reject;
+      });
+      const request = vi.fn(async <T>(path: string, init?: RequestInit): Promise<T> => {
+        if (path.startsWith('/api/mcp-catalog'))
+          return { entries: [entry], page: 1, pageSize: 20, total: 1, hasMore: false } as T;
+        if (path === '/api/resources')
+          return {
+            nodes: [
+              { id: 'node-1', displayName: 'Fixture Node', connected: true, disabled: false }
+            ],
+            workspaces: []
+          } as T;
+        if (path === '/api/nodes/node-1/mcps' && init?.method === 'POST')
+          return (await pendingInstall) as T;
+        if (path === '/api/nodes/node-1/mcps')
+          return { targetKind: 'NODE', installations: [] } as T;
+        throw new Error(`Unexpected request: ${init?.method ?? 'GET'} ${path}`);
+      });
+      const view = renderComponent(McpCenterPanel, {
+        request,
+        nodes: [
+          {
+            id: 'node-1',
+            displayName: 'Fixture Node',
+            registeredAddress: 'fixture-node',
+            connected: true,
+            disabled: false,
+            nodeAppVersion: '0.10.1'
+          }
+        ]
+      });
+
+      try {
+        await flushComponent();
+        expect(textContent(view.root)).toContain('Fixture MCP');
+        const installButton = view
+          .findAll('ElButton')
+          .find((button) => textContent(button).trim() === 'Install')!;
+        const click = installButton.props['onClick'];
+        expect(click).toBeTypeOf('function');
+        const installOperation = (click as () => Promise<void>)();
+        await flushComponent();
+        expect(request).toHaveBeenCalledWith(
+          '/api/nodes/node-1/mcps',
+          expect.objectContaining({ method: 'POST' })
+        );
+        expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
+          false
+        );
+        await vi.advanceTimersByTimeAsync(799);
+        await flushComponent();
+        expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
+          false
+        );
+        await vi.advanceTimersByTimeAsync(1);
+        await flushComponent();
+        const progress = view
+          .findAll('div')
+          .find((element) => element.props['role'] === 'progressbar');
+        expect(progress).toBeDefined();
+        expect(progress?.props['aria-label']).toBeTruthy();
+        expect(progress?.props).not.toHaveProperty('aria-valuenow');
+        expect(progress?.props).not.toHaveProperty('aria-valuemin');
+        expect(progress?.props).not.toHaveProperty('aria-valuemax');
+        expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
+        expect(view.findAll('ElProgress')).toHaveLength(0);
+
+        if (outcome === 'success')
+          resolveInstall({ targetKind: 'NODE', installations: [installation] });
+        else rejectInstall(new Error('MCP_PROTOCOL_VALIDATION_FAILED'));
+        await installOperation;
+        await flushComponent();
+        if (outcome === 'failure')
+          expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error', expect.any(Error));
+        expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
+          false
+        );
+      } finally {
+        view.unmount();
+      }
     }
-  });
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'shows indeterminate Skill installation feedback after the delay and clears it on %s',
+    async (outcome) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+        addEventListener() {},
+        removeEventListener() {},
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout
+      });
+      i18n.global.locale.value = 'en-US';
+
+      const favorite = {
+        id: 'favorite-1',
+        sourceId: 'source-1',
+        scope: 'PERSONAL',
+        normalizedName: 'fixture-skill',
+        featured: false,
+        tags: [],
+        description: 'Skill installation fixture',
+        repositoryIdentity: 'https://example.invalid/skills',
+        skillPath: 'skills/fixture-skill',
+        commitSha: 'a'.repeat(40),
+        currentVersionId: 'version-1',
+        tlsVerified: true,
+        updatedAt: 1,
+        manageable: true
+      };
+      let resolveJob!: (value: { status: 'SUCCEEDED' | 'FAILED'; errorCode?: string }) => void;
+      const pendingJob = new Promise<{ status: 'SUCCEEDED' | 'FAILED'; errorCode?: string }>(
+        (resolve) => {
+          resolveJob = resolve;
+        }
+      );
+      const request = vi.fn(async <T>(path: string, init?: RequestInit): Promise<T> => {
+        if (path === '/api/skill-favorites?page=1&limit=20')
+          return { favorites: [favorite], page: 1, pageSize: 20, total: 1, hasMore: false } as T;
+        if (path === '/api/resources')
+          return {
+            nodes: [
+              { id: 'node-1', displayName: 'Fixture Node', connected: true, disabled: false }
+            ],
+            workspaces: []
+          } as T;
+        if (path === '/api/nodes/node-1/skills' && init?.method === 'POST')
+          return { installJobId: 'install-1' } as T;
+        if (path === '/api/skill-install-jobs/install-1') return (await pendingJob) as T;
+        if (path === '/api/nodes/node-1/skills')
+          return { targetKind: 'NODE', compatibilityMode: 'SYMLINK', skills: [] } as T;
+        throw new Error(`Unexpected request: ${init?.method ?? 'GET'} ${path}`);
+      });
+      const view = renderComponent(SkillCenterPage, {
+        request,
+        nodes: [
+          {
+            id: 'node-1',
+            displayName: 'Fixture Node',
+            registeredAddress: 'fixture-node',
+            connected: true,
+            disabled: false,
+            nodeAppVersion: '0.10.1'
+          }
+        ]
+      });
+
+      try {
+        await flushComponent();
+        expect(textContent(view.root)).toContain('fixture-skill');
+        const installButton = view
+          .findAll('ElButton')
+          .find((button) => textContent(button).trim() === 'Install')!;
+        const click = installButton.props['onClick'];
+        expect(click).toBeTypeOf('function');
+        const installOperation = (click as () => Promise<void>)();
+        await flushComponent();
+        expect(request).toHaveBeenCalledWith(
+          '/api/nodes/node-1/skills',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ favoriteId: 'favorite-1' })
+          })
+        );
+        expect(request).toHaveBeenCalledWith('/api/skill-install-jobs/install-1');
+        await vi.advanceTimersByTimeAsync(799);
+        await flushComponent();
+        expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
+          false
+        );
+        await vi.advanceTimersByTimeAsync(1);
+        await flushComponent();
+        const progress = view
+          .findAll('div')
+          .find((element) => element.props['role'] === 'progressbar');
+        expect(progress).toBeDefined();
+        expect(progress?.props['aria-label']).toBeTruthy();
+        expect(progress?.props).not.toHaveProperty('aria-valuenow');
+        expect(progress?.props).not.toHaveProperty('aria-valuemin');
+        expect(progress?.props).not.toHaveProperty('aria-valuemax');
+        expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
+        expect(view.findAll('ElProgress')).toHaveLength(0);
+
+        resolveJob(
+          outcome === 'success'
+            ? { status: 'SUCCEEDED' }
+            : { status: 'FAILED', errorCode: 'SKILL_CONTENT_INVALID' }
+        );
+        await installOperation;
+        await flushComponent();
+        expect(view.findAll('div').some((element) => element.props['role'] === 'progressbar')).toBe(
+          false
+        );
+      } finally {
+        view.unmount();
+      }
+    }
+  );
 });

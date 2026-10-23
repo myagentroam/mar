@@ -8,10 +8,15 @@ describe('Shared Tooltip behavior', () => {
   it('uses passive hover/focus hints without consuming action keys', () => {
     expect(tooltipOptions.trigger).toEqual(['hover', 'focus']);
     expect(tooltipOptions.triggerKeys).toEqual([]);
-    expect(tooltipOptions.popperClass).toBe('mar-tooltip');
+    expect(tooltipOptions.popperClass).toContain('mar-tooltip-passive');
+    expect(tooltipOptions.showArrow).toBe(true);
+    expect(tooltipOptions.enterable).toBe(false);
+    expect(tableTooltipOptions.showArrow).toBe(true);
+    expect(tableTooltipOptions.enterable).toBe(true);
     expect(tooltipOptions.showAfter).toBeGreaterThan(0);
     expect(tableTooltipOptions).not.toHaveProperty('ref');
-    expect(tooltipOptions).toMatchObject(tableTooltipOptions);
+    expect(tableTooltipOptions.trigger).toEqual(tooltipOptions.trigger);
+    expect(tableTooltipOptions.triggerKeys).toEqual(tooltipOptions.triggerKeys);
   });
 
   it('closes through the public API on Escape without moving focus or intercepting other keys', () => {

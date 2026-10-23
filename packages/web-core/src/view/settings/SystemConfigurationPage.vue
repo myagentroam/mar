@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/LocalePreferenceService';
 import {
   createSystemConfigurationService,
@@ -18,6 +20,7 @@ const props = defineProps<{
 const service = createSystemConfigurationService(props.request, props.settings);
 const originForm = ref<FormInstance>();
 const smtpForm = ref<FormInstance>();
+const smtpValidationError = ref('');
 const smtpDialogOpen = ref(false);
 const smtpSetting = service.settings.find((setting) => setting.key === 'mail-smtp')!;
 const smtpEnabled = ref(false);
@@ -116,6 +119,7 @@ const rows = computed(() =>
   }))
 );
 watch(smtpDialogOpen, (open) => {
+  smtpValidationError.value = '';
   if (!open) {
     smtpModel.password = '';
     savedSmtpUsername = '';
@@ -156,18 +160,19 @@ async function load(): Promise<void> {
     await service.load();
     initialized.value = true;
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.systemConfigurationPage.unableToLoadSystemConfiguration')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.systemConfigurationPage.unableToLoadSystemConfiguration'),
+      'error',
+      error
+    );
   }
 }
 
 async function save(key: string): Promise<void> {
   if (!props.writable) return;
+  smtpValidationError.value = '';
   if (key === 'html-preview-origin') {
     try {
       await originForm.value?.validate();
@@ -184,10 +189,7 @@ async function save(key: string): Promise<void> {
       }
       const config = JSON.stringify({ ...smtpModel });
       if (!service.validValue(smtpSetting, config)) {
-        ElMessage.error({
-          icon: marIcon('error'),
-          message: translate('generated.systemConfigurationPage.smtpInvalid')
-        });
+        smtpValidationError.value = translate('generated.systemConfigurationPage.smtpInvalid');
         return;
       }
       service.setDraft(key, config);
@@ -207,13 +209,13 @@ async function save(key: string): Promise<void> {
           );
         } catch (error) {
           if (error === 'cancel' || error === 'close') return;
-          ElMessage.error({
-            icon: marIcon('error'),
-            message:
-              error instanceof Error
-                ? errorMessage(error)
-                : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
-          });
+          showMessage(
+            error instanceof Error
+              ? errorMessage(error)
+              : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration'),
+            'error',
+            error
+          );
           return;
         }
       }
@@ -224,19 +226,19 @@ async function save(key: string): Promise<void> {
   try {
     if (await service.save(key)) {
       if (key === 'mail-smtp') smtpDialogOpen.value = false;
-      ElMessage.success({
-        icon: marIcon('success'),
-        message: translate('generated.systemConfigurationPage.systemConfigurationSaved')
-      });
+      showMessage(
+        translate('generated.systemConfigurationPage.systemConfigurationSaved'),
+        'success'
+      );
     }
   } catch (error) {
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('generated.systemConfigurationPage.unableToSaveSystemConfiguration'),
+      'error',
+      error
+    );
   }
 }
 
@@ -325,7 +327,6 @@ onMounted(() => {
           <el-button
             v-if="editingKey !== row.key || row.type === 'json'"
             link
-            type="primary"
             :icon="marIcon('edit')"
             :disabled="!writable || editingKey !== null"
             @click="row.type === 'json' ? openSmtpDialog() : beginEdit(row.key)"
@@ -383,6 +384,12 @@ onMounted(() => {
         label-position="top"
         class="smtp-form"
       >
+        <el-alert
+          v-if="smtpValidationError"
+          :title="smtpValidationError"
+          type="error"
+          :closable="false"
+        />
         <el-form-item :label="translate('generated.systemConfigurationPage.smtpHost')" prop="host">
           <el-input
             v-model="smtpModel.host"

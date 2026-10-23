@@ -18,9 +18,6 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
     :aria-label="translate('generated.filePreviewDialog.loadingPreview')"
   >
     <BusyIndicator />
-    <span v-if="variant === 'region'">{{
-      translate('generated.filePreviewDialog.loadingPreview')
-    }}</span>
   </div>
 </template>
 
@@ -30,10 +27,13 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
   margin: 0;
-  font-size: var(--mar-font-size-body);
-  text-align: center;
+  color: var(--mar-color-brand-text);
+}
+
+.file-preview-loading :deep(.busy-indicator) {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .file-preview-loading.is-overlay {
@@ -41,9 +41,5 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
   z-index: 1;
   inset: 0;
   background: var(--mar-bg-page);
-}
-
-.file-preview-loading:not(.page-loading-state) {
-  color: var(--mar-text-secondary);
 }
 </style>

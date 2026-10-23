@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
 import type { NodeSummary, NodeWorkbenchManifest } from '../model/workbench.js';
@@ -11,7 +12,7 @@ interface WorkbenchCapabilityServiceOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly onNodeConnected?: (nodeId: string) => void;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  readonly notice: (message: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }
 
@@ -60,7 +61,9 @@ export function createWorkbenchCapabilityService(options: WorkbenchCapabilitySer
       options.notice(
         translate('generated.workbenchCapabilityService.unableToLoadNodes', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     }
   }

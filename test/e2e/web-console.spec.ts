@@ -13,6 +13,7 @@ import './web-model-management-regressions.cases.js';
 import './mar-agent-compact-settings.cases.js';
 import './web-organization-display.cases.js';
 import './web-workspace-files.cases.js';
+import './workspace-inspector-domains.cases.js';
 import './web-file-window-interaction.cases.js';
 import './web-file-preview-content.cases.js';
 import './web-workspace-git-changes.cases.js';

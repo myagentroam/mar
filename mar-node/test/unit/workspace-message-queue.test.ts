@@ -479,7 +479,7 @@ describe('Node Session message FIFO', () => {
         resolve: async (id) => runtime.getAgentSession(id),
         coordinator: {
           pending: vi.fn(() => ({
-            runner: 'codex',
+            executionContext: { runner: 'codex' },
             steering,
             prepareSteerInput: () => 'old input',
             attachmentPaths: [attachmentPath],
@@ -527,7 +527,7 @@ describe('Node Session message FIFO', () => {
       resolve: async (id) => runtime.getAgentSession(id),
       coordinator: {
         pending: () => ({
-          runner: 'codex',
+          executionContext: { runner: 'codex' },
           steering: true,
           attachmentPaths: [],
           collaborationMode: 'default'
@@ -726,6 +726,7 @@ describe('Node Session message FIFO', () => {
         } as never,
         runners: {
           require: () => ({
+            prepareExecutionContext: () => ({ runner: 'codex' }),
             prepareMessageInput: (input: string) => input,
             serviceTier: () => undefined
           })
@@ -835,6 +836,7 @@ describe('Node Session message FIFO', () => {
         coordinator: coordinator as never,
         runners: {
           require: () => ({
+            prepareExecutionContext: () => ({ runner: 'codex' }),
             prepareMessageInput: (input: string) => input,
             serviceTier: () => undefined
           })

@@ -8,7 +8,7 @@ function fixture() {
   const selectedSessionId = ref<string | undefined>('session-1');
   const session = { id: 'session-1' } as Session;
   const input = ref('original');
-  const notice = ref('');
+  const notice = vi.fn();
   const execute = vi.fn(async () => ({}));
   const send = vi.fn(async () => {});
   const finish = vi.fn(() => true);
@@ -92,11 +92,12 @@ describe('shared Plan continuation', () => {
 
   it('preserves input and reports a close failure without sending', async () => {
     const f = fixture();
-    f.execute.mockRejectedValue(new Error('failure'));
+    const error = new Error('failure');
+    f.execute.mockRejectedValue(error);
     await f.service.implementPlan(f.item);
     expect(f.send).not.toHaveBeenCalled();
     expect(f.input.value).toBe('original');
-    expect(f.notice.value).toContain('denied');
+    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('denied'), 'error', error);
     expect(f.finish).toHaveBeenCalledOnce();
   });
 });

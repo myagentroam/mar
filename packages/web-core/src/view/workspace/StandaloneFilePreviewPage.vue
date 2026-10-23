@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 
-import { tooltipOptions } from '../../util/tooltip.js';
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
@@ -770,9 +769,7 @@ function rawContentUrl(
     <p v-if="error" class="standalone-error">{{ error }}</p>
     <template v-else-if="htmlPreviewMode">
       <header class="standalone-markdown-header html-preview-header">
-        <el-tooltip v-bind="tooltipOptions" :content="query.get('path') ?? ''"
-          ><code>{{ query.get('path') }}</code></el-tooltip
-        >
+        <code v-tooltip="query.get('path') ?? ''">{{ query.get('path') }}</code>
         <small v-if="htmlUrl">{{
           translate(htmlTrusted ? 'htmlPreview.trustedWarning' : 'htmlPreview.isolatedWarning')
         }}</small>
@@ -796,8 +793,9 @@ function rawContentUrl(
     </template>
     <template v-else-if="markdownPreviewMode">
       <header class="standalone-markdown-header">
-        <el-tooltip v-bind="tooltipOptions" :content="query.get('path') ?? file?.path ?? ''"
-          ><code>{{ query.get('path') ?? file?.path }}</code></el-tooltip
+        <code v-tooltip="query.get('path') ?? file?.path ?? ''">{{
+          query.get('path') ?? file?.path
+        }}</code
         ><small v-if="file?.size !== undefined">{{ fileSizeLabel(file.size ?? 0) }}</small>
       </header>
       <div class="standalone-preview-body">
@@ -874,6 +872,10 @@ function rawContentUrl(
 
 <style scoped>
 .standalone-file-preview {
+  /* Rendered previews keep their light appearance independently of the console. */
+  --mar-color-brand-text: #0969da;
+  --mar-color-danger-text: #cf222e;
+  --mar-scrollbar-thumb: #afb8c1;
   display: flex;
   height: 100dvh;
   min-height: 0;
@@ -906,7 +908,7 @@ function rawContentUrl(
 }
 
 .standalone-preview-body :deep(.file-preview-loading.is-overlay) {
-  background: var(--mar-bg-panel);
+  background: #fff;
 }
 
 .standalone-markdown-header {
@@ -916,9 +918,9 @@ function rawContentUrl(
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-chrome);
-  color: var(--mar-text-secondary);
+  border-bottom: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #57606a;
   font-size: var(--mar-font-size-meta);
 }
 .standalone-markdown-header code {

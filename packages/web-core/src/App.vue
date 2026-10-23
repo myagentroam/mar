@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { themePreferenceService } from './service/ThemePreferenceService.js';
+import { clearMessages } from './service/MessageFeedbackService.js';
 import {
   computed,
   defineAsyncComponent,
@@ -14,6 +15,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import { localePreferenceService } from './service/LocalePreferenceService.js';
 import { consoleKeyboardShortcutService } from './service/ConsoleKeyboardShortcutService.js';
 import { tableTooltipOptions } from './util/tooltip.js';
+import SharedTooltipHost from './view/common/SharedTooltipHost.vue';
 const SessionSharePage = defineAsyncComponent(
   () => import('./view/conversation/SessionSharePage.vue')
 );
@@ -70,6 +72,7 @@ onMounted(() => {
   document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 onBeforeUnmount(() => {
+  clearMessages();
   document.removeEventListener('contextmenu', preventBrowserContextMenu);
   document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
@@ -78,6 +81,7 @@ onBeforeUnmount(() => {
 <template>
   <Suspense @resolve="revealApplication">
     <el-config-provider :locale="elementLocale" :table="{ tooltipOptions: tableTooltipOptions }">
+      <SharedTooltipHost />
       <SessionSharePage v-if="shareId" :share-id="shareId" />
       <component :is="filePreview" v-else-if="standaloneFilePreview" />
       <component :is="workbench" v-else />

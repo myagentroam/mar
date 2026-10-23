@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/LocalePreferenceService';
@@ -359,12 +361,12 @@ async function checkUpdate(entry: CatalogEntry): Promise<void> {
       { method: 'POST' }
     );
     updateChecks.value = { ...updateChecks.value, [entry.id]: result };
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: result.updateAvailable
+    showMessage(
+      result.updateAvailable
         ? translate('generated.mcpSourceManagementPage.updateAvailable')
-        : translate('generated.mcpSourceManagementPage.alreadyUpToDate')
-    });
+        : translate('generated.mcpSourceManagementPage.alreadyUpToDate'),
+      'info'
+    );
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -418,7 +420,7 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
   loading.value = true;
   try {
     await operation();
-    if (success) ElMessage.success({ icon: marIcon('success'), message: success });
+    if (success) showMessage(success, 'success');
   } catch (error) {
     showOperationError(error);
   } finally {
@@ -427,13 +429,13 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
 }
 
 function showOperationError(error: unknown): void {
-  ElMessage.error({
-    icon: marIcon('error'),
-    message:
-      errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
-        ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
-        : displayErrorMessage(error)
-  });
+  showMessage(
+    errorCode(error) === 'MCP_CATALOG_ALREADY_EXISTS'
+      ? translate('generated.mcpSourceManagementPage.thisMCPServerIsAlreadyInThe')
+      : displayErrorMessage(error),
+    'error',
+    error
+  );
 }
 
 function scopeLabel(scope: string): string {
@@ -495,7 +497,6 @@ function scopeLabel(scope: string): string {
           ><div class="row-actions" @click.stop>
             <el-button
               link
-              type="primary"
               :icon="marIcon('power')"
               :disabled="!row.manageable || !writable"
               @click="confirmSourceStatusChange(row)"
@@ -606,7 +607,6 @@ function scopeLabel(scope: string): string {
                 <div class="row-actions" @click.stop>
                   <el-button
                     link
-                    type="primary"
                     :icon="marIcon('plus')"
                     :disabled="!writable || catalogServerNames.has(row.serverName)"
                     @click="openCatalog(row)"
@@ -704,7 +704,9 @@ function scopeLabel(scope: string): string {
                   <el-tag v-if="row.featured" type="warning" effect="plain"
                     >★ {{ translate('generated.mcpSourceManagementPage.featured') }}</el-tag
                   >
-                  <el-tag v-for="tag in row.tags" :key="tag" effect="plain">{{ tag }}</el-tag>
+                  <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                    tag
+                  }}</el-tag>
                 </div>
               </template>
             </el-table-column>
@@ -716,7 +718,6 @@ function scopeLabel(scope: string): string {
                 <div class="row-actions" @click.stop>
                   <el-button
                     link
-                    type="primary"
                     :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="openEdit(row)"
@@ -735,7 +736,6 @@ function scopeLabel(scope: string): string {
                   <el-button
                     v-else
                     link
-                    type="primary"
                     :icon="marIcon('retry')"
                     :loading="upgradingEntryId === row.id"
                     :disabled="!writable || !row.manageable || loading"

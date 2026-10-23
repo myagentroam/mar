@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type { Session } from '../../src/model/workbench.js';
 import { createWorkbenchRunnerChannelService } from '../../src/service/WorkbenchRunnerChannelService.js';
+import { translate } from '../../src/service/LocalePreferenceService.js';
 
 function fixture(runner: Session['runner'] = 'claude-code') {
   const request = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(async () => ({
@@ -12,7 +13,7 @@ function fixture(runner: Session['runner'] = 'claude-code') {
   const token = ref<string>();
   const input = ref('  continue  ');
   const loading = ref(false);
-  const notice = ref('');
+  const notice = vi.fn();
   const service = createWorkbenchRunnerChannelService({
     workspaceTarget: workspaceTargetRef(ref('node/1')),
     selectedSession: computed(() => ({ id: 'session/1', runner }) as Session),
@@ -46,7 +47,10 @@ describe('shared Runner channel', () => {
     });
     expect(f.input.value).toBe('');
     expect(f.loading.value).toBe(false);
-    expect(f.notice.value).not.toMatch(/generated\./u);
+    expect(f.notice).toHaveBeenCalledWith(
+      translate('generated.workbenchRunnerChannelService.theMessageWasAddedToTheCurrent'),
+      'info'
+    );
   });
 
   it('does not request a token for other Runners or send without a token', async () => {
@@ -59,14 +63,15 @@ describe('shared Runner channel', () => {
   it('invalidates failed token reads and preserves the draft after delivery failure', async () => {
     const f = fixture();
     f.token.value = 'old';
-    f.request.mockRejectedValue(new Error('failure'));
+    const error = new Error('failure');
+    f.request.mockRejectedValue(error);
     await f.service.refreshClaudeChannelToken();
     expect(f.token.value).toBeUndefined();
     f.token.value = 'new';
     await f.service.sendClaudeChannelMessage();
     expect(f.input.value).toBe('  continue  ');
     expect(f.loading.value).toBe(false);
-    expect(f.notice.value).toContain('denied');
+    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('denied'), 'error', error);
   });
 
   it('keeps input while delivery is pending and does not claim a refused delivery succeeded', async () => {
@@ -85,6 +90,9 @@ describe('shared Runner channel', () => {
     complete({ delivery: 'NOT_DELIVERED' });
     await pending;
     expect(f.loading.value).toBe(false);
-    expect(f.notice.value).toBe('The message was not delivered to the current Claude turn.');
+    expect(f.notice).toHaveBeenCalledWith(
+      'The message was not delivered to the current Claude turn.',
+      'error'
+    );
   });
 });

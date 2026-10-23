@@ -26,6 +26,7 @@ async function render(component: Component, props: Record<string, unknown>): Pro
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
   app.use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -37,12 +38,12 @@ it.each(['page', 'region'] as const)(
     const html = await render(FilePreviewLoading, { variant, overlay: true });
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain('aria-label=');
+    expect(html).toContain(
+      `aria-label="${translate('generated.filePreviewDialog.loadingPreview')}"`
+    );
     expect(html).toContain('busy-indicator');
     expect(html.includes('page-loading-state')).toBe(variant === 'page');
-    expect(html.replace(/<[^>]*>/gu, '').trim()).toBe(
-      variant === 'region' ? translate('generated.filePreviewDialog.loadingPreview') : ''
-    );
+    expect(html.replace(/<[^>]*>/gu, '').trim()).toBe('');
   }
 );
 
@@ -60,7 +61,6 @@ function expectUnifiedButtonHints(html: string): void {
   for (const button of buttons) {
     expect(button).not.toMatch(/\stitle="[^"]+"/u);
   }
-  expect(html).toContain('el-tooltip__trigger');
 }
 
 function stubBrowserEnvironment(): {

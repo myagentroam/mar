@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComputedRef, Ref } from 'vue';
 import type { AgentRun, GoalExitSummary } from '../model/workbench.js';
@@ -11,23 +12,17 @@ interface WorkbenchRunControlServiceOptions {
   readonly selectedRunId: Ref<string | undefined>;
   readonly activeRun: ComputedRef<AgentRun | undefined>;
   readonly runs: Ref<AgentRun[]>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly runService: ReturnType<typeof createRunService>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
   readonly errorMessage: (error: unknown) => string;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
-  readonly onGoalExit?: (summary: GoalExitSummary) => void;
 }
 
 /** Owns immediate interrupt settlement, rollback and missing-Run reconciliation. */
 export function createWorkbenchRunControlService(options: WorkbenchRunControlServiceOptions) {
   const missingRunError = (error: unknown) => errorCode(error) === 'RUN_NOT_FOUND';
-
-  function recoverMissingRun(runId?: string): void {
-    void runId;
-    options.notice.value = '';
-  }
 
   async function stopActiveRun(): Promise<void> {
     const nodeId = options.workspaceTarget.value?.nodeId;
@@ -45,21 +40,15 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
         );
         options.runService.mergeSnapshots([result.run]);
         options.selectedRunId.value = result.run.id;
-        if (
-          result.goalExit !== undefined &&
-          options.workspaceTarget.value?.nodeId === nodeId &&
-          options.workspaceTarget.value?.workspaceId === workspaceId &&
-          options.selectedSessionId.value === sessionId
-        )
-          options.onGoalExit?.(result.goalExit);
       } catch (error) {
         const completedInSubmissionWindow = finishSubmission();
-        if (missingRunError(error)) {
-          recoverMissingRun();
-        } else if (completedInSubmissionWindow) {
-          options.notice.value = translate(
-            'generated.workbenchRunControlService.runOperationDenied',
-            { value0: options.errorMessage(error) }
+        if (!missingRunError(error) && completedInSubmissionWindow) {
+          options.notice(
+            translate('generated.workbenchRunControlService.runOperationDenied', {
+              value0: options.errorMessage(error)
+            }),
+            'error',
+            error
           );
         }
       } finally {
@@ -76,20 +65,15 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
         options.runs.value = options.runs.value.map((candidate) =>
           candidate.id === result.run?.id ? result.run : candidate
         );
-      if (
-        result.goalExit !== undefined &&
-        options.workspaceTarget.value?.nodeId === nodeId &&
-        options.workspaceTarget.value?.workspaceId === workspaceId &&
-        options.selectedSessionId.value === sessionId
-      )
-        options.onGoalExit?.(result.goalExit);
     } catch (error) {
       const completedInSubmissionWindow = finishSubmission();
-      if (missingRunError(error)) recoverMissingRun(run.id);
-      else if (completedInSubmissionWindow) {
-        options.notice.value = translate(
-          'generated.workbenchRunControlService.runOperationDenied2',
-          { value0: options.errorMessage(error) }
+      if (!missingRunError(error) && completedInSubmissionWindow) {
+        options.notice(
+          translate('generated.workbenchRunControlService.runOperationDenied2', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
       }
     } finally {
@@ -97,5 +81,5 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
     }
   }
 
-  return { stopActiveRun, recoverMissingRun };
+  return { stopActiveRun };
 }

@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { showMessage } from '../../service/MessageFeedbackService.js';
+
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type {
   ConversationHostingCleanupPreview,
   ConversationHostingCleanupResult,
@@ -132,13 +134,13 @@ async function loadStorage(): Promise<void> {
     )
       return;
     loadFailed.value = true;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('conversationHostingMaintenance.loadFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('conversationHostingMaintenance.loadFailed'),
+      'error',
+      error
+    );
   } finally {
     if (
       sameConversationHostingMaintenanceContext(
@@ -185,13 +187,13 @@ async function previewCleanup(): Promise<void> {
       })
     )
       return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('conversationHostingMaintenance.previewFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('conversationHostingMaintenance.previewFailed'),
+      'error',
+      error
+    );
   } finally {
     if (requestSequence === previewRequestSequence) previewing.value = false;
   }
@@ -257,10 +259,7 @@ async function executeCleanup(): Promise<void> {
       return;
     lastResult.value = nextResult;
     clearPreview();
-    ElMessage.success({
-      icon: marIcon('success'),
-      message: translate('conversationHostingMaintenance.cleanupComplete')
-    });
+    showMessage(translate('conversationHostingMaintenance.cleanupComplete'), 'success');
     try {
       const nextStorage = await service.storage(requestContext.nodeId);
       if (
@@ -285,13 +284,13 @@ async function executeCleanup(): Promise<void> {
       )
         return;
       loadFailed.value = true;
-      ElMessage.error({
-        icon: marIcon('error'),
-        message:
-          error instanceof Error
-            ? errorMessage(error)
-            : translate('conversationHostingMaintenance.loadFailed')
-      });
+      showMessage(
+        error instanceof Error
+          ? errorMessage(error)
+          : translate('conversationHostingMaintenance.loadFailed'),
+        'error',
+        error
+      );
     }
   } catch (error) {
     if (
@@ -303,13 +302,13 @@ async function executeCleanup(): Promise<void> {
       })
     )
       return;
-    ElMessage.error({
-      icon: marIcon('error'),
-      message:
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('conversationHostingMaintenance.executeFailed')
-    });
+    showMessage(
+      error instanceof Error
+        ? errorMessage(error)
+        : translate('conversationHostingMaintenance.executeFailed'),
+      'error',
+      error
+    );
   } finally {
     if (requestSequence === executeRequestSequence) executing.value = false;
   }

@@ -235,10 +235,15 @@ describe('Workspace-only foreground selection', () => {
 
   it('retains the activated target and its cache on temporary network failure', async () => {
     const f = fixture();
-    f.request.mockRejectedValue(new Error('network unavailable'));
+    const error = new Error('network unavailable');
+    f.request.mockRejectedValue(error);
     await f.service.select(target('node-2', 'workspace-3'));
     await vi.waitFor(() =>
-      expect(f.notice).toHaveBeenLastCalledWith(expect.stringContaining('network unavailable'))
+      expect(f.notice).toHaveBeenLastCalledWith(
+        expect.stringContaining('network unavailable'),
+        'error',
+        error
+      )
     );
     expect(f.workspaceTarget.value).toEqual(target('node-2', 'workspace-3'));
     expect(f.invalidateWorkspace).not.toHaveBeenCalled();

@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, watch, type Ref } from 'vue';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
@@ -35,7 +36,7 @@ export function createWorkbenchComposerController(options: {
   readonly clearRunnerCommand: () => void;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
-  readonly notice: (value: string) => void;
+  readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly retryDelay?: (delayMs: number) => Promise<void>;
 }) {
@@ -244,7 +245,9 @@ export function createWorkbenchComposerController(options: {
       options.notice(
         translate('generated.workbenchComposerController.unableToUpdateTheSessionConfiguration', {
           value0: options.errorMessage(error)
-        })
+        }),
+        'error',
+        error
       );
     } finally {
       if (sequence === updateSequence) options.loading.value = false;

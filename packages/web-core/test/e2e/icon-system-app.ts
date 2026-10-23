@@ -1,4 +1,5 @@
-import { createApp, h, ref } from 'vue';
+import { createTooltipApp as createApp } from './tooltip-app.js';
+import { h, ref } from 'vue';
 import ElementPlus, { ElDatePicker, ElInputNumber } from 'element-plus';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
@@ -11,7 +12,13 @@ import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
+import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
+import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
+import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import type { PersonalUsageOverview, UsageTotals } from '@myagentroam/protocol';
+import type { Session } from '../../src/model/workbench.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
@@ -58,6 +65,113 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    if (new URL(location.href).searchParams.has('navigation')) {
+      const mobile = new URL(location.href).searchParams.has('mobile');
+      const count = Number(new URL(location.href).searchParams.get('count') ?? 6);
+      const now = Date.now();
+      const service = createWorkbenchNotificationService(ref('fixture'), {
+        request: async <T>() =>
+          ({
+            notifications: [],
+            recentRuns: Array.from({ length: count }, (_, i) => ({
+              nodeId: 'host',
+              runId: `run-${i}`,
+              workspaceId: 'project',
+              sessionId: `session-${i}`,
+              sessionTitle: `Session ${i}`,
+              runner: 'MAR_AGENT',
+              status: 'RUNNING',
+              createdAt: now,
+              startedAt: now,
+              completedAt: null,
+              sortAt: now,
+              updatedAt: now,
+              version: 1
+            }))
+          }) as T
+      });
+      void service.load();
+      const diagnostics = createWebPerformanceDiagnostics();
+      return () =>
+        h(WorkbenchNavigation, {
+          webVersion: 'test',
+          view: 'conversations',
+          navigationItems: [
+            { id: 'nodes', label: 'Work' },
+            { id: 'conversations', label: 'Conversations' },
+            { id: 'management', label: 'Management' },
+            { id: 'settings', label: 'Settings' }
+          ],
+          settingsSection: 'account',
+          settingsItems: [],
+          managementSection: 'overview',
+          managementItems: [],
+          sidebarCollapsed: true,
+          mobileSidebarOpen: true,
+          sidebarContentVisible: false,
+          nodes: [],
+          expandedNodeIds: [],
+          workspaceTarget: undefined,
+          draggingWorkspace: undefined,
+          loading: false,
+          nodeLabel: () => '',
+          workspaceLabel: () => '',
+          workspaces: () => [],
+          mobileViewport: mobile,
+          notificationService: service,
+          performanceDiagnostics: diagnostics,
+          uploads: [],
+          uploadStatusLabel: () => ''
+        });
+    }
+    if (new URL(location.href).searchParams.has('disclosure')) {
+      return () =>
+        h(ConversationTimeline, {
+          turns: [
+            {
+              id: 'turn',
+              sessionId: 'session',
+              runId: 'run',
+              status: 'SUCCEEDED',
+              items: [1, 2].map((id) => ({
+                id: String(id),
+                kind: 'command_execution',
+                status: 'COMPLETED',
+                payload: { command: `echo ${id}`, output: `Result ${id}` }
+              }))
+            }
+          ],
+          workspaceRoot: undefined,
+          loading: false,
+          initializing: false,
+          initialRenderVersion: 0,
+          imageAttachments: () => [],
+          userInputQuestions: () => [],
+          userInputAnswer: () => '',
+          userInputSubmitted: () => false,
+          planContinuation: undefined,
+          nodeReady: true,
+          synchronized: true,
+          rewindEnabled: false,
+          rollbackEnabled: false
+        });
+    }
+    if (new URL(location.href).searchParams.has('quick-open')) {
+      return () =>
+        h(QuickOpenDialog, {
+          open: true,
+          nodeId: 'host',
+          workspaceId: 'project',
+          filesReady: true,
+          symbolsReady: true,
+          nodes: [node],
+          sessions: [],
+          workspaceTabs: [],
+          sessionTitle: (session: Session) => session.id,
+          openSession: async () => {},
+          openWorkspace: async () => true
+        });
+    }
     if (new URL(location.href).searchParams.has('terminal')) {
       return () =>
         h(TerminalDock, {

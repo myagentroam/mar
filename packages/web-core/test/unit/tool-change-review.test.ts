@@ -63,13 +63,14 @@ describe('tool change review', () => {
             embedded: true
           })
       });
+      // Tooltip layout is browser-only; SSR has no tooltip output.
+      app.directive('tooltip', {});
       app.use(i18n);
       app.use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 50, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain('aria-label="Open source file"');
-      expect(html).toContain('Ctrl/⌘+E');
       expect(html).not.toContain('Open current file');
     }
   );

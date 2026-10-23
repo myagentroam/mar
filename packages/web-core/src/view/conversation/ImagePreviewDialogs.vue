@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
@@ -55,9 +54,9 @@ watch(
     :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
-      <el-tooltip v-bind="tooltipOptions" :content="attachmentTitle"
-        ><span :id="titleId" :class="titleClass">{{ attachmentTitle }}</span></el-tooltip
-      >
+      <span v-tooltip="attachmentTitle" :id="titleId" :class="titleClass">{{
+        attachmentTitle
+      }}</span>
     </template>
     <img
       v-if="attachment?.previewUrl"
@@ -79,9 +78,9 @@ watch(
     :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
-      <el-tooltip v-bind="tooltipOptions" :content="conversationTitle"
-        ><span :id="titleId" :class="titleClass">{{ conversationTitle }}</span></el-tooltip
-      >
+      <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
+        conversationTitle
+      }}</span>
     </template>
     <img
       v-if="conversation !== undefined"

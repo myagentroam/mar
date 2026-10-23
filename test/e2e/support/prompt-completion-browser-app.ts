@@ -1,4 +1,5 @@
-import { createApp, reactive, ref } from 'vue';
+import { createTooltipApp as createApp } from '../../../packages/web-core/test/e2e/tooltip-app.js';
+import { reactive, ref } from 'vue';
 import { ElButton } from '../../../packages/web-core/test/support/element-plus-button.js';
 import '../../../packages/web-core/src/styles.css';
 import { localePreferenceService } from '../../../packages/web-core/src/service/LocalePreferenceService.js';
@@ -21,6 +22,7 @@ interface PromptCompletionHarness {
   reviseContext(key: string): void;
   selectContext(key: string, automaticKey?: string | null, terminalKey?: string | null): void;
   restoreFocus(): void;
+  setSubmitting(value: boolean, accepted?: boolean): void;
   foreground(visible: boolean, focused: boolean): void;
   submissions: number;
   interrupts: number;
@@ -53,6 +55,7 @@ const harness: PromptCompletionHarness = {
     completion.contextRevision = key;
   },
   restoreFocus() {},
+  setSubmitting() {},
   foreground(visible, focused) {
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
@@ -117,12 +120,18 @@ const app = createApp({
   components: { ConversationComposer },
   setup() {
     const input = ref('');
+    const submitting = ref(false);
+    harness.setSubmitting = (value, accepted = false) => {
+      if (accepted) input.value = '';
+      submitting.value = value;
+    };
     const composer = ref<{ focus(): void }>();
     harness.restoreFocus = () => composer.value?.focus();
     return {
       composer,
       completion,
       input,
+      submitting,
       onKeydown() {
         harness.parentKeydowns++;
       },
@@ -144,7 +153,7 @@ const app = createApp({
         :drop-target="false"
         :mobile-viewport="false"
         :command-states="[]"
-        :loading="false"
+        :loading="submitting"
         :skill-tokens="[]"
         :completion="completion"
         @keydown="onKeydown"

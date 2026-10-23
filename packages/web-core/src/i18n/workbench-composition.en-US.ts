@@ -75,14 +75,6 @@ export const workbenchCompositionEnUS = {
   workspace: {
     directory: 'Directory'
   },
-  presentation: {
-    noticeErrorPattern:
-      'failed|failure|rejected|invalid|error|unable|could not|not delivered|not submitted',
-    noticeWarningPattern:
-      'recovering|required|cannot|read-only|unknown|unavailable|offline|disabled',
-    noticeCopyPattern: 'copied|已复制',
-    noticeSuccessPattern: '^(?:saved|updated|deleted|completed|connected|installed|created|removed)'
-  },
   nodeMessages: {
     fiveHourLimit: '5-hour limit',
     sevenDayLimit: '7-day limit',

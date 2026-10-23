@@ -79,7 +79,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
             <el-tag v-if="details.featured" type="warning" effect="plain"
               >★ {{ translate('generated.mcpDetailsDialog.featured') }}</el-tag
             >
-            <el-tag v-for="tag in details.tags ?? []" :key="tag" effect="plain">{{ tag }}</el-tag>
+            <el-tag v-for="tag in details.tags ?? []" :key="tag" type="info" effect="plain">{{
+              tag
+            }}</el-tag>
           </div>
         </el-descriptions-item>
       </el-descriptions>

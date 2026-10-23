@@ -1,3 +1,4 @@
+import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ref, type Ref } from 'vue';
 import type { ConversationTurn } from '../model/workbench.js';
@@ -13,11 +14,10 @@ export function userInputOtherAnswerId(questionId: string): string {
 
 export function createConversationUserInputService(options?: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly notice: Ref<string>;
+  readonly notice: MessageFeedback;
   readonly request: <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
   readonly errorMessage: (error: unknown) => string;
   readonly missingRunError: (error: unknown) => boolean;
-  readonly recoverMissingRun: (runId: string) => void;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
 }) {
   const answers = ref<Record<string, Record<string, ConversationUserInputAnswer>>>({});
@@ -81,8 +81,9 @@ export function createConversationUserInputService(options?: {
         .map((value) => value.trim())
         .filter((value) => value.length > 0);
       if (values.length === 0) {
-        options.notice.value = translate(
-          'generated.conversationUserInputService.answerEveryQuestionBeforeSubmitting'
+        options.notice(
+          translate('generated.conversationUserInputService.answerEveryQuestionBeforeSubmitting'),
+          'warning'
         );
         return;
       }
@@ -103,14 +104,14 @@ export function createConversationUserInputService(options?: {
       );
       if (finishSubmission()) markSubmitted(item.id);
     } catch (error) {
-      if (options.missingRunError(error)) {
-        options.recoverMissingRun(turn.runId);
-        return;
-      }
+      if (options.missingRunError(error)) return;
       if (finishSubmission())
-        options.notice.value = translate(
-          'generated.conversationUserInputService.answersWereNotSubmitted',
-          { value0: options.errorMessage(error) }
+        options.notice(
+          translate('generated.conversationUserInputService.answersWereNotSubmitted', {
+            value0: options.errorMessage(error)
+          }),
+          'error',
+          error
         );
     } finally {
       finishSubmission();
