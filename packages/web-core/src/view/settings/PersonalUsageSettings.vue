@@ -797,17 +797,6 @@ p {
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;
 }
-.loading-status {
-  position: absolute;
-  overflow: hidden;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  margin: -1px;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-}
 .refresh-actions,
 .records-update {
   display: flex;

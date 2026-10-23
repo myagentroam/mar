@@ -153,7 +153,7 @@ watch(
           (historyList.value?.getClientRects().length ?? 0) > 0
         ) {
           historyAppendObserver?.disconnect();
-          void loadMoreHistory();
+          void props.workspace.loadMoreConversations();
         }
       },
       { root: historyList.value, rootMargin: '0px 0px 120px 0px' }
@@ -165,7 +165,7 @@ watch(
 function retryDirectoryAppend(): void {
   if (props.workspace.loadingMoreConversations.value) return;
   retryingDirectory.value = true;
-  void loadMoreHistory();
+  void props.workspace.loadMoreConversations();
 }
 const openingConversationKey = ref<string>();
 const waitingForSnapshot = computed(
@@ -403,14 +403,6 @@ async function loadDirectory(): Promise<void> {
 
 async function refreshDirectory(): Promise<void> {
   await loadDirectory();
-}
-
-async function loadMoreHistory(): Promise<void> {
-  try {
-    await props.workspace.loadMoreConversations();
-  } catch {
-    // The directory footer owns pagination failures and explicit retry.
-  }
 }
 
 async function openConversation(
