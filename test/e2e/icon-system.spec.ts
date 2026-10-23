@@ -10,6 +10,107 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['dark', 'light']) {
+  test(`Process disclosure uses a transparent SVG instead of an unmasked square: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}icon-system.html?process-icons=1&theme=${theme}`);
+      for (const active of [false, true]) {
+        const process = page.locator(`[data-process-id="process-${active}"]`);
+        const heading = process.locator('.process-heading');
+        const icon = heading.locator('.process-chevron');
+        await expect(icon).toHaveAttribute('data-mar-icon', 'chevron-right');
+        await expect(icon).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(icon).toHaveAttribute('fill', 'none');
+        await expect(icon).toHaveAttribute('aria-hidden', 'true');
+        await expect(heading).toHaveAttribute('aria-expanded', String(active));
+        await icon.click();
+        await expect(heading).toHaveAttribute('aria-expanded', String(!active));
+        await expect(process.locator('.process-body')).toHaveAttribute(
+          'aria-hidden',
+          String(active)
+        );
+        await expect
+          .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+          .toBe(active ? 'none' : 'matrix(0, 1, -1, 0, 0, 0)');
+        await heading.focus();
+        await heading.press('Enter');
+        await expect(heading).toHaveAttribute('aria-expanded', String(active));
+        await heading.press('Space');
+        await expect(heading).toHaveAttribute('aria-expanded', String(!active));
+      }
+      if (width === 390)
+        await page.screenshot({ path: testInfo.outputPath(`process-icons-${theme}.png`) });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(page.locator('.process-chevron').first()).toHaveCSS('transition-duration', '0s');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    }
+  });
+}
+
+for (const theme of ['dark', 'light']) {
+  test(`Mobile action icons keep their visual hierarchy without scaling text or status: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    for (const width of [390, 360, 1280]) {
+      const mobile = width < 768;
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}icon-system.html?composer-icons=1&theme=${theme}`);
+      const attachment = page.locator('.composer-attachment-button .mar-icon');
+      const copy = page.locator('.conversation-message-action .mar-icon').first();
+      const edit = page.getByRole('button', { name: 'Edit', exact: true });
+      const send = page.locator('.composer-send-button');
+      const stop = page.locator('.composer-stop-button');
+      const rootFontSize = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      const expectedPrimary = mobile ? 20 : 0.92 * rootFontSize;
+      for (const action of [send, stop]) {
+        const graphic = action.locator('.mar-icon');
+        await expect(graphic).toBeVisible();
+        expect((await graphic.boundingBox())!.width).toBeCloseTo(expectedPrimary, 1);
+        expect((await action.boundingBox())!.width).toBe(mobile ? 36 : 26);
+      }
+      if (mobile) {
+        for (const graphic of [attachment, copy, edit.locator('.mar-icon')]) {
+          await expect(graphic).toHaveCSS('width', '18px');
+          await expect(graphic).toHaveCSS('height', '18px');
+        }
+        await expect(edit.locator('.el-icon')).toHaveCSS('width', '18px');
+        await expect(edit).toHaveCSS('font-size', '12px');
+        await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
+          'width',
+          '18px'
+        );
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width
+        );
+      }
+      await expect(page.getByTestId('status-icon').locator('.mar-icon')).toHaveCSS('width', '11px');
+      await expect(
+        page.getByRole('button', { name: 'Explicit icon size' }).locator('.mar-icon')
+      ).toHaveCSS('width', '24px');
+      if (width === 390) {
+        await page.screenshot({ path: testInfo.outputPath(`mobile-icons-${theme}.png`) });
+      }
+      await stop.click();
+      await expect(page.getByTestId('stops')).toHaveText('1');
+      await send.focus();
+      await send.press('Enter');
+      await expect(page.getByTestId('sends')).toHaveText('1');
+      await expect(send).toBeDisabled();
+      expect(
+        (await send.locator('[data-mar-icon="loading-action"]').boundingBox())!.width
+      ).toBeCloseTo(expectedPrimary, 1);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const theme of ['dark', 'light']) {
   test(`Navigation hints show themed arrows without capturing adjacent actions: ${theme}`, async ({
     page
   }) => {
@@ -62,6 +163,17 @@ for (const mobile of [false, true]) {
       const bounds = await trigger.boundingBox();
       const entry = await page.locator('.recent-sessions-entry').boundingBox();
       const graphic = await icon.boundingBox();
+      expect(graphic!.width).toBe(22);
+      await expect(page.locator('.nav-menu-button [data-mar-icon="workspace"]')).toHaveCSS(
+        'width',
+        '22px'
+      );
+      if (mobile) {
+        await expect(page.locator('.workbench-notification-trigger .mar-icon')).toHaveCSS(
+          'width',
+          '22px'
+        );
+      }
       expect(bounds!.width).toBeGreaterThanOrEqual(entry!.width - 4);
       expect(
         Math.abs(graphic!.x + graphic!.width / 2 - entry!.x - entry!.width / 2)

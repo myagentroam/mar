@@ -822,4 +822,11 @@ function selectFiles(event: Event): void {
 :global(.composer-stop-button .mar-icon) {
   font-size: 0.92rem;
 }
+
+@media (max-width: 767px) {
+  :global(.composer-send-button .mar-icon),
+  :global(.composer-stop-button .mar-icon) {
+    font-size: 20px;
+  }
+}
 </style>

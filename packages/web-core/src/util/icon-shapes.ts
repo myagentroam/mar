@@ -79,7 +79,7 @@ export const iconShapes = {
   download: '<path d="M12 3.5V16m-5-5 5 5 5-5M4 15v3.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V15" />',
   attachment:
     '<path d="m8.5 12.5 6-6a3.5 3.5 0 0 1 5 5l-8 8a5 5 0 0 1-7-7L12.5 4m-4 8.5a1.5 1.5 0 0 0 2.1 2.1l6-6" />',
-  send: '<path d="M4.2 3.8 21 11.2a.9.9 0 0 1 0 1.6L4.2 20.2a.7.7 0 0 1-1-.8L6 12 3.2 4.6a.7.7 0 0 1 1-.8ZM6 12h8" />',
+  send: '<path d="M4 4 21 12 4 20V4ZM4 12h11" />',
   stop: '<rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor" stroke="none"/>',
   queue:
     '<path d="M8 5h12M8 12h12M8 19h8" /><circle cx="3.5" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="19" r="0.9" fill="currentColor" stroke="none"/>',

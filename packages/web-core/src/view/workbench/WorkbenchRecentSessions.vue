@@ -228,7 +228,7 @@ function runTime(run: RecentRun): string {
   padding: 2px 6px;
 }
 .mobile-mode .recent-sessions-trigger .mar-icon {
-  font-size: 18px;
+  font-size: 22px;
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

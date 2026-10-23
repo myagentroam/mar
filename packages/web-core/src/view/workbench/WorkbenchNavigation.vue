@@ -731,19 +731,19 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail nav .nav-menu-button .nav-item-content {
-    min-height: 18px;
-    grid-template-rows: 18px;
+    min-height: 22px;
+    grid-template-rows: 22px;
     align-content: center;
     gap: 2px;
   }
 
   .activity-rail nav .nav-menu-button .mar-icon {
     display: grid;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     place-items: center;
-    font-size: 1.125rem;
-    line-height: 18px;
+    font-size: 22px;
+    line-height: 22px;
   }
 
   .activity-rail nav .nav-menu-button .rail-label {

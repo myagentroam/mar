@@ -328,10 +328,10 @@ const emit = defineEmits<{
   padding: 2px 6px;
 }
 .mobile-mode .workbench-notification-trigger .mar-icon {
-  width: 18px;
-  height: 18px;
-  font-size: 1.125rem;
-  line-height: 18px;
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
+  line-height: 22px;
 }
 .mobile-mode .workbench-notification-trigger:hover {
   background: var(--mar-fill-row-hover);
