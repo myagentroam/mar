@@ -38,6 +38,7 @@ import { errorCode } from '../../util/api-error.js';
 import type { ConversationItem, ConversationTurn } from '../../model/workbench.js';
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
+import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
@@ -130,6 +131,18 @@ const filteredConversations = computed(() => {
     hostedConversationTitle(conversation).toLocaleLowerCase().includes(query)
   );
 });
+const historyReorderSnapshot = computed(() => ({
+  context: filter.value.trim().toLocaleLowerCase(),
+  ready:
+    props.connected !== false &&
+    !loadingDirectory.value &&
+    !props.workspace.loadingMoreConversations.value,
+  items: filteredConversations.value.map((conversation) => ({
+    key: conversationKey(conversation),
+    lastActivityAt: conversation.lastActivityAt,
+    pin: conversation.pinnedAt
+  }))
+}));
 const selectedSummary = computed(
   () =>
     props.workspace.snapshot.value?.conversation ??
@@ -884,7 +897,11 @@ onBeforeUnmount(() => {
           </el-button>
         </div>
       </div>
-      <div v-loading="loadingDirectory" class="history-list">
+      <div
+        v-loading="loadingDirectory"
+        v-session-reorder-motion="historyReorderSnapshot"
+        class="history-list"
+      >
         <p
           v-if="!loadingDirectory && filteredConversations.length === 0"
           class="history-empty-text"
@@ -894,6 +911,7 @@ onBeforeUnmount(() => {
         <article
           v-for="conversation in filteredConversations"
           :key="conversationKey(conversation)"
+          class="mar-session-reorder-item"
           :class="{
             selected:
               conversation.nodeId === workspace.selectedNodeId.value &&

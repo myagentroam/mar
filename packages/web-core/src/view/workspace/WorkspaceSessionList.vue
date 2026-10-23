@@ -23,6 +23,7 @@ import type { Session, Workspace } from '../../model/workbench.js';
 import { createEffectiveWorkspaceSkillService } from '../../service/EffectiveWorkspaceSkillService.js';
 import { createMcpCenterService } from '../../service/McpCenterService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
+import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
@@ -77,6 +78,21 @@ const emit = defineEmits<{
 }>();
 
 const draggingPinnedSessionId = ref<string>();
+const sessionReorderSnapshot = computed(() => ({
+  context: JSON.stringify([props.nodeId, props.workspaceId, props.searchQuery]),
+  ready:
+    props.watchStatus === 'ready' &&
+    !props.loading &&
+    !props.searching &&
+    !props.refreshing &&
+    !props.loadingMore &&
+    draggingPinnedSessionId.value === undefined,
+  items: props.sessions.map((session) => ({
+    key: session.id,
+    lastActivityAt: session.lastActivityAt,
+    pin: session.pinOrder ?? null
+  }))
+}));
 const promptSession = ref<Session>();
 const shareSession = ref<Session>();
 watch(
@@ -359,10 +375,15 @@ function submitSessionSearch(): void {
     <p v-else-if="watchStatus === 'failed'" class="watch-status failed">
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>
-    <ul v-if="sessions.length" class="session-list">
+    <ul
+      v-if="sessions.length"
+      v-session-reorder-motion="sessionReorderSnapshot"
+      class="session-list"
+    >
       <li
         v-for="session in sessions"
         :key="session.id"
+        class="mar-session-reorder-item"
         :class="{
           'dragging-pinned': draggingPinnedSessionId === session.id,
           'drag-over-pinned': dragOverPinnedSessionId === session.id
