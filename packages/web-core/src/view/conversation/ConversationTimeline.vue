@@ -987,9 +987,6 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
-          <div class="conversation-item-heading">
-            <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
-          </div>
           <AgentMarkdown
             :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
             v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"

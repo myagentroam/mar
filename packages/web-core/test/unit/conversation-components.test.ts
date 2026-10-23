@@ -932,7 +932,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   });
 
-  it('aligns user and assistant copy controls with the standard icon buttons', async () => {
+  it('keeps user identity and copy controls without repeating assistant headings', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
       turns: [
@@ -946,6 +946,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(
       html.match(/class="conversation-message-action icon-button utility-control"/gu)
     ).toHaveLength(2);
+    expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
+    expect(html).toContain('Assistant text');
     expect(html).toContain(
       `title="${i18n.global.t('generated.conversationTimeline.copyMessage2')}"`
     );
