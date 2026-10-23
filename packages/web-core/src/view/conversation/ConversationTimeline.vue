@@ -1800,7 +1800,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   grid-row: 1;
 }
 
-.conversation-tool-presentation[open]
+.conversation-tool-presentation[open]:not([data-disclosure-closing])
   > .conversation-record-heading
   > .conversation-record-preview {
   grid-column: 3 / -1;
@@ -2171,7 +2171,7 @@ details.conversation-record-group > details {
 }
 
 .conversation-item
-  details:not([open])
+  details:is(:not([open]), [data-disclosure-closing])
   > summary
   > span:not(.conversation-record-meta):not(.conversation-group-meta) {
   flex: 1;

@@ -1749,7 +1749,26 @@ test.describe('Independent tool presentation', () => {
           )
           .toBe(0);
         await page.screenshot({ path: testInfo.outputPath('tools-desktop.png') });
-        await skill.locator('summary').click();
+        await page.evaluate(() =>
+          document.documentElement.style.setProperty('--el-transition-duration-fast', '1s')
+        );
+        await skill.locator('summary').evaluate((element: HTMLElement) => element.click());
+        await expect(skill).toHaveAttribute('data-disclosure-closing', '');
+        await skill.evaluate((element) =>
+          element.getAnimations().forEach((animation) => animation.pause())
+        );
+        const skillPreview = skill.locator('.conversation-record-preview');
+        await expect(skillPreview).toHaveCSS('flex-grow', '1');
+        await expect(skillPreview).toHaveCSS('white-space', 'nowrap');
+        const closingWidth = (await skillPreview.boundingBox())!.width;
+        await skill.evaluate((element) =>
+          element.getAnimations().forEach((animation) => animation.finish())
+        );
+        await expect(skill).not.toHaveAttribute('open');
+        expect((await skillPreview.boundingBox())!.width).toBeCloseTo(closingWidth, 1);
+        await page.evaluate(() =>
+          document.documentElement.style.removeProperty('--el-transition-duration-fast')
+        );
         await search.locator('summary').click();
         await expect(skill).not.toHaveAttribute('open');
         await expect(search).not.toHaveAttribute('open');
