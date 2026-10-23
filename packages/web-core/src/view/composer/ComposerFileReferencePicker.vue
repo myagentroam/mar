@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { tooltipOptions } from '../../util/tooltip.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { nextTick, ref, watch } from 'vue';
 import type { FileReferenceEntry } from '../../service/FileReferenceService.js';
@@ -37,7 +37,7 @@ watch(
     :aria-label="translate('generated.composerFileReferencePicker.referenceAFileOrFolder')"
   >
     <p v-if="loading" role="status">
-      <BusyIndicator />
+      <MarIcon name="loading-action" />
       {{ translate('generated.composerFileReferencePicker.searchingFilesAndFolders') }}
     </p>
     <template v-else>

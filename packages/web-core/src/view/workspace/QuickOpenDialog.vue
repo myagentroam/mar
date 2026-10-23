@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
 import {
@@ -17,7 +17,6 @@ import { workspaceFileTarget } from '../../util/file-preview.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import FileTypeIcon from './FileTypeIcon.vue';
-import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{
   readonly open: boolean;
@@ -421,7 +420,7 @@ function onKeydown(event: KeyboardEvent): void {
       </li>
     </ul>
     <p v-else-if="loading" class="empty" role="status">
-      <BusyIndicator /> {{ translate('generated.quickOpenDialog.searching') }}
+      <MarIcon name="loading-action" /> {{ translate('generated.quickOpenDialog.searching') }}
     </p>
     <p v-else-if="statusNotices.length === 0" class="empty">
       {{ translate('generated.quickOpenDialog.noMatches') }}

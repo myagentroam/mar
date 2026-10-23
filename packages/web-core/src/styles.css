@@ -1102,6 +1102,12 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   content: '';
 }
 
+.read-loading-indicator {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--mar-color-brand-text);
+}
+
 .mar-page-loading .el-loading-spinner {
   margin-top: -0.625rem;
   color: var(--mar-color-brand-text);

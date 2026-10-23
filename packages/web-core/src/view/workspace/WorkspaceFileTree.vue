@@ -2,7 +2,6 @@
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   visibleWorkspaceFileTreeRows,
@@ -427,7 +426,7 @@ defineExpose({ reveal });
                 class="tree-kind"
                 role="status"
                 :aria-label="translate('generated.workspaceFileTree.loading')"
-                ><BusyIndicator
+                ><MarIcon name="loading-action"
               /></span>
               <FileTypeIcon v-else class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
               <el-tooltip

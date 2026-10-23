@@ -1123,7 +1123,7 @@ onBeforeUnmount(() => {
             v-if="workspace.loadingMoreConversations.value"
             role="status"
             :aria-label="translate('common.loading')"
-            ><BusyIndicator
+            ><BusyIndicator class="read-loading-indicator"
           /></span>
           <span v-if="workspace.loadMoreConversationsError.value" role="status">{{
             hostedErrorMessage(workspace.loadMoreConversationsError.value)

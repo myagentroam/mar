@@ -37,12 +37,12 @@ it.each(['page', 'region'] as const)(
     const html = await render(FilePreviewLoading, { variant, overlay: true });
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain('aria-label=');
+    expect(html).toContain(
+      `aria-label="${translate('generated.filePreviewDialog.loadingPreview')}"`
+    );
     expect(html).toContain('busy-indicator');
     expect(html.includes('page-loading-state')).toBe(variant === 'page');
-    expect(html.replace(/<[^>]*>/gu, '').trim()).toBe(
-      variant === 'region' ? translate('generated.filePreviewDialog.loadingPreview') : ''
-    );
+    expect(html.replace(/<[^>]*>/gu, '').trim()).toBe('');
   }
 );
 

@@ -140,6 +140,19 @@ for (const mobile of [false, true]) {
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
       await expect(list.locator('.list-append-state .busy-indicator')).toBeVisible();
+      expect(
+        await list
+          .locator('.list-append-state .busy-indicator')
+          .evaluate(
+            (element) =>
+              parseFloat(getComputedStyle(element).width) /
+              parseFloat(getComputedStyle(document.documentElement).fontSize)
+          )
+      ).toBeCloseTo(0.875);
+      await expect(list.locator('.list-append-state .busy-indicator')).toHaveCSS(
+        'color',
+        'rgb(48, 147, 255)'
+      );
       if (mobile && !search)
         await page.screenshot({ path: testInfo.outputPath('mobile-pagination-loading.png') });
       await expect(list.locator('.list-append-state .is-loading')).toHaveCount(0);

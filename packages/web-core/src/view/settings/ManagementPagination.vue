@@ -111,7 +111,7 @@ onUnmounted(() => observer?.disconnect());
         role="status"
         :aria-label="translate('common.loading')"
       >
-        <BusyIndicator />
+        <BusyIndicator class="read-loading-indicator" />
       </span>
     </div>
   </div>

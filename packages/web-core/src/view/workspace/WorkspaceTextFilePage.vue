@@ -925,7 +925,7 @@ defineExpose({
       @pointerdown.stop
     >
       <p v-if="navigationLoading" class="file-navigation-loading" role="status">
-        <BusyIndicator />
+        <MarIcon name="loading-action" />
         {{ translate('fileEditor.preparingNavigation') }}
       </p>
       <template v-else>

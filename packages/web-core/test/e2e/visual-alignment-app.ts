@@ -10,6 +10,7 @@ import HostedConversationComposer from '../../src/view/conversation/HostedConver
 import ThemeSettings from '../../src/view/settings/ThemeSettings.vue';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
+import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
@@ -230,9 +231,11 @@ const app = createApp({
       })
     ])
 });
-(new URLSearchParams(location.search).has('session-performance')
-  ? createApp(sessionPerformanceFixture)
-  : app
+(new URLSearchParams(location.search).has('loading-feedback')
+  ? createApp(LoadingFeedbackFixture)
+  : new URLSearchParams(location.search).has('session-performance')
+    ? createApp(sessionPerformanceFixture)
+    : app
 )
   .use(i18n)
   .use(ElementPlus)

@@ -653,7 +653,7 @@ function submitSessionSearch(): void {
           v-if="loadingMore"
           role="status"
           :aria-label="translate('generated.workspaceSessionList.loading')"
-          ><BusyIndicator
+          ><BusyIndicator class="read-loading-indicator"
         /></span>
         <span v-if="loadMoreError !== undefined">{{ errorMessage(loadMoreError) }}</span>
         <el-button
