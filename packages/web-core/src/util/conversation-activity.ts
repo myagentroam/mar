@@ -42,21 +42,11 @@ export function conversationActivityLabel(
     const pending = items.filter((item) => item.status === 'PENDING');
     if (pending.some((item) => item.kind === 'approval_request')) return label('approval');
     if (pending.some((item) => item.kind === 'user_input_request')) return label('answer');
-    const active = items.filter((item) => item.status === 'IN_PROGRESS');
-    if (active.length === 1) {
-      const item = active[0]!;
-      if (item.kind === 'command_execution') return label('command');
-      if (item.kind === 'tool_call') return label('tool');
-      if (item.kind === 'assistant_message') return label('reply');
-      if (item.kind === 'context_compaction') return label('compact');
-    }
   }
   return label(run.status === 'STARTING' ? 'preparing' : 'running');
 }
 
 export function conversationElapsedLabel(start: number | undefined, now: number): string {
   if (!finiteTime(start) || !finiteTime(now) || now < start) return '';
-  return translate('conversationActivity.elapsed', {
-    value: preciseElapsedDurationLabel(now - start)
-  });
+  return preciseElapsedDurationLabel(now - start);
 }

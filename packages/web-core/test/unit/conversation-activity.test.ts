@@ -42,8 +42,8 @@ describe('Public activity and duration', () => {
       label('running')
     );
   });
-  it('uses only unique current activity and never the last event in parallel work', () => {
-    expect(conversationActivityLabel(run, [turn([item])])).toBe(label('command'));
+  it('keeps the Run label stable during single and parallel tool work', () => {
+    expect(conversationActivityLabel(run, [turn([item])])).toBe(label('running'));
     expect(conversationActivityLabel(run, [turn([item, { ...item, id: 'other' }])])).toBe(
       label('running')
     );
@@ -87,6 +87,7 @@ describe('Public activity and duration', () => {
     expect(runDuration({ startedAt: 1_000 })).toBeUndefined();
     expect(conversationElapsedLabel(undefined, 10_000)).toBe('');
     expect(conversationElapsedLabel(10_000, 1_000)).toBe('');
+    expect(conversationElapsedLabel(1_000, 4_000)).toBe('3s');
   });
   it('uses actual step durations even without start, never projected zero or requested sleep duration', () => {
     expect(

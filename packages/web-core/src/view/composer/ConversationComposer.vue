@@ -147,7 +147,11 @@ const emit = defineEmits<{
     @submit.prevent="emit('submit')"
   >
     <div ref="composerElement" class="composer">
-      <span v-if="working || connectionLabel" class="composer-working">
+      <span
+        v-if="working || connectionLabel"
+        class="composer-working"
+        :class="{ 'is-active': working && !connectionLabel }"
+      >
         <i v-if="working && !connectionLabel" aria-hidden="true" />
         <span role="status" aria-live="polite">{{ connectionLabel || workingLabel }}</span>
         <span v-if="elapsedLabel && !connectionLabel" class="composer-elapsed">{{
@@ -365,10 +369,9 @@ const emit = defineEmits<{
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .composer-working::before {
+  .composer-working.is-active::before {
     animation: mar-working-sweep 1.75s linear infinite;
   }
-
   .composer-working > i {
     animation: mar-working-pulse 1.2s ease-in-out infinite;
   }

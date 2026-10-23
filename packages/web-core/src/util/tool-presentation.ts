@@ -5,7 +5,7 @@ import { formatDateTime } from './time-presentation.js';
 export function toolPresentation(payload: unknown): ToolPresentation | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const value = (payload as { toolPresentation?: ToolPresentation }).toolPresentation;
-  return value && ['WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'].includes(value.kind)
+  return value && ['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'].includes(value.kind)
     ? value
     : undefined;
 }
@@ -55,6 +55,8 @@ export function toolPresentationText(payload: unknown, status: string): string {
   const value = toolPresentation(payload);
   if (!value) return '';
   const exceptional = ['FAILED', 'DECLINED', 'CANCELLED', 'INTERRUPTED'].includes(status);
+  if (value.kind === 'READ')
+    return [toolPresentationStatus(status), ...(value.paths ?? [])].filter(Boolean).join(' · ');
   if (value.kind === 'SKILL')
     return [exceptional ? toolPresentationStatus(status) : '', value.name]
       .filter(Boolean)
@@ -144,7 +146,12 @@ export function toolPresentationDetails(payload: unknown): string {
       )
     );
   details.push(line('presentation.input', raw.inputSummary));
-  if (value.kind === 'SKILL' || value.kind === 'WEB_FETCH' || raw.errorCode)
+  if (
+    value.kind === 'READ' ||
+    value.kind === 'SKILL' ||
+    value.kind === 'WEB_FETCH' ||
+    raw.errorCode
+  )
     details.push(line('presentation.output', raw.outputSummary));
   details.push(line('presentation.error', raw.errorCode));
   if (raw.truncated === true) details.push(translate('toolPresentation.truncated'));

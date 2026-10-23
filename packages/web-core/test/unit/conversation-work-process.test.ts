@@ -1,9 +1,80 @@
 import { describe, expect, it } from 'vitest';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
-import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
+import {
+  conversationProcessLabel,
+  conversationWorkProcessBlocks
+} from '../../src/util/conversation-work-process.js';
+import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
+
+describe('Latest work process labels', () => {
+  it.each([
+    ['reasoning', { sections: [{ text: 'Think' }] }, '正在思考中'],
+    ['command_execution', { command: 'echo done' }, '正在运行命令'],
+    ['tool_call', { toolName: 'lookup' }, '正在调用工具：lookup'],
+    ['tool_call', { toolPresentation: { kind: 'READ' } }, '正在读取文件'],
+    ['tool_call', { toolPresentation: { kind: 'WEB_SEARCH' } }, '正在搜索网页'],
+    ['tool_call', { toolPresentation: { kind: 'WEB_FETCH' } }, '正在读取网页'],
+    ['tool_call', { toolPresentation: { kind: 'SKILL', name: 'Review' } }, '正在加载技能：Review'],
+    ['tool_call', { toolPresentation: { kind: 'SKILL' } }, '正在加载技能'],
+    ['tool_call', { toolPresentation: { kind: 'SLEEP' } }, '正在等待'],
+    ['tool_call', { toolCategory: 'IMAGE_GENERATION' }, '正在生成图片'],
+    ['tool_call', { subagentOperation: 'START' }, '正在协作'],
+    ['file_change', { changes: [{ path: 'a.ts', change: 'MODIFIED' }] }, '正在修改文件'],
+    ['context_compaction', { phase: 'STARTED' }, '正在整理上下文']
+  ])(
+    'labels the last %s record regardless of its completion state (%j)',
+    (kind, payload, expected) => {
+      localePreferenceService().setLocale('zh-CN');
+      for (const status of ['COMPLETED', 'FAILED', 'IN_PROGRESS']) {
+        const block = conversationWorkProcessBlocks(
+          [
+            turn([
+              item('older-tool', 'tool_call', {
+                processGroup: { id: 'latest', isStart: true },
+                status: 'IN_PROGRESS',
+                payload: { toolName: 'older' }
+              }),
+              item('middle', 'reasoning', {
+                processGroup: { id: 'latest' },
+                payload: { sections: [{ text: 'Earlier thought' }] }
+              }),
+              item('latest', kind as string, { processGroup: { id: 'latest' }, status, payload })
+            ])
+          ],
+          [{ id: runId, status: 'RUNNING' }]
+        )[0]!;
+        expect(conversationProcessLabel(block, true)).toBe(expected);
+        expect(conversationProcessLabel(block, false)).toBe('等待同步');
+        expect(conversationProcessLabel({ ...block, status: 'stopping' }, true)).toBe('正在停止');
+        expect(
+          conversationProcessLabel({ ...block, active: false, status: 'completed' }, true)
+        ).toBe('已完成');
+      }
+    }
+  );
+
+  it('keeps names unchanged in English and has a neutral fallback', () => {
+    localePreferenceService().setLocale('en-US');
+    const block = conversationWorkProcessBlocks(
+      [
+        turn([
+          item('tool', 'tool_call', {
+            processGroup: { id: 'named', isStart: true },
+            payload: { toolName: '工具 Original' }
+          })
+        ])
+      ],
+      [{ id: runId, status: 'RUNNING' }]
+    )[0]!;
+    expect(conversationProcessLabel(block, true)).toBe('Calling tool: 工具 Original');
+    const { latestWork: _, ...withoutWork } = block;
+    expect(conversationProcessLabel(withoutWork, true)).toBe('Processing');
+    localePreferenceService().setLocale('zh-CN');
+  });
+});
 
 function item(
   id: string,
@@ -53,7 +124,127 @@ function processBlock(blocks: ReturnType<typeof conversationWorkProcessBlocks>, 
 }
 
 describe('Conversation work process blocks', () => {
-  it('merges the same process ID across segments in source order without merging item types', () => {
+  it('promotes only a real public summary and never synthesizes one from thinking', () => {
+    const blocks = conversationWorkProcessBlocks(
+      [
+        turn([
+          item('summary', 'reasoning', {
+            processGroup: { id: 'p', isStart: true },
+            payload: {
+              representation: 'summary',
+              sections: [{ text: '**Inspect files**\nDetails' }]
+            }
+          }),
+          item('thinking', 'reasoning', {
+            processGroup: { id: 'p' },
+            payload: {
+              representation: 'visible_thinking',
+              sections: [{ text: 'Private-looking public thinking' }]
+            }
+          })
+        ])
+      ],
+      [{ id: runId, status: 'RUNNING' }]
+    );
+    expect(blocks[0]?.summary).toEqual({ id: 'summary', text: 'Inspect files' });
+    expect(blocks[0]?.status).toBe('running');
+    expect(blocks[0]?.entries).toHaveLength(2);
+    const withoutSummary = conversationWorkProcessBlocks([
+      turn([
+        item('thinking', 'reasoning', {
+          processGroup: { id: 'p', isStart: true },
+          payload: {
+            representation: 'visible_thinking',
+            sections: [{ text: 'Visible thinking' }]
+          }
+        })
+      ])
+    ]);
+    expect(withoutSummary[0]?.summary).toBeUndefined();
+  });
+
+  it.each([
+    ['SUCCEEDED', 'completed'],
+    ['FAILED', 'incomplete'],
+    ['CANCELLED', 'stopped']
+  ])(
+    'uses the authoritative %s Run outcome for an unfinished final process',
+    (status, expected) => {
+      const blocks = conversationWorkProcessBlocks(
+        [
+          turn([
+            item('failed', 'tool_call', {
+              processGroup: { id: 'p', isStart: true },
+              status: 'FAILED',
+              payload: { toolName: 'read' }
+            })
+          ])
+        ],
+        [{ id: runId, status }]
+      );
+      expect(blocks[0]?.status).toBe(expected);
+      expect(blocks[0]?.entries[0]?.displayItem).toMatchObject({ items: [{ status: 'FAILED' }] });
+      expect(blocks[0]).not.toHaveProperty('warning');
+    }
+  );
+
+  it('keeps a completed earlier process separate from a later cancelled process', () => {
+    const blocks = conversationWorkProcessBlocks(
+      [
+        turn([
+          item('first', 'tool_call', {
+            processGroup: { id: 'first', isStart: true },
+            payload: { toolName: 'read' }
+          }),
+          item('prose', 'assistant_message', { payload: { text: 'Continue with the next step.' } }),
+          item('last', 'tool_call', {
+            processGroup: { id: 'last', isStart: true },
+            status: 'IN_PROGRESS',
+            payload: { toolName: 'exec' }
+          })
+        ])
+      ],
+      [{ id: runId, status: 'CANCELLED' }]
+    );
+    expect(processBlock(blocks, 'first').status).toBe('completed');
+    expect(processBlock(blocks, 'last').status).toBe('stopped');
+  });
+
+  it('shows stopping rather than executing while cancellation is pending', () => {
+    const blocks = conversationWorkProcessBlocks(
+      [
+        turn([
+          item('tool', 'tool_call', {
+            processGroup: { id: 'p', isStart: true },
+            status: 'IN_PROGRESS',
+            payload: { toolName: 'exec' }
+          })
+        ])
+      ],
+      [{ id: runId, status: 'CANCELLING' }]
+    );
+    expect(blocks[0]).toMatchObject({ active: true, status: 'stopping' });
+  });
+
+  it('does not call a final failed process complete merely because an error seals it', () => {
+    const blocks = conversationWorkProcessBlocks(
+      [
+        turn([
+          item('failed', 'tool_call', {
+            processGroup: { id: 'p', isStart: true },
+            status: 'FAILED',
+            payload: { toolName: 'exec' }
+          }),
+          item('error', 'error', { payload: { message: 'Execution failed' } })
+        ])
+      ],
+      [{ id: runId, status: 'FAILED' }]
+    );
+    expect(blocks[0]).toMatchObject({ sealed: true, active: false, status: 'incomplete' });
+    expect(blocks[1]?.groupId).toBeUndefined();
+  });
+
+  it('reprojects the same process across segments at category anchors without merging item types', () => {
     const groupId = 'process-1';
     const firstSegment = turn([
       item('reasoning-1', 'reasoning', {
@@ -75,6 +266,14 @@ describe('Conversation work process blocks', () => {
         item('file-1', 'file_change', {
           processGroup: { id: groupId },
           payload: { changes: [{ path: 'src/example.ts', change: 'MODIFIED' }] }
+        }),
+        item('tool-2', 'tool_call', {
+          processGroup: { id: groupId },
+          payload: { toolName: 'write' }
+        }),
+        item('file-2', 'file_change', {
+          processGroup: { id: groupId },
+          payload: { changes: [{ path: 'src/other.ts', change: 'ADDED' }] }
         })
       ],
       { id: 'segment-2', segmentIndex: 1, status: 'SUCCEEDED' }
@@ -92,7 +291,7 @@ describe('Conversation work process blocks', () => {
       partial: false,
       sealed: false,
       active: true,
-      warning: false
+      status: 'executing'
     });
     expect(process.entries.map(({ displayItem }) => displayItem.id)).toEqual([
       'reasoning-1',
@@ -107,10 +306,20 @@ describe('Conversation work process blocks', () => {
       'file_change_group'
     ]);
     expect(
-      process.entries.every(
-        ({ displayItem }) => 'items' in displayItem && displayItem.items.length === 1
-      )
-    ).toBe(true);
+      process.entries.find(({ displayItem }) => displayItem.type === 'tool_group')?.displayItem
+    ).toMatchObject({
+      type: 'tool_group',
+      id: 'tool-1',
+      items: [{ id: 'tool-1' }, { id: 'tool-2' }]
+    });
+    expect(
+      process.entries.find(({ displayItem }) => displayItem.type === 'file_change_group')
+        ?.displayItem
+    ).toMatchObject({
+      type: 'file_change_group',
+      id: 'file-1',
+      items: [{ id: 'file-1' }, { id: 'file-2' }]
+    });
   });
 
   it('keeps an unknown prefix without process metadata flat instead of inferring membership', () => {
@@ -236,7 +445,7 @@ describe('Conversation work process blocks', () => {
     ]);
   });
 
-  it('keeps warnings visible on their authoritative process group', () => {
+  it('keeps failed tools in details without escalating a historical group', () => {
     const groupId = 'process-warning';
     const blocks = conversationWorkProcessBlocks([
       turn([
@@ -248,6 +457,71 @@ describe('Conversation work process blocks', () => {
       ])
     ]);
 
-    expect(processBlock(blocks, groupId)).toMatchObject({ warning: true, active: false });
+    expect(processBlock(blocks, groupId)).toMatchObject({ status: 'history', active: false });
+  });
+
+  it.each([
+    [1000, 4500, 3500],
+    [0, 0, 0],
+    [5000, 1000, undefined],
+    [null, 4500, undefined],
+    [1000, null, undefined],
+    [Number.NaN, 4500, undefined]
+  ])(
+    'measures process endpoint records without inventing missing time (%s, %s)',
+    (start, end, expected) => {
+      const first = {
+        ...item('first', 'tool_call', { processGroup: { id: 'timed', isStart: true } }),
+        startedAt: start
+      };
+      const last = {
+        ...item('last', 'tool_call', { processGroup: { id: 'timed' } }),
+        completedAt: end
+      };
+      const block = processBlock(
+        conversationWorkProcessBlocks([turn([first, last], { status: 'SUCCEEDED' })]),
+        'timed'
+      );
+      expect(block.durationMs).toBe(expected);
+    }
+  );
+
+  it('uses the endpoint alternate timestamps, but not an incomplete historical prefix', () => {
+    const first = {
+      ...item('first', 'tool_call', { processGroup: { id: 'timed', isStart: true } }),
+      completedAt: 1000
+    };
+    const last = {
+      ...item('last', 'tool_call', { processGroup: { id: 'timed' } }),
+      startedAt: 5000
+    };
+    expect(
+      processBlock(conversationWorkProcessBlocks([turn([first, last])]), 'timed').durationMs
+    ).toBe(4000);
+    const partial = { ...first, processGroup: { id: 'timed' } };
+    expect(
+      processBlock(conversationWorkProcessBlocks([turn([partial, last])]), 'timed').durationMs
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['SUCCEEDED', 'completed'],
+    ['FAILED', 'incomplete'],
+    ['CANCELLED', 'stopped'],
+    ['RUNNING', 'history']
+  ])('uses terminal history facts without reviving a missing Run: %s', (status, expected) => {
+    const blocks = conversationWorkProcessBlocks([
+      turn(
+        [
+          item('read', 'tool_call', {
+            processGroup: { id: 'history', isStart: true },
+            status: 'IN_PROGRESS',
+            payload: { toolName: 'read' }
+          })
+        ],
+        { runId: null, status }
+      )
+    ]);
+    expect(processBlock(blocks, 'history')).toMatchObject({ status: expected, active: false });
   });
 });

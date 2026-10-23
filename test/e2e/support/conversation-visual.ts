@@ -79,10 +79,10 @@ export async function verifyConversationThemes(
         );
       for (const heading of headings) {
         expect(heading.display).toBe('list-item');
-        expect(heading.markerType).toBe('disclosure-closed');
+        expect(heading.markerType).toBe('none');
         expect(heading.markerFont).toBe(headings[0]!.markerFont);
         expect(heading.markerColor).toBe(headings[0]!.markerColor);
-        expect(heading.customIcon).toBe(false);
+        expect(heading.customIcon).toBe(true);
         expect(Math.abs(heading.titleOffset - headings[0]!.titleOffset)).toBeLessThan(1);
       }
       await expect(process).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

@@ -29,7 +29,8 @@ function item(
   id: string,
   kind: string,
   payload: unknown = {},
-  status: ConversationItem['status'] = 'COMPLETED'
+  status: ConversationItem['status'] = 'COMPLETED',
+  processGroup?: ConversationItem['processGroup']
 ): ConversationItem {
   const itemPayload =
     kind === 'reasoning' &&
@@ -38,7 +39,13 @@ function item(
     !Array.isArray(payload)
       ? { representation: 'unspecified', ...payload }
       : payload;
-  return { id, kind, status, payload: itemPayload };
+  return {
+    id,
+    kind,
+    status,
+    payload: itemPayload,
+    ...(processGroup === undefined ? {} : { processGroup })
+  };
 }
 
 const originalLocale = localePreferenceService().locale.value;
@@ -166,7 +173,7 @@ describe('Conversation Show Aggregation', () => {
     const start = source.indexOf(
       '<template v-else-if="displayItem.type === \'image_generation\'">'
     );
-    const end = source.indexOf('<template v-else-if="displayItem.type === \'tool_group\'">');
+    const end = source.indexOf('<template v-else-if="displayItem.type === \'subagent_group\'">');
     const imageGeneration = source.slice(start, end);
 
     expect(start).toBeGreaterThanOrEqual(0);
@@ -840,6 +847,154 @@ describe('Conversation Show Aggregation', () => {
         text: 'Then check the status'
       }
     ]);
+  });
+
+  it('aggregates eligible categories only within explicit process groups at the first anchor', () => {
+    const firstProcess = { id: 'process-1' } as const;
+    const secondProcess = { id: 'process-2' } as const;
+    const tool = (id: string, processGroup?: ConversationItem['processGroup']) =>
+      item(id, 'tool_call', { toolName: id }, 'COMPLETED', processGroup);
+    const read = (id: string) =>
+      item(
+        id,
+        'tool_call',
+        { toolName: 'read', toolPresentation: { kind: 'READ', paths: [id] } },
+        'COMPLETED',
+        firstProcess
+      );
+    const inFirstProcess = (id: string, kind: string, payload: unknown) =>
+      item(id, kind, payload, 'COMPLETED', firstProcess);
+    const displayItems = conversationDisplayItems([
+      tool('tool-1', firstProcess),
+      inFirstProcess('command-1', 'command_execution', { command: 'one' }),
+      read('read-1'),
+      inFirstProcess('summary-1', 'reasoning', {
+        representation: 'summary',
+        sections: [{ text: 'Summary one' }]
+      }),
+      inFirstProcess('thinking-1', 'reasoning', {
+        representation: 'visible_thinking',
+        sections: [{ text: 'Thinking one' }]
+      }),
+      inFirstProcess('file-1', 'file_change', {
+        changes: [{ path: 'src/one.ts', change: 'MODIFIED' }]
+      }),
+      tool('tool-2', firstProcess),
+      inFirstProcess('command-2', 'command_execution', { command: 'two' }),
+      read('read-2'),
+      inFirstProcess('summary-2', 'reasoning', {
+        representation: 'summary',
+        sections: [{ text: 'Summary two' }]
+      }),
+      inFirstProcess('thinking-2', 'reasoning', {
+        representation: 'visible_thinking',
+        sections: [{ text: 'Thinking two' }]
+      }),
+      inFirstProcess('file-2', 'file_change', {
+        changes: [{ path: 'src/two.ts', change: 'ADDED' }]
+      }),
+      tool('other-process-1', secondProcess),
+      tool('other-process-2', secondProcess),
+      tool('unassigned-1'),
+      tool('unassigned-2')
+    ]);
+
+    expect(displayItems.map(({ id, type }) => [id, type])).toEqual([
+      ['tool-1', 'tool_group'],
+      ['command-1', 'command_group'],
+      ['read-1', 'read_group'],
+      ['summary-1', 'reasoning_group'],
+      ['thinking-1', 'reasoning_group'],
+      ['file-1', 'file_change_group'],
+      ['other-process-1', 'tool_group'],
+      ['unassigned-1', 'tool_group'],
+      ['unassigned-2', 'tool_group']
+    ]);
+    expect(
+      displayItems.map((entry) => ('items' in entry ? entry.items.map(({ id }) => id) : [entry.id]))
+    ).toEqual([
+      ['tool-1', 'tool-2'],
+      ['command-1', 'command-2'],
+      ['read-1', 'read-2'],
+      ['summary-1', 'summary-2'],
+      ['thinking-1', 'thinking-2'],
+      ['file-1', 'file-2'],
+      ['other-process-1', 'other-process-2'],
+      ['unassigned-1'],
+      ['unassigned-2']
+    ]);
+    expect(displayItems.filter((entry) => entry.type === 'reasoning_group')).toMatchObject([
+      { text: 'Summary one\n\nSummary two' },
+      { text: 'Thinking one\n\nThinking two' }
+    ]);
+  });
+
+  it('does not aggregate ordinary tools across special card, permission, or subagent boundaries', () => {
+    const processGroup = { id: 'process-boundaries' } as const;
+    const permissionStop = {
+      ...item('permission-stop', 'tool_call', { toolName: 'write' }, 'COMPLETED', processGroup),
+      permissionStop: {
+        action: 'ask' as const,
+        reason: 'Confirm target.',
+        source: {
+          sessionId: 'session',
+          executionId: 'execution',
+          callId: 'call',
+          toolName: 'write'
+        }
+      }
+    };
+    const boundaries = [
+      {
+        item: item(
+          'image-card',
+          'tool_call',
+          {
+            toolCategory: 'IMAGE_GENERATION',
+            attachments: [
+              { name: 'generated.png', mime: 'image/png', runId: 'run-1', imageIndex: 0 }
+            ]
+          },
+          'COMPLETED',
+          processGroup
+        ),
+        type: 'image_generation'
+      },
+      { item: permissionStop, type: 'item' },
+      {
+        item: item(
+          'subagent',
+          'tool_call',
+          {
+            namespace: 'collaboration',
+            toolName: 'spawn_agent',
+            subagentOperation: 'START',
+            subagentId: 'child'
+          },
+          'COMPLETED',
+          processGroup
+        ),
+        type: 'subagent_group'
+      }
+    ];
+
+    for (const { item: boundary, type } of boundaries) {
+      const displayItems = conversationDisplayItems([
+        item('before', 'tool_call', { toolName: 'read' }, 'COMPLETED', processGroup),
+        boundary,
+        item('after', 'tool_call', { toolName: 'write' }, 'COMPLETED', processGroup)
+      ]);
+      expect(displayItems.map(({ id, type: displayType }) => [id, displayType])).toEqual([
+        ['before', 'tool_group'],
+        [boundary.id, type],
+        ['after', 'tool_group']
+      ]);
+      expect(
+        displayItems
+          .filter((entry) => entry.type === 'tool_group')
+          .map((entry) => (entry.type === 'tool_group' ? entry.items.map(({ id }) => id) : []))
+      ).toEqual([['before'], ['after']]);
+    }
   });
 
   it('keeps ordinary tools separate and preserves subagent and other item boundaries', () => {

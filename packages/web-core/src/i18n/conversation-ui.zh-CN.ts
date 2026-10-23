@@ -1,5 +1,30 @@
 export const conversationUiZhCN = {
   conversationProcess: {
+    namedActivity: '{activity}：{name}',
+    activity: {
+      processing: '正在处理中',
+      thinking: '正在思考中',
+      command: '正在运行命令',
+      tool: '正在调用工具',
+      skill: '正在加载技能',
+      read: '正在读取文件',
+      search: '正在搜索网页',
+      fetch: '正在读取网页',
+      sleep: '正在等待',
+      image: '正在生成图片',
+      file: '正在修改文件',
+      compact: '正在整理上下文',
+      reply: '正在回复',
+      subagent: '正在协作'
+    },
+    running: '运行中',
+    executing: '执行中',
+    completed: '已完成',
+    stopped: '已停止',
+    stopping: '正在停止',
+    incomplete: '未完成',
+    history: '状态未知',
+    syncing: '等待同步',
     title: '工作过程',
     records: '已加载 {count} 条记录',
     partial: '部分记录',
@@ -25,7 +50,14 @@ export const conversationUiZhCN = {
     syncing: '正在同步会话'
   },
   toolPresentation: {
-    title: { WEB_SEARCH: '网页搜索', WEB_FETCH: '网页内容', SKILL: '加载技能', SLEEP: '等待' },
+    calls: '{count} 次调用',
+    title: {
+      READ: '读取文件',
+      WEB_SEARCH: '网页搜索',
+      WEB_FETCH: '网页内容',
+      SKILL: '加载技能',
+      SLEEP: '等待'
+    },
     status: { running: '执行中', completed: '已完成', failed: '失败', cancelled: '已取消' },
     sources: '{count} 个来源',
     noResults: '未找到结果',

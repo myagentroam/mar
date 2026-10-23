@@ -1141,7 +1141,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
   });
 
-  it('uses authoritative Run activity for process disclosure and warning SSR', async () => {
+  it('uses authoritative Run activity for process disclosure without warning aggregation', async () => {
     const groupId = 'process-live';
     const segment = conversationTurn(
       [
@@ -1166,21 +1166,33 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       [segment],
       [{ id: 'run-1', status: 'RUNNING' }]
     )[0]!;
-    expect(active).toMatchObject({ sealed: true, active: true, warning: true });
+    expect(active).toMatchObject({ sealed: true, active: true, status: 'executing' });
     const activeHtml = await render(
       ConversationWorkProcess,
       { block: active, synchronized: true },
       { default: () => h('span', 'Process details') }
     );
     expect(activeHtml).toMatch(/class="process-heading"[^>]*aria-expanded="true"/u);
-    expect(activeHtml).toContain(i18n.global.t('conversationActivity.running'));
-    expect(activeHtml).toContain(i18n.global.t('conversationProcess.warning'));
+    expect(activeHtml).toContain(
+      i18n.global.t('conversationProcess.namedActivity', {
+        activity: i18n.global.t('conversationProcess.activity.tool'),
+        name: 'Still running'
+      })
+    );
+    expect(activeHtml).toContain('class="process-activity-indicator" aria-hidden="true"');
+    expect(activeHtml).not.toContain(i18n.global.t('conversationProcess.warning'));
+
+    const disconnectedHtml = await render(ConversationWorkProcess, {
+      block: active,
+      synchronized: false
+    });
+    expect(disconnectedHtml).not.toContain('process-activity-indicator');
 
     const ended = conversationWorkProcessBlocks(
       [segment],
       [{ id: 'run-1', status: 'SUCCEEDED' }]
     )[0]!;
-    expect(ended).toMatchObject({ sealed: true, active: false, warning: true });
+    expect(ended).toMatchObject({ sealed: true, active: false, status: 'completed' });
     const endedHtml = await render(
       ConversationWorkProcess,
       { block: ended, synchronized: true },
@@ -1189,6 +1201,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(endedHtml).toMatch(/class="process-heading"[^>]*aria-expanded="false"/u);
     expect(endedHtml).toContain('aria-hidden="true"');
     expect(endedHtml).not.toContain(i18n.global.t('conversationActivity.running'));
+    expect(endedHtml).not.toContain('process-activity-indicator');
 
     const partial = conversationWorkProcessBlocks([
       conversationTurn(
@@ -1208,6 +1221,22 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
     expect(partial.partial).toBe(true);
     expect(partialHtml).toContain(i18n.global.t('conversationProcess.partial'));
+    expect(partialHtml).not.toContain('process-activity-indicator');
+  });
+
+  it.each([
+    ['command_execution', { command: 'echo test' }],
+    ['tool_call', { toolName: 'lookup' }],
+    ['tool_call', { toolName: 'read', toolPresentation: { kind: 'READ', paths: ['a.ts'] } }]
+  ])('keeps a single %s record inside a persistent collapsed group (%j)', async (kind, payload) => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([conversationItem('single', kind as string, payload)])]
+    });
+    expect(html).toMatch(/<details class="conversation-record-group"[^>]*>/u);
+    expect(html).not.toMatch(/<details class="conversation-record-group"[^>]*\bopen\b/u);
+    expect(html).not.toContain('<div class="conversation-record-group"');
+    expect(html).toContain(i18n.global.t('toolPresentation.calls', { count: 1 }));
   });
 
   it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(

@@ -26,6 +26,11 @@ export type ConversationDisplayItem =
       readonly completed: boolean;
     }
   | {
+      readonly type: 'read_group';
+      readonly id: string;
+      readonly items: readonly ConversationItem[];
+    }
+  | {
       readonly type: 'tool_group';
       readonly id: string;
       readonly items: readonly ConversationItem[];
@@ -135,6 +140,7 @@ function groupType(
 ):
   | 'reasoning_group'
   | 'tool_group'
+  | 'read_group'
   | 'subagent_group'
   | 'command_group'
   | 'file_change_group'
@@ -146,6 +152,8 @@ function groupType(
   if (item.kind === 'file_change') return 'file_change_group';
   if (item.kind === 'tool_call' && isSubagentToolCall(conversationPayload(item.payload)))
     return 'subagent_group';
+  if (item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ')
+    return 'read_group';
   if (
     item.kind === 'tool_call' &&
     !isSubagentToolCall(conversationPayload(item.payload)) &&
@@ -166,7 +174,7 @@ function isImageGenerationItem(item: ConversationItem): boolean {
 export function conversationDisplayItems(
   items: readonly ConversationItem[]
 ): readonly ConversationDisplayItem[] {
-  return items.flatMap((item): ConversationDisplayItem[] => {
+  const projected = items.flatMap((item): ConversationDisplayItem[] => {
     if (
       item.kind === 'assistant_message' &&
       !stringField(conversationPayload(item.payload) ?? {}, 'text').trim()
@@ -189,6 +197,39 @@ export function conversationDisplayItems(
       }
     ];
   });
+  const result: ConversationDisplayItem[] = [];
+  const anchors = new Map<string, number>();
+  let groupId: string | undefined;
+  let parentId: string | null | undefined;
+  for (const entry of projected) {
+    const item = 'items' in entry ? entry.items[0]! : entry.item;
+    if (item.processGroup?.id !== groupId || item.parentItemId !== parentId) anchors.clear();
+    groupId = item.processGroup?.id;
+    parentId = item.parentItemId;
+    if (!groupId || !('items' in entry) || entry.type === 'subagent_group') {
+      anchors.clear();
+      result.push(entry);
+      continue;
+    }
+    // Keep summary and visible thinking distinct, anchored at their first record.
+    const key =
+      entry.type === 'reasoning_group'
+        ? `${entry.type}:${conversationPayload(item.payload)?.representation}`
+        : entry.type;
+    const index = anchors.get(key);
+    const previous = index === undefined ? undefined : result[index];
+    if (previous && 'items' in previous && index !== undefined) {
+      const members = [...previous.items, ...entry.items];
+      result[index] =
+        previous.type === 'reasoning_group' && entry.type === 'reasoning_group'
+          ? { ...previous, items: members, text: `${previous.text}\n\n${entry.text}` }
+          : { ...previous, items: members };
+    } else {
+      anchors.set(key, result.length);
+      result.push(entry);
+    }
+  }
+  return result;
 }
 export function reasoningDisclosureOpen(
   previousTurnActive: boolean | undefined,

@@ -621,25 +621,36 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     }
   );
 
-  it('renders the shared input without a legacy external-session overlay', async () => {
-    const html = await render(ConversationComposer, {
-      input: 'Raw user input',
-      placeholder: 'Original placeholder',
-      working: true,
-      workingLabel: 'Original working status',
-      readonly: true,
-      dropTarget: false,
-      mobileViewport: false,
-      commandStates: [],
-      loading: false,
-      skillTokens: []
-    });
-    expect(html).toContain('Raw user input');
-    expect(html).toMatch(
-      /class="composer-working"[^>]*>.*Original working status.*class="composer-shell readonly has-working"/su
-    );
-    expect(html).toMatch(/<textarea[^>]*readonly/u);
-    expect(html).not.toContain('composer-takeover');
-    expect(html).not.toMatch(/generated\.|composer\.removeSkill|composer\.skillUnavailableToken/u);
-  });
+  it.each(['', 'Reconnecting'])(
+    'renders the shared input and gates activity while connection feedback is %s',
+    async (connectionLabel) => {
+      const html = await render(ConversationComposer, {
+        input: 'Raw user input',
+        placeholder: 'Original placeholder',
+        working: true,
+        workingLabel: 'Original working status',
+        connectionLabel,
+        readonly: true,
+        dropTarget: false,
+        mobileViewport: false,
+        commandStates: [],
+        loading: false,
+        skillTokens: []
+      });
+      expect(html).toContain('Raw user input');
+      expect(html).toMatch(
+        /class="[^"]*\bcomposer-working\b[^"]*"[^>]*>.*class="composer-shell readonly has-working"/su
+      );
+      expect(html).toContain(connectionLabel || 'Original working status');
+      if (connectionLabel) {
+        expect(html).not.toContain('is-active');
+        expect(html).not.toContain('Original working status');
+      } else expect(html).toContain('is-active');
+      expect(html).toMatch(/<textarea[^>]*readonly/u);
+      expect(html).not.toContain('composer-takeover');
+      expect(html).not.toMatch(
+        /generated\.|composer\.removeSkill|composer\.skillUnavailableToken/u
+      );
+    }
+  );
 });

@@ -1098,6 +1098,7 @@ onBeforeUnmount(() => {
             :user-input-submitted="() => false"
             :plan-continuation="undefined"
             :node-ready="interactionReady"
+            :synchronized="connected !== false && workspace.watchReady.value"
             :tool-change-enabled="toolChangeEnabled"
             :rewind-enabled="false"
             :rollback-enabled="rollbackEnabled"

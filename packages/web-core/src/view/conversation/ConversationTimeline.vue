@@ -1,8 +1,22 @@
 <script setup lang="ts">
 import { managementDateTime } from '../../util/time-presentation.js';
-import { toolPresentation, toolPresentationSources } from '../../util/tool-presentation.js';
+import {
+  toolPresentation,
+  toolPresentationSources,
+  toolPresentationStatus
+} from '../../util/tool-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Back, Check, CopyDocument, RefreshLeft } from '@element-plus/icons-vue';
+import {
+  Back,
+  Check,
+  CopyDocument,
+  RefreshLeft,
+  Document,
+  Cpu,
+  Monitor,
+  Tools,
+  EditPen
+} from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
@@ -248,7 +262,7 @@ const groupedItemDisclosure = reactive<Record<string, boolean>>({});
 watch(
   () => props.turns.flatMap((turn) => turn.items.map((item) => item.id)),
   (itemIds) => {
-    const currentIds = new Set(itemIds);
+    const currentIds = new Set(itemIds.flatMap((id) => [id, `group:${id}`]));
     for (const id of Object.keys(groupedItemDisclosure)) {
       if (!currentIds.has(id)) delete groupedItemDisclosure[id];
     }
@@ -260,11 +274,7 @@ function updateReasoningDisclosure(id: string, event: Event): void {
 }
 
 function updateGroupedItemDisclosure(id: string, event: Event): void {
-  if ((event.currentTarget as HTMLDetailsElement).open) {
-    groupedItemDisclosure[id] = true;
-    return;
-  }
-  delete groupedItemDisclosure[id];
+  groupedItemDisclosure[id] = (event.currentTarget as HTMLDetailsElement).open;
 }
 
 function rollbackTarget(turn: ConversationTurn, item: ConversationItem): boolean {
@@ -335,6 +345,19 @@ function stepDuration(item: ConversationItem): string | undefined {
     ? undefined
     : translate('conversationActivity.step', { value: preciseElapsedDurationLabel(duration) });
 }
+
+function aggregateStatus(items: readonly ConversationItem[]): string {
+  const statuses = new Set(items.map((item) => item.status));
+  const visible = [
+    'FAILED',
+    'DECLINED',
+    'IN_PROGRESS',
+    'PENDING',
+    'INTERRUPTED',
+    'CANCELLED'
+  ].filter((status) => statuses.has(status));
+  return [...new Set(visible.map(toolPresentationStatus))].join(' · ');
+}
 </script>
 
 <template>
@@ -364,7 +387,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 ? 'tool_call image-generation'
                 : displayItem.type === 'subagent_group'
                   ? 'tool_call subagent-group'
-                  : displayItem.type === 'tool_group'
+                  : displayItem.type === 'tool_group' || displayItem.type === 'read_group'
                     ? 'tool_call tool-group'
                     : displayItem.type === 'command_group'
                       ? 'command_execution command-group'
@@ -405,10 +428,16 @@ function stepDuration(item: ConversationItem): string | undefined {
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
           >
             <summary>
+              <Cpu class="conversation-record-icon" aria-hidden="true" />
               <strong>{{ conversationItemLabel('reasoning') }}</strong>
-              <span v-if="!reasoningDisclosure[displayItem.id]" class="reasoning-subtitle">{{
-                reasoningPreview(displayItem.text)
-              }}</span>
+              <span
+                v-if="
+                  !reasoningDisclosure[displayItem.id] &&
+                  !displayItem.items.some((item) => item.id === block.summary?.id)
+                "
+                class="reasoning-subtitle"
+                >{{ reasoningPreview(displayItem.text) }}</span
+              >
             </summary>
             <p v-if="reasoningDisclosure[displayItem.id]">{{ displayItem.text }}</p>
           </details>
@@ -501,49 +530,109 @@ function stepDuration(item: ConversationItem): string | undefined {
             </div>
           </details>
         </template>
-        <template v-else-if="displayItem.type === 'tool_group'">
+        <template
+          v-else-if="displayItem.type === 'tool_group' || displayItem.type === 'read_group'"
+        >
           <details
-            v-for="toolItem in displayItem.items"
-            :key="toolItem.id"
-            class="conversation-tool-detail"
-            @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
+            class="conversation-record-group"
+            :data-tool-presentation="displayItem.type === 'read_group' ? 'READ' : undefined"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
             <summary>
-              <strong>{{ conversationItemLabel(toolItem.kind, toolItem.payload) }}</strong>
-              <span>{{ conversationItemText(toolItem.kind, toolItem.payload) }}</span>
+              <component
+                :is="displayItem.type === 'read_group' ? Document : Tools"
+                class="conversation-record-icon"
+                aria-hidden="true"
+              />
+              <strong>{{
+                displayItem.type === 'read_group'
+                  ? translate('toolPresentation.title.READ')
+                  : conversationItemLabel('tool_call')
+              }}</strong>
+              <span>{{
+                translate('toolPresentation.calls', { count: displayItem.items.length })
+              }}</span>
+              <span v-if="aggregateStatus(displayItem.items)">{{
+                aggregateStatus(displayItem.items)
+              }}</span>
             </summary>
-            <p
-              v-if="
-                groupedItemDisclosure[toolItem.id] &&
-                conversationItemDetail(toolItem.kind, toolItem.payload)
-              "
+            <details
+              v-for="toolItem in displayItem.items"
+              :key="toolItem.id"
+              class="conversation-tool-detail"
+              :open="groupedItemDisclosure[toolItem.id] === true"
+              @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
             >
-              {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
-            </p>
+              <summary>
+                <component
+                  :is="displayItem.type === 'read_group' ? Document : Tools"
+                  class="conversation-record-icon"
+                  aria-hidden="true"
+                />
+                <strong>{{ conversationItemLabel(toolItem.kind, toolItem.payload) }}</strong>
+                <span>{{
+                  conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)
+                }}</span>
+              </summary>
+              <p
+                v-if="
+                  groupedItemDisclosure[toolItem.id] &&
+                  conversationItemDetail(toolItem.kind, toolItem.payload)
+                "
+              >
+                {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
+              </p>
+            </details>
           </details>
         </template>
         <template v-else-if="displayItem.type === 'command_group'">
           <details
-            v-for="commandItem in displayItem.items"
-            :key="commandItem.id"
-            class="conversation-command-detail"
-            @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
+            class="conversation-record-group"
+            :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
             <summary>
-              <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
-              <span>{{ conversationItemText(commandItem.kind, commandItem.payload) }}</span>
-              <span v-if="stepDuration(commandItem)" class="conversation-step-duration">{{
-                stepDuration(commandItem)
+              <Monitor class="conversation-record-icon" aria-hidden="true" />
+              <strong>{{ conversationItemLabel('command_execution') }}</strong>
+              <span>{{
+                translate('toolPresentation.calls', { count: displayItem.items.length })
               }}</span>
+              <span
+                v-if="
+                  !displayItem.items.some((item) => item.status === 'FAILED') &&
+                  aggregateStatus(displayItem.items)
+                "
+                >{{ aggregateStatus(displayItem.items) }}</span
+              >
             </summary>
-            <p
-              v-if="
-                groupedItemDisclosure[commandItem.id] &&
-                conversationItemDetail(commandItem.kind, commandItem.payload)
-              "
+            <details
+              v-for="commandItem in displayItem.items"
+              :key="commandItem.id"
+              class="conversation-command-detail"
+              :open="groupedItemDisclosure[commandItem.id] === true"
+              @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
             >
-              {{ conversationItemDetail(commandItem.kind, commandItem.payload) }}
-            </p>
+              <summary>
+                <Monitor class="conversation-record-icon" aria-hidden="true" />
+                <strong>{{ conversationItemLabel(commandItem.kind) }}</strong>
+                <span>{{ conversationItemText(commandItem.kind, commandItem.payload) }}</span>
+                <span class="conversation-command-status">{{
+                  toolPresentationStatus(commandItem.status)
+                }}</span>
+                <span v-if="stepDuration(commandItem)" class="conversation-step-duration">{{
+                  stepDuration(commandItem)
+                }}</span>
+              </summary>
+              <p
+                v-if="
+                  groupedItemDisclosure[commandItem.id] &&
+                  conversationItemDetail(commandItem.kind, commandItem.payload)
+                "
+              >
+                {{ conversationItemDetail(commandItem.kind, commandItem.payload) }}
+              </p>
+            </details>
           </details>
         </template>
         <template v-else-if="displayItem.type === 'file_change_group'">
@@ -553,6 +642,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
           >
             <summary>
+              <EditPen class="conversation-record-icon" aria-hidden="true" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
               <span
                 >{{ conversationFileChangeEntries(displayItem.items).length }}
@@ -1274,15 +1364,17 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-timeline {
+  --conversation-record-gap: 8px;
+  --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: var(--conversation-record-gap);
 }
 
 .conversation-turn {
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: 0;
 }
 
 .conversation-item {
@@ -1467,6 +1559,41 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-command-detail {
   border-top: 1px solid var(--mar-conversation-process-border);
   padding-top: 0.45rem;
+}
+
+.conversation-record-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.4rem;
+  vertical-align: -0.12em;
+  color: var(--mar-conversation-muted);
+}
+
+.conversation-record-group > .conversation-tool-detail,
+.conversation-record-group > .conversation-command-detail {
+  border-top: 0;
+  padding: 0;
+}
+
+.conversation-record-group > details + details {
+  margin-top: var(--conversation-record-gap);
+}
+
+details.conversation-record-group[open] > details:last-child {
+  margin-bottom: var(--conversation-record-gap);
+}
+
+.conversation-record-group > summary {
+  padding: 0.5rem 0.875rem;
+}
+
+details.conversation-record-group > details {
+  margin-inline: 0.875rem;
+}
+
+.conversation-record-group > summary > span + span {
+  margin-inline-start: 0.4em;
 }
 
 .conversation-tool-detail summary,
@@ -1708,6 +1835,31 @@ function stepDuration(item: ConversationItem): string | undefined {
   cursor: pointer;
   color: var(--mar-conversation-text);
   line-height: 20px;
+  list-style: none;
+}
+
+.conversation-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-item summary::before {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5rem;
+  vertical-align: -0.12em;
+  background: currentColor;
+  mask: var(--conversation-chevron) center / contain no-repeat;
+}
+
+.conversation-item details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.conversation-command-status,
+.conversation-step-duration {
+  margin-inline-start: 0.5rem;
 }
 
 .conversation-item summary:focus-visible {

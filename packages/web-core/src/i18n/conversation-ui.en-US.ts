@@ -1,5 +1,30 @@
 export const conversationUiEnUS = {
   conversationProcess: {
+    namedActivity: '{activity}: {name}',
+    activity: {
+      processing: 'Processing',
+      thinking: 'Thinking',
+      command: 'Running command',
+      tool: 'Calling tool',
+      skill: 'Loading skill',
+      read: 'Reading files',
+      search: 'Searching the web',
+      fetch: 'Reading webpage',
+      sleep: 'Waiting',
+      image: 'Generating image',
+      file: 'Updating files',
+      compact: 'Compacting context',
+      reply: 'Responding',
+      subagent: 'Collaborating'
+    },
+    running: 'Running',
+    executing: 'Executing',
+    completed: 'Completed',
+    stopped: 'Stopped',
+    stopping: 'Stopping',
+    incomplete: 'Incomplete',
+    history: 'Status unknown',
+    syncing: 'Awaiting sync',
     title: 'Work process',
     records: '{count} loaded records',
     partial: 'Partial history',
@@ -25,7 +50,9 @@ export const conversationUiEnUS = {
     syncing: 'Syncing conversation'
   },
   toolPresentation: {
+    calls: '{count} call | {count} calls',
     title: {
+      READ: 'Read',
       WEB_SEARCH: 'Web search',
       WEB_FETCH: 'Web content',
       SKILL: 'Load skill',

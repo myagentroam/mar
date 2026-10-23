@@ -505,6 +505,65 @@ test('Returning to a selected hosted conversation reconciles only its unread not
   expect(notifications.find((entry) => entry.id === 'conversation-other')?.read).toBe(false);
 });
 
+test('Hosted process activity stops on disconnect and resumes after synchronization', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const activeSnapshot = {
+    ...snapshot,
+    historyNextCursor: null,
+    run: { id: 'run-1', status: 'RUNNING', startedAt: Date.now(), completedAt: null },
+    turns: [
+      {
+        ...snapshot.turns[0],
+        status: 'RUNNING',
+        completedAt: null,
+        items: [
+          {
+            ...snapshot.turns[0].items[0],
+            kind: 'reasoning',
+            processGroup: { id: 'active-hosted-process', isStart: true },
+            payload: {
+              representation: 'summary',
+              sections: [{ index: 0, text: 'Checking changes' }]
+            }
+          }
+        ]
+      }
+    ]
+  };
+  await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+    json(route, { items: [conversation], nextCursor: null })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    json(route, { templates: [snapshot.template] })
+  );
+  await page.route(/\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/watch$/, (route) =>
+    fulfillMockHostedConversationWatch(page, route, conversation.id, activeSnapshot)
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  const indicator = page.locator('.process-activity-indicator');
+  await expect(indicator).toBeVisible();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() => {
+    const socket = (
+      window as unknown as {
+        __consoleMockWorkbenchWebSocket: {
+          instances: Array<{ readyState: number; close(): void }>;
+        };
+      }
+    ).__consoleMockWorkbenchWebSocket.instances.find((instance) => instance.readyState === 1);
+    if (!socket) throw new Error('Expected an active Workbench connection');
+    socket.close();
+  });
+  await expect(indicator).toHaveCount(0);
+  await expect(page.locator('.composer-working.is-active')).toHaveCount(0);
+  await page.clock.resume();
+  await expect(indicator).toBeVisible();
+});
+
 test('Hosted conversation cards share visual hierarchy across themes and viewport sizes', async ({
   page
 }, testInfo) => {

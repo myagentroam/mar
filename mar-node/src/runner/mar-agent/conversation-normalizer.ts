@@ -213,9 +213,10 @@ export class MarAgentConversationNormalizer {
       event.type === 'tool.completed' ||
       event.type === 'tool.failed'
     ) {
-      // Native web calls and generated artifacts stay visible independently of cell observations.
+      // Read/web calls and generated artifacts stay visible independently of cell observations.
       if (
         event.parentCallId !== undefined &&
+        event.toolName !== 'read' &&
         event.toolName !== 'web_search' &&
         event.toolName !== 'web_fetch' &&
         !isImageGenerationTool(event.toolName)
@@ -971,6 +972,16 @@ function projectToolPresentation(
   output: unknown,
   startedAt?: string
 ): ToolPresentation | undefined {
+  if (toolName === 'read') {
+    const reads = record(input)?.reads;
+    const paths = (Array.isArray(reads) ? reads : [])
+      .flatMap((entry) => {
+        const path = record(entry)?.path;
+        return typeof path === 'string' && path.length > 0 ? [compactRunnerText(path, 4096)] : [];
+      })
+      .slice(0, 16);
+    return { kind: 'READ', paths };
+  }
   const category =
     toolName === 'web_search'
       ? 'WEB_SEARCH'

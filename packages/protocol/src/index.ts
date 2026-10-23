@@ -2153,6 +2153,10 @@ export const subagentLatestMessageSchema = z.object({
 export type SubagentLatestMessage = z.infer<typeof subagentLatestMessageSchema>;
 export const toolPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
+    kind: z.literal('READ'),
+    paths: z.array(z.string().min(1).max(4096)).max(16).optional()
+  }),
+  z.object({
     kind: z.literal('WEB_SEARCH'),
     query: z.string().max(500).optional(),
     sourceCount: z.number().int().nonnegative().optional(),
