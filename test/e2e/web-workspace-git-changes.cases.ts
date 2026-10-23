@@ -889,19 +889,19 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await fileMenu.click();
   await expect(page.getByRole('menuitem', { name: '重命名' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '删除' })).toBeVisible();
-  await expect(page.locator('.el-dropdown__popper:visible .el-icon')).toHaveCount(6);
+  await expect(page.locator('.el-dropdown__popper:visible svg.mar-icon')).toHaveCount(6);
   await page.keyboard.press('Escape');
   const rootDirectory = fileTree.getByRole('treeitem', { name: 'project', exact: true });
   await rootDirectory.hover();
   const rootActions = page.getByRole('button', { name: 'project 更多操作' });
   await rootActions.click();
+  await expect(page.locator('.el-dropdown__popper:visible svg.mar-icon')).toHaveCount(4);
   const [rootActionsBox, rootMenuBox] = await Promise.all([
     rootActions.boundingBox(),
     page.locator('.el-dropdown__popper:visible').boundingBox()
   ]);
   expect(rootActionsBox).not.toBeNull();
   expect(rootMenuBox).not.toBeNull();
-  await expect(page.locator('.el-dropdown__popper:visible .el-icon')).toHaveCount(4);
   expect(rootMenuBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
     (rootActionsBox?.y ?? 0) + (rootActionsBox?.height ?? 0) + 24
   );
@@ -1050,14 +1050,19 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   const mainChange = page.getByRole('button', { name: '查看 src/main.ts 的 Diff' });
   await expect(mainChange.locator('.change-file-name')).toHaveText('main.ts');
   await expect(mainChange.locator('.change-directory')).toHaveText('src');
-  await expect(mainChange).toHaveAttribute('title', 'src/main.ts');
+  await expect(mainChange).not.toHaveAttribute('title');
+  await mainChange.hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: 'src/main.ts' })).toHaveText(
+    'src/main.ts'
+  );
   await expect(mainChange.locator('.change-directory')).toHaveCSS('margin-left', '7.92px');
   await expect(mainChange.locator('xpath=..')).toHaveCSS('border-top-width', '0px');
   const longChange = page.getByRole('button', {
     name: '预览 docs/19-工作台通知中心与非阻塞上传方案的超长文件名.md'
   });
-  await expect(longChange).toHaveAttribute(
-    'title',
+  await expect(longChange).not.toHaveAttribute('title');
+  await longChange.hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: '19-工作台通知中心' })).toHaveText(
     'docs/19-工作台通知中心与非阻塞上传方案的超长文件名.md'
   );
   const longPathContent = longChange.locator('.change-path-content');
@@ -1074,8 +1079,14 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(deepFileHeading).toHaveCSS('flex-shrink', '0');
   await expect(deepDirectory).toHaveCSS('overflow', 'hidden');
   expect((await deepFileName.boundingBox())?.width ?? 0).toBeGreaterThan(24);
-  await expect(page.getByTitle('MODIFIED').first()).toHaveText('M');
-  await expect(page.getByTitle('STAGED', { exact: true })).toHaveText('S');
+  const modifiedStatus = rootChangeList.first().locator(':scope > span');
+  await expect(modifiedStatus).toHaveText('M');
+  await modifiedStatus.hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: 'MODIFIED' })).toHaveText('MODIFIED');
+  const stagedStatus = page.locator('.change-entry > small').filter({ hasText: /^S$/ });
+  await expect(stagedStatus).toHaveText('S');
+  await stagedStatus.hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: 'STAGED' })).toHaveText('STAGED');
   await page.getByRole('button', { name: '预览 scratch.txt' }).click();
   const preview = page.getByRole('dialog', { name: 'scratch.txt 文件预览' });
   await expect(preview.getByLabel('代码编辑器预览')).toContainText('未跟踪文件内容');
@@ -1095,9 +1106,17 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
   await expect(diff.locator('.file-preview-content')).toHaveCSS('overflow', 'hidden');
   await expect(diff.getByLabel('工作树文件全文')).toHaveCSS('scrollbar-width', /^(none|thin)$/);
+  const expectedMinimapColor = await diff.evaluate((surface) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'color-mix(in srgb, var(--mar-text-secondary) 48%, transparent)';
+    surface.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   await expect(diff.locator('.diff-minimap-viewport')).toHaveCSS(
     'background-color',
-    /rgba?\(87, 96, 106/
+    expectedMinimapColor
   );
   await expect(diff.locator('.diff-minimap')).toHaveCSS('user-select', 'none');
   await expect(diff.locator('.diff-minimap-viewport')).toHaveCSS('cursor', 'grab');

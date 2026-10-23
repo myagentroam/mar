@@ -197,7 +197,7 @@ for (const language of [
       return layout;
     };
     const prefix = await verify('first-page');
-    await page.getByRole('link', { name: language.more, exact: true }).click();
+    await page.getByRole('button', { name: language.more, exact: true }).click();
     await expect(page.locator('.history-commit')).toHaveCount(commits.length);
     const appended = await verify('appended');
     expect(appended.rows.slice(0, 2).map((row) => row.svg)).toEqual(

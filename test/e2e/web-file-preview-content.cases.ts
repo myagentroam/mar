@@ -66,6 +66,7 @@ for (const [path, content] of [
     await popup.goto('/console');
     await popup.getByLabel('密码').fill('test-password');
     await popup.getByRole('button', { name: '进入控制台' }).click();
+    await expect(popup.getByRole('button', { name: '工作', exact: true })).toBeVisible();
     await popup.goto(
       `/console?standaloneFile=1&nodeId=node-1&workspaceId=workspace-1&path=${encodeURIComponent(path)}`
     );
