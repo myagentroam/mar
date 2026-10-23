@@ -2,12 +2,14 @@
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
+import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
+  type PersonalUsageRecords,
   type PersonalUsageOverview,
   type UsageGroup
 } from '@myagentroam/protocol';
@@ -47,6 +49,14 @@ function selectPurpose(purpose: (typeof purposes)[number]): void {
 }
 const metric = ref<'totalTokens' | 'requests'>('totalTokens');
 const tokenColumns = ['inputTokens', 'cacheReadTokens', 'outputTokens', 'totalTokens'] as const;
+const usageStateTypes: Record<PersonalUsageRecords['records'][number]['state'], TagProps['type']> =
+  {
+    running: 'primary',
+    succeeded: 'info',
+    failed: 'danger',
+    cancelled: 'info',
+    interrupted: 'warning'
+  };
 const activeBucket = ref<PersonalUsageOverview['buckets'][number]>();
 const bucketAnchor = shallowRef<SVGElement>();
 function showBucket(bucket: PersonalUsageOverview['buckets'][number], event: Event): void {
@@ -755,6 +765,7 @@ onUnmounted(() => {
           <el-table-column :label="t('modelUsage.state')" min-width="105"
             ><template #default="{ row }"
               ><el-tag
+                :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
                 effect="plain"
                 role="status"
                 :aria-label="t(`modelUsage.states.${row.state}`)"

@@ -455,7 +455,9 @@ function mcpErrorMessage(error: unknown): string {
               <el-tag v-if="row.featured" type="warning" effect="plain"
                 >★ {{ translate('generated.mcpCenterPanel.featured') }}</el-tag
               >
-              <el-tag v-for="tag in row.tags" :key="tag" effect="plain">{{ tag }}</el-tag>
+              <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                tag
+              }}</el-tag>
             </div>
           </template>
         </el-table-column>

@@ -765,6 +765,24 @@ describe('personal usage settings contract', () => {
           commonMessages[locale].modelUsage.states.failed,
           commonMessages[locale].modelUsage.states.succeeded
         ]);
+        expect(statuses.map((node) => node.props['type'])).toEqual(['danger', 'info']);
+        service.state.records = [
+          record('running', { state: 'running' }),
+          record('cancelled', { state: 'cancelled' }),
+          record('interrupted', { state: 'interrupted' })
+        ];
+        await flushComponent();
+        expect(
+          view
+            .findAll('ElTag')
+            .filter((node) => node.props['role'] === 'status')
+            .map((node) => node.props['type'])
+        ).toEqual(['primary', 'info', 'warning']);
+        service.state.records = [
+          record('shared-record', { ledgerId: 'ledger-one', state: 'failed' }),
+          record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
+        ];
+        await flushComponent();
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
         ).toBe(commonMessages[locale].modelUsage.trend);

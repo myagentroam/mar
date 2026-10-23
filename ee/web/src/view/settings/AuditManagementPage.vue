@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
+import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
@@ -295,6 +296,9 @@ function errorLabel(code: string | null): string {
 function resultLabel(result: AuditEvent['result']): string {
   return resultLabels.value[result];
 }
+function resultType(result: AuditEvent['result']): TagProps['type'] {
+  return result === 'FAILED' ? 'danger' : result === 'DENIED' ? 'warning' : 'info';
+}
 async function openDetail(event: AuditEvent): Promise<void> {
   detailLoading.value = true;
   try {
@@ -440,7 +444,11 @@ onUnmounted(() => pagination.dispose());
         min-width="130"
       />
       <el-table-column :label="translate('generated.auditManagementPage.result')" width="100"
-        ><template #default="{ row }">{{ resultLabel(row.result) }}</template></el-table-column
+        ><template #default="{ row }">
+          <el-tag :type="resultType(row.result)" effect="plain">{{
+            resultLabel(row.result)
+          }}</el-tag>
+        </template></el-table-column
       >
     </el-table>
     <ManagementPagination
@@ -487,7 +495,9 @@ onUnmounted(() => pagination.dispose());
           }}{{ selected.providerId ? ` · ${selected.providerId}` : '' }}</el-descriptions-item
         >
         <el-descriptions-item :label="translate('generated.auditManagementPage.result2')">
-          {{ resultLabel(selected.result) }}
+          <el-tag :type="resultType(selected.result)" effect="plain">{{
+            resultLabel(selected.result)
+          }}</el-tag>
           <template v-if="selected.result !== 'SUCCESS' && selected.errorCode">
             · {{ translate('generated.auditManagementPage.errorCode') }}:
             <code>{{ errorLabel(selected.errorCode) }}</code>
