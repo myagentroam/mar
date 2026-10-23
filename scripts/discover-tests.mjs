@@ -231,7 +231,7 @@ export async function discoverTests(root) {
       );
       return name ? packages.get(name) : null;
     }
-    const base = slash(relative(root, resolve(root, dirname(path), specifier)));
+    const base = slash(relative(root, resolve(root, dirname(path), specifier.split('?')[0])));
     if (base.startsWith('../')) return null;
     const stem = base.replace(/\.[cm]?js$/u, '');
     const mappedExtension = base.endsWith('.mjs') ? '.mts' : base.endsWith('.cjs') ? '.cts' : '.ts';

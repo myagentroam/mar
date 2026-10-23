@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ElSelect, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
@@ -12,6 +11,7 @@ import type {
 import { PersonalUsageService } from '../../src/service/PersonalUsageService.js';
 import * as personalUsageServiceModule from '../../src/service/PersonalUsageService.js';
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
+import InteractivePersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue?unit-render';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import { MANAGEMENT_PAGE_SIZE } from '../../src/service/ManagementPaginationService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -21,6 +21,7 @@ import { i18n, localePreferenceService } from '../../src/service/LocalePreferenc
 import { absoluteMessageTime } from '../../src/util/time-presentation.js';
 import { absoluteMessageTime as conversationTime } from '../../src/util/conversation-presentation.js';
 import { cacheHitRate } from '../../src/util/personal-usage-presentation.js';
+import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 
 type Requester = <T>(path: string, init?: RequestInit) => Promise<T>;
 type UsageRecord = PersonalUsageRecords['records'][number] & { ledgerId?: string };
@@ -127,16 +128,13 @@ function query(overrides: Partial<PersonalUsageQuery> = {}): PersonalUsageQuery 
   return { from: 1_699_900_000_000, to: 1_700_000_000_000, timeZone: 'UTC', ...overrides };
 }
 
-function source(path: string): string {
-  return readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8');
-}
-
 const originalLocale = localePreferenceService().locale.value;
 
 afterEach(() => {
-  localePreferenceService().setLocale(originalLocale);
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  localePreferenceService().setLocale(originalLocale);
 });
 
 describe('personal usage service', () => {
@@ -709,25 +707,81 @@ describe('personal usage settings contract', () => {
       expect(/\sdisabled(?:[\s=>])/u.test(next!)).toBe(disabled);
     }
   );
-  it('keeps top windows independent from selected filters and uses reactive model choices', () => {
-    const view = source('view/settings/PersonalUsageSettings.vue');
-    expect(view).toMatch(
-      /const overviewCards = computed\([\s\S]*label: 'last24Hours'[\s\S]*label: 'last7Days'/u
-    );
-    expect(view).toContain('const modelOptions = computed(');
-    expect(view).toContain('v-for="model in modelOptions"');
-  });
-
-  it('renders status as a localized tag and gives the chart a text alternative', () => {
-    const view = source('view/settings/PersonalUsageSettings.vue');
-    expect(view).toMatch(/<el-tag[\s\S]*effect="plain"[\s\S]*role="status"/u);
-    expect(view).toContain('modelUsage.states.${row.state}');
-    expect(view).toContain('role="img"');
-    expect(view).toContain('modelUsage.trend');
-    expect(view).toMatch(/<details>[\s\S]*<summary>[\s\S]*modelUsage\.chartData/u);
-    expect(view).toContain(':row-key="recordKey"');
-    expect(view).not.toContain('row-key="recordId"');
-  });
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders independent overview windows, reactive model choices and accessible records in %s',
+    async (locale) => {
+      localePreferenceService().setLocale(locale);
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+      });
+      vi.stubGlobal('document', {});
+      vi.stubGlobal('HTMLElement', class {});
+      const request = vi.fn();
+      const service = new PersonalUsageService(request, vi.fn());
+      vi.spyOn(service, 'load').mockResolvedValue(true);
+      vi.spyOn(service, 'startAutoRefresh').mockImplementation(() => undefined);
+      Object.assign(service.state, {
+        overview: overview({
+          last24Hours: totals({ inputTokens: '41' }),
+          last7Days: totals({ inputTokens: '73' }),
+          selected: totals({ inputTokens: '5' })
+        }),
+        availableModels: [
+          { ...overview().models[0]!, key: 'initial-model', label: 'Initial choice' }
+        ],
+        records: [
+          record('shared-record', { ledgerId: 'ledger-one', state: 'failed' }),
+          record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
+        ]
+      });
+      vi.spyOn(personalUsageServiceModule, 'PersonalUsageService').mockImplementation(function () {
+        return service;
+      });
+      const view = renderComponent(InteractivePersonalUsageSettings, { request });
+      try {
+        await flushComponent();
+        const cards = view
+          .findAll('section')
+          .filter((node) => node.props['class'] === 'overview-cell');
+        expect(cards.map(textContent)).toEqual([
+          expect.stringContaining(commonMessages[locale].modelUsage.last24Hours),
+          expect.stringContaining(commonMessages[locale].modelUsage.last7Days)
+        ]);
+        expect(textContent(cards[0]!)).toContain('41');
+        expect(textContent(cards[1]!)).toContain('73');
+        expect(view.findAll('ElOption').map((node) => node.props['value'])).toContain(
+          'initial-model'
+        );
+        service.state.availableModels = [];
+        service.state.overview = overview({
+          models: [{ ...overview().models[0]!, key: 'fallback-model', label: 'Fallback choice' }]
+        });
+        await flushComponent();
+        const choices = view.findAll('ElOption').map((node) => node.props['value']);
+        expect(choices).toContain('fallback-model');
+        expect(choices).not.toContain('initial-model');
+        const statuses = view.findAll('ElTag').filter((node) => node.props['role'] === 'status');
+        expect(statuses.map((node) => node.props['aria-label'])).toEqual([
+          commonMessages[locale].modelUsage.states.failed,
+          commonMessages[locale].modelUsage.states.succeeded
+        ]);
+        expect(
+          view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
+        ).toBe(commonMessages[locale].modelUsage.trend);
+        expect(textContent(view.findAll('summary')[0]!)).toBe(
+          commonMessages[locale].modelUsage.chartData
+        );
+        const recordTable = view
+          .findAll('ElTable')
+          .find((node) => typeof node.props['row-key'] === 'function')!;
+        const key = recordTable.props['row-key'] as (record: UsageRecord) => string;
+        expect(service.state.records.map(key)).toEqual(['ledger-one', 'ledger-two']);
+        expect(key(record('legacy-record'))).toBe('legacy-record');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
 
   it.each(['en-US', 'zh-CN'] as const)(
     'renders the public settings shell in %s',

@@ -75,6 +75,24 @@ test('working tree discovery includes untracked additions, removes deleted files
   }
 });
 
+test('component fixture queries keep the real implementation searchable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'mar-discovery-component-'));
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    await writeFile(join(root, 'Widget.vue'), '<template><p>Fixture</p></template>');
+    await writeFile(
+      join(root, 'widget.test.ts'),
+      "import { test } from 'vitest'; import Widget from './Widget.vue?unit-render'; test('renders the widget', () => {});"
+    );
+    const matches = searchTests(await discoverTests(root), { paths: ['Widget.vue'] });
+    assert.equal(matches.length, 1);
+    assert.ok(matches[0].implementationPaths.includes('Widget.vue'));
+    assert.ok(matches[0].implementationPaths.every((path) => !path.includes('?')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('independent roots do not share discoveries and custom scripts stay visible', async () => {
   const roots = await Promise.all(
     [0, 1].map(() => mkdtemp(join(tmpdir(), 'mar-discovery-isolation-')))

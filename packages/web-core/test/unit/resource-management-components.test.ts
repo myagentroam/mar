@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSSRApp, defineComponent, h } from 'vue';
+import { createSSRApp, defineComponent, h, provide } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import NodePage from '../../src/view/settings/NodeManagementPage.vue';
-import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue';
+import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
+import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { DOCUMENTATION_AVAILABLE_KEY } from '../../src/service/DocumentationAvailability.js';
+import {
+  flushComponent,
+  renderComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 afterEach(() => vi.unstubAllGlobals());
 describe('Public resource management', () => {
   it('owns resource and hosting flows without enterprise ownership policy', () => {
@@ -30,26 +37,74 @@ describe('Public resource management', () => {
     expect(source).toContain('await refreshNodeDetails(row)');
     expect(source).toContain('@refresh-node="refreshNodeDetails()"');
   });
-  it('separates the registration form from the successful token receipt', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/ResourceManagementPanel.vue', import.meta.url),
-      'utf8'
-    );
-    const form = source.slice(
-      source.indexOf('v-if="registrationOpen"'),
-      source.indexOf('v-if="registrationToken"')
-    );
-    const receipt = source.slice(source.indexOf('v-if="registrationToken"'));
-    expect(form).toContain(':loading="creatingRegistrationToken"');
-    expect(form).not.toContain('registration-help-link');
-    expect(form).not.toContain('{{ registrationToken }}');
-    expect(receipt).toContain('registrationTokenCreated');
-    expect(receipt).toContain('registrationTokenInstructions');
-    expect(receipt).toContain('{{ registrationToken }}');
-    expect(receipt).toContain('registration-help-link');
-    expect(receipt).toContain('v-if="documentationAvailable"');
-    expect(receipt).toContain('registrationToken =');
-  });
+  it.each([false, true])(
+    'shows a busy registration form and a key receipt with documentation=%s',
+    async (documentationAvailable) => {
+      vi.stubGlobal('window', {
+        location: { href: 'https://console.example.com/console' },
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+      });
+      i18n.global.locale.value = 'en-US';
+      let complete!: (result: { token: string }) => void;
+      const registration = new Promise<{ token: string }>((resolve) => {
+        complete = resolve;
+      });
+      const request = vi.fn(async (path: string) => {
+        if (path === '/api/node-registration-tokens') return registration;
+        if (path.startsWith('/api/resources?'))
+          return { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const view = renderComponent(
+        defineComponent({
+          setup() {
+            provide(DOCUMENTATION_AVAILABLE_KEY, documentationAvailable);
+            return () => h(NodePage, { request, writable: true });
+          }
+        })
+      );
+      const buttons = (label: string) =>
+        view
+          .findAll('ElButton')
+          .find((node) => textContent(node).trim().toLowerCase() === label.toLowerCase())!;
+      try {
+        await flushComponent();
+        await trigger(buttons('Register Node'), 'onClick');
+        const form = view.findAll('ElForm')[0]!;
+        const input = view.findAll('ElInput').find((node) => node.props['maxlength'] === '128')!;
+        await trigger(input, 'onUpdate:modelValue', '  Fixture Node  ');
+        expect(view.findAll('ElDialog')).toHaveLength(1);
+        expect(view.findAll('ElLink')).toHaveLength(0);
+        const submit = buttons('Create registration key');
+        const saving = trigger(submit, 'onClick');
+        await flushComponent();
+        expect(submit.props['loading']).toBe(true);
+        expect(form.props['disabled']).toBe(true);
+        expect(request).toHaveBeenCalledWith('/api/node-registration-tokens', {
+          method: 'POST',
+          body: JSON.stringify({ displayName: 'Fixture Node' })
+        });
+        complete({ token: 'fixture-registration-key' });
+        await saving;
+        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(textContent(view.root)).toContain('fixture-registration-key');
+        expect(textContent(view.root)).toContain(
+          commonMessages['en-US'].generated.resourceSharingPage.registrationTokenInstructions
+        );
+        expect(view.findAll('ElLink')).toHaveLength(documentationAvailable ? 1 : 0);
+        if (documentationAvailable)
+          expect(view.findAll('ElLink')[0]?.props['href']).toContain(
+            '/deployment/node-installation'
+          );
+        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(textContent(view.root)).not.toContain('fixture-registration-key');
+      } finally {
+        complete({ token: 'fixture-registration-key' });
+        view.unmount();
+      }
+    }
+  );
   it.each(['en-US', 'zh-CN'] as const)(
     'uses consistent user-facing registration wording in %s',
     (locale) => {
