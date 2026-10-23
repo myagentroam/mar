@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import { ref } from 'vue';
 const value = ref('');
 </script>
 <template>
+  <WorkspaceLabelsFixture />
   <section aria-label="Real theme controls">
     <el-input v-model="value" aria-label="Sample input" />
     <el-select v-model="value" aria-label="Sample select">

@@ -225,16 +225,6 @@ function skillStatusLabel(status: string): string {
           : translate('generated.workspaceSessionList.invalidDirectory');
 }
 
-function workspaceBranchTone(branch: string): string {
-  const normalized = branch.trim().toLowerCase();
-  if (normalized === 'main' || normalized === 'master') return 'branch-main';
-  if (normalized === 'develop') return 'branch-develop';
-  if (normalized.startsWith('feat')) return 'branch-feature';
-  if (normalized.startsWith('release')) return 'branch-release';
-  if (/^(fix|bugfix|hotfix)(?:[\/_-]|$)/.test(normalized)) return 'branch-fix';
-  return 'branch-other';
-}
-
 function pinned(session: Session): boolean {
   return session.pinOrder !== null && session.pinOrder !== undefined;
 }
@@ -346,13 +336,15 @@ function submitSessionSearch(): void {
         <el-tag
           v-if="workspaceKind === 'GIT_WORKSPACE'"
           class="workspace-kind-tag"
+          type="info"
           effect="plain"
           size="small"
           >{{ workspaceKindLabel }}</el-tag
         >
         <el-tag
           v-if="workspaceBranch !== undefined"
-          :class="['workspace-branch-tag', workspaceBranchTone(workspaceBranch)]"
+          class="workspace-branch-tag"
+          type="info"
           effect="plain"
           size="small"
           >{{ workspaceBranch }}</el-tag
@@ -845,10 +837,12 @@ function submitSessionSearch(): void {
   line-height: 1.4;
 }
 
-.workspace-kind-tag {
-  --el-tag-bg-color: var(--mar-color-warning-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-warning-text);
+.workspace-kind-tag,
+.workspace-branch-tag {
+  --el-tag-bg-color: var(--mar-bg-subtle);
+  --el-tag-border-color: var(--mar-border-default);
+  --el-tag-text-color: var(--mar-text-secondary);
+  color: var(--mar-text-secondary);
   min-height: 1.5em;
   height: auto;
   border-radius: var(--mar-radius-marker);
@@ -858,49 +852,14 @@ function submitSessionSearch(): void {
 }
 
 .workspace-branch-tag {
-  --el-tag-bg-color: var(--mar-bg-page);
-  --el-tag-border-color: var(--mar-border-subtle);
-  --el-tag-text-color: var(--mar-text-tertiary);
-  min-height: 1.5em;
-  height: auto;
-  border-radius: var(--mar-radius-marker);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.2;
   max-width: 10rem;
   overflow: hidden;
-  padding: 0 5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workspace-branch-tag.branch-main {
-  --el-tag-bg-color: var(--mar-color-accent-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-accent) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-accent);
-}
-
-.workspace-branch-tag.branch-develop {
-  --el-tag-bg-color: var(--mar-color-brand-subtle);
-  --el-tag-border-color: var(--mar-color-brand-border);
-  --el-tag-text-color: var(--mar-color-brand-text);
-}
-
-.workspace-branch-tag.branch-feature {
-  --el-tag-bg-color: var(--mar-color-success-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-success-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-success-text);
-}
-
-.workspace-branch-tag.branch-release {
-  --el-tag-bg-color: var(--mar-color-warning-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-warning-text);
-}
-
-.workspace-branch-tag.branch-fix {
-  --el-tag-bg-color: var(--mar-color-danger-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-danger-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-danger-text);
+.session-heading-meta :deep(.el-tag__content) {
+  color: inherit;
 }
 
 .new-session-form {

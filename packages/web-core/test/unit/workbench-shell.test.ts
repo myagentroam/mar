@@ -402,41 +402,6 @@ describe('Shared workbench shell', () => {
     expect(source).not.toContain("'node-offline'");
   });
 
-  it('applies stable semantic colors to Workspace Git branch tags', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceSessionList.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain("normalized === 'main' || normalized === 'master'");
-    expect(source).toContain("normalized === 'develop'");
-    expect(source).toContain("normalized.startsWith('feat')");
-    expect(source).toContain("normalized.startsWith('release')");
-    expect(source).toContain('/^(fix|bugfix|hotfix)(?:[\\/_-]|$)/.test(normalized)');
-    expect(source).toContain("return 'branch-other'");
-    expect(source).toContain(
-      ':class="[\'workspace-branch-tag\', workspaceBranchTone(workspaceBranch)]"'
-    );
-    expect(source).toContain('v-if="workspaceKind === \'GIT_WORKSPACE\'"');
-    expect(source).toContain('>{{ workspaceKindLabel }}</el-tag');
-    expect(source).not.toContain("html[data-theme='vscode-dark-2026']) .workspace-kind-tag");
-    for (const [tone, token] of [
-      ['branch-main', '--mar-color-accent'],
-      ['branch-develop', '--mar-color-brand-text'],
-      ['branch-feature', '--mar-color-success-text'],
-      ['branch-release', '--mar-color-warning-text'],
-      ['branch-fix', '--mar-color-danger-text']
-    ]) {
-      const rule = source.split(`.workspace-branch-tag.${tone} {`)[1]?.split('}')[0];
-      expect(rule).toContain(`--el-tag-text-color: var(${token});`);
-    }
-    expect(source.split('.workspace-branch-tag {')[1]?.split('}')[0]).toContain(
-      '--el-tag-text-color: var(--mar-text-tertiary);'
-    );
-    expect(source.split('.workspace-kind-tag {')[1]?.split('}')[0]).toContain(
-      '--el-tag-text-color: var(--mar-color-warning-text);'
-    );
-  });
-
   it('uses a fixed Workspace tree indent for each nested level', () => {
     const source = readFileSync(
       new URL('../../src/view/workspace/WorkspaceTree.vue', import.meta.url),
