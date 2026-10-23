@@ -47,10 +47,12 @@ export const smokeBuildFiles = [
 export function e2eOptions(arguments_, platform = process.platform) {
   const smoke = arguments_.includes('--smoke');
   const integration = arguments_.includes('--integration');
+  const fixtures = arguments_.includes('--fixtures');
   const windows = arguments_.includes('--windows');
-  if ((smoke && integration) || (windows && !smoke)) throw new Error('E2E_MODE_INVALID');
+  if (Number(smoke) + Number(integration) + Number(fixtures) > 1 || (windows && !smoke))
+    throw new Error('E2E_MODE_INVALID');
   const argumentsToForward = arguments_.filter(
-    (argument) => !['--smoke', '--integration', '--windows'].includes(argument)
+    (argument) => !['--smoke', '--integration', '--fixtures', '--windows'].includes(argument)
   );
   const list = argumentsToForward.includes('--list');
   if (smoke) {
@@ -75,13 +77,21 @@ export function e2eOptions(arguments_, platform = process.platform) {
   );
   if (integrationOnly && projects.some((project) => project !== 'integration'))
     throw new Error('E2E_PROJECT_SELECTION_INVALID');
+  if (fixtures) {
+    if (integrationOnly || projects.some((project) => !['chromium', 'firefox'].includes(project)))
+      throw new Error('E2E_PROJECT_SELECTION_INVALID');
+    if (!argumentsToForward.some((argument) => /^test\/e2e\/.+\.spec\.ts$/u.test(argument)))
+      throw new Error('E2E_FIXTURE_SELECTION_REQUIRED');
+  }
   return {
-    mode: smoke ? 'smoke' : integrationOnly ? 'integration' : 'full',
+    mode: smoke ? 'smoke' : fixtures ? 'fixtures' : integrationOnly ? 'integration' : 'full',
     list,
     arguments:
-      integration && projects.length === 0
-        ? [...argumentsToForward, '--project=integration']
-        : argumentsToForward
+      fixtures && projects.length === 0
+        ? [...argumentsToForward, '--project=chromium']
+        : integration && projects.length === 0
+          ? [...argumentsToForward, '--project=integration']
+          : argumentsToForward
   };
 }
 

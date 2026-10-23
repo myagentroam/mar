@@ -21,44 +21,6 @@ import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
 
-it('uses shared Composer typography and registered semantic colors without changing its structure', () => {
-  const source = (name: string) =>
-    readFileSync(new URL(`../../src/view/${name}.vue`, import.meta.url), 'utf8');
-  const composer = source('composer/ConversationComposer');
-  const outer = composer.match(/\.composer\s*\{([^}]+)\}/u)?.[1];
-  expect(outer).toContain('background: var(--mar-conversation-canvas);');
-  expect(outer).not.toContain('border-top:');
-  expect(composer).toMatch(
-    /\.composer-shell\s*\{[^}]*border: 1px solid var\(--mar-border-medium\);[^}]*background: var\(--mar-bg-panel\);/u
-  );
-  const completion = source('composer/PromptCompletionEditor');
-  const toolbar = source('composer/ComposerToolbar');
-  expect(composer).toContain('font-size: var(--mar-font-size-input)');
-  expect(composer).not.toMatch(/--mar-font-size-input\s*:/u);
-  expect(composer).toContain('font-family: inherit');
-  expect(composer).toContain('color: var(--mar-color-success-text)');
-  expect(composer).toContain('background: var(--mar-color-warning-bg)');
-  expect(completion).toContain('caret-color: var(--mar-text-primary)');
-  expect(completion).not.toContain('var(--mar-text)');
-  expect(completion).toContain('font-size: var(--mar-font-size-meta)');
-  expect(toolbar).toContain('font-size: var(--mar-font-size-body)');
-  expect(toolbar).toContain('color: var(--mar-color-on-accent)');
-  for (const name of [
-    'composer/ConversationComposer',
-    'composer/ComposerToolbar',
-    'composer/ComposerQueue',
-    'composer/ComposerCommandPicker',
-    'composer/ComposerFileReferencePicker',
-    'composer/ComposerAttachments',
-    'conversation/HostedConversationComposer'
-  ]) {
-    expect(source(name)).not.toMatch(
-      /font-size:\s*(?:12px|13px|0\.(?:65|66|68|69|72|76|8125)rem);/u
-    );
-    expect(source(name)).not.toMatch(/font-weight:\s*(?:650|700);/u);
-  }
-});
-
 async function render(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);

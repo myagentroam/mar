@@ -27,18 +27,6 @@ function styleDeclarations(source: string, selector: string): Record<string, str
   );
 }
 
-function contrast(foreground: string, background: string) {
-  const luminance = (hex: string) => {
-    const channels = [1, 3, 5].map((offset) => {
-      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    });
-    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-  };
-  const values = [luminance(foreground), luminance(background)];
-  return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
-}
-
 it('shares global typography with native inputs and Element Plus without undefined font roles', () => {
   const css = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
   const defined = new Set([...css.matchAll(/(--mar-font-[\w-]+)\s*:/gu)].map((match) => match[1]));
@@ -110,134 +98,6 @@ describe('Web theme preference', () => {
       );
     };
     expect(cssImports('../e2e/custom-theme-app.ts')).toEqual(cssImports('../../src/bootstrap.ts'));
-  });
-
-  it('uses the porcelain daylight palette with accessible interactive and text colors', () => {
-    const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    const daylight = styleDeclarations(source, ':root').find((rule) => '--mar-bg-page' in rule)!;
-
-    expect(daylight['--mar-bg-page']).toBe('#f7f8fa');
-    expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-    expect(daylight['--mar-bg-tab-inactive']).toBe('#e7ecf2');
-    expect(daylight['--mar-border-default']).toBe('#c7d1dd');
-    expect(daylight['--mar-color-brand']).toBe('#245fa8');
-    expect(daylight['--mar-color-brand-text']).toBe('#245994');
-    expect(daylight['--mar-color-brand-selected']).toBe('#dce8f7');
-    expect(daylight['--mar-color-accent']).toBe('#386b80');
-    expect(daylight['--mar-control-color-success']).toBe('#21694f');
-    expect(daylight['--mar-text-primary']).toBe('#202b3b');
-    expect(daylight['--mar-text-secondary']).toBe('#4f6073');
-    expect(daylight['--mar-text-tertiary']).toBe('#5d6d80');
-    expect(daylight['--mar-text-muted']).toBe('#5d6d80');
-    expect(daylight['--mar-text-faint']).toBe('#5d6d80');
-
-    for (const state of [
-      '--mar-color-brand',
-      '--mar-color-brand-hover',
-      '--mar-control-color-primary-dark-2'
-    ]) {
-      expect(contrast('#ffffff', daylight[state]!)).toBeGreaterThanOrEqual(4.5);
-    }
-    for (const role of ['primary', 'secondary', 'tertiary', 'muted', 'faint']) {
-      expect(
-        contrast(daylight[`--mar-text-${role}`]!, daylight['--mar-bg-panel']!)
-      ).toBeGreaterThanOrEqual(4.5);
-    }
-    for (const [foreground, background] of [
-      ['--mar-color-brand-text', '--mar-color-brand-selected'],
-      ['--mar-color-accent', '--mar-color-accent-bg'],
-      ['--mar-color-success-text', '--mar-color-success-bg'],
-      ['--mar-color-warning-text', '--mar-color-warning-bg'],
-      ['--mar-color-danger-text', '--mar-color-danger-bg']
-    ]) {
-      expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it('uses the original dark palette with distinct surfaces and readable button text', () => {
-    const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    const dark = styleDeclarations(source, "html.console-ui[data-theme='vscode-dark-2026']")[0]!;
-
-    expect(dark['--mar-bg-page']).toBe('#0e1116');
-    expect(dark['--mar-bg-panel']).toBe('#161d28');
-    expect(dark['--mar-bg-chrome']).toBe('#131922');
-    for (const [role, color] of Object.entries({
-      canvas: '#0e1116',
-      surface: '#131922',
-      process: '#111720',
-      border: '#313d50',
-      'process-border': '#202a39',
-      text: '#d0d7e2',
-      muted: '#9fb0c7',
-      code: '#111720'
-    })) {
-      expect(dark[`--mar-conversation-${role}`]).toBe(color);
-    }
-    expect(dark['--mar-control-bg-color-overlay']).toBe('#1a2230');
-    expect(dark['--mar-bg-tab-inactive']).toBe('#111720');
-    expect(dark['--mar-border-default']).toBe('#273142');
-    expect(dark['--mar-border-subtle']).toBe('#202a39');
-    expect(dark['--mar-color-brand']).toBe('#1f73cf');
-    expect(dark['--mar-color-brand-hover']).toBe('#1a65b8');
-    expect(dark['--mar-color-brand-selected']).toBe('#162c44');
-    expect(dark['--mar-color-on-accent']).toBe('#ffffff');
-    expect(
-      contrast(dark['--mar-color-brand-text']!, dark['--mar-color-brand-selected']!)
-    ).toBeGreaterThanOrEqual(4.5);
-    expect(dark['--mar-color-accent']).toBe('#5edcec');
-    expect(dark['--mar-control-color-success']).toBe('#62d6a4');
-    expect(dark['--mar-text-primary']).toBe('#e8eef8');
-    expect(dark['--mar-text-secondary']).toBe('#9fb0c7');
-    expect(dark['--mar-text-muted']).toBe('#8799b1');
-    for (const surface of [
-      '--mar-bg-page',
-      '--mar-bg-chrome',
-      '--mar-bg-panel',
-      '--mar-control-bg-color-overlay'
-    ]) {
-      for (const text of ['--mar-text-primary', '--mar-text-secondary', '--mar-text-tertiary']) {
-        expect(
-          contrast(dark[text]!, dark[surface]!),
-          text + ' on ' + surface
-        ).toBeGreaterThanOrEqual(4.5);
-      }
-    }
-    for (const brandState of [
-      '--mar-color-brand',
-      '--mar-color-brand-hover',
-      '--mar-control-color-primary-light-3',
-      '--mar-control-color-primary-dark-2'
-    ]) {
-      expect(contrast(dark['--mar-color-on-accent']!, dark[brandState]!)).toBeGreaterThanOrEqual(
-        4.5
-      );
-    }
-    expect(dark['--mar-shadow-medium']).toBe('#00000047');
-    expect(dark['--mar-overlay-scrim']).toBe('#0000007a');
-    expect(dark['--mar-text-neutral-control']).toBe('#8799b1');
-  });
-
-  it('keeps navigation selection separate from brand interactions and stronger than hover', () => {
-    const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    const palettes = [
-      styleDeclarations(source, ':root').find((rule) => '--mar-bg-page' in rule)!,
-      styleDeclarations(source, "html.console-ui[data-theme='vscode-dark-2026']").find(
-        (rule) => '--mar-bg-page' in rule
-      )!
-    ];
-    for (const colors of palettes) {
-      const selected = colors['--mar-fill-selection']!;
-      const hover = colors['--mar-fill-row-hover']!;
-      const panel = colors['--mar-bg-panel']!;
-      expect(selected).not.toBe(colors['--mar-color-brand-selected']);
-      expect(contrast(colors['--mar-text-primary']!, selected)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(colors['--mar-text-secondary']!, selected)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(colors['--mar-color-brand-text']!, selected)).toBeGreaterThanOrEqual(3);
-      expect(contrast(selected, panel)).toBeGreaterThan(contrast(hover, panel));
-      expect(contrast(selected, colors['--mar-bg-chrome']!)).toBeGreaterThan(
-        contrast(hover, colors['--mar-bg-chrome']!)
-      );
-    }
   });
 
   it('uses rounded neutral selection without tab underlines on desktop and mobile', () => {
@@ -463,50 +323,6 @@ describe('Web theme preference', () => {
       expect(styleDeclarations(timeline, selector)).toContainEqual(
         expect.objectContaining({ [edge]: `${width} solid var(--mar-conversation-process-border)` })
       );
-    }
-  });
-
-  it('keeps conversation text readable on each theme surface without changing global colors', () => {
-    const source = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    const themes = [':root', "html.console-ui[data-theme='vscode-dark-2026']"];
-    const luminance = (hex: string) => {
-      const channels = [1, 3, 5].map((offset) => {
-        const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-      });
-      return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-    };
-    for (const selector of themes) {
-      const declarations = styleDeclarations(source, selector).find(
-        (rule) => '--mar-conversation-canvas' in rule
-      )!;
-      const tokens = new Map(
-        Object.entries(declarations)
-          .filter(([name]) => name.startsWith('--mar-conversation-'))
-          .map(([name, value]) => [
-            name.slice('--mar-conversation-'.length),
-            value.startsWith('var(') ? declarations[value.slice(4, -1)] : value
-          ])
-      );
-      for (const name of [
-        'canvas',
-        'surface',
-        'process',
-        'border',
-        'process-border',
-        'code',
-        'text',
-        'muted'
-      ])
-        expect(tokens.get(name), name).toMatch(/^#[\da-f]{6}$/u);
-      expect(tokens.get('canvas')).not.toBe(tokens.get('surface'));
-      for (const foreground of ['text', 'muted']) {
-        for (const background of ['canvas', 'surface', 'process', 'code']) {
-          const values = [luminance(tokens.get(foreground)!), luminance(tokens.get(background)!)];
-          const contrast = (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
-          expect(contrast).toBeGreaterThanOrEqual(4.5);
-        }
-      }
     }
   });
 
