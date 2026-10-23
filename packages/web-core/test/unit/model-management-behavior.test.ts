@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import Page from '../../src/view/settings/MarAgentModelManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
 import { managementDateTime } from '../../src/util/time-presentation.js';
 import {
   flushComponent,
@@ -13,6 +14,8 @@ import {
   trigger,
   type TestElement
 } from './support/component-renderer.js';
+
+vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
 
 const messages = commonMessages['en-US'].marAgentModels;
 const previousLocale = i18n.global.locale.value;
@@ -101,6 +104,7 @@ function requestFixture(models: readonly MarAgentModelSummary[] = [model]) {
   });
 }
 beforeEach(() => {
+  vi.mocked(showMessage).mockClear();
   i18n.global.locale.value = 'en-US';
   vi.stubGlobal('window', {
     location: { search: '', href: 'http://fixture/console' },
@@ -109,10 +113,6 @@ beforeEach(() => {
   });
   vi.stubGlobal('Document', class {});
   vi.stubGlobal('ShadowRoot', class {});
-  vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-  vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
-  vi.spyOn(ElMessage, 'info').mockImplementation(() => ({ close() {} }));
-  vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close() {} }));
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -219,7 +219,9 @@ describe('Model management component behavior', () => {
       await trigger(button(view, messages.save), 'onClick');
       expect(request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
       await trigger(button(view, messages.save), 'onClick');
-      expect(ElMessage.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')).toHaveLength(
+        1
+      );
       expect(control(view, messages.model, 'ElInput').props['modelValue']).toBe(
         'free/form-model:custom'
       );
@@ -409,9 +411,9 @@ describe('Model management component behavior', () => {
         nodeId: 'ready',
         name: 'Fixture login'
       });
-      expect(ElMessage.error).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Fixture login unavailable' })
-      );
+      expect(
+        vi.mocked(showMessage).mock.calls.map(([message, type]) => ({ message, type }))
+      ).toContainEqual({ message: 'Fixture login unavailable', type: 'error' });
       await trigger(button(view, messages.cancel), 'onClick');
       await trigger(button(view, messages.add), 'onClick');
       await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'GROK');
@@ -525,7 +527,8 @@ describe('Model management component behavior', () => {
           'modelValue'
         ]
       ).toBe(result.response.body);
-      expect(ElMessage.error).toHaveBeenCalledWith(result.message);
+      expect(textContent(view.findAll('ElDialog')[0]!)).toContain(result.message);
+      expect(showMessage).not.toHaveBeenCalled();
     } finally {
       view.unmount();
     }
@@ -565,18 +568,16 @@ describe('Model management component behavior', () => {
           { method: 'POST' }
         );
         if (outcome === 'DEFERRED')
-          expect(ElMessage.info).toHaveBeenCalledWith(
-            expect.objectContaining({
-              message: i18n.global.t('marAgentModels.chatgptRefreshDeferred', {
-                time: managementDateTime(credential.earliestRefreshAt)
-              })
-            })
+          expect(showMessage).toHaveBeenCalledWith(
+            i18n.global.t('marAgentModels.chatgptRefreshDeferred', {
+              time: managementDateTime(credential.earliestRefreshAt)
+            }),
+            'info'
           );
-        else
-          expect(ElMessage.warning).toHaveBeenCalledWith(
-            expect.objectContaining({ message: messages.codexRefreshDegraded })
-          );
-        expect(ElMessage.success).not.toHaveBeenCalled();
+        else expect(showMessage).toHaveBeenCalledWith(messages.codexRefreshDegraded, 'warning');
+        expect(vi.mocked(showMessage).mock.calls.some(([, type]) => type === 'success')).toBe(
+          false
+        );
       } finally {
         view.unmount();
       }
@@ -803,7 +804,7 @@ describe('Model management component behavior', () => {
       testResult.resolve({ result: { success: true, code: null } });
       await testing;
       expect(button(view, messages.test).props['loading']).toBe(false);
-      expect(ElMessage.success).toHaveBeenCalledWith(messages.codexTestSucceeded);
+      expect(showMessage).toHaveBeenCalledWith(messages.codexTestSucceeded, 'success');
       await trigger(button(view, messages.remove), 'onClick');
       expect(removed).toBe(false);
       await trigger(button(view, messages.remove), 'onClick');

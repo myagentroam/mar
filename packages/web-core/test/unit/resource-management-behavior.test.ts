@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessageBox } from 'element-plus';
 import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
 import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { showMessage } from '../../src/service/MessageFeedbackService.js';
 import {
   flushComponent,
   renderComponent,
@@ -11,10 +12,13 @@ import {
   trigger
 } from './support/component-renderer.js';
 
+vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+
 const messages = commonMessages['en-US'].generated.resourceSharingPage;
 const common = commonMessages['en-US'].common;
 const previousLocale = i18n.global.locale.value;
 beforeEach(() => {
+  vi.mocked(showMessage).mockClear();
   i18n.global.locale.value = 'en-US';
   vi.stubGlobal('window', {
     location: { search: '', href: 'http://fixture/console' },
@@ -23,8 +27,6 @@ beforeEach(() => {
   });
   vi.stubGlobal('Document', class {});
   vi.stubGlobal('ShadowRoot', class {});
-  vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-  vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -174,8 +176,10 @@ describe('Public resource operation behavior', () => {
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
       failRefresh = true;
       await trigger(button(refreshLabel), 'onClick');
-      expect(ElMessage.error).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Fixture capability refresh unavailable' })
+      expect(showMessage).toHaveBeenCalledWith(
+        'Fixture capability refresh unavailable',
+        'error',
+        expect.any(Error)
       );
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
       failRefresh = false;
