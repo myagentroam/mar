@@ -231,21 +231,11 @@ describe('MAR Agent compact settings form', () => {
     expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
   });
 
-  it('lives in MAR Agent management, not in the system configuration page', () => {
-    const modelPage = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
+  it('keeps compact model policy outside system configuration', () => {
     const systemPage = readFileSync(
       new URL('../../src/view/settings/SystemConfigurationPage.vue', import.meta.url),
       'utf8'
     );
-    expect(modelPage).toContain(
-      "import MarAgentCompactSettings from './MarAgentCompactSettings.vue'"
-    );
-    expect(modelPage).toContain('<MarAgentCompactSettings');
-    expect(modelPage).toContain("translate('promptCompletion.advanced')");
-    expect(modelPage).toContain("translate('promptCompletion.compact')");
     expect(systemPage).not.toContain('MarAgentCompact');
     expect(systemPage).not.toContain('compactTab');
   });

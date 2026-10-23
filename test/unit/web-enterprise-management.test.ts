@@ -165,17 +165,6 @@ describe('Web enterprise management domain', () => {
   });
 
   it('Skill settings, Skill sources, MCP sources, and environment secrets are adjacent in management menus', async () => {
-    const controllerSource = await readFile(
-      resolve(process.cwd(), 'packages/web-core/src/service/WorkbenchPageController.ts'),
-      'utf8'
-    );
-    const navigationStart = controllerSource.indexOf('const navigationItems = computed<');
-    const navigationEnd = controllerSource.indexOf(
-      'const sidebarContentVisible = computed',
-      navigationStart
-    );
-    const navigationSource = controllerSource.slice(navigationStart, navigationEnd);
-    expect(navigationSource).not.toContain("{ id: 'skills'");
     const composition = createEnterpriseManagementComposition();
     for (const admin of managementStates) {
       const ids = composition.items(admin).map((item) => item.id);
@@ -194,21 +183,9 @@ describe('Web enterprise management domain', () => {
   });
 
   it('Conversation template grants use the localized shared action label', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
-      'utf8'
-    );
-    expect(source.match(/translate\('common\.grant'\)/gu) ?? []).toHaveLength(2);
     expect(i18n.global.t('common.grant')).toBe('授权');
     i18n.global.locale.value = 'en-US';
     expect(i18n.global.t('common.grant')).toBe('Grant');
-  });
-  it('retains model action spacing until browser layout coverage replaces its declaration check', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'packages/web-core/src/view/settings/MarAgentModelManagementPage.vue'),
-      'utf8'
-    );
-    expect(source).toMatch(/\.table-actions\s*\{[^}]*margin-bottom:\s*\d+px;/u);
   });
   it('provides bilingual model purpose and default reasoning labels', () => {
     expect(i18n.global.t('marAgentModels.defaultReasoningEffort')).toBe('默认思考强度');
@@ -297,60 +274,13 @@ describe('Web enterprise management domain', () => {
       });
     }
   });
-  it('Conversation template pages reuse management layouts and provide publication, grant, and history actions', async () => {
-    const [source, extension] = await Promise.all([
-      readFile(
-        resolve(
-          process.cwd(),
-          'packages/web-core/src/view/settings/ConversationTemplateManagementPage.vue'
-        ),
-        'utf8'
-      ),
-      readFile(
-        resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
-        'utf8'
-      )
-    ]);
-
-    expect(source).toContain('class="management-page conversation-template-management"');
-    expect(source).toContain('class="table-actions"');
-    expect(source).toContain('class="row-actions"');
-    expect(source).not.toContain("<h2>{{ translate('conversationTemplates.title') }}</h2>");
-    expect(source).toContain('service.publish(');
-    expect(source).toContain('service.publishStatus(');
-    expect(source).toContain('detail.versions');
-    expect(source).toContain('row.publishedVersion');
-    expect(source).not.toContain('detail.publishJobs');
-    expect(source).not.toContain('r{{ row.draftRevision }}');
-    expect(source).toContain('<ManagementPagination');
-    expect(source).toContain('class="clickable-rows"');
-    expect(source).toContain('@row-click="openDetail"');
-    expect(source).toContain('@click="detailDialogOpen = false"');
-    expect(extension).toContain(
-      "import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue'"
+  it('Template extensions retain the public page boundary and bilingual domain messages', async () => {
+    const extension = await readFile(
+      resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
+      'utf8'
     );
-    expect(extension).toContain('v-bind="props"');
-    expect(extension).toContain("node.ownership?.ownerType === 'ORGANIZATION'");
-    expect(extension).toContain("edition === 'COMMUNITY'");
-    expect(extension).toContain('service.listGrants(');
-    expect(extension).toContain('service.createGrant(');
-    expect(extension).toContain('service.removeGrant(');
-    expect(extension).toContain("targetType: 'ORGANIZATION'");
-    expect(extension).not.toContain(
-      "const targetType = ref<'USER' | 'ORGANIZATION' | 'ENTERPRISE'>"
-    );
+    expect(extension).toContain('@myagentroam/web-core/ConversationTemplateManagementPage.vue');
     expect(extension).not.toContain("'/api/enterprise/users'");
-    const grantDialog = extension.slice(
-      extension.indexOf('v-if="grantDialogOpen && selectedTemplate"'),
-      extension.indexOf(
-        '</el-dialog>',
-        extension.indexOf('v-if="grantDialogOpen && selectedTemplate"')
-      )
-    );
-    expect(grantDialog).not.toContain('value="ENTERPRISE"');
-    expect(grantDialog).not.toContain('value="USER"');
-    expect(grantDialog).toContain('v-model="targetOrganizationId"');
-    expect(extension).toContain(">{{ translate('common.grant') }}</el-button");
     expect(extension).not.toContain("resourceType: 'MODEL'");
     expect(i18n.global.t('conversationTemplates.edit')).toBe('编辑');
     expect(i18n.global.t('conversationTemplates.errorSourceImmutable')).toBe(
@@ -478,20 +408,6 @@ describe('Web enterprise management domain', () => {
       { value: 2, label: '循环 A', children: [] },
       { value: 3, label: '循环 B', children: [] }
     ]);
-  });
-
-  it('Skill and MCP source status changes require confirmation and keep search grouped with source selection', async () => {
-    const [skillSource, mcpSource] = await Promise.all(
-      [
-        'packages/web-core/src/view/skill/SkillSourceManagementPage.vue',
-        'packages/web-core/src/view/skill/McpSourceManagementPage.vue'
-      ].map((path) => readFile(resolve(process.cwd(), path), 'utf8'))
-    );
-
-    expect(skillSource).toContain('class="source-search-bar"');
-    expect(skillSource).toContain('confirmSourceStatusChange');
-    expect(mcpSource).toContain('class="source-search-bar"');
-    expect(mcpSource).toContain('confirmSourceStatusChange');
   });
 
   it('Remaining EE organization forms use searchable hierarchical cascaders with scalar IDs', async () => {

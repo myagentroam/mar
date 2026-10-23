@@ -19,6 +19,9 @@ vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.
 
 const messages = commonMessages['en-US'].marAgentModels;
 const previousLocale = i18n.global.locale.value;
+vi.mock('../../src/view/settings/PromptCompletionSettings.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
 const model: MarAgentModelSummary = {
   id: 'model-1',
   name: 'Fixture model',
@@ -121,6 +124,36 @@ afterEach(() => {
 });
 
 describe('Model management component behavior', () => {
+  it('opens the dedicated compact settings from the advanced management tab', async () => {
+    const baseRequest = requestFixture();
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/admin/mar-agent/compact')
+        return { configuration: { enabled: true, modelId: model.id, reasoningEffort: 'high' } };
+      return baseRequest(path, init);
+    });
+    const view = renderComponent(Page, {
+      request,
+      canManageModels: true,
+      canManageCompact: true,
+      writable: true,
+      nodes: []
+    });
+    try {
+      await flushComponent();
+      expect(request.mock.calls.some(([path]) => path.endsWith('/compact'))).toBe(false);
+      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'compact');
+      await flushComponent();
+      expect(textContent(view.root)).toContain(commonMessages['en-US'].promptCompletion.compact);
+      expect(textContent(view.root)).toContain(messages.compactHint);
+      expect(request).toHaveBeenCalledWith('/api/admin/mar-agent/compact', {
+        signal: expect.any(AbortSignal)
+      });
+      expect(button(view, messages.compactSave)).toBeDefined();
+    } finally {
+      view.unmount();
+    }
+  });
+
   it('loads the full authoritative model set, preserves protocol labels and refreshes without paging', async () => {
     const models = Array.from({ length: 27 }, (_, index) => ({
       ...model,
