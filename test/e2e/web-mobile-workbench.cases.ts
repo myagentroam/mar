@@ -417,6 +417,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
           expiresAt: notificationNow + 60_000,
           read: false,
           target: {
+            targetType: 'WORKSPACE_SESSION',
             nodeId: 'node-1',
             workspaceId: 'workspace-1',
             sessionId: 'session-1',
@@ -592,7 +593,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
   await expect(documentationLink.locator('.rail-label')).toHaveText('帮助');
-  await expect(documentationLink.locator('.rail-label')).toBeVisible();
+  await expect(documentationLink).toBeVisible();
+  await expect(documentationLink.locator('.el-icon')).toBeVisible();
+  await expect(documentationLink.locator('.rail-label')).toBeHidden();
   await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
   const [nodesGeometry, documentationGeometry, notificationGeometry, brandGeometryBox] =
     await Promise.all([
@@ -607,25 +610,28 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     nodesButton.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
       const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
-      const label = element.querySelector('.rail-label')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
-        labelCenterY: label.top + label.height / 2
+        iconWidth: icon.width,
+        iconHeight: icon.height
       };
     }),
     documentationLink.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
       const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
-      const label = element.querySelector('.rail-label')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
-        labelCenterY: label.top + label.height / 2
+        iconWidth: icon.width,
+        iconHeight: icon.height
       };
     })
   ]);
   expect(documentationContentGeometry).toEqual(nodesContentGeometry);
+  expect(nodesContentGeometry.iconCenterY).toBe(nodesContentGeometry.contentCenterY);
+  expect(nodesContentGeometry.iconWidth).toBe(18);
+  expect(nodesContentGeometry.iconHeight).toBe(18);
   expect(
     (notificationGeometry?.y ?? Infinity) + (notificationGeometry?.height ?? 0)
   ).toBeLessThanOrEqual((brandGeometryBox?.y ?? 0) + (brandGeometryBox?.height ?? 0));
@@ -736,6 +742,15 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.workspace-inspector').getByRole('heading', { level: 2 })).toHaveText(
     '文件'
   );
+  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-size',
+    '13px'
+  );
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-weight',
+    '500'
+  );
   await expect(page.locator('.inspector-column')).toHaveCSS('top', '46px');
   const inspectorBounds = await page.locator('.inspector-column').evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -812,6 +827,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .getByRole('button', { name: '文件内查找' })
     .click();
   await expect(preview.getByRole('search', { name: '文件内查找' })).toBeVisible();
+  await preview.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await preview.getByRole('button', { name: '关闭查找' }).click();
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
 
@@ -869,6 +885,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
   await diffUtilities.getByRole('button', { name: '文件内查找' }).click();
   await expect(diff.getByRole('search', { name: '文件内查找' })).toBeVisible();
+  await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await diff.getByRole('button', { name: '关闭查找' }).click();
   await expect(diff.getByRole('button', { name: '关闭 Diff 预览' })).toHaveCount(0);
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
@@ -879,6 +896,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.terminal-dock')).toBeVisible();
   await expect(page.locator('.terminal-dock')).toHaveCSS('top', '46px');
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-weight', '500');
+  await expect(page.locator('.admin-terminal-body')).toBeVisible();
   const terminalFill = await page.locator('.terminal-dock').evaluate((dock) => {
     const body = dock.querySelector<HTMLElement>('.admin-terminal-body');
     if (body === null) return null;

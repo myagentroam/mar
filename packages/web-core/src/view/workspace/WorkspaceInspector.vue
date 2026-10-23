@@ -4187,6 +4187,12 @@ onBeforeUnmount(revokePreviewObjectUrl);
   font-weight: 500;
 }
 
+@media (min-width: 768px) {
+  .inspector-tabs button {
+    font-size: calc(var(--mar-font-size-body) - 1px);
+  }
+}
+
 .inspector-tabs button:not(.active):hover:not(:disabled) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);

@@ -367,6 +367,8 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
     )
     .toBeLessThanOrEqual(0);
   await expect(page.locator('.terminal-tab-select')).toHaveCSS('cursor', 'pointer');
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-weight', '500');
   await expect(page.locator('.terminal-tab-close')).toHaveCSS('cursor', 'pointer');
   await expect(page.locator('.terminal-tab-close')).toHaveCount(1);
   await expect(page.locator('.terminal-tab-close')).toHaveCSS('width', '25px');

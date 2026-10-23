@@ -48,6 +48,15 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   const workspaceName = page.locator('.workspace-tree .workspace-branch-button').first();
   await expect(workspaceName).toHaveCSS('font-weight', '400');
   await expect(workspaceName).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-size',
+    '13px'
+  );
+  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+    'font-weight',
+    '500'
+  );
+  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.workspace-tab-content > span').first()).toHaveCSS(
     'font-weight',
     '400'

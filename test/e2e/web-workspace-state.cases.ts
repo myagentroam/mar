@@ -89,6 +89,24 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
     await expect(first.locator('.workspace-tab-unread')).toHaveText(
       locale === 'en-US' ? 'Unread' : '未读'
     );
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const theme of ['daylight', 'vscode-dark-2026']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme
+        );
+        const badge = first.locator('.workspace-tab-unread');
+        await expect(badge).toHaveCSS('font-size', '11px');
+        await expect(badge).toHaveCSS('font-weight', '500');
+        await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(badge).toHaveCSS('border-radius', '4px');
+        await expect(first.locator('.workspace-tab-meta')).toHaveCSS('font-size', '11px');
+        await first.screenshot({
+          path: test.info().outputPath(`workspace-tab-unread-${locale}-${width}-${theme}.png`)
+        });
+      }
+    }
     expect(
       await node
         .locator('.workspace-tab-node-label')
