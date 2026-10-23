@@ -759,8 +759,8 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 .usage-purposes button[aria-pressed='true'] {
-  color: var(--mar-color-brand-text);
-  background: var(--mar-color-brand-selected);
+  color: var(--mar-text-primary);
+  background: var(--mar-fill-selection);
 }
 
 .usage {

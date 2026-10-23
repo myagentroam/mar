@@ -185,7 +185,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const expectLoadingInViewport = async () => {
       const area = await page.locator('.settings-content').boundingBox();
       const mask = await loadingMask.boundingBox();
-      const spinner = await loadingMask.locator('.circular').boundingBox();
+      const spinner = await loadingMask.locator('.el-loading-spinner').boundingBox();
       expect(area).not.toBeNull();
       expect(mask).not.toBeNull();
       expect(spinner).not.toBeNull();
@@ -196,10 +196,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       ).toBeLessThanOrEqual(2);
     };
     await expect(loadingMask).toBeVisible();
-    await expect(loadingMask).toContainText(locale === 'en-US' ? 'Loading' : '正在加载');
-    await expect(panel.locator('header').getByRole('status')).toHaveText(
-      locale === 'en-US' ? 'Loading' : '正在加载'
-    );
+    await expect(loadingMask).toHaveText('');
+    await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await expect(panel.getByText('Loading usage…', { exact: true })).toHaveCount(0);
     await page.clock.runFor(250);
     await expectLoadingInViewport();
@@ -222,20 +220,38 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     }
     const selectedCategory = categories.locator('[aria-pressed="true"]');
-    const selectedBackground = await selectedCategory.evaluate(
-      (element) => getComputedStyle(element).backgroundColor
-    );
-    expect(selectedBackground).not.toBe('rgba(0, 0, 0, 0)');
-    await selectedCategory.hover();
-    await expect(selectedCategory).toHaveCSS('background-color', selectedBackground);
-    await selectedCategory.focus();
-    await page.keyboard.press('Tab');
-    const nextCategory = categories.getByRole('button').nth(1);
-    await expect(nextCategory).toBeFocused();
-    await expect(nextCategory).toHaveCSS('outline-style', 'solid');
-    await expect(nextCategory).toHaveCSS('outline-width', '2px');
-    await expect(nextCategory).toHaveAttribute('aria-pressed', 'false');
-    await categories.screenshot({ path: testInfo.outputPath('usage-category-labels.png') });
+    for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme
+      );
+      const selection = await categories.evaluate((element) => {
+        const reference = document.createElement('span');
+        reference.style.backgroundColor = 'var(--mar-fill-selection)';
+        reference.style.color = 'var(--mar-text-primary)';
+        element.append(reference);
+        const style = getComputedStyle(reference);
+        const result = { background: style.backgroundColor, color: style.color };
+        reference.remove();
+        return result;
+      });
+      expect(selection.background).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(selectedCategory).toHaveCSS('background-color', selection.background);
+      await expect(selectedCategory).toHaveCSS('color', selection.color);
+      await selectedCategory.hover();
+      await expect(selectedCategory).toHaveCSS('background-color', selection.background);
+      await expect(selectedCategory).toHaveCSS('color', selection.color);
+      await selectedCategory.focus();
+      await page.keyboard.press('Tab');
+      const nextCategory = categories.getByRole('button').nth(1);
+      await expect(nextCategory).toBeFocused();
+      await expect(nextCategory).toHaveCSS('outline-style', 'solid');
+      await expect(nextCategory).toHaveCSS('outline-width', '2px');
+      await expect(nextCategory).toHaveAttribute('aria-pressed', 'false');
+      await categories.screenshot({
+        path: testInfo.outputPath(`usage-category-labels-${theme}.png`)
+      });
+    }
     const panelLayout = await panel.evaluate((element) => {
       const parent = element.parentElement!;
       const style = getComputedStyle(parent);
@@ -392,8 +408,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         await page.clock.runFor(500);
       }
       await pager.scrollIntoViewIfNeeded();
-      await expect(loadingMask).toBeVisible();
-      await expectLoadingInViewport();
+      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(loadingMask).toBeHidden();
+      await expect(pager.getByRole('status', { name: '正在加载', exact: true })).toBeVisible();
+      await expect(pager.getByRole('button', { name: labels.more, exact: true })).toBeDisabled();
+      await expect(rows).toHaveCount(60);
       finishPageRead();
       await page.clock.runFor(500);
       await expect(rows).toHaveCount(61);
@@ -410,11 +429,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       ).toBeDisabled();
       await expect(pager.locator('.el-pagination__total')).toContainText('61');
       await expect(pager.locator('.el-pager li.number')).toHaveCount(4);
+      const refreshedStatus = await panel.locator('header').getByRole('status').innerText();
       await pager.locator('.el-pager li.number').filter({ hasText: /^4$/u }).click();
-      await expect(panel).toHaveAttribute('aria-busy', 'true');
-      await expect(loadingMask).toBeVisible();
-      await expectLoadingInViewport();
-      await expect(panel.locator('header').getByRole('status')).toHaveText('Loading');
+      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(loadingMask).toBeHidden();
+      await expect(panel.locator('header').getByRole('status')).toHaveText(refreshedStatus);
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
       await expect(rows).toHaveCount(20);
       finishPageRead();
