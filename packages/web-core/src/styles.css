@@ -1044,8 +1044,8 @@ pre {
 }
 .session-activity i {
   display: inline-block;
-  width: 0.375rem;
-  height: 0.375rem;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--mar-text-faint);
 }
@@ -1181,8 +1181,8 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 .session-activity.managed_active i {
   background: var(--mar-color-success-text);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--mar-color-success-text) 14%, transparent),
-    0 0 8px 1px color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
+    0 0 0 1.5px color-mix(in srgb, var(--mar-color-success-text) 11%, transparent),
+    0 0 4px 0 color-mix(in srgb, var(--mar-color-success-text) 20%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .session-activity.managed_active i {
@@ -1193,11 +1193,9 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   0%,
   100% {
     opacity: 0.86;
-    transform: scale(1);
   }
   50% {
     opacity: 1;
-    transform: scale(1.08);
   }
 }
 .session-activity.node-offline i {

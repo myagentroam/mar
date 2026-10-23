@@ -804,7 +804,7 @@ function activate(tab: WorkspaceTab): void {
 .workspace-tab-direct-icon {
   flex: none;
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
+  font-size: inherit;
 }
 
 .workspace-tab-unread {

@@ -72,19 +72,26 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
     const first = page.locator('.workspace-tab').first();
     const second = page.locator('.workspace-tab').nth(1);
     const node = first.locator('.direct-available-node');
-    await expect(first.getByRole('tab')).toHaveAccessibleName(
-      /Workspace one A very long Node name/
+    await expect(first.getByRole('tab')).toHaveAccessibleName('Workspace one');
+    await expect(node.locator('.workspace-tab-node-label')).toHaveText(
+      'A very long Node name that must truncate before status indicators'
     );
     const icon = node.locator('.workspace-tab-direct-icon');
     await expect(node).toHaveCSS('text-decoration-line', 'none');
     await expect(icon).toBeVisible();
     await expect(icon).toHaveAttribute('aria-hidden', 'true');
     await expect(node).toHaveAttribute(
-      'title',
+      'aria-description',
       'Peer-to-peer connection available (Private network IPv4 UDP)'
     );
     await icon.hover();
-    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await expect(
+      page.getByRole('tooltip', {
+        name: 'Peer-to-peer connection available (Private network IPv4 UDP)',
+        exact: true
+      })
+    ).toBeVisible();
+    await page.mouse.move(0, 0);
     await expect(first.locator('.workspace-tab-running')).toBeVisible();
     await expect(first.locator('.workspace-tab-unread')).toHaveText(
       locale === 'en-US' ? 'Unread' : '未读'
@@ -102,6 +109,28 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
         await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(badge).toHaveCSS('border-radius', '4px');
         await expect(first.locator('.workspace-tab-meta')).toHaveCSS('font-size', '11px');
+        await expect(icon).toHaveCSS('font-size', '11px');
+        const runningDot = first.locator('.workspace-tab-running i');
+        await expect(runningDot).toHaveCSS('width', '5px');
+        await expect(runningDot).toHaveCSS('height', '5px');
+        await expect(runningDot).toHaveCSS('box-shadow', /0px 0px 0px 1\.5px.*0px 0px 4px 0px/);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await expect(runningDot).toHaveCSS('animation-name', 'mar-run-glow');
+        await expect(runningDot).toHaveCSS('transform', 'none');
+        const breathing = await runningDot.evaluate((element) => {
+          const animation = element.getAnimations()[0]!;
+          animation.pause();
+          animation.currentTime = 0;
+          const dim = Number(getComputedStyle(element).opacity);
+          animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+          const bright = Number(getComputedStyle(element).opacity);
+          animation.play();
+          return { dim, bright };
+        });
+        expect(breathing.bright).toBeGreaterThan(breathing.dim);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await expect(runningDot).toHaveCSS('animation-name', 'none');
+        await expect(runningDot).toHaveCSS('opacity', '1');
         await first.screenshot({
           path: test.info().outputPath(`workspace-tab-unread-${locale}-${width}-${theme}.png`)
         });
