@@ -111,7 +111,7 @@ function onEditorCursor(event: MouseEvent | KeyboardEvent): void {
 
 function syncMobileComposerHeight(): void {
   mobileComposerHeight.value = props.mobileViewport
-    ? Math.ceil(composerElement.value?.getBoundingClientRect().height ?? 0)
+    ? (composerElement.value?.getBoundingClientRect().height ?? 0)
     : 0;
 }
 
