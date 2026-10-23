@@ -724,7 +724,6 @@ describe('personal usage settings contract', () => {
     expect(view).toContain('modelUsage.states.${row.state}');
     expect(view).toContain('role="img"');
     expect(view).toContain('modelUsage.trend');
-    expect(view).toMatch(/<details>[\s\S]*<summary>[\s\S]*modelUsage\.chartData/u);
     expect(view).toContain(':row-key="recordKey"');
     expect(view).not.toContain('row-key="recordId"');
   });

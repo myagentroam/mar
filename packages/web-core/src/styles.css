@@ -1046,6 +1046,29 @@ pre {
   vertical-align: -0.125em;
 }
 
+.mar-disclosure-summary {
+  list-style: none;
+}
+
+.mar-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mar-disclosure-icon {
+  margin-inline-end: 0.5em;
+  transition: transform var(--el-transition-duration-fast);
+}
+
+details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-disclosure-icon {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mar-disclosure-icon {
+    transition: none;
+  }
+}
+
 /* Preserve control spacing when a business icon is rendered without ElIcon. */
 .el-button .mar-icon + span {
   margin-inline-start: 6px;

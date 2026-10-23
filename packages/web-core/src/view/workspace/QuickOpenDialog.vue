@@ -17,6 +17,7 @@ import { workspaceFileTarget } from '../../util/file-preview.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import FileTypeIcon from './FileTypeIcon.vue';
+import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{
   readonly open: boolean;
@@ -434,7 +435,11 @@ function onKeydown(event: KeyboardEvent): void {
       >
         <span>{{ translate(notice.label) }}: {{ statusText(notice.status) }}</span>
         <details v-if="notice.status.error !== undefined">
-          <summary>{{ translate('generated.quickOpenDialog.details') }}</summary>
+          <summary class="mar-disclosure-summary">
+            <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+              translate('generated.quickOpenDialog.details')
+            }}
+          </summary>
           <pre>{{ errorMessage(notice.status.error) }}</pre>
         </details>
         <button

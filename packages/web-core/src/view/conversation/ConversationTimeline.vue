@@ -574,7 +574,11 @@ function stepDuration(item: ConversationItem): string | undefined {
             <span>{{ displayItem.item.permissionStop.source.toolName }}</span>
             <p>{{ displayItem.item.permissionStop.reason }}</p>
             <details class="permission-call-details" open>
-              <summary>{{ permissionStopDetail(displayItem.item).label }}</summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                  permissionStopDetail(displayItem.item).label
+                }}
+              </summary>
               <pre class="approval-detail">{{ permissionStopDetail(displayItem.item).text }}</pre>
               <span v-if="conversationPayload(displayItem.item.payload)?.truncated === true">
                 {{ translate('presentation.truncated') }}
@@ -591,7 +595,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="reasoningDisclosure[displayItem.id]"
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="reasoning" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('reasoning') }}</strong>
               <span
@@ -608,7 +613,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.type === 'image_generation'">
           <details v-if="hasConversationDetail(displayItem.item)">
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{ translate('presentation.imageGeneration') }}</strong>
               <span>{{
                 conversationItemText(
@@ -658,7 +664,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.type === 'subagent_group'">
           <details @toggle="updateGroupedItemDisclosure(displayItem.id, $event)">
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
               <span class="conversation-record-preview">{{
@@ -679,7 +686,8 @@ function stepDuration(item: ConversationItem): string | undefined {
                 :key="toolItem.id"
                 class="conversation-tool-detail"
               >
-                <summary>
+                <summary class="mar-disclosure-summary">
+                  <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                   <span class="conversation-tool-preview">{{
                     subagentOperationText(toolItem.payload)
                   }}</span>
@@ -703,7 +711,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon
                 :kind="displayItem.type === 'read_group' ? 'READ' : 'tool_call'"
                 class="conversation-record-icon"
@@ -728,7 +737,8 @@ function stepDuration(item: ConversationItem): string | undefined {
               :open="groupedItemDisclosure[toolItem.id] === true"
               @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
             >
-              <summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                 <span class="conversation-tool-preview">{{
                   conversationItemText(toolItem.kind, toolItem.payload, toolItem.status) ||
                   conversationItemLabel(toolItem.kind, toolItem.payload)
@@ -755,7 +765,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="command_execution" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('command_execution') }}</strong>
               <span class="conversation-group-meta">
@@ -773,7 +784,8 @@ function stepDuration(item: ConversationItem): string | undefined {
               :open="groupedItemDisclosure[commandItem.id] === true"
               @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
             >
-              <summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                 <span class="conversation-command-preview">{{
                   conversationItemText(commandItem.kind, commandItem.payload) ||
                   conversationItemLabel(commandItem.kind)
@@ -808,7 +820,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-file-change-details"
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="file_change" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
               <span class="conversation-group-meta"
@@ -1232,7 +1245,11 @@ function stepDuration(item: ConversationItem): string | undefined {
               {{ approvalReason(conversationApproval(displayItem.item)!) }}
             </p>
             <details class="permission-call-details" open>
-              <summary>{{ approvalDetail(conversationApproval(displayItem.item)!).label }}</summary>
+              <summary class="mar-disclosure-summary">
+                <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                  approvalDetail(conversationApproval(displayItem.item)!).label
+                }}
+              </summary>
               <pre class="approval-detail">{{
                 approvalDetail(conversationApproval(displayItem.item)!).text
               }}</pre>
@@ -1306,7 +1323,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else-if="displayItem.item.kind === 'plan'">
           <details v-if="hasPlanContent(displayItem.item)" open>
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
               <span
                 v-if="planSteps(displayItem.item.payload).length"
@@ -1365,7 +1383,8 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-tool-presentation"
             :data-tool-presentation="toolPresentation(displayItem.item.payload)?.kind"
           >
-            <summary class="conversation-record-heading">
+            <summary class="mar-disclosure-summary conversation-record-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon
                 :kind="toolPresentation(displayItem.item.payload)?.kind ?? 'tool_call'"
                 class="conversation-record-icon"
@@ -1411,7 +1430,8 @@ function stepDuration(item: ConversationItem): string | undefined {
         </template>
         <template v-else>
           <details v-if="hasConversationDetail(displayItem.item)">
-            <summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{
                 conversationItemLabel(displayItem.item.kind, displayItem.item.payload)
               }}</strong>
@@ -1572,7 +1592,6 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-timeline {
   --conversation-record-gap: 4px;
   --conversation-item-inset: 12px;
-  --conversation-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   display: grid;
   min-width: 0;
   gap: var(--conversation-record-gap);
@@ -1785,7 +1804,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-conversation-muted);
 }
 
-.conversation-item summary.conversation-record-heading::before,
+.conversation-item summary.conversation-record-heading > .mar-disclosure-icon,
 .conversation-item summary.conversation-record-heading > .conversation-record-icon,
 .conversation-item summary.conversation-record-heading > strong,
 .conversation-item summary.conversation-record-heading > span {
@@ -1849,7 +1868,7 @@ details.conversation-record-group[open] > details:last-child {
   padding: 4px var(--conversation-item-inset);
 }
 
-.conversation-record-group > details > summary::before {
+.conversation-record-group > details > summary > .mar-disclosure-icon {
   margin-inline: 0;
   color: var(--mar-conversation-muted);
 }
@@ -2152,7 +2171,7 @@ details.conversation-record-group[open] > details:last-child {
   white-space: nowrap;
 }
 
-.conversation-item details > summary::before,
+.conversation-item details > summary > .mar-disclosure-icon,
 .conversation-item details > summary > .conversation-record-icon {
   flex: none;
   margin-inline: 0;
@@ -2195,32 +2214,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item summary:active {
   background-color: var(--mar-fill-row-hover);
-}
-
-.conversation-item summary::-webkit-details-marker {
-  display: none;
-}
-
-.conversation-item summary::before {
-  content: '';
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  margin-inline-end: 0.5rem;
-  vertical-align: -0.12em;
-  background: currentColor;
-  mask: var(--conversation-chevron) center / contain no-repeat;
-  transition: transform var(--el-transition-duration-fast);
-}
-
-.conversation-item details[open]:not([data-disclosure-closing]) > summary::before {
-  transform: rotate(90deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .conversation-item summary::before {
-    transition: none;
-  }
 }
 
 .conversation-command-status,

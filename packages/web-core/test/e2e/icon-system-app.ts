@@ -11,7 +11,10 @@ import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
+import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import type { PersonalUsageOverview, UsageTotals } from '@myagentroam/protocol';
+import type { Session } from '../../src/model/workbench.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
@@ -58,6 +61,54 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    if (new URL(location.href).searchParams.has('disclosure')) {
+      return () =>
+        h(ConversationTimeline, {
+          turns: [
+            {
+              id: 'turn',
+              sessionId: 'session',
+              runId: 'run',
+              status: 'SUCCEEDED',
+              items: [1, 2].map((id) => ({
+                id: String(id),
+                kind: 'command_execution',
+                status: 'COMPLETED',
+                payload: { command: `echo ${id}`, output: `Result ${id}` }
+              }))
+            }
+          ],
+          workspaceRoot: undefined,
+          loading: false,
+          initializing: false,
+          initialRenderVersion: 0,
+          imageAttachments: () => [],
+          userInputQuestions: () => [],
+          userInputAnswer: () => '',
+          userInputSubmitted: () => false,
+          planContinuation: undefined,
+          nodeReady: true,
+          synchronized: true,
+          rewindEnabled: false,
+          rollbackEnabled: false
+        });
+    }
+    if (new URL(location.href).searchParams.has('quick-open')) {
+      return () =>
+        h(QuickOpenDialog, {
+          open: true,
+          nodeId: 'host',
+          workspaceId: 'project',
+          filesReady: true,
+          symbolsReady: true,
+          nodes: [node],
+          sessions: [],
+          workspaceTabs: [],
+          sessionTitle: (session: Session) => session.id,
+          openSession: async () => {},
+          openWorkspace: async () => true
+        });
+    }
     if (new URL(location.href).searchParams.has('terminal')) {
       return () =>
         h(TerminalDock, {

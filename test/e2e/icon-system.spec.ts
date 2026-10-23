@@ -9,6 +9,68 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Conversation disclosure arrows share MAR geometry and retain nested keyboard toggles', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}icon-system.html?disclosure=1`);
+  const details = page.locator('.conversation-record-group').first();
+  const summary = details.locator(':scope > summary');
+  const icon = summary.locator(':scope > svg[data-mar-icon="chevron-right"]');
+  await expect(icon).toBeVisible();
+  await expect(icon).toHaveAttribute('aria-hidden', 'true');
+  expect(await summary.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none');
+  await icon.click();
+  await expect(details).toHaveAttribute('open', '');
+  await expect
+    .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+    .toBe('matrix(0, 1, -1, 0, 0, 0)');
+  const nested = details.locator(':scope > details').first();
+  const nestedSummary = nested.locator(':scope > summary');
+  await expect(nestedSummary.locator('svg[data-mar-icon="chevron-right"]')).toBeVisible();
+  await nestedSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(nested).toHaveAttribute('open', '');
+  await summary.focus();
+  await page.keyboard.press('Space');
+  await expect(details).not.toHaveAttribute('open');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await icon.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
+});
+
+test('Usage and quick-open disclosures replace browser markers without losing keyboard access', async ({
+  page
+}) => {
+  for (const mode of ['usage', 'quick-open']) {
+    if (mode === 'quick-open') {
+      await page.route('**/api/**', (route) =>
+        route.fulfill({
+          status: 503,
+          json: { code: 'FIXTURE_QUERY_FAILED', message: 'Fixture query unavailable' }
+        })
+      );
+    }
+    await page.goto(`${fixture.url}icon-system.html?${mode}=1`);
+    if (mode === 'quick-open')
+      await page.getByRole('textbox', { name: 'Quick Open', exact: true }).fill('missing');
+    const details = page.locator('details').first();
+    const summary = details.locator(':scope > summary');
+    const icon = summary.locator('svg[data-mar-icon="chevron-right"]');
+    await expect(icon).toBeVisible();
+    expect(await summary.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('none');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('open', '');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeVisible();
+    await expect
+      .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+      .toBe('matrix(0, 1, -1, 0, 0, 0)');
+    await page.keyboard.press('Space');
+    await expect(details).not.toHaveAttribute('open');
+    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
+  }
+});
+
 test('Terminal close icons preserve accessible names and close only the selected terminal', async ({
   page
 }) => {

@@ -524,7 +524,11 @@ onUnmounted(() => {
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
           </div>
           <details>
-            <summary>{{ t('modelUsage.chartData') }}</summary>
+            <summary class="mar-disclosure-summary">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
+                t('modelUsage.chartData')
+              }}
+            </summary>
             <el-table :data="state.overview.buckets" :empty-text="t('modelUsage.empty')"
               ><el-table-column :label="t('modelUsage.time')"
                 ><template #default="{ row }"
