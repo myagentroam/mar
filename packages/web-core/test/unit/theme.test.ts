@@ -171,7 +171,7 @@ describe('Web theme preference', () => {
       process: '#111720',
       border: '#313d50',
       'process-border': '#202a39',
-      text: '#e8eef8',
+      text: '#d0d7e2',
       muted: '#9fb0c7',
       code: '#111720'
     })) {
@@ -182,7 +182,7 @@ describe('Web theme preference', () => {
     expect(dark['--mar-border-default']).toBe('#273142');
     expect(dark['--mar-border-subtle']).toBe('#202a39');
     expect(dark['--mar-color-brand']).toBe('#1f73cf');
-    expect(dark['--mar-color-brand-hover']).toBe('#2477d1');
+    expect(dark['--mar-color-brand-hover']).toBe('#1a65b8');
     expect(dark['--mar-color-brand-selected']).toBe('#162c44');
     expect(dark['--mar-color-on-accent']).toBe('#ffffff');
     expect(
