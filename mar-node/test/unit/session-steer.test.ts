@@ -11,8 +11,12 @@ import {
   type ContinuousRunCoordinatorOptions
 } from '../../src/service/continuous-run-coordinator.js';
 import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 
-function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
+function fixture(
+  overrides: Partial<ContinuousRunCoordinatorOptions> = {},
+  runner: 'codex' | 'mar-agent' = 'codex'
+) {
   const runtime = new NodeRuntimeState(
     () => 'node',
     () => ({
@@ -26,7 +30,7 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
   );
   const session = runtime.createAgentSession({
     workspaceId: 'workspace',
-    runner: 'codex',
+    runner,
     cwd: '/workspace'
   });
   const control = vi.fn();
@@ -50,7 +54,7 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
       runId: id,
       sessionId: session.id,
       workspaceId: 'workspace',
-      runner: 'codex',
+      executionContext: { runner },
       input: text,
       prepareSteerInput,
       attachments: [],
@@ -89,6 +93,41 @@ function fixture(overrides: Partial<ContinuousRunCoordinatorOptions> = {}) {
 }
 
 describe('Node steering delivery', () => {
+  it('keeps the active MAR configuration when native steer accepts an invalid incoming configuration', async () => {
+    const steer = vi.fn(async () => ({ status: 'handled' as const }));
+    const f = fixture({ steer, stopped: () => false }, 'mar-agent');
+    const { run, execution } = f.start();
+    const runner = new MarAgentRunner();
+    const activeContext = runner.prepareExecutionContext({
+      marAgentModel: { id: 'active-model' },
+      marAgentRuntimeScopeId: 'active-scope'
+    });
+    f.coordinator.prepare(execution.id, {
+      ...f.coordinator.pending(execution.id)!,
+      executionContext: activeContext
+    });
+    const target = f.queue('guidance');
+    f.coordinator.prepare(target.id, {
+      ...f.coordinator.pending(target.id)!,
+      executionContext: runner.prepareExecutionContext({ marAgentModel: 'invalid' })
+    });
+    expect(
+      await f.coordinator.settle({
+        submissionId: target.id,
+        intent: 'REPLACE_CURRENT',
+        queueBefore: target.queueBefore,
+        activeRunId: run.id,
+        steerTarget: { turnId: execution.turnId, executionId: execution.id }
+      })
+    ).toBe('ACCEPTED');
+    expect(steer).toHaveBeenCalledOnce();
+    expect(f.coordinator.pending(execution.id)?.executionContext).toBe(activeContext);
+    expect(f.runtime.currentExecutionId(run.id)).toBe(execution.id);
+    expect(f.runtime.getQueueItem(target.id)).toBeUndefined();
+    expect(f.control).not.toHaveBeenCalled();
+    f.coordinator.clear();
+  });
+
   it('consumes only the natively accepted item, preserving the active turn and other queue order', async () => {
     const admission =
       Promise.withResolvers<import('../../src/runner/abstract-runner.js').RunnerSteerResult>();

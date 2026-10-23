@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -12,7 +12,7 @@ import { capabilities, codexProfileClientFactory, eventually } from './support/c
 it.each(['completed', 'failed', 'interrupted'] as const)(
   'preserves marctl origin across Session start, FIFO delivery, steering, history and %s replay',
   async (terminalStatus) => {
-    const root = await mkdtemp(join(tmpdir(), 'marctl-origin-'));
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'marctl-origin-')));
     const database = new NodeDatabase(':memory:', 'node-marctl-origin');
     const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
     let turn = 0;

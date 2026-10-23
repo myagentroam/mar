@@ -85,7 +85,8 @@ async function fixture() {
     goalPreparationFailed: vi.fn()
   });
   const authorize = vi.fn(async (_request: RestartRunAuthorizeRequest) => ({
-    secretEnvironment: { FRESH_SECRET: 'new-value' }
+    secretEnvironment: { FRESH_SECRET: 'new-value' },
+    executionContext: { runner: 'mar-agent' as const }
   }));
   const inputState = vi.fn(
     async () => 'interrupted' as 'interrupted' | 'completed' | 'missing' | 'paused'

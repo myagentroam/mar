@@ -43,7 +43,7 @@ describe('scheduled session coordinator', () => {
       });
       const authorize = vi.fn(async () => {
         if (stage === 'authorization') await pending;
-        return { secretEnvironment: {} };
+        return { secretEnvironment: {}, executionContext: { runner: 'codex' as const } };
       });
       const submit = vi.fn(async () => {
         if (stage === 'submission') await pending;
@@ -96,7 +96,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit: async () => ({ runId: 'run-1' }),
         emitNotification: emit,
         sessionTitle: () => 'Current title'
@@ -159,7 +162,10 @@ describe('scheduled session coordinator', () => {
     const coordinator = new ScheduledSessionCoordinator({
       store: () => store,
       busy: () => false,
-      authorize: async () => ({ secretEnvironment: {} }),
+      authorize: async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }),
       submit: async () => ({ runId: 'run-1' }),
       emitNotification: emit,
       sessionTitle: (id) => id
@@ -192,7 +198,10 @@ describe('scheduled session coordinator', () => {
       coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit: async (_task, occurrenceId) => {
           if (ordering !== 'submit-rejection-before-terminal')
             coordinator.executionTerminated(
@@ -253,7 +262,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit: async () => ({ runId: 'unused' }),
         sessionTitle: () => 'Session',
         emitNotification: notify
@@ -286,7 +298,10 @@ describe('scheduled session coordinator', () => {
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
-        authorize: async () => ({ secretEnvironment: {} }),
+        authorize: async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }),
         submit,
         emitNotification: notify,
         sessionTitle: (id) => id
@@ -314,7 +329,10 @@ describe('scheduled session coordinator', () => {
       try {
         vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
         const { database, store, task } = fixture(Date.now, enabled);
-        const authorize = vi.fn(async () => ({ secretEnvironment: {} }));
+        const authorize = vi.fn(async () => ({
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' as const }
+        }));
         const notify = vi.fn();
         const coordinator = new ScheduledSessionCoordinator({
           store: () => store,
@@ -348,7 +366,10 @@ describe('scheduled session coordinator', () => {
     const coordinator = new ScheduledSessionCoordinator({
       store: () => store,
       busy: () => false,
-      authorize: async () => ({ secretEnvironment: {} }),
+      authorize: async () => ({
+        secretEnvironment: {},
+        executionContext: { runner: 'codex' as const }
+      }),
       submit: async () => {
         throw new Error('SCHEDULE_EXECUTION_FAILED');
       },
@@ -381,7 +402,7 @@ describe('scheduled session coordinator', () => {
       busy: () => false,
       authorize: async () => {
         store.update(task.sessionId, task.revision, { notifyOnTerminal: false });
-        return { secretEnvironment: {} };
+        return { secretEnvironment: {}, executionContext: { runner: 'codex' as const } };
       },
       submit,
       emitNotification: notify,

@@ -90,7 +90,7 @@ describe('MAR Agent managed run projection', () => {
       '/compact',
       {
         secretEnvironment: {},
-        marAgentModel: model,
+        executionContext: new MarAgentRunner().prepareExecutionContext({ marAgentModel: model }),
         initiatedByUserId: 7
       }
     );

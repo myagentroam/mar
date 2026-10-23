@@ -417,8 +417,10 @@ observe.text("retained fixture result");`
             '/compact',
             {
               secretEnvironment: mcpEnvironment,
-              marAgentModel: configuration,
-              marAgentModels: [configuration],
+              executionContext: new MarAgentRunner().prepareExecutionContext({
+                marAgentModel: configuration,
+                marAgentModels: [configuration]
+              }),
               mcpInstallations: change === 'compact MCP' ? mcpInstallations(false) : []
             }
           );
