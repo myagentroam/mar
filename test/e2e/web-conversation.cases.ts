@@ -19,6 +19,14 @@ const syntheticAbsoluteFile = `${process.cwd()}/mar-web-console/src/App.vue`;
 test('Assistant Markdown images use compact thumbnails and the conversation image preview', async ({
   page
 }, testInfo) => {
+  const longImageName = `External screenshot ${'long filename 中文 with spaces '.repeat(8)}.png`;
+  const imageSizes = [
+    { width: 1200, height: 900 },
+    { width: 600, height: 1800 },
+    { width: 2400, height: 200 }
+  ];
+  const imageSvg = ({ width, height }: { width: number; height: number }) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#4b80bd"/></svg>`;
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(
@@ -38,7 +46,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
               kind: 'assistant_message',
               status: 'COMPLETED',
               payload: {
-                text: '**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![External screenshot](https://images.example/screenshot.png)'
+                text: `**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![${longImageName}](https://images.example/screenshot.png)`
               }
             }
           ]
@@ -46,13 +54,18 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       ])
     )
   );
-  const image =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900"><rect width="1200" height="900" fill="#4b80bd"/></svg>';
   await page.route('**/api/workspaces/workspace-1/files/content?**', (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: image })
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: imageSvg(
+        new URL(route.request().url()).searchParams.get('path')?.endsWith('mobile.png')
+          ? imageSizes[1]!
+          : imageSizes[0]!
+      )
+    })
   );
   await page.route('https://images.example/screenshot.png', (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: image })
+    route.fulfill({ contentType: 'image/svg+xml', body: imageSvg(imageSizes[2]!) })
   );
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -63,16 +76,26 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 1000 });
+  for (const { width, height, theme } of [
+    { width: 1440, height: 1000, theme: 'vscode-dark-2026' },
+    { width: 390, height: 844, theme: 'vscode-dark-2026' },
+    { width: 320, height: 568, theme: 'daylight' },
+    { width: 667, height: 375, theme: 'daylight' }
+  ]) {
+    await page.evaluate((value) => localStorage.setItem('mar.theme', value), theme);
+    await page.setViewportSize({ width, height });
     await page.reload();
     const thumbnails = page.locator('.agent-markdown [data-image-preview]');
     await expect(thumbnails).toHaveCount(3);
     for (let index = 0; index < 3; index += 1) {
       const thumbnail = thumbnails.nth(index);
       const img = thumbnail.locator('img');
-      await thumbnail.scrollIntoViewIfNeeded();
-      await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(1200);
+      await thumbnail.evaluate((element) =>
+        element.scrollIntoView({ block: 'center', inline: 'nearest' })
+      );
+      await expect
+        .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth))
+        .toBe(imageSizes[index]!.width);
       const bounds = await img.boundingBox();
       expect(bounds!.width).toBeLessThanOrEqual(160);
       expect(bounds!.height).toBeLessThanOrEqual(120);
@@ -85,8 +108,59 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       const dialog = page.getByRole('dialog', { name: name!, exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog.locator('img')).toHaveAttribute('src', source!);
+      const frame = dialog.locator('.attachment-preview-dialog');
+      const expectedWidth = Math.min(960, width - 32);
+      const expectedHeight = Math.min(760, height - 32);
+      await expect
+        .poll(() => frame.boundingBox())
+        .toEqual({
+          x: (width - expectedWidth) / 2,
+          y: (height - expectedHeight) / 2,
+          width: expectedWidth,
+          height: expectedHeight
+        });
+      const title = dialog.locator('.el-dialog__title');
+      await expect(title).toHaveCSS(
+        'font-size',
+        await title.evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--mar-font-size-title').trim()
+        )
+      );
+      await expect(title).toHaveAttribute('title', name!);
+      await expect(title).toHaveCSS('text-overflow', 'ellipsis');
+      await expect(dialog.locator('img')).toHaveCSS('object-fit', 'contain');
+      await expect(dialog.locator('img')).toHaveCSS('object-position', '50% 50%');
+      const layout = await frame.evaluate((element) => {
+        const body = element.querySelector('.el-dialog__body')!.getBoundingClientRect();
+        const image = element.querySelector('img')!.getBoundingClientRect();
+        const close = element.querySelector('.el-dialog__headerbtn')!.getBoundingClientRect();
+        const header = element.querySelector('.el-dialog__header')!.getBoundingClientRect();
+        return {
+          imageFillsBody:
+            Math.abs(image.left - body.left) < 1 &&
+            Math.abs(image.top - body.top) < 1 &&
+            Math.abs(image.width - body.width) < 1 &&
+            Math.abs(image.height - body.height) < 1,
+          closeVisible:
+            close.left >= 0 &&
+            close.right <= innerWidth &&
+            close.top >= 0 &&
+            close.bottom <= innerHeight,
+          headerAboveImage: header.bottom <= body.top,
+          noOverflow: element.scrollHeight <= element.clientHeight
+        };
+      });
+      expect(layout).toEqual({
+        imageFillsBody: true,
+        closeVisible: true,
+        headerAboveImage: true,
+        noOverflow: true
+      });
+      if (index === 1)
+        await page.screenshot({ path: testInfo.outputPath(`image-preview-${width}.png`) });
       await page.keyboard.press('Escape');
-      await expect(dialog).not.toBeVisible();
+      await expect(dialog).toHaveCount(0);
+      await expect(thumbnail).toBeFocused();
     }
     await testInfo.attach(`markdown-images-${width}`, {
       body: await page.screenshot(),
