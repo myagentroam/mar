@@ -3,16 +3,24 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import {
   conversationProcessLabel,
+  conversationProcessDuration,
   type ConversationProcessBlock
 } from '../../util/conversation-work-process.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
 
-const props = defineProps<{ block: ConversationProcessBlock; synchronized: boolean }>();
+const props = defineProps<{
+  block: ConversationProcessBlock;
+  synchronized: boolean;
+  now: number | undefined;
+}>();
 const root = ref<HTMLElement>();
 const manualOpen = ref<boolean>();
 const defaultOpen = ref(props.synchronized && props.block.active);
 const open = computed(() => !props.block.groupId || (manualOpen.value ?? defaultOpen.value));
 const statusLabel = computed(() => conversationProcessLabel(props.block, props.synchronized));
+const durationMs = computed(() =>
+  conversationProcessDuration(props.block, props.now, props.synchronized)
+);
 function updateDefault() {
   if (
     !props.synchronized ||
@@ -66,11 +74,11 @@ watch(open, async () => {
         />
         <span class="process-activity-label" :title="statusLabel">{{ statusLabel }}</span>
       </span>
-      <span v-if="block.durationMs !== undefined" class="process-duration"
+      <span v-if="durationMs !== undefined" class="process-duration"
         >·
         {{
           translate('conversationActivity.step', {
-            value: preciseElapsedDurationLabel(block.durationMs)
+            value: preciseElapsedDurationLabel(durationMs)
           })
         }}</span
       >

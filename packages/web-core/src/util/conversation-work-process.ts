@@ -20,6 +20,7 @@ export interface ConversationProcessBlock {
   partial: boolean;
   sealed: boolean;
   active: boolean;
+  startedAt?: number;
   durationMs?: number;
   latestWork?: ConversationItem;
   status?:
@@ -191,6 +192,8 @@ export function conversationWorkProcessBlocks(
     if (latestWork) group.latestWork = latestWork;
     const start = first?.startedAt ?? first?.completedAt;
     const end = last?.completedAt ?? last?.startedAt;
+    if (!group.partial && typeof start === 'number' && Number.isFinite(start) && start >= 0)
+      group.startedAt = start;
     if (
       !group.partial &&
       typeof start === 'number' &&
@@ -211,6 +214,24 @@ export function conversationWorkProcessBlocks(
     );
   }
   return blocks;
+}
+
+/** Estimate live elapsed time; use recorded endpoints outside synchronized activity. */
+export function conversationProcessDuration(
+  block: ConversationProcessBlock,
+  now: number | undefined,
+  synchronized: boolean
+): number | undefined {
+  if (
+    !block.active ||
+    !synchronized ||
+    block.startedAt === undefined ||
+    now === undefined ||
+    !Number.isFinite(now) ||
+    now < block.startedAt
+  )
+    return block.durationMs;
+  return now - block.startedAt;
 }
 
 /** Describe the last work record, not whether an individual call is still pending. */

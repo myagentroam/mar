@@ -802,6 +802,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         id: 'command-a',
         kind: 'command_execution',
         status: 'COMPLETED',
+        parentItemId: null,
         payload: {
           command:
             'node -e "console.log(\'Long command preview with enough arguments to wrap across several lines on a mobile viewport without returning to the disclosure arrow\')"',
@@ -873,6 +874,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     );
     await process.locator('.command-group > details > summary').click();
     const command = process.locator('.conversation-command-detail').first();
+    await expect(command.locator('summary > strong')).toHaveCount(0);
+    await expect(command.locator('summary .conversation-record-icon')).toHaveCount(0);
+    await expect(command.locator('.conversation-command-preview')).toContainText('node -e');
     await expect(
       command.locator('.conversation-command-status + .conversation-step-duration')
     ).toContainText('1');
@@ -890,6 +894,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       locale === 'zh-CN' ? '1 次调用' : '1 call'
     );
     await expect(read).not.toHaveAttribute('open', '');
+    await expect(process.locator('.process-content > article').last()).toHaveClass(/command-group/);
     await read.evaluate((element) => {
       element.setAttribute('data-stable-group', 'initial');
     });
@@ -974,14 +979,20 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(read.locator(':scope > summary')).toContainText(
       locale === 'zh-CN' ? '3 次调用' : '3 calls'
     );
+    await expect(
+      process.locator('.process-content > article').last().locator(':scope > details')
+    ).toHaveAttribute('data-tool-presentation', 'READ');
+    await expect(read).toHaveAttribute('data-stable-group', 'initial');
     await expect(read).not.toHaveAttribute('open', '');
     await page.keyboard.press('Enter');
     await expect(read).toHaveAttribute('open', '');
     await expect(read.locator('.conversation-tool-detail')).toHaveCount(3);
+    await expect(read.locator('.conversation-tool-detail > summary > strong')).toHaveCount(0);
+    await expect(read.locator('.conversation-tool-preview').first()).toHaveText('src/first.ts');
     await expect(read.locator('.conversation-tool-detail').first()).toContainText(
       'Content for src/first.ts'
     );
-    for (const width of [1440, 390]) {
+    for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 });
       for (const dark of [false, true]) {
         await page.evaluate((enabled) => {
@@ -991,26 +1002,54 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         }, dark);
         const icon = read.locator(':scope > summary .conversation-record-icon');
         await expect(icon).toBeVisible();
+        await expect(read).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(read.locator(':scope > summary')).toHaveCSS('display', 'grid');
+        const headingLayout = await process
+          .locator('.conversation-record-heading')
+          .evaluateAll((elements) =>
+            elements.map((element) => ({
+              titleLeft: element.querySelector('strong')!.getBoundingClientRect().left,
+              iconLeft: element.querySelector('svg')!.getBoundingClientRect().left,
+              width: element.clientWidth,
+              contentWidth: element.scrollWidth
+            }))
+          );
+        for (const heading of headingLayout) {
+          expect(Math.abs(heading.titleLeft - headingLayout[0]!.titleLeft)).toBeLessThan(1);
+          expect(Math.abs(heading.iconLeft - headingLayout[0]!.iconLeft)).toBeLessThan(1);
+          expect(heading.contentWidth).toBeLessThanOrEqual(heading.width + 1);
+        }
         const commandLayout = await process.locator('.command-group').evaluate((group) => {
-          const parent = group.querySelector(
-            ':scope > details > summary .conversation-record-icon'
-          )!;
+          const parent = group.querySelector(':scope > details > summary > strong')!;
           const summary = group.querySelector('.conversation-command-detail > summary')!;
-          const child = summary.querySelector('.conversation-record-icon')!;
           const preview = summary.querySelector('.conversation-command-preview')!;
           const range = document.createRange();
           range.selectNodeContents(preview);
           return {
-            indent: child.getBoundingClientRect().left - parent.getBoundingClientRect().left,
+            indent: preview.getBoundingClientRect().left - parent.getBoundingClientRect().left,
+            parentGrid: getComputedStyle(parent.parentElement!).gridTemplateColumns,
+            childGrid: getComputedStyle(summary).gridTemplateColumns,
+            childMargin: getComputedStyle(summary.parentElement!).marginLeft,
             textLeft: preview.getBoundingClientRect().left,
             lineLefts: Array.from(range.getClientRects(), (rect) => rect.left)
           };
         });
-        expect(commandLayout.indent).toBeGreaterThanOrEqual(12);
-        expect(commandLayout.indent).toBeLessThanOrEqual(20);
-        if (width === 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
+        expect(Math.abs(commandLayout.indent), JSON.stringify(commandLayout)).toBeLessThanOrEqual(
+          1
+        );
+        if (width <= 390) expect(commandLayout.lineLefts.length).toBeGreaterThan(1);
         for (const left of commandLayout.lineLefts)
           expect(Math.abs(left - commandLayout.textLeft)).toBeLessThanOrEqual(1);
+        await expect(icon).toHaveAttribute('fill', 'none');
+        await expect(icon).toHaveAttribute('aria-hidden', 'true');
+        if ((await command.getAttribute('open')) === null) await command.locator('summary').click();
+        await expect(command.locator('.conversation-command-output')).toContainText('first');
+        await expect(command.locator('.conversation-command-output')).toHaveCSS(
+          'font-family',
+          await command
+            .locator('.conversation-command-preview')
+            .evaluate((el) => getComputedStyle(el).fontFamily)
+        );
         expect(await process.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
         await process.screenshot({
           path: testInfo.outputPath(`read-${locale}-${width}-${dark ? 'dark' : 'light'}.png`),
@@ -1024,6 +1063,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
 test('Work processes preserve manual disclosure, static reasoning and authoritative Run completion', async ({
   page
 }, testInfo) => {
+  const now = Date.now();
+  await page.clock.setFixedTime(now);
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   const latestSummary =
     'Inspecting selection tests and planning route candidate script execution in the workspace';
@@ -1034,7 +1075,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     status: 'RUNNING',
     recoveryState: 'ACTIVE',
     clientMessageId: 'message-reasoning',
-    startedAt: Date.now() - 10_000
+    startedAt: now - 10_000
   };
   const segments = (append: boolean) =>
     (
@@ -1049,6 +1090,8 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
             {
               id: 'reasoning-first',
               kind: 'reasoning',
+              startedAt: now - 8000,
+              completedAt: now - 7000,
               processGroup: { id: 'process-reading', ...(append ? { isStart: true } : {}) },
               status: 'COMPLETED',
               payload: {
@@ -1063,6 +1106,8 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
                   {
                     id: 'reasoning-second',
                     kind: 'reasoning',
+                    startedAt: now - 6500,
+                    completedAt: now - 6000,
                     processGroup: { id: 'process-reading' },
                     status: 'COMPLETED',
                     payload: {
@@ -1081,6 +1126,8 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
                   {
                     id: 'process-tool',
                     kind: 'tool_call',
+                    startedAt: now - 4000,
+                    completedAt: now - 2000,
                     status: 'FAILED',
                     processGroup: { id: 'process-verification', isStart: true },
                     payload: {
@@ -1147,6 +1194,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await processes.first().screenshot({ path: testInfo.outputPath('process-active.png') });
   await expect(heading).toContainText('部分记录');
+  await expect(heading.locator('.process-duration')).toHaveCount(0);
   await expect(processes.first().locator('.process-summary')).toHaveText(
     'Inspecting patch ordering'
   );
@@ -1168,6 +1216,13 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
     segments: segments(true)
   });
   await expect(processes).toHaveCount(2);
+  await expect(heading.locator('.process-duration')).toContainText('2s');
+  const activeDuration = processes.last().locator('.process-duration');
+  await expect(activeDuration).toContainText('4s');
+  await page.clock.setFixedTime(now + 2000);
+  await expect(activeDuration).toContainText('6s');
+  await expect(heading.locator('.process-duration')).toContainText('2s');
+  await expect(page.locator('.composer-working')).toContainText('12s');
   await expect(heading.locator('.process-activity-indicator')).toHaveCount(0);
   await expect(processes.last().locator('.process-activity-indicator')).toBeVisible();
   await expect(processes.last().locator('.process-activity-label')).toHaveText(
@@ -1200,13 +1255,15 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   const previewBounds = await card.locator('summary').evaluate((element) => ({
     right: element.getBoundingClientRect().right,
     cardRight: element.closest('.reasoning-group')?.getBoundingClientRect().right ?? 0,
-    clipped: element.scrollWidth > element.clientWidth,
+    clipped:
+      element.querySelector('.reasoning-subtitle')!.scrollWidth >
+      element.querySelector('.reasoning-subtitle')!.clientWidth,
     display: getComputedStyle(element).display,
-    textOverflow: getComputedStyle(element).textOverflow
+    textOverflow: getComputedStyle(element.querySelector('.reasoning-subtitle')!).textOverflow
   }));
   expect(previewBounds.clipped).toBe(true);
   expect(previewBounds.right).toBeLessThanOrEqual(previewBounds.cardRight);
-  expect(previewBounds.display).toBe('list-item');
+  expect(previewBounds.display).toBe('grid');
   expect(previewBounds.textOverflow).toBe('ellipsis');
   await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
   await expect(card.locator('summary > strong')).toBeVisible();
@@ -1242,6 +1299,9 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await expect(page.locator('.conversation-run-duration')).toHaveText('本轮耗时 20s');
   await expect(processes.locator('.process-activity-indicator')).toHaveCount(0);
   await expect(processes.last().locator('.process-heading')).toContainText('已完成');
+  await expect(activeDuration).toContainText('2s');
+  await page.clock.setFixedTime(now + 5000);
+  await expect(activeDuration).toContainText('2s');
   await expect(card.locator('.reasoning-progress')).toHaveCount(0);
 });
 
@@ -1515,7 +1575,7 @@ function watchedConversation(
 for (const locale of ['zh-CN', 'en-US'] as const) {
   test(
     'Code Exec waits render as distinct command details on desktop and mobile ' + locale,
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
       await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -1635,7 +1695,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         id: item.itemId,
         kind: item.kind,
         status: item.status,
-        payload: item.payload
+        payload: item.payload,
+        processGroup: { id: 'code-process' }
       }));
       const conversation = watchedConversation([
         {
@@ -1683,31 +1744,48 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       );
       const openDisclosure = async (disclosure: Locator) => {
         if ((await disclosure.getAttribute('open')) === null)
-          await disclosure.locator('summary').click();
+          await disclosure.locator(':scope > summary').click();
       };
       const verify = async () => {
+        const heading = page.locator('[data-process-id="code-process"] > .process-heading');
+        if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
         await openDisclosure(commands.locator(':scope > details'));
         const details = commands.locator('.conversation-command-detail');
         await expect(details).toHaveCount(3);
         await expect(details.filter({ hasText: 'await tools.exec' }).first()).toBeVisible();
-        const waitPoll = details
-          .filter({ hasText: 'code_exec_wait' })
-          .filter({ hasText: 'poll' })
-          .first();
+        const waitPoll = details.filter({ hasText: 'code_exec_wait' }).nth(0);
         await expect(waitPoll).toBeVisible();
         await openDisclosure(waitPoll);
         await expect(waitPoll.locator('p')).toContainText('Action: poll');
         await expect(waitPoll.locator('p')).toContainText('cell-poll');
         await expect(waitPoll.locator('p')).toContainText('Cell is still running.');
-        const waitCancel = details
-          .filter({ hasText: 'code_exec_wait' })
-          .filter({ hasText: 'cancel' })
-          .first();
+        const waitCancel = details.filter({ hasText: 'code_exec_wait' }).nth(1);
         await openDisclosure(waitCancel);
         await expect(waitCancel.locator('p')).toContainText('cell-cancel');
         await expect(waitCancel.locator('p')).toContainText('Cell cancellation completed.');
         await openDisclosure(skill);
+        const skillIcon = skill.locator(':scope > summary > .conversation-record-icon');
+        await expect(skillIcon).toBeVisible();
+        await expect(skillIcon).toHaveAttribute('aria-hidden', 'true');
+        await expect(skillIcon).toHaveAttribute('fill', 'none');
+        const skillLayout = await skill.locator(':scope > summary').boundingBox();
+        const commandLayout = await commands.locator(':scope > details > summary').boundingBox();
+        const skillIconBox = await skillIcon.boundingBox();
+        const commandIconBox = await commands
+          .locator(':scope > details > summary > svg')
+          .boundingBox();
+        expect(Math.abs(skillIconBox!.x - commandIconBox!.x)).toBeLessThan(1);
+        expect(Math.abs(skillIconBox!.width - commandIconBox!.width)).toBeLessThan(1);
+        expect(Math.abs(skillLayout!.x - commandLayout!.x)).toBeLessThanOrEqual(14);
         await expect(skill.locator('p')).toContainText('playwright-cli');
+        expect(
+          await skill.evaluate((element) =>
+            Math.abs(
+              element.querySelector('p')!.getBoundingClientRect().left -
+                element.querySelector('summary > strong')!.getBoundingClientRect().left
+            )
+          )
+        ).toBeLessThanOrEqual(1);
         expect(
           await page
             .locator('.conversation-scroll')
@@ -1718,6 +1796,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await verify();
       await page.setViewportSize({ width: 390, height: 844 });
       await verify();
+      await page.locator('[data-process-id="code-process"]').screenshot({
+        path: testInfo.outputPath(`skill-${locale}-mobile.png`),
+        animations: 'disabled'
+      });
     }
   );
 }

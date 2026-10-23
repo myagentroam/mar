@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import {
   conversationProcessLabel,
+  conversationProcessDuration,
   conversationWorkProcessBlocks
 } from '../../src/util/conversation-work-process.js';
 import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
@@ -70,6 +71,9 @@ describe('Latest work process labels', () => {
       [{ id: runId, status: 'RUNNING' }]
     )[0]!;
     expect(conversationProcessLabel(block, true)).toBe('Calling tool: 工具 Original');
+    expect(
+      conversationProcessLabel({ ...block, latestWork: item('thought', 'reasoning') }, true)
+    ).toBe('Reasoning');
     const { latestWork: _, ...withoutWork } = block;
     expect(conversationProcessLabel(withoutWork, true)).toBe('Processing');
     localePreferenceService().setLocale('zh-CN');
@@ -502,6 +506,73 @@ describe('Conversation work process blocks', () => {
     expect(
       processBlock(conversationWorkProcessBlocks([turn([partial, last])]), 'timed').durationMs
     ).toBeUndefined();
+  });
+
+  it('ticks active processes and recalculates from records when finished or unsynchronized', () => {
+    const records = [
+      {
+        ...item('first', 'reasoning', {
+          processGroup: { id: 'timed', isStart: true },
+          payload: { sections: [{ text: 'Reviewing the change' }] }
+        }),
+        startedAt: 1000
+      },
+      {
+        ...item('last', 'tool_call', { processGroup: { id: 'timed' } }),
+        startedAt: 2000,
+        completedAt: 3500
+      }
+    ];
+    const block = {
+      ...processBlock(conversationWorkProcessBlocks([turn(records)]), 'timed'),
+      active: true
+    };
+    expect(conversationProcessDuration(block, 5000, true)).toBe(4000);
+    expect(conversationProcessDuration(block, 6000, true)).toBe(5000);
+    expect(conversationProcessDuration(block, 6000, false)).toBe(2500);
+    expect(conversationProcessDuration({ ...block, active: false }, 6000, true)).toBe(2500);
+    expect(conversationProcessDuration({ ...block, active: false }, 9000, true)).toBe(2500);
+    const { durationMs: _duration, ...starting } = block;
+    const { startedAt: _start, ...withoutOrigin } = starting;
+    expect(conversationProcessDuration(withoutOrigin, 6000, true)).toBeUndefined();
+    expect(conversationProcessDuration(block, 500, true)).toBe(2500);
+    expect(conversationProcessDuration(starting, 2000, true)).toBe(1000);
+  });
+
+  it('retains source endpoints and the latest activity when category groups move', () => {
+    const processGroup = { id: 'moving' };
+    const block = processBlock(
+      conversationWorkProcessBlocks([
+        turn([
+          {
+            ...item('tool-first', 'tool_call', {
+              processGroup: { ...processGroup, isStart: true }
+            }),
+            startedAt: 1000,
+            completedAt: 1500
+          },
+          {
+            ...item('command', 'command_execution', { processGroup }),
+            startedAt: 2000,
+            completedAt: 2500
+          },
+          {
+            ...item('tool-last', 'tool_call', { processGroup }),
+            startedAt: 3000,
+            completedAt: 4000
+          }
+        ])
+      ]),
+      'moving'
+    );
+    expect(block.entries.map(({ displayItem }) => displayItem.id)).toEqual([
+      'command',
+      'tool-first'
+    ]);
+    expect(block.startedAt).toBe(1000);
+    expect(block.durationMs).toBe(3000);
+    expect(block.latestWork?.id).toBe('tool-last');
+    expect(conversationProcessDuration({ ...block, active: true }, 6000, true)).toBe(5000);
   });
 
   it.each([

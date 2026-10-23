@@ -849,7 +849,7 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
-  it('aggregates eligible categories only within explicit process groups at the first anchor', () => {
+  it('aggregates eligible categories only within explicit process groups with stable identities', () => {
     const firstProcess = { id: 'process-1' } as const;
     const secondProcess = { id: 'process-2' } as const;
     const tool = (id: string, processGroup?: ConversationItem['processGroup']) =>
@@ -927,6 +927,99 @@ describe('Conversation Show Aggregation', () => {
       { text: 'Summary one\n\nSummary two' },
       { text: 'Thinking one\n\nThinking two' }
     ]);
+  });
+
+  it('moves an interleaved group to its latest record without moving on content or status updates', () => {
+    const processGroup = { id: 'process-order' } as const;
+    const records = [
+      item('command-1', 'command_execution', { command: 'one' }, 'IN_PROGRESS', processGroup),
+      item(
+        'thinking-1',
+        'reasoning',
+        { representation: 'visible_thinking', sections: [{ text: 'One' }] },
+        'IN_PROGRESS',
+        processGroup
+      ),
+      item('command-2', 'command_execution', { command: 'two' }, 'IN_PROGRESS', processGroup),
+      item(
+        'file-1',
+        'file_change',
+        { changes: [{ path: 'a.ts', change: 'MODIFIED' }] },
+        'COMPLETED',
+        processGroup
+      ),
+      item(
+        'thinking-2',
+        'reasoning',
+        { representation: 'visible_thinking', sections: [{ text: 'Two' }] },
+        'IN_PROGRESS',
+        processGroup
+      )
+    ];
+    expect(conversationDisplayItems(records.slice(0, 3)).map(({ id }) => id)).toEqual([
+      'thinking-1',
+      'command-1'
+    ]);
+    expect(conversationDisplayItems(records).map(({ id }) => id)).toEqual([
+      'command-1',
+      'file-1',
+      'thinking-1'
+    ]);
+    records.push(
+      item('command-3', 'command_execution', { command: 'three' }, 'COMPLETED', processGroup)
+    );
+    const latest = conversationDisplayItems(records);
+    expect(latest.map(({ id }) => id)).toEqual(['file-1', 'thinking-1', 'command-1']);
+    expect(latest.at(-1)).toMatchObject({
+      id: 'command-1',
+      items: [{ id: 'command-1' }, { id: 'command-2' }, { id: 'command-3' }]
+    });
+    const updated = records.map((record) =>
+      record.id === 'file-1'
+        ? { ...record, status: 'FAILED', payload: { changes: [{ path: 'b.ts', change: 'ADDED' }] } }
+        : record
+    );
+    expect(conversationDisplayItems(updated).map(({ id }) => id)).toEqual(
+      latest.map(({ id }) => id)
+    );
+  });
+
+  it('keeps command aggregation stable across derived records without mixing their parents', () => {
+    const processGroup = { id: 'process-derived' } as const;
+    const command = (id: string) =>
+      item(id, 'command_execution', { command: id }, 'COMPLETED', processGroup);
+    const derivedRead = (id: string, parentItemId: string) => ({
+      ...item(
+        id,
+        'tool_call',
+        { toolName: 'read', toolPresentation: { kind: 'READ', paths: [id] } },
+        'COMPLETED',
+        processGroup
+      ),
+      parentItemId
+    });
+    const roots = [{ ...command('cell-1'), parentItemId: null }, command('cell-2')];
+    const records = [roots[0]!, derivedRead('read-1', 'cell-1'), roots[1]!];
+    for (const items of [
+      roots,
+      records,
+      [...records, derivedRead('read-2', 'cell-2'), command('cell-3')]
+    ]) {
+      const projected = conversationDisplayItems(items);
+      const commands = projected.filter((entry) => entry.type === 'command_group');
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.id).toBe('cell-1');
+      expect(commands[0]?.items.map(({ id }) => id)).toEqual(
+        items.filter(({ kind }) => kind === 'command_execution').map(({ id }) => id)
+      );
+      const reads = projected.filter((entry) => entry.type === 'read_group');
+      expect(reads.map(({ items }) => items.map(({ parentItemId }) => parentItemId))).toEqual(
+        items.filter(({ kind }) => kind === 'tool_call').map((record) => [record.parentItemId])
+      );
+      expect(
+        projected.flatMap((entry) => ('items' in entry ? entry.items : [entry.item]))
+      ).toHaveLength(items.length);
+    }
   });
 
   it('does not aggregate ordinary tools across special card, permission, or subagent boundaries', () => {

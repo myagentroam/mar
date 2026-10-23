@@ -78,7 +78,7 @@ export async function verifyConversationThemes(
           })
         );
       for (const heading of headings) {
-        expect(heading.display).toBe('list-item');
+        expect(heading.display).toBe('grid');
         expect(heading.markerType).toBe('none');
         expect(heading.markerFont).toBe(headings[0]!.markerFont);
         expect(heading.markerColor).toBe(headings[0]!.markerColor);
@@ -91,7 +91,7 @@ export async function verifyConversationThemes(
       await expect(process.locator(':scope > details')).toHaveAttribute('open', '');
       await expect(process.locator(':scope > details')).toHaveCSS(
         'background-color',
-        await themeColor(page, '--mar-conversation-process')
+        'rgba(0, 0, 0, 0)'
       );
       await summary.click();
     }

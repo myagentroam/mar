@@ -1,5 +1,33 @@
-import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { computed, onBeforeUnmount, readonly, ref, watch, type Ref } from 'vue';
 import type { AgentRun } from '../model/workbench.js';
+
+const secondClockNow = ref(Date.now());
+let secondClockTimer: ReturnType<typeof setInterval> | undefined;
+let secondClockUsers = 0;
+
+/** Share one second tick between visible process durations and Run footers. */
+export function createWorkbenchSecondClock(active: Readonly<Ref<boolean>>) {
+  watch(
+    active,
+    (enabled, _previous, onCleanup) => {
+      if (!enabled || typeof window === 'undefined') return;
+      secondClockNow.value = Date.now();
+      secondClockUsers += 1;
+      secondClockTimer ??= setInterval(() => {
+        secondClockNow.value = Date.now();
+      }, 1_000);
+      onCleanup(() => {
+        secondClockUsers -= 1;
+        if (secondClockUsers === 0) {
+          clearInterval(secondClockTimer);
+          secondClockTimer = undefined;
+        }
+      });
+    },
+    { immediate: true }
+  );
+  return readonly(secondClockNow);
+}
 
 export function resolveWorkingStartedAt(
   sessionId: string | undefined,
@@ -17,31 +45,18 @@ export function createWorkbenchClockService(
   busy: Readonly<Ref<boolean>>,
   activeRun: Readonly<Ref<Pick<AgentRun, 'sessionId' | 'startedAt'> | undefined>>
 ) {
-  const workingNow = ref(Date.now());
   const workingStartedAt = computed(() =>
     resolveWorkingStartedAt(sessionId.value, busy.value, activeRun.value)
   );
   const working = computed(() => sessionId.value !== undefined && busy.value);
+  const workingNow = createWorkbenchSecondClock(
+    computed(() => working.value && workingStartedAt.value !== undefined)
+  );
   const sessionActivityNow = ref(Date.now());
-  let workingTimer: ReturnType<typeof setInterval> | undefined;
   const sessionActivityTimer = setInterval(() => {
     sessionActivityNow.value = Date.now();
   }, 30_000);
-  watch(
-    [working, workingStartedAt],
-    ([active, start]) => {
-      if (workingTimer !== undefined) clearInterval(workingTimer);
-      workingTimer = undefined;
-      workingNow.value = Date.now();
-      if (active && start !== undefined)
-        workingTimer = setInterval(() => {
-          workingNow.value = Date.now();
-        }, 1_000);
-    },
-    { immediate: true }
-  );
   onBeforeUnmount(() => {
-    if (workingTimer !== undefined) clearInterval(workingTimer);
     clearInterval(sessionActivityTimer);
   });
   return { working, workingNow, workingStartedAt, sessionActivityNow };
