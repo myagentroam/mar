@@ -13,6 +13,7 @@ import {
 } from '../../src/service/WorkbenchSubmissionService.js';
 import { ApiError } from '../../src/util/api-error.js';
 import { createRunnerInteractionService } from '../../src/service/RunnerInteractionService.js';
+import { translate } from '../../src/service/LocalePreferenceService.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 
@@ -166,6 +167,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
   const selectedNodeId = { value: 'node-1' };
   const selectedWorkspaceId = { value: workspace.id };
   const sessions = { value: selectedSession === undefined ? [] : [selectedSession] };
+  const draftOpen = { value: input.draft === true };
   const attachments = { value: [] as ComposerAttachment[] };
   const replaceSession = vi.fn((previousId: string, next: Session) => {
     const wasSelected = selectedSessionId.value === previousId;
@@ -174,11 +176,16 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
   });
   const runs = { value: [] as import('../../src/model/workbench.js').AgentRun[] };
   const submission = createWorkbenchSubmissionService();
+  const notice = { value: '' };
   const service = createWorkbenchSessionMessageService({
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
     selectedWorkspace: { value: workspace },
-    selectedSession: { value: selectedSession },
+    selectedSession: {
+      get value() {
+        return sessions.value.find((candidate) => candidate.id === selectedSessionId.value);
+      }
+    },
     selectedRunId: { value: undefined },
     sessions,
     runs,
@@ -188,7 +195,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     attachmentsPending: { value: false },
     composerOpen: { value: true },
     composerBusy: { value: input.busy === true },
-    draftOpen: { value: input.draft === true },
+    draftOpen,
     selectedCommand,
     commandAvailable,
     submissionAvailable,
@@ -197,10 +204,11 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     fastEnabled,
     activeRun: { value: undefined },
     loading: { value: false },
-    notice: { value: '' },
+    notice,
     request,
     stageDraftCommand,
     createDraftSession: async () => {
+      draftOpen.value = false;
       selectedSessionId.value = draftSession.id;
       sessions.value = [draftSession];
       return draftSession;
@@ -240,6 +248,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     service,
     runs,
     submission,
+    notice,
     resolveRequest,
     rejectRequest,
     appendUserMessage,
@@ -254,6 +263,7 @@ function pendingRequestHarness(input: { draft?: boolean; busy?: boolean } = {}) 
     inputValue,
     selectedWorkspaceId,
     selectedSessionId,
+    draftOpen,
     selectedNodeId,
     attachments,
     skillTokens,
@@ -862,12 +872,40 @@ describe('Workbench Message Submission Status', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(harness.submission.pending.value).toBe(false);
       expect(harness.inputValue.value).toBe('Immediate Message');
+      expect(harness.notice.value).toBe(translate('workbench.submissionTimedOut'));
 
       const second = harness.service.send();
       const firstBody = JSON.parse(String(harness.request.mock.calls[0]?.[1]?.body));
       const secondBody = JSON.parse(String(harness.request.mock.calls[1]?.[1]?.body));
       expect(secondBody.clientMessageId).toBe(firstBody.clientMessageId);
 
+      harness.resolveRequest(acceptedResult);
+      await Promise.all([first, second]);
+      expect(harness.inputValue.value).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a timed-out new session through start without sending its local draft ID to Node', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = pendingRequestHarness({ draft: true });
+      const first = harness.service.send();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(harness.draftOpen.value).toBe(false);
+      expect(harness.selectedSessionId.value).toBe('draft:session-1');
+      expect(harness.notice.value).toBe(translate('workbench.submissionTimedOut'));
+      const second = harness.service.send();
+      await Promise.resolve();
+      expect(harness.request.mock.calls.map((call) => call[0])).toEqual([
+        '/api/agent-sessions/start',
+        '/api/agent-sessions/start'
+      ]);
+      const firstBody = JSON.parse(String(harness.request.mock.calls[0]?.[1]?.body));
+      const secondBody = JSON.parse(String(harness.request.mock.calls[1]?.[1]?.body));
+      expect(secondBody.clientMessageId).toBe(firstBody.clientMessageId);
+      expect(secondBody).toEqual(firstBody);
       harness.resolveRequest(acceptedResult);
       await Promise.all([first, second]);
       expect(harness.inputValue.value).toBe('');
@@ -897,4 +935,27 @@ describe('Workbench Message Submission Status', () => {
       vi.useRealTimers();
     }
   });
+
+  it.each(['node', 'workspace', 'session', 'new draft'])(
+    'does not show a submission timeout after switching %s',
+    async (target) => {
+      vi.useFakeTimers();
+      try {
+        const harness = pendingRequestHarness({ draft: target === 'new draft' });
+        const sending = harness.service.send();
+        await Promise.resolve();
+        if (target === 'node') harness.selectedNodeId.value = 'other-node';
+        if (target === 'workspace') harness.selectedWorkspaceId.value = 'other-workspace';
+        if (target === 'session') harness.selectedSessionId.value = 'other-session';
+        if (target === 'new draft') harness.selectedSessionId.value = undefined;
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(harness.notice.value).toBe('');
+        expect(harness.submission.pending.value).toBe(false);
+        harness.resolveRequest(acceptedResult);
+        await sending;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
 });

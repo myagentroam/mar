@@ -11,7 +11,7 @@ export function createWorkbenchSubmissionService() {
   const context = ref<string>();
   let sequence = 0;
 
-  function begin(nextContext?: string): (() => boolean) | undefined {
+  function begin(nextContext?: string, onTimeout?: () => void): (() => boolean) | undefined {
     if (pending.value) return undefined;
     const current = ++sequence;
     pending.value = true;
@@ -20,6 +20,7 @@ export function createWorkbenchSubmissionService() {
       if (sequence !== current) return;
       pending.value = false;
       context.value = undefined;
+      onTimeout?.();
     }, SUBMISSION_TIMEOUT_MS);
     return () => {
       clearTimeout(timeout);

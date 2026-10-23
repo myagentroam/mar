@@ -768,6 +768,7 @@ export function createWorkbenchPageController<
     nodeReady,
     mustSteerCurrentTurn,
     canStartTurn,
+    composerDraftOpen,
     canUseComposer,
     composerSessionOpen,
     composerConfigurationDisabled,
@@ -2888,7 +2889,11 @@ export function createWorkbenchPageController<
     mergeSessions([value]);
     if (previousId !== value.id && sessions.value.some((session) => session.id === previousId))
       sessions.value = sessions.value.filter((session) => session.id !== previousId);
-    if (wasSelected) selectedSessionId.value = value.id;
+    if (wasSelected) {
+      if (submissionService.context.value === sessionSubmissionContext(previousId))
+        submissionService.context.value = sessionSubmissionContext(value.id);
+      selectedSessionId.value = value.id;
+    }
   }
 
   function stageComposerDraftCommand(command: RunnerCommand, input: string): void {
@@ -3509,6 +3514,7 @@ export function createWorkbenchPageController<
     composerRunnerOptions,
     composerSessionOpen,
     composerSubmitting,
+    composerDraftOpen,
     composerSkillsSupported,
     composerSkillsLoading: composerSkillTargets.loading,
     composerSkillsFailed: composerSkillTargets.failed,

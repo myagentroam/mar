@@ -127,10 +127,13 @@ export function createWorkbenchPresentationStateService(
   const draftRunnerProfileSupportsTurns = computed(
     () => options.composerProfile.value?.capabilities.includes('turn.start') === true
   );
+  const composerDraftOpen = computed(
+    () => options.draftOpen.value || options.selectedSessionId.value?.startsWith('draft:') === true
+  );
   const canUseComposer = computed(
     () =>
       nodeReady.value &&
-      (options.draftOpen.value
+      (composerDraftOpen.value
         ? options.runnerProfilesLoading.value ||
           options.runnerProfilesFailed.value ||
           draftRunnerProfileSupportsTurns.value
@@ -179,6 +182,7 @@ export function createWorkbenchPresentationStateService(
   const sessionControlsBusy = computed(
     () =>
       composerSessionBusy.value ||
+      options.selectedSessionId.value?.startsWith('draft:') === true ||
       selectedSessionActivity.value === 'MANAGED_ACTIVE' ||
       options.loading.value ||
       options.submissionPending.value
@@ -211,7 +215,12 @@ export function createWorkbenchPresentationStateService(
     );
   }
   function canExecuteRunnerCommand(command: RunnerCommand): boolean {
-    if (!command.available || options.loading.value || options.submissionPending.value)
+    if (
+      !command.available ||
+      options.loading.value ||
+      options.submissionPending.value ||
+      options.selectedSessionId.value?.startsWith('draft:') === true
+    )
       return false;
     if (
       command.interaction === 'IMMEDIATE_ACTION' ||
@@ -345,6 +354,7 @@ export function createWorkbenchPresentationStateService(
     canStartTurn,
     mustSteerCurrentTurn,
     draftRunnerProfileSupportsTurns,
+    composerDraftOpen,
     canUseComposer,
     composerSessionOpen,
     composerConfigurationDisabled,

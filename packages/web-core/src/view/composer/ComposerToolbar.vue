@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
-import { Paperclip, Promotion } from '@element-plus/icons-vue';
+import { Loading, Paperclip, Promotion } from '@element-plus/icons-vue';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
@@ -11,6 +11,7 @@ const props = defineProps<{
   readonly runner: Session['runner'];
   readonly runnerOptions: readonly { readonly value: Session['runner']; readonly label: string }[];
   readonly runnerLoading: boolean;
+  readonly runnerDisabled?: boolean;
   readonly runnerLabel: string | undefined;
   readonly modelEffortSelection: string | undefined;
   readonly modelEffortLabel: string;
@@ -148,7 +149,7 @@ function selectFiles(event: Event): void {
           popper-class="composer-mini-popper composer-runner-popper"
           size="small"
           teleported
-          :disabled="runnerLoading"
+          :disabled="runnerLoading || runnerDisabled"
           :loading="runnerLoading"
           @change="emit('updateRunner', $event as Session['runner'])"
         >
@@ -248,48 +249,62 @@ function selectFiles(event: Event): void {
         <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
       </button>
     </el-tooltip>
-    <span v-if="!mobileViewport" class="composer-hint">{{
-      activeRun
-        ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
-        : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
-    }}</span>
-    <span v-if="submitting" class="composer-submitting" role="status">{{
-      translate('workbench.sending')
-    }}</span>
-    <button
+    <span v-if="!mobileViewport" class="composer-hint" :class="{ 'is-submitting': submitting }">
+      <span :aria-hidden="submitting || undefined">{{
+        activeRun
+          ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
+          : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
+      }}</span>
+      <span v-if="submitting" class="composer-submitting" role="status">{{
+        translate('workbench.sending')
+      }}</span>
+    </span>
+    <el-tooltip
+      v-bind="tooltipOptions"
       v-if="interruptVisible"
-      class="composer-stop-button"
-      :disabled="loading || !canInterrupt"
-      type="button"
-      :aria-label="translate('generated.composerToolbar.stopRun')"
-      :title="
+      :content="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
           : translate('generated.composerToolbar.stopRunEsc')
       "
-      @click="emit('stop')"
-    >
-      <i class="composer-stop-square" aria-hidden="true" />
-    </button>
-    <button
+      ><button
+        class="composer-stop-button"
+        :disabled="!canInterrupt"
+        type="button"
+        :aria-label="translate('generated.composerToolbar.stopRun')"
+        @click="emit('stop')"
+      >
+        <i class="composer-stop-square" aria-hidden="true" /></button
+    ></el-tooltip>
+    <el-tooltip
+      v-bind="tooltipOptions"
       v-if="!canInterrupt || inputHasContent"
-      class="composer-send-button"
-      :disabled="
-        (!inputHasContent && !hasSelectedCommand) ||
-        loading ||
-        (attachmentsPending && !hasSelectedCommand)
-      "
-      type="submit"
-      :aria-label="translate('generated.composerToolbar.send')"
-      :title="translate('generated.composerToolbar.send2')"
-    >
-      <el-icon><Promotion /></el-icon>
-    </button>
+      :content="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
+      ><button
+        class="composer-send-button"
+        :disabled="
+          (!inputHasContent && !hasSelectedCommand) ||
+          loading ||
+          submitting ||
+          (attachmentsPending && !hasSelectedCommand)
+        "
+        type="submit"
+        :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
+        :aria-busy="submitting || undefined"
+      >
+        <el-icon :class="{ 'is-loading': submitting }" aria-hidden="true">
+          <Loading v-if="submitting" />
+          <Promotion v-else />
+        </el-icon></button
+    ></el-tooltip>
   </div>
 </template>
 
 <style scoped>
 .composer-submitting {
+  position: absolute;
+  inset: 0;
+  text-align: right;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   flex-shrink: 0;
@@ -384,7 +399,12 @@ function selectFiles(event: Event): void {
 }
 
 .composer-hint {
+  position: relative;
   margin-left: auto;
+}
+
+.composer-hint.is-submitting > :first-child {
+  visibility: hidden;
 }
 
 .composer-context-button {

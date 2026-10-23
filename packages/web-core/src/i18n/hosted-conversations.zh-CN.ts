@@ -140,7 +140,8 @@ export const hostedConversationsZhCN = {
     mobileFiles: '文件'
   },
   workbench: {
-    sending: '发送中...'
+    sending: '发送中...',
+    submissionTimedOut: '发送确认超时，消息可能已被接收，请检查会话状态后再重试。'
   },
   presentation: {
     lastActivity: '最后活动：{value}'
