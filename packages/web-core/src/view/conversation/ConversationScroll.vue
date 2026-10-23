@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { Bottom } from '@element-plus/icons-vue';
+import { Bottom, Loading } from '@element-plus/icons-vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -70,7 +70,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
   <div class="conversation-scroll-region">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
       <div
-        v-if="loadingInitial"
+        v-if="loadingInitial && !reloading"
         class="conversation-load-older conversation-loading-initial"
         role="status"
         aria-live="polite"
@@ -89,6 +89,9 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
         :aria-busy="loadingInitial || reloading"
         @click="reload"
       >
+        <template v-if="loadingInitial || reloading" #icon>
+          <Loading class="el-icon is-loading" aria-hidden="true" />
+        </template>
         {{ translate('generated.conversationScroll.reloadConversationHistory') }}
       </el-button>
       <div
@@ -98,7 +101,7 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
       >
         <p v-if="olderError" class="conversation-history-error" role="status">{{ olderError }}</p>
         <div
-          v-if="loadingOlder"
+          v-if="loadingOlder && olderAction === undefined"
           class="conversation-load-older"
           role="status"
           :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
@@ -113,9 +116,13 @@ onBeforeUnmount(() => emit('scrollElement', undefined));
           size="small"
           native-type="button"
           :aria-disabled="loadingOlder"
+          :aria-busy="loadingOlder"
           :data-history-action="olderAction ?? (olderError ? 'retry' : 'load')"
           @click="loadOlder"
         >
+          <template v-if="loadingOlder" #icon>
+            <Loading class="el-icon is-loading" aria-hidden="true" />
+          </template>
           {{
             (olderAction ?? (olderError ? 'retry' : 'load')) === 'retry'
               ? translate('conversationActivity.retry')

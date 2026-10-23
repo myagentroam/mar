@@ -3099,6 +3099,150 @@ test('Admin workspaces render replies, plans, and streaming updates as safe Mark
   ).toBeUndefined();
 });
 
+for (const mobile of [false, true]) {
+  test.describe(`History action recovery ${mobile ? 'mobile' : 'desktop'}`, () => {
+    test.use({
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+      isMobile: mobile,
+      hasTouch: mobile
+    });
+
+    test('Retains retry focus and updates pending history labels across locales', async ({
+      page
+    }, testInfo) => {
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      let initialAttempts = 0;
+      let releaseRetry!: () => void;
+      const retryReady = new Promise<void>((resolve) => {
+        releaseRetry = resolve;
+      });
+      await page.route('**/api/agent-sessions/session-1/watch*', async (route) => {
+        initialAttempts += 1;
+        if (initialAttempts <= 2) {
+          if (initialAttempts === 2) await retryReady;
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              error: { code: 'TEMPORARILY_UNAVAILABLE', message: 'History unavailable' }
+            })
+          });
+          return;
+        }
+        await fulfillMockSessionWatch(
+          page,
+          route,
+          { id: 'session-1', workspaceId: 'workspace-1' },
+          watchedConversation(
+            [
+              {
+                id: 'short:segment:0',
+                turnId: 'short',
+                index: 0,
+                status: 'SUCCEEDED',
+                items: [
+                  {
+                    id: 'short-answer',
+                    kind: 'assistant_message',
+                    status: 'COMPLETED',
+                    payload: { text: 'Short history' }
+                  }
+                ]
+              }
+            ],
+            'older-page'
+          )
+        );
+      });
+      await page.goto('/console');
+      await page.getByRole('button', { name: '进入控制台' }).click();
+      const work = page.getByRole('button', { name: '工作', exact: true });
+      await work.click();
+      await page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: /node-1/ })
+        .click();
+      const project = page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: 'project', exact: true });
+      if (mobile && !(await project.isVisible())) await work.click();
+      await project.click();
+      if (mobile) await page.getByRole('button', { name: '打开会话列表' }).click();
+      await page.locator('.session-list .session-link').first().click();
+      const retry = page.locator('button.conversation-reload');
+      await expect(retry).toBeVisible();
+      await retry.focus();
+      await retry.press('Enter');
+      await expect(retry).toBeFocused();
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
+      await expect(retry.locator('.is-loading')).toHaveCount(1);
+      await expect(page.locator('.conversation-loading-initial .busy-indicator')).toHaveCount(0);
+      await expect.poll(() => initialAttempts).toBe(2);
+      await retry.press('Enter');
+      expect(initialAttempts).toBe(2);
+      releaseRetry();
+      await expect(retry).toHaveAttribute('aria-busy', 'false');
+      await expect(retry).toBeFocused();
+      await retry.press('Enter');
+      await expect(page.getByText('Short history', { exact: true })).toBeVisible();
+      await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
+
+      let olderAttempts = 0;
+      let releaseOlder!: () => void;
+      const olderReady = new Promise<void>((resolve) => {
+        releaseOlder = resolve;
+      });
+      await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
+        olderAttempts += 1;
+        await olderReady;
+        await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
+      });
+      const older = page.locator('.conversation-history-control button');
+      await expect(older).toBeVisible();
+      const scroll = page.locator('.conversation-scroll');
+      expect(await scroll.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
+        true
+      );
+      if (mobile) await older.tap();
+      else {
+        await older.focus();
+        await older.press('Enter');
+      }
+      await expect(older).toHaveAttribute('aria-disabled', 'true');
+      // Reproduce the supported cross-tab locale update without reloading the pending request.
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'mar.locale.v2',
+            newValue: 'en-US'
+          })
+        )
+      );
+      await expect(older).toHaveText('Load earlier messages');
+      if (!mobile) await expect(older).toBeFocused();
+      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+      await expect(older.locator('.is-loading')).toHaveCount(1);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'rotating');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'none');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect.poll(() => olderAttempts).toBe(1);
+      await page.screenshot({ path: testInfo.outputPath('history-pending.png') });
+      if (mobile) {
+        const bounds = await older.boundingBox();
+        if (!bounds) throw new Error('Pending history action is not visible');
+        await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      } else await older.press('Enter');
+      expect(olderAttempts).toBe(1);
+      releaseOlder();
+      await expect(older).toHaveCount(0);
+      await expect(page.locator('.conversation-history-start')).toBeVisible();
+      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+    });
+  });
+}
+
 test('Opening a session loads only the latest window without initial scroll backfill', async ({
   page
 }) => {
@@ -3249,16 +3393,15 @@ test('Opening a session loads only the latest window without initial scroll back
   const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
   await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
   await loadOlderButton.press('Enter');
-  await expect(page.locator('.conversation-history-control .busy-indicator')).toBeVisible();
+  await expect(loadOlderButton.locator('.is-loading')).toBeVisible();
+  await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
   expect(
-    await page.locator('.conversation-history-control .busy-indicator').evaluate((element) => {
-      const expected = document.createElement('span');
-      expected.style.color = 'var(--mar-color-brand-text)';
-      element.parentElement!.append(expected);
-      const matches = getComputedStyle(element).color === getComputedStyle(expected).color;
-      expected.remove();
-      return matches;
-    })
+    await loadOlderButton
+      .locator('.is-loading')
+      .evaluate(
+        (element) =>
+          getComputedStyle(element).color === getComputedStyle(element.closest('button')!).color
+      )
   ).toBe(true);
   await expect(loadOlderButton).toBeFocused();
   await expect(loadOlderButton).toHaveAttribute('aria-disabled', 'true');
