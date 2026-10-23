@@ -119,21 +119,16 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(source).toContain('size: range.size,');
   });
 
-  it('prewarms code navigation on text previews and passes each tab page its own navigation state', () => {
+  it('wires navigation intents and per-tab state into file pages', () => {
     const source = readFileSync(
       new URL('../../src/view/workspace/WorkspaceInspector.vue', import.meta.url),
       'utf8'
     );
-    expect(source).toContain('for (let attempt = 0; attempt < 120; attempt += 1)');
-    expect(source).toContain("{ path, symbol, references: '0' }");
-    expect(source).toContain("{ path: input.path, symbol: input.symbol, references: '1' }");
-    expect(source).toContain('void loadSymbolReferences({');
-    expect(source).toContain('preview.navigationLoading.value = false;');
-    expect(source).toContain('queryUrl(`${requestBase}/symbols/prepare`, { path }, requestNodeId)');
+    // Request ordering, bounded waiting and candidate projection are exercised by
+    // workspace-code-navigation.test.ts; text-only prewarming has runtime coverage below.
     expect(source).toContain(
       "if (encoding === 'utf-8' && worktreePath === undefined && repositoryPath === undefined)"
     );
-    expect(source).toContain("if (parsed.data.state === 'BUILDING')");
     expect(source).toContain('void openFile(target.path, target.line, target.column)');
     expect(source).toContain('openFile(match.path, match.line, match.column)');
     expect(source).toContain('defineExpose({');
@@ -684,6 +679,107 @@ it.each([
           repositoryPath
         );
       }
+    } finally {
+      app.unmount();
+    }
+  }
+);
+
+it.each([false, true])(
+  'keeps navigation results per file tab (mobile=%s)',
+  async (mobileViewport) => {
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    vi.stubGlobal('Node', TestHostNode);
+    let finishOld: ((value: unknown) => void) | undefined;
+    fetchRequest.mockImplementation(async (url: string) => {
+      const parsed = new URL(url, 'http://test.local');
+      if (parsed.searchParams.get('symbol') === 'pending')
+        return new Promise((resolve) => {
+          finishOld = resolve;
+        });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          definition: {
+            state: 'READY',
+            targets: [{ path: 'target.ts', line: 3 }],
+            truncated: false
+          }
+        })
+      };
+    });
+    let setup: Record<string, unknown> | undefined;
+    const app = testRenderer.createApp({
+      render: () =>
+        h(WorkspaceInspector, {
+          ...baseProps,
+          mobileViewport,
+          codeNavigationEnabled: true,
+          onVnodeMounted: (vnode) => {
+            setup = (vnode.component as unknown as { setupState: Record<string, unknown> })
+              .setupState;
+          }
+        })
+    });
+    app.use(i18n);
+    app.use(ElementPlus);
+    app.provide(ssrContextKey, { modules: new Set<string>() });
+    app.config.warnHandler = () => {};
+    app.mount(new TestHostNode('container'));
+    type Page = {
+      id: number;
+      fileContent: Ref<unknown>;
+      navigationLoading: Readonly<Ref<boolean>>;
+      navigationTargets: Readonly<Ref<readonly { path: string; line: number }[]>>;
+    };
+    const state = setup as unknown as {
+      filePageFrames: Page[];
+      workspaceFileTabService: { open(input: unknown): { id: number } };
+      createPreviewFrame(id: number): Page;
+      navigateSymbol(symbol: string): Promise<void>;
+      activateWorkspaceFileTab(id: number): void;
+      closeFilePreview(page: Page): void;
+    };
+    const addPage = (path: string) => {
+      const tab = state.workspaceFileTabService.open({
+        kind: 'WORKTREE_TEXT',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        path,
+        repositoryPath: '',
+        worktreePath: ''
+      });
+      const page = state.createPreviewFrame(tab.id);
+      page.fileContent.value = { path, encoding: 'utf-8', content: 'thing' };
+      state.filePageFrames.push(page);
+      return page;
+    };
+    try {
+      const first = addPage('first.ts');
+      await state.navigateSymbol('thing');
+      expect(first.navigationTargets.value[0]).toMatchObject({ path: 'target.ts', line: 3 });
+      const second = addPage('second.ts');
+      const pending = state.navigateSymbol('pending');
+      expect(second.navigationLoading.value).toBe(true);
+      state.activateWorkspaceFileTab(first.id);
+      expect(second.navigationLoading.value).toBe(false);
+      finishOld!({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          definition: {
+            state: 'READY',
+            targets: [{ path: 'late.ts', line: 9 }],
+            truncated: false
+          }
+        })
+      });
+      await pending;
+      expect(second.navigationTargets.value).toEqual([]);
+      expect(first.navigationTargets.value[0]?.path).toBe('target.ts');
+      state.closeFilePreview(second);
+      expect(state.filePageFrames).toHaveLength(1);
     } finally {
       app.unmount();
     }

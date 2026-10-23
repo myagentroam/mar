@@ -16,12 +16,18 @@ import {
   isComposerAttachmentResourcePath,
   publicErrorSchema,
   workspaceGitTrackingSchema,
-  workspaceSymbolDefinitionSchema,
-  workspaceSymbolIndexPreparationSchema,
   type PublicError,
   type WorkspaceGitTracking
 } from '@myagentroam/protocol';
-import type { FileNavigationRequest } from './CodeFileEditor.vue';
+import type {
+  FileNavigationRequest,
+  WorkspaceNavigationTarget as NavigationTarget
+} from '../../model/workspace-navigation.js';
+import { createWorkspaceCodeNavigationService } from '../../service/WorkspaceCodeNavigationService.js';
+import {
+  createWorkspaceContentSearchService,
+  type WorkspaceContentMatch as ContentMatch
+} from '../../service/WorkspaceContentSearchService.js';
 import {
   computed,
   nextTick,
@@ -101,22 +107,6 @@ interface PendingUpload {
 
 type InspectorSection = 'files' | 'search' | 'changes' | 'history';
 
-interface ContentMatch {
-  readonly path: string;
-  readonly line: number;
-  readonly column: number;
-  readonly preview: string;
-}
-interface NavigationTarget {
-  readonly source: 'DEFINITION' | 'REFERENCE' | 'FILE';
-  readonly path: string;
-  readonly line: number;
-  readonly column?: number | undefined;
-  readonly kind?: string | undefined;
-  readonly scope?: string | undefined;
-  readonly preview?: string | undefined;
-}
-
 interface FilePreviewContent {
   readonly path: string;
   readonly size?: number;
@@ -135,9 +125,9 @@ interface PreviewFrame {
   readonly loading: Ref<boolean>;
   readonly targetLine: Ref<number | undefined>;
   readonly targetColumn: Ref<number | undefined>;
-  readonly navigationLoading: Ref<boolean>;
-  readonly navigationTargets: Ref<readonly NavigationTarget[]>;
-  readonly navigationNoDefinition: Ref<boolean>;
+  readonly navigationLoading: Readonly<Ref<boolean>>;
+  readonly navigationTargets: Readonly<Ref<readonly NavigationTarget[]>>;
+  readonly navigationNoDefinition: Readonly<Ref<boolean>>;
   readonly downloading: Ref<boolean>;
   historySource:
     | {
@@ -439,27 +429,6 @@ const previewTargetLine = computed({
     if (preview !== undefined) preview.targetLine.value = value;
   }
 });
-const navigationLoading = computed({
-  get: () => activePreview.value?.navigationLoading.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationLoading.value = value;
-  }
-});
-const navigationTargets = computed({
-  get: () => activePreview.value?.navigationTargets.value ?? [],
-  set: (value: readonly NavigationTarget[]) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationTargets.value = value;
-  }
-});
-const navigationNoDefinition = computed({
-  get: () => activePreview.value?.navigationNoDefinition.value ?? false,
-  set: (value: boolean) => {
-    const preview = activePreview.value;
-    if (preview !== undefined) preview.navigationNoDefinition.value = value;
-  }
-});
 const downloading = computed({
   get: () => activePreview.value?.downloading.value ?? false,
   set: (value: boolean) => {
@@ -476,14 +445,25 @@ const filesBusy = computed(() => filesRefreshing.value);
 const activeSection = ref<InspectorSection>('files');
 const fileDisplayFilter = ref('');
 const contentQuery = ref('');
-const contentAppliedQuery = ref('');
 const contentUseRegex = ref(false);
-const contentAppliedUseRegex = ref(false);
-const contentMatches = ref<ContentMatch[]>([]);
-const contentSearchLoading = ref(false);
-const contentSearchTruncated = ref(false);
+const contentSearch = createWorkspaceContentSearchService({
+  http,
+  onFailure: (error) => markFailure(error, translate('generated.workspaceInspector.contentSearch'))
+});
+const contentAppliedQuery = contentSearch.appliedQuery;
+const contentAppliedUseRegex = contentSearch.appliedUseRegex;
+const contentMatches = contentSearch.matches;
+const contentSearchLoading = contentSearch.loading;
+const contentSearchTruncated = contentSearch.truncated;
 const contentSearchInput = ref<HTMLInputElement>();
-let contentSearchGeneration = 0;
+const codeNavigation = createWorkspaceCodeNavigationService({
+  http,
+  onFailure: (error) => markFailure(error, translate('fileEditor.definitions')),
+  onFileTarget: (target, pageId) => {
+    const preview = filePageFrames.value.find((candidate) => candidate.id === pageId);
+    if (preview !== undefined) openNavigationTarget(target, preview);
+  }
+});
 const historyRepositoryPath = ref('');
 const historyRefs = ref<HistoryRef[]>([]);
 const selectedHistoryRefs = ref<string[]>([]);
@@ -507,7 +487,6 @@ const pendingUploadDirectory = ref('.');
 const preparingUploads = ref(false);
 let inspectorGeneration = 0;
 let filePreviewRequestGeneration = 0;
-let codeNavigationRequestGeneration = 0;
 let nextPreviewFrameId = 0;
 let appliedFilesWatchRevision = -1;
 let appliedChangesWatchRevision = -1;
@@ -569,9 +548,7 @@ function createPreviewFrame(id: number): PreviewFrame {
     loading: ref(false),
     targetLine: ref<number>(),
     targetColumn: ref<number>(),
-    navigationLoading: ref(false),
-    navigationTargets: ref<readonly NavigationTarget[]>([]),
-    navigationNoDefinition: ref(false),
+    ...codeNavigation.page(id),
     downloading: ref(false),
     historySource: undefined,
     directIdentity: undefined,
@@ -608,59 +585,20 @@ async function get(pathname: string): Promise<unknown> {
 }
 
 async function searchContent(): Promise<void> {
-  const value = contentQuery.value;
-  if (!props.contentSearchEnabled || base.value === undefined || value === '') return;
-  const generation = ++contentSearchGeneration;
-  contentSearchLoading.value = true;
-  try {
-    const result = await get(
-      queryUrl(`${base.value}/content/search`, {
-        q: value,
-        ...(contentUseRegex.value ? { regex: 'true' } : {})
-      })
-    );
-    if (generation !== contentSearchGeneration) return;
-    const search = (result as { search?: unknown }).search;
-    if (!isContentSearch(search)) throw new Error('NODE_RESPONSE_INVALID');
-    contentMatches.value = [...search.matches];
-    contentSearchTruncated.value = search.truncated;
-    contentAppliedQuery.value = value;
-    contentAppliedUseRegex.value = contentUseRegex.value;
-  } catch (error) {
-    if (generation === contentSearchGeneration)
-      markFailure(error, translate('generated.workspaceInspector.contentSearch'));
-  } finally {
-    if (generation === contentSearchGeneration) contentSearchLoading.value = false;
-  }
+  if (!props.contentSearchEnabled || props.nodeId === undefined || props.workspaceId === undefined)
+    return;
+  await contentSearch.search({
+    nodeId: props.nodeId,
+    workspaceId: props.workspaceId,
+    query: contentQuery.value,
+    useRegex: contentUseRegex.value
+  });
 }
 
 function openSearch(): void {
   if (!props.contentSearchEnabled) return;
   activeSection.value = 'search';
   void nextTick(() => contentSearchInput.value?.focus());
-}
-
-function isContentSearch(value: unknown): value is {
-  readonly matches: readonly ContentMatch[];
-  readonly truncated: boolean;
-} {
-  if (typeof value !== 'object' || value === null) return false;
-  const search = value as { matches?: unknown; truncated?: unknown };
-  return (
-    Array.isArray(search.matches) &&
-    search.matches.every(
-      (match) =>
-        typeof match === 'object' &&
-        match !== null &&
-        typeof (match as ContentMatch).path === 'string' &&
-        Number.isInteger((match as ContentMatch).line) &&
-        (match as ContentMatch).line > 0 &&
-        Number.isInteger((match as ContentMatch).column) &&
-        (match as ContentMatch).column > 0 &&
-        typeof (match as ContentMatch).preview === 'string'
-    ) &&
-    typeof search.truncated === 'boolean'
-  );
 }
 
 function contentMatchFragments(
@@ -899,6 +837,7 @@ async function open(
   }
   const requestGeneration = ++filePreviewRequestGeneration;
   preview.requestGeneration = requestGeneration;
+  codeNavigation.clear(preview.id);
   const requestBase = base.value;
   const requestNodeId = props.nodeId ?? '';
   preview.targetLine.value = targetLine;
@@ -977,7 +916,7 @@ async function open(
       ...(revision === undefined ? {} : { revision })
     };
     if (encoding === 'utf-8' && worktreePath === undefined && repositoryPath === undefined)
-      prewarmCodeNavigation(entry.path, requestBase, requestNodeId);
+      prewarmCodeNavigation(entry.path, requestNodeId);
   } catch (error) {
     if (
       !serverOnly &&
@@ -1039,222 +978,40 @@ function workspaceFileContentUrl(
   });
 }
 
-async function navigateSymbol(symbol: string): Promise<void> {
+function navigationSource() {
   const preview = activePreview.value;
   if (
     !props.codeNavigationEnabled ||
     preview?.repositoryPath !== undefined ||
-    base.value === undefined ||
-    preview === undefined ||
-    preview.fileContent.value === undefined ||
-    symbol.length === 0
+    preview?.worktreePath.value !== undefined ||
+    preview?.historySource !== undefined ||
+    preview?.fileContent.value === undefined ||
+    props.nodeId === undefined ||
+    props.workspaceId === undefined
   )
-    return;
-  const generation = ++codeNavigationRequestGeneration;
-  const previewGeneration = preview.requestGeneration;
-  const path = preview.fileContent.value.path;
-  const requestBase = base.value;
-  const requestNodeId = props.nodeId ?? '';
-  preview.navigationLoading.value = true;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-  try {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const result = await get(
-        queryUrl(
-          `${requestBase}/symbols/definition`,
-          { path, symbol, references: '0' },
-          requestNodeId
-        )
-      );
-      const parsed = workspaceSymbolDefinitionSchema.safeParse(
-        (result as { readonly definition?: unknown }).definition
-      );
-      if (!parsed.success) throw new Error('NODE_RESPONSE_INVALID');
-      if (
-        generation !== codeNavigationRequestGeneration ||
-        previewGeneration !== preview.requestGeneration ||
-        preview !== activePreview.value
-      )
-        return;
-      if (parsed.data.state === 'BUILDING') {
-        await waitForNavigationPoll(generation, preview, previewGeneration);
-        continue;
-      }
-      if (parsed.data.state === 'FAILED')
-        throw new Error(parsed.data.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED');
-      if (parsed.data.state === 'UNAVAILABLE') throw new Error('SYMBOL_INDEX_UNAVAILABLE');
-      const definitions: NavigationTarget[] = parsed.data.targets.map((target) => ({
-        ...target,
-        source: 'DEFINITION' as const
-      }));
-      preview.navigationTargets.value = definitions;
-      preview.navigationLoading.value = false;
-      void loadSymbolReferences({
-        generation,
-        preview,
-        previewGeneration,
-        requestBase,
-        requestNodeId,
-        path,
-        symbol,
-        definitions
-      });
-      return;
-    }
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
-  } catch (error) {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      markFailure(error, translate('fileEditor.definitions'));
-  } finally {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      preview.navigationLoading.value = false;
-  }
+    return undefined;
+  return {
+    pageId: preview.id,
+    nodeId: props.nodeId,
+    workspaceId: props.workspaceId,
+    path: preview.fileContent.value.path
+  };
 }
 
-async function loadSymbolReferences(input: {
-  readonly generation: number;
-  readonly preview: PreviewFrame;
-  readonly previewGeneration: number;
-  readonly requestBase: string;
-  readonly requestNodeId: string;
-  readonly path: string;
-  readonly symbol: string;
-  readonly definitions: readonly NavigationTarget[];
-}): Promise<void> {
-  try {
-    const result = await get(
-      queryUrl(
-        `${input.requestBase}/symbols/definition`,
-        { path: input.path, symbol: input.symbol, references: '1' },
-        input.requestNodeId
-      )
-    );
-    const parsed = workspaceSymbolDefinitionSchema.safeParse(
-      (result as { readonly definition?: unknown }).definition
-    );
-    if (
-      !parsed.success ||
-      input.generation !== codeNavigationRequestGeneration ||
-      input.previewGeneration !== input.preview.requestGeneration ||
-      input.preview !== activePreview.value
-    )
-      return;
-    if (parsed.data.state !== 'READY' && parsed.data.state !== 'STALE') {
-      if (input.definitions.length === 0) input.preview.navigationNoDefinition.value = true;
-      return;
-    }
-    const references: NavigationTarget[] = parsed.data.references.map((target) => ({
-      ...target,
-      source: 'REFERENCE' as const
-    }));
-    const definitions =
-      parsed.data.targets.length === 0
-        ? input.definitions
-        : parsed.data.targets.map((target) => ({
-            ...target,
-            source: 'DEFINITION' as const
-          }));
-    input.preview.navigationTargets.value = [...definitions, ...references];
-    input.preview.navigationNoDefinition.value =
-      definitions.length === 0 && references.length === 0;
-  } catch {
-    if (
-      input.generation === codeNavigationRequestGeneration &&
-      input.previewGeneration === input.preview.requestGeneration &&
-      input.preview === activePreview.value &&
-      input.definitions.length === 0
-    )
-      input.preview.navigationNoDefinition.value = true;
-  }
+async function navigateSymbol(symbol: string): Promise<void> {
+  const source = navigationSource();
+  if (source !== undefined && symbol.length > 0) await codeNavigation.navigate(source, { symbol });
 }
 
 async function navigateFile(request: FileNavigationRequest): Promise<void> {
-  const preview = activePreview.value;
-  if (
-    !props.codeNavigationEnabled ||
-    base.value === undefined ||
-    preview === undefined ||
-    preview.fileContent.value === undefined ||
-    request.reference.value.length === 0
-  )
-    return;
-  const generation = ++codeNavigationRequestGeneration;
-  const previewGeneration = preview.requestGeneration;
-  preview.navigationLoading.value = true;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-  try {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const result = await http.request(`${base.value}/symbols/definition`, {
-        method: 'POST',
-        body: JSON.stringify({
-          nodeId: props.nodeId ?? '',
-          path: preview.fileContent.value.path,
-          reference: { ...request.reference, sourceContext: request.sourceContext }
-        })
-      });
-      const parsed = workspaceSymbolDefinitionSchema.safeParse(
-        (result as { readonly definition?: unknown }).definition
-      );
-      if (!parsed.success) throw new Error('NODE_RESPONSE_INVALID');
-      if (
-        generation !== codeNavigationRequestGeneration ||
-        previewGeneration !== preview.requestGeneration ||
-        preview !== activePreview.value
-      )
-        return;
-      if (parsed.data.state === 'BUILDING') {
-        await waitForNavigationPoll(generation, preview, previewGeneration);
-        continue;
-      }
-      if (parsed.data.state === 'FAILED')
-        throw new Error(parsed.data.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED');
-      if (parsed.data.state === 'UNAVAILABLE') throw new Error('SYMBOL_INDEX_UNAVAILABLE');
-      const targets = parsed.data.paths.map((target) => ({ ...target, source: 'FILE' as const }));
-      if (targets.length === 0) preview.navigationNoDefinition.value = true;
-      else if (targets.length === 1) openNavigationTarget(targets[0]!, preview);
-      else preview.navigationTargets.value = targets;
-      return;
-    }
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
-  } catch (error) {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      markFailure(error, translate('fileEditor.definitions'));
-  } finally {
-    if (
-      generation === codeNavigationRequestGeneration &&
-      previewGeneration === preview.requestGeneration &&
-      preview === activePreview.value
-    )
-      preview.navigationLoading.value = false;
-  }
+  const source = navigationSource();
+  if (source !== undefined && request.reference.value.length > 0)
+    await codeNavigation.navigate(source, request);
 }
 
-function prewarmCodeNavigation(path: string, requestBase: string, requestNodeId: string): void {
-  if (!props.codeNavigationPrewarmEnabled) return;
-  void get(queryUrl(`${requestBase}/symbols/prepare`, { path }, requestNodeId))
-    .then((result) => {
-      if (
-        !workspaceSymbolIndexPreparationSchema.safeParse(
-          (result as { readonly preparation?: unknown }).preparation
-        ).success
-      )
-        throw new Error('NODE_RESPONSE_INVALID');
-    })
-    .catch(() => undefined);
+function prewarmCodeNavigation(path: string, requestNodeId: string): void {
+  if (!props.codeNavigationPrewarmEnabled || props.workspaceId === undefined) return;
+  void codeNavigation.prewarm({ nodeId: requestNodeId, workspaceId: props.workspaceId, path });
 }
 
 function openNavigationTarget(target: NavigationTarget, preview = activePreview.value): void {
@@ -1272,25 +1029,7 @@ function openNavigationTarget(target: NavigationTarget, preview = activePreview.
 }
 
 function clearCodeNavigation(preview = activePreview.value): void {
-  codeNavigationRequestGeneration += 1;
-  if (preview === undefined) return;
-  preview.navigationLoading.value = false;
-  preview.navigationTargets.value = [];
-  preview.navigationNoDefinition.value = false;
-}
-
-async function waitForNavigationPoll(
-  generation: number,
-  preview: PreviewFrame,
-  previewGeneration: number
-): Promise<void> {
-  await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 1_000));
-  if (
-    generation !== codeNavigationRequestGeneration ||
-    previewGeneration !== preview.requestGeneration ||
-    preview !== activePreview.value
-  )
-    throw new Error('SYMBOL_INDEX_BUILD_FAILED');
+  codeNavigation.clear(preview?.id);
 }
 
 function textLineCount(content: string): number {
@@ -1740,16 +1479,8 @@ function restore(snapshot: unknown): void {
       : value.activeSection;
   fileTree.restore(value.fileTree);
   contentQuery.value = typeof value.contentQuery === 'string' ? value.contentQuery : '';
-  contentAppliedQuery.value =
-    typeof value.contentAppliedQuery === 'string' ? value.contentAppliedQuery : '';
   contentUseRegex.value = value.contentUseRegex === true;
-  contentAppliedUseRegex.value = value.contentAppliedUseRegex === true;
-  contentMatches.value = Array.isArray(value.contentMatches)
-    ? value.contentMatches.filter((match): match is ContentMatch =>
-        isContentSearch({ matches: [match], truncated: false })
-      )
-    : [];
-  contentSearchTruncated.value = value.contentSearchTruncated === true;
+  contentSearch.restore(value);
   changes.value = props.workspaceKind === 'GIT_WORKSPACE' ? value.changes : undefined;
   const gitWorkspace = props.workspaceKind === 'GIT_WORKSPACE';
   historyRepositoryPath.value =
@@ -2090,7 +1821,7 @@ function closeAllFilePreviews(): void {
     workspaceFileTabService.remove(preview.id);
   }
   filePageFrames.value = [];
-  codeNavigationRequestGeneration += 1;
+  codeNavigation.reset();
 }
 
 function closeFilePreview(preview: PreviewFrame): void {
@@ -2098,7 +1829,7 @@ function closeFilePreview(preview: PreviewFrame): void {
   if (index < 0) return;
   const wasActive = activePreview.value === preview;
   preview.requestGeneration = ++filePreviewRequestGeneration;
-  clearCodeNavigation(preview);
+  codeNavigation.release(preview.id);
   revokePreviewObjectUrl(preview);
   filePageFrames.value = filePageFrames.value.filter((item) => item !== preview);
   workspaceFileTabService.remove(preview.id);
@@ -2113,8 +1844,6 @@ function closeFilePreview(preview: PreviewFrame): void {
 function activateFilePreview(id: number): void {
   const preview = filePageFrames.value.find((candidate) => candidate.id === id);
   if (preview === undefined || preview === activePreview.value) return;
-  codeNavigationRequestGeneration += 1;
-  if (activePreview.value !== undefined) activePreview.value.navigationLoading.value = false;
   workspaceFileTabService.activate(preview.id);
 }
 
@@ -2232,6 +1961,7 @@ async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<v
     createPreviewFrame(historyTab.id);
   const requestGeneration = ++filePreviewRequestGeneration;
   preview.requestGeneration = requestGeneration;
+  codeNavigation.clear(preview.id);
   preview.historySource = {
     commit: tab.commit,
     repositoryPath: tab.repositoryPath,
@@ -2788,15 +2518,10 @@ function reset(): void {
   expandedHistoryCommits.value = [];
   expandedHistoryDirectories.value = {};
   historyFiles.value = {};
-  contentSearchGeneration += 1;
+  contentSearch.reset();
   fileDisplayFilter.value = '';
   contentQuery.value = '';
-  contentAppliedQuery.value = '';
   contentUseRegex.value = false;
-  contentAppliedUseRegex.value = false;
-  contentMatches.value = [];
-  contentSearchLoading.value = false;
-  contentSearchTruncated.value = false;
   fileTree.reset();
 }
 
@@ -3182,6 +2907,7 @@ watch(
     if (!enabled && activeSection.value === 'search') activeSection.value = 'files';
   }
 );
+watch(activePreviewId, () => codeNavigation.cancel(), { flush: 'sync' });
 watch(
   () => props.filesRevision,
   () => {
@@ -3253,7 +2979,8 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   fileOpenGeneration += 1;
-  clearCodeNavigation();
+  codeNavigation.reset();
+  contentSearch.reset();
   window.removeEventListener('keydown', closeOnEscape);
   window.removeEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
   window.removeEventListener('resize', closeHistoryContextMenu);
