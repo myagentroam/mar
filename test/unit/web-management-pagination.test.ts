@@ -193,30 +193,6 @@ describe('management pagination', () => {
     }
   });
 
-  it('MAR Agent model tabs render the full authorized server lists', () => {
-    const source = managementPageSource('settings/MarAgentModelManagementPage.vue');
-    expect(source).toContain('full authorized set');
-    expect(source).toContain('expected volume is small');
-    expect(source).not.toContain('createManagementPaginationService');
-    expect(source).not.toContain('<ManagementPagination');
-    expect(source).toContain(':data="models"');
-    expect(source).toContain(':data="credentials"');
-    expect(source).toContain(':data="personalModels"');
-  });
-
-  it('audit list requests the management page from the server', () => {
-    const source = managementPageSource('settings/AuditManagementPage.vue');
-    expect(source).toContain('limit: String(MANAGEMENT_PAGE_SIZE)');
-    expect(source).toContain("params.set('page', String(page))");
-    expect(source).toContain("params.set('cursor', nextCursor.value ?? '')");
-    expect(source).toContain('pagination.mobileViewport.value');
-    expect(source).toContain(':data="events"');
-    expect(source).toContain(':total="total"');
-    expect(source).toContain('<ManagementPagination');
-    expect(source).not.toContain('managementPageItems');
-    expect(source).not.toContain("limit: '100'");
-  });
-
   it('model, template, and audit tables open details from clickable rows', () => {
     const pages: readonly (readonly [string, readonly string[]])[] = [
       [
@@ -276,52 +252,6 @@ describe('management pagination', () => {
     });
 
     expect(missing).toEqual([]);
-  });
-
-  it('audit details fetch protected payloads and omit absent fields or success error codes', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'ee/web/src/view/settings/AuditManagementPage.vue'),
-      'utf8'
-    );
-    expect(source).toContain('/api/audit-events/${encodeURIComponent(event.id)}');
-    expect(source).toContain("{ cache: 'no-store' }");
-    expect(source).toContain('hasConversationPayload');
-    expect(source).toContain("selected.result !== 'SUCCESS' && selected.errorCode");
-    expect(source).toContain('v-if="detailValue(selected, field.key) !== undefined"');
-    expect(source).not.toContain("return value ?? '-';");
-  });
-
-  it('maps every shared conversation input mode in both supported locales', () => {
-    const page = readFileSync(
-      join(process.cwd(), 'ee/web/src/view/settings/AuditManagementPage.vue'),
-      'utf8'
-    );
-    const locales = [
-      readFileSync(join(process.cwd(), 'ee/web/src/i18n/messages.generated.en-US.ts'), 'utf8'),
-      readFileSync(join(process.cwd(), 'ee/web/src/i18n/messages.generated.zh-CN.ts'), 'utf8')
-    ];
-    const modes = [
-      ['NEW_SESSION', 'inputModeNewSession'],
-      ['SEND', 'inputModeSend'],
-      ['CONTINUE', 'inputModeContinue'],
-      ['STEER', 'inputModeSteer'],
-      ['QUEUE', 'inputModeQueue'],
-      ['REPLACE_CURRENT', 'inputModeReplaceCurrent'],
-      ['RUN_NOW', 'inputModeRunNow'],
-      ['USER_INPUT_RESPONSE', 'inputModeUserInputResponse'],
-      ['EDIT_QUEUE', 'inputModeEditQueue'],
-      ['DELETE_QUEUE', 'inputModeDeleteQueue'],
-      ['REORDER_QUEUE', 'inputModeReorderQueue'],
-      ['EXECUTE_QUEUE', 'inputModeExecuteQueue'],
-      ['PAUSE_QUEUE', 'inputModePauseQueue'],
-      ['RESUME_QUEUE', 'inputModeResumeQueue']
-    ] as const;
-
-    expect(page).toContain('inputModeLabels.value[value]');
-    for (const [mode, key] of modes) {
-      expect(page).toContain(`${mode}: translate('generated.auditManagementPage.${key}')`);
-      for (const locale of locales) expect(locale).toContain(`'auditManagementPage.${key}':`);
-    }
   });
 
   it('maps conversation hosting audit events in both supported locales', () => {

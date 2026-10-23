@@ -26,20 +26,6 @@ afterEach(() => {
   i18n.global.locale.value = originalLocale;
 });
 describe('Public resource details', () => {
-  it('provides default workbench details without requiring an enterprise slot', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toMatch(/<slot name="resource-details"[^>]*>\s*<NodeDetailsDialogs/u);
-    expect(source).toContain('@open-workspace-details="openWorkspaceDetails"');
-    expect(source).toContain(
-      ':workspace-secret-manageable="workspaceDetails?.workspace.manageable"'
-    );
-    expect(source).toContain(':node-refreshable="page.nodeDetails !== undefined"');
-    expect(source).toContain('@refresh-node="refreshNodeDetails"');
-    expect(source).toContain('await props.page.refreshNodes()');
-  });
   it('keeps ownership policies and hosted management in the enterprise extension', () => {
     const source = readFileSync(
       new URL('../../src/view/settings/NodeDetailsDialogs.vue', import.meta.url),
@@ -110,7 +96,7 @@ describe('Public resource details', () => {
       view.unmount();
     }
   });
-  it('renders capability refresh independently and retains its absolute positioning contract', async () => {
+  it('renders capability refresh independently of reported command rows', async () => {
     i18n.global.locale.value = 'en-US';
     const refresh = vi.fn();
     const view = renderComponent(UnitRuntimeEnvironment, {
@@ -134,12 +120,6 @@ describe('Public resource details', () => {
     } finally {
       view.unmount();
     }
-    const source = readFileSync(
-      new URL('../../src/view/settings/NodeRuntimeEnvironment.vue', import.meta.url),
-      'utf8'
-    );
-    // The lightweight renderer cannot calculate layout; retain this until equivalent visual coverage exists.
-    expect(source).toContain('position: absolute');
   });
   it('uses the standard available status for Computer Use in both locales', () => {
     expect(commonMessages['zh-CN'].generated.nodeRuntimeEnvironment.computerUseAvailable).toBe(

@@ -9,6 +9,41 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Node detail actions stay above Close and capability refresh stays within its section', async ({
+  page
+}) => {
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}visual-alignment.html?resource-details=1`);
+    const dialog = page.locator('.node-details-dialog');
+    await expect(dialog).toBeVisible();
+    const refresh = dialog.getByRole('button', { name: 'Refresh capabilities', exact: true });
+    await refresh.scrollIntoViewIfNeeded();
+    const runtime = dialog.locator('.runtime-environment');
+    const section = (await runtime.boundingBox())!;
+    const action = (await refresh.boundingBox())!;
+    expect(action.x).toBeGreaterThanOrEqual(section.x);
+    expect(action.x + action.width).toBeLessThanOrEqual(section.x + section.width + 1);
+    expect(action.y).toBeGreaterThanOrEqual(section.y);
+    expect(action.y).toBeLessThan(section.y + 32);
+    await refresh.click();
+    await expect(page.getByTestId('capability-refresh-count')).toHaveText('1');
+    const footer = dialog.locator('.el-dialog__footer');
+    const close = footer.getByRole('button', { name: 'Close', exact: true });
+    const upgrade = footer.locator('.node-detail-actions button');
+    await upgrade.click();
+    await expect(upgrade).toHaveText('Cancel upgrade');
+    await close.scrollIntoViewIfNeeded();
+    const upgradeBox = (await upgrade.boundingBox())!;
+    const closeBox = (await close.boundingBox())!;
+    expect(upgradeBox.y + upgradeBox.height).toBeLessThan(closeBox.y);
+    await upgrade.click();
+    await expect(upgrade).not.toHaveText('Cancel upgrade');
+    await close.click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
 test('Shared tooltip keeps one active instance for thousands of targets and preserves ARIA', async ({
   page
 }) => {

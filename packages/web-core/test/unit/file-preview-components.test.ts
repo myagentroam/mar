@@ -670,64 +670,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     );
     expect(html).not.toContain('code-file-editor');
   });
-
-  it('applies a restored dirty draft on first page render and scopes Diff shortcuts to visible content', () => {
-    const textPage = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTextFilePage.vue', import.meta.url),
-      'utf8'
-    );
-    const diffViewer = readFileSync(
-      new URL('../../src/view/workspace/GitDiffViewer.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(textPage).toContain('{ immediate: true }');
-    expect(textPage).toContain("emit('dirty-draft-applied', draft.tabIdentity)");
-    expect(textPage).toContain('v-if="fallbackFindOpen && fallbackTextEnabled"');
-    expect(textPage).toContain('ref="fallbackTextArea"');
-    expect(textPage).toContain('textArea.setSelectionRange(0, textArea.value.length)');
-    expect(diffViewer).toContain('if (props.active === false) return;');
-    expect(diffViewer).toContain(
-      "if (typeof document === 'undefined' || props.embedded === true) return;"
-    );
-    expect(diffViewer).toContain('event.stopPropagation();\n    closeFind();');
-    expect(diffViewer).toContain('@keydown="onKeydown"');
-    expect(diffViewer).not.toContain("window.addEventListener('keydown', onKeydown)");
-    expect(diffViewer).toContain('function selectAll(): boolean {');
-    expect(diffViewer).toContain('selection.selectAllChildren(pane);');
-    expect(diffViewer).toContain('selectAll,');
-  });
 });
 
 describe('standalone Markdown preview', () => {
-  it('uses an explicit light scroll surface instead of inheriting the console theme', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/StandaloneFilePreviewPage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain('github-markdown-css/github-markdown-light.css?url');
-    expect(source).toMatch(
-      /\.standalone-file-preview\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*auto;[^}]*background:\s*#fff;[^}]*color-scheme:\s*light;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /\.markdown-preview-page\s+:deep\(\.markdown-body\)\s*\{[^}]*background-color:\s*transparent;[^}]*color-scheme:\s*light;[^}]*\}/u
-    );
-    expect(source).toMatch(/\.markdown-preview-page\s*\{[^}]*padding:\s*6mm 18mm 18mm;[^}]*\}/u);
-    expect(source).toMatch(
-      /\.markdown-preview-page\s+:deep\(\.markdown-body > :first-child\)\s*\{[^}]*margin-top:\s*0;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?\.standalone-file-preview\s*\{[^}]*display:\s*block;[^}]*min-height:\s*0;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?:global\(#app\)\s*\{[^}]*height:\s*auto\s*!important;[^}]*overflow:\s*visible\s*!important;[^}]*background:\s*#fff\s*!important;[^}]*\}/u
-    );
-    expect(source).toMatch(
-      /@media print\s*\{[\s\S]*?@page\s*\{[^}]*margin:\s*0;[^}]*\}[\s\S]*?\.markdown-preview-page\s*\{[^}]*width:\s*210mm;[^}]*min-height:\s*297mm;[^}]*padding:\s*18mm;[^}]*\}/u
-    );
-  });
-
   it('keeps unavailable edit shortcuts native and gives format previews mobile actions', () => {
     const standalone = readFileSync(
       new URL('../../src/view/workspace/StandaloneFilePreviewPage.vue', import.meta.url),

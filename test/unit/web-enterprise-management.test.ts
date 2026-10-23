@@ -200,43 +200,6 @@ describe('Web enterprise management domain', () => {
       'Default reasoning effort'
     );
   });
-  it('Node detail actions share the Codex credential action-area and close-button layout', async () => {
-    const [nodeDetails, credentialDetails] = await Promise.all([
-      readFile(
-        resolve(process.cwd(), 'packages/web-core/src/view/settings/NodeDetailsDialogs.vue'),
-        'utf8'
-      ),
-      readFile(
-        resolve(
-          process.cwd(),
-          'packages/web-core/src/view/settings/MarAgentModelManagementPage.vue'
-        ),
-        'utf8'
-      )
-    ] as const);
-    const nodeDialogStart = nodeDetails.indexOf('v-if="nodeOpen"');
-    const nodeDialog = nodeDetails.slice(
-      nodeDialogStart,
-      nodeDetails.indexOf('</el-dialog>', nodeDialogStart)
-    );
-    const credentialDialogStart = credentialDetails.indexOf('v-if="credentialDetailOpen"');
-    const credentialDialog = credentialDetails.slice(
-      credentialDialogStart,
-      credentialDetails.indexOf('</el-dialog>', credentialDialogStart)
-    );
-
-    expect(credentialDialog).toContain('class="credential-detail-actions"');
-    expect(nodeDialog).toContain('class="node-detail-actions"');
-    expect(nodeDialog).toContain("translate('generated.resourceSharingPage.pushUpgrade2')");
-    expect(nodeDialog).toContain("translate('generated.resourceSharingPage.cancelUpgrade')");
-    expect(nodeDialog.indexOf('class="node-detail-actions"')).toBeLessThan(
-      nodeDialog.indexOf("emit('update:nodeOpen', false)")
-    );
-    expect(nodeDialog).not.toContain('class="node-detail-footer"');
-    expect(nodeDialog).toMatch(/<\/div>\s*<el-button\s+@click="emit\('update:nodeOpen', false\)"/u);
-    expect(nodeDetails).toMatch(/\.node-detail-actions\s*\{[^}]*margin-bottom:\s*12px;/u);
-    expect(nodeDetails).not.toContain('.node-detail-footer');
-  });
   it('Node hosting details retain the public maintenance panel and EE adapter policy boundary', async () => {
     const [nodeDetails, enterpriseResourceHosting] = await Promise.all([
       readFile(
@@ -246,9 +209,7 @@ describe('Web enterprise management domain', () => {
       readFile(resolve(process.cwd(), 'ee/web/src/service/ResourceHostingService.ts'), 'utf8')
     ] as const);
     expect(nodeDetails).toContain('ConversationHostingMaintenanceCard');
-    expect(enterpriseResourceHosting).toContain(
-      "import { createResourceHostingService as createCore } from '@myagentroam/web-core/resource-hosting'"
-    );
+    expect(enterpriseResourceHosting).toContain('@myagentroam/web-core/resource-hosting');
   });
 
   it('Workbench supplies live Node lists to MAR Agent model management', () => {

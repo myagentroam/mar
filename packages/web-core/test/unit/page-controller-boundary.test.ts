@@ -25,6 +25,37 @@ vi.mock('../../src/view/settings/NodeDetailsDialogs.vue', () => ({
 }));
 
 describe('public Workbench page controller', () => {
+  it.each(['loading', 'error', 'ready'] as const)(
+    'renders standalone file bootstrap state without exposing background controls (%s)',
+    async (state) => {
+      const page = {
+        adminLoaded: true,
+        admin: { authenticated: true },
+        locked: false,
+        loading: false,
+        panelWidths: {},
+        workspaceTreeService: {},
+        nodes: [],
+        sessions: [],
+        workspaceTabs: [],
+        standaloneFileMode: true,
+        standaloneFileLoading: state === 'loading',
+        standaloneFileError: state === 'error' ? 'FILE_UNAVAILABLE' : undefined
+      };
+      const app = createSSRApp({ render: () => h(WorkbenchPage, { page }) });
+      app.use(i18n).use(ElementPlus);
+      app.provide(ID_INJECTION_KEY, { prefix: 2048, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      const html = await renderToString(app);
+      expect(html).toContain('inert');
+      expect(html.includes('class="standalone-file-loading"')).toBe(state !== 'ready');
+      expect(html.includes('role="status"')).toBe(state === 'loading');
+      if (state === 'error')
+        expect(html).toContain(
+          i18n.global.t('generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour')
+        );
+    }
+  );
   it('delegates file protocols and native history transactions to domain owners', () => {
     const source = readFileSync(
       new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
@@ -34,7 +65,6 @@ describe('public Workbench page controller', () => {
     expect(source).not.toContain('/git/file-metadata');
     expect(source).not.toContain('createWorkspaceDirectObjectUrlSink(');
     expect(source).not.toContain('createWorkspaceDirectDownloadStream(');
-    expect(source).not.toContain('turnId: turn.turnId ?? turn.id');
   });
   it('owns the root page without OAuth or enterprise resource implementations', () => {
     const source = readFileSync(

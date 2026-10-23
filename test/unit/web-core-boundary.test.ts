@@ -542,6 +542,8 @@ describe('single shared Web implementation', () => {
       );
 
       const pendingRequest = page.request('/api/pending');
+      expect(page.nodes.value).toEqual([]);
+      expect(page.navigationItems.value.map((item) => item.id)).toContain('conversations');
       const pendingRejected = expect(pendingRequest).rejects.toMatchObject({
         name: 'AbortError'
       });

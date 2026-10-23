@@ -1740,6 +1740,18 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(running).not.toContain(
       i18n.global.t('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
     );
+    const disabled = await render(ConversationTimeline, {
+      ...timelineProps,
+      rewindEnabled: false,
+      rollbackEnabled: false,
+      turns: [conversationTurn([userMessage], { rewind: { before: 'before-1', after: 'after-1' } })]
+    });
+    expect(disabled).not.toContain(
+      i18n.global.t('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+    );
+    expect(disabled).not.toContain(
+      i18n.global.t('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
+    );
   });
 
   it('renders optional attachment and generated-image previews through the dialog boundary', async () => {
