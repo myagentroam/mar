@@ -630,11 +630,11 @@ defineExpose({ reveal });
 }
 
 .file-tree-row-shell.selected {
-  background-color: var(--mar-color-brand-selected);
+  background-color: var(--mar-fill-selection);
 }
 
 .file-tree-row-shell.selected .file-tree-row {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .file-tree-row-shell.drop-target {
