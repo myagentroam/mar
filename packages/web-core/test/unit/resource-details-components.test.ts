@@ -2,14 +2,29 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
+import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
+import UnitRuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue?unit-render';
+import UnitWorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue?unit-render';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import {
+  flushComponent,
+  renderComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 
-afterEach(() => vi.unstubAllGlobals());
+const originalLocale = i18n.global.locale.value;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  i18n.global.locale.value = originalLocale;
+});
 describe('Public resource details', () => {
   it('provides default workbench details without requiring an enterprise slot', () => {
     const source = readFileSync(
@@ -33,21 +48,97 @@ describe('Public resource details', () => {
     expect(source).not.toMatch(
       /@\/|ORGANIZATION|ENTERPRISE|ownerOrganizationId|ConversationHostingMaintenanceCard|enableHosting|disableHosting/u
     );
-    expect(source).toContain('name="node-properties"');
-    expect(source).toContain('name="node-sections"');
-    expect(source).toContain('EnvironmentSecretManager');
-    expect(source).toContain('@refresh="emit(\'refreshNode\')"');
-    expect(source).toContain(':refreshable="nodeRefreshable"');
-    expect(source).toContain(':refreshing="nodeRefreshing"');
   });
-  it('keeps capability refresh next to the reported runtime environment', () => {
+  it('renders public detail extension slots and forwards capability refresh', async () => {
+    vi.stubGlobal('HTMLElement', class {});
+    vi.stubGlobal('window', {
+      location: { search: '', href: 'http://fixture/console' },
+      history: { replaceState() {} },
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      addEventListener() {},
+      removeEventListener() {}
+    });
+    i18n.global.locale.value = 'en-US';
+    const request = vi.fn(
+      async <T>() => ({ secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false }) as T
+    );
+    const refreshNode = vi.fn();
+    const view = renderComponent(
+      UnitDetails,
+      {
+        request,
+        nodeOpen: true,
+        workspaceOpen: false,
+        usageOpen: false,
+        node: {
+          id: 'node-1',
+          label: 'Fixture Node',
+          connected: true,
+          manageable: true,
+          nodeAppVersion: '0.10.1',
+          metadata: {
+            runtimeCommands: [
+              { id: 'git', command: 'git', available: true, version: '2.45', path: '/usr/bin/git' }
+            ]
+          }
+        },
+        nodeRefreshable: true,
+        nodeRefreshing: true,
+        usageDisabledReason: () => '',
+        onRefreshNode: refreshNode
+      },
+      {
+        'node-properties': ({ node }: { node: { id: string } }) =>
+          h('p', `Host node property ${node.id}`),
+        'node-sections': ({ node }: { node: { id: string } }) =>
+          h('p', `Host node section ${node.id}`)
+      }
+    );
+    try {
+      await flushComponent();
+      expect(textContent(view.root)).toContain('Host node property node-1');
+      expect(textContent(view.root)).toContain('Host node section node-1');
+      expect(textContent(view.root)).toContain('/usr/bin/git');
+      expect(request).toHaveBeenCalledWith('/api/environment-secrets?nodeId=node-1');
+      const refresh = view
+        .findAll('ElButton')
+        .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
+      expect(refresh.props['loading']).toBe(true);
+      await trigger(refresh, 'onClick');
+      expect(refreshNode).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
+  });
+  it('renders capability refresh independently and retains its absolute positioning contract', async () => {
+    i18n.global.locale.value = 'en-US';
+    const refresh = vi.fn();
+    const view = renderComponent(UnitRuntimeEnvironment, {
+      refreshable: true,
+      refreshing: true,
+      onRefresh: refresh
+    });
+    try {
+      await flushComponent();
+      expect(textContent(view.root)).toContain(
+        commonMessages['en-US'].generated.nodeRuntimeEnvironment.theNodeHasNotReportedItsEnvironment
+      );
+      const root = view.findAll('div')[0]!;
+      expect(root.props['class']).toContain('runtime-environment--refreshable');
+      const action = view
+        .findAll('ElButton')
+        .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
+      expect(action.props['loading']).toBe(true);
+      await trigger(action, 'onClick');
+      expect(refresh).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
     const source = readFileSync(
       new URL('../../src/view/settings/NodeRuntimeEnvironment.vue', import.meta.url),
       'utf8'
     );
-    expect(source).toContain("emit('refresh')");
-    expect(source).toContain('generated.nodeDetailsDialogs.refreshCapabilities');
-    expect(source).toContain('runtime-environment--refreshable');
+    // The lightweight renderer cannot calculate layout; retain this until equivalent visual coverage exists.
     expect(source).toContain('position: absolute');
   });
   it('uses the standard available status for Computer Use in both locales', () => {
@@ -68,15 +159,50 @@ describe('Public resource details', () => {
       'latest published stable npm version not exceeding the current Server version: {value0}'
     );
   });
-  it('keeps Workspace Git settings concise without stale message keys', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/WorkspaceGitSettings.vue', import.meta.url),
-      'utf8'
+  it('keeps Workspace Git settings concise without stale message keys', async () => {
+    i18n.global.locale.value = 'en-US';
+    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+    const request = vi.fn(
+      async <T>() => ({ preserveGitConfig: false, includeParentRepository: true }) as T
     );
-    expect(source).toContain('workspace-git-controls');
-    expect(source).toContain('workspace-git-hint');
-    expect(source).not.toContain('personalGit.workspaceScope');
-    expect(source).not.toContain('personalGit.appliesLater');
+    const view = renderComponent(UnitWorkspaceGitSettings, {
+      request,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      connected: true,
+      writable: true
+    });
+    try {
+      await flushComponent();
+      expect(textContent(view.root)).toContain(commonMessages['en-US'].personalGit.workspaceTitle);
+      expect(textContent(view.root)).toContain(commonMessages['en-US'].personalGit.preserveHint);
+      expect(textContent(view.root)).toContain(
+        commonMessages['en-US'].personalGit.includeParentHint
+      );
+      expect(textContent(view.root)).not.toContain('personalGit.workspaceScope');
+      expect(textContent(view.root)).not.toContain('personalGit.appliesLater');
+      expect(view.findAll('ElCheckbox')).toHaveLength(2);
+      const controls = view
+        .findAll('div')
+        .find((element) => element.props['class'] === 'workspace-git-controls');
+      expect(controls).toBeDefined();
+      await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
+      await trigger(view.findAll('ElCheckbox')[1]!, 'onUpdate:modelValue', false);
+      const save = view
+        .findAll('ElButton')
+        .find((button) => textContent(button).trim() === commonMessages['en-US'].personalGit.save)!;
+      await trigger(save, 'onClick');
+      expect(request).toHaveBeenLastCalledWith(
+        '/api/workspaces/workspace-1/git-policy?nodeId=node-1',
+        {
+          method: 'PUT',
+          cache: 'no-store',
+          body: JSON.stringify({ preserveGitConfig: true, includeParentRepository: false })
+        }
+      );
+    } finally {
+      view.unmount();
+    }
   });
   it.each(['en-US', 'zh-CN'] as const)(
     'renders the Workspace Git save action with an icon and text in %s',
@@ -109,18 +235,6 @@ describe('Public resource details', () => {
     async (locale) => {
       vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
       i18n.global.locale.value = locale;
-      for (const name of ['NodeDetailsDialogs', 'NodeRuntimeEnvironment']) {
-        const source = readFileSync(
-          new URL(`../../src/view/settings/${name}.vue`, import.meta.url),
-          'utf8'
-        );
-        for (const match of source.matchAll(/translate\(\s*['"]([^'"]+)['"]/gu)) {
-          let value: unknown = commonMessages[locale];
-          for (const part of match[1]!.split('.'))
-            value = (value as Record<string, unknown>)?.[part];
-          expect(value, match[1]).toBeTypeOf('string');
-        }
-      }
       const request = vi.fn(async <T>() => ({}) as T);
       const app = createSSRApp({
         render: () =>

@@ -24,18 +24,6 @@ describe('Public resource management', () => {
     expect(source).not.toMatch(
       /@\/|props\.role|props\.edition|ORGANIZATION|ENTERPRISE|ownerOrganizationId|\/api\/resource-grants|enableConversationHosting/u
     );
-    for (const operation of [
-      'registerNode',
-      'saveEdit',
-      'removeResource',
-      'pushUpgrade',
-      'cancelUpgrade',
-      'openDetails',
-      'refreshNodeDetails'
-    ])
-      expect(source).toContain(operation);
-    expect(source).toContain('await refreshNodeDetails(row)');
-    expect(source).toContain('@refresh-node="refreshNodeDetails()"');
   });
   it.each([false, true])(
     'shows a busy registration form and a key receipt with documentation=%s',

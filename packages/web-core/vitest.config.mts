@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 import type { Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
 const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
   /[^a-zA-Z0-9_-]/gu,
   '_'
@@ -42,6 +43,9 @@ if (typeof vueTransform === 'object') {
 }
 export default defineConfig({
   plugins: [componentFixtures, vuePlugin],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('../../ee/web/src', import.meta.url)) }
+  },
   test: {
     environment: 'node',
     include: ['test/unit/**/*.test.ts'],
