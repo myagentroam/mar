@@ -587,17 +587,16 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
   await expect(brand.getByText('MyAgentRoam')).not.toBeVisible();
   await expect(brand.locator('.brand-version')).not.toBeVisible();
-  await expect(brand.getByRole('img', { name: 'MyAgentRoam' })).toHaveAttribute(
-    'title',
-    `MyAgentRoam ${currentVersion}`
-  );
+  await brand.getByRole('img', { name: 'MyAgentRoam' }).hover();
+  await expect(page.getByRole('tooltip', { name: `MyAgentRoam ${currentVersion}` })).toBeVisible();
+  await page.mouse.move(389, 843);
   const notificationsButton = page.getByRole('button', { name: '打开通知中心' });
   const documentationLink = page.getByRole('link', { name: '帮助' });
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
   await expect(documentationLink.locator('.rail-label')).toHaveText('帮助');
   await expect(documentationLink).toBeVisible();
-  await expect(documentationLink.locator('.el-icon')).toBeVisible();
+  await expect(documentationLink.locator('svg')).toBeVisible();
   await expect(documentationLink.locator('.rail-label')).toBeHidden();
   await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
   const [nodesGeometry, documentationGeometry, notificationGeometry, brandGeometryBox] =
@@ -612,7 +611,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const [nodesContentGeometry, documentationContentGeometry] = await Promise.all([
     nodesButton.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
-      const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
+      const icon = element.querySelector('svg')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
@@ -622,7 +621,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     }),
     documentationLink.locator('.nav-item-content').evaluate((element) => {
       const content = element.getBoundingClientRect();
-      const icon = element.querySelector('.el-icon')!.getBoundingClientRect();
+      const icon = element.querySelector('svg')!.getBoundingClientRect();
       return {
         contentCenterY: content.top + content.height / 2,
         iconCenterY: icon.top + icon.height / 2,
