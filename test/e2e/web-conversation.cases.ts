@@ -1992,6 +1992,51 @@ test.describe('Independent tool presentation', () => {
         await expect(tools).toHaveCount(5);
         await expect(skill).not.toHaveAttribute('open');
         await expect(waiting.locator('summary')).toContainText('2026-10-21 00:20');
+        await page.setViewportSize({ width: 390, height: 500 });
+        const scroll = page.locator('.conversation-scroll').first();
+        const lastDisclosure = page.locator('.subagent-group > details').last();
+        await expect
+          .poll(() => scroll.evaluate((element) => element.scrollHeight > element.clientHeight))
+          .toBe(true);
+        const bottomGap = () =>
+          scroll.evaluate(
+            (element) => element.scrollHeight - element.scrollTop - element.clientHeight
+          );
+        for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+          await page.emulateMedia({ reducedMotion });
+          await scroll.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+          await expect.poll(bottomGap).toBeLessThan(2);
+          const previousHeight = await scroll.evaluate((element) => element.scrollHeight);
+          await lastDisclosure.locator(':scope > summary').click();
+          await expect(lastDisclosure).toHaveAttribute('open');
+          await expect
+            .poll(() => lastDisclosure.evaluate((element) => element.getAnimations().length))
+            .toBe(0);
+          await expect
+            .poll(() => scroll.evaluate((element) => element.scrollHeight))
+            .toBeGreaterThan(previousHeight);
+          await expect.poll(bottomGap).toBeLessThan(2);
+          await expect(page.locator('.conversation-latest')).toHaveCount(0);
+          const skillHeading = skill.locator(':scope > summary');
+          await scroll.hover();
+          await page.mouse.wheel(0, -600);
+          await expect.poll(bottomGap).toBeGreaterThan(28);
+          await skillHeading.scrollIntoViewIfNeeded();
+          await expect(page.locator('.conversation-latest')).toBeVisible();
+          const previousTop = await scroll.evaluate((element) => element.scrollTop);
+          await skillHeading.click();
+          await expect(skill).toHaveAttribute('open');
+          await expect
+            .poll(() => skill.evaluate((element) => element.getAnimations().length))
+            .toBe(0);
+          expect(await scroll.evaluate((element) => element.scrollTop)).toBeCloseTo(previousTop, 0);
+          await skillHeading.click();
+          await expect(skill).not.toHaveAttribute('open');
+          await lastDisclosure.locator(':scope > summary').click();
+          await expect(lastDisclosure).not.toHaveAttribute('open');
+        }
       }
     );
   }
