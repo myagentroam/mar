@@ -1016,7 +1016,8 @@ defineExpose({
       class="file-preview-content"
       :class="{
         'file-preview-content-code':
-          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing)
+          codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing),
+        'file-preview-content-fallback': !codeEditorEnabled
       }"
       @click="!editing && focus()"
     >
@@ -1122,6 +1123,18 @@ defineExpose({
 .file-preview-content-code {
   overflow: hidden;
   padding: 0;
+}
+
+.file-preview-content-fallback {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.file-preview-content-fallback > .empty {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
 }
 
 .file-symbol-list {
@@ -1307,7 +1320,7 @@ defineExpose({
 .file-text-preview {
   display: block;
   width: 100%;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   box-sizing: border-box;
   margin: 0;

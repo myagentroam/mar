@@ -1060,9 +1060,16 @@ defineExpose({
   overflow: hidden;
   padding: 0;
 }
-.unified-diff-content > .empty,
-.unified-diff-content > pre {
+.unified-diff-content > .empty {
   margin: 1rem;
+}
+.file-preview-content pre.unified-history-diff {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  box-shadow: none;
+  padding: 0.55rem 0;
 }
 .unified-history-diff code {
   display: block;
