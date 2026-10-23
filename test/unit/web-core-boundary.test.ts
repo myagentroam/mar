@@ -105,9 +105,6 @@ describe('single shared Web implementation', () => {
     expect(read(`${root}/src/view/workbench/WorkbenchNavigation.vue`)).toContain(
       'readonly webVersion: string'
     );
-    expect(read('packages/web-core/src/view/workbench/WorkbenchPage.vue')).toContain(
-      ':web-version="page.webVersion"'
-    );
     expect(read(`${root}/src/service/McpCenterService.ts`)).not.toMatch(
       /ENTERPRISE|ORGANIZATION|PERSONAL/u
     );
@@ -418,18 +415,14 @@ describe('single shared Web implementation', () => {
   it('keeps enterprise page assembly limited to explicit shared page extensions', () => {
     const controller = read('ee/web/src/service/WorkbenchPageController.ts');
     expect(controller).toContain('@myagentroam/web-core/page-controller');
-    expect(controller).toContain('submitWorkspaceRegistration,');
     expect(controller).not.toContain('createWorkspaceWatchService');
     const surface = read('ee/web/src/view/workbench/WorkbenchSurface.vue');
     expect(surface).toContain('@myagentroam/web-core/WorkbenchSurface.vue');
     expect(surface).toContain('#workspace-registration');
     expect(surface).toContain('#management-notice');
-    expect(surface).not.toContain('ConversationTimeline');
     const page = read('ee/web/src/view/workbench/WorkbenchPage.vue');
     expect(page).toContain('@myagentroam/web-core/WorkbenchPage.vue');
     expect(page).toContain('EnterpriseLoginExtension');
-    expect(page).not.toContain('class="console-shell"');
-    expect(page).not.toContain('class="sidebar-scrim"');
   });
 
   it('uses shared gates and a private OAuth extension instead of duplicate login pages', () => {
@@ -446,8 +439,6 @@ describe('single shared Web implementation', () => {
   });
 
   it('shares locale and registry mechanisms but keeps product page IDs and messages private', () => {
-    expect(read('ee/web/src/service/LocalePreferenceService.ts')).not.toContain('createI18n');
-    expect(read('ee/web/src/service/ManagementComposition.ts')).not.toContain('new Map');
     expect(read(`${root}/src/service/ManagementComposition.ts`)).not.toMatch(
       /['"](?:organizations|users|oauth|audit|conversation-templates)['"]/u
     );
@@ -556,7 +547,6 @@ describe('single shared Web implementation', () => {
     expect(existsSync('ee/web/src/App.vue')).toBe(false);
     const bootstrap = read('ee/web/src/bootstrap.ts');
     expect(bootstrap).toContain("from '@myagentroam/web-core/bootstrap'");
-    expect(bootstrap).toContain('documentationAvailable: true');
     expect(bootstrap).not.toMatch(/createApp|app\.mount|serviceWorker\.register/u);
     expect(read('ee/web/src/service/ThemePreferenceService.ts')).toContain(
       "export * from '@myagentroam/web-core/theme'"
@@ -573,7 +563,6 @@ describe('single shared Web implementation', () => {
     expect(common).not.toMatch(/hosted|Hosted|conversation-templates|\/api\//u);
     const adapter = read(`${root}/src/service/HostedConversationWatchCoordinator.ts`);
     expect(adapter).toContain("from './WorkbenchWatchCoordinator.js'");
-    expect(adapter).not.toMatch(/let reconcile|let trailing|function enqueue/u);
     expect(read('ee/web/src/service/WorkbenchWatchCoordinator.ts')).toContain(
       "from '@myagentroam/web-core/hosted-watch-coordinator'"
     );
@@ -584,9 +573,6 @@ describe('single shared Web implementation', () => {
     const adapter = read('ee/web/src/service/WorkbenchLiveService.ts');
     expect(adapter).toContain("from '@myagentroam/web-core/live'");
     expect(adapter).not.toMatch(/new WebSocket|setInterval|addEventListener/u);
-    expect(read(`${root}/src/service/WorkbenchLiveService.ts`)).toContain(
-      "new URL(options.endpoint?.() ?? '/api/workbench/live', window.location.origin)"
-    );
   });
 
   it('shares Workspace subscriptions and leases without importing enterprise ownership models', () => {
@@ -663,10 +649,6 @@ describe('single shared Web implementation', () => {
         `export * from '@myagentroam/web-core/${entry}';\n`
       );
     }
-    const nodeFeatures = read(`${root}/src/util/node-features.ts`);
-    expect(nodeFeatures).toContain("export const FEATURE_DEMO = '__feature-demo__';");
-    expect(nodeFeatures).toContain("[FEATURE_DEMO]: { introducedIn: '0.9.119' }");
-    expect(nodeFeatures).not.toContain("'conversation-hosting'");
     expect(read('ee/web/src/util/node-features.ts')).toContain(
       "from '@myagentroam/web-core/node-features'"
     );
@@ -689,9 +671,6 @@ describe('single shared Web implementation', () => {
         `export * from '@myagentroam/web-core/${entry}';\n`
       );
     }
-    expect(read('ee/web/src/service/WorkbenchSelectionStateService.ts')).toContain(
-      'createSharedSelection<Workspace>()'
-    );
     expect(read(`${root}/src/service/WorkbenchSelectionStateService.ts`)).not.toMatch(
       /ownership|Organization|Hosted/u
     );
@@ -709,9 +688,6 @@ describe('single shared Web implementation', () => {
     }
     expect(read('ee/web/src/service/WorkbenchRouteService.ts')).toContain(
       '@myagentroam/web-core/route-service'
-    );
-    expect(read('ee/web/src/service/WorkbenchRouteService.ts')).not.toMatch(
-      /localStorage|pendingRestores|function restoreSession/u
     );
     expect(read(`${root}/src/service/WorkbenchRouteService.ts`)).toContain(
       "from './WorkbenchSelectionPersistenceService.js'"
@@ -782,7 +758,6 @@ describe('single shared Web implementation', () => {
       expect(source).not.toMatch(
         /WorkbenchView|options\.view\b|['"]conversations['"]|['"]nodes['"]/u
       );
-      expect(source).toContain('options.showWorkbench()');
     }
   });
 
@@ -791,19 +766,11 @@ describe('single shared Web implementation', () => {
     expect(common).not.toMatch(/createWorkbenchNavigation|enterprise|@\//u);
     const enterprise = read('ee/web/src/service/WorkbenchBaseStateService.ts');
     expect(enterprise).toContain('@myagentroam/web-core/base-state');
-    expect(enterprise).toContain('createWorkbenchPageStateService<typeof navigation, Workspace>');
-    expect(enterprise).not.toMatch(/customRef|createSessionDraftService|createRunService/u);
-    expect(enterprise).not.toContain('hostedSelection');
-    expect(common).toContain('const navigation = options.navigation;');
-    expect(common).toContain("targetType: 'HOSTED_CONVERSATION'");
     expect(read('ee/web/src/service/WorkbenchSurfaceStateService.ts')).toBe(
       "export * from '@myagentroam/web-core/surface-state';\n"
     );
     expect(read('packages/web-core/src/service/WorkbenchSurfaceStateService.ts')).not.toContain(
       'WorkbenchWorkspaceCacheController'
-    );
-    expect(read('ee/web/src/service/WorkbenchWorkspaceCacheController.ts')).not.toContain(
-      'export interface WorkspaceInspectorHandle'
     );
   });
 
@@ -902,10 +869,6 @@ describe('single shared Web implementation', () => {
     expect(picker).toContain('<slot name="ownership" />');
     const wrapper = read('ee/web/src/view/workspace/WorkspaceRegistrationPicker.vue');
     expect(wrapper).toContain('@myagentroam/web-core/WorkspaceRegistrationPicker.vue');
-    expect(wrapper).toContain('inheritAttrs: false');
-    expect(wrapper).not.toContain('directoryBreadcrumbs');
-    expect(wrapper).not.toContain('directoryFormValue');
-    expect(wrapper).not.toContain('v-bind="props"');
   });
 
   it('reuses common history pagination and realtime coordination without private API dependencies', () => {

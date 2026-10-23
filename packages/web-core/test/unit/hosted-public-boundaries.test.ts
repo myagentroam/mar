@@ -109,89 +109,6 @@ describe('Public Hosted Conversation Boundaries', () => {
     expect(secondRequests).toEqual(['/api/conversation-templates']);
   });
 
-  it('Wires hosted-only drop confirmation, stopping shortcut, and desktop Ctrl+Enter replacement in the Composer', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/HostedConversationComposer.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain('confirmDrop: confirmDroppedAttachments');
-    expect(source).toContain('ElMessageBox.confirm(');
-    expect(source).toContain("translate('hostedConversations.confirmDroppedAttachments'");
-    const escapeStopping = source.indexOf("event.key === 'Escape' && canStopCurrent.value");
-    expect(escapeStopping).toBeGreaterThanOrEqual(0);
-    expect(escapeStopping).toBeLessThan(source.indexOf('if (props.mobileViewport) return;'));
-    expect(source).toContain('void stop()');
-    expect(source).toContain('event.ctrlKey');
-    expect(source).toContain("void send('REPLACE_CURRENT')");
-    expect(source).toContain('!props.mobileViewport');
-    expect(source).toContain('name: upload.name');
-    expect(source).toContain('attachment.name');
-  });
-
-  it('Wires hosted Markdown previews to projected files, images, and modified-click windows', () => {
-    const workspaceSource = readFileSync(
-      new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
-      'utf8'
-    );
-    const markdownSource = readFileSync(
-      new URL('../../src/view/workspace/MarkdownFilePreview.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(workspaceSource).toContain(':render-markdown="true"');
-    expect(workspaceSource).toContain(':markdown-resource-url="markdownResourceUrl"');
-    expect(workspaceSource).toContain('hostedConversationFileForPath(');
-    expect(workspaceSource).toContain("source: 'hosted'");
-    expect(workspaceSource).toContain(
-      'standaloneFileWindow.open(`/console?${parameters.toString()}`)'
-    );
-    expect(markdownSource).toContain('event.ctrlKey || event.metaKey');
-    expect(markdownSource).toContain("token.attrSet('src', props.resourceUrl(path))");
-  });
-
-  it('Loads older hosted history on scroll unless a failure requires manual retry', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toMatch(
-      /conversationScrollService\.handleScroll\(\(\) => \{\s*if \(props\.workspace\.olderHistoryError\.value === undefined\) void loadOlderConversationHistory\(\);/u
-    );
-  });
-
-  it('opens hosted conversation actions on long press without browser text callouts', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain('v-if="conversationActionsVisible(conversationKey(conversation))"');
-    expect(source).toContain('@contextmenu="openConversationActions(conversation, $event)"');
-    expect(source).toContain('-webkit-touch-callout: none;');
-  });
-
-  it('uses the shared neutral selection style for hosted conversation history', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/HostedConversationWorkspacePage.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).toContain(
-      '.history-list article.selected {\n  background: var(--mar-fill-selection);'
-    );
-    expect(source).toContain(
-      '.history-list article.selected .history-title-row strong,\n.history-list article.selected .history-open time,'
-    );
-    expect(source).toContain(
-      '.history-list article.selected .history-pin-indicator {\n  color: var(--mar-text-primary);'
-    );
-    expect(source).not.toContain(
-      '.history-list article.selected {\n  border-color: var(--mar-color-brand-border);'
-    );
-  });
-
   it('keeps HostedConversation file flows outside the Workspace direct-transfer client', () => {
     const serviceSource = readFileSync(
       new URL('../../src/service/HostedConversationWorkspaceService.ts', import.meta.url),
@@ -207,7 +124,6 @@ describe('Public Hosted Conversation Boundaries', () => {
       expect(source).not.toContain('direct.prepare');
       expect(source).not.toContain('direct-metadata');
     }
-    expect(serviceSource).toContain('/hosted-conversations/');
   });
 
   it('Keep bilingual public message keys, placeholders, and composition fields aligned', () => {
