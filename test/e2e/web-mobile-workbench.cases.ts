@@ -484,9 +484,11 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     })
   );
   let mobileTerminalCreated = false;
+  const terminalLifecycleRequests: string[] = [];
   await page.route('**/api/terminals**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/terminals' && route.request().method() === 'POST') {
+      terminalLifecycleRequests.push('create');
       mobileTerminalCreated = true;
       return json(route, {
         terminal: {
@@ -501,6 +503,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     if (path === '/api/terminals/terminal-1/attach-ticket')
       return json(route, { ticket: 'ticket-1' });
     if (path === '/api/terminals/terminal-1' && route.request().method() === 'DELETE') {
+      terminalLifecycleRequests.push('close');
       mobileTerminalCreated = false;
       return json(route, {
         terminal: {
@@ -721,7 +724,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
 
   const closeMobileWorkspaceSurface = async () => {
-    const scrim = page.getByRole('button', { name: '关闭工作区工具' });
+    const scrim = page.locator('.workspace-surface-scrim');
     await expect(scrim).toBeVisible();
     const bounds = await scrim.boundingBox();
     if (bounds === null) throw new Error('工作区工具遮罩未生成可点击区域');
@@ -894,7 +897,35 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
 
   await page.getByRole('button', { name: '打开终端' }).click();
   await expect(page.locator('.terminal-dock')).toBeVisible();
-  await expect(page.locator('.terminal-dock')).toHaveCSS('top', '46px');
+  const terminalDock = page.locator('.terminal-dock');
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 430, height: 400 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(terminalDock).toBeVisible();
+    await expect
+      .poll(async () => {
+        const bounds = await terminalDock.boundingBox();
+        return (
+          bounds && {
+            x: Math.round(bounds.x),
+            y: Math.round(bounds.y),
+            width: Math.round(bounds.width),
+            height: Math.round(bounds.height)
+          }
+        );
+      })
+      .toEqual({
+        x: 0,
+        y: viewport.height / 2,
+        width: viewport.width,
+        height: viewport.height / 2
+      });
+    await expect(page.locator('.admin-terminal-body')).toBeVisible();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.terminal-tab-select')).toHaveCSS('font-weight', '500');
@@ -911,10 +942,20 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   });
   expect(terminalFill).not.toBeNull();
   expect(terminalFill?.bottomGap).toBeLessThanOrEqual(1);
-  expect(terminalFill?.bodyHeight).toBeGreaterThan(500);
+  expect(terminalFill?.bodyHeight).toBeGreaterThan(300);
+  await page.screenshot({ path: test.info().outputPath('mobile-terminal-bottom-sheet.png') });
+  expect(terminalLifecycleRequests).toEqual(['create']);
+  await closeMobileWorkspaceSurface();
+  await expect(terminalDock).not.toBeVisible();
+  expect(mobileTerminalCreated).toBe(true);
+  await page.getByRole('button', { name: '打开终端' }).click();
+  await expect(terminalDock).toBeVisible();
+  await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
+  expect(terminalLifecycleRequests).toEqual(['create']);
   await page.getByRole('button', { name: '关闭终端 1' }).click();
   await expect(page.locator('.terminal-dock')).not.toBeVisible();
   await expect(page.getByRole('button', { name: '关闭工作区工具' })).toHaveCount(0);
+  expect(terminalLifecycleRequests).toEqual(['create', 'close']);
   await expect(page.getByRole('textbox', { name: '输入消息' })).toBeVisible();
 
   await page.locator('.conversation-header').evaluate((header) => {

@@ -1044,7 +1044,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 
 @media (max-width: 767px) {
   .terminal-dock.mobile-active {
-    transform: translateX(0);
+    transform: translateY(0);
     visibility: visible;
     pointer-events: auto;
     transition:
@@ -1123,8 +1123,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
   }
 
   .conversation-sidebar,
-  .inspector-column,
-  .terminal-dock {
+  .inspector-column {
     position: fixed;
     z-index: 12;
     inset: var(--sidebar-header-height) auto 0 0;
@@ -1147,6 +1146,24 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     transition:
       transform 0.16s ease,
       visibility 0s;
+  }
+
+  .terminal-dock {
+    position: fixed;
+    z-index: 12;
+    inset: auto 0 0;
+    width: 100%;
+    height: 50dvh;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--mar-border-strong);
+    box-shadow: 0 -10px 24px var(--mar-shadow-medium);
+    transform: translateY(104%);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 0.16s ease,
+      visibility 0.16s step-end;
   }
 
   .terminal-dock :deep(.admin-terminal) {
@@ -1178,7 +1195,9 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench {
+  .workbench,
+  .terminal-dock,
+  .terminal-dock.mobile-active {
     transition: none;
   }
 }
