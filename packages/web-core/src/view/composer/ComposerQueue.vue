@@ -818,6 +818,11 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
     max-height: 180px;
   }
 
+  .goal-objective-input :deep(.el-textarea__inner),
+  .composer-queue-input :deep(.el-textarea__inner) {
+    font-size: var(--mar-font-size-meta);
+  }
+
   .composer-queue-input :deep(.el-textarea__inner) {
     padding-block: 2px;
   }

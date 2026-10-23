@@ -567,7 +567,7 @@ function selectFiles(event: Event): void {
 @media (max-width: 767px) {
   .composer-toolbar {
     display: grid;
-    grid-template-columns: 36px minmax(0, 1.25fr) minmax(0, 0.9fr) auto 36px;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto 36px;
     align-items: center;
     gap: 0.28rem;
   }
@@ -575,19 +575,19 @@ function selectFiles(event: Event): void {
 
 @media (max-width: 767px) {
   .composer-toolbar.has-runner-select {
-    grid-template-columns: 36px minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 36px;
+    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 36px;
   }
 }
 
 @media (max-width: 767px) {
   .composer-toolbar.has-mobile-send {
-    grid-template-columns: 36px minmax(0, 1.25fr) minmax(0, 0.9fr) auto 36px 36px;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto 36px 36px;
   }
 }
 
 @media (max-width: 767px) {
   .composer-toolbar.has-runner-select.has-mobile-send {
-    grid-template-columns: 36px minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 36px 36px;
+    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 36px 36px;
   }
 }
 
