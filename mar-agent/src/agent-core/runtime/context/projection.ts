@@ -1,4 +1,4 @@
-import { anthropicThinkingBlock } from '../../model/anthropic-thinking.js';
+import { restoreNativeModelContext } from '../../model/native-context.js';
 import { appliedInputRecord } from '../../session/deferred-input.js';
 import { inputMetadataFromRecord } from '../../session/store/index.js';
 import type { ModelMessage } from '../../model/contracts.js';
@@ -293,37 +293,7 @@ export function restoreModelContext(
         ? { inputMode: payload.inputMode }
         : {})
     };
-  if (payload.role === 'provider' && payload.provider === 'ANTHROPIC_MESSAGES') {
-    const item = anthropicThinkingBlock(payload.item);
-    const modelId = modelIdFromPayload(payload, 'providerModelId');
-    return item && modelId
-      ? {
-          role: 'provider',
-          provider: 'ANTHROPIC_MESSAGES',
-          providerModelId: modelId,
-          contextKind: 'private',
-          content: '',
-          item
-        }
-      : undefined;
-  }
-  if (
-    payload.role === 'provider' &&
-    payload.provider === 'OPENAI_RESPONSES' &&
-    isRecord(payload.item)
-  ) {
-    const restoredProviderModelId =
-      modelIdFromPayload(payload, 'providerModelId') ?? providerModelId;
-    return {
-      role: 'provider',
-      content: '',
-      provider: 'OPENAI_RESPONSES',
-      ...(restoredProviderModelId === undefined
-        ? {}
-        : { providerModelId: restoredProviderModelId }),
-      item: payload.item
-    };
-  }
+  if (payload.role === 'provider') return restoreNativeModelContext(payload, providerModelId);
   return undefined;
 }
 
