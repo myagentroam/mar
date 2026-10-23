@@ -228,8 +228,18 @@ describe('Anthropic native thinking context', () => {
     const { model } = await serverFor([response]);
     const result = await collect(new AnthropicMessagesAdapter(model));
     expect(result.filter((e) => e.type === 'response.item')).toEqual([
-      { type: 'response.item', provider: 'ANTHROPIC_MESSAGES', item: { ...signed, thinking: '' } },
-      { type: 'response.item', provider: 'ANTHROPIC_MESSAGES', item: redacted }
+      {
+        type: 'response.item',
+        provider: 'ANTHROPIC_MESSAGES',
+        contextKind: 'private',
+        item: { ...signed, thinking: '' }
+      },
+      {
+        type: 'response.item',
+        provider: 'ANTHROPIC_MESSAGES',
+        contextKind: 'private',
+        item: redacted
+      }
     ]);
     expect(JSON.stringify(result.filter((e) => e.type !== 'response.item'))).not.toMatch(
       /SIGNATURE_PRIVATE|REDACTED_PRIVATE/

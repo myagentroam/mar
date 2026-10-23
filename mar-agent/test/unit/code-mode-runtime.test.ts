@@ -1415,7 +1415,12 @@ describe('Code Mode SDK and protocol integration', () => {
           const child = effectiveInstructions(request).includes('non-recursive subagent');
           const results = request.messages.filter((message) => message.role === 'tool');
           if (child && results.length === 0) {
-            yield { type: 'response.item', provider: protocol, item: nativeItem };
+            yield {
+              type: 'response.item',
+              provider: protocol,
+              ...(protocol === 'ANTHROPIC_MESSAGES' ? { contextKind: 'private' as const } : {}),
+              item: nativeItem
+            };
             yield {
               type: 'client_tool.call',
               name: 'code_exec',

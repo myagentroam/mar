@@ -486,6 +486,7 @@ describe('asynchronous Compact', () => {
             {
               type: 'response.item',
               provider: 'ANTHROPIC_MESSAGES',
+              contextKind: 'private',
               item: {
                 type: 'thinking',
                 thinking: 'fixture-native-state',

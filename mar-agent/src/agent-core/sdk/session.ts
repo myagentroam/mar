@@ -1,10 +1,6 @@
 import { restoreMessages } from '../runtime/context/restore.js';
 import { createNativeSteer } from './native-steer.js';
-import {
-  lastConfigurationEffort,
-  latestModelUsage,
-  reasoningEffortBaseline
-} from '../runtime/context/usage.js';
+import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
 import type { ContextualWorldState } from '../runtime/context/world-state.js';
 import {
@@ -69,10 +65,9 @@ import { coreMcpCatalog } from '../extensions/mcp.js';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError, describeMarAgentError } from '../error.js';
 import type { HostDescription, MarAgentHost } from '../host/contracts.js';
-import {
-  usesResponsesConfigurationUpdates,
-  type MarAgentReasoningEffort
-} from '../model/configuration.js';
+import type { MarAgentReasoningEffort } from '../model/configuration.js';
+import { prepareModelConfiguration } from '../model/request-configuration.js';
+import { projectModelRequestTools } from '../model/tool-declarations.js';
 import type {
   ClientToolDefinition,
   ModelAdapter,
@@ -1176,18 +1171,6 @@ export function createSessionOpener(services: SessionServices) {
             Math.floor(selectedModel.contextWindowTokens / 8)
           );
           const reasoningEffort = input.reasoningEffort ?? selectedModel.defaultReasoningEffort;
-          const useEffortUpdates = usesResponsesConfigurationUpdates(selectedModel);
-          const previousReasoningEffort = useEffortUpdates
-            ? reasoningEffortBaseline(contextRecords, selectedModel.id)
-            : undefined;
-          let requestReasoningEffort = useEffortUpdates
-            ? (previousReasoningEffort ?? reasoningEffort)
-            : undefined;
-          let effectiveReasoningEffort = useEffortUpdates
-            ? previousReasoningEffort === undefined
-              ? requestReasoningEffort
-              : (lastConfigurationEffort(messages, selectedModel.id) ?? requestReasoningEffort)
-            : undefined;
           if (mode !== 'compact' && subagents)
             await subagents.beginParentExecution({
               executionId,
@@ -1910,27 +1893,21 @@ export function createSessionOpener(services: SessionServices) {
                 coreExtensions.diagnose({ code: 'MAR_AGENT_STEER_POST_COMMIT_FAILED', sessionId })
             });
           }
-          if (
-            mode !== 'compact' &&
-            useEffortUpdates &&
-            effectiveReasoningEffort !== reasoningEffort
-          ) {
-            const update: ModelMessage = {
-              role: 'provider',
-              content: '',
-              provider: 'OPENAI_RESPONSES',
-              providerModelId: selectedModel.id,
-              item: { type: 'configuration_update', reasoning: { effort: reasoningEffort } }
-            };
-            messages.push(update);
-            await store.append(sessionId, {
-              type: 'model.context',
-              payload: update,
-              executionId,
-              turnId
-            });
-            effectiveReasoningEffort = reasoningEffort;
-          }
+          const modelConfiguration = prepareModelConfiguration(selectedModel, reasoningEffort, {
+            baselineEffort: reasoningEffortBaseline(contextRecords, selectedModel.id),
+            messages
+          });
+          let requestReasoningEffort = modelConfiguration.requestReasoningEffort;
+          if (mode !== 'compact')
+            for (const update of modelConfiguration.updates) {
+              messages.push(update);
+              await store.append(sessionId, {
+                type: 'model.context',
+                payload: update,
+                executionId,
+                turnId
+              });
+            }
           const runPreparedExecution = async (
             compactFocus: string = input.prompt,
             compactSignal: AbortSignal = controller.signal
@@ -2025,8 +2002,9 @@ export function createSessionOpener(services: SessionServices) {
               lastServerContextTokens = undefined;
               lastServerUsage = undefined;
               smartContextTokens = undefined;
-              requestReasoningEffort = reasoningEffort;
-              effectiveReasoningEffort = reasoningEffort;
+              requestReasoningEffort = prepareModelConfiguration(selectedModel, reasoningEffort, {
+                checkpointAdopted: true
+              }).requestReasoningEffort;
             };
             const compactLeaf = async (
               input: { readonly focus?: string; readonly async?: boolean },
@@ -2391,15 +2369,11 @@ export function createSessionOpener(services: SessionServices) {
                   captureRoundToolScope();
                 const codeModeEnabled = roundTools.some((tool) => tool.name === 'code_exec');
                 const residentTools = projectTools(mcpRegistry.projectDirect(baseTools()));
-                const requestTools = (() => {
-                  if (selectedModel.protocol !== 'OPENAI_RESPONSES')
-                    return projectCodeModeTools(roundTools, residentTools);
-                  const directNames = new Set(residentTools.map((tool) => tool.name));
-                  // Discovery and caller policy are independent: keep nested declarations for active tools.
-                  return projectCodeModeTools(roundTools, residentTools).filter((tool) =>
-                    directNames.has(tool.name)
-                  );
-                })();
+                const requestTools = projectModelRequestTools(
+                  selectedModel,
+                  projectCodeModeTools(roundTools, residentTools),
+                  new Set(residentTools.map((tool) => tool.name))
+                );
                 const requestContextMessages =
                   pendingOutputContinuation === undefined
                     ? messages
@@ -2524,8 +2498,7 @@ export function createSessionOpener(services: SessionServices) {
                     modelId: selectedModel.id,
                     contextWindowTokens: selectedModel.contextWindowTokens,
                     usage: latestUsage,
-                    modelProtocol: selectedModel.protocol,
-                    responsesConfigurationUpdates: usesResponsesConfigurationUpdates(selectedModel),
+                    ...modelConfiguration.contextProjection,
                     workspace: logicalWorkspace,
                     platform: description.platform,
                     getActiveProcessIds: async () => {

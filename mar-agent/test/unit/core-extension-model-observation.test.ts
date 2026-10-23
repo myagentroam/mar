@@ -211,6 +211,7 @@ describe('Core normalized model fact observation', () => {
           {
             type: 'response.item',
             provider: protocol,
+            ...(protocol === 'ANTHROPIC_MESSAGES' ? { contextKind: 'private' as const } : {}),
             item:
               protocol === 'OPENAI_RESPONSES'
                 ? { type: 'reasoning', encrypted_content: 'private-source' }
