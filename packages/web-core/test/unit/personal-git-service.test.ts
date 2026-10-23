@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import PersonalGitSettings from '../../src/view/settings/PersonalGitSettings.vue?unit-render';
+import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonalGitService } from '../../src/service/PersonalGitService.js';
 
@@ -70,13 +71,31 @@ describe('Personal Git settings client', () => {
     expect(await service.read()).toEqual(configuration);
   });
 
-  it('renders the complete redacted Git configuration without local pagination', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/PersonalGitSettings.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain(':data="summary.credentials"');
-    expect(source).not.toContain('managementPageItems');
-    expect(source).not.toContain('<ManagementPagination');
+  it('renders every credential from the complete response, including those beyond a page', async () => {
+    const credentials = Array.from({ length: 25 }, (_, index) => ({
+      id: `credential-${index}`,
+      name: `Complete credential ${index}`,
+      protocol: 'HTTPS',
+      host: 'git.example.com',
+      port: 443,
+      pathPrefix: `team/repository-${index}`,
+      username: `user-${index}`,
+      commitName: 'Commit author',
+      commitEmail: 'author@example.com',
+      hasSecret: true,
+      hasPassphrase: false
+    }));
+    const request = vi.fn().mockResolvedValue({ configuration: { credentials } });
+    const view = renderComponent(PersonalGitSettings, { request });
+    try {
+      await flushComponent();
+      expect(request).toHaveBeenCalledWith('/api/personal-git', { cache: 'no-store' });
+      expect(view.findAll('ElTable')[0]?.props['data']).toEqual(credentials);
+      for (const credential of credentials)
+        expect(textContent(view.root)).toContain(credential.name);
+      expect(view.findAll('ElPagination')).toHaveLength(0);
+    } finally {
+      view.unmount();
+    }
   });
 });

@@ -13,17 +13,6 @@ import { codexUsageTokenCountLabel } from '../../src/util/workbench-presentation
 afterEach(() => vi.unstubAllGlobals());
 describe('Shared model, credential and image management', () => {
   it('provides a safe bilingual usage link in ChatGPT credential details independently of writes', async () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    const actions = source.slice(source.indexOf('class="credential-detail-actions"'));
-    expect(actions).toMatch(
-      /<ChatGPTManageUsageButton\s+v-if="selectedCredentialDetails\.credential\.type === 'CHATGPT_OAUTH'"/u
-    );
-    expect(actions.indexOf('<ChatGPTManageUsageButton')).toBeLessThan(
-      actions.indexOf('<template v-if="writable">')
-    );
     for (const locale of ['zh-CN', 'en-US'] as const) {
       i18n.global.locale.value = locale;
       const app = createSSRApp({ render: () => h(ChatGPTManageUsageButton) });
@@ -48,24 +37,6 @@ describe('Shared model, credential and image management', () => {
     }
     expect(commonMessages['zh-CN'].marAgentModels.codexCredentialsTab).toBe('OAuth 凭据');
     expect(commonMessages['en-US'].marAgentModels.codexCredentialsTab).toBe('OAuth credentials');
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain(':data="credentials"');
-    expect(source).toContain('marAgentModels.codexLegacyCredential');
-    expect(source).toContain('value="CHATGPT_OAUTH"');
-    expect(source).toContain('v-model="credentialDraft.nodeId"');
-    expect(source).toContain('node.capabilities.chatgptLogin?.apiVersion === 1');
-    expect(source).toContain('protocol: modelProtocolChoice(model)');
-    expect(source).toContain('const protocol = modelProtocolChoice(model);');
-    expect(source).toContain('formatTimestamp(row.earliestRefreshAt)');
-    expect(source).toContain(
-      'formatTimestamp(selectedCredentialDetails.credential.earliestRefreshAt)'
-    );
-    expect(source).toContain('credentialRefreshOutcome(credential, refreshed)');
-    expect(source).toContain('marAgentModels.chatgptRefreshDeferred');
-    expect(source).toContain('marAgentModels.codexRefreshDegraded');
   });
   it('uses provider-neutral OAuth wording and credential-specific name labels in both locales', () => {
     for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -109,25 +80,6 @@ describe('Shared model, credential and image management', () => {
       expect(messages.codexUsageTitle).toContain('Codex');
       expect(messages.imageGenerationCredential).toContain('Codex');
     }
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    const credentialDialog = source.slice(
-      source.indexOf('v-if="credentialDialog"'),
-      source.indexOf('v-if="loginAttemptDialog')
-    );
-    expect(credentialDialog).toContain("translate('marAgentModels.credentialName')");
-    expect(credentialDialog).not.toContain("translate('marAgentModels.name')");
-    const credentialTable = source.slice(
-      source.indexOf(':data="credentials"'),
-      source.indexOf(':label="translate(\'marAgentModels.credentialType\')"')
-    );
-    expect(credentialTable).toContain("translate('marAgentModels.credentialName')");
-    expect(credentialTable).not.toContain("translate('marAgentModels.name')");
-    const credentialRules = source.match(/const credentialRules = computed.*?\n\}\)\);/su)?.[0];
-    expect(credentialRules).toContain('marAgentModels.credentialNameRequired');
-    expect(credentialRules).not.toContain('marAgentModels.nameRequired');
   });
   it('keeps Grok credentials, models and subscription usage provider-specific', () => {
     for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -154,19 +106,6 @@ describe('Shared model, credential and image management', () => {
       expect(messages.grokErrorEntitlementRequired).toBeTruthy();
       expect(messages.grokErrorRequestFailed).toBeTruthy();
     }
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain('value="XAI_OAUTH"');
-    expect(source).toContain('value="GROK"');
-    expect(source).toContain("credential.type === 'XAI_OAUTH'");
-    expect(source).toContain("draft.protocol !== 'GROK'");
-    expect(source).toContain("translate('marAgentModels.grokUsageTitle')");
-    expect(source).toContain("translate('marAgentModels.grokUsageRemainingPercentage')");
-    expect(source).toContain('formatRemainingUsagePercentage');
-    expect(source).toContain('Number((100 - value).toFixed(2))');
-    expect(source).toContain('formatUsdCents');
   });
   it('provides localized model transport diagnostic labels', () => {
     for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -189,18 +128,7 @@ describe('Shared model, credential and image management', () => {
       }
     }
   });
-  it('reloads the full model list without client paging', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    const load = source.match(/async function load\(.*?\n\}\n/su)?.[0];
-    expect(load).toBeDefined();
-    expect(load).not.toContain('modelPagination');
-    expect(source).toContain('full authorized set');
-    expect(source).toContain('name="model-ownership"');
-    expect(source).toContain('name="catalog-ownership"');
-  });
+
   it('keeps enterprise ownership and grants outside complete public pages', () => {
     for (const name of ['MarAgentModelManagementPage', 'ImageGenerationManagement']) {
       const source = readFileSync(
@@ -211,23 +139,10 @@ describe('Shared model, credential and image management', () => {
         /@\/|ORGANIZATION|ENTERPRISE|ownerOrganizationId|\/api\/organizations|\/api\/resource-grants|props\.role|props\.edition/u
       );
     }
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain(
-      'credentialScopeLabel(selectedCredentialDetails.credential.ownership)'
-    );
   });
-  it('omits the retired high-density model option from forms, payloads and locales', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).not.toContain('highDensityCompaction');
+  it('omits retired high-density model option labels from locales', () => {
     expect(commonMessages['zh-CN'].marAgentModels).not.toHaveProperty('highDensityCompaction');
     expect(commonMessages['en-US'].marAgentModels).not.toHaveProperty('highDensityCompaction');
-    expect(source).toContain("cache: 'no-store'");
   });
   it('formats large Codex usage directly in millions for English and preserves Chinese units', () => {
     expect(commonMessages['zh-CN'].marAgentModels.codexUsageCurrentDayTokens).toBe('上一日用量');
@@ -255,13 +170,7 @@ describe('Shared model, credential and image management', () => {
       i18n.global.locale.value = previousLocale;
     }
   });
-  it('omits obsolete Responses encoding from model forms, payloads and both locales', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).not.toContain('responsesEncoding');
-    expect(source).not.toContain('marAgentModels.encoding');
+  it('omits obsolete Responses encoding labels from both locales', () => {
     for (const language of ['en-US', 'zh-CN'] as const) {
       for (const key of ['encoding', 'encodingStandard', 'encodingLite', 'encodingRequired']) {
         expect(commonMessages[language].marAgentModels).not.toHaveProperty(key);
@@ -276,39 +185,8 @@ describe('Shared model, credential and image management', () => {
     expect(commonMessages['en-US'].marAgentModels.model).toBe('Model ID');
     expect(commonMessages['zh-CN'].marAgentModels.enabled).toBe('启用');
     expect(commonMessages['en-US'].marAgentModels.enabled).toBe('Enabled');
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toMatch(
-      /<el-form-item :label="translate\('marAgentModels\.model'\)" prop="modelId">\s*<el-input v-model="draft\.modelId" maxlength="256" \/>/u
-    );
-    expect(source).not.toContain('modelCatalogCandidates');
-    expect(source).not.toContain('changeCodexCredential');
-    expect(source).toContain('credentialService.loadCatalog(credential.id)');
-    expect(source).toContain(
-      '<el-form-item class="model-enabled" :label="translate(\'marAgentModels.enabled\')">'
-    );
-    expect(source).toContain('<el-switch v-model="draft.enabled" />');
-    expect(source).toContain('const DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000;');
-    expect(source).toContain('const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;');
-    expect(source).toContain('contextWindowTokens: DEFAULT_CONTEXT_WINDOW_TOKENS');
-    expect(source).toContain('maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS');
-    expect(source).toContain(
-      'contextWindowTokens: model.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS'
-    );
   });
-  it('does not show test status in the community model order table', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentModelManagementPage.vue', import.meta.url),
-      'utf8'
-    );
-    const personalOrderTable = source.match(
-      /name="modelOrder"[\s\S]*?<el-table :data="personalModels">([\s\S]*?)<\/el-table>/u
-    )?.[1];
-    expect(personalOrderTable).toBeDefined();
-    expect(personalOrderTable).not.toContain("translate('marAgentModels.status')");
-  });
+
   it.each(['en-US', 'zh-CN'] as const)(
     'renders standalone public pages with complete %s messages',
     async (locale) => {

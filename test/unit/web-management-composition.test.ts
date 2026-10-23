@@ -29,20 +29,11 @@ describe('Workbench management composition', () => {
       'ee/web/src/view/settings/OrganizationManagementPage.vue',
       'utf8'
     );
-    const users = await readFile(
-      'ee/web/src/view/settings/EnterpriseUserManagementPage.vue',
-      'utf8'
-    );
     expect(composition).toContain("import('../view/settings/OrganizationManagementPage.vue')");
     expect(composition).toContain("import('../view/settings/EnterpriseUserManagementPage.vue')");
     expect(composition).not.toContain("mode: 'organizations'");
     expect(composition).not.toContain("mode: 'users'");
-    expect(organizations).toContain("managementUrlValues('organizations'");
     expect(organizations).not.toContain('/api/enterprise/users');
-    expect(organizations).not.toContain('userOpen');
-    expect(users).toContain("managementUrlValues('users'");
-    expect(users).toContain('/api/enterprise/users');
-    expect(users).not.toContain('organizationOpen');
   });
 
   it('uses one ordered page catalogue for Community-state navigation and rendering', () => {

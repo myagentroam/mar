@@ -2,13 +2,22 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import Page from '../../src/view/settings/SystemConfigurationPage.vue';
+import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import Page from '../../src/view/settings/SystemConfigurationPage.vue?unit-render';
 import { createSystemConfigurationService } from '../../src/service/SystemConfigurationService.js';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import {
+  flushComponent,
+  renderComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 describe('Public system configuration page', () => {
   it('has no audit or enterprise policy in the default catalog or page', () => {
     for (const file of [
@@ -16,7 +25,7 @@ describe('Public system configuration page', () => {
       'view/settings/SystemConfigurationPage.vue'
     ]) {
       expect(readFileSync(new URL(`../../src/${file}`, import.meta.url), 'utf8')).not.toMatch(
-        /audit-retention|auditRetention|ENTERPRISE|ORGANIZATION|@\/|manageEnterprise|localStorage|sessionStorage/u
+        /audit-retention|auditRetention|ENTERPRISE|ORGANIZATION|@\/|manageEnterprise/u
       );
     }
     const service = createSystemConfigurationService(vi.fn() as never);
@@ -63,13 +72,119 @@ describe('Public system configuration page', () => {
     }
   );
 
-  it('renders the complete system settings snapshot without local pagination', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/SystemConfigurationPage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain(':data="rows"');
-    expect(source).not.toContain('managementPageItems');
-    expect(source).not.toContain('<ManagementPagination');
+  it('renders the complete configuration and never persists its snapshot in browser storage', async () => {
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('sessionStorage', storage);
+    const settings = Array.from({ length: 25 }, (_, index) => ({
+      key: `extension-${index}`,
+      field: `field-${index}`,
+      payloadField: 'enabled',
+      nameKey: 'common.save',
+      descriptionKey: 'common.cancel',
+      type: 'boolean' as const,
+      initialValue: false
+    }));
+    const request = vi.fn().mockResolvedValue({
+      smtpConfiguration: '{}',
+      skillTlsVerificationDisabled: true,
+      htmlPreviewOrigin: 'https://preview.example.com',
+      webPushEnabled: true,
+      ...Object.fromEntries(settings.map(({ field }) => [field, true]))
+    });
+    const view = renderComponent(Page, { request, writable: false, settings });
+    try {
+      await flushComponent();
+      const tableRows = view.findAll('ElTable')[0]?.props['data'] as { key: string }[];
+      expect(tableRows.map(({ key }) => key)).toEqual([
+        ...settings.map(({ key }) => key),
+        'mail-smtp',
+        'web-push',
+        'html-preview-origin',
+        'skill-tls'
+      ]);
+      expect(textContent(view.root)).toContain('https://preview.example.com');
+      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(request).toHaveBeenCalledWith('/api/system-settings');
+      expect(storage.getItem).not.toHaveBeenCalled();
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.removeItem).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  });
+  it('cancels without writing and retains failed drafts before applying the authoritative saved snapshot', async () => {
+    i18n.global.locale.value = 'en-US';
+    const storage = {
+      getItem: vi.fn().mockReturnValue('stale-browser-fixture'),
+      setItem: vi.fn(),
+      removeItem: vi.fn()
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('sessionStorage', storage);
+    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+    let failSave = true;
+    const snapshot = {
+      smtpConfiguration: '{}',
+      extensionValue: true,
+      skillTlsVerificationDisabled: false,
+      webPushEnabled: false,
+      htmlPreviewOrigin: ''
+    };
+    const request = vi.fn(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        if (failSave) throw new Error('Fixture save unavailable');
+        return { ...snapshot, extensionValue: false };
+      }
+      return snapshot;
+    });
+    const settings = [
+      {
+        key: 'extension/setting',
+        field: 'extensionValue',
+        payloadField: 'value',
+        nameKey: 'common.save',
+        descriptionKey: 'common.cancel',
+        type: 'boolean' as const,
+        initialValue: false
+      }
+    ];
+    const view = renderComponent(Page, { request, writable: true, settings });
+    const button = (label: string) =>
+      view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+    try {
+      await flushComponent();
+      await trigger(button('Edit'), 'onClick');
+      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(button('Cancel'), 'onClick');
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(true);
+      await trigger(button('Edit'), 'onClick');
+      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(button('Save'), 'onClick');
+      expect(error).toHaveBeenCalledOnce();
+      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      failSave = false;
+      await trigger(button('Save'), 'onClick');
+      expect(request).toHaveBeenLastCalledWith('/api/system-settings/extension%2Fsetting', {
+        method: 'PATCH',
+        body: JSON.stringify({ value: false })
+      });
+      expect(view.findAll('ElButton').some((node) => textContent(node).trim() === 'Save')).toBe(
+        false
+      );
+      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(storage.getItem).not.toHaveBeenCalled();
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.removeItem).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
   });
 });
