@@ -74,6 +74,52 @@ describe('scheduled session recurrence', () => {
 });
 
 describe('scheduled session store', () => {
+  it('recomputes time only for changed rules or a transition from disabled to enabled', () => {
+    let now = Date.parse('2026-10-23T00:00:00Z');
+    const database = new NodeDatabase(':memory:', 'schedule-edit', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-edit',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'editable',
+        workspaceId: workspace.id
+      });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      let task = store.create({
+        sessionId: 'editable',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 1,
+        objective: 'Original',
+        cron: '0 * * * *',
+        timezone: 'UTC'
+      });
+      const dueAt = task.nextRunAt;
+      now = Date.parse('2026-10-23T01:00:01Z');
+      task = store.update(task.sessionId, task.revision, { timezone: 'UTC' });
+      expect(task.nextRunAt).toBe(dueAt);
+      task = store.update(task.sessionId, task.revision, { cron: '30 2 * * *' });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:30:00Z'));
+      task = store.update(task.sessionId, task.revision, { timezone: 'Asia/Shanghai' });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T18:30:00Z'));
+      task = store.update(task.sessionId, task.revision, { enabled: false });
+      expect(task.nextRunAt).toBeNull();
+      task = store.update(task.sessionId, task.revision, {
+        objective: 'Paused edit',
+        cron: '0 * * * *'
+      });
+      expect(task.nextRunAt).toBeNull();
+      task = store.update(task.sessionId, task.revision, { enabled: true });
+      expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:00:00Z'));
+    } finally {
+      database.close();
+    }
+  });
+
   it('advances a delayed DST claim and re-enabled task beyond the repeated local minute', () => {
     let now = Date.parse('2025-11-02T05:00:00Z');
     const database = new NodeDatabase(':memory:', 'node-dst', () => now);

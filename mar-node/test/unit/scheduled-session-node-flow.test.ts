@@ -28,6 +28,82 @@ afterEach(async () => {
 });
 
 describe('scheduled Node session flow', () => {
+  it.each([-1000, 1000])(
+    'preserves the due occurrence when a full form is saved %s ms from its due time',
+    async (offset) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.parse('2026-10-23T00:00:00Z'));
+      const database = new NodeDatabase(':memory:', 'schedule-edit');
+      try {
+        const workspace = database.saveWorkspace({
+          path: '/schedule-edit',
+          kind: 'DIRECTORY',
+          gitSummary: null
+        });
+        database.saveNativeSessionMetadata({
+          runner: 'codex',
+          externalSessionId: 'editable',
+          workspaceId: workspace.id,
+          pinned: true
+        });
+        const session = {
+          id: 'editable',
+          externalSessionId: 'editable',
+          workspaceId: workspace.id,
+          runner: 'codex'
+        };
+        const store = new ScheduledSessionStore(database.raw);
+        const task = store.create({
+          sessionId: session.id,
+          workspaceId: workspace.id,
+          runner: 'codex',
+          ownerUserId: 1,
+          objective: 'Original',
+          cron: '0 * * * *',
+          timezone: 'UTC'
+        });
+        const dueAt = task.nextRunAt!;
+        vi.setSystemTime(dueAt + offset);
+        const service = new SessionScheduleService({
+          database: () => database,
+          runtime: { getAgentSession: () => session } as never,
+          projection: {} as never,
+          present: (value) => value,
+          emitSession: vi.fn(),
+          awaitNativeSessionId: async () => session.id
+        });
+        const save = service.operations()['session.schedule.save']!;
+        const scope = { sessionId: session.id, workspaceId: workspace.id, __requestUserId: 2 };
+        await save({
+          ...scope,
+          expectedRevision: task.revision,
+          objective: 'Updated',
+          cron: task.cron,
+          enabled: true,
+          notifyOnTerminal: true
+        });
+        expect(store.get(session.id)).toMatchObject({
+          nextRunAt: dueAt,
+          revision: 2,
+          objective: 'Updated',
+          ownerUserId: 2,
+          notifyOnTerminal: true
+        });
+        await save({ ...scope, expectedRevision: 2, objective: 'Partial edit' });
+        expect(store.get(session.id)).toMatchObject({ nextRunAt: dueAt, revision: 3 });
+        vi.setSystemTime(dueAt + 1000);
+        expect(store.listDue(Date.now()).map((entry) => entry.sessionId)).toEqual([session.id]);
+        const occurrenceId = store.claim(session.id, dueAt, 3);
+        expect(occurrenceId).toBe(`${task.id}:${dueAt}`);
+        expect(store.claim(session.id, dueAt, 3)).toBeUndefined();
+        expect(store.recent(task.id)).toHaveLength(1);
+        expect(store.get(session.id)?.nextRunAt).toBe(dueAt + 3_600_000);
+      } finally {
+        database.close();
+      }
+    }
+  );
+
   it.each([false, true])(
     'keeps approval ownership in Runner interactions (scheduled: %s)',
     async (scheduled) => {

@@ -244,7 +244,7 @@ export class ScheduledSessionStore {
       const enabled = patch.enabled ?? current.enabled;
       const ownerUserId = patch.ownerUserId ?? current.ownerUserId;
       const nextRunAt = enabled
-        ? patch.enabled === true || patch.cron !== undefined || patch.timezone !== undefined
+        ? !current.enabled || cron !== current.cron || timezone !== current.timezone
           ? nextScheduledAt(cron, timezone, this.now())
           : current.nextRunAt
         : null;
