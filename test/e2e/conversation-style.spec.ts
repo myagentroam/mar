@@ -43,6 +43,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(page.locator('.composer-shell')).toHaveCSS('border-top-width', '1px');
       await expect(page.locator('.composer textarea')).toHaveCSS('font-size', '14px');
       await expect(page.locator('.task-list-heading > span')).toHaveCSS('color', tokens.muted);
+      const taskColors = await page
+        .locator('.task-list-status')
+        .evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
+      expect(new Set(taskColors).size).toBe(3);
+      await expect(page.locator('.task-list-status')).toHaveText(['To-do', 'In progress', 'Done']);
       await expect(page.locator('.conversation-item-heading > span').first()).toHaveCSS(
         'color',
         tokens.muted
@@ -106,6 +111,54 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();
       const treeToggle = page.locator('.workbench-tree-toggle');
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'true');
+      const notificationToggle = page.locator('.workbench-notification-trigger');
+      const loads = page.getByTestId('notification-loads');
+      await notificationToggle.click();
+      await expect(loads).toHaveText('1');
+      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'true');
+      await notificationToggle.click();
+      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
+      await page.getByRole('button', { name: 'Preview notification', exact: true }).click();
+      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'true');
+      await notificationToggle.click();
+      await expect(loads).toHaveText('2');
+      await notificationToggle.click();
+      await notificationToggle.click();
+      await expect(loads).toHaveText('3');
+      for (const detail of await page
+        .locator('.conversation-file-change-details, .conversation-record-group')
+        .all()) {
+        if (!(await detail.evaluate((element) => (element as HTMLDetailsElement).open)))
+          await detail.locator(':scope > summary').click();
+      }
+      for (const marker of [
+        '.task-list-status',
+        '.conversation-file-change-status',
+        '.conversation-error-code'
+      ])
+        await expect(page.locator(marker).first()).toHaveCSS('border-radius', '4px');
+      for (const selector of ['.user-message', '.assistant-message', '.process'])
+        await expect(page.locator('.theme-preview').locator(selector)).toHaveCSS(
+          'border-radius',
+          '12px'
+        );
+      const userMessage = page.locator('.conversation-item.user_message');
+      for (const property of ['background-color', 'border-top-color']) {
+        const actual = await userMessage.evaluate(
+          (element, name) => getComputedStyle(element).getPropertyValue(name),
+          property
+        );
+        await expect(page.locator('.theme-preview .user-message')).toHaveCSS(property, actual);
+      }
+      for (const [selector, edge, size] of [
+        ['.task-list-items', 'border-top-width', '1px'],
+        ['.task-list-items > li', 'border-bottom-width', '1px'],
+        ['.conversation-tool-list', 'border-left-width', '2px'],
+        ['.conversation-tool-list > .conversation-tool-detail', 'border-top-width', '1px'],
+        ['.conversation-record-group > .conversation-tool-detail', 'border-top-width', '0px'],
+        ['.conversation-record-group > .conversation-command-detail', 'border-top-width', '0px']
+      ] as const)
+        await expect(page.locator(selector).first()).toHaveCSS(edge, size);
       await treeToggle.click();
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'false');
       await treeToggle.click();

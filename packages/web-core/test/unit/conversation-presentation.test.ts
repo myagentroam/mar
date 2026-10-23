@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   conversationDisplayItems,
@@ -163,26 +161,6 @@ describe('Conversation Show Aggregation', () => {
       expect(message).toContain('server-usage-request');
       expect(message).toContain('node-usage-request');
     }
-  });
-
-  it('Render image-generation results in standalone cards with their generated attachments', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/view/conversation/ConversationTimeline.vue'),
-      'utf8'
-    );
-    const start = source.indexOf(
-      '<template v-else-if="displayItem.type === \'image_generation\'">'
-    );
-    const end = source.indexOf('<template v-else-if="displayItem.type === \'subagent_group\'">');
-    const imageGeneration = source.slice(start, end);
-
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    expect(imageGeneration).toContain("translate('presentation.imageGeneration')");
-    expect(imageGeneration).toContain(
-      'props.imageAttachments(turn.runId, displayItem.item.payload)'
-    );
-    expect(imageGeneration).toContain(':source="attachment.previewUrl"');
   });
 
   it('Keep HTTP status, error code, and message presentation separate in error cards', () => {
@@ -2103,13 +2081,6 @@ describe('Conversation Show Aggregation', () => {
       { text: 'Modify projection', status: 'In progress', tone: 'in-progress' },
       { text: 'Run Validation', status: 'Done', tone: 'done' }
     ]);
-    const timeline = readFileSync(
-      resolve(process.cwd(), 'src/view/conversation/ConversationTimeline.vue'),
-      'utf8'
-    );
-    expect(timeline).toContain('.task-list-status.task-list-status--todo');
-    expect(timeline).toContain('.task-list-status.task-list-status--in-progress');
-    expect(timeline).toContain('.task-list-status.task-list-status--done');
     expect(
       activePlanContinuation({
         item: taskList,

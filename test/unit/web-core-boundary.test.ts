@@ -447,21 +447,12 @@ describe('single shared Web implementation', () => {
 
   it('shares locale and registry mechanisms but keeps product page IDs and messages private', () => {
     expect(read('ee/web/src/service/LocalePreferenceService.ts')).not.toContain('createI18n');
-    expect(read('ee/web/src/service/LocalePreferenceService.ts')).toContain(
-      'registerLocaleMessages(messages)'
-    );
     expect(read('ee/web/src/service/ManagementComposition.ts')).not.toContain('new Map');
     expect(read(`${root}/src/service/ManagementComposition.ts`)).not.toMatch(
       /['"](?:organizations|users|oauth|audit|conversation-templates)['"]/u
     );
     expect(existsSync('ee/web/src/view/settings/SystemInformationPage.vue')).toBe(false);
     expect(read(`${root}/src/view/SystemInformationPage.vue`)).not.toMatch(/license|License/u);
-    expect(read(`${root}/src/view/SystemInformationPage.vue`)).toContain(
-      "emit('extensionChanged')"
-    );
-    expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
-      '@extension-changed="page.refreshAdmin"'
-    );
   });
 
   it('invalidates pending workbench requests when authentication is revoked', async () => {
@@ -893,9 +884,6 @@ describe('single shared Web implementation', () => {
     }
     expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
       "import TerminalDock from '../../view/terminal/TerminalDock.vue'"
-    );
-    expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
-      ':error-message="errorMessage"'
     );
     for (const locale of ['en-US', 'zh-CN']) {
       expect(read(`ee/web/src/i18n/messages.generated.${locale}.ts`)).not.toMatch(

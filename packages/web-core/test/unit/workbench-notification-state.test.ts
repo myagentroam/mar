@@ -1,7 +1,5 @@
 import type { ServerNotification } from '@myagentroam/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   createWorkbenchNotificationService,
   parseStoredWorkbenchNotifications,
@@ -1007,16 +1005,6 @@ describe('Web Workbench notification state', () => {
     expect(state.notifications.value).toEqual([]);
     expect(request).toHaveBeenCalledTimes(2);
     state.dispose();
-  });
-
-  it('requests the authoritative Server list whenever the user opens the notification center', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'src/view/workbench/WorkbenchNotificationCenter.vue'),
-      'utf8'
-    );
-    expect(source.match(/void props\.service\.load\(\)\.catch\(\(\) => undefined\)/g)).toHaveLength(
-      2
-    );
   });
 
   it('restores only valid file and application-update notifications from local storage', async () => {

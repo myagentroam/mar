@@ -8,17 +8,50 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
+import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
+import ThemePreview from '../../src/view/settings/ThemePreview.vue';
+import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
+import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 
 const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
+const themes = themePreferenceService();
+const previewColors = themes.resolveColors(
+  themes.builtinSource(themes.baseTheme.value, 'Fixture preview')
+);
+const notificationLoads = ref(0);
+const notifications = createWorkbenchNotificationService(ref('fixture'), {
+  request: async <T,>() => {
+    notificationLoads.value++;
+    return { notifications: [], recentRuns: [] } as T;
+  }
+});
 const items: ConversationItem[] = [
+  {
+    id: 'user',
+    kind: 'user_message',
+    status: 'COMPLETED',
+    payload: { text: 'Fixture user message' }
+  },
+  {
+    id: 'failure',
+    kind: 'error',
+    status: 'FAILED',
+    payload: { code: 'FIXTURE_FAILURE', message: 'Fixture diagnostic' }
+  },
   { id: 'compact', kind: 'context_compaction', status: 'COMPLETED', payload: {} },
   {
     id: 'tasks',
     kind: 'todo_list',
     status: 'COMPLETED',
-    payload: { items: [{ text: 'Check the result', status: 'PENDING' }] }
+    payload: {
+      items: [
+        { text: 'Check the result', status: 'PENDING' },
+        { text: 'Implement the change', status: 'IN_PROGRESS' },
+        { text: 'Inspect the result', status: 'COMPLETED' }
+      ]
+    }
   },
   {
     id: 'command',
@@ -53,6 +86,12 @@ const items: ConversationItem[] = [
         { text: 'Run tests', status: 'pending' }
       ]
     }
+  },
+  {
+    id: 'child',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: { subagentOperation: 'START', subagentId: 'child', prompt: 'Review the change' }
   }
 ];
 const turns: ConversationTurn[] = [
@@ -62,6 +101,23 @@ const turns: ConversationTurn[] = [
 
 <template>
   <main class="conversation-style-fixture">
+    <section aria-label="Notifications fixture">
+      <WorkbenchNotificationCenter :service="notifications" />
+      <ThemePreview name="Fixture preview" :colors="previewColors" />
+      <output data-testid="notification-loads">{{ notificationLoads }}</output>
+      <button
+        @click="
+          notifications.notify({
+            id: 'preview',
+            kind: 'web-update',
+            title: 'New version',
+            message: 'Update available'
+          })
+        "
+      >
+        Preview notification
+      </button>
+    </section>
     <WorkbenchHeader
       :mobile-viewport="false"
       view="nodes"

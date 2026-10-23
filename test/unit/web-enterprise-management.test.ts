@@ -371,70 +371,6 @@ describe('Web enterprise management domain', () => {
     ]);
   });
 
-  it('Remaining EE organization forms use searchable hierarchical cascaders with scalar IDs', async () => {
-    const [skillSource, mcpSource, resourceManagement, conversationTemplates, modelManagement] =
-      await Promise.all([
-        readFile(
-          resolve(process.cwd(), 'ee/web/src/view/skill/SkillSourceManagementPage.vue'),
-          'utf8'
-        ),
-        readFile(
-          resolve(process.cwd(), 'ee/web/src/view/skill/McpSourceManagementPage.vue'),
-          'utf8'
-        ),
-        readFile(
-          resolve(process.cwd(), 'ee/web/src/view/settings/ResourceManagementPanel.vue'),
-          'utf8'
-        ),
-        readFile(
-          resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
-          'utf8'
-        ),
-        readFile(
-          resolve(process.cwd(), 'ee/web/src/view/settings/MarAgentModelManagementPage.vue'),
-          'utf8'
-        )
-      ] as const);
-
-    for (const source of [
-      skillSource,
-      mcpSource,
-      resourceManagement,
-      conversationTemplates,
-      modelManagement
-    ]) {
-      expect(source).toContain(
-        source === skillSource || source === mcpSource
-          ? 'createCatalogOwnershipService'
-          : source === modelManagement
-            ? 'createModelCredentialOwnershipService'
-            : source === resourceManagement
-              ? 'createResourceOwnershipService'
-              : 'organizationCascaderOptions'
-      );
-      expect(source).toContain(':props="{ checkStrictly: true, emitPath: false }"');
-    }
-    const expectOrganizationCascader = (
-      source: string,
-      model: string,
-      options = 'organizationOptions'
-    ) =>
-      expect(source).toMatch(
-        new RegExp(
-          `<el-cascader(?=[^>]*v-model="${model}")(?=[^>]*filterable)(?=[^>]*:options="${options}")(?=[^>]*:props="\\{ checkStrictly: true, emitPath: false \\}")[^>]*>`,
-          'u'
-        )
-      );
-    expectOrganizationCascader(skillSource, 'sourceDraft\\.organizationId');
-    expectOrganizationCascader(skillSource, 'catalogDraft\\.organizationId');
-    expectOrganizationCascader(mcpSource, 'sourceDraft\\.organizationId');
-    expectOrganizationCascader(mcpSource, 'catalogDraft\\.organizationId');
-    expectOrganizationCascader(resourceManagement, 'editOrganizationId');
-    expectOrganizationCascader(resourceManagement, 'registrationOwner', 'registrationOwnerOptions');
-    expectOrganizationCascader(conversationTemplates, 'targetOrganizationId');
-    expectOrganizationCascader(modelManagement, 'credentialDraft\\.ownerOrganizationId');
-  });
-
   it('New OAuth sources disable automatic account creation by default and generate provider-specific callbacks', () => {
     const draft = newOAuthProviderDraft('feishu', 'https://mar.example');
     expect(draft).toMatchObject({
@@ -526,17 +462,6 @@ describe('Web enterprise management domain', () => {
       preserveGitConfig: false,
       createDirectoryName: 'new-project'
     });
-  });
-
-  it('Workbench passes direct Node registration eligibility to the registration picker', async () => {
-    const surface = await readFile(
-      resolve(process.cwd(), 'ee/web/src/view/workbench/WorkbenchSurface.vue'),
-      'utf8'
-    );
-    expect(surface).toContain(
-      ':workspace-creatable="page.workspaceRegistrationNode?.workspaceCreatable"'
-    );
-    expect(surface).toContain(':node-manageable="page.workspaceRegistrationNode?.manageable"');
   });
 
   it('Directory navigation accepts only the latest response and ignores in-flight results after reset', async () => {

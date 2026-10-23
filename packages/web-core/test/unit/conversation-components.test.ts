@@ -228,6 +228,25 @@ const timelineProps = {
   rollbackEnabled: false
 };
 
+it('renders generated images as independent results using their projected preview URLs', async () => {
+  const payload = {
+    toolName: 'generate',
+    toolCategory: 'IMAGE_GENERATION',
+    result: 'Generated image'
+  };
+  const attachments = vi.fn(() => [{ name: 'generated.png', previewUrl: '/images/generated.png' }]);
+  const html = await render(ConversationTimeline, {
+    ...timelineProps,
+    turns: [conversationTurn([conversationItem('generated', 'tool_call', payload)])],
+    imageAttachments: attachments
+  });
+  expect(html).toContain(i18n.global.t('presentation.imageGeneration'));
+  expect(html).toContain('conversation-user-image-attachments');
+  expect(html).toContain('src="/images/generated.png"');
+  expect(html).not.toContain('conversation-tool-group');
+  expect(attachments).toHaveBeenCalledWith('run-1', payload);
+});
+
 it.each(['zh-CN', 'en-US'] as const)(
   'renders four independent tool presentations with collapsed details in %s',
   async (locale) => {

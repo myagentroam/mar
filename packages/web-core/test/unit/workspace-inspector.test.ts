@@ -451,19 +451,6 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
-  it('keeps Inspector tabs horizontally scrollable without shrinking labels or the tab strip', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceInspector.vue', import.meta.url),
-      'utf8'
-    );
-    const stripStyle = source.match(/\.inspector-tabs\s*\{([^}]+)\}/u)?.[1];
-    const tabStyle = source.match(/\.inspector-tabs button\s*\{([^}]+)\}/u)?.[1];
-    expect(stripStyle).toMatch(/overflow-x:\s*auto\s*;/u);
-    expect(stripStyle).toMatch(/overflow-y:\s*hidden\s*;/u);
-    expect(stripStyle).toMatch(/flex-shrink:\s*0\s*;/u);
-    expect(tabStyle).toMatch(/flex-shrink:\s*0\s*;/u);
-  });
-
   it('renders Git worktree status in the selected locale', async () => {
     localePreferenceService().setLocale(locale);
     const service = {

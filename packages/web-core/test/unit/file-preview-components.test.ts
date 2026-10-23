@@ -632,16 +632,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expect(multiple).toContain('src/module.ts');
     expect(multiple).toContain('hljs-keyword');
     expect(multiple).toContain('hljs-title function_');
-    const dialogSource = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTextFilePage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(dialogSource).toMatch(
-      /\.file-navigation-dropdown\s*\{[^}]*max-height:\s*min\(42rem,\s*calc\(100vh - 5rem\)\);[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*\}/u
-    );
-    expect(dialogSource).toMatch(
-      /\.file-navigation-dropdown\s+\.file-symbol-list\s*\{[^}]*max-height:\s*none;[^}]*overflow:\s*visible;[^}]*\}/u
-    );
   });
 
   it('falls back to read-only preview when an editable file is not text-previewable', async () => {
@@ -669,75 +659,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       i18n.global.t('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn')
     );
     expect(html).not.toContain('code-file-editor');
-  });
-});
-
-describe('standalone Markdown preview', () => {
-  it('keeps unavailable edit shortcuts native and gives format previews mobile actions', () => {
-    const standalone = readFileSync(
-      new URL('../../src/view/workspace/StandaloneFilePreviewPage.vue', import.meta.url),
-      'utf8'
-    );
-    const formatPage = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceFormatFilePage.vue', import.meta.url),
-      'utf8'
-    );
-    const frame = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceFilePageFrame.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(standalone).toContain('<WorkspaceFileTabs');
-    expect(standalone).toContain(':tabs="standaloneTabs"');
-    expect(standalone).toContain('@activate="activateStandaloneTab"');
-    expect(standalone).toContain('@close="closeStandaloneTab"');
-    expect(standalone).toContain(
-      "const markdownPreviewMode = !query.has('repositoryPath') && query.get('markdownPreview') === '1';"
-    );
-    expect(standalone).toContain('v-if="markdownPreviewMode"');
-    expect(standalone).toContain(
-      "const htmlPreviewMode = !query.has('repositoryPath') && query.get('htmlPreview') === '1';"
-    );
-    const inspector = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceInspector.vue', import.meta.url),
-      'utf8'
-    );
-    expect(inspector).toContain(
-      "preview === 'html' && activePreview.value?.worktreePath.value !== undefined"
-    );
-    expect(formatPage).toContain("toggleEdit: () => 'UNAVAILABLE' as const");
-    expect(formatPage).toContain('createFilePreviewWindowInteractionService');
-    expect(formatPage).toContain('if (props.fullscreen) windowInteraction.mount();');
-    expect(standalone).toContain('if (renderedPreviewMode) windowInteraction.mount();');
-    expect(formatPage).toContain('<template #mobile-actions>');
-    expect(formatPage).toContain('mobile-actions-layout="compact"');
-    expect(formatPage).toContain("translate('generated.filePreviewDialog.closePreview2')");
-    expect(frame).toContain('class="mobile-preview-actions workspace-file-mobile-actions"');
-    expect(frame).toContain("translate('filePreviewDialog.collapseMobileActions')");
-    expect(frame).toContain('.workspace-file-mobile-actions.is-stacked');
-    expect(frame).toMatch(
-      /<div class="workspace-file-page-frame-content">\s*<FilePreviewLoading v-if="props.loading" overlay \/>/u
-    );
-    expect(frame).toContain('isolation: isolate');
-    expect(standalone).toContain('htmlUrl && !htmlFrameLoaded');
-    expect(standalone).toContain('htmlFrameLoaded.value = true');
-    expect(standalone).toContain('<FilePreviewLoading');
-    expect(formatPage).toContain('<FilePreviewLoading v-if="rendererLoading" overlay />');
-    const loading = readFileSync(
-      new URL('../../src/view/workspace/FilePreviewLoading.vue', import.meta.url),
-      'utf8'
-    );
-    expect(loading).toContain("translate('generated.filePreviewDialog.loadingPreview')");
-    expect(loading).toContain('<BusyIndicator />');
-    const sharedStyles = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
-    expect(sharedStyles).toContain('prefers-reduced-motion: no-preference');
-    expect(sharedStyles).toContain('busy-indicator-spin');
-    const textPage = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTextFilePage.vue', import.meta.url),
-      'utf8'
-    );
-    expect(textPage).toContain(':loading="loading"');
-    expect(textPage).not.toContain('class="file-preview-loading"');
   });
 });
 

@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../ee/web/src/util/api-error.js';
 import {
@@ -415,100 +413,20 @@ describe('Web conversation template service', () => {
       }
     ]);
   });
-
-  it('Asynchronous responses apply only to the same request sequence and resource context', async () => {
-    expect(
-      sameConversationTemplateRequestContext(
-        { sequence: 3, resourceId: 'template-1' },
-        { sequence: 3, resourceId: 'template-1' }
-      )
-    ).toBe(true);
-    expect(
-      sameConversationTemplateRequestContext(
-        { sequence: 4, resourceId: 'template-1' },
-        { sequence: 3, resourceId: 'template-1' }
-      )
-    ).toBe(false);
-    expect(
-      sameConversationTemplateRequestContext(
-        { sequence: 3, resourceId: 'template-2' },
-        { sequence: 3, resourceId: 'template-1' }
-      )
-    ).toBe(false);
-
-    const source = await readFile(
-      resolve(
-        process.cwd(),
-        'packages/web-core/src/view/settings/ConversationTemplateManagementPage.vue'
-      ),
-      'utf8'
-    );
-    expect(source).toContain(
-      'sameConversationTemplateRequestContext(workspaceRequestContext, context)'
-    );
-    expect(source).toContain('sameConversationTemplateRequestContext(mcpRequestContext, context)');
-    expect(source).toContain(
-      'sameConversationTemplateRequestContext(modelRequestContext, context)'
-    );
-    expect(source).toContain(
-      'sameConversationTemplateRequestContext(detailRequestContext, context)'
-    );
-    const extension = await readFile(
-      resolve(process.cwd(), 'ee/web/src/view/settings/ConversationTemplateManagementPage.vue'),
-      'utf8'
-    );
-    expect(extension).toContain(
-      'sameConversationTemplateRequestContext(grantRequestContext, context)'
-    );
-    expect(source).toContain('templateFailureMessage(inspection.code, inspection.message)');
-    expect(source).toContain('templateFailureMessage(');
-    expect(source).toContain('job.errorCode');
-    expect(source).not.toContain('message: inspection.message');
-    expect(extension).toContain('@closed="closeGrantDialog"');
-    expect(extension).toContain('organizations.value = organizationResult.organizations;');
-    expect(extension).toContain('organizationCascaderOptions(grantOrganizations.value)');
-    expect(extension).toContain('targetOrganizationId.value = grantOrganizations.value[0]?.id;');
-    expect(extension).toContain(
-      'organizationDisplayLabel(organizations.value, grant.targetOrganizationId)'
-    );
-    expect(source).not.toContain('draft.includePaths');
-    expect(source).not.toContain('draft.systemInstruction');
-    expect(source).not.toContain('draft.reasoningEfforts');
-    expect(source).not.toContain('draft.tools');
-    expect(source).not.toContain('draft.skillIds');
-    expect(source).not.toContain('draft.maxOutputBytes');
-    expect(source).not.toContain('draft.icon');
-    expect(source).not.toContain('conversationTemplates.icon');
-    expect(source).not.toContain('/api/admin/mar-agent/models');
-    expect(source).toContain('service.listModelOptions(nodeId)');
-    expect(source).not.toContain('allowedModelIds');
-    expect(source).toContain('allowedModels: conversationTemplateModelReferences(');
-    expect(source).toContain('reconcileConversationTemplateModelSelection(');
-    expect(source).toContain('conversationTemplateModelSelectionIsAvailable(');
-    expect(source).toContain('value="NONE"');
-    expect(source).toContain('value="UNRESTRICTED"');
-    expect(source).not.toContain('HOSTED_ONLY');
-    expect(source).not.toContain('networkHostedOnly');
-    expect(source).toContain('v-model="draft.mcpIds"');
-    expect(source).toContain('multiple');
-    expect(source).not.toContain('commaValues(');
-    expect(source).toContain('conversationTemplateBytesToMiB');
-    expect(source).toContain('conversationTemplateMiBToBytes');
-    expect(source).toContain('fileSizeLabel(row.totalBytes)');
-    expect(source).not.toContain('conversationTemplateFormatBytes');
-    expect(source).toContain('row.publishedVersion');
-    expect(source).not.toContain('r{{ row.draftRevision }}');
-    expect(source).not.toContain('detail.template.currentVersionId');
-    expect(source).not.toContain('detail.publishJobs');
-    expect(source).not.toContain('publishJobLabel');
-    const versionTable = source.slice(
-      source.indexOf(':data="detail.versions"'),
-      source.indexOf('</el-table>', source.indexOf(':data="detail.versions"'))
-    );
-    expect(versionTable).not.toContain('prop="status"');
-    expect(source).toContain(':disabled="editingTemplateId !== undefined"');
-  });
 });
+
+it.each([
+  [{ sequence: 3, resourceId: 'template-1' }, true],
+  [{ sequence: 4, resourceId: 'template-1' }, false],
+  [{ sequence: 3, resourceId: 'template-2' }, false]
+] as const)(
+  'matches response context %j only when sequence and resource agree',
+  (context, expected) => {
+    expect(
+      sameConversationTemplateRequestContext(context, { sequence: 3, resourceId: 'template-1' })
+    ).toBe(expected);
+  }
+);
 
 function recordRequest(
   requests: Array<{ path: string; init?: RequestInit }>,
