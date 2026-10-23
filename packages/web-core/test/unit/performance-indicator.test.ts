@@ -63,7 +63,7 @@ describe('Long Task diagnostic indicator', () => {
       );
       const html = await renderToString(app);
       expect(html).toContain('class="mar-icon"');
-      expect(html).toContain('cx="12" cy="7.8" r="1"');
+      expect(html).toContain('data-mar-icon="info"');
       expect(html).toContain('2026-10-17 23:45:46');
       const label = locale === 'en-US' ? 'Long tasks (10s)' : '长任务（10 秒）';
       const value = html
