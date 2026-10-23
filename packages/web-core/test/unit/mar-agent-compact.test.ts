@@ -4,10 +4,14 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import CompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue';
+import UnitCompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue?unit-render';
+import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
 import { createMarAgentCompactService } from '../../src/service/MarAgentCompactService.js';
 import { i18n } from '../../src/service/LocalePreferenceService.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { MarAgentCompactConfiguration } from '@myagentroam/protocol';
+
+vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
 
 const configuration: MarAgentCompactConfiguration = {
   enabled: true,
@@ -102,19 +106,129 @@ describe('MAR Agent compact settings form', () => {
     }
   });
 
-  it('gates writes, resets effort on model change and aborts the load lifetime', () => {
-    const source = readFileSync(
-      new URL('../../src/view/settings/MarAgentCompactSettings.vue', import.meta.url),
-      'utf8'
+  it.each([false, true])(
+    'gates saves and resets effort through the model control (writable=%s)',
+    async (writable) => {
+      const request = vi.fn(async (path: string, init?: RequestInit) => {
+        if (path.endsWith('/models'))
+          return {
+            models: [
+              {
+                id: 'coding-compact',
+                enabled: true,
+                reasoningEfforts: ['high'],
+                defaultReasoningEffort: 'high'
+              },
+              {
+                id: 'other-model',
+                enabled: true,
+                reasoningEfforts: ['low', 'medium'],
+                defaultReasoningEffort: 'medium'
+              }
+            ]
+          };
+        return {
+          configuration: init?.method === 'PUT' ? JSON.parse(String(init.body)) : configuration
+        };
+      });
+      const view = renderComponent(UnitCompactSettings, { request, writable });
+      try {
+        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
+        await flushComponent();
+        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(!writable);
+        const model = view.findAll('ElSelect')[0]!;
+        await trigger(model, 'onUpdate:modelValue', 'other-model');
+        await trigger(model, 'onChange', 'other-model');
+        expect(view.findAll('ElSelect')[1]!.props.modelValue).toBe('medium');
+        const save = view.findAll('ElButton').find((button) => button.props.type === 'primary')!;
+        await trigger(save, 'onClick');
+        const writes = request.mock.calls.filter(([, init]) => init?.method === 'PUT');
+        expect(writes).toHaveLength(writable ? 1 : 0);
+        if (writable)
+          expect(JSON.parse(String(writes[0]![1]!.body))).toEqual({
+            enabled: true,
+            modelId: 'other-model',
+            reasoningEffort: 'medium'
+          });
+      } finally {
+        view.unmount();
+      }
+      expect(request.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    }
+  );
+
+  it.each(['modelId', 'reasoningEffort'])('rejects a missing %s without saving', async (field) => {
+    const request = vi.fn(async (_path: string, _init?: RequestInit) => ({
+      configuration,
+      models: [
+        {
+          id: 'coding-compact',
+          enabled: true,
+          reasoningEfforts: ['high'],
+          defaultReasoningEffort: 'high'
+        }
+      ]
+    }));
+    const validate = vi.fn(async () => false);
+    const view = renderComponent(
+      UnitCompactSettings,
+      { request, writable: true },
+      {},
+      { validate }
     );
-    expect(source).toContain('createMarAgentCompactService(props.request)');
-    expect(source).toContain('if (!props.writable || busy.value || !ready.value || !form.value)');
-    expect(source).toContain('@change="modelChanged"');
-    expect(source).toContain('resolveMarAgentDefaultReasoningEffort');
-    expect(source).toContain("translate('marAgentModels.compactModelRequired')");
-    expect(source).toContain("translate('marAgentModels.compactEffortRequired')");
-    expect(source).toContain(':disabled="!writable || busy || !ready"');
-    expect(source).toContain('onBeforeUnmount(() => lifetime.abort())');
+    try {
+      await flushComponent();
+      await trigger(
+        view.findAll('ElSelect')[field === 'modelId' ? 0 : 1]!,
+        'onUpdate:modelValue',
+        null
+      );
+      const rules = view.findAll('ElForm')[0]!.props.rules as Record<
+        string,
+        Array<{
+          validator: (rule: unknown, value: unknown, done: (error?: Error) => void) => void;
+        }>
+      >;
+      const done = vi.fn();
+      rules[field]![0]!.validator({}, null, done);
+      expect(done).toHaveBeenCalledWith(
+        new Error(
+          i18n.global.t(
+            field === 'modelId'
+              ? 'marAgentModels.compactModelRequired'
+              : 'marAgentModels.compactEffortRequired'
+          )
+        )
+      );
+      await trigger(
+        view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+        'onClick'
+      );
+      expect(validate).toHaveBeenCalledOnce();
+      expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('aborts a pending load on unmount without admitting a save', async () => {
+    let release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    const request = vi.fn((_path: string, _init?: RequestInit) => pending);
+    const view = renderComponent(UnitCompactSettings, { request, writable: true });
+    const signal = request.mock.calls[0]![1]!.signal!;
+    await trigger(
+      view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+      'onClick'
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+    release({ configuration, models: [] });
+    await flushComponent();
+    expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
   });
 
   it('lives in MAR Agent management, not in the system configuration page', () => {

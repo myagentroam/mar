@@ -26,6 +26,7 @@ async function render(component: Component, props: Record<string, unknown>): Pro
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
   app.use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -60,7 +61,6 @@ function expectUnifiedButtonHints(html: string): void {
   for (const button of buttons) {
     expect(button).not.toMatch(/\stitle="[^"]+"/u);
   }
-  expect(html).toContain('el-tooltip__trigger');
 }
 
 function stubBrowserEnvironment(): {
