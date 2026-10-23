@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { tooltipOptions } from '../../util/tooltip.js';
 import { onBeforeUnmount, ref } from 'vue';
 
 const props = defineProps<{
@@ -11,7 +10,6 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ resize: [width: number] }>();
 const dragging = ref(false);
-const handleElement = ref<HTMLElement>();
 let drag: { pointerId: number; x: number; width: number } | undefined;
 
 function resize(value: number): void {
@@ -56,7 +54,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    ref="handleElement"
+    v-tooltip="label"
     class="panel-resize-handle"
     :class="{ dragging }"
     role="separator"
@@ -67,14 +65,7 @@ onBeforeUnmount(() => {
     @pointerup="finish"
     @pointercancel="finish"
     @lostpointercapture="finish"
-  >
-    <el-tooltip
-      v-bind="tooltipOptions"
-      :content="label"
-      :virtual-ref="handleElement"
-      virtual-triggering
-    />
-  </div>
+  />
 </template>
 
 <style scoped>

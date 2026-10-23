@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, reactive, ref, watch } from 'vue';
@@ -148,20 +147,17 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         <slot name="ownership" />
 
         <div v-if="directory !== undefined" class="workspace-picker-toolbar">
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
-            ><el-button
-              :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
-              :icon="marIcon('chevron-left')"
-              :disabled="directory.parentPath === null || loadingDirectory"
-              native-type="button"
-              text
-              @click="emit('navigate', directory.parentPath ?? undefined)"
-            >
-              {{ translate('generated.workspaceRegistrationPicker.up') }}
-            </el-button></el-tooltip
+          <el-button
+            v-tooltip="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
+            :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
+            :icon="marIcon('chevron-left')"
+            :disabled="directory.parentPath === null || loadingDirectory"
+            native-type="button"
+            text
+            @click="emit('navigate', directory.parentPath ?? undefined)"
           >
+            {{ translate('generated.workspaceRegistrationPicker.up') }}
+          </el-button>
           <el-dropdown
             v-if="directory.browseRoots.length > 1"
             :disabled="loadingDirectory"
@@ -186,35 +182,28 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           >
             <template v-for="(breadcrumb, index) in breadcrumbs" :key="breadcrumb.path">
               <span v-if="index > 0">/</span>
-              <el-tooltip
-                v-bind="tooltipOptions"
+              <el-button
+                v-tooltip="breadcrumb.path"
                 v-if="index < breadcrumbs.length - 1"
-                :content="breadcrumb.path"
-                ><el-button
-                  :disabled="loadingDirectory"
-                  text
-                  @click="emit('navigate', breadcrumb.path)"
-                >
-                  {{ breadcrumb.label }}
-                </el-button></el-tooltip
+                :disabled="loadingDirectory"
+                text
+                @click="emit('navigate', breadcrumb.path)"
               >
-              <el-tooltip v-bind="tooltipOptions" v-else :content="breadcrumb.path"
-                ><strong>{{ breadcrumb.label }}</strong></el-tooltip
-              >
+                {{ breadcrumb.label }}
+              </el-button>
+              <strong v-tooltip="breadcrumb.path" v-else>{{ breadcrumb.label }}</strong>
             </template>
           </nav>
           <div class="workspace-picker-toolbar-actions">
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
-              ><el-button
-                :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
-                :icon="marIcon('refresh')"
-                :disabled="loadingDirectory"
-                native-type="button"
-                text
-                @click="emit('navigate', directory.currentPath)"
-            /></el-tooltip>
+            <el-button
+              v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
+              :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
+              :icon="marIcon('refresh')"
+              :disabled="loadingDirectory"
+              native-type="button"
+              text
+              @click="emit('navigate', directory.currentPath)"
+            />
             <el-button
               :icon="marIcon('folder-add')"
               :disabled="!canCreateDirectory || loadingDirectory"
@@ -257,16 +246,14 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
                 translate('generated.workspaceRegistrationPicker.pending')
               }}</el-tag>
             </button>
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
-              ><button
-                :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
-                type="button"
-                @click="emit('discard-pending')"
-              >
-                <MarIcon name="close" /></button
-            ></el-tooltip>
+            <button
+              v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
+              :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
+              type="button"
+              @click="emit('discard-pending')"
+            >
+              <MarIcon name="close" />
+            </button>
           </li>
           <li v-for="entry in filteredEntries" :key="entry.path">
             <button
@@ -282,21 +269,19 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
                 translate('generated.workspaceRegistrationPicker.outsideAllowedRoots')
               }}</small>
             </button>
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="
+            <button
+              v-tooltip="
                 translate('generated.workspaceRegistrationPicker.open2', { value0: entry.name })
               "
-              ><button
-                :aria-label="
-                  translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
-                "
-                :disabled="loadingDirectory"
-                type="button"
-                @click="emit('navigate', entry.path)"
-              >
-                <MarIcon name="chevron-right" /></button
-            ></el-tooltip>
+              :aria-label="
+                translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
+              "
+              :disabled="loadingDirectory"
+              type="button"
+              @click="emit('navigate', entry.path)"
+            >
+              <MarIcon name="chevron-right" />
+            </button>
           </li>
           <li
             v-if="
@@ -329,11 +314,9 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           >{{ translate('personalGit.preserve') }}</el-checkbox
         >
         <div class="workspace-picker-actions">
-          <el-tooltip v-bind="tooltipOptions" v-if="selectedPath" :content="selectedPath"
-            ><code
-              >{{ translate('generated.workspaceRegistrationPicker.selected') }}
-              {{ selectedPath }}</code
-            ></el-tooltip
+          <code v-tooltip="selectedPath" v-if="selectedPath"
+            >{{ translate('generated.workspaceRegistrationPicker.selected') }}
+            {{ selectedPath }}</code
           >
           <span v-else />
           <el-button

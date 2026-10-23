@@ -1,6 +1,6 @@
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { ElButton, ElIcon, ElTooltip, ID_INJECTION_KEY } from 'element-plus';
+import { ElButton, ElIcon, ID_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
@@ -48,10 +48,10 @@ describe('Long Task diagnostic indicator', () => {
       localePreferenceService().setLocale(locale);
       const app = createSSRApp({ render: () => h(WebPerformanceIndicator, { diagnostics }) });
       app.use(i18n);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
       app.component('ElButton', ElButton);
       app.component('ElIcon', ElIcon);
-      app.component('ElTooltip', ElTooltip);
       // Render the reference and content; placement and hover are unchanged.
       app.component(
         'ElPopover',
@@ -62,6 +62,9 @@ describe('Long Task diagnostic indicator', () => {
         })
       );
       const html = await renderToString(app);
+      const copyLabel = i18n.global.t('performanceDiagnostics.copy');
+      expect(html).toContain(`aria-label="${copyLabel}"`);
+      expect(html).not.toContain(`title="${copyLabel}"`);
       expect(html).toContain('class="mar-icon"');
       expect(html).toContain('data-mar-icon="info"');
       expect(html).toContain('2026-10-17 23:45:46');

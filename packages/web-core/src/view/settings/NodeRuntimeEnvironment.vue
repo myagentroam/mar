@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed } from 'vue';
 import { translate } from '../../service/LocalePreferenceService';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
@@ -97,9 +96,9 @@ function computerUseStatus(capability: ComputerUseCapability): string {
           }}
         </el-tag>
         <span v-if="row.version" class="runtime-command-version">{{ row.version }}</span>
-        <el-tooltip v-bind="tooltipOptions" v-if="row.path" :content="row.path"
-          ><span class="runtime-command-path">{{ row.path }}</span></el-tooltip
-        >
+        <span v-tooltip="row.path" v-if="row.path" class="runtime-command-path">{{
+          row.path
+        }}</span>
       </div>
     </div>
     <span v-else>{{

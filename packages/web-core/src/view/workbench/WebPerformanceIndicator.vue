@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
-import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 
@@ -98,14 +97,14 @@ onBeforeUnmount(props.diagnostics.dispose);
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
-          <el-tooltip v-bind="tooltipOptions" :content="t('performanceDiagnostics.copy')"
-            ><el-button
-              link
-              :aria-label="t('performanceDiagnostics.copy')"
-              @click="copyDiagnostics"
-            >
-              <MarIcon name="copy" /> </el-button
-          ></el-tooltip>
+          <el-button
+            v-tooltip="t('performanceDiagnostics.copy')"
+            link
+            :aria-label="t('performanceDiagnostics.copy')"
+            @click="copyDiagnostics"
+          >
+            <MarIcon name="copy" />
+          </el-button>
         </div>
       </header>
       <dl>

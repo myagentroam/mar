@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
-import { tooltipOptions } from '../../util/tooltip.js';
-
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
@@ -46,48 +44,41 @@ async function copySessionId(sessionId: string): Promise<void> {
           aria-hidden="true"
           class="runner-brand-icon conversation-title-runner-icon"
         />
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="
+        <h2
+          v-tooltip="
             sessionIsDraft(session)
               ? translate('generated.conversationHeader.newSession')
               : sessionTitle(session!)
           "
-          ><h2>
-            {{
-              sessionIsDraft(session)
-                ? translate('generated.conversationHeader.newSession2')
-                : sessionTitle(session!)
-            }}
-          </h2></el-tooltip
         >
-        <el-tooltip
-          v-bind="tooltipOptions"
+          {{
+            sessionIsDraft(session)
+              ? translate('generated.conversationHeader.newSession2')
+              : sessionTitle(session!)
+          }}
+        </h2>
+        <span
+          v-tooltip="activityLabel(session)"
           v-if="session && !sessionIsDraft(session) && activity(session) === 'MANAGED_ACTIVE'"
-          :content="activityLabel(session)"
-          ><span
-            :class="['session-activity', activity(session).toLocaleLowerCase()]"
-            :aria-label="activityLabel(session)"
-            role="img"
-            ><i aria-hidden="true" /></span
-        ></el-tooltip>
+          :class="['session-activity', activity(session).toLocaleLowerCase()]"
+          :aria-label="activityLabel(session)"
+          role="img"
+          ><i aria-hidden="true"
+        /></span>
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="
+        <button
+          v-tooltip="
             translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
           "
-          ><button
-            type="button"
-            :aria-label="
-              translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
-            "
-            @click="copySessionId(session.id)"
-          >
-            <code>{{ session.id }}</code>
-          </button></el-tooltip
+          type="button"
+          :aria-label="
+            translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
+          "
+          @click="copySessionId(session.id)"
         >
+          <code>{{ session.id }}</code>
+        </button>
       </p>
     </div>
     <div

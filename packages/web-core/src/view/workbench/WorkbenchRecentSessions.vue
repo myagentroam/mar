@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type {
@@ -91,29 +90,29 @@ function runTime(run: RecentRun): string {
     >
       <template #reference>
         <span class="recent-sessions-reference">
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :placement="mobileMode ? 'bottom' : 'right'"
-            :content="translate('workbenchNotificationCenter.recentSessions')"
-            ><span class="mar-tooltip-control"
-              ><button
-                type="button"
-                :class="['recent-sessions-trigger', { active: open }]"
-                :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-                :aria-description="
-                  translate('workbenchNotificationCenter.recentSessionsCount', {
-                    count: activeSessionCount
-                  })
-                "
-                :aria-expanded="open"
-                @keydown.esc.stop="open = false"
-              >
-                <MarIcon name="recent-sessions" aria-hidden="true" />
-                <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
-                  activeSessionCount
-                }}</span>
-              </button></span
-            ></el-tooltip
+          <span
+            v-tooltip="{
+              content: translate('workbenchNotificationCenter.recentSessions'),
+              placement: mobileMode ? 'bottom' : 'right'
+            }"
+            class="mar-tooltip-control"
+            ><button
+              type="button"
+              :class="['recent-sessions-trigger', { active: open }]"
+              :aria-label="translate('workbenchNotificationCenter.recentSessions')"
+              :aria-description="
+                translate('workbenchNotificationCenter.recentSessionsCount', {
+                  count: activeSessionCount
+                })
+              "
+              :aria-expanded="open"
+              @keydown.esc.stop="open = false"
+            >
+              <MarIcon name="recent-sessions" aria-hidden="true" />
+              <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
+                activeSessionCount
+              }}</span>
+            </button></span
           >
         </span>
       </template>
@@ -128,28 +127,26 @@ function runTime(run: RecentRun): string {
         </p>
         <ul v-else class="recent-sessions-list">
           <li v-for="run in service.recentRuns.value" :key="`${run.nodeId}:${run.runId}`">
-            <button type="button" @click="openSession(run)">
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="
-                  translate('workbenchNotificationCenter.recentRunTitle', {
-                    value0: run.workspaceName ?? run.workspaceId,
-                    value1: run.sessionTitle
-                  })
-                "
-                ><span class="recent-session-title">{{
-                  translate('workbenchNotificationCenter.recentRunTitle', {
-                    value0: run.workspaceName ?? run.workspaceId,
-                    value1: run.sessionTitle
-                  })
-                }}</span></el-tooltip
-              >
+            <button
+              v-tooltip="
+                translate('workbenchNotificationCenter.recentRunTitle', {
+                  value0: run.workspaceName ?? run.workspaceId,
+                  value1: run.sessionTitle
+                })
+              "
+              type="button"
+              @click="openSession(run)"
+            >
+              <span class="recent-session-title">{{
+                translate('workbenchNotificationCenter.recentRunTitle', {
+                  value0: run.workspaceName ?? run.workspaceId,
+                  value1: run.sessionTitle
+                })
+              }}</span>
               <el-tag size="small" :type="runStatusType(run.status)">{{
                 translate(RUN_STATUS_KEYS[run.status])
               }}</el-tag>
-              <el-tooltip v-bind="tooltipOptions" :content="run.userMessage"
-                ><small>{{ run.userMessage }}</small></el-tooltip
-              >
+              <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
               <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{
                 runTime(run)
               }}</time>

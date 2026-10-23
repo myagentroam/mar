@@ -2,7 +2,6 @@
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 
 import { ref, watch } from 'vue';
@@ -215,27 +214,25 @@ function usagePercentageLabel(value: number): string {
       <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.supportedAgents')">
         <div v-if="supportedAgents(node).length > 0" class="supported-agent-list">
           <div v-for="entry in supportedAgents(node)" :key="entry.runner">
-            <el-tooltip v-bind="tooltipOptions" :content="supportedAgentTitle(entry)">
-              <span class="supported-agent-label">{{ supportedAgentTitle(entry) }}</span>
-            </el-tooltip>
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <span v-tooltip="supportedAgentTitle(entry)" class="supported-agent-label">{{
+              supportedAgentTitle(entry)
+            }}</span>
+            <el-button
+              v-tooltip="{
+                content: usageDisabledReason(entry.runner),
+                disabled: usageDisabledReason(entry.runner) === ''
+              }"
               v-if="entry.runner !== 'opencode'"
-              :content="usageDisabledReason(entry.runner)"
-              :disabled="usageDisabledReason(entry.runner) === ''"
+              class="runner-usage-link"
+              link
+              type="primary"
+              :loading="usageLoading === entry.runner"
+              :disabled="usageDisabledReason(entry.runner) !== ''"
+              @click="emit('usage', entry.runner)"
+              :loading-icon="marIcon('loading-action')"
             >
-              <el-button
-                class="runner-usage-link"
-                link
-                type="primary"
-                :loading="usageLoading === entry.runner"
-                :disabled="usageDisabledReason(entry.runner) !== ''"
-                @click="emit('usage', entry.runner)"
-                :loading-icon="marIcon('loading-action')"
-              >
-                {{ translate('common.usage') }}
-              </el-button>
-            </el-tooltip>
+              {{ translate('common.usage') }}
+            </el-button>
           </div>
         </div>
         <span v-else>{{ translate('generated.nodeDetailsDialogs.none') }}</span>

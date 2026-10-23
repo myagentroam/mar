@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { QuickPrompt, RunnerCommand } from '../../model/workbench.js';
@@ -85,6 +84,7 @@ function statusText(): string {
         {{ translate('generated.composerCommandPicker.runnerCommands') }}
       </p>
       <button
+        v-tooltip="command.description"
         v-for="(command, index) in commands"
         :key="command.id"
         :class="{ active: index === activeIndex }"
@@ -96,9 +96,7 @@ function statusText(): string {
         @click="emit('select', command)"
       >
         <strong>/{{ command.id }}</strong
-        ><el-tooltip v-bind="tooltipOptions" :content="command.description"
-          ><span>{{ command.description }}</span></el-tooltip
-        >
+        ><span>{{ command.description }}</span>
       </button>
     </template>
     <template v-if="skillsEnabled && skills.length > 0">
@@ -106,6 +104,7 @@ function statusText(): string {
         {{ translate('generated.composerCommandPicker.skills') }}
       </p>
       <button
+        v-tooltip="skill.description"
         v-for="(skill, index) in skills"
         :key="skill.name"
         :class="{ active: commands.length + index === activeIndex }"
@@ -117,14 +116,13 @@ function statusText(): string {
         @click="emit('selectSkill', skill)"
       >
         <strong>{{ skill.name }}</strong
-        ><el-tooltip v-bind="tooltipOptions" :content="skill.description"
-          ><span>{{ skill.description }}</span></el-tooltip
-        >
+        ><span>{{ skill.description }}</span>
       </button>
     </template>
     <template v-if="quickPrompts.length > 0">
       <p class="picker-group" role="presentation">{{ translate('quickPrompts.picker') }}</p>
       <button
+        v-tooltip="prompt.prompt"
         v-for="(prompt, index) in quickPrompts"
         :key="prompt.id"
         :class="{ active: index === activeIndex }"
@@ -135,12 +133,8 @@ function statusText(): string {
         @mouseenter="emit('activate', index)"
         @click="emit('selectQuickPrompt', prompt)"
       >
-        <el-tooltip v-bind="tooltipOptions" :content="`#${prompt.phrase}`"
-          ><strong>#{{ prompt.phrase }}</strong></el-tooltip
-        >
-        <el-tooltip v-bind="tooltipOptions" :content="prompt.prompt"
-          ><span class="quick-prompt-content">{{ prompt.prompt }}</span></el-tooltip
-        >
+        <strong v-tooltip="`#${prompt.phrase}`">#{{ prompt.phrase }}</strong>
+        <span class="quick-prompt-content">{{ prompt.prompt }}</span>
       </button>
     </template>
     <p v-if="commands.length === 0 && skills.length === 0 && quickPrompts.length === 0">

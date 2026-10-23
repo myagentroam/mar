@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { RunnerCommandState, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -269,17 +268,17 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           translate('generated.composerQueue.goalType')
         }}</span>
         <div v-if="!goalEditing" class="goal-content-row">
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="goal.goal.objective"
-            placement="top-start"
-            popper-class="goal-objective-tooltip"
-            :show-after="350"
+          <p
+            v-tooltip="{
+              content: goal.goal.objective,
+              placement: 'top-start',
+              popperClass: 'goal-objective-tooltip'
+            }"
+            class="work-item-content goal-objective"
+            tabindex="0"
           >
-            <p class="work-item-content goal-objective" tabindex="0">
-              {{ goal.goal.objective }}
-            </p>
-          </el-tooltip>
+            {{ goal.goal.objective }}
+          </p>
           <div class="work-item-actions goal-actions">
             <button type="button" @click="goalDetailsOpen = true">
               {{ translate('goal.view') }}
@@ -370,13 +369,11 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
               : translate('generated.composerQueue.queueType', { position: index + 1 })
           }}</span>
           <div class="queue-item-content">
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <small
+              v-tooltip="messageSource(item)?.title"
               v-if="messageSource(item)"
-              :content="messageSource(item)?.title"
-              ><small :aria-description="messageSource(item)?.title">{{
-                messageSource(item)?.label
-              }}</small></el-tooltip
+              :aria-description="messageSource(item)?.title"
+              >{{ messageSource(item)?.label }}</small
             >
             <el-input
               v-if="editingQueueItemId === item.queueItemId"
@@ -388,74 +385,61 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
               @keydown="onQueueEditorKeydown($event, item)"
             />
             <template v-else>
-              <el-tooltip
-                v-bind="tooltipOptions"
+              <p
+                v-tooltip="conversationItemText('user_message', { text: item.content })"
                 v-if="conversationItemText('user_message', { text: item.content })"
-                :content="conversationItemText('user_message', { text: item.content })"
-                ><p class="work-item-content">
-                  {{ conversationItemText('user_message', { text: item.content }) }}
-                </p></el-tooltip
+                class="work-item-content"
               >
+                {{ conversationItemText('user_message', { text: item.content }) }}
+              </p>
             </template>
           </div>
           <div class="work-item-actions queue-item-actions">
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <button
+              v-tooltip="translate('generated.composerQueue.save')"
               v-if="editingQueueItemId === item.queueItemId"
-              :content="translate('generated.composerQueue.save')"
-              ><button
-                type="button"
-                :aria-label="translate('generated.composerQueue.save')"
-                @click="emit('save', item.queueItemId)"
-              >
-                <span class="work-item-action-label">{{
-                  translate('generated.composerQueue.save')
-                }}</span>
-              </button></el-tooltip
+              type="button"
+              :aria-label="translate('generated.composerQueue.save')"
+              @click="emit('save', item.queueItemId)"
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
+              <span class="work-item-action-label">{{
+                translate('generated.composerQueue.save')
+              }}</span>
+            </button>
+            <button
+              v-tooltip="translate('generated.composerQueue.edit')"
               v-else
-              :content="translate('generated.composerQueue.edit')"
-              ><button
-                type="button"
-                :aria-label="translate('generated.composerQueue.edit')"
-                @click="emit('edit', item)"
-              >
-                <span class="work-item-action-label">{{
-                  translate('generated.composerQueue.edit')
-                }}</span>
-              </button></el-tooltip
+              type="button"
+              :aria-label="translate('generated.composerQueue.edit')"
+              @click="emit('edit', item)"
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.composerQueue.runNow')"
-              ><button
-                class="work-item-primary-action"
-                type="button"
-                :disabled="loading"
-                :aria-label="translate('generated.composerQueue.runNow')"
-                @click="executeQueueItem(item)"
-              >
-                <span class="work-item-action-label">{{
-                  translate('generated.composerQueue.runNow')
-                }}</span>
-              </button></el-tooltip
+              <span class="work-item-action-label">{{
+                translate('generated.composerQueue.edit')
+              }}</span>
+            </button>
+            <button
+              v-tooltip="translate('generated.composerQueue.runNow')"
+              class="work-item-primary-action"
+              type="button"
+              :disabled="loading"
+              :aria-label="translate('generated.composerQueue.runNow')"
+              @click="executeQueueItem(item)"
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.composerQueue.delete')"
-              ><button
-                class="work-item-danger-action"
-                type="button"
-                :aria-label="translate('generated.composerQueue.delete')"
-                @click="emit('deleteItem', item.queueItemId)"
-              >
-                <span class="work-item-action-label">{{
-                  translate('generated.composerQueue.delete')
-                }}</span>
-              </button></el-tooltip
+              <span class="work-item-action-label">{{
+                translate('generated.composerQueue.runNow')
+              }}</span>
+            </button>
+            <button
+              v-tooltip="translate('generated.composerQueue.delete')"
+              class="work-item-danger-action"
+              type="button"
+              :aria-label="translate('generated.composerQueue.delete')"
+              @click="emit('deleteItem', item.queueItemId)"
             >
+              <span class="work-item-action-label">{{
+                translate('generated.composerQueue.delete')
+              }}</span>
+            </button>
           </div>
         </li>
       </ol>

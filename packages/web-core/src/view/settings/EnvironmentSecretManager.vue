@@ -5,7 +5,6 @@
 >
 import { showMessage } from '../../service/MessageFeedbackService.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
@@ -361,9 +360,7 @@ function message(error: unknown): string {
         min-width="150"
       >
         <template #default="{ row }">
-          <el-tooltip v-bind="tooltipOptions" :content="row.name"
-            ><span>{{ row.name }}</span></el-tooltip
-          >
+          <span v-tooltip="row.name">{{ row.name }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -373,9 +370,7 @@ function message(error: unknown): string {
         min-width="170"
       >
         <template #default="{ row }">
-          <el-tooltip v-bind="tooltipOptions" :content="row.value"
-            ><code class="secret-value">{{ row.value }}</code></el-tooltip
-          >
+          <code v-tooltip="row.value" class="secret-value">{{ row.value }}</code>
         </template>
       </el-table-column>
       <el-table-column

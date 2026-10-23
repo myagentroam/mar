@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { nextTick, onMounted, ref } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 
@@ -53,26 +52,29 @@ onMounted(focus);
       <span class="inline-find-count" aria-live="polite"
         >{{ current }} / {{ total }}{{ truncated ? '+' : '' }}</span
       >
-      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.previous')"
-        ><el-button
-          text
-          :disabled="total === 0"
-          :aria-label="translate('inlineFind.previous')"
-          @click="emit('previous')"
-          ><MarIcon name="chevron-up" /></el-button
-      ></el-tooltip>
-      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.next')"
-        ><el-button
-          text
-          :disabled="total === 0"
-          :aria-label="translate('inlineFind.next')"
-          @click="emit('next')"
-          ><MarIcon name="chevron-down" /></el-button
-      ></el-tooltip>
-      <el-tooltip v-bind="tooltipOptions" :content="translate('inlineFind.close')"
-        ><el-button text :aria-label="translate('inlineFind.close')" @click="emit('close')"
-          ><MarIcon name="close" /></el-button
-      ></el-tooltip>
+      <el-button
+        v-tooltip="translate('inlineFind.previous')"
+        text
+        :disabled="total === 0"
+        :aria-label="translate('inlineFind.previous')"
+        @click="emit('previous')"
+        ><MarIcon name="chevron-up"
+      /></el-button>
+      <el-button
+        v-tooltip="translate('inlineFind.next')"
+        text
+        :disabled="total === 0"
+        :aria-label="translate('inlineFind.next')"
+        @click="emit('next')"
+        ><MarIcon name="chevron-down"
+      /></el-button>
+      <el-button
+        v-tooltip="translate('inlineFind.close')"
+        text
+        :aria-label="translate('inlineFind.close')"
+        @click="emit('close')"
+        ><MarIcon name="close"
+      /></el-button>
     </div>
   </div>
 </template>

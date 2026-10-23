@@ -3,7 +3,6 @@ import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
@@ -287,16 +286,12 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           </el-button>
           <el-dropdown trigger="click" @command="themeAction(item, $event)">
             <el-button
+              v-tooltip="t('customThemes.moreActions', { name: item.name })"
               class="utility-control"
               text
               :aria-label="t('customThemes.moreActions', { name: item.name })"
             >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="t('customThemes.moreActions', { name: item.name })"
-              >
-                <MarIcon name="more" />
-              </el-tooltip>
+              <MarIcon name="more" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -149,30 +148,28 @@ const emit = defineEmits<{
 
 <template>
   <div ref="center" :class="['workbench-notification-center', { 'mobile-mode': mobileMode }]">
-    <el-tooltip
-      v-bind="tooltipOptions"
-      :content="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-      ><span class="mar-tooltip-control"
-        ><button
-          :class="[
-            'workbench-notification-trigger',
-            'icon-button',
-            { 'utility-control': !mobileMode }
-          ]"
-          type="button"
-          :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
-          :aria-expanded="open"
-          @click="toggle"
-        >
-          <MarIcon name="notification" aria-hidden="true" />
-          <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
-            triggerLabel
-          }}</span>
-          <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
-            service.unreadCount.value
-          }}</span>
-        </button></span
-      ></el-tooltip
+    <span
+      v-tooltip="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+      class="mar-tooltip-control"
+      ><button
+        :class="[
+          'workbench-notification-trigger',
+          'icon-button',
+          { 'utility-control': !mobileMode }
+        ]"
+        type="button"
+        :aria-label="translate('generated.workbenchNotificationCenter.openNotificationCenter')"
+        :aria-expanded="open"
+        @click="toggle"
+      >
+        <MarIcon name="notification" aria-hidden="true" />
+        <span v-if="triggerLabel" class="workbench-notification-trigger-label">{{
+          triggerLabel
+        }}</span>
+        <span v-if="service.unreadCount.value" class="workbench-notification-badge">{{
+          service.unreadCount.value
+        }}</span>
+      </button></span
     >
     <Teleport to="body" :disabled="!mobileMode">
       <Transition name="workbench-notification-panel">
@@ -206,9 +203,7 @@ const emit = defineEmits<{
               >
                 <MarIcon name="upload" />
                 <div>
-                  <el-tooltip v-bind="tooltipOptions" :content="task.name"
-                    ><strong>{{ task.name }}</strong></el-tooltip
-                  >
+                  <strong v-tooltip="task.name">{{ task.name }}</strong>
                   <small>
                     <span class="workbench-upload-size"
                       >{{ fileSizeLabel(task.receivedBytes) }} /

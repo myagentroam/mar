@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
 
@@ -18,28 +17,26 @@ const emit = defineEmits<{
       :key="attachment.id"
       :class="{ 'attachment-with-preview': attachment.previewUrl !== null }"
     >
-      <el-tooltip
-        v-bind="tooltipOptions"
-        v-if="attachment.previewUrl"
-        :content="
+      <button
+        v-tooltip="
           translate('generated.composerAttachments.enlarge', { value0: attachment.file.name })
         "
-        ><button
-          class="composer-attachment-preview"
-          type="button"
-          :aria-label="
-            translate('generated.composerAttachments.enlargeAttachment', {
-              value0: attachment.file.name
-            })
-          "
-          @click="emit('preview', attachment)"
-        >
-          <img
-            class="composer-attachment-thumbnail"
-            :src="attachment.previewUrl"
-            :alt="attachment.file.name"
-          /></button
-      ></el-tooltip>
+        v-if="attachment.previewUrl"
+        class="composer-attachment-preview"
+        type="button"
+        :aria-label="
+          translate('generated.composerAttachments.enlargeAttachment', {
+            value0: attachment.file.name
+          })
+        "
+        @click="emit('preview', attachment)"
+      >
+        <img
+          class="composer-attachment-thumbnail"
+          :src="attachment.previewUrl"
+          :alt="attachment.file.name"
+        />
+      </button>
       <span class="attachment-name">{{ attachment.file.name }}</span>
       <small>{{ Math.ceil(attachment.file.size / 1024) }} KiB</small>
       <small v-if="attachment.status === 'UPLOADING'">
@@ -71,25 +68,23 @@ const emit = defineEmits<{
         >{{ translate('generated.composerAttachments.uploadFailed')
         }}{{ attachment.error ? `: ${attachment.error}` : '' }}</small
       >
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="
+      <button
+        v-tooltip="
           translate('generated.composerAttachments.removeAttachment2', {
             value0: attachment.file.name
           })
         "
-        ><button
-          type="button"
-          class="composer-attachment-remove"
-          :aria-label="
-            translate('generated.composerAttachments.removeAttachment', {
-              value0: attachment.file.name
-            })
-          "
-          @click="emit('removeAttachment', attachment.id)"
-        >
-          <MarIcon name="delete" /></button
-      ></el-tooltip>
+        type="button"
+        class="composer-attachment-remove"
+        :aria-label="
+          translate('generated.composerAttachments.removeAttachment', {
+            value0: attachment.file.name
+          })
+        "
+        @click="emit('removeAttachment', attachment.id)"
+      >
+        <MarIcon name="delete" />
+      </button>
     </li>
   </ul>
 </template>

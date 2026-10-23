@@ -4,7 +4,6 @@ import { showMessage } from '../../service/MessageFeedbackService.js';
 import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
 import { ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -458,9 +457,7 @@ onBeforeUnmount(() => {
       <ul v-if="attachments.length" class="hosted-attachments">
         <li v-for="attachment in attachments" :key="attachment.id">
           <img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.name" />
-          <el-tooltip v-bind="tooltipOptions" :content="attachment.name"
-            ><span>{{ attachment.name }}</span></el-tooltip
-          >
+          <span v-tooltip="attachment.name">{{ attachment.name }}</span>
           <small v-if="attachment.status === 'UPLOADING'" role="status" aria-live="polite">
             {{
               translate('hostedConversations.uploadProgress', {
@@ -511,18 +508,16 @@ onBeforeUnmount(() => {
           multiple
           @change="selectedFiles"
         />
-        <el-tooltip
-          v-bind="tooltipOptions"
-          :content="translate('hostedConversations.addAttachment')"
-          ><button
-            class="hosted-icon-button utility-control"
-            type="button"
-            :disabled="composerReadonly"
-            :aria-label="translate('hostedConversations.addAttachment')"
-            @click="chooseFiles"
-          >
-            <MarIcon name="attachment" /></button
-        ></el-tooltip>
+        <button
+          v-tooltip="translate('hostedConversations.addAttachment')"
+          class="hosted-icon-button utility-control"
+          type="button"
+          :disabled="composerReadonly"
+          :aria-label="translate('hostedConversations.addAttachment')"
+          @click="chooseFiles"
+        >
+          <MarIcon name="attachment" />
+        </button>
         <div class="hosted-model-slot">
           <el-dropdown
             class="hosted-model-menu"
@@ -531,15 +526,14 @@ onBeforeUnmount(() => {
             @command="updateModel(String($event))"
           >
             <button
+              v-tooltip="selectedModelLabel"
               class="hosted-model-trigger"
               type="button"
               :disabled="modelSelectionDisabled"
               :aria-label="translate('hostedConversations.model')"
               :aria-description="selectedModelLabel"
             >
-              <el-tooltip v-bind="tooltipOptions" :content="selectedModelLabel">
-                <span>{{ selectedModelLabel }}</span>
-              </el-tooltip>
+              <span>{{ selectedModelLabel }}</span>
               <MarIcon name="chevron-down" aria-hidden="true" />
             </button>
             <template #dropdown>
@@ -556,12 +550,15 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <el-tooltip v-bind="tooltipOptions" v-if="templateName" :content="loadedTemplateLabel"
-          ><span class="hosted-template-name" :aria-label="loadedTemplateLabel">
-            <MarIcon name="document" aria-hidden="true" />
-            <span>{{ templateName }}</span>
-          </span></el-tooltip
+        <span
+          v-tooltip="loadedTemplateLabel"
+          v-if="templateName"
+          class="hosted-template-name"
+          :aria-label="loadedTemplateLabel"
         >
+          <MarIcon name="document" aria-hidden="true" />
+          <span>{{ templateName }}</span>
+        </span>
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
@@ -571,19 +568,17 @@ onBeforeUnmount(() => {
         <span v-if="submitting" class="composer-submitting" role="status">{{
           translate('workbench.sending')
         }}</span>
-        <el-tooltip
-          v-bind="tooltipOptions"
+        <button
+          v-tooltip="translate('hostedConversations.stopWithEsc')"
           v-if="activeRun"
-          :content="translate('hostedConversations.stopWithEsc')"
-          ><button
-            class="hosted-stop-button"
-            type="button"
-            :disabled="!canStopCurrent"
-            :aria-label="translate('hostedConversations.stopWithEsc')"
-            @click="stop"
-          >
-            <i aria-hidden="true" /></button
-        ></el-tooltip>
+          class="hosted-stop-button"
+          type="button"
+          :disabled="!canStopCurrent"
+          :aria-label="translate('hostedConversations.stopWithEsc')"
+          @click="stop"
+        >
+          <i aria-hidden="true" />
+        </button>
         <button
           v-else
           class="hosted-send-button"

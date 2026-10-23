@@ -11,7 +11,7 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { serializeComposerTag } from '@myagentroam/protocol';
-import ElementPlus, { ElTooltip, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
@@ -174,8 +174,8 @@ async function render(
 ): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props, slots) });
   app.use(i18n);
-  if (component === ImagePreviewDialogs)
-    app.component('ElDialog', DialogStub).component('ElTooltip', ElTooltip);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
+  if (component === ImagePreviewDialogs) app.component('ElDialog', DialogStub);
   else app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });

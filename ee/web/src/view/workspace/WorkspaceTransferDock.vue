@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { tooltipOptions } from '@myagentroam/web-core';
 import type { WorkspaceUploadTask } from '@/service/WorkspaceUploadService';
 import { translate } from '@/service/LocalePreferenceService';
 
@@ -43,9 +42,7 @@ const emit = defineEmits<{
     <div v-if="!collapsed" class="workspace-transfer-list">
       <div v-for="task in tasks" :key="task.id" class="workspace-transfer-row">
         <div>
-          <el-tooltip v-bind="tooltipOptions" :content="task.name"
-            ><strong>{{ task.name }}</strong></el-tooltip
-          >
+          <strong v-tooltip="task.name">{{ task.name }}</strong>
           <small
             >{{ task.directory }} · {{ task.receivedBytes }} / {{ task.size }}
             {{ translate('generated.workspaceTransferDock.bytes') }}</small

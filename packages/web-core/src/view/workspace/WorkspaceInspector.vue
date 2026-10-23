@@ -2,7 +2,6 @@
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessageBox } from 'element-plus';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type {
@@ -1947,34 +1946,30 @@ onBeforeUnmount(() => filePreviews.reset());
             >
               <template #prefix><MarIcon name="search" /></template>
             </el-input>
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.workspaceInspector.refreshFiles2')"
-              ><button
-                class="file-explorer-utility-button utility-control"
-                :disabled="filesBusy"
-                :aria-label="translate('generated.workspaceInspector.refreshFiles')"
-                :aria-busy="filesBusy || undefined"
-                type="button"
-                @click="refreshFiles"
-              >
-                <MarIcon name="loading-action" v-if="filesBusy" />
-                <MarIcon name="refresh" v-else /></button
-            ></el-tooltip>
-            <el-tooltip
-              v-bind="tooltipOptions"
-              :content="translate('generated.workspaceInspector.uploadFiles2')"
-              ><button
-                class="file-explorer-utility-button utility-control"
-                :disabled="preparingUploads"
-                :aria-label="translate('generated.workspaceInspector.uploadFiles')"
-                :aria-busy="preparingUploads || undefined"
-                type="button"
-                @click="chooseUploadFiles"
-              >
-                <MarIcon name="loading-action" v-if="preparingUploads" />
-                <MarIcon name="document-add" v-else /></button
-            ></el-tooltip>
+            <button
+              v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
+              class="file-explorer-utility-button utility-control"
+              :disabled="filesBusy"
+              :aria-label="translate('generated.workspaceInspector.refreshFiles')"
+              :aria-busy="filesBusy || undefined"
+              type="button"
+              @click="refreshFiles"
+            >
+              <MarIcon name="loading-action" v-if="filesBusy" />
+              <MarIcon name="refresh" v-else />
+            </button>
+            <button
+              v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
+              class="file-explorer-utility-button utility-control"
+              :disabled="preparingUploads"
+              :aria-label="translate('generated.workspaceInspector.uploadFiles')"
+              :aria-busy="preparingUploads || undefined"
+              type="button"
+              @click="chooseUploadFiles"
+            >
+              <MarIcon name="loading-action" v-if="preparingUploads" />
+              <MarIcon name="document-add" v-else />
+            </button>
           </div>
           <WorkspaceFileTree
             ref="fileTreeView"
@@ -2017,19 +2012,17 @@ onBeforeUnmount(() => filePreviews.reset());
             :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
             size="small"
           />
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.workspaceInspector.runContentSearch2')"
-            ><button
-              class="content-search-button file-explorer-utility-button utility-control"
-              :disabled="contentSearchLoading"
-              :aria-label="translate('generated.workspaceInspector.runContentSearch')"
-              :aria-busy="contentSearchLoading || undefined"
-              type="submit"
-            >
-              <MarIcon name="loading-action" v-if="contentSearchLoading" />
-              <MarIcon name="search" v-else /></button
-          ></el-tooltip>
+          <button
+            v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
+            class="content-search-button file-explorer-utility-button utility-control"
+            :disabled="contentSearchLoading"
+            :aria-label="translate('generated.workspaceInspector.runContentSearch')"
+            :aria-busy="contentSearchLoading || undefined"
+            type="submit"
+          >
+            <MarIcon name="loading-action" v-if="contentSearchLoading" />
+            <MarIcon name="search" v-else />
+          </button>
         </form>
         <p v-if="contentSearchTruncated" class="content-search-warning">
           {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
@@ -2039,33 +2032,32 @@ onBeforeUnmount(() => filePreviews.reset());
           :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
         >
           <li v-for="match in contentMatches" :key="`${match.path}:${match.line}:${match.column}`">
-            <el-tooltip v-bind="tooltipOptions" :content="match.path"
-              ><button
-                :aria-label="match.path"
-                type="button"
-                @click="
-                  $event.ctrlKey || $event.metaKey
-                    ? openWorkspaceFileExternal(match.path, match.line, match.column)
-                    : openFile(match.path, match.line, match.column)
-                "
-              >
-                <span class="content-search-name"
-                  ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
-                    match.path
-                  }}</strong></span
-                ><small>{{
-                  translate('generated.workspaceInspector.line', { value0: match.line })
-                }}</small>
-                <code
-                  ><template
-                    v-for="(fragment, index) in contentMatchFragments(match.preview)"
-                    :key="index"
-                    ><mark v-if="fragment.match">{{ fragment.text }}</mark
-                    ><template v-else>{{ fragment.text }}</template></template
-                  ></code
-                >
-              </button></el-tooltip
+            <button
+              v-tooltip="match.path"
+              :aria-label="match.path"
+              type="button"
+              @click="
+                $event.ctrlKey || $event.metaKey
+                  ? openWorkspaceFileExternal(match.path, match.line, match.column)
+                  : openFile(match.path, match.line, match.column)
+              "
             >
+              <span class="content-search-name"
+                ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
+                  match.path
+                }}</strong></span
+              ><small>{{
+                translate('generated.workspaceInspector.line', { value0: match.line })
+              }}</small>
+              <code
+                ><template
+                  v-for="(fragment, index) in contentMatchFragments(match.preview)"
+                  :key="index"
+                  ><mark v-if="fragment.match">{{ fragment.text }}</mark
+                  ><template v-else>{{ fragment.text }}</template></template
+                ></code
+              >
+            </button>
           </li>
           <li
             v-if="

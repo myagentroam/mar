@@ -73,6 +73,8 @@ export function renderComponent(
   app.use(i18n);
   app.provide(ssrContextKey, { modules: new Set<string>() });
   app.directive('loading', {});
+  // Browser fixtures cover delegated tooltip events and real DOM positioning.
+  app.directive('tooltip', {});
   const rowsKey: InjectionKey<() => Record<string, unknown>[]> = Symbol('table rows');
   for (const name of [
     'ElButton',

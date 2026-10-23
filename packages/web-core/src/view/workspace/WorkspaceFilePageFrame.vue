@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref, useSlots } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
@@ -42,12 +41,8 @@ defineExpose({ root });
     <header class="file-preview-header workspace-file-page-frame-header">
       <div class="workspace-file-page-frame-title">
         <span v-if="props.sourceLabel" class="file-preview-eyebrow">{{ props.sourceLabel }}</span>
-        <el-tooltip v-bind="tooltipOptions" :content="props.path">
-          <h2 :aria-description="props.path">{{ props.fileName }}</h2>
-        </el-tooltip>
-        <el-tooltip v-bind="tooltipOptions" v-if="pathLabel" :content="props.path"
-          ><small>{{ pathLabel }}</small></el-tooltip
-        >
+        <h2 v-tooltip="props.path" :aria-description="props.path">{{ props.fileName }}</h2>
+        <small v-tooltip="props.path" v-if="pathLabel">{{ pathLabel }}</small>
         <slot name="status" />
       </div>
       <div class="file-preview-actions file-preview-desktop-actions">
@@ -75,28 +70,27 @@ defineExpose({ root });
       >
         <slot name="mobile-actions" />
       </div>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="
+      <span
+        v-tooltip="
           mobileActionsExpanded
             ? translate('filePreviewDialog.collapseMobileActions')
             : translate('filePreviewDialog.expandMobileActions')
         "
-        ><span class="mar-tooltip-control"
-          ><button
-            class="workspace-file-mobile-actions-toggle"
-            type="button"
-            :aria-expanded="mobileActionsExpanded"
-            :aria-label="
-              mobileActionsExpanded
-                ? translate('filePreviewDialog.collapseMobileActions')
-                : translate('filePreviewDialog.expandMobileActions')
-            "
-            @click="toggleMobileActions"
-          >
-            <MarIcon name="menu" v-if="mobileActionsExpanded" />
-            <MarIcon name="menu" v-else /></button></span
-      ></el-tooltip>
+        class="mar-tooltip-control"
+        ><button
+          class="workspace-file-mobile-actions-toggle"
+          type="button"
+          :aria-expanded="mobileActionsExpanded"
+          :aria-label="
+            mobileActionsExpanded
+              ? translate('filePreviewDialog.collapseMobileActions')
+              : translate('filePreviewDialog.expandMobileActions')
+          "
+          @click="toggleMobileActions"
+        >
+          <MarIcon name="menu" v-if="mobileActionsExpanded" />
+          <MarIcon name="menu" v-else /></button
+      ></span>
     </div>
   </section>
 </template>

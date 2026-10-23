@@ -6,13 +6,15 @@ import {
   nextTick,
   reactive,
   ssrContextKey,
-  type Component
+  type Component,
+  type VNode
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { serializeComposerTag } from '@myagentroam/protocol';
+import type { WorkspaceQueueItem } from '../../src/model/workbench.js';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
@@ -61,6 +63,7 @@ async function render(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
   app.use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -108,9 +111,27 @@ describe('queue mobile reorder menu', () => {
     let state: Record<string, unknown>;
     const props = reactive({
       items: [
-        { queueItemId: 'q1', content: 'First' },
-        { queueItemId: 'q2', content: 'Second' }
-      ],
+        {
+          queueItemId: 'q1',
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          runner: 'mar-agent',
+          clientMessageId: 'client-q1',
+          sessionTitle: 'Session one',
+          content: 'First',
+          createdAt: 1
+        },
+        {
+          queueItemId: 'q2',
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          runner: 'mar-agent',
+          clientMessageId: 'client-q2',
+          sessionTitle: 'Session one',
+          content: 'Second',
+          createdAt: 2
+        }
+      ] satisfies WorkspaceQueueItem[],
       paused: false,
       loading: false,
       editingQueueItemId: undefined,
@@ -123,7 +144,7 @@ describe('queue mobile reorder menu', () => {
       render: () =>
         h(ComposerQueue, {
           ...props,
-          onVnodeMounted: (vnode) => {
+          onVnodeMounted: (vnode: VNode) => {
             state = (vnode.component as unknown as { setupState: Record<string, unknown> })
               .setupState;
           }
@@ -388,7 +409,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     const actionLabel = locale === 'zh-CN' ? '执行' : 'Steer';
     expect(html).toContain(`aria-label="${actionLabel}"`);
     expect(html).not.toContain(`title="${actionLabel}"`);
-    expect(html).toContain('el-tooltip__trigger');
     expect(html).toContain(`>${actionLabel}</span>`);
   });
 

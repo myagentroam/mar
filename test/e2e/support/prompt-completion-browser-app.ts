@@ -1,4 +1,5 @@
-import { createApp, reactive, ref } from 'vue';
+import { createTooltipApp as createApp } from '../../../packages/web-core/test/e2e/tooltip-app.js';
+import { reactive, ref } from 'vue';
 import { ElButton } from '../../../packages/web-core/test/support/element-plus-button.js';
 import '../../../packages/web-core/src/styles.css';
 import { localePreferenceService } from '../../../packages/web-core/src/service/LocalePreferenceService.js';

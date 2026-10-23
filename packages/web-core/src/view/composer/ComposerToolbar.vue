@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
@@ -127,17 +126,15 @@ function selectFiles(event: Event): void {
       @change="selectFiles"
     />
     <div :class="['composer-configuration', { 'has-runner-select': draftSessionOpen }]">
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="translate('generated.composerToolbar.addAttachment2')"
-        ><button
-          class="composer-icon-button composer-attachment-button utility-control"
-          type="button"
-          :aria-label="translate('generated.composerToolbar.addAttachment')"
-          @click="fileInput?.click()"
-        >
-          <MarIcon name="attachment" /></button
-      ></el-tooltip>
+      <button
+        v-tooltip="translate('generated.composerToolbar.addAttachment2')"
+        class="composer-icon-button composer-attachment-button utility-control"
+        type="button"
+        :aria-label="translate('generated.composerToolbar.addAttachment')"
+        @click="fileInput?.click()"
+      >
+        <MarIcon name="attachment" />
+      </button>
       <div
         v-if="draftSessionOpen"
         class="composer-select-slot composer-runner-slot"
@@ -165,11 +162,11 @@ function selectFiles(event: Event): void {
         </el-select>
       </div>
       <div v-if="!hideModelSelection" class="composer-model-slot">
-        <el-tooltip
-          v-bind="tooltipOptions"
+        <span
+          v-tooltip="translate('generated.composerToolbar.fastModeIsEnabled')"
           v-if="runner === 'codex' && fastEnabled"
-          :content="translate('generated.composerToolbar.fastModeIsEnabled')"
-          ><span class="composer-fast-badge">{{ translate('common.fast') }}</span></el-tooltip
+          class="composer-fast-badge"
+          >{{ translate('common.fast') }}</span
         >
         <div class="composer-select-slot" :data-label="modelEffortLabel">
           <el-select
@@ -235,27 +232,22 @@ function selectFiles(event: Event): void {
         </el-select>
       </div>
     </div>
-    <el-tooltip
-      v-bind="tooltipOptions"
+    <button
+      v-tooltip="{ content: contextHint, placement: 'top' }"
       v-if="contextUsage !== undefined && contextUsage !== null"
-      :content="contextHint"
-      placement="top"
+      class="composer-context-button utility-control"
+      type="button"
+      :aria-label="contextUsageLabel"
+      :aria-description="contextHint"
+      :aria-disabled="!canCompactContext"
+      :style="{
+        '--context-usage': `${Math.min(100, Math.max(0, contextUsage.percentage))}%`
+      }"
+      @click="canCompactContext && emit('compact')"
     >
-      <button
-        class="composer-context-button utility-control"
-        type="button"
-        :aria-label="contextUsageLabel"
-        :aria-description="contextHint"
-        :aria-disabled="!canCompactContext"
-        :style="{
-          '--context-usage': `${Math.min(100, Math.max(0, contextUsage.percentage))}%`
-        }"
-        @click="canCompactContext && emit('compact')"
-      >
-        <i aria-hidden="true" />
-        <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
-      </button>
-    </el-tooltip>
+      <i aria-hidden="true" />
+      <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
+    </button>
     <span v-if="!mobileViewport" class="composer-hint" :class="{ 'is-submitting': submitting }">
       <span :aria-hidden="submitting || undefined">{{
         activeRun
@@ -266,42 +258,38 @@ function selectFiles(event: Event): void {
         translate('workbench.sending')
       }}</span>
     </span>
-    <el-tooltip
-      v-bind="tooltipOptions"
-      v-if="interruptVisible"
-      :content="
+    <button
+      v-tooltip="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
           : translate('generated.composerToolbar.stopRunEsc')
       "
-      ><button
-        class="composer-stop-button"
-        :disabled="!canInterrupt"
-        type="button"
-        :aria-label="translate('generated.composerToolbar.stopRun')"
-        @click="emit('stop')"
-      >
-        <MarIcon name="stop" /></button
-    ></el-tooltip>
-    <el-tooltip
-      v-bind="tooltipOptions"
+      v-if="interruptVisible"
+      class="composer-stop-button"
+      :disabled="!canInterrupt"
+      type="button"
+      :aria-label="translate('generated.composerToolbar.stopRun')"
+      @click="emit('stop')"
+    >
+      <MarIcon name="stop" />
+    </button>
+    <button
+      v-tooltip="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
       v-if="!canInterrupt || inputHasContent"
-      :content="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
-      ><button
-        class="composer-send-button"
-        :disabled="
-          (!inputHasContent && !hasSelectedCommand) ||
-          loading ||
-          submitting ||
-          (attachmentsPending && !hasSelectedCommand)
-        "
-        type="submit"
-        :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
-        :aria-busy="submitting || undefined"
-      >
-        <MarIcon name="loading-action" aria-hidden="true" v-if="submitting" />
-        <MarIcon name="send" aria-hidden="true" v-else /></button
-    ></el-tooltip>
+      class="composer-send-button"
+      :disabled="
+        (!inputHasContent && !hasSelectedCommand) ||
+        loading ||
+        submitting ||
+        (attachmentsPending && !hasSelectedCommand)
+      "
+      type="submit"
+      :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
+      :aria-busy="submitting || undefined"
+    >
+      <MarIcon name="loading-action" aria-hidden="true" v-if="submitting" />
+      <MarIcon name="send" aria-hidden="true" v-else />
+    </button>
   </div>
 </template>
 

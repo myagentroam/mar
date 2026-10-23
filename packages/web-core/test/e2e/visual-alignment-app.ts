@@ -1,7 +1,9 @@
+import { createTooltipApp as createApp } from './tooltip-app.js';
 import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
-import { createApp, h, ref } from 'vue';
-import ElementPlus, { ElDialog, ElTable, ElTableColumn, ElTooltip } from 'element-plus';
-import { tableTooltipOptions, tooltipOptions } from '../../src/util/tooltip.js';
+import { h, ref, resolveDirective, withDirectives } from 'vue';
+import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
+import { tableTooltipOptions } from '../../src/util/tooltip.js';
+import SharedTooltipFixture from './shared-tooltip-fixture.vue';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -90,7 +92,7 @@ const hostedWorkspace = {
 } as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
 const toolbar = {
   draftSessionOpen: false,
-  runner: 'MAR_AGENT' as const,
+  runner: 'mar-agent' as const,
   runnerOptions: [],
   runnerLoading: false,
   runnerLabel: 'MAR Agent',
@@ -200,9 +202,9 @@ const app = createApp({
               'onUpdate:modelValue': (value: boolean) => (hintDialogOpen.value = value)
             },
             () =>
-              h(ElTooltip, { ...tooltipOptions, content: 'Dialog action details' }, () =>
-                h('button', {}, 'Dialog action')
-              )
+              withDirectives(h('button', {}, 'Dialog action'), [
+                [resolveDirective('tooltip')!, 'Dialog action details']
+              ])
           )
         : null,
       h(
@@ -241,11 +243,13 @@ const app = createApp({
       })
     ])
 });
-(new URLSearchParams(location.search).has('loading-feedback')
-  ? createApp(LoadingFeedbackFixture)
-  : new URLSearchParams(location.search).has('session-performance')
-    ? createApp(sessionPerformanceFixture)
-    : app
+(new URLSearchParams(location.search).has('shared-tooltip')
+  ? createApp(SharedTooltipFixture)
+  : new URLSearchParams(location.search).has('loading-feedback')
+    ? createApp(LoadingFeedbackFixture)
+    : new URLSearchParams(location.search).has('session-performance')
+      ? createApp(sessionPerformanceFixture)
+      : app
 )
   .use(i18n)
   .use(ElementPlus)

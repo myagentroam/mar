@@ -3,7 +3,6 @@ import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import type {
   ConversationFileProjection,
   HostedConversationSnapshot,
@@ -944,21 +943,19 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.searchHistory')"
             :clear-icon="marIcon('clear-input')"
           />
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('hostedConversations.refreshHistory')"
-            ><el-button
-              class="history-refresh-button utility-control"
-              :aria-label="translate('hostedConversations.refreshHistory')"
-              :disabled="loadingDirectory"
-              :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
-              size="small"
-              text
-              @click="refreshDirectory"
-              :loading-icon="marIcon('loading-action')"
-            >
-              <MarIcon name="refresh" /> </el-button
-          ></el-tooltip>
+          <el-button
+            v-tooltip="translate('hostedConversations.refreshHistory')"
+            class="history-refresh-button utility-control"
+            :aria-label="translate('hostedConversations.refreshHistory')"
+            :disabled="loadingDirectory"
+            :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
+            size="small"
+            text
+            @click="refreshDirectory"
+            :loading-icon="marIcon('loading-action')"
+          >
+            <MarIcon name="refresh" />
+          </el-button>
         </div>
       </div>
       <div
@@ -1043,6 +1040,11 @@ onBeforeUnmount(() => {
             "
           >
             <button
+              v-tooltip="
+                translate('hostedConversations.moreActions', {
+                  title: hostedConversationTitle(conversation)
+                })
+              "
               class="history-more-button utility-control"
               type="button"
               :disabled="mutatingConversationKey !== undefined"
@@ -1052,16 +1054,7 @@ onBeforeUnmount(() => {
                 })
               "
             >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="
-                  translate('hostedConversations.moreActions', {
-                    title: hostedConversationTitle(conversation)
-                  })
-                "
-              >
-                <MarIcon name="more" />
-              </el-tooltip>
+              <MarIcon name="more" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -1123,18 +1116,16 @@ onBeforeUnmount(() => {
     </aside>
 
     <main id="hosted-pane-conversation" class="hosted-conversation-main">
-      <el-tooltip
-        v-bind="tooltipOptions"
+      <button
+        v-tooltip="translate('hostedConversations.mobileFiles')"
         v-if="mobileViewport"
-        :content="translate('hostedConversations.mobileFiles')"
-        ><button
-          class="hosted-mobile-files-button"
-          type="button"
-          :aria-label="translate('hostedConversations.mobileFiles')"
-          @click="openMobileFiles"
-        >
-          <MarIcon name="folder-open" /></button
-      ></el-tooltip>
+        class="hosted-mobile-files-button"
+        type="button"
+        :aria-label="translate('hostedConversations.mobileFiles')"
+        @click="openMobileFiles"
+      >
+        <MarIcon name="folder-open" />
+      </button>
       <el-alert
         v-if="workspace.snapshot.value?.error"
         class="snapshot-error-alert"
@@ -1278,62 +1269,57 @@ onBeforeUnmount(() => {
             :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
             :style="{ '--file-depth': row.depth }"
           >
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <span
+              v-tooltip="row.node.path"
               v-if="row.node.kind === 'DIRECTORY'"
-              :content="row.node.path"
-              ><span class="mar-tooltip-control"
-                ><button
-                  class="file-directory"
-                  type="button"
-                  :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
-                  :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
-                  @click="toggleFileDirectory(group.category, row.node.path)"
-                >
-                  <MarIcon
-                    name="chevron-right"
-                    class="file-directory-chevron"
-                    :class="{
-                      expanded: fileDirectoryExpanded(group.category, row.node.path)
-                    }"
-                  />
-                  <MarIcon name="folder-open" class="file-directory-kind" />
-                  <span>{{ row.node.name }}</span>
-                </button></span
-              ></el-tooltip
+              class="mar-tooltip-control"
+              ><button
+                class="file-directory"
+                type="button"
+                :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
+                :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
+                @click="toggleFileDirectory(group.category, row.node.path)"
+              >
+                <MarIcon
+                  name="chevron-right"
+                  class="file-directory-chevron"
+                  :class="{
+                    expanded: fileDirectoryExpanded(group.category, row.node.path)
+                  }"
+                />
+                <MarIcon name="folder-open" class="file-directory-kind" />
+                <span>{{ row.node.name }}</span>
+              </button></span
             >
             <template v-else>
-              <el-tooltip v-bind="tooltipOptions" :content="row.node.file.relativePath"
-                ><button
-                  :aria-label="row.node.file.relativePath"
-                  class="file-open"
-                  type="button"
-                  @click="filePreview.openFile(row.node.file)"
-                >
-                  <span>{{ row.node.file.displayName }}</span>
-                  <small>{{ fileSizeLabel(row.node.file.size) }}</small>
-                </button></el-tooltip
+              <button
+                v-tooltip="row.node.file.relativePath"
+                :aria-label="row.node.file.relativePath"
+                class="file-open"
+                type="button"
+                @click="filePreview.openFile(row.node.file)"
               >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="
+                <span>{{ row.node.file.displayName }}</span>
+                <small>{{ fileSizeLabel(row.node.file.size) }}</small>
+              </button>
+              <button
+                v-tooltip="
                   translate('hostedConversations.fileDeleteNamed', {
                     name: row.node.file.displayName
                   })
                 "
-                ><button
-                  class="file-delete"
-                  type="button"
-                  :disabled="!filesWritable || deletingFileId !== undefined"
-                  :aria-label="
-                    translate('hostedConversations.fileDeleteNamed', {
-                      name: row.node.file.displayName
-                    })
-                  "
-                  @click="deleteProjectedFile(row.node.file)"
-                >
-                  <MarIcon name="delete" /></button
-              ></el-tooltip>
+                class="file-delete"
+                type="button"
+                :disabled="!filesWritable || deletingFileId !== undefined"
+                :aria-label="
+                  translate('hostedConversations.fileDeleteNamed', {
+                    name: row.node.file.displayName
+                  })
+                "
+                @click="deleteProjectedFile(row.node.file)"
+              >
+                <MarIcon name="delete" />
+              </button>
             </template>
           </div>
         </section>

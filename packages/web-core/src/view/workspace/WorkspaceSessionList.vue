@@ -3,7 +3,6 @@ import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
@@ -360,31 +359,29 @@ function submitSessionSearch(): void {
         @clear="emit('search', '')"
         :clear-icon="marIcon('clear-input')"
       />
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="
+      <button
+        v-tooltip="
           translate(
             searchInput.trim()
               ? 'workspaceSessions.searchAction'
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        ><button
-          class="session-search-button utility-control"
-          :aria-label="
-            translate(
-              searchInput.trim()
-                ? 'workspaceSessions.searchAction'
-                : 'generated.workspaceSessionList.refreshWorkspaceSessions'
-            )
-          "
-          :aria-busy="searching || refreshing || undefined"
-          :disabled="!nodeReady || searching || refreshing"
-          type="submit"
-        >
-          <MarIcon name="loading-action" v-if="searching || refreshing" />
-          <MarIcon name="refresh" v-else /></button
-      ></el-tooltip>
+        class="session-search-button utility-control"
+        :aria-label="
+          translate(
+            searchInput.trim()
+              ? 'workspaceSessions.searchAction'
+              : 'generated.workspaceSessionList.refreshWorkspaceSessions'
+          )
+        "
+        :aria-busy="searching || refreshing || undefined"
+        :disabled="!nodeReady || searching || refreshing"
+        type="submit"
+      >
+        <MarIcon name="loading-action" v-if="searching || refreshing" />
+        <MarIcon name="refresh" v-else />
+      </button>
     </form>
     <div class="new-session-form">
       <el-button
@@ -472,6 +469,7 @@ function submitSessionSearch(): void {
           @contextmenu="openSessionActions(session.id, $event)"
         >
           <button
+            v-tooltip="title(session)"
             :class="['session-link', { selected: selectedSessionId === session.id }]"
             type="button"
             @click="openSession(session.id)"
@@ -485,66 +483,56 @@ function submitSessionSearch(): void {
                   aria-hidden="true"
                   class="runner-brand-icon session-title-runner-icon"
                 />
-                <el-tooltip
-                  v-bind="tooltipOptions"
-                  v-if="session.schedule"
-                  :content="
+                <MarIcon
+                  v-tooltip="
                     translate(
                       session.schedule.enabled
                         ? 'generated.scheduledSession.enabled'
                         : 'generated.scheduledSession.paused'
                     )
                   "
-                  ><MarIcon
-                    name="clock"
-                    :class="[
-                      'session-pin-indicator',
-                      { 'schedule-paused': !session.schedule.enabled }
-                    ]"
-                    :aria-label="
-                      translate(
-                        session.schedule.enabled
-                          ? 'generated.scheduledSession.enabled'
-                          : 'generated.scheduledSession.paused'
-                      )
-                    "
-                /></el-tooltip>
-                <el-tooltip
-                  v-bind="tooltipOptions"
+                  v-if="session.schedule"
+                  name="clock"
+                  :class="[
+                    'session-pin-indicator',
+                    { 'schedule-paused': !session.schedule.enabled }
+                  ]"
+                  :aria-label="
+                    translate(
+                      session.schedule.enabled
+                        ? 'generated.scheduledSession.enabled'
+                        : 'generated.scheduledSession.paused'
+                    )
+                  "
+                />
+                <MarIcon
+                  v-tooltip="translate('generated.workspaceSessionList.pinned2')"
                   v-else-if="pinned(session)"
-                  :content="translate('generated.workspaceSessionList.pinned2')"
-                  ><MarIcon
-                    name="star-filled"
-                    class="session-pin-indicator"
-                    :aria-label="translate('generated.workspaceSessionList.pinned')"
-                /></el-tooltip>
-                <el-tooltip v-bind="tooltipOptions" :content="title(session)"
-                  ><strong>{{ title(session) }}</strong></el-tooltip
-                >
-                <el-tooltip
-                  v-bind="tooltipOptions"
+                  name="star-filled"
+                  class="session-pin-indicator"
+                  :aria-label="translate('generated.workspaceSessionList.pinned')"
+                />
+                <strong>{{ title(session) }}</strong>
+                <span
+                  v-tooltip="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
                   v-if="hasUnread(session.id)"
-                  :content="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
-                  ><span
-                    class="session-unread-label"
-                    :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
-                    >{{ translate('generated.workspaceSessionList.unread') }}</span
-                  ></el-tooltip
+                  class="session-unread-label"
+                  :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
+                  >{{ translate('generated.workspaceSessionList.unread') }}</span
                 >
-                <el-tooltip
-                  v-bind="tooltipOptions"
+                <span
+                  v-tooltip="activityLabel(session)"
                   v-if="nodeReady && activity(session) === 'MANAGED_ACTIVE'"
-                  :content="activityLabel(session)"
-                  ><span
-                    :class="['session-activity', activity(session).toLocaleLowerCase()]"
-                    :aria-label="activityLabel(session)"
-                    role="img"
-                    ><i aria-hidden="true" /></span
-                ></el-tooltip>
-                <el-tooltip v-bind="tooltipOptions" :content="activityTitle(session)"
-                  ><time class="session-relative-time" :datetime="activityDateTime(session)">{{
-                    relativeActivity(session)
-                  }}</time></el-tooltip
+                  :class="['session-activity', activity(session).toLocaleLowerCase()]"
+                  :aria-label="activityLabel(session)"
+                  role="img"
+                  ><i aria-hidden="true"
+                /></span>
+                <time
+                  v-tooltip="activityTitle(session)"
+                  class="session-relative-time"
+                  :datetime="activityDateTime(session)"
+                  >{{ relativeActivity(session) }}</time
                 >
               </span>
             </span>
@@ -558,6 +546,7 @@ function submitSessionSearch(): void {
             @visible-change="openSessionActionsId = $event ? session.id : undefined"
           >
             <button
+              v-tooltip="translate('generated.workspaceSessionList.moreSessionActions2')"
               class="session-more-button utility-control"
               :disabled="loading"
               :aria-label="
@@ -567,12 +556,7 @@ function submitSessionSearch(): void {
               "
               type="button"
             >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="translate('generated.workspaceSessionList.moreSessionActions2')"
-              >
-                <MarIcon name="more" />
-              </el-tooltip>
+              <MarIcon name="more" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>

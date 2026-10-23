@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -186,61 +185,55 @@ const emit = defineEmits<{
           v-if="commandStates.length || skillTokens.length || fileReferences.length"
           class="composer-command-states"
         >
-          <el-tooltip
-            v-bind="tooltipOptions"
+          <button
+            v-tooltip="state.detail ?? state.label"
             v-for="state in commandStates"
             :key="state.commandId"
-            :content="state.detail ?? state.label"
-            ><button
-              :aria-label="state.detail ?? state.label"
-              class="composer-command-state"
-              type="button"
-              :disabled="!state.closable || loading"
-              @click="emit('closeCommand', state)"
-            >
-              <span>{{ state.label }}</span
-              ><MarIcon v-if="state.closable" name="close" /></button
-          ></el-tooltip>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            v-for="token in skillTokens"
-            :key="token.name"
-            :content="
+            :aria-label="state.detail ?? state.label"
+            class="composer-command-state"
+            type="button"
+            :disabled="!state.closable || loading"
+            @click="emit('closeCommand', state)"
+          >
+            <span>{{ state.label }}</span
+            ><MarIcon v-if="state.closable" name="close" />
+          </button>
+          <button
+            v-tooltip="
               token.available
                 ? token.skillFilePath
                 : translate('composer.skillUnavailableToken', { name: token.name })
             "
-            ><button
-              class="composer-command-state composer-skill-state"
-              :class="{ unavailable: !token.available }"
-              type="button"
-              :disabled="readonly || loading"
-              :aria-label="translate('composer.removeSkill', { name: token.name })"
-              @click="emit('removeSkill', token.name)"
-            >
-              <MarIcon name="collection" />
-              <span>{{ token.name }}</span
-              ><MarIcon name="close" /></button
-          ></el-tooltip>
-          <el-tooltip
-            v-bind="tooltipOptions"
+            v-for="token in skillTokens"
+            :key="token.name"
+            class="composer-command-state composer-skill-state"
+            :class="{ unavailable: !token.available }"
+            type="button"
+            :disabled="readonly || loading"
+            :aria-label="translate('composer.removeSkill', { name: token.name })"
+            @click="emit('removeSkill', token.name)"
+          >
+            <MarIcon name="collection" />
+            <span>{{ token.name }}</span
+            ><MarIcon name="close" />
+          </button>
+          <button
+            v-tooltip="reference.path"
             v-for="reference in fileReferences"
             :key="reference.path"
-            :content="reference.path"
-            ><button
-              class="composer-command-state composer-file-reference-state"
-              type="button"
-              :disabled="readonly || loading"
-              :aria-label="translate('composer.removeFileReference', { name: reference.label })"
-              @click="emit('removeReference', reference.path)"
-            >
-              <FileTypeIcon
-                :name="reference.path"
-                :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
-              />
-              <span>{{ reference.label }}</span
-              ><MarIcon name="close" /></button
-          ></el-tooltip>
+            class="composer-command-state composer-file-reference-state"
+            type="button"
+            :disabled="readonly || loading"
+            :aria-label="translate('composer.removeFileReference', { name: reference.label })"
+            @click="emit('removeReference', reference.path)"
+          >
+            <FileTypeIcon
+              :name="reference.path"
+              :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
+            />
+            <span>{{ reference.label }}</span
+            ><MarIcon name="close" />
+          </button>
         </div>
         <slot name="queue" />
         <slot name="attachments" />

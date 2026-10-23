@@ -2,7 +2,6 @@
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
@@ -201,16 +200,14 @@ async function confirmLogout(): Promise<void> {
               translate('generated.settingsContent.signInSessions5', { value0: sessions.length })
             }}
           </h3>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.settingsContent.refreshSignInSessions')"
-            ><el-button
-              class="utility-control"
-              :icon="marIcon('refresh')"
-              :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
-              text
-              @click="emit('refreshSessions')"
-          /></el-tooltip>
+          <el-button
+            v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
+            class="utility-control"
+            :icon="marIcon('refresh')"
+            :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
+            text
+            @click="emit('refreshSessions')"
+          />
         </div>
         <p v-if="sessions.length === 0">
           {{ translate('generated.settingsContent.noActiveSignInSessions') }}
@@ -222,9 +219,7 @@ async function confirmLogout(): Promise<void> {
                 ? translate('generated.settingsContent.currentDevice')
                 : translate('generated.settingsContent.signedInDevice')
             }}</strong>
-            <el-tooltip v-bind="tooltipOptions" :content="session.userAgent"
-              ><span>{{ session.userAgent }}</span></el-tooltip
-            >
+            <span v-tooltip="session.userAgent">{{ session.userAgent }}</span>
             <small>
               {{ session.ipAddress }} · {{ translate('generated.settingsContent.signedIn') }}
               {{ formatSessionTime(session.createdAt) }} ·

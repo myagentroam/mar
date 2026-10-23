@@ -2,7 +2,6 @@
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
-import { tooltipOptions } from '@myagentroam/web-core';
 import { ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
@@ -160,16 +159,14 @@ function createNodeToken(): void {
       >
         <div class="admin-sessions-heading">
           <h3>{{ translate('generated.settingsContent.oAuthAccountBindings2') }}</h3>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.settingsContent.refresh')"
-            ><el-button
-              class="utility-control"
-              :icon="marIcon('refresh')"
-              :aria-label="translate('generated.settingsContent.refresh')"
-              text
-              @click="loadOAuthBindings"
-          /></el-tooltip>
+          <el-button
+            v-tooltip="translate('generated.settingsContent.refresh')"
+            class="utility-control"
+            :icon="marIcon('refresh')"
+            :aria-label="translate('generated.settingsContent.refresh')"
+            text
+            @click="loadOAuthBindings"
+          />
         </div>
         <el-table v-loading="oauthLoading" :data="oauthBindings" row-key="providerKey">
           <el-table-column

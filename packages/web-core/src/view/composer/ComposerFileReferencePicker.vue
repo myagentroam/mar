@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { tooltipOptions } from '../../util/tooltip.js';
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import { nextTick, ref, watch } from 'vue';
@@ -42,6 +41,7 @@ watch(
     </p>
     <template v-else>
       <button
+        v-tooltip="entry.path"
         v-for="(entry, index) in entries"
         :key="entry.path"
         type="button"
@@ -53,12 +53,8 @@ watch(
         @click="emit('select', entry)"
       >
         <FileTypeIcon :name="entry.name" :kind="entry.kind" />
-        <el-tooltip v-bind="tooltipOptions" :content="entry.name"
-          ><strong>{{ entry.name }}</strong></el-tooltip
-        >
-        <el-tooltip v-bind="tooltipOptions" :content="entry.path"
-          ><code>{{ entry.path }}</code></el-tooltip
-        >
+        <strong v-tooltip="entry.name">{{ entry.name }}</strong>
+        <code>{{ entry.path }}</code>
         <span class="entry-kind">{{
           entry.kind === 'DIRECTORY'
             ? translate('generated.composerFileReferencePicker.folder')

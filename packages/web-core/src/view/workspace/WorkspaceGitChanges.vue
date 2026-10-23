@@ -21,7 +21,6 @@ import {
 } from '../../util/workspace-git.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import FileTypeIcon from './FileTypeIcon.vue';
 
 const props = defineProps<{
@@ -144,16 +143,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
           v-for="(worktree, index) in visibleGitWorktrees"
           :key="`${worktree.directoryName}:${worktree.head}:${index}`"
         >
-          <el-tooltip v-bind="tooltipOptions" :content="worktree.directoryName"
-            ><strong class="git-worktree-name">
-              {{ worktree.directoryName }}
-            </strong></el-tooltip
-          >
-          <el-tooltip v-bind="tooltipOptions" :content="worktreeReference(worktree)"
-            ><code>
-              {{ worktreeReference(worktree) }}
-            </code></el-tooltip
-          >
+          <strong v-tooltip="worktree.directoryName" class="git-worktree-name">
+            {{ worktree.directoryName }}
+          </strong>
+          <code v-tooltip="worktreeReference(worktree)">
+            {{ worktreeReference(worktree) }}
+          </code>
           <span class="git-worktree-statuses">
             <el-tag v-if="worktree.current" effect="plain" size="small">
               {{ translate('gitWorktrees.current') }}
@@ -190,39 +185,32 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
             <div class="repository-title-row">
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="repository.physicalPath || repository.repositoryPath"
-                ><strong>
-                  {{
-                    repository.repositoryName ||
-                    translate('generated.workspaceInspector.rootRepository')
-                  }}
-                </strong></el-tooltip
-              >
-              <el-tooltip
-                v-bind="tooltipOptions"
+              <strong v-tooltip="repository.physicalPath || repository.repositoryPath">
+                {{
+                  repository.repositoryName ||
+                  translate('generated.workspaceInspector.rootRepository')
+                }}
+              </strong>
+              <code
+                v-tooltip="repositoryReference(repository)"
                 v-if="repositoryReference(repository)"
-                :content="repositoryReference(repository)"
-                ><code class="repository-branch current-branch">
-                  {{ repositoryReference(repository) }}
-                </code></el-tooltip
+                class="repository-branch current-branch"
               >
-              <el-tooltip
-                v-bind="tooltipOptions"
+                {{ repositoryReference(repository) }}
+              </code>
+              <button
+                v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
                 v-if="repository.source === 'ROOT'"
-                :content="translate('generated.workspaceInspector.refreshGitChanges2')"
-                ><button
-                  class="changes-refresh-button file-explorer-utility-button utility-control"
-                  :disabled="changesRefreshing"
-                  :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-                  :aria-busy="changesRefreshing || undefined"
-                  type="button"
-                  @click="loadChanges()"
-                >
-                  <MarIcon name="loading-action" v-if="changesRefreshing" />
-                  <MarIcon name="refresh" v-else /></button
-              ></el-tooltip>
+                class="changes-refresh-button file-explorer-utility-button utility-control"
+                :disabled="changesRefreshing"
+                :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
+                :aria-busy="changesRefreshing || undefined"
+                type="button"
+                @click="loadChanges()"
+              >
+                <MarIcon name="loading-action" v-if="changesRefreshing" />
+                <MarIcon name="refresh" v-else />
+              </button>
             </div>
             <div class="repository-tags-row">
               <el-tag class="repository-kind" type="info" effect="plain" size="small">
@@ -261,25 +249,23 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 >
               </el-tag>
             </div>
-            <el-tooltip
-              v-bind="tooltipOptions"
+            <code
+              v-tooltip="repository.repositoryPath"
               v-if="repository.source === 'SUBMODULE' && repository.repositoryPath"
-              :content="repository.repositoryPath"
-              ><code class="repository-relative-path">
-                {{ repository.repositoryPath }}
-              </code></el-tooltip
+              class="repository-relative-path"
             >
-            <el-tooltip
-              v-bind="tooltipOptions"
+              {{ repository.repositoryPath }}
+            </code>
+            <code
+              v-tooltip="repository.physicalPath"
               v-if="
                 (repository.source === 'WORKTREE' || repository.source === 'ROOT') &&
                 repository.physicalPath
               "
-              :content="repository.physicalPath"
-              ><code class="repository-physical-path">
-                {{ repository.physicalPath }}
-              </code></el-tooltip
+              class="repository-physical-path"
             >
+              {{ repository.physicalPath }}
+            </code>
           </div>
         </li>
         <li v-if="repository.changes.length === 0" class="change-repository-empty">
@@ -292,66 +278,59 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
           }}
         </li>
         <li v-for="entry in repository.changes" :key="changeKey(entry)" class="change-entry">
-          <el-tooltip v-bind="tooltipOptions" :content="workspaceChangePath(entry)"
-            ><button
-              class="change-path"
-              type="button"
-              :aria-label="
-                entry.diffAvailable
-                  ? translate('generated.workspaceInspector.viewDiffFor', {
-                      value0: workspaceChangePath(entry)
-                    })
-                  : translate('generated.workspaceInspector.preview', {
-                      value0: workspaceChangePath(entry)
-                    })
-              "
-              @click="emit('open', entry, $event.ctrlKey || $event.metaKey)"
-            >
-              <span class="change-path-content">
-                <span class="change-file-heading"
-                  ><FileTypeIcon :name="changeFileName(entry.path)" /><strong
-                    class="change-file-name"
-                    >{{ changeFileName(entry.path) }}</strong
-                  ></span
-                >
-                <small v-if="changeDirectory(entry.path)" class="change-directory">
-                  {{ changeDirectory(entry.path) }}
-                </small>
-              </span>
-            </button></el-tooltip
+          <button
+            v-tooltip="workspaceChangePath(entry)"
+            class="change-path"
+            type="button"
+            :aria-label="
+              entry.diffAvailable
+                ? translate('generated.workspaceInspector.viewDiffFor', {
+                    value0: workspaceChangePath(entry)
+                  })
+                : translate('generated.workspaceInspector.preview', {
+                    value0: workspaceChangePath(entry)
+                  })
+            "
+            @click="emit('open', entry, $event.ctrlKey || $event.metaKey)"
           >
-          <el-tooltip v-bind="tooltipOptions" :content="entry.change"
-            ><span>{{ shortChange(entry.change) }}</span></el-tooltip
-          >
-          <el-tooltip v-bind="tooltipOptions" :content="entry.state"
-            ><small>{{ shortState(entry.state) }}</small></el-tooltip
-          >
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="
+            <span class="change-path-content">
+              <span class="change-file-heading"
+                ><FileTypeIcon :name="changeFileName(entry.path)" /><strong
+                  class="change-file-name"
+                  >{{ changeFileName(entry.path) }}</strong
+                ></span
+              >
+              <small v-if="changeDirectory(entry.path)" class="change-directory">
+                {{ changeDirectory(entry.path) }}
+              </small>
+            </span>
+          </button>
+          <span v-tooltip="entry.change">{{ shortChange(entry.change) }}</span>
+          <small v-tooltip="entry.state">{{ shortState(entry.state) }}</small>
+          <el-button
+            v-tooltip="
               entry.state === 'UNTRACKED'
                 ? translate('generated.workspaceInspector.deleteUntrackedFile2')
                 : translate('generated.workspaceInspector.revertChanges2')
             "
-            ><el-button
-              class="change-restore utility-control"
-              text
-              :icon="marIcon('undo')"
-              :loading-icon="marIcon('loading-action')"
-              :loading="restoringPath === changeKey(entry)"
-              :disabled="restoringPath !== undefined"
-              :aria-label="
-                entry.state === 'UNTRACKED'
-                  ? translate('generated.workspaceInspector.deleteChangesTo', {
-                      value0: workspaceChangePath(entry)
-                    })
-                  : translate('generated.workspaceInspector.revertChangesTo', {
-                      value0: workspaceChangePath(entry)
-                    })
-              "
-              size="small"
-              @click="restoreChange(entry)"
-          /></el-tooltip>
+            class="change-restore utility-control"
+            text
+            :icon="marIcon('undo')"
+            :loading-icon="marIcon('loading-action')"
+            :loading="restoringPath === changeKey(entry)"
+            :disabled="restoringPath !== undefined"
+            :aria-label="
+              entry.state === 'UNTRACKED'
+                ? translate('generated.workspaceInspector.deleteChangesTo', {
+                    value0: workspaceChangePath(entry)
+                  })
+                : translate('generated.workspaceInspector.revertChangesTo', {
+                    value0: workspaceChangePath(entry)
+                  })
+            "
+            size="small"
+            @click="restoreChange(entry)"
+          />
         </li>
       </template>
     </ul>

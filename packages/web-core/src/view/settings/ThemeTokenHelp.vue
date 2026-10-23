@@ -2,7 +2,6 @@
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -41,14 +40,14 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <el-tooltip v-bind="tooltipOptions" :content="t('customThemes.tokenHelp')"
-    ><el-button
-      class="utility-control"
-      text
-      :icon="marIcon('help')"
-      :aria-label="t('customThemes.tokenHelp')"
-      @click="show"
-  /></el-tooltip>
+  <el-button
+    v-tooltip="t('customThemes.tokenHelp')"
+    class="utility-control"
+    text
+    :icon="marIcon('help')"
+    :aria-label="t('customThemes.tokenHelp')"
+    @click="show"
+  />
   <el-dialog
     v-if="open"
     v-model="open"
@@ -79,16 +78,14 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="t('customThemes.tokenCopy', { token: item.token })"
-                ><el-button
-                  class="utility-control"
-                  link
-                  :icon="marIcon('copy')"
-                  :aria-label="t('customThemes.tokenCopy', { token: item.token })"
-                  @click="copy(item.token)"
-              /></el-tooltip>
+              <el-button
+                v-tooltip="t('customThemes.tokenCopy', { token: item.token })"
+                class="utility-control"
+                link
+                :icon="marIcon('copy')"
+                :aria-label="t('customThemes.tokenCopy', { token: item.token })"
+                @click="copy(item.token)"
+              />
             </dt>
             <dd>{{ item.description }}</dd>
           </div>

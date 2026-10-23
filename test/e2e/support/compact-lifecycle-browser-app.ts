@@ -1,4 +1,5 @@
-import { computed, createApp, ref } from 'vue';
+import { createTooltipApp as createApp } from '../../../packages/web-core/test/e2e/tooltip-app.js';
+import { computed, ref } from 'vue';
 import '../../../packages/web-core/src/styles.css';
 import {
   i18n,

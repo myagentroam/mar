@@ -14,7 +14,6 @@ import {
 } from '../../util/git-history-graph.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { shortChange } from '../../util/workspace-git.js';
-import { tooltipOptions } from '../../util/tooltip.js';
 import FileTypeIcon from './FileTypeIcon.vue';
 
 const props = defineProps<{ readonly service: WorkspaceGitService }>();
@@ -258,20 +257,18 @@ onBeforeUnmount(() => {
           />
         </el-option-group>
       </el-select>
-      <el-tooltip
-        v-bind="tooltipOptions"
-        :content="translate('generated.workspaceInspector.refreshGitHistory2')"
-        ><button
-          class="history-refresh file-explorer-utility-button utility-control"
-          :disabled="historyLoading"
-          :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
-          :aria-busy="historyLoading || undefined"
-          type="button"
-          @click="resetHistory"
-        >
-          <MarIcon name="loading-action" v-if="historyLoading" />
-          <MarIcon name="refresh" v-else /></button
-      ></el-tooltip>
+      <button
+        v-tooltip="translate('generated.workspaceInspector.refreshGitHistory2')"
+        class="history-refresh file-explorer-utility-button utility-control"
+        :disabled="historyLoading"
+        :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
+        :aria-busy="historyLoading || undefined"
+        type="button"
+        @click="resetHistory"
+      >
+        <MarIcon name="loading-action" v-if="historyLoading" />
+        <MarIcon name="refresh" v-else />
+      </button>
     </div>
     <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
       {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
@@ -279,6 +276,9 @@ onBeforeUnmount(() => {
     <ul v-else class="history-list">
       <li v-for="{ commit, graph } in historyGraphRows" :key="commit.hash" class="history-commit">
         <button
+          v-tooltip="
+            `${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`
+          "
           :aria-label="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
           class="history-commit-row"
           type="button"
@@ -309,19 +309,15 @@ onBeforeUnmount(() => {
           </svg>
           <span class="history-content">
             <span class="history-title-row">
-              <el-tooltip
-                v-bind="tooltipOptions"
-                :content="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
-                ><span class="history-subject">{{
-                  commit.subject || translate('generated.workspaceInspector.untitled2')
-                }}</span></el-tooltip
-              >
-              <el-tooltip
-                v-bind="tooltipOptions"
+              <span class="history-subject">{{
+                commit.subject || translate('generated.workspaceInspector.untitled2')
+              }}</span>
+              <span
+                v-tooltip="refName"
                 v-for="refName in commit.refs"
                 :key="refName"
-                :content="refName"
-                ><span class="history-ref">{{ refName }}</span></el-tooltip
+                class="history-ref"
+                >{{ refName }}</span
               >
             </span>
             <small>{{ commit.authorName }} · {{ historyTime(commit.committedAt) }}</small>
@@ -363,53 +359,45 @@ onBeforeUnmount(() => {
                   : `file:${row.file.previousPath ?? ''}:${row.file.path}`
               "
             >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                v-if="row.kind === 'DIRECTORY'"
-                :content="row.path"
-                ><span class="mar-tooltip-control"
-                  ><el-button
-                    text
-                    size="small"
-                    class="history-directory"
-                    :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                    :aria-expanded="
-                      (expandedHistoryDirectories[commit.hash] ?? []).includes(row.path)
-                    "
-                    @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
-                  >
-                    <MarIcon
-                      name="chevron-right"
-                      class="history-directory-toggle"
-                      :class="{
-                        'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
-                          row.path
-                        )
-                      }"
-                    />
-                    <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
-                  </el-button></span
-                ></el-tooltip
+              <span v-tooltip="row.path" v-if="row.kind === 'DIRECTORY'" class="mar-tooltip-control"
+                ><el-button
+                  text
+                  size="small"
+                  class="history-directory"
+                  :style="{ paddingLeft: historyTreeIndent(row.depth) }"
+                  :aria-expanded="
+                    (expandedHistoryDirectories[commit.hash] ?? []).includes(row.path)
+                  "
+                  @click.stop="toggleHistoryDirectory(commit.hash, row.path)"
+                >
+                  <MarIcon
+                    name="chevron-right"
+                    class="history-directory-toggle"
+                    :class="{
+                      'is-expanded': (expandedHistoryDirectories[commit.hash] ?? []).includes(
+                        row.path
+                      )
+                    }"
+                  />
+                  <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
+                </el-button></span
               >
-              <el-tooltip
-                v-bind="tooltipOptions"
-                v-else
-                :content="
+              <el-button
+                v-tooltip="
                   row.file.previousPath
                     ? `${row.file.previousPath} → ${row.file.path}`
                     : row.file.path
                 "
-                ><el-button
-                  text
-                  size="small"
-                  :style="{ paddingLeft: historyTreeIndent(row.depth) }"
-                  @click.stop="emit('open', commit, row.file, $event.ctrlKey || $event.metaKey)"
-                >
-                  <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
-                  <FileTypeIcon :name="row.name" />
-                  <span class="history-file-path">{{ row.name }}</span>
-                </el-button></el-tooltip
+                v-else
+                text
+                size="small"
+                :style="{ paddingLeft: historyTreeIndent(row.depth) }"
+                @click.stop="emit('open', commit, row.file, $event.ctrlKey || $event.metaKey)"
               >
+                <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
+                <FileTypeIcon :name="row.name" />
+                <span class="history-file-path">{{ row.name }}</span>
+              </el-button>
             </li>
           </ul>
         </div>

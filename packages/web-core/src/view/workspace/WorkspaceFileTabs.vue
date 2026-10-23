@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { tooltipOptions } from '../../util/tooltip.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
@@ -236,46 +235,41 @@ defineExpose({
           class="workspace-file-tab"
           :class="{ 'is-active': tab.id === activeTab?.id }"
         >
-          <el-tooltip v-bind="tooltipOptions" :content="tab.path">
-            <button
-              class="workspace-file-tab-activate"
-              :aria-description="tab.path"
-              role="tab"
-              :aria-selected="tab.id === activeTab?.id"
-              :tabindex="tab.id === activeTab?.id ? 0 : -1"
-              type="button"
-              @click="activate(tab.id)"
-              @keydown="onTabKeydown($event, tab.id)"
-            >
-              <span>{{ tab.fileName }}</span>
-            </button>
-          </el-tooltip>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            :content="translate('generated.filePreviewDialog.closePreview')"
+          <button
+            v-tooltip="tab.path"
+            class="workspace-file-tab-activate"
+            :aria-description="tab.path"
+            role="tab"
+            :aria-selected="tab.id === activeTab?.id"
+            :tabindex="tab.id === activeTab?.id ? 0 : -1"
+            type="button"
+            @click="activate(tab.id)"
+            @keydown="onTabKeydown($event, tab.id)"
           >
-            <button
-              class="workspace-file-tab-close"
-              type="button"
-              :disabled="closing"
-              :aria-label="translate('generated.filePreviewDialog.closePreview')"
-              @click="close($event, tab.id)"
-            >
-              <MarIcon name="close" />
-            </button>
-          </el-tooltip>
+            <span>{{ tab.fileName }}</span>
+          </button>
+          <button
+            v-tooltip="translate('generated.filePreviewDialog.closePreview')"
+            class="workspace-file-tab-close"
+            type="button"
+            :disabled="closing"
+            :aria-label="translate('generated.filePreviewDialog.closePreview')"
+            @click="close($event, tab.id)"
+          >
+            <MarIcon name="close" />
+          </button>
         </div>
       </nav>
-      <el-tooltip v-bind="tooltipOptions" :content="translate('filePreviewDialog.closeFileWindow')"
-        ><button
-          class="workspace-file-window-close"
-          type="button"
-          :disabled="closing"
-          :aria-label="translate('filePreviewDialog.closeFileWindow')"
-          @click="requestCloseAll"
-        >
-          <MarIcon name="close" /></button
-      ></el-tooltip>
+      <button
+        v-tooltip="translate('filePreviewDialog.closeFileWindow')"
+        class="workspace-file-window-close"
+        type="button"
+        :disabled="closing"
+        :aria-label="translate('filePreviewDialog.closeFileWindow')"
+        @click="requestCloseAll"
+      >
+        <MarIcon name="close" />
+      </button>
     </header>
     <div class="workspace-file-tab-content">
       <template v-for="tab in props.tabs" :key="tab.id">

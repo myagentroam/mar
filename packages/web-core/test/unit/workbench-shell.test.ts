@@ -28,6 +28,7 @@ afterEach(() => localePreferenceService().setLocale(originalLocale));
 async function renderComponent(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n).use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -67,6 +68,7 @@ async function renderOfflineSurface() {
   };
   const app = createSSRApp({ render: () => h(WorkbenchSurface, { page: page as never }) });
   app.use(i18n).use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   app.provide(MANAGEMENT_COMPOSITION_KEY, {} as never);
@@ -228,6 +230,7 @@ describe('Shared workbench shell', () => {
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
@@ -253,7 +256,6 @@ describe('Shared workbench shell', () => {
       for (const button of navigationButtons) {
         expect(button[1]).toMatch(/aria-label="[^"]+"/u);
         expect(button[1]).not.toMatch(/title="[^"]+"/u);
-        expect(button[1]).toContain('el-tooltip__trigger');
         expect(button[2]).not.toContain('rail-label');
       }
       const helpLink =
@@ -286,18 +288,6 @@ describe('Shared workbench shell', () => {
     }
   );
 
-  it('keeps the active Workspace direct-connection explanation on the Node name', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTabs.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain('v-bind="tooltipOptions"');
-    expect(source).toContain('activeTabId === tab.id && directAvailable(tab.nodeId)');
-    expect(source).toContain(':content="directDescription(tab.nodeId)"');
-    expect(source).toContain(':aria-description="directDescription(tab.nodeId)"');
-    expect(source).not.toContain('direct-available-dot');
-  });
-
   it.each([
     ['en-US', 'Unread', 'Workspace has an active task'],
     ['zh-CN', '未读', '工作区有正在运行的任务']
@@ -305,6 +295,7 @@ describe('Shared workbench shell', () => {
     'shows independent state on an inactive Workspace tab and direct context only on the selected tab: %s',
     async (locale, unread, running) => {
       localePreferenceService().setLocale(locale);
+      const directDescription = 'Peer-to-peer connection available (Private network IPv4 UDP)';
       const tabs = [
         { id: 'node-1:a', nodeId: 'node-1', workspaceId: 'a', label: 'A', lastActiveAt: 1 },
         { id: 'node-1:b', nodeId: 'node-1', workspaceId: 'b', label: 'B', lastActiveAt: 2 }
@@ -317,7 +308,7 @@ describe('Shared workbench shell', () => {
             activeTabId: 'node-1:b',
             nodeLabel: () => 'Node 1',
             directAvailable: () => true,
-            directDescription: () => 'Peer-to-peer connection available (Private network IPv4 UDP)',
+            directDescription: () => directDescription,
             hasActiveRun: (nodeId: string, workspaceId: string) =>
               nodeId === 'node-1' && workspaceId === 'a',
             hasUnread: (nodeId: string, workspaceId: string) =>
@@ -325,6 +316,13 @@ describe('Shared workbench shell', () => {
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', {
+        getSSRProps: (binding) => {
+          const value = binding.value as string | { readonly content?: string } | null | undefined;
+          const content = typeof value === 'string' ? value : value?.content;
+          return content === undefined ? {} : { 'data-tooltip-content': content };
+        }
+      });
 
       const html = await renderToString(app);
       expect(html.match(/class="workspace-tab-node direct-available-node[^"\n]*"/gu)).toHaveLength(
@@ -340,9 +338,11 @@ describe('Shared workbench shell', () => {
         'title="' + i18n.global.t('generated.sessionPresentation.managed') + '"'
       );
       expect(html).toContain('>' + unread + '</span>');
-      expect(html).toContain(
-        'aria-description="Peer-to-peer connection available (Private network IPv4 UDP)"'
-      );
+      const directNode = html.match(
+        /<[a-z][a-z\d-]*\b(?=[^>]*class="[^"]*\bworkspace-tab-node direct-available-node\b[^"]*")[^>]*>/u
+      )?.[0];
+      expect(directNode).toContain(`aria-description="${directDescription}"`);
+      expect(directNode).toContain(`data-tooltip-content="${directDescription}"`);
     }
   );
 
@@ -366,6 +366,7 @@ describe('Shared workbench shell', () => {
         })
     });
     app.use(i18n).use(ElementPlus);
+    app.directive('tooltip', { getSSRProps: () => ({}) });
 
     const html = await renderToString(app);
     expect(html).toContain('workspace-tab-placeholder active');
@@ -395,6 +396,7 @@ describe('Shared workbench shell', () => {
         })
     });
     app.use(i18n).use(ElementPlus);
+    app.directive('tooltip', { getSSRProps: () => ({}) });
 
     expect(await renderToString(app)).toBe('<!---->');
   });
@@ -659,6 +661,7 @@ describe('Shared workbench shell', () => {
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain('Host extension');
       expect(html).toContain('aria-expanded="true"');
@@ -682,12 +685,13 @@ describe('Shared workbench shell', () => {
             nodeLabel: () => 'Visible node',
             workspaceLabel: () => 'Visible workspace',
             workspaces: () => [
-              { id: 'workspace', path: '/workspace', kind: 'DIRECTORY' },
-              { id: 'grouped', path: '/grouped', kind: 'DIRECTORY', groupName: 'Product' }
+              { id: 'workspace', path: '/workspace', kind: 'DIRECTORY' as const },
+              { id: 'grouped', path: '/grouped', kind: 'DIRECTORY' as const, groupName: 'Product' }
             ]
           })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
