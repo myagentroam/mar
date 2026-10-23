@@ -275,8 +275,7 @@ const emit = defineEmits<{
 .composer {
   position: relative;
   z-index: 3;
-  border-top: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-panel);
+  background: var(--mar-conversation-canvas);
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   padding: 0.4rem 0.8rem 0.75rem;
