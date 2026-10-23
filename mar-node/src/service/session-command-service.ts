@@ -1,3 +1,4 @@
+import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
 import type { RunnerCommandDescriptor, RunnerProfile } from '@myagentroam/protocol';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
@@ -29,10 +30,7 @@ interface SessionCommandServiceOptions {
     readonly suppressNotifications?: boolean;
     readonly secretEnvironment: Readonly<Record<string, string>>;
     readonly personalInstructions?: string;
-    readonly marAgentModel?: unknown;
-    readonly marAgentModels?: unknown;
-    readonly marAgentCompact?: unknown;
-    readonly marAgentRuntimeScopeId?: unknown;
+    readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
   }) => Promise<unknown>;
   readonly beginGoal: (session: NodeAgentSession) => unknown;
@@ -124,12 +122,9 @@ export class SessionCommandService {
           : {}),
         secretEnvironment,
         ...(instructions === undefined ? {} : { personalInstructions: instructions }),
-        ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-        ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-        ...(input.marAgentCompact === undefined ? {} : { marAgentCompact: input.marAgentCompact }),
-        ...(input.marAgentRuntimeScopeId === undefined
-          ? {}
-          : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId })
+        executionContext: this.options.runners
+          .require(session.runner)
+          .prepareExecutionContext(input)
       });
     }
     const runner = this.options.runners.product(session.runner);
@@ -158,12 +153,7 @@ export class SessionCommandService {
     const result = await runner.executeCommand(session, command, invocation.input, {
       secretEnvironment,
       mcpInstallations: this.options.mcps(session.workspaceId),
-      ...(input.marAgentModel === undefined ? {} : { marAgentModel: input.marAgentModel }),
-      ...(input.marAgentModels === undefined ? {} : { marAgentModels: input.marAgentModels }),
-      ...(input.marAgentCompact === undefined ? {} : { marAgentCompact: input.marAgentCompact }),
-      ...(input.marAgentRuntimeScopeId === undefined
-        ? {}
-        : { marAgentRuntimeScopeId: input.marAgentRuntimeScopeId }),
+      executionContext: runner.prepareExecutionContext(input),
       ...(Number.isSafeInteger(input.__requestUserId)
         ? { initiatedByUserId: input.__requestUserId as number }
         : {})

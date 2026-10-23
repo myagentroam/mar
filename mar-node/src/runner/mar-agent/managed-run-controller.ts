@@ -1,3 +1,5 @@
+import { marAgentEnvelopeInput, resolveMarAgentExecutionInput } from './execution-input.js';
+export { resolveRunModels } from './execution-input.js';
 import type { ResolvedMcpServer } from '../../mcp/model.js';
 import { NODE_MCP } from '../../mcp/naming.js';
 import { computerUseHostSkill } from './computer-use-skill.js';
@@ -18,7 +20,6 @@ import {
 import {
   marAgentReasoningEffortSchema,
   resolveMarAgentDefaultReasoningEffort,
-  marAgentRuntimeModelConfigurationSchema,
   type MarAgentRuntimeModelConfiguration,
   type NodeEnvelope
 } from '@myagentroam/protocol';
@@ -255,23 +256,19 @@ export class MarAgentManagedRunController {
     if (command.id !== 'compact') throw new Error('RUNNER_COMMAND_UNAVAILABLE');
     if (session.externalSessionId === null || session.nativeControl !== 'MAR_MANAGED')
       throw new Error('RUNNER_COMMAND_UNAVAILABLE');
-    const parsed = marAgentRuntimeModelConfigurationSchema.safeParse(context.marAgentModel);
-    if (!parsed.success || parsed.data.id !== session.model)
-      throw new Error('RUNNER_COMMAND_UNAVAILABLE');
-    const current =
-      parsed.data as import('@myagentroam/protocol').MarAgentRuntimeModelConfiguration;
+    const execution = context.executionContext;
+    const resolved = resolveMarAgentExecutionInput(
+      execution?.runner === 'mar-agent' ? execution.runnerInput : undefined,
+      session.model ?? ''
+    );
+    if (resolved === undefined) throw new Error('RUNNER_COMMAND_UNAVAILABLE');
     const runId = randomUUID();
     void this.run({
       runId,
       sessionId: session.id,
       input,
       cwd: session.cwd,
-      model: current,
-      models: resolveRunModels(current, context.marAgentModels),
-      compact: context.marAgentCompact,
-      ...(typeof context.marAgentRuntimeScopeId === 'string'
-        ? { runtimeScopeId: context.marAgentRuntimeScopeId }
-        : {}),
+      ...resolved,
       effort: session.effort ?? '',
       mode: command.id,
       secretEnvironment: context.secretEnvironment,
@@ -310,8 +307,8 @@ export class MarAgentManagedRunController {
       this.host.active.has(payload.runId)
     )
       return;
-    const parsed = marAgentRuntimeModelConfigurationSchema.safeParse(payload.marAgentModel);
-    if (!parsed.success || parsed.data.id !== payload.model) {
+    const resolved = resolveMarAgentExecutionInput(marAgentEnvelopeInput(payload), payload.model);
+    if (resolved === undefined) {
       this.host.emit(
         payload.runId,
         'run.rejected',
@@ -320,7 +317,6 @@ export class MarAgentManagedRunController {
       );
       return;
     }
-    const model = parsed.data as import('@myagentroam/protocol').MarAgentRuntimeModelConfiguration;
     let mcpServers: readonly import('../../mcp/model.js').ResolvedMcpServer[];
     let images: ReturnType<typeof parseRunnerImageAttachments>;
     let secretEnvironment: Readonly<Record<string, string>>;
@@ -350,12 +346,7 @@ export class MarAgentManagedRunController {
       input: payload.input,
       secretEnvironment,
       cwd: payload.cwd,
-      model,
-      models: resolveRunModels(model, payload.marAgentModels),
-      compact: payload.marAgentCompact,
-      ...(typeof payload.marAgentRuntimeScopeId === 'string'
-        ? { runtimeScopeId: payload.marAgentRuntimeScopeId }
-        : {}),
+      ...resolved,
       effort: typeof payload.effort === 'string' ? payload.effort : '',
       ...(payload.access === undefined ? {} : { access: payload.access }),
       mode: payload.collaborationMode === 'plan' ? 'plan' : 'run',
@@ -1002,27 +993,5 @@ function normalizeQuestions(raw: unknown[]): Array<{
         ...(multiSelect ? { multiSelect: true } : {})
       }
     ];
-  });
-}
-
-export function resolveRunModels(
-  marAgentModel: MarAgentRuntimeModelConfiguration,
-  marAgentModels: unknown
-): MarAgentRuntimeModelConfiguration[] {
-  const configurations: MarAgentRuntimeModelConfiguration[] = [];
-  if (Array.isArray(marAgentModels))
-    for (const candidate of marAgentModels) {
-      const parsed = marAgentRuntimeModelConfigurationSchema.safeParse(candidate);
-      if (parsed.success)
-        configurations.push(
-          parsed.data as import('@myagentroam/protocol').MarAgentRuntimeModelConfiguration
-        );
-    }
-  configurations.push(marAgentModel);
-  const seen = new Set<string>();
-  return configurations.filter((configuration) => {
-    if (seen.has(configuration.id)) return false;
-    seen.add(configuration.id);
-    return true;
   });
 }

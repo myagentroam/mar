@@ -16,6 +16,7 @@ import type { ChannelDelivery } from '../claude-channel.js';
 import type { CodexSessionControl } from '../codex-app-server.js';
 import type { ExternalSessionActivationState } from '../service/session-domain-state.js';
 import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { RunnerExecutionContext } from './execution-context.js';
 
 export type RegisteredRunnerName = RunnerName | 'fake';
 export interface RunnerSteerInput {
@@ -48,10 +49,7 @@ export type RunnerSteerResult =
 export interface RunnerCommandContext {
   readonly secretEnvironment: Readonly<Record<string, string>>;
   readonly mcpInstallations?: unknown;
-  readonly marAgentModel?: unknown;
-  readonly marAgentModels?: unknown;
-  readonly marAgentCompact?: unknown;
-  readonly marAgentRuntimeScopeId?: unknown;
+  readonly executionContext?: RunnerExecutionContext;
   readonly initiatedByUserId?: number;
 }
 export type NativeSessionRemovalResult = boolean | 'MISSING';
@@ -331,6 +329,11 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
 
   acceptsRun(runner: unknown): boolean {
     return this.interceptsRuns || runner === this.name;
+  }
+
+  prepareExecutionContext(input: Readonly<Record<string, unknown>>): RunnerExecutionContext {
+    void input;
+    return { runner: this.name };
   }
 
   startManagedRun(envelope: NodeEnvelope): void {

@@ -202,7 +202,7 @@ it.each(
         runId: id,
         sessionId: session.id,
         workspaceId: workspace.id,
-        runner: 'mar-agent',
+        executionContext: { runner: 'mar-agent' },
         input: 'schedule',
         attachments: [],
         attachmentPaths: [],

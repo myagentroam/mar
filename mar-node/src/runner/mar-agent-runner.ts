@@ -37,9 +37,13 @@ import {
   marAgentGeneratedImagesDirectory
 } from './mar-agent/generated-images.js';
 import { projectMarAgentHistory } from './mar-agent/history-projection.js';
+import { captureMarAgentExecutionInput } from './mar-agent/execution-input.js';
 
 export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   readonly name = 'mar-agent' as const;
+  override prepareExecutionContext(input: Readonly<Record<string, unknown>>) {
+    return { runner: this.name, runnerInput: captureMarAgentExecutionInput(input) };
+  }
   readonly discoveryScope = 'ALL_WORKSPACES' as const;
   #models: readonly MarAgentNodeModelSummary[] = [];
   #releaseSessionResources: ((sessionId: string) => Promise<void>) | undefined;
