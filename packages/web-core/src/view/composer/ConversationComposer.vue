@@ -155,7 +155,10 @@ const emit = defineEmits<{
         class="composer-working"
         :class="{ 'is-active': working && !connectionLabel }"
       >
-        <BusyIndicator v-if="connectionLabel ? connectionBusy : working && workingBusy" />
+        <BusyIndicator
+          v-if="connectionLabel ? connectionBusy : working && workingBusy"
+          class="composer-busy-indicator"
+        />
         <span role="status" aria-live="polite">{{ connectionLabel || workingLabel }}</span>
         <span v-if="elapsedLabel && !connectionLabel" class="composer-elapsed">{{
           elapsedLabel
@@ -336,6 +339,12 @@ const emit = defineEmits<{
 .composer:focus-within .composer-working {
   border-color: var(--mar-color-brand);
   border-bottom-color: var(--mar-bg-panel);
+}
+
+.composer-working > .composer-busy-indicator {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
 }
 
 .composer-shell {

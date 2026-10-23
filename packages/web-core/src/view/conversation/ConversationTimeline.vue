@@ -792,7 +792,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <summary class="conversation-record-heading">
               <ConversationRecordIcon kind="file_change" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('file_change') }}</strong>
-              <span
+              <span class="conversation-group-meta"
                 >{{ conversationFileChangeEntries(displayItem.items).length }}
                 {{ translate('generated.conversationTimeline.files') }}</span
               >
