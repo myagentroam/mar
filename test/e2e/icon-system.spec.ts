@@ -999,6 +999,20 @@ for (const theme of ['dark', 'light'])
       expect(geometry.width).toBeGreaterThanOrEqual(14);
       expect(geometry.width).toBeLessThanOrEqual(24);
       expect(geometry.stroke).toEqual(geometry.color);
+      const check = page.locator('.icon-review-grid [data-mar-icon="check"]');
+      await expect(check).toBeVisible();
+      await expect(check).toHaveAttribute('stroke-width', '1.75');
+      const checkBounds = await check.locator('path').evaluate((path) => {
+        const bounds = (path as SVGPathElement).getBBox();
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+      });
+      // The check should fill its canvas without thicker strokes or clipped endpoints.
+      expect(checkBounds.width).toBeGreaterThanOrEqual(16);
+      expect(checkBounds.height).toBeGreaterThanOrEqual(11);
+      expect(checkBounds.x).toBeGreaterThanOrEqual(1);
+      expect(checkBounds.y).toBeGreaterThanOrEqual(1);
+      expect(checkBounds.x + checkBounds.width).toBeLessThanOrEqual(23);
+      expect(checkBounds.y + checkBounds.height).toBeLessThanOrEqual(23);
       const reasoning = page.locator('.icon-review-grid [data-mar-icon="reasoning"]');
       await expect(reasoning).toBeVisible();
       await expect(reasoning).toHaveCSS('animation-name', 'none');
