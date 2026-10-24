@@ -10,6 +10,7 @@ import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue'
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const mobile = window.matchMedia('(max-width: 680px)').matches;
+const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
   { id: 'plain', path: '/plain', kind: 'DIRECTORY' },
@@ -192,7 +193,10 @@ const surfacePage = {
         :capability="
           {
             available: true,
-            profiles: [{ id: 'bash', label: 'User Shell' }],
+            profiles: [
+              { id: 'bash', label: 'Shell' },
+              ...(multipleTerminalProfiles ? [{ id: 'other-shell', label: 'Other shell' }] : [])
+            ],
             supportsConPty: false
           } as never
         "

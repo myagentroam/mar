@@ -928,14 +928,16 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       const header = dock.querySelector<HTMLElement>('.admin-terminal-header')!;
       const tabs = dock.querySelector<HTMLElement>('.terminal-tabs')!;
       const body = dock.querySelector<HTMLElement>('.admin-terminal-body')!;
+      const title = header.querySelector('h2')!;
       return {
-        headerHeight: header.getBoundingClientRect().height,
-        gap: tabs.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+        headerHeight: tabs.getBoundingClientRect().top - header.getBoundingClientRect().top,
+        gap: tabs.getBoundingClientRect().top - title.getBoundingClientRect().bottom,
         height: body.getBoundingClientRect().top - header.getBoundingClientRect().top
       };
     });
     expect(terminalChrome.headerHeight).toBeLessThanOrEqual(36);
-    expect(terminalChrome.gap).toBeLessThanOrEqual(1);
+    expect(terminalChrome.gap).toBeGreaterThanOrEqual(0);
+    expect(terminalChrome.gap).toBeLessThanOrEqual(12);
     expect(terminalChrome.height).toBeLessThanOrEqual(76);
   }
   await page.setViewportSize({ width: 390, height: 844 });

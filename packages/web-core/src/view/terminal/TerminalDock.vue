@@ -358,6 +358,49 @@ defineExpose({ release, toggle: toggleTerminal });
   <section class="admin-terminal" :aria-label="translate('common.adminTerminal')">
     <header class="admin-terminal-header">
       <h2>{{ contextLabel }}</h2>
+      <div
+        v-if="hasOpened"
+        v-show="expanded"
+        class="terminal-tabs"
+        role="tablist"
+        :aria-label="translate('generated.terminalDock.list', { value0: contextLabel })"
+      >
+        <div
+          v-for="(item, index) in terminals"
+          :key="item.id"
+          class="terminal-tab"
+          :class="{ active: item.id === activeTerminalId }"
+        >
+          <button
+            class="terminal-tab-select"
+            type="button"
+            role="tab"
+            :aria-selected="item.id === activeTerminalId"
+            @click="selectTerminal(item.id)"
+          >
+            <span>Terminal {{ index + 1 }}</span>
+          </button>
+          <button
+            class="terminal-tab-close icon-button utility-control"
+            type="button"
+            :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
+            :disabled="closingId === item.id"
+            @click="closeTerminal(item.id)"
+          >
+            <MarIcon name="close" />
+          </button>
+        </div>
+        <button
+          v-tooltip="terminalActionTitle"
+          class="terminal-tab terminal-tab-add"
+          type="button"
+          :aria-label="translate('generated.terminalDock.newTerminal2')"
+          :disabled="!canUseTerminal || creating"
+          @click="openTerminal"
+        >
+          <MarIcon name="plus" />
+        </button>
+      </div>
       <div v-if="profiles.length > 1 || !mobileMode" class="admin-terminal-actions">
         <label v-if="profiles.length > 1" class="terminal-profile">
           {{ translate('generated.terminalDock.terminalProfile') }}
@@ -401,47 +444,6 @@ defineExpose({ release, toggle: toggleTerminal });
       </div>
     </header>
     <div v-if="hasOpened" v-show="expanded">
-      <div
-        class="terminal-tabs"
-        role="tablist"
-        :aria-label="translate('generated.terminalDock.list', { value0: contextLabel })"
-      >
-        <div
-          v-for="(item, index) in terminals"
-          :key="item.id"
-          class="terminal-tab"
-          :class="{ active: item.id === activeTerminalId }"
-        >
-          <button
-            class="terminal-tab-select"
-            type="button"
-            role="tab"
-            :aria-selected="item.id === activeTerminalId"
-            @click="selectTerminal(item.id)"
-          >
-            <span>Terminal {{ index + 1 }}</span>
-          </button>
-          <button
-            class="terminal-tab-close icon-button utility-control"
-            type="button"
-            :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
-            :disabled="closingId === item.id"
-            @click="closeTerminal(item.id)"
-          >
-            <MarIcon name="close" />
-          </button>
-        </div>
-        <button
-          v-tooltip="terminalActionTitle"
-          class="terminal-tab terminal-tab-add"
-          type="button"
-          :aria-label="translate('generated.terminalDock.newTerminal2')"
-          :disabled="!canUseTerminal || creating"
-          @click="openTerminal"
-        >
-          <MarIcon name="plus" />
-        </button>
-      </div>
       <div class="terminal-context-cache">
         <TerminalTabView
           v-for="item in terminals"
@@ -489,6 +491,7 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .admin-terminal-header h2 {
+  flex: none;
   margin: 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
@@ -498,6 +501,7 @@ defineExpose({ release, toggle: toggleTerminal });
 
 .admin-terminal-actions {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
@@ -528,12 +532,6 @@ defineExpose({ release, toggle: toggleTerminal });
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
-}
-
-@media (min-width: 768px) {
-  .terminal-tab {
-    font-size: calc(var(--mar-font-size-body) - 1px);
-  }
 }
 
 .terminal-tab-select {
@@ -591,6 +589,69 @@ defineExpose({ release, toggle: toggleTerminal });
   padding: 0.31rem;
 }
 
+@media (min-width: 768px) {
+  .admin-terminal {
+    container-type: inline-size;
+  }
+
+  .admin-terminal-header {
+    padding-block: 0;
+  }
+
+  .admin-terminal-actions button {
+    min-height: var(--mar-compact-control-size);
+  }
+
+  .terminal-tabs {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+  }
+
+  .terminal-tab {
+    min-width: 0;
+    min-height: var(--mar-compact-control-size);
+    font-size: calc(var(--mar-font-size-body) - 1px);
+  }
+
+  .terminal-tab-select {
+    align-items: center;
+    min-height: var(--mar-compact-control-size);
+    padding: 0.1rem 32px 0.1rem 0.45rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .terminal-tab-add {
+    min-width: var(--mar-compact-control-size);
+    padding: 0;
+  }
+
+  .terminal-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+  }
+
+  .terminal-profile .el-select {
+    width: 8rem;
+  }
+
+  @container (max-width: 36rem) {
+    .admin-terminal-header {
+      flex-wrap: wrap;
+      row-gap: 0;
+      padding-top: 0.2rem;
+    }
+
+    .terminal-tabs {
+      order: 1;
+      flex-basis: 100%;
+    }
+  }
+}
+
 @media (max-width: 767px) {
   .admin-terminal {
     background: var(--mar-bg-chrome);
@@ -606,6 +667,13 @@ defineExpose({ release, toggle: toggleTerminal });
   .admin-terminal-actions {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .terminal-tabs {
+    order: 1;
+    flex-basis: calc(100% + 1.4rem);
+    min-width: calc(100% + 1.4rem);
+    margin: 0 -0.7rem -0.25rem;
   }
 }
 </style>

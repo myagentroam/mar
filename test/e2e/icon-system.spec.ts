@@ -444,15 +444,18 @@ test('Terminal headers keep multiple shell profiles reachable on narrow screens'
       const bounds = await page.locator('.admin-terminal-header').evaluate((header) => {
         const headerBox = header.getBoundingClientRect();
         const selectBox = header.querySelector('.el-select')!.getBoundingClientRect();
+        const tabsBox = header.querySelector('.terminal-tabs')!.getBoundingClientRect();
         return {
-          height: headerBox.height,
+          height: tabsBox.top - headerBox.top,
           left: selectBox.left - headerBox.left,
-          right: headerBox.right - selectBox.right
+          right: headerBox.right - selectBox.right,
+          tabsGap: tabsBox.top - selectBox.bottom
         };
       });
       expect(bounds.height).toBeLessThanOrEqual(72);
       expect(bounds.left).toBeGreaterThanOrEqual(0);
       expect(bounds.right).toBeGreaterThanOrEqual(0);
+      expect(bounds.tabsGap).toBeGreaterThanOrEqual(0);
       await page.locator('.terminal-profile .el-select').click();
       await page.getByRole('option', { name: 'Other shell', exact: true }).click();
       await page.getByRole('button', { name: 'New terminal', exact: true }).click();
