@@ -358,6 +358,41 @@ describe('Web unified file preview classification', () => {
       expect(workspaceFileTarget(href, 'E:/project', 'https://console.example')).toBeUndefined();
   });
 
+  it('Resolves file hash line ranges to their starting line without accepting invalid ranges', () => {
+    const origin = 'https://console.example';
+    for (const root of ['E:/project', '/home/runner/project']) {
+      for (const href of [
+        'src/deleted.ts#L186-L217',
+        `${root}/src/deleted.ts#L186-L217`,
+        `sandbox:${root}/src/deleted.ts#L186-L217`,
+        `${origin}/${root.replace(/^\//u, '')}/src/deleted.ts#L186-L217`
+      ])
+        expect(workspaceFileTarget(href, root, origin)).toEqual({
+          path: 'src/deleted.ts',
+          line: 186
+        });
+    }
+    expect(
+      workspaceFileTarget(String.raw`E:\project\src\deleted.ts#L186-L217`, 'E:/project', origin)
+    ).toEqual({ path: 'src/deleted.ts', line: 186 });
+    expect(workspaceFileTarget('src/deleted.ts#L186-L186', '/project', origin)).toEqual({
+      path: 'src/deleted.ts',
+      line: 186
+    });
+    for (const href of [
+      'src/deleted.ts#L0-L217',
+      'src/deleted.ts#L186-L0',
+      'src/deleted.ts#L217-L186',
+      'src/deleted.ts#L186-L9007199254740992',
+      'src/deleted.ts#L186-L217#L218',
+      'src/deleted.ts%23L186-L217',
+      '#L186-L217',
+      'https://other.example/src/deleted.ts#L186-L217',
+      `${origin}/src/deleted.ts?download=1#L186-L217`
+    ])
+      expect(workspaceFileTarget(href, '/project', origin)).toBeUndefined();
+  });
+
   it('Limits frequent matches to avoid unbounded highlight nodes in long files', () => {
     const result = inlineTextSearch(['a'.repeat(5_001)], 'a');
 
