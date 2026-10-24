@@ -90,6 +90,49 @@ async function fixture(serverCount = 5) {
 }
 
 describe('HTTP MCP catalog', () => {
+  it('does not forward credentials to a cross-origin redirect target', async () => {
+    let receivedCredential: string | undefined;
+    const target = createServer((request, response) => {
+      receivedCredential = request.headers['x-mar-credential'] as string | undefined;
+      response.writeHead(500).end();
+    });
+    target.listen(0, '127.0.0.1');
+    await once(target, 'listening');
+    const targetAddress = target.address();
+    if (!targetAddress || typeof targetAddress === 'string')
+      throw new Error('Fixture address unavailable');
+    const redirect = createServer((_request, response) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${targetAddress.port}/mcp` }).end();
+    });
+    redirect.listen(0, '127.0.0.1');
+    await once(redirect, 'listening');
+    const address = redirect.address();
+    if (!address || typeof address === 'string') throw new Error('Fixture address unavailable');
+    try {
+      await expect(
+        MarAgentMcpClientPool.connect(
+          [
+            {
+              name: 'records',
+              transport: 'HTTP',
+              url: `http://127.0.0.1:${address.port}/mcp`,
+              headers: { 'x-mar-credential': 'fixture-secret' }
+            }
+          ],
+          '/fixture'
+        )
+      ).rejects.toThrow();
+      expect(receivedCredential).toBeUndefined();
+    } finally {
+      redirect.closeAllConnections();
+      target.closeAllConnections();
+      await Promise.all([
+        new Promise<void>((resolve) => redirect.close(() => resolve())),
+        new Promise<void>((resolve) => target.close(() => resolve()))
+      ]);
+    }
+  });
+
   it('initializes four servers concurrently and refreshes the warm catalog for each execution boundary', async () => {
     const f = await fixture();
     const cache = new MarAgentMcpClientCache();

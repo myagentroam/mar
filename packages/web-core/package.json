@@ -286,7 +286,7 @@
     "dompurify": "^3.4.13",
     "github-markdown-css": "5.9.0",
     "highlight.js": "^11.12.0",
-    "markdown-it": "^15.0.0",
+    "markdown-it": "^15.0.3",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.17.1",
     "pdfjs-dist": "^6.2.108"
