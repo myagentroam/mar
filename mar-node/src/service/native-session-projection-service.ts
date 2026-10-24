@@ -162,12 +162,12 @@ export class NativeSessionProjectionService {
 
   resumedConfiguration(session: NodeAgentSession): RunnerDefaultConfiguration {
     const workspace = this.options.database()?.getWorkspace(session.workspaceId);
+    const runner = this.options.runners.require(session.runner);
     const saved = this.options
       .database()
       ?.getRunnerDefaults()
       .find((value) => value.runner === session.runner);
-    const fallback =
-      saved ?? this.options.runners.require(session.runner).defaultConfiguration(workspace);
+    const fallback = saved ?? runner.defaultConfiguration(workspace);
     const configuration: RunnerDefaultConfiguration = {
       runner: session.runner,
       model:
@@ -175,18 +175,9 @@ export class NativeSessionProjectionService {
           ? session.model
           : fallback.model,
       effort: typeof session.effort === 'string' ? session.effort : fallback.effort,
-      access:
-        typeof session.access === 'string' && session.access.trim().length > 0
-          ? session.access
-          : session.runner === 'mar-agent'
-            ? 'full-access'
-            : fallback.access
+      access: runner.restoreStoredAccess(session.access, fallback.access)
     };
-    return session.runner === 'mar-agent' &&
-      configuration.access !== 'auto' &&
-      configuration.access !== 'full-access'
-      ? { ...configuration, access: 'full-access' }
-      : configuration;
+    return configuration;
   }
 
   ensureResumedConfiguration(session: NodeAgentSession): NodeAgentSession {

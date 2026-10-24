@@ -1765,7 +1765,7 @@ describe('MAR Agent Node Runner', () => {
           () => database,
           unavailableCapabilities,
           {
-            optional: () => new MarAgentRunner(),
+            optional: (name: string) => (name === 'mar-agent' ? new MarAgentRunner() : undefined),
             profiles: () => [],
             refreshProfiles: vi.fn(async () => [])
           } as never,

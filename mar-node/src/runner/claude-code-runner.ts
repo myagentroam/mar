@@ -93,6 +93,10 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
     };
   }
 
+  override goalAccess(currentAccess: string | null) {
+    return { access: 'bypass', accessChanged: currentAccess !== 'bypass' };
+  }
+
   override mcpConfiguration(
     raw: unknown,
     secrets: Readonly<Record<string, string>>,

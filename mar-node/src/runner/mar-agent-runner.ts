@@ -268,6 +268,12 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       access: 'auto'
     };
   }
+  override goalAccess(currentAccess: string | null) {
+    return { access: currentAccess ?? 'full-access', accessChanged: false };
+  }
+  override restoreStoredAccess(access: string | null, _fallbackAccess: string): string {
+    return access === 'auto' || access === 'full-access' ? access : 'full-access';
+  }
   presentSession(
     session: NodeAgentSession,
     capabilities: NodeCapabilities,

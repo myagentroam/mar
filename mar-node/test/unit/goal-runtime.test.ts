@@ -2,7 +2,6 @@ import { parseComposerTags, serializeComposerTag } from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { connect } from 'node:net';
 import {
-  goalUnrestrictedAccess,
   GoalRuntime,
   publicGoalHistoryText,
   publicGoalStartText,
@@ -11,15 +10,6 @@ import {
 import { GoalMcpBridge } from '../../src/service/goal-mcp-bridge.js';
 
 describe('GoalRuntime', () => {
-  it('selects the unrestricted access mode for each supported runner', () => {
-    expect(goalUnrestrictedAccess('mar-agent')).toBe('full-access');
-    expect(goalUnrestrictedAccess('mar-agent', 'auto')).toBe('auto');
-    expect(goalUnrestrictedAccess('mar-agent', 'full-access')).toBe('full-access');
-    expect(goalUnrestrictedAccess('codex')).toBe('full-access');
-    expect(goalUnrestrictedAccess('claude-code')).toBe('bypass');
-    expect(goalUnrestrictedAccess('opencode')).toBe('auto');
-  });
-
   it('creates and edits one active goal with a hidden start prompt', () => {
     const changed = vi.fn();
     const runtime = new GoalRuntime(changed);

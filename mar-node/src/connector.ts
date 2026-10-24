@@ -433,6 +433,7 @@ export class NodeConnector {
   );
   private readonly goalCoordinator = new GoalContinuationCoordinator({
     goals: this.goalRuntime,
+    runners: () => this.runners,
     runtime: this.runtime,
     commands: this.commandStates,
     queue: () => this.continuousRunCoordinator,
