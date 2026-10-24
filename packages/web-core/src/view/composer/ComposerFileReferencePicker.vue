@@ -99,19 +99,21 @@ watch(
   text-align: left;
 }
 
-.command-picker button:hover,
+.command-picker button:hover {
+  background: var(--mar-fill-row-hover);
+}
+
 .command-picker button.active {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
+}
+
+.command-picker button:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
 }
 
 .command-picker button strong {
   font-weight: 600;
-}
-
-.command-picker button:is(:hover, .active),
-.command-picker button:is(:hover, .active) code,
-.command-picker button:is(:hover, .active) .entry-kind {
-  color: var(--mar-color-brand-text);
 }
 
 .command-picker p {

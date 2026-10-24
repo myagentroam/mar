@@ -69,6 +69,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button
+          class="utility-control"
           v-tooltip="
             translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
           "
@@ -87,6 +88,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       :aria-label="translate('generated.conversationHeader.workspaceTools')"
     >
       <button
+        class="utility-control"
         type="button"
         :aria-label="translate('generated.conversationHeader.openSessionList')"
         @click="emit('openSurface', 'sessions')"
@@ -94,6 +96,7 @@ async function copySessionId(sessionId: string): Promise<void> {
         {{ translate('generated.conversationHeader.sessions') }}
       </button>
       <button
+        class="utility-control"
         v-if="filesReady"
         type="button"
         :aria-label="translate('generated.conversationHeader.openFiles')"
@@ -102,6 +105,7 @@ async function copySessionId(sessionId: string): Promise<void> {
         {{ translate('generated.conversationHeader.files') }}
       </button>
       <button
+        class="utility-control"
         v-if="terminalReady"
         type="button"
         :aria-label="translate('generated.conversationHeader.openTerminal')"
@@ -193,7 +197,7 @@ async function copySessionId(sessionId: string): Promise<void> {
 }
 
 :global(.conversation-session-id code) {
-  color: var(--mar-text-muted);
+  color: inherit;
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   line-height: 1rem;
@@ -205,22 +209,10 @@ async function copySessionId(sessionId: string): Promise<void> {
   max-width: 100%;
   border: 0;
   border-radius: 3px;
-  background: transparent;
   padding: 0;
-  color: inherit;
   cursor: pointer;
   font: inherit;
   text-align: start;
-}
-
-.conversation-session-id button:hover code,
-.conversation-session-id button:focus-visible code {
-  color: var(--mar-color-brand-text);
-}
-
-.conversation-session-id button:focus-visible {
-  outline: 1px solid var(--mar-color-brand-text);
-  outline-offset: 2px;
 }
 
 @media (max-width: 767px) {
@@ -246,6 +238,10 @@ async function copySessionId(sessionId: string): Promise<void> {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .conversation-session-id button:focus-visible {
+    outline-offset: -2px;
+  }
 }
 
 @media (max-width: 767px) {
@@ -267,20 +263,9 @@ async function copySessionId(sessionId: string): Promise<void> {
     gap: 0.2rem;
     border: 0;
     border-radius: 5px;
-    background: transparent;
-    color: var(--mar-text-secondary);
     padding: 0.25rem 0.42rem;
     font: inherit;
     font-size: var(--mar-font-size-body);
-  }
-}
-
-@media (max-width: 767px) {
-  .mobile-conversation-tools button:focus-visible,
-  .mobile-conversation-tools button:hover {
-    background: var(--mar-color-brand-subtle);
-    color: var(--mar-color-brand-text);
-    outline: none;
   }
 }
 </style>

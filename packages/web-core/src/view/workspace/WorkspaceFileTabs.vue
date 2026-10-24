@@ -250,7 +250,7 @@ defineExpose({
           </button>
           <button
             v-tooltip="translate('generated.filePreviewDialog.closePreview')"
-            class="workspace-file-tab-close"
+            class="icon-button utility-control workspace-file-tab-close"
             type="button"
             :disabled="closing"
             :aria-label="translate('generated.filePreviewDialog.closePreview')"
@@ -262,7 +262,7 @@ defineExpose({
       </nav>
       <button
         v-tooltip="translate('filePreviewDialog.closeFileWindow')"
-        class="workspace-file-window-close"
+        class="icon-button utility-control workspace-file-window-close"
         type="button"
         :disabled="closing"
         :aria-label="translate('filePreviewDialog.closeFileWindow')"
@@ -374,8 +374,6 @@ defineExpose({
   place-items: center;
   border: 0;
   border-radius: 3px;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
   font-size: 13px;
 }
@@ -385,17 +383,8 @@ defineExpose({
   margin-inline: 0.25rem;
 }
 
-.workspace-file-tab-close:hover,
-.workspace-file-tab-close:focus-visible,
-.workspace-file-window-close:hover,
-.workspace-file-window-close:focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand-text);
-}
-
 .workspace-file-tab-close:focus-visible,
 .workspace-file-window-close:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 

@@ -13,6 +13,7 @@ import ThemeSettings from '../../src/view/settings/ThemeSettings.vue';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
+import UtilityInteractionFixture from './utility-interaction-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import { createWorkbenchContextCommandService } from '../../src/service/WorkbenchContextCommandService.js';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
@@ -301,15 +302,17 @@ const resourceDetailsFixture = {
       ]);
   }
 };
-(new URLSearchParams(location.search).has('resource-details')
-  ? createApp(resourceDetailsFixture)
-  : new URLSearchParams(location.search).has('shared-tooltip')
-    ? createApp(SharedTooltipFixture)
-    : new URLSearchParams(location.search).has('loading-feedback')
-      ? createApp(LoadingFeedbackFixture)
-      : new URLSearchParams(location.search).has('session-performance')
-        ? createApp(sessionPerformanceFixture)
-        : app
+(new URLSearchParams(location.search).has('utility-interaction')
+  ? createApp(UtilityInteractionFixture)
+  : new URLSearchParams(location.search).has('resource-details')
+    ? createApp(resourceDetailsFixture)
+    : new URLSearchParams(location.search).has('shared-tooltip')
+      ? createApp(SharedTooltipFixture)
+      : new URLSearchParams(location.search).has('loading-feedback')
+        ? createApp(LoadingFeedbackFixture)
+        : new URLSearchParams(location.search).has('session-performance')
+          ? createApp(sessionPerformanceFixture)
+          : app
 )
   .use(i18n)
   .use(ElementPlus)

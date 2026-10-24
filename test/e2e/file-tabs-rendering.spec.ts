@@ -11,6 +11,21 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}file-tabs.html`);
       const tabs = page.getByRole('tab');
       await expect(tabs).toHaveCount(12);
+      await page.locator('html').evaluate((element) => {
+        element.style.setProperty('--mar-text-primary', '#d6dfc9');
+        element.style.setProperty('--mar-color-brand-text', '#af79d0');
+      });
+      for (const close of [
+        page.locator('.workspace-file-tab-close').first(),
+        page.locator('.workspace-file-window-close')
+      ]) {
+        await close.hover();
+        await expect(close).toHaveCSS('color', 'rgb(214, 223, 201)');
+        await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await close.focus();
+        await expect(close).toHaveCSS('outline-style', 'solid');
+        await expect(close).toHaveCSS('outline-width', '2px');
+      }
       await expect(tabs.nth(0)).toHaveAttribute('tabindex', '0');
       await expect(tabs.nth(1)).toHaveAttribute('tabindex', '-1');
       await tabs.nth(0).focus();

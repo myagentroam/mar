@@ -686,8 +686,16 @@ describe('Workspace file tabs frame', () => {
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain('src/main.ts');
     expect(html).toContain('src/diff.ts');
-    expect(html.match(/class="workspace-file-tab-close\b/gu)).toHaveLength(2);
-    expect(html.match(/class="workspace-file-window-close\b/gu)).toHaveLength(1);
+    const buttonClasses = Array.from(
+      html.matchAll(/<button\b[^>]*\bclass="([^"]*)"/gu),
+      ([, classes]) => classes!.split(/\s+/u)
+    );
+    expect(
+      buttonClasses.filter((classes) => classes.includes('workspace-file-tab-close'))
+    ).toHaveLength(2);
+    expect(
+      buttonClasses.filter((classes) => classes.includes('workspace-file-window-close'))
+    ).toHaveLength(1);
     expect(html).toContain(i18n.global.t('filePreviewDialog.closeFileWindow'));
     expect(html).toContain('aria-label=');
     expect(html).toContain('page');

@@ -904,8 +904,6 @@ function submitSessionSearch(): void {
   place-items: center;
   border: 0;
   border-radius: 6px;
-  background: transparent;
-  color: var(--mar-text-secondary);
   font: inherit;
   padding: 0;
   cursor: pointer;
@@ -915,14 +913,6 @@ function submitSessionSearch(): void {
 .new-session-form .workspace-more-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.session-search .session-search-button:hover:not(:disabled),
-.session-search .session-search-button:focus-visible,
-.new-session-form .workspace-more-button:hover:not(:disabled),
-.new-session-form .workspace-more-button:focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand-text);
 }
 
 .new-session-form .new-session-button {

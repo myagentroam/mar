@@ -881,6 +881,7 @@ pre {
 }
 
 .utility-control:hover:not(:disabled),
+.utility-control:active:not(:disabled),
 .utility-control:focus-visible:not(:disabled),
 .utility-control.is-active:not(:disabled),
 .utility-control[aria-expanded='true']:not(:disabled) {

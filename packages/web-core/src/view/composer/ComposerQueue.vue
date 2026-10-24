@@ -280,14 +280,14 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             {{ goal.goal.objective }}
           </p>
           <div class="work-item-actions goal-actions">
-            <button type="button" @click="goalDetailsOpen = true">
+            <button class="utility-control" type="button" @click="goalDetailsOpen = true">
               {{ translate('goal.view') }}
             </button>
-            <button type="button" @click="startGoalEdit">
+            <button class="utility-control" type="button" @click="startGoalEdit">
               {{ translate('goal.edit') }}
             </button>
             <button
-              class="work-item-danger-action"
+              class="utility-control work-item-danger-action"
               type="button"
               :disabled="loading"
               @click="emit('clearGoal')"
@@ -307,11 +307,16 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             :aria-label="translate('goal.objectiveLabel')"
           />
           <div class="work-item-actions goal-editor-actions">
-            <button type="button" :disabled="loading" @click="cancelGoalEdit">
+            <button
+              class="utility-control"
+              type="button"
+              :disabled="loading"
+              @click="cancelGoalEdit"
+            >
               {{ translate('goal.cancel') }}
             </button>
             <button
-              class="work-item-primary-action"
+              class="utility-control work-item-primary-action"
               type="button"
               :disabled="loading || !goalObjective.trim()"
               @click="updateGoal"
@@ -396,6 +401,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           </div>
           <div class="work-item-actions queue-item-actions">
             <button
+              class="utility-control"
               v-tooltip="translate('generated.composerQueue.save')"
               v-if="editingQueueItemId === item.queueItemId"
               type="button"
@@ -407,6 +413,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
               }}</span>
             </button>
             <button
+              class="utility-control"
               v-tooltip="translate('generated.composerQueue.edit')"
               v-else
               type="button"
@@ -419,7 +426,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.runNow')"
-              class="work-item-primary-action"
+              class="utility-control work-item-primary-action"
               type="button"
               :disabled="loading"
               :aria-label="translate('generated.composerQueue.runNow')"
@@ -431,7 +438,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.delete')"
-              class="work-item-danger-action"
+              class="utility-control work-item-danger-action"
               type="button"
               :aria-label="translate('generated.composerQueue.delete')"
               @click="emit('deleteItem', item.queueItemId)"
@@ -521,17 +528,11 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 
 .work-item-actions button {
   border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
   cursor: pointer;
   font-size: var(--mar-font-size-meta);
   line-height: 1.2;
   padding: 4px 5px;
   white-space: nowrap;
-}
-
-.work-item-actions .work-item-primary-action {
-  color: var(--mar-text-secondary);
 }
 
 .goal-card {
@@ -670,12 +671,6 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 .goal-details-objective {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.work-item-actions button:not(:disabled):hover,
-.work-item-actions button:not(:disabled):focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand-text);
 }
 
 .work-item-actions button:disabled {
