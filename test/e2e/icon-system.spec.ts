@@ -147,10 +147,21 @@ for (const theme of ['dark', 'light']) {
         const nose = outline.getPointAtLength(0);
         const bounds = svg.getBBox();
         const stroke = parseFloat(getComputedStyle(svg).strokeWidth);
+        const radius =
+          Math.max(
+            ...Array.from(paths).flatMap((path) =>
+              Array.from({ length: 65 }, (_, index) => {
+                const point = path.getPointAtLength((path.getTotalLength() * index) / 64);
+                return Math.hypot(point.x - 12, point.y - 12);
+              })
+            )
+          ) +
+          stroke / 2;
         return {
           dx: end.x - start.x,
           dy: end.y - start.y,
           join: Math.hypot(end.x - nose.x, end.y - nose.y),
+          radius,
           min: Math.min(bounds.x, bounds.y) - stroke / 2,
           max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2
         };
@@ -159,6 +170,8 @@ for (const theme of ['dark', 'light']) {
       expect(plane.dx).toBeGreaterThan(5);
       expect(plane.dy).toBeLessThan(-5);
       expect(plane.join).toBeLessThan(0.01);
+      // Keep the painted plane inside a circular keyline, not only the square viewBox.
+      expect(plane.radius).toBeLessThanOrEqual(11.25);
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
@@ -609,6 +622,7 @@ for (const theme of ['dark', 'light'])
       });
       expect(buttonGap).toBeGreaterThanOrEqual(5);
       await create.focus();
+      await expect(create).toBeFocused();
       await create.press('Enter');
       await expect(page.getByTestId('created')).toHaveText('1');
       const search = page.locator('.session-search input');

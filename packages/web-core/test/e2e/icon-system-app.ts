@@ -429,6 +429,7 @@ const app = createApp({
               sessions: [],
               selectedSessionId: undefined,
               mobileViewport: innerWidth < 768,
+              active: true,
               canLoadMore: false,
               loadingMore: false,
               watchStatus: 'ready',
