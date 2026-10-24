@@ -158,6 +158,7 @@ interface LoginAttemptRecord {
   readonly userCode: string;
   readonly verificationUri: string;
   readonly expiresAt: number;
+  readonly timer: NodeJS.Timeout;
   readonly pollIntervalMs: number;
   nextPollAt: number;
 }
@@ -238,6 +239,7 @@ export class CodexCredentialService {
 
   closeChatgptLogins(): void {
     this.#xaiLogins.close();
+    for (const attempt of this.#attempts.values()) this.#deleteAttempt(attempt);
     for (const attempt of this.#chatgptAttempts.values()) {
       clearTimeout(attempt.timer);
       void this.#chatgptNode?.(attempt.actor, attempt.nodeId, 'chatgpt.login.cancel', {
@@ -728,6 +730,8 @@ export class CodexCredentialService {
     const userCode = requiredString(payload['user_code'] ?? payload['usercode'], 128);
     const intervalSeconds = parsePositiveInteger(payload['interval'], 60) ?? 5;
     const id = this.#id();
+    const timer = setTimeout(() => this.#deleteAttempt(attempt), LOGIN_TTL_MS);
+    timer.unref();
     const attempt: LoginAttemptRecord = {
       id,
       actor: { ...actor },
@@ -736,6 +740,7 @@ export class CodexCredentialService {
       userCode,
       verificationUri: `${this.#authIssuer}/codex/device`,
       expiresAt: this.#now() + LOGIN_TTL_MS,
+      timer,
       pollIntervalMs: intervalSeconds * 1000,
       nextPollAt: this.#now()
     };
@@ -817,7 +822,7 @@ export class CodexCredentialService {
       return this.#chatgptLoginAttempt(actor, attemptId, validateCommit);
     const attempt = this.#ownedAttempt(actor, attemptId);
     if (this.#now() >= attempt.expiresAt) {
-      this.#attempts.delete(attempt.id);
+      this.#deleteAttempt(attempt);
       return codexLoginAttemptSchema.parse({ id: attempt.id, status: 'EXPIRED' });
     }
     if (this.#now() < attempt.nextPollAt) return publicPendingAttempt(attempt);
@@ -837,7 +842,7 @@ export class CodexCredentialService {
       return publicPendingAttempt(attempt);
     }
     if (!poll.ok) {
-      this.#attempts.delete(attempt.id);
+      this.#deleteAttempt(attempt);
       return codexLoginAttemptSchema.parse({
         id: attempt.id,
         status: 'FAILED',
@@ -916,14 +921,14 @@ export class CodexCredentialService {
         return next;
       });
       this.#recordAudit(attempt.actor.userId, saved, 'credential.saved');
-      this.#attempts.delete(attempt.id);
+      this.#deleteAttempt(attempt);
       return codexLoginAttemptSchema.parse({
         id: attempt.id,
         status: 'SUCCEEDED',
         credentialId: saved.id
       });
     } catch (error) {
-      this.#attempts.delete(attempt.id);
+      this.#deleteAttempt(attempt);
       if (error instanceof Error && /^CODEX_[A-Z0-9_]+$/u.test(error.message))
         return codexLoginAttemptSchema.parse({
           id: attempt.id,
@@ -952,7 +957,7 @@ export class CodexCredentialService {
       return;
     }
     const attempt = this.#ownedAttempt(actor, attemptId);
-    this.#attempts.delete(attempt.id);
+    this.#deleteAttempt(attempt);
   }
 
   async update(
@@ -1727,6 +1732,11 @@ export class CodexCredentialService {
       await dispatcher.destroy(error instanceof Error ? error : null).catch(() => undefined);
       throw error;
     }
+  }
+
+  #deleteAttempt(attempt: LoginAttemptRecord): void {
+    clearTimeout(attempt.timer);
+    this.#attempts.delete(attempt.id);
   }
 
   #ownedAttempt(actor: LoginActor, attemptId: string): LoginAttemptRecord {

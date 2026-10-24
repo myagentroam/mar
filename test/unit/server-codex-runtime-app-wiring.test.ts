@@ -86,6 +86,7 @@ describe('Server Codex runtime app wiring', () => {
     const runRoutes = vi.spyOn(runs, 'registerRunControlRoutes');
     const hostedRoutes = vi.spyOn(hosted, 'registerHostedConversationRoutes');
     const credentialRoutes = vi.spyOn(credentials, 'registerCodexCredentialRoutes');
+    const closeLogins = vi.spyOn(CodexCredentialService.prototype, 'closeChatgptLogins');
     const maintain = vi
       .spyOn(CodexCredentialService.prototype, 'maintain')
       .mockResolvedValue({ attempted: 0, deferred: 0, failed: 0 });
@@ -108,6 +109,8 @@ describe('Server Codex runtime app wiring', () => {
     expect(maintain).toHaveBeenLastCalledWith('EXPIRING');
     expect(maintain).toHaveBeenCalledTimes(2);
     await app.close();
+    expect(closeLogins).toHaveBeenCalledOnce();
+    expect(closeLogins.mock.contexts[0]).toBe(credentialRoutes.mock.calls[0]![0].credentials);
     await vi.advanceTimersByTimeAsync(CODEX_CREDENTIAL_MAINTENANCE_INTERVAL_MS);
     expect(maintain).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
