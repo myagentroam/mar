@@ -51,13 +51,61 @@ const personalPlan = {
   validate: validateCoreMysqlDatabase
 };
 
+for (const reference of ['valid', 'owner', 'Node', 'Workspace', 'Workspace on another Node']) {
+  test(`Enterprise startup validates Session share ${reference} references without changing share data`, async () => {
+    await withDatabase(`share-${reference}`, async (pool) => {
+      await prepareMysqlDatabase(pool);
+      await pool.execute(
+        "INSERT INTO users(id,username,created_at,updated_at) VALUES (42,'share-owner',1,1)"
+      );
+      await pool.execute(`INSERT INTO nodes
+        (id,owner_type,owner_user_id,registered_address,metadata,created_at,updated_at)
+        VALUES ('share-node','PERSONAL',42,'test','{}',1,1),
+               ('other-node','PERSONAL',42,'test','{}',1,1)`);
+      await pool.execute(`INSERT INTO workspaces
+        (workspace_id,display_name,node_id,owner_type,owner_user_id,registered_at)
+        VALUES ('share-workspace','Share','share-node','PERSONAL',42,1),
+               ('other-workspace','Other','other-node','PERSONAL',42,1)`);
+      await pool.execute(
+        `INSERT INTO session_shares
+        (id,user_id,node_id,workspace_id,session_id,password_hash,access_credential,created_at)
+        VALUES (?,?,?,?,?,'fixture-hash','fixture-credential',1)`,
+        [
+          randomUUID(),
+          reference === 'owner' ? 43 : 42,
+          reference === 'Node' ? 'missing-node' : 'share-node',
+          reference === 'Workspace'
+            ? 'missing-workspace'
+            : reference === 'Workspace on another Node'
+              ? 'other-workspace'
+              : 'share-workspace',
+          'node-owned-session'
+        ]
+      );
+      const [before] = await pool.query<mysql.RowDataPacket[]>('SELECT * FROM session_shares');
+      expect(before).toHaveLength(1);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (reference === 'valid') {
+          await expect(prepareMysqlDatabase(pool)).resolves.toBeUndefined();
+        } else {
+          await expect(prepareMysqlDatabase(pool)).rejects.toThrow(
+            'SERVER_DATABASE_REFERENCE_INVALID'
+          );
+        }
+        const [after] = await pool.query<mysql.RowDataPacket[]>('SELECT * FROM session_shares');
+        expect(after).toEqual(before);
+      }
+    });
+  });
+}
+
 test('Organization deletion waits for referencing transactions, rejects new-member deletion, and lets the enterprise transaction clean up cascades', async () => {
   await withDatabase('organization-integrity', async (pool) => {
     await prepareMysqlDatabase(pool);
     const database = new MysqlServerDatabase(pool);
     await database.initialize();
     await pool.query(
-      "INSERT INTO organizations(id,name,parent_organization_id,created_at,updated_at) VALUES (1,'Root',NULL,1,1),(2,'Child',1,1,1)"
+      "INSERT INTO organizations(id,name,parent_organization_id,created_at,updated_at) VALUES (2,'Child',1,1,1)"
     );
     const service = new OrganizationService(database, {
       authorize: async () => ({ allowed: true })
@@ -130,6 +178,7 @@ test('Core v19 removes the dense column, resumes after an interrupted DDL, and p
        'test',1000,100,JSON_ARRAY('TEXT'),JSON_ARRAY('TEXT'),JSON_ARRAY('medium'),'medium',1,'PERSONAL',77,77,1,1)`);
     const [before] = await pool.query<mysql.RowDataPacket[]>('SELECT * FROM mar_agent_models');
     const { high_density_compaction: removed, ...preserved } = before[0]!;
+    const upgraded = { ...preserved, conversation_model: 1 };
     expect(removed).toBe(1);
     const [history] = await pool.query(
       "SELECT * FROM schema_migrations WHERE namespace='core' ORDER BY version"
@@ -172,13 +221,13 @@ test('Core v19 removes the dense column, resumes after an interrupted DDL, and p
     const [personalModels] = await pool.query<mysql.RowDataPacket[]>(
       'SELECT * FROM mar_agent_models'
     );
-    expect(personalModels.map((row) => ({ ...row }))).toEqual([preserved]);
+    expect(personalModels.map((row) => ({ ...row }))).toEqual([upgraded]);
     await prepareMysqlDatabase(pool);
     await prepareMysqlDatabase(pool);
     const [enterpriseModels] = await pool.query<mysql.RowDataPacket[]>(
       'SELECT * FROM mar_agent_models'
     );
-    expect(enterpriseModels.map((row) => ({ ...row }))).toEqual([preserved]);
+    expect(enterpriseModels.map((row) => ({ ...row }))).toEqual([upgraded]);
     await validateMysqlSchema(pool, { mar_agent_models: CORE_MYSQL_SCHEMA.mar_agent_models! });
   });
 });

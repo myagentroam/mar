@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import {
   CORE_MYSQL_SCHEMA,
   CORE_MYSQL_SCHEMA_V9,
-  CORE_MYSQL_SCHEMA_V17
+  CORE_MYSQL_SCHEMA_V17,
+  validateMysqlSessionShareReferences
 } from '@myagentroam/server-core/mysql-schema';
 import { projectCredentialDocument } from '@myagentroam/server-core/credential-document';
 import {
@@ -334,6 +335,7 @@ export async function validateEnterpriseMysqlDatabase(
   await validateMysqlSchema(connection, ENTERPRISE_MYSQL_SCHEMA);
   await validateMysqlReferences(connection, ENTERPRISE_MYSQL_SCHEMA_V6);
   await validateMysqlReferences(connection, CORE_MYSQL_SCHEMA_V17);
+  await validateMysqlSessionShareReferences(connection);
   await assertMysqlNoForeignKeys(connection);
   for (const { table, column } of organizationReferences) {
     const [rows] = await connection.query(
