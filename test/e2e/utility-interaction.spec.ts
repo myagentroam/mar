@@ -67,6 +67,68 @@ async function checkUtility(
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Queue and Goal inline edits keep their display typography in ${theme}`, async ({
+    browser
+  }) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(
+          `${fixture.url}visual-alignment.html?utility-interaction&work-item-editing&theme=${theme}`
+        );
+        const queue = page.locator('.composer-queue');
+        for (const custom of [false, true]) {
+          if (custom) {
+            await queue.evaluate((element) => {
+              (element as HTMLElement).style.setProperty('--mar-font-size-meta', '14px');
+              (element as HTMLElement).style.setProperty('--mar-font-size-input', '18px');
+            });
+          }
+          for (const kind of ['queue', 'goal']) {
+            const display = queue.locator(
+              kind === 'queue' ? '.queue-item-content > p' : '.goal-objective'
+            );
+            await expect(display).toBeVisible();
+            const typography = await display.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return { size: style.fontSize, family: style.fontFamily, weight: style.fontWeight };
+            });
+            const edit = queue.locator(
+              kind === 'queue'
+                ? '.queue-item-actions > button:first-child'
+                : '.goal-actions > button:nth-child(2)'
+            );
+            await edit.click();
+            const input = queue.locator(
+              kind === 'queue' ? '.composer-queue-input textarea' : '.goal-objective-input textarea'
+            );
+            await expect(input).toHaveCSS('font-size', typography.size);
+            await expect(input).toHaveCSS('font-family', typography.family);
+            await expect(input).toHaveCSS('font-weight', typography.weight);
+            await input.fill(`Updated ${kind} content`);
+            await queue
+              .locator(
+                kind === 'queue'
+                  ? '.queue-item-actions > button:first-child'
+                  : '.goal-editor-actions > button:last-child'
+              )
+              .click();
+            await expect(input).toHaveCount(0);
+            await expect(display).toHaveText(`Updated ${kind} content`);
+            await expect(display).toHaveCSS('font-size', typography.size);
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   for (const width of [1280, 390]) {
     test(`actual utility controls use neutral feedback in ${theme} at ${width}px`, async ({
       page

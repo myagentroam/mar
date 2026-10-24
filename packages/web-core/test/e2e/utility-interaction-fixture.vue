@@ -5,7 +5,12 @@ import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
 import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
-import type { RunnerCommand, Session, WorkspaceQueueItem } from '../../src/model/workbench.js';
+import type {
+  RunnerCommand,
+  RunnerCommandState,
+  Session,
+  WorkspaceQueueItem
+} from '../../src/model/workbench.js';
 
 const disabled = ref(false);
 const events = ref<string[]>([]);
@@ -16,7 +21,7 @@ const session: Session = {
   runner: 'mar-agent',
   externalSessionId: 'native-session'
 };
-const items: WorkspaceQueueItem[] = [
+const items = ref<WorkspaceQueueItem[]>([
   {
     queueItemId: 'queue-one',
     sessionId: session.id,
@@ -27,7 +32,42 @@ const items: WorkspaceQueueItem[] = [
     content: 'Review the pending change',
     createdAt: 1
   }
-];
+]);
+const editingQueueItemId = ref<string>();
+const editingContent = ref('');
+const goal = ref<RunnerCommandState | undefined>(
+  new URLSearchParams(location.search).has('work-item-editing')
+    ? {
+        commandId: 'goal',
+        active: true,
+        label: 'Goal',
+        detail: null,
+        closable: true,
+        closeInput: null,
+        goal: {
+          id: 'goal-one',
+          objective: 'Review the pending goal',
+          revision: 1,
+          status: 'active',
+          turns: 2
+        }
+      }
+    : undefined
+);
+function editQueueItem(item: WorkspaceQueueItem) {
+  record('edit');
+  editingQueueItemId.value = item.queueItemId;
+  editingContent.value = item.content;
+}
+function saveQueueItem(id: string) {
+  items.value = items.value.map((item) =>
+    item.queueItemId === id ? { ...item, content: editingContent.value } : item
+  );
+  editingQueueItemId.value = undefined;
+}
+function saveGoal(objective: string) {
+  goal.value = { ...goal.value!, goal: { ...goal.value!.goal!, objective } };
+}
 const commands: RunnerCommand[] = ['first', 'second'].map((id) => ({
   id,
   runner: 'mar-agent',
@@ -126,10 +166,13 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :items="items"
       :paused="false"
       :loading="disabled"
-      :editing-queue-item-id="undefined"
-      editing-content=""
-      :goal="undefined"
-      @edit="record('edit')"
+      :editing-queue-item-id="editingQueueItemId"
+      :editing-content="editingContent"
+      :goal="goal"
+      @edit="editQueueItem"
+      @update-content="editingContent = $event"
+      @save="saveQueueItem"
+      @save-goal="saveGoal"
       @execute="record('execute')"
       @delete-item="record('delete')"
     />
