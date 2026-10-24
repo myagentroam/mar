@@ -24,7 +24,7 @@ beforeEach(() => {
   scope = effectScope();
   vi.stubGlobal('window', {
     location: { search: '', href: 'http://localhost/console?nodes.keyword=keep' },
-    history: { replaceState: vi.fn() }
+    history: { state: { workbenchEntry: 'retained' }, replaceState: vi.fn() }
   });
 });
 afterEach(() => {
@@ -106,7 +106,7 @@ describe('Enterprise resource ownership extension', () => {
     expect(service.matches(organization)).toBe(true);
     expect(service.matches(personal)).toBe(false);
     expect(window.history.replaceState).toHaveBeenLastCalledWith(
-      null,
+      { workbenchEntry: 'retained' },
       '',
       '/console?nodes.keyword=keep&nodes.ownerType=ORGANIZATION&nodes.organization=7'
     );

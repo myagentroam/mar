@@ -195,10 +195,10 @@ export function createSessionShareConversationService(options: {
       }
       await sessionWatch.restartSelectedSessionWatch(target.sessionId);
     } catch (error) {
+      if (errorCode(error) === 'WATCH_CANCELLED') return;
       state.loadingInitial.value = false;
       state.initialLoadFailed.value = true;
-      if (errorCode(error) !== 'WATCH_CANCELLED')
-        options.notice(errorMessage(error), 'error', error);
+      options.notice(errorMessage(error), 'error', error);
     }
   }
   let restartQueued = false;

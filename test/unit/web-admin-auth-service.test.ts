@@ -43,7 +43,11 @@ describe('Initial Web authentication recovery', () => {
 
     expect(loadedDuringRestore).toBe(true);
     expect(admin.value.authenticated).toBe(true);
-    expect(notice).toHaveBeenCalledWith('工作台恢复失败：NODE_REQUEST_TIMEOUT');
+    expect(notice).toHaveBeenCalledWith(
+      '工作台恢复失败：NODE_REQUEST_TIMEOUT',
+      'error',
+      expect.objectContaining({ message: 'NODE_REQUEST_TIMEOUT' })
+    );
   });
 
   it('Identity recovery preserves the browser language and synchronizes it to the account', async () => {
@@ -99,7 +103,10 @@ describe('Initial Web authentication recovery', () => {
     expect(localePreferenceService().locale.value).toBe('en-US');
     expect(loaded.value).toBe(true);
     expect(onAuthenticated).toHaveBeenCalledTimes(2);
-    expect(notice).toHaveBeenCalledWith('Unable to save the language preference. Try again.');
+    expect(notice).toHaveBeenCalledWith(
+      'Unable to save the language preference. Try again.',
+      'error'
+    );
 
     failToSave = false;
     waitForSave = true;

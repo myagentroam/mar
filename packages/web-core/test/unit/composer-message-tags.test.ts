@@ -280,6 +280,7 @@ describe('Composer product tag presentation', () => {
         render: () => h(MessageAttachmentFiles, { files: [...files, ...documentFiles] })
       });
       app.use(i18n);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain('说明.txt');
       expect(html).not.toContain('截图.png');

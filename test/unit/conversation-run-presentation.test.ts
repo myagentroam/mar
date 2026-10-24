@@ -90,7 +90,10 @@ describe('MAR public callbacks through Node and Web presentation', () => {
     });
     const activeTurns = publish();
     expect(conversationActivityLabel(web.runs.value[0], activeTurns)).toBe(
-      translate('conversationActivity.tool')
+      translate('conversationActivity.running')
+    );
+    expect(activeTurns.flatMap((turn) => turn.items)).toContainEqual(
+      expect.objectContaining({ kind: 'tool_call', status: 'IN_PROGRESS' })
     );
     expect(
       activeTurns

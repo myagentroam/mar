@@ -7,6 +7,10 @@ import {
 } from '../../src/service/management-composition.js';
 import { renderComponent, textContent } from './support/component-renderer.js';
 
+vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
+  createMobileSurfaceFocusService: () => ({ dispose: vi.fn() })
+}));
+
 vi.mock('../../src/view/workbench/WorkbenchHeader.vue?unit-render', () => ({
   default: { render: () => null }
 }));
