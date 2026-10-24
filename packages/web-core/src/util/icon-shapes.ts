@@ -10,7 +10,7 @@ export const iconShapes = {
   conversation:
     '<path d="M9 4h6a6 6 0 0 1 6 6v3a6 6 0 0 1-6 6H9l-5 2v-5.5A6 6 0 0 1 3 12v-2a6 6 0 0 1 6-6Z" /><circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="0.9" fill="currentColor" stroke="none"/>',
   administration:
-    '<rect x="3" y="3.5" width="18" height="17" rx="2.5"/><path d="M3 8h18M8.5 11v3m0 3v1M15.5 11v1m0 3v3"/><circle cx="8.5" cy="15.5" r="1.5"/><circle cx="15.5" cy="13.5" r="1.5"/>',
+    '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M10.75 8h6.75M6.5 16h6.75"/><circle cx="8.5" cy="8" r="2.25"/><circle cx="15.5" cy="16" r="2.25"/>',
   settings:
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
   'recent-sessions':
@@ -88,7 +88,7 @@ export const iconShapes = {
   adjustments:
     '<path d="M4 7h3m5 0h8M4 17h8m5 0h3" /><circle cx="9.5" cy="7" r="2.5"/><circle cx="14.5" cy="17" r="2.5"/>',
   reasoning:
-    '<path d="M12 6a3 3 0 0 0-5.7-1.3A4.2 4.2 0 0 0 4 12a4.3 4.3 0 0 0 2.5 7.7A3 3 0 0 0 12 18V6Zm0 0a3 3 0 0 1 5.7-1.3A4.2 4.2 0 0 1 20 12a4.3 4.3 0 0 1-2.5 7.7A3 3 0 0 1 12 18M7 9c2 0 3 1 3 3m7-3c-2 0-3 1-3 3M8 17h1m7 0h-1" transform="translate(1.2 1.2) scale(.9)"/>',
+    '<path d="M10 7c.8 4.8 2.2 6.2 7 7-4.8.8-6.2 2.2-7 7-.8-4.8-2.2-6.2-7-7 4.8-.8 6.2-2.2 7-7Z"/><path d="M18 2.5c.4 1.9 1.1 2.6 3 3-1.9.4-2.6 1.1-3 3-.4-1.9-1.1-2.6-3-3 1.9-.4 2.6-1.1 3-3Z"/>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="m7 9 3 3-3 3m6 0h4" />',
   'file-change':
     '<path d="M14.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 3Zm0 0v3A1.5 1.5 0 0 0 16 7.5h3"/><path d="M8.5 9.5H12m-2.25 5.5 4-4 2.5 2.5-4 4-3.5 1 1-3.5Zm2.75-2.75 2.5 2.5"/>',

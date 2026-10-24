@@ -46,6 +46,21 @@ describe('shared MAR icons', () => {
     expect(html).not.toMatch(/<(?:animate|animateTransform|set)\b/);
   });
 
+  it('keeps the reasoning marker static and distinct from the model and loading icons', async () => {
+    const html = await renderToString(createSSRApp(MarIcon, { name: 'reasoning', size: 18 }));
+    expect(html).toContain('fill="none"');
+    expect(html).not.toContain('mar-icon--spinning');
+    expect(html).not.toMatch(/<(?:animate|animateTransform|set)\b/);
+    expect(iconShapes.reasoning).not.toEqual(iconShapes.model);
+    expect(iconShapes.reasoning).not.toEqual(iconShapes['loading-action']);
+    expect(iconShapes.reasoning).not.toEqual(iconShapes['loading-content']);
+  });
+
+  it('distinguishes administration from personal settings and inline adjustments', () => {
+    expect(iconShapes.administration).not.toEqual(iconShapes.settings);
+    expect(iconShapes.administration).not.toEqual(iconShapes.adjustments);
+  });
+
   it('distinguishes the workspace, host and new conversation without changing button semantics', async () => {
     expect(iconShapes.workspace).not.toEqual(iconShapes.node);
     expect(iconShapes['session-add']).not.toEqual(iconShapes.conversation);
@@ -68,6 +83,7 @@ describe('shared MAR icons', () => {
   });
 
   it.each([
+    ['reasoning', 'reasoning'],
     ['READ', 'document'],
     ['WEB_SEARCH', 'search'],
     ['WEB_FETCH', 'web'],
