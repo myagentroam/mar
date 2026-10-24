@@ -38,7 +38,7 @@ const sessionProps = {
   mobileViewport: mobile,
   canLoadMore: false,
   loadingMore: false,
-  active: false,
+  active: true,
   watchStatus: 'ready' as const,
   nodeReady: true,
   loading: false,

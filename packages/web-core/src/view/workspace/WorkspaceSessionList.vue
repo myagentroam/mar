@@ -945,7 +945,6 @@ function submitSessionSearch(): void {
   overflow: hidden;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  transition: background-color 120ms ease;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;

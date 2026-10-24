@@ -193,6 +193,23 @@ export function createWorkbenchNotificationService(
         (notification) => !notification.read && notification.expiresAt > Date.now()
       ).length
   );
+  const unreadSessionExpirations = computed(() => {
+    const expirations = new Map<string, number>();
+    for (const notification of notifications.value) {
+      if (
+        notification.read ||
+        notification.source !== 'server' ||
+        notification.target?.targetType !== 'WORKSPACE_SESSION'
+      )
+        continue;
+      const { nodeId, workspaceId, sessionId } = notification.target;
+      const key = JSON.stringify([nodeId, workspaceId, sessionId]);
+      const previous = expirations.get(key);
+      if (previous === undefined || notification.expiresAt > previous)
+        expirations.set(key, notification.expiresAt);
+    }
+    return expirations;
+  });
   const applicationBadge = createApplicationBadgeSynchronization(unreadCount);
   let openingNotificationCount = 0;
   let notificationClickGeneration = 0;
@@ -672,17 +689,11 @@ export function createWorkbenchNotificationService(
   }
 
   function hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean {
-    const now = Date.now();
-    return notifications.value.some(
-      (notification) =>
-        !notification.read &&
-        notification.source === 'server' &&
-        notification.expiresAt > now &&
-        notification.target?.targetType === 'WORKSPACE_SESSION' &&
-        notification.target?.nodeId === nodeId &&
-        notification.target.workspaceId === workspaceId &&
-        notification.target.sessionId === sessionId
+    const expiresAt = unreadSessionExpirations.value.get(
+      JSON.stringify([nodeId, workspaceId, sessionId])
     );
+    // Check the clock on every lookup, including between notification sweeps.
+    return expiresAt !== undefined && expiresAt > Date.now();
   }
 
   function markSessionRead(nodeId: string, workspaceId: string, sessionId: string): Promise<void> {
