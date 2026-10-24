@@ -66,6 +66,7 @@ export function createHostedConversationEntryService(
     options.storage ?? (typeof localStorage === 'undefined' ? undefined : localStorage);
   let preferredTemplateId = readPreferredTemplateId(storage);
   let creationClientRequestId: string | undefined;
+  let creationIntentRevision = 0;
   let templateLoadSequence = 0;
   const prompt = ref('');
   const attachments = ref<HostedAttachment[]>([]);
@@ -265,27 +266,40 @@ export function createHostedConversationEntryService(
 
   function resetCreationIntent(): void {
     creationClientRequestId = undefined;
+    creationIntentRevision += 1;
   }
 
   async function loadTemplates(): Promise<void> {
     const sequence = ++templateLoadSequence;
+    const creationRevision = creationIntentRevision;
     try {
       const nextTemplates = await listAvailableConversationTemplates(request);
       if (sequence !== templateLoadSequence) return;
-      setTemplates(nextTemplates);
+      applyTemplates(nextTemplates, creationRevision);
     } catch (error) {
       if (sequence === templateLoadSequence) throw error;
     }
   }
 
   function setTemplates(nextTemplates: readonly ConversationTemplateSummary[]): void {
+    applyTemplates(nextTemplates, creationIntentRevision);
+  }
+
+  function applyTemplates(
+    nextTemplates: readonly ConversationTemplateSummary[],
+    creationRevision: number
+  ): void {
     templates.value = [...nextTemplates];
     const currentTemplateId = selectedTemplateId.value;
     selectedTemplateId.value =
       templateIdIn(nextTemplates, currentTemplateId) ??
       templateIdIn(nextTemplates, preferredTemplateId) ??
       (nextTemplates.length === 1 ? nextTemplates[0]?.id : undefined);
-    resetCreationIntent();
+    if (
+      selectedTemplateId.value !== currentTemplateId ||
+      creationIntentRevision === creationRevision
+    )
+      resetCreationIntent();
   }
 
   function selectTemplate(templateId: string): void {
@@ -304,6 +318,7 @@ export function createHostedConversationEntryService(
     if (template === undefined || !template.available)
       throw new Error('HOSTED_CONVERSATION_TEMPLATE_NOT_AVAILABLE');
     creationClientRequestId ??= clientRequestId ?? crypto.randomUUID();
+    const creationRevision = ++creationIntentRevision;
     const response = await request<unknown>(
       `/api/nodes/${encodeURIComponent(template.nodeId)}/hosted-conversations`,
       {
@@ -313,7 +328,7 @@ export function createHostedConversationEntryService(
     );
     try {
       const snapshot = hostedConversationSnapshotSchema.parse(response);
-      resetCreationIntent();
+      if (creationIntentRevision === creationRevision) resetCreationIntent();
       return snapshot;
     } catch {
       throw new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');

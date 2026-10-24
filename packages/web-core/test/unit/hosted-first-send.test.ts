@@ -79,6 +79,7 @@ function fixture() {
   let failUpload = false;
   let createGate: Promise<void> | undefined;
   let uploadGate: Promise<void> | undefined;
+  let templateGate: Promise<void> | undefined;
   const writes: {
     path: string;
     body: Record<string, unknown>;
@@ -108,6 +109,10 @@ function fixture() {
     ...(completed ? { file } : {})
   });
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<never> => {
+    if (path === '/api/conversation-templates') {
+      await templateGate;
+      return { templates: [template] } as never;
+    }
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (init?.method === 'POST' && !path.endsWith('/watch'))
       writes.push({ path, body, signal: init?.signal });
@@ -201,11 +206,36 @@ function fixture() {
     },
     setUploadGate: (v: Promise<void>) => {
       uploadGate = v;
+    },
+    setTemplateGate: (v: Promise<void>) => {
+      templateGate = v;
     }
   };
 }
 
 describe('Hosted first message ownership', () => {
+  it('retries the same first-message creation after a stale catalog refresh arrives after an unknown result', async () => {
+    const f = fixture();
+    const catalog = deferred();
+    f.setTemplateGate(catalog.promise);
+    const refresh = f.entry.loadTemplates();
+    f.setFailCreate(true);
+    await expect(f.entry.submit()).rejects.toThrow('Failed to fetch');
+    const creationId = f.writes[0]!.body['clientRequestId'];
+    catalog.resolve();
+    await refresh;
+    expect(f.writes).toHaveLength(1);
+
+    f.setFailCreate(false);
+    await f.entry.submit();
+    expect(
+      f.writes
+        .filter((w) => w.path.endsWith('/hosted-conversations'))
+        .map((w) => w.body['clientRequestId'])
+    ).toEqual([creationId, creationId]);
+    expect(f.writes.filter((w) => w.path.endsWith('/messages'))).toHaveLength(1);
+    expect(f.writes.at(-1)?.body).toMatchObject({ prompt: 'Original draft', attachmentIds: ['f'] });
+  });
   it('does not create without a template or send without an available model', async () => {
     const missingTemplate = fixture();
     missingTemplate.entry.setTemplates([]);
