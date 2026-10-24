@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { json, mockConsoleApi, mockEmptyWorkspaceFiles } from './support/web-console-api.js';
 
-// @test-covers packages/web-core/src/service/WorkspaceUploadService.ts
-// @test-covers packages/web-core/src/service/WorkbenchPageLifecycleService.ts
+// @test-covers packages/web-core/src/service/workspace-upload-service.ts
+// @test-covers packages/web-core/src/service/workbench-page-lifecycle-service.ts
 
 test('Workspace upload page teardown cleans late creates without draining or overwriting recovery', async ({
   page

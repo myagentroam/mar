@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createWorkbenchSubmissionService,
   sessionSubmissionContext
-} from '../../src/service/WorkbenchSubmissionService.js';
+} from '../../src/service/workbench-submission-service.js';
 
 afterEach(() => vi.useRealTimers());
 

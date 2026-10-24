@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { describe, expect, it } from 'vitest';
-import { createManagementOrderState } from '../../src/service/ManagementOrderState.js';
+import { createManagementOrderState } from '../../src/service/management-order-state.js';
 
 describe('Management order drafts', () => {
   it('reorders by drag and restores the snapshot on cancel', () => {

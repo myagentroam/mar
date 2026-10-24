@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTerminalDirectClient } from '../../src/service/TerminalDirectClient.js';
+import { createTerminalDirectClient } from '../../src/service/terminal-direct-client.js';
 
 class Channel extends EventTarget {
   readyState = 'open';

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ScopedHttpService } from '../../src/service/ScopedHttpService.js';
+import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import {
   createWorkspaceFileOperationService,
   type WorkspaceFileOperationTarget
-} from '../../src/service/WorkspaceFileOperationService.js';
+} from '../../src/service/workspace-file-operation-service.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

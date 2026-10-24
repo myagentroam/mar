@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
-import { createWebPushSubscriptionService } from '../../src/service/WebPushSubscriptionService.js';
+import { createWebPushSubscriptionService } from '../../src/service/web-push-subscription-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type {
   BrowserPushClient,
   PushDisplayBinding,
   WebPushClientStore
-} from '../../src/service/WebPushClientStore.js';
+} from '../../src/service/web-push-client-store.js';
 
 afterEach(() => vi.unstubAllGlobals());
 

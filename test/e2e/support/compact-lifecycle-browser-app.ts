@@ -4,7 +4,7 @@ import '../../../packages/web-core/src/styles.css';
 import {
   i18n,
   localePreferenceService
-} from '../../../packages/web-core/src/service/LocalePreferenceService.js';
+} from '../../../packages/web-core/src/service/locale-preference-service.js';
 import type {
   ConversationItem,
   ConversationTurn

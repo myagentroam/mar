@@ -3,7 +3,7 @@ import type { FastifyReply } from '../../ee/server/node_modules/fastify/fastify.
 import { hashOpaque } from '../../ee/server/src/database.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerPromptCompletionRoutes } from '../../packages/server-core/src/prompt-completion-routes.js';
-import { PromptCompletionClientService } from '../../packages/web-core/src/service/PromptCompletionClientService.js';
+import { PromptCompletionClientService } from '../../packages/web-core/src/service/prompt-completion-client-service.js';
 import { PromptCompletionNodeService } from '../../mar-node/src/service/prompt-completion-node-service.js';
 import { MarAgentRuntimeModelFactory } from '../../mar-node/src/runner/mar-agent/runtime-model-factory.js';
 import type { PromptCompletionTarget, RunnerName } from '../../packages/protocol/src/index.js';

@@ -3,7 +3,7 @@ import {
   MOBILE_WORKBENCH_VIEWPORT_QUERY,
   transitionMobileWorkbenchLayout
 } from '../../ee/web/src/util/mobile-workbench';
-import { createWorkbenchNavigationService } from '../../ee/web/src/service/WorkbenchNavigationService';
+import { createWorkbenchNavigationService } from '../../ee/web/src/service/workbench-navigation-service';
 
 describe('Mobile Workbench layout state', () => {
   afterEach(() => vi.unstubAllGlobals());

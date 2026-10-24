@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTerminalRelayService } from '../../src/service/TerminalRelayService.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
+import { createTerminalRelayService } from '../../src/service/terminal-relay-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 
 class FakeSocket extends EventTarget {
   static readonly OPEN = 1;

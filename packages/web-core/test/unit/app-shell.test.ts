@@ -3,9 +3,9 @@ import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ElementPlus, { ZINDEX_INJECTION_KEY } from 'element-plus';
 import AppShell from '../../src/App.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { useDocumentationAvailability } from '../../src/service/DocumentationAvailability.js';
-import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/TooltipService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { useDocumentationAvailability } from '../../src/service/documentation-availability.js';
+import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/tooltip-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createMobileLayerHistoryCoordinator,
   createMobileLayerHistoryService
-} from '../../src/service/MobileLayerHistoryService.js';
+} from '../../src/service/mobile-layer-history-service.js';
 
 interface HistoryEntry {
   state: Record<string, unknown>;

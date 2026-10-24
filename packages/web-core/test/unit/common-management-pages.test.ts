@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCommonManagementPages } from '../../src/service/CommonManagementPages.js';
-import { createManagementComposition } from '../../src/service/ManagementComposition.js';
+import { createCommonManagementPages } from '../../src/service/common-management-pages.js';
+import { createManagementComposition } from '../../src/service/management-composition.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 const admin = {
   authenticated: true,

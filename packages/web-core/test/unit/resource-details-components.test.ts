@@ -9,7 +9,7 @@ import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.v
 import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import UnitRuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue?unit-render';
 import UnitWorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import {
   flushComponent,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   managementUrlValues,
   replaceManagementUrlValues
-} from '../../src/service/ManagementUrlService.js';
+} from '../../src/service/management-url-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 

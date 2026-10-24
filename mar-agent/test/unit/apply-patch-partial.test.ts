@@ -414,7 +414,7 @@ function gcFixture(
 }
 
 function plan(values: SessionRecord[]) {
-  const entries = buildContextProjection(values, '/workspace').entries;
+  const entries = buildContextProjection(values).entries;
   return planContextGc({
     records: values,
     messages: entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
@@ -569,7 +569,7 @@ describe('partial patch stale-read GC', () => {
         checkpointId: 'partial'
       });
       expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-      const restored = buildContextProjection(structuredClone(fixture.values), '/workspace');
+      const restored = buildContextProjection(structuredClone(fixture.values));
       const text = restored.entries.map((entry) => entry.message?.content ?? '').join('\n');
       expect(text).not.toContain('old source old source');
       for (const path of ['failed.txt', 'pending.txt', 'target.txt', 'unapplied.txt'])
@@ -583,9 +583,7 @@ describe('partial patch stale-read GC', () => {
         codeMode ? 'try { await tools.apply_patch(patch); } catch (e) {}' : patch
       );
       expect(fixture.failure.type).toBe('tool.failed');
-      expect(buildContextProjection(structuredClone(fixture.values), '/workspace')).toEqual(
-        restored
-      );
+      expect(buildContextProjection(structuredClone(fixture.values))).toEqual(restored);
     }
   );
 

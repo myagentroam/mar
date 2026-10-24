@@ -3,7 +3,7 @@ import type { ManagementPage } from '@myagentroam/protocol';
 import {
   createManagementPageService,
   parseManagementPage
-} from '../../src/service/ManagementPageService.js';
+} from '../../src/service/management-page-service.js';
 
 interface Item {
   readonly id: string;

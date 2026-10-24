@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createLongTextAttachment,
   isLongComposerPaste
-} from '../../src/service/ComposerPasteService.js';
+} from '../../src/service/composer-paste-service.js';
 
 describe('Web Composer Paste', () => {
   it('Recognizes long text when it reaches 100 lines or 10,000 characters', () => {

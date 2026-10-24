@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createManagementComposition,
   type ManagementPageDefinition
-} from '../../src/service/ManagementComposition.js';
+} from '../../src/service/management-composition.js';
 import {
   currentLocale,
   localePreferenceService,
@@ -10,7 +10,7 @@ import {
   registerLocaleMessages,
   resolveInitialLocale,
   translate
-} from '../../src/service/LocalePreferenceService.js';
+} from '../../src/service/locale-preference-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 

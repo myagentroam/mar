@@ -1,7 +1,7 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it } from 'vitest';
-import { COMPOSER_SKILL_TOKEN_PLACEHOLDER } from '../../src/service/ComposerSkillTokenService.js';
-import { createSessionDraftService } from '../../src/service/SessionDraftService.js';
+import { COMPOSER_SKILL_TOKEN_PLACEHOLDER } from '../../src/service/composer-skill-token-service.js';
+import { createSessionDraftService } from '../../src/service/session-draft-service.js';
 
 describe('Web Workspace Draft State', () => {
   it('Persists and restores drafts per Node and Workspace; empty content clears storage', () => {

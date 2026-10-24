@@ -2,40 +2,40 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   managementUrlValues,
   replaceManagementUrlValues
-} from '../../service/ManagementUrlService';
+} from '../../service/management-url-service';
 import NodeDetailsDialogs from './HostingNodeDetailsDialogs.vue';
-import { createResourceHostingService } from '../../service/ResourceHostingService.js';
-import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
+import { createResourceHostingService } from '../../service/resource-hosting-service.js';
+import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import type {
   NodeDetailsData,
   NodeDetailsUpgradeState,
   WorkspaceDetailsData
 } from './NodeDetailsDialogs.vue';
 import ResourceManagementFilters from './ResourceManagementFilters.vue';
-import { translate } from '../../service/LocalePreferenceService';
-import type { RunnerUsage, RunnerUsageName } from '../../service/RunnerUsageService';
+import { translate } from '../../service/locale-preference-service';
+import type { RunnerUsage, RunnerUsageName } from '../../service/runner-usage-service';
 import { errorMessage } from '../../util/workbench-presentation';
 import {
   createManagementPageService,
   parseManagementPage
-} from '../../service/ManagementPageService';
+} from '../../service/management-page-service';
 import type { ManagementPage } from '@myagentroam/protocol';
 import ManagementPagination from './ManagementPagination.vue';
-import type { ResourceRow } from '../../model/ResourceManagement.js';
+import type { ResourceRow } from '../../model/resource-management.js';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
-export type { ResourceRow } from '../../model/ResourceManagement.js';
+export type { ResourceRow } from '../../model/resource-management.js';
 type Row = ResourceRow<Ownership>;
 const documentationAvailable = useDocumentationAvailability();
 const props = defineProps<{
@@ -1013,7 +1013,7 @@ onUnmounted(() => pagination.dispose());
         }}</el-link
       >
       <template #footer
-        ><el-button type="primary" @click="registrationToken = ''">{{
+        ><el-button @click="registrationToken = ''">{{
           translate('generated.resourceSharingPage.close2')
         }}</el-button></template
       ></el-dialog

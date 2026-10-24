@@ -4,9 +4,9 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/ManagementComposition.js';
-import type { WorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import type { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/management-composition.js';
+import type { WorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import type { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import PanelResizeHandle from '../../src/view/workbench/PanelResizeHandle.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
@@ -15,7 +15,7 @@ import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { NodeSummary } from '../../src/model/workbench.js';
 
 vi.mock('../../src/view/workbench/WorkbenchNotificationCenter.vue', () => ({

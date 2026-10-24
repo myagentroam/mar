@@ -42,14 +42,25 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
         expect(style.radius).toBe('50%');
         expect(style.width).toBe(style.height);
+        expect(style.width).toBe(width < 768 ? 36 : 24);
+        if (width >= 768) {
+          const buttonBox = (await button.boundingBox())!;
+          const toolbarBox = (await page.locator('.composer-toolbar').boundingBox())!;
+          expect(
+            toolbarBox.x + toolbarBox.width - buttonBox.x - buttonBox.width
+          ).toBeGreaterThanOrEqual(12);
+        }
         if (width === 390 && state === 'empty-input') {
           await page.screenshot({ path: testInfo.outputPath('empty-send-mobile.png') });
+        }
+        if (width === 1280 && state === 'interrupt') {
+          await page.screenshot({ path: testInfo.outputPath('interrupt-desktop.png') });
         }
       }
     }
   });
 
-  test(`New conversations show a centered, responsive welcome: ${theme}`, async ({
+  test(`New conversations show a responsive Composer startup layout: ${theme}`, async ({
     page
   }, testInfo) => {
     for (const width of [390, 1280]) {
@@ -74,18 +85,33 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const region = (await page.locator('.conversation-scroll').boundingBox())!;
           const title = (await heading.boundingBox())!;
           const description = (await welcome.locator('p').boundingBox())!;
-          const centerY = (title.y + description.y + description.height) / 2;
-          expect(Math.abs(centerY - (region.y + region.height / 2))).toBeLessThan(3);
+          const composerHost = (await page.locator('.composer-host').boundingBox())!;
+          const composer = (await page.locator('.composer').boundingBox())!;
+          if (width < 768) {
+            const centerY = (title.y + description.y + description.height) / 2;
+            expect(Math.abs(centerY - (region.y + region.height / 2))).toBeLessThan(3);
+            expect(composer.y + composer.height).toBe(844);
+          } else {
+            const header = (await page.locator('header').boundingBox())!;
+            const availableCenter = (header.y + header.height + 844) / 2;
+            const startupCenter = (region.y + composerHost.y + composerHost.height) / 2;
+            expect(Math.abs(startupCenter - availableCenter)).toBeLessThan(3);
+            expect(composerHost.width).toBeLessThanOrEqual(800);
+            expect(composerHost.x).toBeGreaterThan(0);
+            await expect(page.locator('.conversation-scroll-region')).toHaveClass(/is-empty/);
+          }
           expect(title.x).toBeGreaterThanOrEqual(0);
           expect(description.x + description.width).toBeLessThanOrEqual(width);
-          const composer = (await page.locator('.composer-host').boundingBox())!;
-          expect(description.y + description.height).toBeLessThan(composer.y);
+          expect(description.y + description.height).toBeLessThan(composerHost.y);
           await page.screenshot({
             path: testInfo.outputPath(`welcome-${mode}-${locale}-${width}.png`)
           });
+          await page.locator('.composer-input').fill('Keep this draft');
           await page.getByRole('button', { name: 'Show first message' }).click();
           await expect(welcome).toHaveCount(0);
           await expect(page.getByText('First message', { exact: true })).toBeVisible();
+          await expect(page.locator('.conversation-scroll-region')).not.toHaveClass(/is-empty/);
+          await expect(page.locator('.composer-input')).toHaveValue('Keep this draft');
         }
       }
     }

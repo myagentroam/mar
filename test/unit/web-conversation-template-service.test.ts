@@ -9,7 +9,7 @@ import {
   conversationTemplateMiBToBytes,
   reconcileConversationTemplateModelSelection,
   sameConversationTemplateRequestContext
-} from '../../ee/web/src/service/ConversationTemplateService.js';
+} from '../../ee/web/src/service/conversation-template-service.js';
 
 const summary = {
   id: 'template-1',

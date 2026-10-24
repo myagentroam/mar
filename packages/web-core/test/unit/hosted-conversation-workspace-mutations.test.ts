@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createHostedConversationWorkspaceService,
   type HostedConversationRequest
-} from '../../src/service/HostedConversationWorkspaceService.js';
+} from '../../src/service/hosted-conversation-workspace-service.js';
 
 const conversation = {
   id: 'conversation-1',

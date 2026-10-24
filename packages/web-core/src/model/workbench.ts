@@ -289,7 +289,7 @@ export interface ComposerSkillToken {
   readonly skillFilePath: string;
   readonly available: boolean;
 }
-export type { UserSessionSummary } from '../service/AdminAuthService.js';
+export type { UserSessionSummary } from '../service/admin-auth-service.js';
 export interface NodeWorkbenchManifest {
   readonly manifestVersion: number;
   readonly observedAt: number;

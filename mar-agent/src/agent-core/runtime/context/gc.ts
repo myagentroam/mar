@@ -8,6 +8,7 @@ import {
 import {
   ContextGcCheckpointCache,
   contextGcBaseFromRecords,
+  contextGcCheckpointIntervalEligible,
   contextGcLogicalPathKey,
   contextGcMinimumUsageGrowth,
   contextGcTargetKey,
@@ -328,16 +329,31 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     input.modelId,
     input.contextWindowTokens
   );
-  const previous = input.checkpointCache!.read(input.records, undefined, input.workspace);
-  if (previous) {
-    const minimumUsageGrowth = contextGcMinimumUsageGrowth(input.contextWindowTokens);
-    const protectedCandidatesPending = previous.payload.metrics.protectedCandidateTokens > 0;
+  const previous = input.checkpointCache!.read(input.records);
+  const checkpointEligible = contextGcCheckpointIntervalEligible(
+    {
+      usageSequence: usageRecord.sequence,
+      contextInputTokens: contextUsageTokens,
+      contextWindowTokens: input.contextWindowTokens,
+      normalRolloutOrdinal,
+      modelId: input.modelId,
+      platform: input.platform
+    },
+    previous?.payload.trigger
+  );
+  // Discovery and economic evaluation have their own low-growth opportunities;
+  // neither a protected candidate nor periodic discovery makes a draft eligible.
+  if (
+    previous?.payload.trigger.modelId === input.modelId &&
+    previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
+  ) {
     const rolloutGrowth = normalRolloutOrdinal - previous.payload.trigger.normalRolloutOrdinal;
     if (
       rolloutGrowth < 2 ||
-      (!protectedCandidatesPending &&
+      (previous.payload.metrics.protectedCandidateTokens === 0 &&
         rolloutGrowth < CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-        contextUsageTokens - previous.payload.trigger.contextInputTokens < minimumUsageGrowth)
+        contextUsageTokens - previous.payload.trigger.contextInputTokens <
+          contextGcMinimumUsageGrowth(input.contextWindowTokens))
     )
       return {};
   }
@@ -403,25 +419,31 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
         protectedCandidateTokens
       }
     );
-    const plan = finalizePlan(input, marginal ?? stageAPlanWithProtectedCandidates);
+    const plan = checkpointEligible
+      ? finalizePlan(input, marginal ?? stageAPlanWithProtectedCandidates)
+      : undefined;
     const retryAfterRollouts = Math.min(
       exec.retryAfterRollouts,
       codeMode.retryAfterRollouts,
       web.retryAfterRollouts
     );
-    return plan
-      ? {
-          plan,
-          ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
-            ? { retryAfterRollouts }
-            : {})
-        }
-      : {};
+    if (!plan && checkpointEligible) return {};
+    return {
+      ...(plan ? { plan } : {}),
+      ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
+        ? { retryAfterRollouts }
+        : {})
+    };
   }
 
   const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
   const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
   const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
+  const protectedCandidateTokens =
+    deterministicProtectedTokens +
+    exec.protectedTokens +
+    codeMode.protectedTokens +
+    web.protectedTokens;
   const combined = evaluateCandidateSet(
     input,
     existing,
@@ -432,14 +454,10 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
       usageRatio,
       usageRecord,
       normalRolloutOrdinal,
-      protectedCandidateTokens:
-        deterministicProtectedTokens +
-        exec.protectedTokens +
-        codeMode.protectedTokens +
-        web.protectedTokens
+      protectedCandidateTokens
     }
   );
-  if (combined?.economics.passes) {
+  if (combined?.economics.passes && checkpointEligible) {
     const plan = finalizePlan(input, combined);
     return plan ? { plan } : {};
   }
@@ -450,11 +468,12 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     codeMode.retryAfterRollouts,
     web.retryAfterRollouts
   );
-  return deterministicProtectedTokens +
-    exec.protectedTokens +
-    codeMode.protectedTokens +
-    web.protectedTokens >=
-    contextGcMinimumReclaimedTokens(contextUsageTokens, input.contextWindowTokens) &&
+  // A worthwhile mixed set retains every positive protected candidate's retry
+  // hint even when the checkpoint interval prevents a durable draft.
+  return protectedCandidateTokens > 0 &&
+    (combined?.economics.passes ||
+      protectedCandidateTokens >=
+        contextGcMinimumReclaimedTokens(contextUsageTokens, input.contextWindowTokens)) &&
     Number.isFinite(retryAfterRollouts)
     ? { retryAfterRollouts }
     : {};
@@ -796,7 +815,6 @@ function evaluateCandidateSet(
     input.records,
     input.modelId,
     input.contextWindowTokens,
-    input.workspace,
     input.checkpointCache!
   );
   const contextGrowthP75Tokens = percentile75(growthSamples);
@@ -1583,10 +1601,9 @@ function collectContextGrowthSamples(
   records: readonly SessionRecord[],
   modelId: string,
   contextWindowTokens: number,
-  workspace: string,
   checkpointCache: ContextGcCheckpointCache
 ): number[] {
-  const previous = checkpointCache.read(records, undefined, workspace);
+  const previous = checkpointCache.read(records);
   const base = contextGcBaseFromRecords(records);
   const startSequence =
     previous?.record.sequence ?? (base?.type === 'COMPACT' ? base.sequence : base?.firstSequence);

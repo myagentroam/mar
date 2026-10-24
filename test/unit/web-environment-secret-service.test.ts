@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createEnvironmentSecretService } from '../../ee/web/src/service/EnvironmentSecretService.js';
+import { createEnvironmentSecretService } from '../../ee/web/src/service/environment-secret-service.js';
 
 describe('Web EnvironmentSecretService', () => {
   it('Organization secret creation submits organization identity and public visibility', async () => {

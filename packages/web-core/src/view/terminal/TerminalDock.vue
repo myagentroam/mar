@@ -3,9 +3,9 @@ import type { MessageType } from '../../model/message-feedback.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 const TerminalTabView = defineAsyncComponent(() => import('./TerminalTabView.vue'));
 

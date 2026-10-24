@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { translate } from '../../service/LocalePreferenceService.js';
-import type { RecentRun } from '../../service/WorkbenchNotificationService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
 defineProps<{
@@ -143,7 +143,7 @@ function runStatusType(
   white-space: nowrap;
 }
 .recent-session-title {
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.35;
 }
 .recent-sessions-list small {

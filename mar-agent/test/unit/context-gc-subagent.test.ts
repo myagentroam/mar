@@ -110,7 +110,7 @@ function successfulRollout(
 }
 
 function plannerInput(values: readonly SessionRecord[]) {
-  const projection = buildContextProjection(values, '/workspace');
+  const projection = buildContextProjection(values);
   return {
     records: values,
     messages: projection.entries.map((entry) => entry.message),
@@ -264,7 +264,7 @@ describe('context GC superseded subagent snapshots', () => {
     });
     expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
 
-    const projection = buildContextProjection(fixture.values, '/workspace');
+    const projection = buildContextProjection(fixture.values);
     const projectedRunning = projection.entries.find(
       (entry) => entry.record.sequence === running.result.sequence
     )?.message;
@@ -490,7 +490,7 @@ describe('context GC superseded subagent snapshots', () => {
       generation: 1
     });
     expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-    const projected = buildContextProjection(fixture.values, '/workspace');
+    const projected = buildContextProjection(fixture.values);
     const projectedInput = projected.entries.find(
       (entry) => entry.record.sequence === message.call.sequence
     )?.message;

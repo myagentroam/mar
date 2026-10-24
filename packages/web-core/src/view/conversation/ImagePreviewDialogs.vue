@@ -2,10 +2,10 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
 
 const props = defineProps<{

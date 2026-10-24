@@ -67,9 +67,6 @@ export interface SessionMeta {
     version: 1;
     userTurns?: number;
     compactSequence?: number;
-    gcSequence?: number;
-    gcGeneration?: number;
-    gcBaseSequence?: number;
     todoSequence?: number;
     todoRevision: number;
     executionModelIndexed?: true;

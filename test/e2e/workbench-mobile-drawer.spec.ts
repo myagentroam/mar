@@ -9,6 +9,129 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['daylight', 'midnight']) {
+  test(`Read-all is neutral while expanded navigation stays branded in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      const colors = await page.locator('html').evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          normal: color('--mar-text-secondary'),
+          hover: color('--mar-text-primary'),
+          brand: color('--mar-color-brand-text'),
+          focus: color('--mar-color-brand')
+        };
+        probe.style.fontSize = 'var(--mar-font-size-meta)';
+        const meta = getComputedStyle(probe).fontSize;
+        probe.remove();
+        return { ...result, meta };
+      });
+      const recent = page.locator('.recent-sessions-trigger');
+      await recent.click();
+      await expect(recent).toHaveAttribute('aria-expanded', 'true');
+      await expect(recent).toHaveCSS('color', colors.brand);
+      const bell = page.getByRole('button', { name: 'Open notification center', exact: true });
+      await bell.click();
+      await expect(recent).toHaveAttribute('aria-expanded', 'false');
+      if (width < 768) await expect(bell).toHaveCSS('color', colors.brand);
+      const markAll = page.getByRole('button', { name: 'Mark all as read', exact: true });
+      await page.mouse.move(0, 0);
+      await expect(markAll).toHaveCSS('color', colors.normal);
+      await expect(markAll).toHaveCSS('font-size', colors.meta);
+      await markAll.hover();
+      await expect(markAll).toHaveCSS('color', colors.hover);
+      await expect(markAll).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await markAll.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(markAll).toHaveCSS('outline-color', colors.focus);
+      await expect(markAll).toHaveCSS('outline-style', 'solid');
+      await page.screenshot({ path: testInfo.outputPath(`read-all-${width}.png`) });
+      await markAll.click();
+      await expect(page.locator('.workbench-notification-list .el-tag')).toHaveCount(0);
+      await expect(page.locator('.workbench-notification-list > li')).toHaveCount(30);
+    }
+  });
+
+  test(`Help shares notification utility colors without changing link behavior in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        await context.route('**/help/**', (route) =>
+          route.fulfill({ contentType: 'text/html', body: '<title>Help</title>' })
+        );
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+        const help = page.getByRole('link', { name: 'Help', exact: true });
+        const bell = page.getByRole('button', { name: 'Open notification center', exact: true });
+        await expect(help).toHaveAttribute('href', /getting-started\/overview/);
+        await expect(help).toHaveAttribute('target', '_blank');
+        await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
+        for (const custom of [false, true]) {
+          if (custom)
+            await page.locator('html').evaluate((element) => {
+              element.style.setProperty('--mar-text-primary', '#d6dfc9');
+              element.style.setProperty('--mar-text-secondary', '#8295a4');
+              element.style.setProperty('--mar-color-brand', '#9672d1');
+              element.style.setProperty('--mar-color-brand-text', '#af79d0');
+            });
+          const colors = await help.evaluate((element) => {
+            const probe = document.createElement('span');
+            element.append(probe);
+            const color = (token: string) => {
+              probe.style.color = `var(${token})`;
+              return getComputedStyle(probe).color;
+            };
+            const result = {
+              normal: color('--mar-text-secondary'),
+              hover: color('--mar-text-primary'),
+              hoverBackground: color('--mar-fill-row-hover'),
+              focus: color('--mar-color-brand')
+            };
+            probe.remove();
+            return result;
+          });
+          for (const control of [help, bell]) {
+            await page.mouse.move(0, 0);
+            await expect(control).toHaveCSS('color', colors.normal);
+            await control.hover();
+            await expect(control).toHaveCSS('color', colors.hover);
+            await expect(control).toHaveCSS(
+              'background-color',
+              control === bell && width < 768 ? colors.hoverBackground : 'rgba(0, 0, 0, 0)'
+            );
+            await control.focus();
+            await page.keyboard.press('Tab');
+            await page.keyboard.press('Shift+Tab');
+            await expect(control).toBeFocused();
+            await expect(control).toHaveCSS('color', colors.hover);
+            await expect(control).toHaveCSS('outline-color', colors.focus);
+            await expect(control).toHaveCSS('outline-width', '2px');
+          }
+          if (!custom)
+            await page.screenshot({ path: testInfo.outputPath(`help-${theme}-${width}.png`) });
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
+}
+
 for (const scenario of [
   { width: 1280, height: 900, locale: 'en-US', theme: 'daylight' },
   { width: 1440, height: 900, locale: 'zh-CN', theme: 'midnight' },

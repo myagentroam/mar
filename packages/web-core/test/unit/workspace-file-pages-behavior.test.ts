@@ -3,7 +3,7 @@ import { h, reactive, ref } from 'vue';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue?unit-render';
 import DiffPage from '../../src/view/workspace/WorkspaceGitDiffPage.vue?unit-render';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
-import { consoleKeyboardShortcutService } from '../../src/service/ConsoleKeyboardShortcutService.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
 
 const viewerHandle = vi.hoisted(() => ({

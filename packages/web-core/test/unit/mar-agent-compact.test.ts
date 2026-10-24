@@ -6,12 +6,12 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import CompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue';
 import UnitCompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue?unit-render';
 import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
-import { createMarAgentCompactService } from '../../src/service/MarAgentCompactService.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { createMarAgentCompactService } from '../../src/service/mar-agent-compact-service.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { MarAgentCompactConfiguration } from '@myagentroam/protocol';
 
-vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const configuration: MarAgentCompactConfiguration = {
   enabled: true,

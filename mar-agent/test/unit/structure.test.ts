@@ -9,20 +9,40 @@ const contracts = new Set([
   'host/contracts.ts',
   'runtime/contracts.ts',
   'runtime/events.ts',
+  'runtime/execution-handle.ts',
   'runtime/context/contracts.ts',
   'tools/contracts.ts',
   'subagent/contracts.ts'
 ]);
-const hostContractExtensionDependencies = new Set([
-  'extensions/environment.ts',
-  'extensions/files.ts',
-  'extensions/mcp.ts',
-  'extensions/network.ts',
-  'extensions/operation.ts',
-  'extensions/processes.ts',
-  'extensions/tools.ts'
-]);
-const toolContractSupportDependencies = new Set(['tools/code-mode/observations.ts']);
+// Public DTOs may reference domain-owned support types, never their implementations.
+const contractSupportDependencies: Readonly<Record<string, readonly string[]>> = {
+  'host/contracts.ts': [
+    'extensions/environment.ts',
+    'extensions/files.ts',
+    'extensions/mcp.ts',
+    'extensions/network.ts',
+    'extensions/operation.ts',
+    'extensions/processes.ts',
+    'extensions/tools.ts',
+    'model/usage-observer.ts',
+    'tools/permissions.ts'
+  ],
+  'runtime/contracts.ts': ['tools/permissions.ts'],
+  'runtime/events.ts': [
+    'session/catalog.ts',
+    'tools/agent/sleep.ts',
+    'tools/permissions.ts',
+    'tools/public-metadata.ts',
+    'tools/result-extensions.ts'
+  ],
+  'tools/contracts.ts': [
+    'tools/code-mode/observations.ts',
+    'tools/permissions.ts',
+    'tools/result-extensions.ts',
+    'tools/wait.ts'
+  ],
+  'subagent/contracts.ts': ['tools/permissions.ts', 'tools/wait.ts']
+};
 
 function source(path: string): string {
   return readFileSync(join(sourceRoot, path), 'utf8');
@@ -124,7 +144,8 @@ describe('Agent structure boundaries', () => {
     const neutral = new Set([
       'agent-core/error.ts',
       'agent-core/host/contracts.ts',
-      'agent-core/host/local-process-executor.ts'
+      'agent-core/host/local-process-executor.ts',
+      'agent-core/host/local-shell.ts'
     ]);
     const sandbox = join(packageSourceRoot, 'sandbox/linux');
     for (const entry of readdirSync(sandbox).filter((name) => name.endsWith('.ts'))) {
@@ -158,11 +179,10 @@ describe('Agent structure boundaries', () => {
   it('keeps contract DTOs independent of implementations without introducing contract cycles', () => {
     const allowed = new Set([...contracts, 'model/configuration.ts', 'error.ts']);
     for (const path of contracts) {
-      let allowedDependencies = allowed;
-      if (path === 'host/contracts.ts')
-        allowedDependencies = new Set([...allowed, ...hostContractExtensionDependencies]);
-      else if (path === 'tools/contracts.ts')
-        allowedDependencies = new Set([...allowed, ...toolContractSupportDependencies]);
+      const allowedDependencies = new Set([
+        ...allowed,
+        ...(contractSupportDependencies[path] ?? [])
+      ]);
       expect(
         dependencies(path).filter((dependency) => !allowedDependencies.has(dependency)),
         path

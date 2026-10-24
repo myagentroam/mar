@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { authFixture } from './support/auth-fixture.js';
-import { createWorkbenchHttpService } from '../../src/service/WorkbenchHttpService.js';
+import { createWorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

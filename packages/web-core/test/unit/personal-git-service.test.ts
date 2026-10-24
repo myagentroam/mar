@@ -1,7 +1,7 @@
 import PersonalGitSettings from '../../src/view/settings/PersonalGitSettings.vue?unit-render';
 import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 import { describe, expect, it, vi } from 'vitest';
-import { PersonalGitService } from '../../src/service/PersonalGitService.js';
+import { PersonalGitService } from '../../src/service/personal-git-service.js';
 
 describe('Personal Git settings client', () => {
   it('preserves an explicit disabled parent repository policy without defaulting legacy responses', async () => {

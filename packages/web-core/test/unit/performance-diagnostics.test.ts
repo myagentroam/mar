@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import { installPerformanceObserver } from './support/performance-observer-fixture.js';
 
 describe('WebPerformanceDiagnosticService', () => {

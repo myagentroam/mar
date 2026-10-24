@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
-import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import FilePreviewSurface from './FilePreviewSurface.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 
 export interface WorkspaceFilePageHandle {

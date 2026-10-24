@@ -2,7 +2,7 @@ import { localizedRunnerCommandState } from './runner-presentation.js';
 export { localizedRunnerCommandState } from './runner-presentation.js';
 import type { ConversationTurn, RunnerCommandState } from '../model/workbench.js';
 import { conversationItemText } from './conversation-presentation.js';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 import { composerMessagePresentation } from './composer-message.js';
 import { toolPresentation } from './tool-presentation.js';
 

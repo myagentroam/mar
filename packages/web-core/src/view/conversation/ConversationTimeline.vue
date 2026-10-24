@@ -7,8 +7,8 @@ import {
   toolPresentationSources,
   toolPresentationStatus
 } from '../../util/tool-presentation.js';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createWorkbenchSecondClock } from '../../service/WorkbenchClockService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createWorkbenchSecondClock } from '../../service/workbench-clock-service.js';
 import {
   computed,
   nextTick,
@@ -67,7 +67,7 @@ import type {
   ConversationTurn,
   RunnerCommandState
 } from '../../model/workbench.js';
-import { userInputOtherAnswerId } from '../../service/ConversationUserInputService.js';
+import { userInputOtherAnswerId } from '../../service/conversation-user-input-service.js';
 import { absoluteMessageTime } from '../../util/conversation-presentation.js';
 import type { AgentRun } from '../../model/workbench.js';
 import {
@@ -75,7 +75,7 @@ import {
   completedConversationDurations
 } from '../../util/conversation-activity.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
-import { isTerminalRunStatus } from '../../service/RunService.js';
+import { isTerminalRunStatus } from '../../service/run-service.js';
 
 interface ImageAttachment {
   readonly name: string;

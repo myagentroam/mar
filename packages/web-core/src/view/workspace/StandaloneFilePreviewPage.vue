@@ -3,26 +3,26 @@ import { marIcon } from '../../util/mar-icons.js';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
-import { createSessionShareClientService } from '../../service/SessionShareClientService.js';
-import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import type { createSessionShareAccessService } from '../../service/session-share-access-service.js';
+import { createSessionShareClientService } from '../../service/session-share-client-service.js';
+import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import MarkdownFilePreview from './MarkdownFilePreview.vue';
-import { markdownPreviewPreferenceService } from '../../service/MarkdownPreviewPreferenceService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createStandaloneWorkspaceDirectTransferService } from '../../service/StandaloneWorkspaceDirectTransferService.js';
-import { createStandaloneFileWindowService } from '../../service/StandaloneFileWindowService.js';
-import { directFileContentRevision } from '../../service/WorkspaceDirectFileReadService.js';
-import { readFilePreview, readFilePreviewObject } from '../../service/FilePreviewReadService.js';
+import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createStandaloneWorkspaceDirectTransferService } from '../../service/standalone-workspace-direct-transfer-service.js';
+import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
+import { directFileContentRevision } from '../../service/workspace-direct-file-read-service.js';
+import { readFilePreview, readFilePreviewObject } from '../../service/file-preview-read-service.js';
 import {
   revokeWorkspaceDirectObjectUrl,
   triggerBrowserFileDownload
-} from '../../service/WorkspaceDirectObjectUrlService.js';
+} from '../../service/workspace-direct-object-url-service.js';
 import {
   decodeFilePreviewText,
   filePreviewKind,

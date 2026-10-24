@@ -70,6 +70,26 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
   expect(resolvedColorToHex(actual.iconColor)).toBe(resolvedColorToHex(actual.statusColor));
 }
 
+async function expectMessageFirstLineAlignment(message: Locator): Promise<void> {
+  const offsets = await message.evaluate((element) => {
+    const content = element.querySelector('.mar-message-text');
+    const statusIcon = element.querySelector('.el-message__icon .mar-icon');
+    const closeIcon = element.querySelector('.mar-message-close .mar-icon');
+    if (!content || !statusIcon || !closeIcon)
+      throw new Error('Message feedback layout is missing');
+    const contentRect = content.getBoundingClientRect();
+    const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
+    const firstLineCenter = contentRect.y + lineHeight / 2;
+    const centerY = (rect: DOMRect) => rect.y + rect.height / 2;
+    return {
+      status: centerY(statusIcon.getBoundingClientRect()) - firstLineCenter,
+      close: centerY(closeIcon.getBoundingClientRect()) - firstLineCenter
+    };
+  });
+  expect(Math.abs(offsets.status)).toBeLessThanOrEqual(1);
+  expect(Math.abs(offsets.close)).toBeLessThanOrEqual(1);
+}
+
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -307,6 +327,146 @@ test('built-ins are read-only, copies include every color, and reset restores sa
 });
 
 for (const scheme of ['Light', 'Dark']) {
+  test(`Ordinary actions preserve neutral states and bordered surfaces in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    const controls = page.getByRole('region', { name: 'Real theme controls' });
+    const secondary = controls.getByRole('button', { name: 'Sample default', exact: true });
+    const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
+    const disabled = controls.getByRole('button', { name: 'Sample disabled default', exact: true });
+    const danger = controls.getByRole('button', { name: 'Sample dangerous action', exact: true });
+    const navigation = controls.getByRole('link', { name: 'Manage usage', exact: true });
+    for (const custom of [false, true]) {
+      if (custom)
+        await page.locator('html').evaluate((element) => {
+          for (const [token, value] of Object.entries({
+            '--mar-text-primary': '#dae5cf',
+            '--mar-text-secondary': '#a5b6c7',
+            '--mar-color-brand': '#bf6ac9',
+            '--mar-fill-row-hover': '#334455',
+            '--mar-fill-selection': '#445566',
+            '--mar-border-medium': '#718293'
+          }))
+            element.style.setProperty(token, value);
+        });
+      const colors = await controls.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          normal: color('--mar-text-secondary'),
+          hover: color('--mar-text-primary'),
+          surface: color('--mar-fill-row-hover'),
+          pressed: color('--mar-fill-selection'),
+          border: color('--mar-border-medium'),
+          focus: color('--mar-color-brand'),
+          navigation: color('--el-color-primary'),
+          navigationSurface: color('--el-color-primary-light-9')
+        };
+        probe.remove();
+        return result;
+      });
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await controls.getByRole('textbox', { name: 'Sample input' }).focus();
+        await page.mouse.move(0, 0);
+        await expect(neutral).toHaveCSS('color', colors.normal);
+        await neutral.hover();
+        await expect(neutral).toHaveCSS('color', colors.hover);
+        await expect(neutral).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await page.mouse.down();
+        await expect(neutral).toHaveCSS('color', colors.hover);
+        await page.mouse.up();
+        await secondary.hover();
+        await expect(secondary).toHaveCSS('color', colors.hover);
+        await expect(secondary).toHaveCSS('background-color', colors.surface);
+        await expect(secondary).toHaveCSS('border-top-color', colors.border);
+        await expect(secondary).toHaveCSS('border-top-width', '1px');
+        await expect(secondary).toHaveCSS('transform', 'none');
+        await page.mouse.down();
+        await expect(secondary).toHaveCSS('background-color', colors.pressed);
+        await page.mouse.up();
+        await page.mouse.move(0, 0);
+        await secondary.focus();
+        await page.keyboard.down('Space');
+        try {
+          await expect(secondary).toHaveCSS('color', colors.hover);
+          await expect(secondary).toHaveCSS('background-color', colors.pressed);
+        } finally {
+          await page.keyboard.up('Space');
+        }
+        await neutral.focus();
+        await page.keyboard.press('Shift+Tab');
+        await page.keyboard.press('Tab');
+        await expect(neutral).toBeFocused();
+        await expect(neutral).toHaveCSS('outline-color', colors.focus);
+        await expect(neutral).toHaveCSS('outline-style', 'solid');
+        const disabledColor = await disabled.evaluate((element) => getComputedStyle(element).color);
+        await disabled.hover({ force: true });
+        await expect(disabled).toBeDisabled();
+        await expect(disabled).toHaveCSS('color', disabledColor);
+        await danger.hover();
+        await expect(danger).not.toHaveCSS('color', colors.hover);
+        await expect(danger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(navigation).toHaveAttribute('href', 'https://chatgpt.com/settings/usage');
+        await expect(navigation).toHaveAttribute('target', '_blank');
+        await expect(navigation).toHaveAttribute('rel', 'noopener noreferrer');
+        await navigation.hover();
+        await expect(navigation).toHaveCSS('color', colors.navigation);
+        await expect(navigation).toHaveCSS('background-color', colors.navigationSurface);
+        const preview = page.locator('.theme-preview').first();
+        const previewColors = await preview.evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          const color = (token: string) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const palette = {
+            text: color('--mar-text-primary'),
+            hover: color('--mar-fill-row-hover'),
+            pressed: color('--mar-fill-selection'),
+            border: color('--mar-border-medium'),
+            foreground: color('--mar-color-on-accent'),
+            primaryHover: color('--mar-color-brand-hover')
+          };
+          probe.remove();
+          return palette;
+        });
+        const previewSecondary = preview.locator('.preview-button.secondary');
+        await previewSecondary.hover();
+        await expect(previewSecondary).toHaveCSS('color', previewColors.text);
+        await expect(previewSecondary).toHaveCSS('background-color', previewColors.hover);
+        await expect(previewSecondary).toHaveCSS('border-top-color', previewColors.border);
+        await page.mouse.move(0, 0);
+        await previewSecondary.focus();
+        await page.keyboard.down('Space');
+        try {
+          await expect(previewSecondary).toHaveCSS('color', previewColors.text);
+          await expect(previewSecondary).toHaveCSS('background-color', previewColors.pressed);
+        } finally {
+          await page.keyboard.up('Space');
+        }
+        const previewPrimary = preview.locator('.preview-button.primary');
+        await previewPrimary.hover();
+        await expect(previewPrimary).toHaveCSS('color', previewColors.foreground);
+        await expect(previewPrimary).toHaveCSS('background-color', previewColors.primaryHover);
+        await controls.screenshot({
+          path: testInfo.outputPath(`neutral-actions-${custom ? 'custom' : 'builtin'}-${width}.png`)
+        });
+      }
+    }
+  });
+
   test(
     'workspace Git and branch labels use neutral ' + scheme + ' theme colors',
     async ({ page }, testInfo) => {
@@ -407,8 +567,7 @@ for (const scheme of ['Light', 'Dark']) {
       const palette = await page.locator('html').evaluate((element) => {
         const style = getComputedStyle(element);
         return {
-          utility: style.getPropertyValue('--mar-text-primary').trim(),
-          link: style.getPropertyValue('--mar-control-link-hover').trim()
+          utility: style.getPropertyValue('--mar-text-primary').trim()
         };
       });
       const help = page.getByRole('button', { name: 'Theme color reference', exact: true });
@@ -436,7 +595,7 @@ for (const scheme of ['Light', 'Dark']) {
         .poll(async () =>
           resolvedColorToHex(await apply.evaluate((element) => getComputedStyle(element).color))
         )
-        .toBe(palette.link);
+        .toBe(palette.utility);
       await help.focus();
       await help.press('Enter');
       const dialog = page.getByRole('dialog', { name: 'Theme color reference', exact: true });
@@ -1097,6 +1256,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
       .filter({ hasText: 'Theme-aware info feedback' });
     await expect(message).toContainText('Theme-aware info feedback');
     await expectMessageThemeTokens(message, '--mar-text-secondary');
+    await expectMessageFirstLineAlignment(message);
     await message.locator('.mar-message-close').click();
     await expect(message).toHaveCount(0);
   }
@@ -1136,6 +1296,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
       .filter({ hasText: 'Theme-aware ' + type + ' feedback' });
     await expect(message).toBeVisible();
     await expectMessageThemeTokens(message, token);
+    await expectMessageFirstLineAlignment(message);
     await message.locator('.mar-message-close').click();
     await expect(message).toHaveCount(0);
   }
@@ -1184,6 +1345,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await expect(content).toContainText(
     'Line 1: long feedback remains readable and can be dismissed.'
   );
+  await expectMessageFirstLineAlignment(message);
   expect(await message.evaluate((element) => element.closest('[role="dialog"]') !== null)).toBe(
     true
   );

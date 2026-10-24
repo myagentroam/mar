@@ -7,7 +7,7 @@ import {
   parseLocale,
   resolveInitialLocale,
   translate
-} from '../../ee/web/src/service/LocalePreferenceService';
+} from '../../ee/web/src/service/locale-preference-service';
 import { ApiError } from '../../ee/web/src/util/api-error';
 import {
   absoluteMessageTime,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 
 defineProps<{
   resourceType: 'NODE' | 'WORKSPACE';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { themePreferenceService } from './service/ThemePreferenceService.js';
-import { clearMessages } from './service/MessageFeedbackService.js';
+import { themePreferenceService } from './service/theme-preference-service.js';
+import { clearMessages } from './service/message-feedback-service.js';
 import {
   computed,
   defineAsyncComponent,
@@ -9,11 +9,11 @@ import {
   provide,
   type Component
 } from 'vue';
-import { DOCUMENTATION_AVAILABLE_KEY } from './service/DocumentationAvailability.js';
+import { DOCUMENTATION_AVAILABLE_KEY } from './service/documentation-availability.js';
 import en from 'element-plus/es/locale/lang/en';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
-import { localePreferenceService } from './service/LocalePreferenceService.js';
-import { consoleKeyboardShortcutService } from './service/ConsoleKeyboardShortcutService.js';
+import { localePreferenceService } from './service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from './service/console-keyboard-shortcut-service.js';
 import { tableTooltipOptions } from './util/tooltip.js';
 import SharedTooltipHost from './view/common/SharedTooltipHost.vue';
 const SessionSharePage = defineAsyncComponent(

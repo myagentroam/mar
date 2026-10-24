@@ -2,12 +2,12 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import {
   formatGitRemoteUrl,
@@ -17,8 +17,8 @@ import {
   type GitCredentialSummary,
   type PersonalGitSummary
 } from '@myagentroam/protocol';
-import { PersonalGitService } from '../../service/PersonalGitService.js';
-import { translate as t } from '../../service/LocalePreferenceService.js';
+import { PersonalGitService } from '../../service/personal-git-service.js';
+import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import LoadingPanel from '../common/LoadingPanel.vue';
 

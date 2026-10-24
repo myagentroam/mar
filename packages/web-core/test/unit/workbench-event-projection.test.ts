@@ -4,8 +4,8 @@ import {
   CONVERSATION_RECENT_SEGMENT_LIMIT,
   CONVERSATION_SEGMENT_PAGE_SIZE
 } from '../../src/util/conversation-history';
-import { createWorkbenchConversationPagingService } from '../../src/service/WorkbenchConversationPagingService';
-import { createWorkbenchEventProjectionService } from '../../src/service/WorkbenchEventProjectionService';
+import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service';
+import { createWorkbenchEventProjectionService } from '../../src/service/workbench-event-projection-service';
 import type { AgentRun, Session } from '../../src/model/workbench';
 
 function turn(id: string, overrides: Record<string, unknown> = {}) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchViewWatchService as createWorkbenchNavigationWatchService } from '../../src/service/WorkbenchViewWatchService.js';
+import { createWorkbenchViewWatchService as createWorkbenchNavigationWatchService } from '../../src/service/workbench-view-watch-service.js';
 
 describe('Web Workbench Navigation Watch Convergence', () => {
   it('Restores the unique Workspace and Session Watches when returning from a hosted conversation through another view', async () => {

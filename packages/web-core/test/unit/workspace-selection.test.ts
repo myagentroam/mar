@@ -6,8 +6,8 @@ import type {
   Workspace,
   WorkspaceTarget
 } from '../../src/model/workbench.js';
-import { createWorkbenchWorkspaceSelectionService } from '../../src/service/WorkbenchWorkspaceSelectionService.js';
-import { createWorkspaceViewCacheService } from '../../src/service/WorkspaceViewCacheService.js';
+import { createWorkbenchWorkspaceSelectionService } from '../../src/service/workbench-workspace-selection-service.js';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 
 const target = (nodeId = 'node-1', workspaceId = 'workspace-1'): WorkspaceTarget => ({

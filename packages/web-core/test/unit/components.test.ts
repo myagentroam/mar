@@ -2,7 +2,7 @@ import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ID_INJECTION_KEY } from 'element-plus';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import LoginPage from '../../src/view/LoginPage.vue';
 import PasswordGate from '../../src/view/PasswordGate.vue';
 import SystemInformationPage from '../../src/view/SystemInformationPage.vue';

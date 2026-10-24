@@ -3,9 +3,9 @@ import { h } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import Page from '../../src/view/settings/MarAgentModelManagementPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import { managementDateTime } from '../../src/util/time-presentation.js';
 import {
   flushComponent,
@@ -15,7 +15,7 @@ import {
   type TestElement
 } from './support/component-renderer.js';
 
-vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const messages = commonMessages['en-US'].marAgentModels;
 const previousLocale = i18n.global.locale.value;

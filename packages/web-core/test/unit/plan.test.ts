@@ -2,7 +2,7 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { computed, ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationTurn, RunnerCommandState, Session } from '../../src/model/workbench.js';
-import { createWorkbenchPlanService } from '../../src/service/WorkbenchPlanService.js';
+import { createWorkbenchPlanService } from '../../src/service/workbench-plan-service.js';
 
 function fixture() {
   const selectedSessionId = ref<string | undefined>('session-1');

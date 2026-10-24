@@ -2,19 +2,19 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
-import { createCodexCredentialManagementService } from '../../service/CodexCredentialManagementService';
-import { translate } from '../../service/LocalePreferenceService';
-import { createManagementOrderState } from '../../service/ManagementOrderState';
+import { createCodexCredentialManagementService } from '../../service/codex-credential-management-service';
+import { translate } from '../../service/locale-preference-service';
+import { createManagementOrderState } from '../../service/management-order-state';
 import { errorMessage } from '../../util/workbench-presentation';
 
 const props = defineProps<{

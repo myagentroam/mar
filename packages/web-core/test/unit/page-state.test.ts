@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { createWorkbenchPageStateService } from '../../src/service/WorkbenchBaseStateService.js';
+import { createWorkbenchPageStateService } from '../../src/service/workbench-base-state-service.js';
 
 const captured = vi.hoisted(() => ({
   activeTarget: undefined as (() => unknown) | undefined
 }));
-vi.mock('../../src/service/WorkbenchNotificationService.js', () => ({
+vi.mock('../../src/service/workbench-notification-service.js', () => ({
   createWorkbenchNotificationService: (
     _username: unknown,
     options: {

@@ -12,9 +12,9 @@ import { ElMessage, ElMessageBox, type MessageBoxData } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
-import { createWorkbenchSubmissionService } from '../../src/service/WorkbenchSubmissionService.js';
-import { hostedConversationSubmissionContext } from '../../src/service/HostedConversationWorkspaceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
+import { createWorkbenchSubmissionService } from '../../src/service/workbench-submission-service.js';
+import { hostedConversationSubmissionContext } from '../../src/service/hosted-conversation-workspace-service.js';
 
 const apps: { unmount(): void }[] = [];
 

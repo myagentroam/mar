@@ -6,7 +6,7 @@ import {
   conversationWorkProcessBlocks,
   nextConversationRenderItemCount
 } from '../../src/util/conversation-work-process.js';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';

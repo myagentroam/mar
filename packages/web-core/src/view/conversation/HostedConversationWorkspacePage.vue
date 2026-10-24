@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -9,22 +9,22 @@ import type {
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { createConversationImageService } from '../../service/ConversationImageService.js';
-import { createConversationScrollService } from '../../service/ConversationScrollService.js';
+import { createConversationImageService } from '../../service/conversation-image-service.js';
+import { createConversationScrollService } from '../../service/conversation-scroll-service.js';
 import {
   buildHostedConversationFileTree,
   visibleHostedConversationFileTreeRows
-} from '../../service/HostedConversationFileTreeService.js';
-import { createHostedConversationFilePreviewService } from '../../service/HostedConversationFilePreviewService.js';
-import { projectedFilePath } from '../../service/HostedConversationFilePreviewService.js';
-import { createStandaloneFileWindowService } from '../../service/StandaloneFileWindowService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/hosted-conversation-file-tree-service.js';
+import { createHostedConversationFilePreviewService } from '../../service/hosted-conversation-file-preview-service.js';
+import { projectedFilePath } from '../../service/hosted-conversation-file-preview-service.js';
+import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import {
   hostedConversationFileForPath,
   type createHostedConversationWorkspaceService
-} from '../../service/HostedConversationWorkspaceService.js';
+} from '../../service/hosted-conversation-workspace-service.js';
 import { errorCode } from '../../util/api-error.js';
 import type { ConversationItem, ConversationTurn } from '../../model/workbench.js';
 import { conversationItemText } from '../../util/conversation-presentation.js';
@@ -38,7 +38,7 @@ import ConversationScroll from './ConversationScroll.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import ConversationTimeline from './ConversationTimeline.vue';
 import ToolChangeReviewWindow from '../workspace/ToolChangeReviewWindow.vue';
-import { createToolChangeReviewService } from '../../service/ToolChangeReviewService.js';
+import { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import HostedConversationComposer from '../../view/conversation/HostedConversationComposer.vue';

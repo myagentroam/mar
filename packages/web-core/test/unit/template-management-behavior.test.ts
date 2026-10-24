@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
 import Page from '../../src/view/settings/ConversationTemplateManagementPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
-import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import {
   flushComponent,
   renderComponent,
@@ -10,7 +10,7 @@ import {
   trigger
 } from './support/component-renderer.js';
 
-vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 const originalLocale = i18n.global.locale.value;
 const template = {
   id: 'template-1',

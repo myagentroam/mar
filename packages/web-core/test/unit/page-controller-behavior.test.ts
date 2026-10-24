@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
-import { createWorkbenchPageController } from '../../src/service/WorkbenchPageController.js';
-import { createWorkbenchNavigationService } from '../../src/service/WorkbenchNavigationService.js';
+import { createWorkbenchPageController } from '../../src/service/workbench-page-controller.js';
+import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
-import type { createWorkbenchLiveService } from '../../src/service/WorkbenchLiveService.js';
-import type { installWorkbenchPageLifecycle } from '../../src/service/WorkbenchPageLifecycleService.js';
-import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/StandaloneFileWindowService.js';
+import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
+import type { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
+import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/standalone-file-window-service.js';
 import type { NodeSummary } from '../../src/model/node.js';
 import { renderComponent, flushComponent } from './support/component-renderer.js';
 
@@ -18,7 +18,7 @@ const captured = vi.hoisted(() => ({
   restartWorkspace: vi.fn(async () => undefined)
 }));
 // The controller owns callback wiring; transport and watch execution have their own suites.
-vi.mock('../../src/service/WorkbenchLiveService.js', () => ({
+vi.mock('../../src/service/workbench-live-service.js', () => ({
   createWorkbenchLiveService: (options: Parameters<typeof createWorkbenchLiveService>[0]) => {
     captured.live = options;
     return {
@@ -32,14 +32,14 @@ vi.mock('../../src/service/WorkbenchLiveService.js', () => ({
     };
   }
 }));
-vi.mock('../../src/service/WorkbenchPageLifecycleService.js', () => ({
+vi.mock('../../src/service/workbench-page-lifecycle-service.js', () => ({
   installWorkbenchPageLifecycle: (options: Parameters<typeof installWorkbenchPageLifecycle>[0]) => {
     captured.lifecycle = options;
   }
 }));
-vi.mock('../../src/service/HostedConversationWatchCoordinator.js', async (original) => {
+vi.mock('../../src/service/hosted-conversation-watch-coordinator.js', async (original) => {
   const actual =
-    await original<typeof import('../../src/service/HostedConversationWatchCoordinator.js')>();
+    await original<typeof import('../../src/service/hosted-conversation-watch-coordinator.js')>();
   return {
     createHostedConversationWatchCoordinator: (
       ...args: Parameters<typeof actual.createHostedConversationWatchCoordinator>
@@ -50,8 +50,8 @@ vi.mock('../../src/service/HostedConversationWatchCoordinator.js', async (origin
     })
   };
 });
-vi.mock('../../src/service/WebVersionUpdateService.js', async (original) => {
-  const module = await original<typeof import('../../src/service/WebVersionUpdateService.js')>();
+vi.mock('../../src/service/web-version-update-service.js', async (original) => {
+  const module = await original<typeof import('../../src/service/web-version-update-service.js')>();
   return {
     ...module,
     createWebVersionUpdateService: (

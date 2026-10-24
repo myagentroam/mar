@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchWatchCoordinator } from '../../src/service/WorkbenchWatchCoordinator.js';
+import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
 
 function fixture(withExtension = false) {
   const calls: string[] = [];

@@ -13,10 +13,10 @@ import {
   newOAuthProviderDraft,
   oauthProviderInput,
   type OAuthProviderDraft
-} from '@/service/EnterpriseManagementService';
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
+} from '@/service/enterprise-management-service';
+import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
 import { oauthErrorMessage } from '@/util/oauth-callback';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 interface OAuthProvider extends Omit<OAuthProviderDraft, 'clientSecret' | 'callbackUri'> {
   enabled: boolean;
   testedAt: number | null;

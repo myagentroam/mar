@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createComposerQueueService } from '../../src/service/ComposerQueueService.js';
+import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 
 describe('Web Composer Queue State', () => {
   it('Saves the target and content while editing a queue item, then clears local edit state', () => {

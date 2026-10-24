@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { createToolChangeReviewService } from '../../service/ToolChangeReviewService.js';
+import type { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import WorkspaceGitDiffPage from './WorkspaceGitDiffPage.vue';
 

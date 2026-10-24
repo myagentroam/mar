@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSessionSnapshotRefreshService } from '../../src/service/SessionSnapshotRefreshService.js';
+import { createSessionSnapshotRefreshService } from '../../src/service/session-snapshot-refresh-service.js';
 describe('Shared Session Snapshot Refresh', () => {
   afterEach(() => vi.useRealTimers());
   it('A delayed refresh only applies to the Workspace and Session selected when it was scheduled', async () => {

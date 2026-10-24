@@ -3,7 +3,7 @@ import { effectScope, nextTick } from 'vue';
 import {
   createResourceOwnershipService,
   type EnterpriseResourceRow
-} from '../../ee/web/src/service/ResourceOwnershipService.js';
+} from '../../ee/web/src/service/resource-ownership-service.js';
 
 const personal: EnterpriseResourceRow = {
   key: 'node-1',
@@ -24,7 +24,7 @@ beforeEach(() => {
   scope = effectScope();
   vi.stubGlobal('window', {
     location: { search: '', href: 'http://localhost/console?nodes.keyword=keep' },
-    history: { replaceState: vi.fn() }
+    history: { state: { workbenchEntry: 'retained' }, replaceState: vi.fn() }
   });
 });
 afterEach(() => {
@@ -106,7 +106,7 @@ describe('Enterprise resource ownership extension', () => {
     expect(service.matches(organization)).toBe(true);
     expect(service.matches(personal)).toBe(false);
     expect(window.history.replaceState).toHaveBeenLastCalledWith(
-      null,
+      { workbenchEntry: 'retained' },
       '',
       '/console?nodes.keyword=keep&nodes.ownerType=ORGANIZATION&nodes.organization=7'
     );

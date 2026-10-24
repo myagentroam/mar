@@ -4,10 +4,11 @@ import { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
 import { NodeMetrics } from '../../mar-node/src/operational.js';
 import { RunDomainState } from '../../mar-node/src/service/run-domain-state.js';
 import { RunEventService } from '../../mar-node/src/service/run-event-service.js';
-import { NodeRunEventBridge } from '../../mar-node/src/service/node-run-event-bridge.js';
+import { projectWorkbenchPayload } from '../../mar-node/src/service/workbench-event-projection.js';
+import { marctlSessionProgress } from '../../mar-node/src/service/session-recent-activity.js';
 import { conversationSegments } from '../../mar-node/src/service/conversation-segment-service.js';
-import { createConversationProjectionService } from '../../packages/web-core/src/service/ConversationProjectionService.js';
-import { createWorkbenchEventProjectionService } from '../../packages/web-core/src/service/WorkbenchEventProjectionService.js';
+import { createConversationProjectionService } from '../../packages/web-core/src/service/conversation-projection-service.js';
+import { createWorkbenchEventProjectionService } from '../../packages/web-core/src/service/workbench-event-projection-service.js';
 import {
   isConversationSegment,
   segmentPageAsTurnPage
@@ -120,9 +121,13 @@ describe('Node-to-Web conversation projection boundary', () => {
       mergeTextDelta: projection.mergeTextDelta
     } as never);
     let sequence = 0;
-    const bridge = new NodeRunEventBridge({ runtime } as never);
+    const queries = {
+      getRun: (id: string) => runtime.getRun(id),
+      conversationTurnForRun: (id: string) => runtime.conversationTurnForRun(id),
+      progress: (id: string) => marctlSessionProgress(runtime, id)
+    };
     const emit = (category: WorkbenchEventCategory, payload: unknown) => {
-      const projected = bridge.projectWorkbenchPayload(category, payload);
+      const projected = projectWorkbenchPayload(queries, category, payload);
       if (projected !== undefined && category === 'conversation')
         web.apply({ nodeId: 'node', sequence: ++sequence, category, payload: projected });
     };

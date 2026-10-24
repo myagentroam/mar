@@ -188,7 +188,7 @@ describe('Core Session active message views', () => {
           if (included) await append();
           const { contextRecords: records } = await input.store.readExecutionState(input.sessionId);
           if (!included) await append();
-          return { records, projection: buildContextProjection(records, input.workspace) };
+          return { records, projection: buildContextProjection(records) };
         });
       try {
         expect((await f.session.run({ prompt: 'read input' }).result()).status).toBe('completed');

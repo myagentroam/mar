@@ -9,7 +9,7 @@ import {
   type Component,
   type InjectionKey
 } from 'vue';
-import { i18n } from '../../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../../src/service/locale-preference-service.js';
 
 export interface TestElement {
   type: string;

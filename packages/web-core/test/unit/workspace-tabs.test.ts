@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkspaceTabService } from '../../src/service/WorkspaceTabService.js';
+import { createWorkspaceTabService } from '../../src/service/workspace-tab-service.js';
 
 const node = {
   id: 'node-1',

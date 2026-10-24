@@ -8,13 +8,13 @@ import {
   type EnvironmentSecretScope,
   type EnvironmentSecretSummary,
   type OrganizationSecretVisibility
-} from '@/service/EnvironmentSecretService';
+} from '@/service/environment-secret-service';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/enterprise-management-service';
+import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly scopes: readonly EnvironmentSecretScope[];

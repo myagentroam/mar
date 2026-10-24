@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import { type FormInstance, type FormRules } from 'element-plus';
-import { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
+import { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import {
   createStandaloneFileWindowService,
   STANDALONE_FILE_OPEN_EVENT,
   standaloneFileContext
-} from '../../service/StandaloneFileWindowService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/standalone-file-window-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import SessionShareConversation from './SessionShareConversation.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';

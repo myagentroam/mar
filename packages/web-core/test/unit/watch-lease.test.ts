@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWatchLeaseLifecycleService } from '../../src/service/WatchLeaseLifecycleService.js';
+import { createWatchLeaseLifecycleService } from '../../src/service/watch-lease-lifecycle-service.js';
 
 describe('Shared Watch lease lifecycle', () => {
   afterEach(() => vi.useRealTimers());

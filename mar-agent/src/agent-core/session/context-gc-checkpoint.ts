@@ -190,31 +190,43 @@ export class ContextGcCheckpointCache {
     | {
         records: readonly SessionRecord[];
         boundarySequence: number;
-        workspace: string | undefined;
         value: ReturnType<typeof latestValidContextGcCheckpoint>;
       }
     | undefined;
 
   read(
     records: readonly SessionRecord[],
-    boundarySequence = records.at(-1)?.sequence ?? 0,
-    workspace?: string
+    boundarySequence = records.at(-1)?.sequence ?? 0
   ): ReturnType<typeof latestValidContextGcCheckpoint> {
     const cached = this.#snapshot;
-    if (
-      cached?.records === records &&
-      cached.boundarySequence === boundarySequence &&
-      cached.workspace === workspace
-    )
+    if (cached?.records === records && cached.boundarySequence === boundarySequence)
       return cached.value;
-    const value = latestValidContextGcCheckpoint(records, boundarySequence, workspace);
-    this.#snapshot = { records, boundarySequence, workspace, value };
+    const value = latestValidContextGcCheckpoint(records, boundarySequence);
+    this.#snapshot = { records, boundarySequence, value };
     return value;
   }
 }
 
 export function contextGcMinimumUsageGrowth(contextWindowTokens: number): number {
   return Math.max(2_000, Math.floor(contextWindowTokens * 0.05));
+}
+
+/** Compare adjacent checkpoint triggers only within the same model/window scope. */
+export function contextGcCheckpointIntervalEligible(
+  trigger: ContextGcCheckpointDraft['trigger'],
+  previous?: ContextGcCheckpointDraft['trigger']
+): boolean {
+  if (
+    !previous ||
+    trigger.modelId !== previous.modelId ||
+    trigger.contextWindowTokens !== previous.contextWindowTokens
+  )
+    return true;
+  return (
+    trigger.normalRolloutOrdinal - previous.normalRolloutOrdinal >= 2 &&
+    trigger.contextInputTokens - previous.contextInputTokens >=
+      contextGcMinimumUsageGrowth(trigger.contextWindowTokens)
+  );
 }
 
 export function contextGcLogicalPathKey(
@@ -440,8 +452,7 @@ export function validateContextGcCheckpoint(
 
 export function latestValidContextGcCheckpoint(
   records: readonly SessionRecord[],
-  boundarySequence = records.at(-1)?.sequence ?? 0,
-  _workspace?: string
+  boundarySequence = records.at(-1)?.sequence ?? 0
 ): { readonly record: SessionRecord; readonly payload: ContextGcCheckpointPayload } | undefined {
   const base = contextGcBaseFromRecords(records, boundarySequence);
   if (!base) return undefined;

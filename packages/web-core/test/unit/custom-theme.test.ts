@@ -8,7 +8,7 @@ import {
   createThemePreferenceService as createService,
   CUSTOM_THEMES_STORAGE_KEY,
   THEME_STORAGE_KEY
-} from '../../src/service/ThemePreferenceService.js';
+} from '../../src/service/theme-preference-service.js';
 
 const source = (colors: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ version: 1, name: 'Ocean', colors, ...extra });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeSummary } from '../../src/model/workbench.js';
-import { createRunnerUsageService } from '../../src/service/RunnerUsageService.js';
+import { createRunnerUsageService } from '../../src/service/runner-usage-service.js';
 
 describe('Runner usage service', () => {
   it('forwards the original usage query failure to the error callback', async () => {

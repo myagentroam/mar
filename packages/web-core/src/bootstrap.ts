@@ -4,11 +4,11 @@ import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import App from './App.vue';
 import { tooltipPlugin } from './directive/tooltip.js';
-import { i18n } from './service/LocalePreferenceService.js';
+import { i18n } from './service/locale-preference-service.js';
 import {
   MANAGEMENT_COMPOSITION_KEY,
   type ManagementComposition
-} from './service/ManagementComposition.js';
+} from './service/management-composition.js';
 import './styles.css';
 
 export interface ConsoleComposition {

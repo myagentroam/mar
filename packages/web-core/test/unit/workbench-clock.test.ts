@@ -3,7 +3,7 @@ import { effectScope, nextTick, ref } from 'vue';
 import {
   createWorkbenchSecondClock,
   resolveWorkingStartedAt
-} from '../../src/service/WorkbenchClockService';
+} from '../../src/service/workbench-clock-service';
 import type { AgentRun } from '../../src/model/workbench';
 
 const run: AgentRun = {

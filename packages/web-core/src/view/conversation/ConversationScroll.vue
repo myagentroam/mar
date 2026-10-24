@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -90,7 +90,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="conversation-scroll-region">
+  <div class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
       <div
         ref="content"
@@ -110,7 +110,6 @@ onBeforeUnmount(() => {
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
           link
-          type="primary"
           size="small"
           native-type="button"
           :aria-disabled="loadingInitial || reloading"
@@ -140,7 +139,6 @@ onBeforeUnmount(() => {
             v-if="!loadingOlder || olderAction !== undefined"
             class="conversation-load-older"
             link
-            type="primary"
             size="small"
             native-type="button"
             :aria-disabled="loadingOlder"
@@ -244,6 +242,27 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
+@media (min-width: 768px) {
+  .conversation-scroll-region.is-empty {
+    flex: 0 0 auto;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-scroll {
+    height: auto;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-scroll-content.is-empty {
+    min-height: 0;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-empty {
+    flex: none;
+    padding: 0.5rem 1rem 1rem;
+  }
+}
+
 .conversation-empty h2 {
   margin: 0;
   color: var(--mar-text-primary);
@@ -277,6 +296,16 @@ onBeforeUnmount(() => {
 }
 
 .conversation-latest {
+  --el-button-text-color: var(--mar-text-secondary);
+  --el-button-bg-color: var(--mar-control-bg-color-overlay);
+  --el-button-border-color: var(--mar-border-default);
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-hover-bg-color: var(--mar-fill-row-hover);
+  --el-button-hover-border-color: var(--mar-border-medium);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-active-bg-color: var(--mar-fill-selection);
+  --el-button-active-border-color: var(--mar-border-medium);
+  --el-button-outline-color: var(--mar-color-brand);
   position: absolute;
   right: 1rem;
   bottom: 0.75rem;

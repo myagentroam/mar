@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { createSSRApp, defineComponent, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { createResourceHostingService } from '../../../../ee/web/src/service/ResourceHostingService.js';
+import { createResourceHostingService } from '../../../../ee/web/src/service/resource-hosting-service.js';
 import ResourceGrantExtension from '../../../../ee/web/src/view/settings/ResourceGrantExtension.vue?unit-render';
 import ModelGrantExtension from '../../../../ee/web/src/view/settings/ModelGrantExtension.vue?unit-render';
 import EnvironmentSecretManager from '../../../../ee/web/src/view/settings/EnvironmentSecretManager.vue?unit-render';
@@ -14,7 +14,7 @@ import EnterpriseModels from '../../../../ee/web/src/view/settings/MarAgentModel
 import EnterpriseResources from '../../../../ee/web/src/view/settings/ResourceManagementPanel.vue?unit-render';
 import ResourceManagementFilters from '../../../../ee/web/src/view/settings/ResourceManagementFilters.vue?unit-render';
 import WorkspaceRegistrationPicker from '../../../../ee/web/src/view/workspace/WorkspaceRegistrationPicker.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import {
   flushComponent,
   renderComponent,

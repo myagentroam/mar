@@ -2,12 +2,12 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { ref } from 'vue';
 import { channelDisplayNameSchema } from '@myagentroam/protocol';
 import { type FormInstance, type FormRules } from 'element-plus';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 const props = defineProps<{ initialName?: string; editing?: boolean }>();
 const emit = defineEmits<{ confirm: [name: string]; cancel: [] }>();
 const form = ref<FormInstance>();

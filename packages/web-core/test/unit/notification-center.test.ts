@@ -4,8 +4,8 @@ import ElementPlus from 'element-plus';
 import { afterEach, describe, expect, it } from 'vitest';
 import SystemNotificationControl from '../../src/view/settings/SystemNotificationControl.vue';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 
 const originalLocale = localePreferenceService().locale.value;

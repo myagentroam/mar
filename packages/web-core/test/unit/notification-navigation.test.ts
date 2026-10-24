@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkspaceTarget } from '../../src/model/workbench.js';
-import { navigateWorkbenchNotification } from '../../src/service/WorkbenchNotificationNavigationService.js';
+import { navigateWorkbenchNotification } from '../../src/service/workbench-notification-navigation-service.js';
 
 function fixture() {
   const workspaceTarget = ref<WorkspaceTarget>();

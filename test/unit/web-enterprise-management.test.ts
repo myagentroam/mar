@@ -10,18 +10,18 @@ import {
   newOAuthProviderDraft,
   resourceEditBody,
   roleLabel
-} from '../../ee/web/src/service/EnterpriseManagementService.js';
-import { createWorkspaceRegistrationService } from '../../ee/web/src/service/WorkspaceRegistrationService.js';
-import { createSkillCenterService } from '../../ee/web/src/service/SkillCenterService.js';
+} from '../../ee/web/src/service/enterprise-management-service.js';
+import { createWorkspaceRegistrationService } from '../../ee/web/src/service/workspace-registration-service.js';
+import { createSkillCenterService } from '../../ee/web/src/service/skill-center-service.js';
 import {
   managementUrlValues,
   replaceManagementUrlValues
-} from '../../ee/web/src/service/ManagementUrlService.js';
+} from '../../ee/web/src/service/management-url-service.js';
 import { parseWorkbenchRoute } from '../../ee/web/src/util/workbench-route.js';
-import { i18n } from '../../ee/web/src/service/LocalePreferenceService.js';
+import { i18n } from '../../ee/web/src/service/locale-preference-service.js';
 import { createEnterpriseManagementComposition } from '../../ee/web/src/composition/enterprise-management.js';
-import type { AdminState } from '../../ee/web/src/service/AdminAuthService.js';
-import type { ManagementPageContext } from '../../ee/web/src/service/ManagementComposition.js';
+import type { AdminState } from '../../ee/web/src/service/admin-auth-service.js';
+import type { ManagementPageContext } from '../../ee/web/src/service/management-composition.js';
 
 const managementStates: readonly AdminState[] = [
   { authenticated: true, mustChangePassword: false, edition: 'COMMUNITY' },
@@ -206,7 +206,7 @@ describe('Web enterprise management domain', () => {
         resolve(process.cwd(), 'packages/web-core/src/view/settings/HostingNodeDetailsDialogs.vue'),
         'utf8'
       ),
-      readFile(resolve(process.cwd(), 'ee/web/src/service/ResourceHostingService.ts'), 'utf8')
+      readFile(resolve(process.cwd(), 'ee/web/src/service/resource-hosting-service.ts'), 'utf8')
     ] as const);
     expect(nodeDetails).toContain('ConversationHostingMaintenanceCard');
     expect(enterpriseResourceHosting).toContain('@myagentroam/web-core/resource-hosting');

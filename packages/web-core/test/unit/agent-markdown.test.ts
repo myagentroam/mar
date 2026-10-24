@@ -9,7 +9,7 @@ vi.mock('dompurify', () => ({
   }
 }));
 
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 
 const originalLocale = localePreferenceService().locale.value;

@@ -12,7 +12,7 @@ import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/lang
 import { tags } from '@lezer/highlight';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { FileReference } from '@myagentroam/code-navigation';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { codeEditorLanguage } from '../../util/code-editor-language.js';
 import { navigationTargetAtTextPosition } from '../../util/code-navigation-target.js';
 

@@ -441,7 +441,7 @@ describe.runIf(enabled)('Code Mode and Context GC real long-flow E2E', () => {
     const store = await JsonlSessionStore.open(home);
     rawBeforeResume = await store.read(sessionId);
     const state = await store.readExecutionState(sessionId);
-    expect(buildContextProjection(state.contextRecords, workspace).checkpoint?.checkpointId).toBe(
+    expect(buildContextProjection(state.contextRecords).checkpoint?.checkpointId).toBe(
       checkpoint!.checkpointId
     );
     await store.close();

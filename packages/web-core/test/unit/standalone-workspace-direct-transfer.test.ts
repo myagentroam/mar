@@ -61,13 +61,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../src/service/WorkspaceDirectTransferService.js', () => ({
+vi.mock('../../src/service/workspace-direct-transfer-service.js', () => ({
   createWorkspaceDirectTransferService: mocks.createDirect
 }));
-vi.mock('../../src/service/WorkbenchLiveService.js', () => ({
+vi.mock('../../src/service/workbench-live-service.js', () => ({
   createWorkbenchLiveService: mocks.createLive
 }));
-import { createStandaloneWorkspaceDirectTransferService } from '../../src/service/StandaloneWorkspaceDirectTransferService.js';
+import { createStandaloneWorkspaceDirectTransferService } from '../../src/service/standalone-workspace-direct-transfer-service.js';
 
 beforeEach(() => {
   vi.stubGlobal('navigator', {

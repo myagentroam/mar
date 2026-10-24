@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
 import claudeCodeLogo from '../../assets/runner-claude-code.png';
 import marAgentLogo from '../../assets/logo-icon.png';
 import openCodeLogo from '../../assets/runner-opencode.svg';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 
 type Scope = 'COMMON' | 'CODEX' | 'CLAUDE_CODE' | 'OPENCODE' | 'MAR_AGENT';

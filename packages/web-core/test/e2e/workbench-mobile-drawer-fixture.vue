@@ -3,19 +3,19 @@ import { onBeforeUnmount, ref } from 'vue';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../src/service/MobileDialogReturnService.js';
-import { ElMessageBox } from '../../src/service/MessageBoxService.js';
+} from '../../src/service/mobile-dialog-return-service.js';
+import { ElMessageBox } from '../../src/service/message-box-service.js';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
-import { createWorkbenchNavigationService } from '../../src/service/WorkbenchNavigationService.js';
-import { captureMobileLayerRoute } from '../../src/service/MobileLayerHistoryService.js';
-import { createMobileMenuHistoryService } from '../../src/service/MobileMenuHistoryService.js';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
+import { captureMobileLayerRoute } from '../../src/service/mobile-layer-history-service.js';
+import { createMobileMenuHistoryService } from '../../src/service/mobile-menu-history-service.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { ComposerAttachment } from '../../src/model/workbench.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 
 const navigation = createWorkbenchNavigationService({
   initialView: 'nodes' as WorkbenchView,

@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ClickOutside as vClickOutside, type ButtonInstance } from 'element-plus';
-import { createSessionShareConversationService } from '../../service/SessionShareConversationService.js';
-import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
-import { createConversationImageService } from '../../service/ConversationImageService.js';
-import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
+import { createSessionShareConversationService } from '../../service/session-share-conversation-service.js';
+import type { createSessionShareAccessService } from '../../service/session-share-access-service.js';
+import { createConversationImageService } from '../../service/conversation-image-service.js';
+import { createWorkbenchClockService } from '../../service/workbench-clock-service.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
   conversationElapsedLabel
 } from '../../util/conversation-activity.js';
-import { sessionSubmissionContext } from '../../service/WorkbenchSubmissionService.js';
+import { sessionSubmissionContext } from '../../service/workbench-submission-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { userInputQuestions } from '../../util/conversation-user-input.js';
 import ConversationScroll from './ConversationScroll.vue';
 import ConversationTimeline from './ConversationTimeline.vue';
@@ -27,8 +27,8 @@ import ImagePreviewDialogs from './ImagePreviewDialogs.vue';
 import SessionShareNameDialog from './SessionShareNameDialog.vue';
 import ComposerCommandPicker from '../composer/ComposerCommandPicker.vue';
 import ComposerFileReferencePicker from '../composer/ComposerFileReferencePicker.vue';
-import { createWorkbenchComposerInteractionController } from '../../service/WorkbenchComposerInteractionController.js';
-import type { EffectiveWorkspaceSkill } from '../../service/EffectiveWorkspaceSkillService.js';
+import { createWorkbenchComposerInteractionController } from '../../service/workbench-composer-interaction-controller.js';
+import type { EffectiveWorkspaceSkill } from '../../service/effective-workspace-skill-service.js';
 const props = defineProps<{ access: ReturnType<typeof createSessionShareAccessService> }>();
 const emit = defineEmits<{
   openFile: [path: string, line?: number, column?: number, external?: boolean];

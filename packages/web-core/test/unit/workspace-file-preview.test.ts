@@ -4,9 +4,9 @@ import type {
   WorkspaceFilePreviewTransfers,
   WorkspaceFilePreviewTarget
 } from '../../src/model/workspace-file-preview.js';
-import type { ScopedHttpService } from '../../src/service/ScopedHttpService.js';
-import type { WorkspaceDirectFileRange } from '../../src/service/WorkspaceDirectFileReadService.js';
-import { createWorkspaceFilePreviewService } from '../../src/service/WorkspaceFilePreviewService.js';
+import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
+import type { WorkspaceDirectFileRange } from '../../src/service/workspace-direct-file-read-service.js';
+import { createWorkspaceFilePreviewService } from '../../src/service/workspace-file-preview-service.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

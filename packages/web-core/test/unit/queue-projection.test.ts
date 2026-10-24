@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   newestWorkspaceQueueSnapshot,
   reconcileWorkspaceQueueSnapshot
-} from '../../src/service/WorkspaceQueueProjectionService.js';
+} from '../../src/service/workspace-queue-projection-service.js';
 
 describe('Public Queue Snapshot Convergence', () => {
   it('The Watch initial state and real-time events of the queue are unified by version, and the old source cannot overwrite the new state', () => {

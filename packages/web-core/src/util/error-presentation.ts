@@ -1,6 +1,6 @@
 import { ApiError, errorCode } from './api-error.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 
 export function filePreviewErrorMessage(error: unknown, path: string): string {
   return errorMessage(

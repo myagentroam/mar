@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { parseWorkbenchRoute } from '../../src/util/workbench-route.js';
-import { createWorkbenchRouteService } from '../../src/service/WorkbenchRouteService.js';
+import { createWorkbenchRouteService } from '../../src/service/workbench-route-service.js';
 
 describe('Shared workbench routes', () => {
   afterEach(() => vi.unstubAllGlobals());

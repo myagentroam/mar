@@ -2,13 +2,13 @@ import { parseComposerTags } from '@myagentroam/protocol';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it } from 'vitest';
 import { ref } from 'vue';
-import { createComposerSkillService } from '../../src/service/ComposerSkillService.js';
-import type { EffectiveWorkspaceSkill } from '../../src/service/EffectiveWorkspaceSkillService.js';
-import { createRunnerInteractionService } from '../../src/service/RunnerInteractionService.js';
+import { createComposerSkillService } from '../../src/service/composer-skill-service.js';
+import type { EffectiveWorkspaceSkill } from '../../src/service/effective-workspace-skill-service.js';
+import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
 import {
   createComposerSkillTokenService,
   serializeComposerMessage
-} from '../../src/service/ComposerSkillTokenService.js';
+} from '../../src/service/composer-skill-token-service.js';
 
 const skillA: EffectiveWorkspaceSkill = {
   name: 'db-query',

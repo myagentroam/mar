@@ -299,7 +299,7 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
     expect(checkpoint).toBeDefined();
     expect(checkpoint!.payload.base.type).toBe('COMPACT');
     const state = await store.readExecutionState(sessionId);
-    expect(buildContextProjection(state.contextRecords, workspace).checkpoint?.checkpointId).toBe(
+    expect(buildContextProjection(state.contextRecords).checkpoint?.checkpointId).toBe(
       checkpoint!.payload.checkpointId
     );
     expect(checkpoint?.payload.replacements).toEqual(

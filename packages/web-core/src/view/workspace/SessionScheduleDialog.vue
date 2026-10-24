@@ -2,16 +2,16 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import type { Session } from '../../model/workbench.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 interface Task {
   readonly id: string;

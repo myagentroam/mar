@@ -149,13 +149,18 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     records =
       input.records ?? (await input.store.readExecutionState(input.sessionId)).contextRecords;
     const checkpointCache = new ContextGcCheckpointCache();
-    const previous = checkpointCache.read(records, undefined, input.workspace);
+    const previous = checkpointCache.read(records);
     if (previous) {
       deferred = {
         ...deferred,
         checkpointTrigger: previous.payload.trigger,
         protectedCandidatesPending: previous.payload.metrics.protectedCandidateTokens > 0
       };
+    }
+    if (
+      previous?.payload.trigger.modelId === input.modelId &&
+      previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
+    ) {
       const rolloutGrowth = records.filter(
         (record) =>
           record.sequence > previous.record.sequence &&
@@ -175,7 +180,7 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
       )
         return deferred;
     }
-    const projection = buildContextProjection(records, input.workspace, checkpointCache);
+    const projection = buildContextProjection(records, checkpointCache);
     const inspection = inspectContextGc({
       records,
       checkpointCache,
@@ -215,7 +220,6 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
         input.store,
         input.sessionId,
         draft,
-        input.workspace,
         records,
         committed
       )
@@ -224,13 +228,7 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     try {
       return {
         ...deferred,
-        result: await matchingCheckpointWasPersisted(
-          input.store,
-          input.sessionId,
-          draft,
-          input.workspace,
-          records
-        )
+        result: await matchingCheckpointWasPersisted(input.store, input.sessionId, draft, records)
       };
     } catch {
       // Keep the deferred result when the post-failure checkpoint cannot be read.
@@ -244,7 +242,6 @@ async function matchingCheckpointWasPersisted(
   store: SessionStore,
   sessionId: string,
   draft: ContextGcCheckpointDraft,
-  workspace: string,
   records: readonly SessionRecord[],
   committed?: SessionRecord
 ): Promise<ContextGcCommitResult | false> {
@@ -259,7 +256,7 @@ async function matchingCheckpointWasPersisted(
   if (record?.sequence !== draft.boundarySequence + 1 || record.type !== 'context.gc.completed')
     return false;
   const updatedRecords = [...records, record];
-  const projection = buildContextProjection(updatedRecords, workspace);
+  const projection = buildContextProjection(updatedRecords);
   if (committed) return { records: updatedRecords, projection };
   const payload = projection.checkpoint;
   const latest = payload ? { payload } : undefined;

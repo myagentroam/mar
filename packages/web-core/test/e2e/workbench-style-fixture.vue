@@ -10,7 +10,9 @@ import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue'
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const composerFixture = new URL(location.href).searchParams.has('composer');
+const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
+const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
@@ -121,10 +123,10 @@ if (composerFixture) {
     liveConnected: true,
     sessionInput: '',
     workPromptCompletion: { enabled: false },
-    composerWorking: true,
+    composerWorking: !idleComposer,
     composerWorkingLabel: 'Running',
-    composerWorkingBusy: true,
-    composerElapsedLabel: '7m 13s',
+    composerWorkingBusy: !idleComposer,
+    composerElapsedLabel: idleComposer ? '' : '7m 13s',
     composerSkillTokens: [],
     composerFileReferences: [],
     activeCommandStates: [],
@@ -141,8 +143,8 @@ if (composerFixture) {
     composerAccessLabel: 'Auto',
     composerAccessOptions: [],
     contextUsageLabel: '',
-    interruptVisible: true,
-    canInterruptTurn: true,
+    interruptVisible: !idleComposer,
+    canInterruptTurn: !idleComposer,
     effortLabel: String
   });
 }
@@ -214,8 +216,8 @@ if (composerFixture) {
     </section>
     <section aria-label="Inspector fixture">
       <WorkspaceInspector
-        :node-id="undefined"
-        :workspace-id="undefined"
+        :node-id="contentSearchFixture ? 'node' : undefined"
+        :workspace-id="contentSearchFixture ? 'workspace' : undefined"
         workspace-name="Workspace"
         workspace-kind="GIT_WORKSPACE"
         csrf-token="fixture"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWebVersionUpdateService } from '../../src/service/WebVersionUpdateService';
+import { createWebVersionUpdateService } from '../../src/service/web-version-update-service';
 
 describe('Web version update checks', () => {
   it('reports a new deployment identity when the version or build hash differs', async () => {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { nextTick, ref, watch } from 'vue';
-import type { FileReferenceEntry } from '../../service/FileReferenceService.js';
+import type { FileReferenceEntry } from '../../service/file-reference-service.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 
 const props = defineProps<{
@@ -53,7 +53,7 @@ watch(
         @click="emit('select', entry)"
       >
         <FileTypeIcon :name="entry.name" :kind="entry.kind" />
-        <strong v-tooltip="entry.name">{{ entry.name }}</strong>
+        <span v-tooltip="entry.name" class="candidate-name">{{ entry.name }}</span>
         <code>{{ entry.path }}</code>
         <span class="entry-kind">{{
           entry.kind === 'DIRECTORY'
@@ -85,6 +85,7 @@ watch(
 .command-picker button {
   font-family: inherit;
   font-size: var(--mar-font-size-body);
+  font-weight: 400;
   line-height: 1.4;
   display: grid;
   grid-template-columns: max-content 150px minmax(0, 1fr) max-content;
@@ -93,7 +94,7 @@ watch(
   border-bottom: 1px solid var(--mar-fill-hover);
   border-radius: 0;
   background: var(--mar-control-bg-color-overlay);
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   cursor: pointer;
   padding: 0.55rem 0.65rem;
   text-align: left;
@@ -105,15 +106,12 @@ watch(
 
 .command-picker button.active {
   background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .command-picker button:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
-}
-
-.command-picker button strong {
-  font-weight: 600;
 }
 
 .command-picker p {
@@ -124,7 +122,7 @@ watch(
 }
 
 .file-reference-picker button code,
-.file-reference-picker button strong {
+.file-reference-picker button .candidate-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,7 +160,7 @@ watch(
     width: 100%;
   }
 
-  .command-picker strong {
+  .command-picker .candidate-name {
     white-space: nowrap;
   }
 

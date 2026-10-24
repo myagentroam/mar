@@ -1,8 +1,8 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { nextTick, ref, watch } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkspaceSessionService } from '../../src/service/WorkspaceSessionService.js';
-import { createWorkspaceSessionPagingService } from '../../src/service/WorkspaceSessionPagingService.js';
+import { createWorkspaceSessionService } from '../../src/service/workspace-session-service.js';
+import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 
 function state(
   runs: readonly Record<string, unknown>[] = [],

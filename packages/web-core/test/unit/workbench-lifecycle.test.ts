@@ -12,7 +12,7 @@ vi.mock('vue', async (importOriginal) => ({
   watch: (source: unknown, callback: (...args: unknown[]) => void) =>
     hooks.watchers.push({ source, callback })
 }));
-import { installWorkbenchPageLifecycle } from '../../src/service/WorkbenchPageLifecycleService.js';
+import { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
 
 beforeEach(() => {
   hooks.mounted.length = 0;

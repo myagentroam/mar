@@ -2,14 +2,14 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, reactive, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { matchesWorkspaceDisplayFilter } from '../../service/WorkspaceFileTreeService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { matchesWorkspaceDisplayFilter } from '../../service/workspace-file-tree-service.js';
 
 interface DirectoryListing {
   readonly currentPath: string;
@@ -201,6 +201,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           <div class="workspace-picker-toolbar-actions">
             <el-button
               v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
+              class="utility-control"
               :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
               :icon="marIcon('refresh')"
               :disabled="loadingDirectory"

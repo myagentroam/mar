@@ -2,12 +2,12 @@
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
-import { translate } from '../../service/LocalePreferenceService.js';
-import type { WorkspaceGitService } from '../../service/WorkspaceGitService.js';
-import { changeKey } from '../../service/WorkspaceGitService.js';
-import type { WorkspaceFileOperationTarget } from '../../service/WorkspaceFileOperationService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
+import { changeKey } from '../../service/workspace-git-service.js';
+import type { WorkspaceFileOperationTarget } from '../../service/workspace-file-operation-service.js';
 import type {
   ChangeEntry,
   ChangeRepository,

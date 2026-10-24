@@ -16,11 +16,11 @@ import {
   roleLabel,
   type EnterpriseRole,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/enterprise-management-service';
+import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
-import { createUserManagementService } from '@/service/UserManagementService';
+import { createUserManagementService } from '@/service/user-management-service';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 
 interface EnterpriseUser {

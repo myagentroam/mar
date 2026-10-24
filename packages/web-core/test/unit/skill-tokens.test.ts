@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createEffectiveWorkspaceSkillService } from '../../src/service/EffectiveWorkspaceSkillService.js';
+import {
+  COMPOSER_SKILL_INSTRUCTION,
+  composerVisibleText,
+  parseComposerTags
+} from '@myagentroam/protocol';
+import { createEffectiveWorkspaceSkillService } from '../../src/service/effective-workspace-skill-service.js';
 import {
   createComposerSkillTokenService,
   serializeComposerMessage,
   hasUnavailableSkillToken,
   normalizeComposerSkillTokens
-} from '../../src/service/ComposerSkillTokenService.js';
+} from '../../src/service/composer-skill-token-service.js';
 
 const skill = {
   name: 'read-code',
@@ -38,9 +43,19 @@ describe('Public Effective Skills and Composer Tokens', () => {
     expect(hasUnavailableSkillToken(service.tokens.value)).toBe(true);
     service.reconcile([{ ...skill, skillFilePath: '/new/SKILL.md' }]);
     expect(hasUnavailableSkillToken(service.tokens.value)).toBe(false);
-    expect(serializeComposerMessage(service.tokens.value, 'body')).toBe(
-      '[invoke skill](</new/SKILL.md>)\nbody'
-    );
+    const message = serializeComposerMessage(service.tokens.value, 'body');
+    expect(composerVisibleText(message)).toBe('body');
+    expect(
+      parseComposerTags(message)
+        .filter((part) => part.kind === 'mar_skills')
+        .map((part) => part.payload)
+    ).toEqual([
+      {
+        action: 'use',
+        instruction: COMPOSER_SKILL_INSTRUCTION,
+        skills: [{ name: skill.name, source: skill.source, path: '/new/SKILL.md' }]
+      }
+    ]);
     service.remove(skill.name);
     expect(service.tokens.value).toEqual([]);
     service.select(skill);
@@ -54,8 +69,19 @@ describe('Public Effective Skills and Composer Tokens', () => {
     expect(normalizeComposerSkillTokens({})).toEqual([]);
     const service = createComposerSkillTokenService();
     service.restore([token]);
-    expect(serializeComposerMessage(service.tokens.value, 'free text')).toBe(
-      '[invoke skill](<C:\\\\work\\>\\\\SKILL.md>)\nfree text'
-    );
+    const body = 'free text [invoke skill](</literal/SKILL.md>)';
+    const message = serializeComposerMessage(service.tokens.value, body);
+    expect(composerVisibleText(message)).toBe(body);
+    expect(
+      parseComposerTags(message)
+        .filter((part) => part.kind === 'mar_skills')
+        .map((part) => part.payload)
+    ).toEqual([
+      {
+        action: 'use',
+        instruction: COMPOSER_SKILL_INSTRUCTION,
+        skills: [{ name: skill.name, source: skill.source, path: token.skillFilePath }]
+      }
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createQuickPromptService } from '../../src/service/QuickPromptService.js';
+import { createQuickPromptService } from '../../src/service/quick-prompt-service.js';
 import type { QuickPrompt } from '../../src/model/workbench.js';
 
 describe('Public Account Quick Tip Read', () => {

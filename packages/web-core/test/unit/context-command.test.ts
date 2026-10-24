@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
-import { createWorkbenchContextCommandService } from '../../src/service/WorkbenchContextCommandService.js';
+import { createWorkbenchContextCommandService } from '../../src/service/workbench-context-command-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 beforeEach(() => {

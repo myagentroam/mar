@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HostedConversationSnapshot } from '@myagentroam/protocol';
-import { createHostedConversationSelectionService } from '../../src/service/HostedConversationSelectionService.js';
+import { createHostedConversationSelectionService } from '../../src/service/hosted-conversation-selection-service.js';
 
 function fixture() {
   const events: string[] = [];

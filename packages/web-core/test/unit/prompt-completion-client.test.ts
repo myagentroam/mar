@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { PromptCompletionClientService } from '../../src/service/PromptCompletionClientService.js';
+import { PromptCompletionClientService } from '../../src/service/prompt-completion-client-service.js';
 import {
   createPromptCompletionPreferenceService,
   PROMPT_COMPLETION_STORAGE_KEY
-} from '../../src/service/PromptCompletionPreferenceService.js';
+} from '../../src/service/prompt-completion-preference-service.js';
 
 function fixture() {
   const connection = ref<string | undefined>('connection');

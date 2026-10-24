@@ -10,7 +10,7 @@ import {
   eligibleMarAgentTransportTestNodes,
   modelProtocolChoice,
   modelSupportsNodeTransport
-} from '../../src/service/CodexCredentialManagementService.js';
+} from '../../src/service/codex-credential-management-service.js';
 
 const credential = {
   id: 'credential-1',

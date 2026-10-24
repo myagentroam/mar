@@ -4,7 +4,7 @@ import {
   isTerminalRunStatus,
   newestRunSnapshot,
   createRunService
-} from '../../src/service/RunService.js';
+} from '../../src/service/run-service.js';
 
 describe('Shared Run State Convergence', () => {
   it.each([2, 3])(

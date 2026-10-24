@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { createSessionPromptService } from '../../src/service/SessionPromptService.js';
+import { createSessionPromptService } from '../../src/service/session-prompt-service.js';
 
 it('reads the authoritative Session and updates only its Session Prompt', async () => {
   const request = vi.fn().mockResolvedValue({ session: { sessionPrompt: 'Current rules' } });

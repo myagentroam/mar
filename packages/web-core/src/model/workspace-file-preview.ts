@@ -1,7 +1,7 @@
 import type {
   WorkspaceDirectFileIdentity,
   WorkspaceDirectFileRange
-} from '../service/WorkspaceDirectFileReadService.js';
+} from '../service/workspace-direct-file-read-service.js';
 
 export interface WorkspaceFilePreviewContent {
   readonly path: string;

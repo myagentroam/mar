@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { Workspace } from '../../src/model/workbench.js';
 import { sessionPresentationZhCN } from '../../src/i18n/session-presentation.zh-CN.js';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import {
   absoluteMessageTime,
   absoluteSessionTime,

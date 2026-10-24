@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createComposerConfigurationService } from '../../src/service/ComposerConfigurationService.js';
+import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 
 describe('Web Composer Configuration State', () => {
   it('Prefers MAR Agent for a new session', () => {

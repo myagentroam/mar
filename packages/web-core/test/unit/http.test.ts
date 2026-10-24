@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchHttpService } from '../../src/service/WorkbenchHttpService';
-import { createScopedHttpService } from '../../src/service/ScopedHttpService';
+import { createWorkbenchHttpService } from '../../src/service/workbench-http-service';
+import { createScopedHttpService } from '../../src/service/scoped-http-service';
 import { apiErrorFromResponse, errorCode } from '../../src/util/api-error';
 
 describe('Web Workbench Request Service', () => {

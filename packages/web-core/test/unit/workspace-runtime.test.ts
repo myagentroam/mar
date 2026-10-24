@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeWorkspaceWatchSnapshot } from '../../src/service/WorkspaceRuntimeStateService.js';
+import { mergeWorkspaceWatchSnapshot } from '../../src/service/workspace-runtime-state-service.js';
 
 describe('Shared Workspace topic state', () => {
   it('advances local topic revisions for accepted snapshots even when Node revisions restart', () => {

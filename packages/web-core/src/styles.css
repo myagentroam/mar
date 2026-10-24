@@ -26,6 +26,23 @@
   pointer-events: none;
 }
 
+@media (min-width: 768px) {
+  .conversation-scroll-region.is-empty {
+    margin-top: auto;
+  }
+
+  .conversation-scroll-region.is-empty + .composer-host {
+    box-sizing: border-box;
+    width: min(calc(100% - 2rem), 45rem);
+    align-self: center;
+    margin-bottom: auto;
+  }
+
+  .conversation-scroll-region.is-empty + .composer-host > .composer {
+    background: transparent;
+  }
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,
@@ -407,6 +424,30 @@ html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-disabled-text-color: var(--mar-control-disabled-on-accent);
 }
 
+/* Keep ordinary actions neutral without flattening semantic buttons or local overrides. */
+html.console-ui
+  :where(
+    .el-button:not(
+      .el-button--primary,
+      .el-button--success,
+      .el-button--warning,
+      .el-button--danger,
+      .el-button--info,
+      a[href],
+      .utility-control
+    )
+  ) {
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-hover-link-text-color: var(--mar-text-primary);
+  --el-button-hover-bg-color: var(--mar-fill-row-hover);
+  --el-button-hover-border-color: var(--mar-border-medium);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-active-color: var(--mar-text-primary);
+  --el-button-active-bg-color: var(--mar-fill-selection);
+  --el-button-active-border-color: var(--mar-border-medium);
+  --el-button-outline-color: var(--mar-color-brand);
+}
+
 html.console-ui .el-button--primary.is-link,
 html.console-ui .el-button--primary.is-text,
 html.console-ui .el-link--primary {
@@ -653,6 +694,7 @@ html.console-ui .el-message {
   --el-message-bg-color: var(--mar-control-bg-color-overlay);
   --el-message-border-color: var(--mar-border-default);
   --el-message-text-color: var(--mar-text-primary);
+  --mar-message-first-line-height: calc(var(--mar-font-size-body) * 1.5);
   max-width: min(
     36rem,
     calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))
@@ -678,7 +720,7 @@ html.console-ui .mar-message-text {
   display: block;
   overflow-wrap: anywhere;
   white-space: pre-line;
-  line-height: 1.5;
+  line-height: var(--mar-message-first-line-height);
   max-height: min(20rem, 50dvh);
   overflow-y: auto;
   color: var(--mar-text-primary);
@@ -687,7 +729,8 @@ html.console-ui .mar-message-text {
 
 html.console-ui .el-message__icon {
   flex: 0 0 auto;
-  margin: 2px 0 0;
+  height: var(--mar-message-first-line-height);
+  margin: 0;
 }
 
 html.console-ui .el-message--info .el-message__icon {
@@ -705,8 +748,9 @@ html.console-ui .el-message--error .el-message__icon {
 
 html.console-ui .el-message__closeBtn {
   position: absolute;
-  top: 12px;
+  top: 10px;
   right: 12px;
+  height: var(--mar-message-first-line-height);
   transform: none;
   color: var(--mar-text-secondary);
 }

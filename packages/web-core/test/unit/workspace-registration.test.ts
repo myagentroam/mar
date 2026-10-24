@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkspaceRegistrationService } from '../../src/service/WorkspaceRegistrationService.js';
+import { createWorkspaceRegistrationService } from '../../src/service/workspace-registration-service.js';
 
 function setup() {
   const request = vi.fn(async () => ({ workspace: { id: 'workspace-new' } })) as unknown as <T>(

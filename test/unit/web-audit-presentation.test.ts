@@ -1,5 +1,5 @@
 import { formatDateTime } from '../../packages/web-core/src/util/time-presentation.js';
-import { localePreferenceService } from '../../packages/web-core/src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../packages/web-core/src/service/locale-preference-service.js';
 import { describe, expect, it } from 'vitest';
 import {
   auditTimestamp,

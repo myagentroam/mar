@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { resolveIconTheme } from '../../icon-themes/index.js';
-import { iconThemePreferenceService } from '../../service/IconThemePreferenceService.js';
-import { themePreferenceService } from '../../service/ThemePreferenceService.js';
+import { iconThemePreferenceService } from '../../service/icon-theme-preference-service.js';
+import { themePreferenceService } from '../../service/theme-preference-service.js';
 
 const props = withDefaults(
   defineProps<{ readonly name: string; readonly kind?: 'FILE' | 'DIRECTORY' }>(),

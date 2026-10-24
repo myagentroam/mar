@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createActiveNodeTransportService } from '../../src/service/ActiveNodeTransportService.js';
+import { createActiveNodeTransportService } from '../../src/service/active-node-transport-service.js';
 
 describe('Active Node transport service', () => {
   afterEach(() => vi.useRealTimers());

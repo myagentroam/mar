@@ -1,7 +1,7 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchCapabilityService } from '../../src/service/WorkbenchCapabilityService.js';
+import { createWorkbenchCapabilityService } from '../../src/service/workbench-capability-service.js';
 import type { NodeSummary, NodeWorkbenchManifest } from '../../src/model/workbench.js';
 
 function state(

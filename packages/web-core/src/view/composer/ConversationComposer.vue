@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
@@ -8,8 +8,11 @@ import type { ComposerSkillToken } from '../../model/workbench.js';
 import type { ComposerFileReference } from '@myagentroam/protocol';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import PromptCompletionEditor from './PromptCompletionEditor.vue';
-import type { PromptCompletionBinding } from '../../service/PromptCompletionClientService.js';
-import type { CompletionDraft, CompletionTrigger } from '../../service/PromptCompletionService.js';
+import type { PromptCompletionBinding } from '../../service/prompt-completion-client-service.js';
+import type {
+  CompletionDraft,
+  CompletionTrigger
+} from '../../service/prompt-completion-service.js';
 
 const editorElement = ref<HTMLTextAreaElement>();
 const completionEditor = ref<{ restoreFocus(cursor?: number): void }>();

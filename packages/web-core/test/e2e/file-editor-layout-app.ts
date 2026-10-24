@@ -8,14 +8,14 @@ import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(location.search);
 themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
 const longContent = query.has('long');
-const handle = ref<{ selectAll(): boolean }>();
+const handle = ref<{ selectAll(): boolean; openFind(): boolean }>();
 const restoreDraft = query.has('draft');
 function withActions(view: ReturnType<typeof h>) {
   return query.has('shortcuts')
@@ -32,6 +32,14 @@ function withActions(view: ReturnType<typeof h>) {
             onClick: () => handle.value?.selectAll()
           },
           'Select preview content'
+        ),
+        h(
+          'button',
+          {
+            style: 'position: fixed; z-index: 100; right: 160px; bottom: 0',
+            onClick: () => handle.value?.openFind()
+          },
+          'Find preview content'
         ),
         view
       ])

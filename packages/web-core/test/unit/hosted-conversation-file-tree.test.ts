@@ -1,7 +1,7 @@
 import {
   buildHostedConversationFileTree,
   visibleHostedConversationFileTreeRows
-} from '../../src/service/HostedConversationFileTreeService.js';
+} from '../../src/service/hosted-conversation-file-tree-service.js';
 
 import { describe, expect, it } from 'vitest';
 type ConversationFileProjection = Parameters<typeof buildHostedConversationFileTree>[0][number];

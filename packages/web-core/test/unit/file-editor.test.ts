@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFileEditorDefaultMode } from '../../src/service/FileEditorPreferenceService.js';
+import { parseFileEditorDefaultMode } from '../../src/service/file-editor-preference-service.js';
 import { codeEditorLanguage } from '../../src/util/code-editor-language.js';
 
 describe('Web File Editor Preferences', () => {

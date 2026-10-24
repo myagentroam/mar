@@ -3,9 +3,9 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import Fixture from './workbench-style-fixture.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
-import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/ManagementComposition.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/management-composition.js';
 localePreferenceService().setLocale(
   new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );

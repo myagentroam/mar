@@ -6,16 +6,16 @@ import {
   composerVisibleText,
   parseComposerTags
 } from '@myagentroam/protocol';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { composerMessagePresentation } from '../../src/util/composer-message.js';
 import {
   conversationItemLabel,
   conversationItemText
 } from '../../src/util/conversation-presentation.js';
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
-import { createComposerQueueService } from '../../src/service/ComposerQueueService.js';
-import { createSessionDraftService } from '../../src/service/SessionDraftService.js';
-import { createFileReferenceService } from '../../src/service/FileReferenceService.js';
+import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
+import { createSessionDraftService } from '../../src/service/session-draft-service.js';
+import { createFileReferenceService } from '../../src/service/file-reference-service.js';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 
 const references = serializeComposerTag('mar_references', {
@@ -280,6 +280,7 @@ describe('Composer product tag presentation', () => {
         render: () => h(MessageAttachmentFiles, { files: [...files, ...documentFiles] })
       });
       app.use(i18n);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain('说明.txt');
       expect(html).not.toContain('截图.png');

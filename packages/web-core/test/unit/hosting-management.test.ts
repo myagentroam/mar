@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
-import { createResourceHostingService } from '../../src/service/ResourceHostingService.js';
+import { createResourceHostingService } from '../../src/service/resource-hosting-service.js';
 vi.mock('element-plus', () => ({
   ElMessageBox: { confirm: vi.fn(async () => 'confirm') },
   ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
@@ -9,7 +9,7 @@ import {
   conversationHostingEnablementAvailability,
   conversationHostingDisablementAvailability,
   createConversationHostingEnablementService
-} from '../../src/service/ConversationHostingEnablementService.js';
+} from '../../src/service/conversation-hosting-enablement-service.js';
 
 const input = {
   platform: 'linux',

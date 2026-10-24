@@ -64,78 +64,176 @@ for (const shape of ['small', 'landscape', 'portrait']) {
 
 for (const theme of ['light', 'dark']) {
   test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
-    page
+    browser
   }, testInfo) => {
-    for (const mode of ['text=code&draft=1', 'diff=HISTORY']) {
+    for (const mode of ['text=code&draft=1', 'diff=HISTORY&shortcuts=1', 'image=small']) {
       let desktopStyle: unknown;
       for (const width of [1280, 390]) {
-        await page.setViewportSize({ width, height: 844 });
-        await page.goto(`${fixture.url}file-editor-layout.html?${mode}&theme=${theme}`);
-        const toolbar = page.locator(
-          width === 390
-            ? '.workspace-file-mobile-actions'
-            : mode.startsWith('text')
-              ? '.file-preview-desktop-actions'
-              : '.diff-preview-toolbar'
-        );
-        const find = toolbar.getByRole('button', {
-          name: mode.startsWith('text') ? 'Find in file' : 'Previous change',
-          exact: true
+        const context = await browser.newContext({
+          viewport: { width, height: 844 },
+          isMobile: width < 768,
+          hasTouch: width < 768
         });
-        await expect(find).toBeVisible();
-        const radius = await find.evaluate((element) =>
-          getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
-        );
-        await expect(find).toHaveCSS('border-radius', radius);
-        const normal = await find.evaluate((element) => {
-          const css = getComputedStyle(element);
-          return { color: css.color, background: css.backgroundColor, border: css.borderColor };
-        });
-        let saveStates: unknown;
-        if (mode.startsWith('text')) {
-          await toolbar.getByRole('button', { name: 'Edit file', exact: true }).click();
-          const save = toolbar.getByRole('button', { name: 'Save', exact: true });
-          await expect(save).toBeEnabled();
-          await expect(save).toHaveCSS('border-radius', radius);
-          const enabled = await save.evaluate(
-            (element) => getComputedStyle(element).backgroundColor
+        try {
+          const page = await context.newPage();
+          await page.goto(`${fixture.url}file-editor-layout.html?${mode}&theme=${theme}`);
+          const toolbar = page.locator(
+            width === 390
+              ? '.workspace-file-mobile-actions'
+              : mode.startsWith('diff')
+                ? '.diff-preview-toolbar'
+                : '.file-preview-desktop-actions'
           );
-          await save.click();
-          await expect(save).toBeDisabled();
-          saveStates = {
-            enabled,
-            disabled: await save.evaluate(async (element) => {
-              await Promise.all(element.getAnimations().map((animation) => animation.finished));
-              return getComputedStyle(element).backgroundColor;
-            })
-          };
-        }
-        if (width === 1280) desktopStyle = { normal, saveStates };
-        else {
-          expect({ normal, saveStates }).toEqual(desktopStyle);
-          await expect(find).toHaveCSS('width', '36px');
-          await expect(find).toHaveCSS('height', '36px');
-          await page.screenshot({
-            path: testInfo.outputPath(
-              `toolbar-${theme}-${mode.startsWith('text') ? 'text' : 'diff'}.png`
-            )
+          const find = toolbar.getByRole('button', {
+            name: mode.startsWith('text')
+              ? 'Find in file'
+              : mode.startsWith('diff')
+                ? 'Previous change'
+                : 'Download file',
+            exact: true
           });
-          const toggle = toolbar.locator('.workspace-file-mobile-actions-toggle');
-          await expect(toggle).toHaveCSS('border-radius', radius);
-          await toggle.click();
-          await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-          await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
-            'inert',
-            ''
-          );
-          await page.keyboard.press('Tab');
-          await toggle.focus();
-          await expect(toggle).toHaveCSS('border-radius', radius);
-          await expect(toggle).toHaveCSS('outline-style', 'solid');
-          await expect(toggle).toHaveCSS('outline-width', '2px');
-          await page.keyboard.press('Enter');
-          await expect(toggle).toHaveAttribute('aria-expanded', 'true');
           await expect(find).toBeVisible();
+          const radius = await find.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
+          );
+          await expect(find).toHaveCSS('border-radius', radius);
+          const normal = await find.evaluate((element) => {
+            const css = getComputedStyle(element);
+            return { color: css.color, background: css.backgroundColor, border: css.borderColor };
+          });
+          let saveStates: unknown;
+          const tokens = await find.evaluate((element) => {
+            const probe = document.createElement('span');
+            element.append(probe);
+            const color = (token: string) => {
+              probe.style.color = `var(${token})`;
+              return getComputedStyle(probe).color;
+            };
+            const result = {
+              background: color('--mar-bg-panel'),
+              border: color('--mar-border-default'),
+              hoverBackground: color('--mar-fill-hover'),
+              hoverBorder: color('--mar-border-medium'),
+              hoverText: color('--mar-text-primary'),
+              pressedBackground: color('--mar-fill-selection'),
+              focus: color('--mar-color-brand'),
+              disabledBorder: color('--mar-border-subtle')
+            };
+            probe.remove();
+            return result;
+          });
+          for (const button of await toolbar.locator('.el-button:visible').all()) {
+            await expect(button).toHaveCSS('background-color', tokens.background);
+            await expect(button).toHaveCSS(
+              'border-color',
+              (await button.isDisabled()) ? tokens.disabledBorder : tokens.border
+            );
+            if (!(await button.isDisabled())) {
+              await button.hover();
+              await expect(button).toHaveCSS('background-color', tokens.hoverBackground);
+              await expect(button).toHaveCSS('border-color', tokens.hoverBorder);
+              await expect(button).toHaveCSS('color', tokens.hoverText);
+              await page.mouse.move(0, 0);
+            }
+          }
+          if (mode.startsWith('text')) {
+            await toolbar.getByRole('button', { name: 'Edit file', exact: true }).click();
+            const save = toolbar.getByRole('button', { name: 'Save', exact: true });
+            await expect(save).toBeEnabled();
+            await expect(save).toHaveCSS('border-radius', radius);
+            const enabled = await save.evaluate(
+              (element) => getComputedStyle(element).backgroundColor
+            );
+            expect(enabled).toBe(tokens.background);
+            await page.mouse.move(0, 0);
+            await toolbar.screenshot({
+              path: testInfo.outputPath(`file-tools-${theme}-${width}-normal.png`)
+            });
+            await save.hover();
+            await expect(save).toHaveCSS('background-color', tokens.hoverBackground);
+            await expect(save).toHaveCSS('border-color', tokens.hoverBorder);
+            await expect(save).toHaveCSS('color', tokens.hoverText);
+            await toolbar.screenshot({
+              path: testInfo.outputPath(`file-tools-${theme}-${width}-hover.png`)
+            });
+            if (width === 1280)
+              await page.screenshot({ path: testInfo.outputPath(`file-editor-${theme}.png`) });
+            await save.focus();
+            await page.keyboard.press('Tab');
+            await page.keyboard.press('Shift+Tab');
+            await expect(save).toBeFocused();
+            await expect(save).toHaveCSS('outline-color', tokens.focus);
+            await expect(save).toHaveCSS('outline-width', '2px');
+            await page.keyboard.down('Space');
+            await expect(save).toHaveCSS('background-color', tokens.pressedBackground);
+            await expect(save).toHaveCSS('color', tokens.hoverText);
+            await page.keyboard.up('Space');
+            await expect(save).toBeDisabled();
+            await expect(save).toHaveCSS('background-color', tokens.background);
+            await expect(save).toHaveCSS('border-color', tokens.disabledBorder);
+            await page.mouse.move(0, 0);
+            await toolbar.screenshot({
+              path: testInfo.outputPath(`file-tools-${theme}-${width}-disabled.png`)
+            });
+            saveStates = {
+              enabled,
+              disabled: await save.evaluate(async (element) => {
+                await Promise.all(element.getAnimations().map((animation) => animation.finished));
+                return getComputedStyle(element).backgroundColor;
+              })
+            };
+          }
+          if (mode.startsWith('diff')) {
+            await page.getByRole('button', { name: 'Find preview content', exact: true }).click();
+            const search = page.locator('.inline-find-bar');
+            await expect(search).toBeVisible();
+            await expect(search.getByRole('button', { name: 'Previous match' })).toBeDisabled();
+            await search.getByPlaceholder('Find', { exact: true }).fill('new');
+            await expect(search.getByRole('button', { name: 'Next match' })).toBeEnabled();
+            for (const button of await search.locator('.el-button').all()) {
+              await button.hover();
+              await expect(button).toHaveCSS('color', tokens.hoverText);
+              await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+              await expect(button).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+              await button.focus();
+              await page.keyboard.press('Tab');
+              await page.keyboard.press('Shift+Tab');
+              await expect(button).toBeFocused();
+              await expect(button).toHaveCSS('outline-width', '2px');
+            }
+            await page.screenshot({
+              path: testInfo.outputPath(`diff-tools-${theme}-${width}.png`)
+            });
+            await search.getByRole('button', { name: 'Close find' }).click();
+            await expect(search).toHaveCount(0);
+          }
+          if (width === 1280) desktopStyle = { normal, saveStates };
+          else {
+            expect({ normal, saveStates }).toEqual(desktopStyle);
+            await expect(find).toHaveCSS('width', '36px');
+            await expect(find).toHaveCSS('height', '36px');
+            await page.screenshot({
+              path: testInfo.outputPath(`toolbar-${theme}-${mode.split('=')[0]}.png`)
+            });
+            const toggle = toolbar.locator('.workspace-file-mobile-actions-toggle');
+            await expect(toggle).toHaveCSS('border-radius', radius);
+            await toggle.click();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+              'inert',
+              ''
+            );
+            await page.keyboard.press('Tab');
+            await toggle.focus();
+            await expect(toggle).toHaveCSS('border-radius', radius);
+            await expect(toggle).toHaveCSS('outline-style', 'solid');
+            await expect(toggle).toHaveCSS('outline-width', '2px');
+            await page.keyboard.press('Enter');
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            await expect(find).toBeVisible();
+          }
+        } finally {
+          await context.close();
         }
       }
     }

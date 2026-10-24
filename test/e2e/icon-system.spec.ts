@@ -9,6 +9,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const dpr of [1, 2, 3]) {
+  test.describe(`Action stars DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const theme of ['dark', 'light']) {
+      test(`Action star keeps equal brightness and a single linear rotation: ${theme}`, async ({
+        page
+      }, testInfo) => {
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          for (const consumer of ['composer', 'element-plus']) {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            const composer = consumer === 'composer';
+            await page.goto(
+              `${fixture.url}icon-system.html?${composer ? 'composer-icons' : 'information-icons'}=1&theme=${theme}`
+            );
+            const button = composer
+              ? page.locator('.composer-send-button')
+              : page.getByRole('button', { name: 'Query usage', exact: true });
+            await button.click();
+            const graphic = button.locator('[data-mar-icon="loading-action"]');
+            const owner = composer ? graphic : button.locator('.el-icon.is-loading');
+            await expect(graphic).toBeVisible();
+            await expect(button).toBeDisabled();
+            await expect(owner).not.toHaveCSS('animation-name', 'none');
+            await expect(owner).toHaveCSS('animation-timing-function', 'linear');
+            await expect(owner).toHaveCSS('animation-duration', composer ? '1s' : '2s');
+            if (!composer) await expect(graphic).toHaveCSS('animation-name', 'none');
+            const rotation = await owner.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return {
+                count: element
+                  .getAnimations()
+                  .filter(
+                    (animation) =>
+                      animation instanceof CSSAnimation && animation.playState === 'running'
+                  ).length,
+                origin: style.transformOrigin.split(' ').slice(0, 2).map(Number.parseFloat),
+                size: [style.width, style.height].map(Number.parseFloat)
+              };
+            });
+            expect(rotation.count).toBe(1);
+            for (const axis of [0, 1]) {
+              expect(rotation.origin[axis]).toBeCloseTo(rotation.size[axis] / 2, 1);
+            }
+            const star = await graphic.evaluate((element) => {
+              const svg = element as SVGSVGElement;
+              const bounds = svg.getBBox();
+              const style = getComputedStyle(svg);
+              const stroke = parseFloat(style.strokeWidth);
+              return {
+                color: style.color,
+                min: Math.min(bounds.x, bounds.y) - stroke / 2,
+                max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2,
+                rays: Array.from(svg.querySelectorAll('path'), (path) => {
+                  const ray = getComputedStyle(path);
+                  return {
+                    opacity: ray.opacity,
+                    stroke: ray.stroke,
+                    cap: ray.strokeLinecap,
+                    animation: ray.animationName,
+                    length: path.getTotalLength()
+                  };
+                })
+              };
+            });
+            expect(star.rays).toHaveLength(8);
+            expect(star.min).toBeGreaterThan(0);
+            expect(star.max).toBeLessThan(24);
+            for (const ray of star.rays) {
+              expect(ray.opacity).toBe('1');
+              expect(ray.stroke).toBe(star.color);
+              expect(ray.cap).toBe('round');
+              expect(ray.animation).toBe('none');
+              expect(ray.length).toBeGreaterThanOrEqual(4);
+              expect(ray.length).toBeLessThanOrEqual(5);
+            }
+            await button.screenshot({
+              path: testInfo.outputPath(`action-star-${consumer}-${theme}-${width}.png`)
+            });
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await expect(owner).toHaveCSS('animation-name', 'none');
+            await expect(graphic).toBeVisible();
+            await expect(button).toBeDisabled();
+          }
+        }
+      });
+    }
+  });
+}
+
 for (const theme of ['dark', 'light']) {
   test(`Git change restore icons stay compact on mobile in ${theme}`, async ({
     page
@@ -909,6 +999,45 @@ for (const theme of ['dark', 'light'])
       expect(geometry.width).toBeGreaterThanOrEqual(14);
       expect(geometry.width).toBeLessThanOrEqual(24);
       expect(geometry.stroke).toEqual(geometry.color);
+      const check = page.locator('.icon-review-grid [data-mar-icon="check"]');
+      await expect(check).toBeVisible();
+      await expect(check).toHaveAttribute('stroke-width', '1.75');
+      const checkBounds = await check.locator('path').evaluate((path) => {
+        const bounds = (path as SVGPathElement).getBBox();
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+      });
+      // The check should fill its canvas without thicker strokes or clipped endpoints.
+      expect(checkBounds.width).toBeGreaterThanOrEqual(16);
+      expect(checkBounds.height).toBeGreaterThanOrEqual(11);
+      expect(checkBounds.x).toBeGreaterThanOrEqual(1);
+      expect(checkBounds.y).toBeGreaterThanOrEqual(1);
+      expect(checkBounds.x + checkBounds.width).toBeLessThanOrEqual(23);
+      expect(checkBounds.y + checkBounds.height).toBeLessThanOrEqual(23);
+      const reasoning = page.locator('.icon-review-grid [data-mar-icon="reasoning"]');
+      await expect(reasoning).toBeVisible();
+      await expect(reasoning).toHaveCSS('animation-name', 'none');
+      await expect(reasoning).toHaveAttribute('fill', 'none');
+      const stars = await reasoning.locator('path').evaluateAll((paths) =>
+        paths.map((path) => {
+          const bounds = (path as SVGPathElement).getBBox();
+          return { width: bounds.width, height: bounds.height };
+        })
+      );
+      expect(stars).toHaveLength(2);
+      expect(stars[0].width).toBeGreaterThan(stars[1].width);
+      expect(stars[0].height).toBeGreaterThan(stars[1].height);
+      const administration = page.locator('.icon-review-grid [data-mar-icon="administration"]');
+      await expect(administration).toBeVisible();
+      await expect(administration).toHaveAttribute('fill', 'none');
+      const controls = await administration.locator('circle').evaluateAll((circles) =>
+        circles.map((circle) => ({
+          x: (circle as SVGCircleElement).cx.baseVal.value,
+          y: (circle as SVGCircleElement).cy.baseVal.value
+        }))
+      );
+      expect(controls).toHaveLength(2);
+      expect(controls[0].x).toBeLessThan(controls[1].x);
+      expect(controls[0].y).toBeLessThan(controls[1].y);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(page.locator('.icon-review-grid [data-mar-icon="loading-action"]')).toHaveCSS(
         'animation-name',

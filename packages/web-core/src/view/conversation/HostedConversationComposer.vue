@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
-import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { createComposerAttachmentInputService } from '../../service/composer-attachment-input-service.js';
+import { createWorkbenchClockService } from '../../service/workbench-clock-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import {
   hostedConversationSubmissionContext,
   type createHostedConversationWorkspaceService
-} from '../../service/HostedConversationWorkspaceService.js';
+} from '../../service/hosted-conversation-workspace-service.js';
 import { errorCode } from '../../util/api-error.js';
 import {
   conversationActivityLabel,
@@ -473,6 +473,7 @@ onBeforeUnmount(() => {
           <small v-else class="attachment-error" role="alert">{{ attachment.error }}</small>
           <button
             v-if="attachment.status === 'FAILED'"
+            class="utility-control"
             type="button"
             :disabled="composerReadonly"
             :aria-label="
@@ -486,6 +487,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
+            class="utility-control"
             :aria-label="
               translate('hostedConversations.removeAttachment', {
                 name: attachment.name
@@ -655,8 +657,6 @@ onBeforeUnmount(() => {
 
 .hosted-attachments button {
   border: 0;
-  background: transparent;
-  color: var(--mar-text-tertiary);
   cursor: pointer;
 }
 

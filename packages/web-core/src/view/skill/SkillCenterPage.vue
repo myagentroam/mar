@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,
   type InstalledSkillCard
-} from '../../service/SkillCenterService.js';
+} from '../../service/skill-center-service.js';
 import { skillErrorMessage } from '../../util/skill-errors.js';
 import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue';
 import McpCenterPanel from './McpCenterPanel.vue';
 import ManagementPagination from '../settings/ManagementPagination.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 
 const props = defineProps<{
@@ -934,13 +934,14 @@ function scopeLabel(scope: string): string {
 }
 .skill-category-strip button:hover {
   border-color: var(--mar-text-faint);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
 }
 .skill-category-strip button.selected {
-  border-color: var(--mar-color-brand);
-  background: var(--el-color-primary-light-9);
-  color: var(--mar-color-brand-text);
-  font-weight: 600;
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
   outline: 2px solid var(--el-color-primary);

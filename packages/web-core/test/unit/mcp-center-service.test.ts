@@ -3,7 +3,7 @@ import {
   createMcpCenterService,
   type McpCatalogCard,
   type McpInstallationCard
-} from '../../src/service/McpCenterService.js';
+} from '../../src/service/mcp-center-service.js';
 
 describe('Web MCP Center Service', () => {
   const installation: McpInstallationCard = {

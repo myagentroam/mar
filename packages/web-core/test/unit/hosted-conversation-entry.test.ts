@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationTemplateSummary } from '@myagentroam/protocol';
-import { createHostedConversationEntryService } from '../../src/service/HostedConversationEntryService.js';
+import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import Entry from '../../src/view/conversation/HostedConversationEntryPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import {
   renderComponent,
   flushComponent,

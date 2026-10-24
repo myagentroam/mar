@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHostedConversationWatchCoordinator as createWorkbenchWatchCoordinator } from '../../src/service/HostedConversationWatchCoordinator.js';
+import { createHostedConversationWatchCoordinator as createWorkbenchWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
 
 describe('Web Workbench Watch Coordinator', () => {
   it('Merge Workspace in-transit convergence and hand off events to a unique matching Watcher', async () => {

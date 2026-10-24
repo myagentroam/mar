@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../src/model/workbench.js';
-import { createWorkbenchBaseStateService } from '../../src/service/WorkbenchBaseStateService.js';
+import { createWorkbenchBaseStateService } from '../../src/service/workbench-base-state-service.js';
 
 beforeEach(() => {
   const values = new Map<string, string>();

@@ -2,14 +2,14 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
@@ -39,10 +39,10 @@ import {
   modelProtocolChoice,
   modelSupportsNodeTransport,
   type CodexImportDraft
-} from '../../service/CodexCredentialManagementService';
-import { translate } from '../../service/LocalePreferenceService';
-import { createManagementOrderState } from '../../service/ManagementOrderState';
-import { runnerUsageWindowLabel } from '../../service/RunnerUsageService';
+} from '../../service/codex-credential-management-service';
+import { translate } from '../../service/locale-preference-service';
+import { createManagementOrderState } from '../../service/management-order-state';
+import { runnerUsageWindowLabel } from '../../service/runner-usage-service';
 import { errorCode } from '../../util/api-error';
 import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-presentation';
 import ImageGenerationManagement from './ImageGenerationManagement.vue';
@@ -2320,7 +2320,7 @@ onBeforeUnmount(() => {
             translate('marAgentModels.cancel')
           }}</el-button>
         </template>
-        <el-button v-else type="primary" @click="loginAttemptDialog = false">{{
+        <el-button v-else @click="loginAttemptDialog = false">{{
           translate('marAgentModels.close')
         }}</el-button>
       </template>
@@ -2624,7 +2624,7 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column :label="translate('marAgentModels.model')" min-width="220">
             <template #default="{ row }">
-              <strong>{{ row.displayName }}</strong>
+              <span class="catalog-model-name">{{ row.displayName }}</span>
               <code class="catalog-model-id">{{ row.upstreamModelId }}</code>
               <div class="catalog-reasoning">
                 <span class="catalog-reasoning-label">{{
@@ -2715,7 +2715,7 @@ onBeforeUnmount(() => {
         />
       </el-table>
       <template #footer>
-        <el-button type="primary" @click="importResultDialog = false">{{
+        <el-button @click="importResultDialog = false">{{
           translate('marAgentModels.close')
         }}</el-button>
       </template>
@@ -2799,6 +2799,10 @@ onBeforeUnmount(() => {
 .catalog-table-wrap {
   min-height: 180px;
   overflow-x: auto;
+}
+.catalog-model-name {
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 .catalog-model-id {
   display: block;

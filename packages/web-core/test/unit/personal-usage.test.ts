@@ -8,16 +8,16 @@ import type {
   PersonalUsageRecords,
   UsageTotals
 } from '@myagentroam/protocol';
-import { PersonalUsageService } from '../../src/service/PersonalUsageService.js';
-import * as personalUsageServiceModule from '../../src/service/PersonalUsageService.js';
+import { PersonalUsageService } from '../../src/service/personal-usage-service.js';
+import * as personalUsageServiceModule from '../../src/service/personal-usage-service.js';
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
 import InteractivePersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue?unit-render';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
-import { MANAGEMENT_PAGE_SIZE } from '../../src/service/ManagementPaginationService.js';
+import { MANAGEMENT_PAGE_SIZE } from '../../src/service/management-pagination-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import { personalSettingsEnUS } from '../../src/i18n/personal-settings.en-US.js';
 import { personalSettingsZhCN } from '../../src/i18n/personal-settings.zh-CN.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { absoluteMessageTime } from '../../src/util/time-presentation.js';
 import { absoluteMessageTime as conversationTime } from '../../src/util/conversation-presentation.js';
 import { cacheHitRate } from '../../src/util/personal-usage-presentation.js';

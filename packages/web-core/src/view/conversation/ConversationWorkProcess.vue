@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import {
   conversationProcessLabel,
   conversationProcessDuration,

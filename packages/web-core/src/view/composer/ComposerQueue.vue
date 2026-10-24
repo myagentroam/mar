@@ -2,11 +2,11 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerCommandState, WorkspaceQueueItem } from '../../model/workbench.js';
 import { composerMessagePresentation } from '../../util/composer-message.js';
 import {
@@ -618,7 +618,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
   background: var(--mar-bg-panel);
   box-shadow: none;
   color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-input);
+  font-size: var(--mar-font-size-meta);
   padding: 0.42rem 0.5rem;
   line-height: 1.55;
 }
@@ -767,7 +767,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
   resize: none;
   color: var(--mar-text-primary);
   background: var(--mar-bg-panel);
-  font-size: var(--mar-font-size-input);
+  font-size: var(--mar-font-size-meta);
   padding: 4px 6px;
   line-height: 1.55;
 }
@@ -823,11 +823,6 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 @media (max-width: 767px) {
   .composer-queue {
     max-height: 180px;
-  }
-
-  .goal-objective-input :deep(.el-textarea__inner),
-  .composer-queue-input :deep(.el-textarea__inner) {
-    font-size: var(--mar-font-size-meta);
   }
 
   .composer-queue-input :deep(.el-textarea__inner) {

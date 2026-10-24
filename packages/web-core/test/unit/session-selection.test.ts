@@ -1,12 +1,12 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { createWorkbenchSessionSelectionService } from '../../src/service/WorkbenchSessionSelectionService.js';
-import type { WorkbenchSessionSelectionOptions } from '../../src/service/WorkbenchSessionSelectionService.js';
+import { createWorkbenchSessionSelectionService } from '../../src/service/workbench-session-selection-service.js';
+import type { WorkbenchSessionSelectionOptions } from '../../src/service/workbench-session-selection-service.js';
 import type { Session } from '../../src/model/workbench.js';
-import { createWorkbenchSessionWatchController } from '../../src/service/WorkbenchSessionWatchController.js';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import { createWorkbenchWatchCoordinator } from '../../src/service/WorkbenchWatchCoordinator.js';
+import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,

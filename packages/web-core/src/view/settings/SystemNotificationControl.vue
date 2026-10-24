@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
-import type { WorkbenchNotificationService } from '../../service/WorkbenchNotificationService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{
   readonly service: WorkbenchNotificationService['systemNotifications'];
@@ -49,8 +49,8 @@ const blocked = computed(
       </div>
       <div class="notification-channel-actions">
         <el-button
+          class="utility-control"
           link
-          type="primary"
           :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
           :disabled="blocked"
@@ -75,8 +75,8 @@ const blocked = computed(
             service.enabled.value &&
             ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
           "
+          class="utility-control"
           link
-          type="primary"
           :icon="marIcon('notification')"
           @click="service.enablePush()"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button

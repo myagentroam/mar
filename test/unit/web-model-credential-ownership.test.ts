@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CodexCredentialSummary } from '../../packages/protocol/src/index.js';
-import { createModelCredentialOwnershipService } from '../../ee/web/src/service/ModelCredentialOwnershipService.js';
+import { createModelCredentialOwnershipService } from '../../ee/web/src/service/model-credential-ownership-service.js';
 import {
   localePreferenceService,
   translate
-} from '../../ee/web/src/service/LocalePreferenceService.js';
+} from '../../ee/web/src/service/locale-preference-service.js';
 
 const entry = (ownership: CodexCredentialSummary['ownership']) =>
   ({ ownership }) as CodexCredentialSummary;

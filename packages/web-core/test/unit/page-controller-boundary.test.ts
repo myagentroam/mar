@@ -4,7 +4,7 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import WorkbenchPage from '../../src/view/workbench/WorkbenchPage.vue';
 
 // Keep page composition real; unrelated child domains do not participate in slot routing.
@@ -58,7 +58,7 @@ describe('public Workbench page controller', () => {
   );
   it('delegates file protocols and native history transactions to domain owners', () => {
     const source = readFileSync(
-      new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
+      new URL('../../src/service/workbench-page-controller.ts', import.meta.url),
       'utf8'
     );
     expect(source).not.toContain('/files/direct-metadata');
@@ -127,7 +127,7 @@ describe('public Workbench page controller', () => {
   it.each(['en-US', 'zh-CN'] as const)('owns every fixed controller message in %s', (locale) => {
     const source =
       readFileSync(
-        new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
+        new URL('../../src/service/workbench-page-controller.ts', import.meta.url),
         'utf8'
       ) +
       readFileSync(
@@ -150,7 +150,7 @@ describe('public Workbench page controller', () => {
   });
   it('owns composition without enterprise modules, ownership policy or build constants', () => {
     const source = readFileSync(
-      new URL('../../src/service/WorkbenchPageController.ts', import.meta.url),
+      new URL('../../src/service/workbench-page-controller.ts', import.meta.url),
       'utf8'
     );
     expect(source).not.toMatch(/@\/|__MAR_WEB_|ownerOrganizationId|ownerType|ORGANIZATION/u);

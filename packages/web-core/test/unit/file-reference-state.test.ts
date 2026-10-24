@@ -3,7 +3,7 @@ import {
   fileReferenceAtCursor,
   insertFileReference,
   createFileReferenceService
-} from '../../src/service/FileReferenceService.js';
+} from '../../src/service/file-reference-service.js';
 
 describe('Web Composer File Reference', () => {
   afterEach(() => vi.useRealTimers());

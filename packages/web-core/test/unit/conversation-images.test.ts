@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createConversationImageService } from '../../src/service/ConversationImageService';
+import { createConversationImageService } from '../../src/service/conversation-image-service';
 import { conversationItemSchema } from '../../../protocol/src/index';
 import { computed, ref, type Ref } from 'vue';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';

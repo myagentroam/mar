@@ -9,7 +9,7 @@ import QuickOpenDialog from '../../view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../view/workbench/WorkbenchNavigation.vue';
 import PasswordGate from '../../view/PasswordGate.vue';
 import ImagePreviewDialogs from '../../view/conversation/ImagePreviewDialogs.vue';
-import type { createWorkbenchPageController } from '../../service/WorkbenchPageController.js';
+import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
 import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkbenchSurface from './WorkbenchSurface.vue';
@@ -17,7 +17,7 @@ import { useI18n } from 'vue-i18n';
 
 import { computed, ref, type ShallowUnwrapRef } from 'vue';
 import NodeDetailsDialogs from '../settings/NodeDetailsDialogs.vue';
-import type { NodeDetailsData, WorkspaceDetailsData } from '../../model/NodeDetails.js';
+import type { NodeDetailsData, WorkspaceDetailsData } from '../../model/node-details.js';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
 const props = defineProps<{
   page: ShallowUnwrapRef<
@@ -208,7 +208,7 @@ function closeStandaloneFileWindow(): void {
       >
         <template v-if="page.standaloneFileError">
           <p>{{ t('generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour') }}</p>
-          <el-button type="primary" @click="closeStandaloneFileWindow">
+          <el-button @click="closeStandaloneFileWindow">
             {{ t('generated.filePreviewDialog.closePreview') }}
           </el-button>
         </template>

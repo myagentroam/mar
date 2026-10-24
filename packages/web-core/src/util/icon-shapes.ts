@@ -10,7 +10,7 @@ export const iconShapes = {
   conversation:
     '<path d="M9 4h6a6 6 0 0 1 6 6v3a6 6 0 0 1-6 6H9l-5 2v-5.5A6 6 0 0 1 3 12v-2a6 6 0 0 1 6-6Z" /><circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="0.9" fill="currentColor" stroke="none"/>',
   administration:
-    '<rect x="3" y="3.5" width="18" height="17" rx="2.5"/><path d="M3 8h18M8.5 11v3m0 3v1M15.5 11v1m0 3v3"/><circle cx="8.5" cy="15.5" r="1.5"/><circle cx="15.5" cy="13.5" r="1.5"/>',
+    '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M10.75 8h6.75M6.5 16h6.75"/><circle cx="8.5" cy="8" r="2.25"/><circle cx="15.5" cy="16" r="2.25"/>',
   settings:
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
   'recent-sessions':
@@ -42,7 +42,7 @@ export const iconShapes = {
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.2 15.2 5.3 5.3" />',
   plus: '<path d="M12 4.5v15M4.5 12h15" />',
   close: '<path d="m6 6 12 12M18 6 6 18" />',
-  check: '<path d="m4.5 12 5 5 10-10" />',
+  check: '<path d="m3.75 12 5.5 5.5 11-11" />',
   more: '<circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/>',
   edit: '<path d="m14.5 4.5 5 5M4 20l1-5 11-11a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3L9 19l-5 1Z" />',
   delete:
@@ -88,7 +88,7 @@ export const iconShapes = {
   adjustments:
     '<path d="M4 7h3m5 0h8M4 17h8m5 0h3" /><circle cx="9.5" cy="7" r="2.5"/><circle cx="14.5" cy="17" r="2.5"/>',
   reasoning:
-    '<path d="M12 6a3 3 0 0 0-5.7-1.3A4.2 4.2 0 0 0 4 12a4.3 4.3 0 0 0 2.5 7.7A3 3 0 0 0 12 18V6Zm0 0a3 3 0 0 1 5.7-1.3A4.2 4.2 0 0 1 20 12a4.3 4.3 0 0 1-2.5 7.7A3 3 0 0 1 12 18M7 9c2 0 3 1 3 3m7-3c-2 0-3 1-3 3M8 17h1m7 0h-1" transform="translate(1.2 1.2) scale(.9)"/>',
+    '<path d="M10 7c.8 4.8 2.2 6.2 7 7-4.8.8-6.2 2.2-7 7-.8-4.8-2.2-6.2-7-7 4.8-.8 6.2-2.2 7-7Z"/><path d="M18 2.5c.4 1.9 1.1 2.6 3 3-1.9.4-2.6 1.1-3 3-.4-1.9-1.1-2.6-3-3 1.9-.4 2.6-1.1 3-3Z"/>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="m7 9 3 3-3 3m6 0h4" />',
   'file-change':
     '<path d="M14.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 3Zm0 0v3A1.5 1.5 0 0 0 16 7.5h3"/><path d="M8.5 9.5H12m-2.25 5.5 4-4 2.5 2.5-4 4-3.5 1 1-3.5Zm2.75-2.75 2.5 2.5"/>',
@@ -104,7 +104,7 @@ export const iconShapes = {
   warning:
     '<path d="M10.3 4.4a2 2 0 0 1 3.4 0l7 12.2a2 2 0 0 1-1.7 3H5a2 2 0 0 1-1.7-3l7-12.2Z" /><path d="M12 9v4" /><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/>',
   'loading-action':
-    '<path d="M12 3.5v3" transform="rotate(0 12 12)" opacity="0.250"/><path d="M12 3.5v3" transform="rotate(45 12 12)" opacity="0.344"/><path d="M12 3.5v3" transform="rotate(90 12 12)" opacity="0.438"/><path d="M12 3.5v3" transform="rotate(135 12 12)" opacity="0.531"/><path d="M12 3.5v3" transform="rotate(180 12 12)" opacity="0.625"/><path d="M12 3.5v3" transform="rotate(225 12 12)" opacity="0.719"/><path d="M12 3.5v3" transform="rotate(270 12 12)" opacity="0.812"/><path d="M12 3.5v3" transform="rotate(315 12 12)" opacity="0.906"/>',
+    '<path d="M12 2.5v4.25" transform="rotate(0 12 12)"/><path d="M12 2.5v4.25" transform="rotate(45 12 12)"/><path d="M12 2.5v4.25" transform="rotate(90 12 12)"/><path d="M12 2.5v4.25" transform="rotate(135 12 12)"/><path d="M12 2.5v4.25" transform="rotate(180 12 12)"/><path d="M12 2.5v4.25" transform="rotate(225 12 12)"/><path d="M12 2.5v4.25" transform="rotate(270 12 12)"/><path d="M12 2.5v4.25" transform="rotate(315 12 12)"/>',
   'loading-content': '<path d="M20.5 12a8.5 8.5 0 1 1-8.5-8.5" />',
   lock: '<rect x="4.5" y="10" width="15" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14.5v2" />',
   unlock:

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createQuickOpenQueryService,
   type QuickOpenTab
-} from '../../src/service/QuickOpenService.js';
-import type { ScopedHttpService } from '../../src/service/ScopedHttpService.js';
+} from '../../src/service/quick-open-service.js';
+import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 
 const services: ReturnType<typeof createQuickOpenQueryService>[] = [];

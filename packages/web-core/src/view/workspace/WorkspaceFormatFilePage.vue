@@ -2,8 +2,8 @@
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import { type FilePreviewKind } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
@@ -120,6 +120,7 @@ defineExpose({
     </template>
     <template #secondary-actions>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
@@ -131,12 +132,12 @@ defineExpose({
         <MarIcon name="download" />
       </el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview')"
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
         size="small"
-        type="primary"
         @click="emit('close')"
       >
         <MarIcon name="close" />
@@ -144,6 +145,7 @@ defineExpose({
     </template>
     <template #mobile-actions>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
@@ -155,12 +157,12 @@ defineExpose({
         <MarIcon name="download" />
       </el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle
         size="small"
-        type="primary"
         @click="emit('close')"
       >
         <MarIcon name="close" />

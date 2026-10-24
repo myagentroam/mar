@@ -3,12 +3,12 @@ import {
   readWorkspaceDirectFileMetadata,
   readGitDirectFileMetadata,
   readWorkspaceDirectFileRange
-} from '../../src/service/WorkspaceDirectFileReadService.js';
+} from '../../src/service/workspace-direct-file-read-service.js';
 import {
   readWorkspaceDirectObjectUrl,
   revokeWorkspaceDirectObjectUrl
-} from '../../src/service/WorkspaceDirectObjectUrlService.js';
-import { downloadWorkspaceDirectFile } from '../../src/service/WorkspaceDirectDownloadStreamService.js';
+} from '../../src/service/workspace-direct-object-url-service.js';
+import { downloadWorkspaceDirectFile } from '../../src/service/workspace-direct-download-stream-service.js';
 
 const resource = {
   kind: 'WORKSPACE_FILE' as const,

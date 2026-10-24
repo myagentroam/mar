@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createConversationProjectionService } from '../../src/service/ConversationProjectionService.js';
-import { createWorkbenchConversationSnapshotService } from '../../src/service/WorkbenchConversationSnapshotService.js';
+import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
+import { createWorkbenchConversationSnapshotService } from '../../src/service/workbench-conversation-snapshot-service.js';
 import type { ConversationTurn } from '../../src/model/workbench.js';
 import { MAX_CONVERSATION_ITEM_TEXT_CHARACTERS } from '../../src/util/conversation-history.js';
 import { conversationDisplayItems } from '../../src/util/conversation-presentation.js';

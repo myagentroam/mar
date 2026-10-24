@@ -3,11 +3,11 @@ import MarIcon from '../common/MarIcon.vue';
 import { ElPopover } from 'element-plus';
 import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type {
   RecentRun,
   WorkbenchNotificationService
-} from '../../service/WorkbenchNotificationService.js';
+} from '../../service/workbench-notification-service.js';
 import {
   activeRecentRunStatus,
   elapsedDurationLabel,

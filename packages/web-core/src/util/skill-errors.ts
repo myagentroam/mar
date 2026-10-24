@@ -1,4 +1,4 @@
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 import { errorCode } from './api-error.js';
 
 const SKILL_ERROR_CODES = new Set([

@@ -6,7 +6,7 @@ import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from '
 import SettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue?unit-render';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import {
   flushComponent,
   renderComponent,

@@ -10,15 +10,15 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import { createConsoleKeyboardShortcutService } from '../../src/service/ConsoleKeyboardShortcutService.js';
-import { createFilePreviewWindowInteractionService } from '../../src/service/FilePreviewWindowInteractionService.js';
+import { createConsoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
+import { createFilePreviewWindowInteractionService } from '../../src/service/file-preview-window-interaction-service.js';
 import {
   createStandaloneFileWindowService,
   standaloneFileOpenIntent
-} from '../../src/service/StandaloneFileWindowService.js';
-import { createWorkspaceFileTabService } from '../../src/service/WorkspaceFileTabService.js';
-import { createWorkspaceFileNavigationHistoryService } from '../../src/service/WorkspaceFileNavigationHistoryService.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+} from '../../src/service/standalone-file-window-service.js';
+import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
+import { createWorkspaceFileNavigationHistoryService } from '../../src/service/workspace-file-navigation-history-service.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import WorkspaceFileTabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import { navigationTargetAtTextPosition } from '../../src/util/code-navigation-target.js';
 

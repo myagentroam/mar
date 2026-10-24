@@ -1,6 +1,5 @@
 import type { ModelInputMetadata } from '../../model/contracts.js';
 import { todoItemsFromSnapshot, type TodoItem } from '../../tools/agent/todo.js';
-import { contextGcBaseSequence, latestValidContextGcCheckpoint } from '../context-gc-checkpoint.js';
 import type {
   CompactHistoryMessage,
   SessionExecutionState,
@@ -40,7 +39,6 @@ export function deriveExecutionState(records: readonly SessionRecord[]): Session
     if (candidate !== undefined) executionModel = candidate;
   }
   const boundary = records.findLastIndex(isCompactCheckpoint);
-  const checkpoint = latestValidContextGcCheckpoint(records);
   return {
     automaticTitlePending: automaticTitle && !sawUserTurn,
     todo: { revision: todoRevision, items: todoItems },
@@ -49,13 +47,6 @@ export function deriveExecutionState(records: readonly SessionRecord[]): Session
       version: 1,
       userTurns,
       ...(compactSequence === undefined ? {} : { compactSequence }),
-      ...(checkpoint === undefined
-        ? {}
-        : {
-            gcSequence: checkpoint.record.sequence,
-            gcGeneration: checkpoint.payload.generation,
-            gcBaseSequence: contextGcBaseSequence(checkpoint.payload.base)
-          }),
       ...(todoSequence === undefined ? {} : { todoSequence }),
       todoRevision,
       executionModelIndexed: true,
@@ -199,9 +190,6 @@ export function sameResumeIndex(
     left?.version === right.version &&
     left.userTurns === right.userTurns &&
     left.compactSequence === right.compactSequence &&
-    left.gcSequence === right.gcSequence &&
-    left.gcGeneration === right.gcGeneration &&
-    left.gcBaseSequence === right.gcBaseSequence &&
     left.todoSequence === right.todoSequence &&
     left.todoRevision === right.todoRevision &&
     left.executionModelIndexed === right.executionModelIndexed &&

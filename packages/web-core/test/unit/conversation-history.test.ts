@@ -10,7 +10,7 @@ import {
   latestConversationItems,
   limitConversationHistory
 } from '../../src/util/conversation-history.js';
-import { createConversationStateService } from '../../src/service/ConversationStateService.js';
+import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {

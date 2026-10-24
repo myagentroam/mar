@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
@@ -464,9 +464,9 @@ function selectFiles(event: Event): void {
 .composer-send-button,
 .composer-stop-button {
   display: inline-grid;
-  width: var(--mar-compact-control-size);
-  min-width: var(--mar-compact-control-size);
-  height: var(--mar-compact-control-size);
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px solid var(--mar-color-brand);
   border-radius: 50%;
@@ -474,6 +474,12 @@ function selectFiles(event: Event): void {
   color: var(--mar-color-on-accent);
   padding: 0;
   cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .composer-toolbar {
+    padding-right: 0.75rem;
+  }
 }
 
 .composer-stop-button {
@@ -759,10 +765,13 @@ function selectFiles(event: Event): void {
   line-height: var(--mar-compact-control-size);
 }
 
-:global(.composer-mini-popper .el-select-dropdown__item.composer-model-effort-option-selected) {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
-  font-weight: 600;
+:global(.composer-model-effort-popper .el-select-dropdown__item.is-selected),
+:global(
+  .composer-model-effort-popper .el-select-dropdown__item.composer-model-effort-option-selected
+) {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 
 :global(.composer-model-effort-popper .el-select-dropdown__wrap),

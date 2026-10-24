@@ -5,7 +5,7 @@ import {
   promptCompletionAutomaticKey,
   promptCompletionAutomaticTerminalKey,
   type CompletionAutomaticReason
-} from '../../src/service/PromptCompletionService';
+} from '../../src/service/prompt-completion-service';
 
 function fixture(
   canRequest = () => true,

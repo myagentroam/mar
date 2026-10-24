@@ -1,5 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
-import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
+import type { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
 import { tableTooltipOptions } from '../../src/util/tooltip.js';
@@ -14,16 +14,17 @@ import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndi
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import UtilityInteractionFixture from './utility-interaction-fixture.vue';
+import ListHierarchyFixture from './list-hierarchy-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
-import { createWorkbenchContextCommandService } from '../../src/service/WorkbenchContextCommandService.js';
+import { createWorkbenchContextCommandService } from '../../src/service/workbench-context-command-service.js';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
-import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
 const mobileNotificationsOpen = ref(false);
@@ -98,6 +99,10 @@ const hostedWorkspace = {
     hostedSnapshot.value.conversation.modelId = modelId;
   }
 } as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
+const modelOptions = new URLSearchParams(location.search).has('model-options');
+const modelEffortSelection = ref('model:one');
+const selectedModel = ref('one');
+const selectedEffort = ref('medium');
 const toolbar = {
   draftSessionOpen: false,
   runner: 'mar-agent' as const,
@@ -108,9 +113,14 @@ const toolbar = {
   modelEffortLabel: 'Model',
   selectedModel: '',
   selectedEffort: '',
-  models: [],
-  efforts: [],
-  hideModelSelection: true,
+  models: modelOptions
+    ? [
+        { id: 'one', label: 'Model One' },
+        { id: 'two', label: 'Model Two' }
+      ]
+    : [],
+  efforts: modelOptions ? ['medium', 'high'] : [],
+  hideModelSelection: !modelOptions,
   access: 'auto',
   accessLabel: 'Auto',
   accessOptions: [],
@@ -257,6 +267,18 @@ const app = createApp({
       h('section', { class: 'composer', style: 'margin-top: 32px' }, [
         h(ComposerToolbar, {
           ...toolbar,
+          ...(modelOptions
+            ? {
+                modelEffortSelection: modelEffortSelection.value,
+                selectedModel: selectedModel.value,
+                selectedEffort: selectedEffort.value,
+                onUpdateModelEffort: (value: string) => {
+                  modelEffortSelection.value = value;
+                  if (value.startsWith('model:')) selectedModel.value = value.slice(6);
+                  else selectedEffort.value = value.slice(7);
+                }
+              }
+            : {}),
           canCompactContext: canCompact.value,
           onCompact: () =>
             new URLSearchParams(location.search).has('context-confirm')
@@ -328,7 +350,13 @@ const resourceDetailsFixture = {
           nodeOpen: open.value,
           workspaceOpen: false,
           usageOpen: false,
-          node: { id: 'node', label: 'Fixture Node', connected: true, manageable: true },
+          node: {
+            id: 'node',
+            label: 'Fixture Node',
+            connected: true,
+            manageable: true,
+            capabilities: { codex: { available: true } }
+          },
           nodeRefreshable: true,
           usageDisabledReason: () => '',
           request: async () => ({ secrets: [] }),
@@ -356,17 +384,19 @@ const resourceDetailsFixture = {
 };
 (new URLSearchParams(location.search).has('empty-conversation')
   ? createApp(emptyConversationFixture)
-  : new URLSearchParams(location.search).has('utility-interaction')
-    ? createApp(UtilityInteractionFixture)
-    : new URLSearchParams(location.search).has('resource-details')
-      ? createApp(resourceDetailsFixture)
-      : new URLSearchParams(location.search).has('shared-tooltip')
-        ? createApp(SharedTooltipFixture)
-        : new URLSearchParams(location.search).has('loading-feedback')
-          ? createApp(LoadingFeedbackFixture)
-          : new URLSearchParams(location.search).has('session-performance')
-            ? createApp(sessionPerformanceFixture)
-            : app
+  : new URLSearchParams(location.search).has('list-hierarchy')
+    ? createApp(ListHierarchyFixture)
+    : new URLSearchParams(location.search).has('utility-interaction')
+      ? createApp(UtilityInteractionFixture)
+      : new URLSearchParams(location.search).has('resource-details')
+        ? createApp(resourceDetailsFixture)
+        : new URLSearchParams(location.search).has('shared-tooltip')
+          ? createApp(SharedTooltipFixture)
+          : new URLSearchParams(location.search).has('loading-feedback')
+            ? createApp(LoadingFeedbackFixture)
+            : new URLSearchParams(location.search).has('session-performance')
+              ? createApp(sessionPerformanceFixture)
+              : app
 )
   .use(i18n)
   .use(ElementPlus)

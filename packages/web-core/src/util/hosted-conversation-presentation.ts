@@ -1,5 +1,5 @@
 import type { HostedConversationSummary } from '@myagentroam/protocol';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 
 export function hostedConversationTitle(
   conversation: Pick<HostedConversationSummary, 'title' | 'titleSource'>

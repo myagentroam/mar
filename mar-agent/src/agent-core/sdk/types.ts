@@ -1,8 +1,8 @@
 import type { MarAgentHost } from '../host/contracts.js';
 import type { CoreExtensionSource, CoreRuntimeExtension } from '../extensions/contracts.js';
 import type { MarAgentModelConfiguration } from '../model/configuration.js';
-import type { ExecutionResult, RolloutBudgetOptions, RunInput } from '../runtime/contracts.js';
-import type { MarAgentEvent } from '../runtime/events.js';
+import type { RolloutBudgetOptions, RunInput } from '../runtime/contracts.js';
+import type { CompactInput, ExecutionHandle } from '../runtime/execution-handle.js';
 import type { MarAgentSessionPage, MarAgentSessionSummary } from '../session/catalog.js';
 import type { SessionListInput, SessionSource, SessionTitleUpdateInput } from '../session/types.js';
 
@@ -29,6 +29,7 @@ export type {
   RunInputImage
 } from '../runtime/contracts.js';
 export type { MarAgentEvent, MarAgentEventBase } from '../runtime/events.js';
+export type { CompactInput, ExecutionHandle } from '../runtime/execution-handle.js';
 export type {
   CodeCellEventData,
   MarAgentToolArtifact,
@@ -42,14 +43,6 @@ export type {
   ToolExecutionResult
 } from '../tools/contracts.js';
 
-/** A live execution exposes streamed events separately from its terminal result. */
-export interface ExecutionHandle extends AsyncIterable<MarAgentEvent> {
-  readonly executionId: string;
-  result(): Promise<ExecutionResult>;
-  /** Signals abort; await result() to observe the terminal status and cleanup. */
-  cancel(): void;
-}
-export type CompactInput = Partial<RunInput> & { readonly async?: boolean };
 export interface SteerInput {
   readonly expectedExecutionId: string;
   readonly prompt: string;

@@ -67,6 +67,68 @@ async function checkUtility(
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Queue and Goal inline edits keep their display typography in ${theme}`, async ({
+    browser
+  }) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(
+          `${fixture.url}visual-alignment.html?utility-interaction&work-item-editing&theme=${theme}`
+        );
+        const queue = page.locator('.composer-queue');
+        for (const custom of [false, true]) {
+          if (custom) {
+            await queue.evaluate((element) => {
+              (element as HTMLElement).style.setProperty('--mar-font-size-meta', '14px');
+              (element as HTMLElement).style.setProperty('--mar-font-size-input', '18px');
+            });
+          }
+          for (const kind of ['queue', 'goal']) {
+            const display = queue.locator(
+              kind === 'queue' ? '.queue-item-content > p' : '.goal-objective'
+            );
+            await expect(display).toBeVisible();
+            const typography = await display.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return { size: style.fontSize, family: style.fontFamily, weight: style.fontWeight };
+            });
+            const edit = queue.locator(
+              kind === 'queue'
+                ? '.queue-item-actions > button:first-child'
+                : '.goal-actions > button:nth-child(2)'
+            );
+            await edit.click();
+            const input = queue.locator(
+              kind === 'queue' ? '.composer-queue-input textarea' : '.goal-objective-input textarea'
+            );
+            await expect(input).toHaveCSS('font-size', typography.size);
+            await expect(input).toHaveCSS('font-family', typography.family);
+            await expect(input).toHaveCSS('font-weight', typography.weight);
+            await input.fill(`Updated ${kind} content`);
+            await queue
+              .locator(
+                kind === 'queue'
+                  ? '.queue-item-actions > button:first-child'
+                  : '.goal-editor-actions > button:last-child'
+              )
+              .click();
+            await expect(input).toHaveCount(0);
+            await expect(display).toHaveText(`Updated ${kind} content`);
+            await expect(display).toHaveCSS('font-size', typography.size);
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   for (const width of [1280, 390]) {
     test(`actual utility controls use neutral feedback in ${theme} at ${width}px`, async ({
       page
@@ -151,11 +213,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(options.first()).toHaveCSS('background-color', colors.selected);
         await options.first().hover();
         await expect(options.first()).toHaveCSS('background-color', colors.selected);
-        await expect(options.first().locator('strong')).toHaveCSS('color', colors.primary);
-        await expect(options.first().locator(kind === 'commands' ? 'span' : 'code')).toHaveCSS(
-          'color',
-          colors.tertiary
-        );
+        await expect(options.first().locator('.candidate-name')).toHaveCSS('color', colors.primary);
+        await expect(
+          options.first().locator(kind === 'commands' ? '.candidate-description' : 'code')
+        ).toHaveCSS('color', colors.tertiary);
         if (kind === 'files')
           await expect(options.first().locator('.entry-kind')).toHaveCSS('color', colors.faint);
       }
@@ -167,6 +228,32 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(page.getByTestId('events')).toContainText('file:second.ts');
     await expect(page.getByTestId('events')).toContainText('command-active:1');
     await expect(page.getByTestId('events')).toContainText('file-active:1');
+  });
+
+  test(`completion names stay regular and inactive names recede in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const candidates of ['commands', 'skills', 'quick-prompts']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}&candidates=${candidates}`
+        );
+        const colors = await palette(page);
+        for (const kind of ['commands', 'files']) {
+          const options = page.getByTestId(kind).getByRole('option');
+          await expect(options).toHaveCount(2);
+          const selectedName = options.first().locator('.candidate-name');
+          const inactiveName = options.nth(1).locator('.candidate-name');
+          await expect(selectedName).toHaveCSS('font-weight', '400');
+          await expect(inactiveName).toHaveCSS('font-weight', '400');
+          await expect(selectedName).toHaveCSS('color', colors.primary);
+          await expect(inactiveName).toHaveCSS('color', colors.secondary);
+          await options.nth(1).hover();
+          await expect(inactiveName).toHaveCSS('color', colors.secondary);
+          await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+          await expect(options.nth(1)).toHaveCSS('background-color', colors.hover);
+        }
+      }
+    }
   });
 }
 

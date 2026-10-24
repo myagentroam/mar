@@ -3,8 +3,8 @@ import {
   createEnvironmentSecretService,
   environmentSecretNameError,
   environmentSecretValueError
-} from '../../src/service/EnvironmentSecretService.js';
-import { i18n, translate } from '../../src/service/LocalePreferenceService.js';
+} from '../../src/service/environment-secret-service.js';
+import { i18n, translate } from '../../src/service/locale-preference-service.js';
 
 describe('Public environment secret client', () => {
   beforeEach(() => {

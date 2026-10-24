@@ -2,9 +2,9 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { currentLocale, translate } from '../../service/LocalePreferenceService.js';
+import { currentLocale, translate } from '../../service/locale-preference-service.js';
 export interface SkillDetails {
   readonly name: string;
   readonly description: string;

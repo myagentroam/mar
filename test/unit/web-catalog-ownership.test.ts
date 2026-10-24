@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCatalogOwnershipService } from '../../ee/web/src/service/CatalogOwnershipService.js';
+import { createCatalogOwnershipService } from '../../ee/web/src/service/catalog-ownership-service.js';
 
 describe('Enterprise catalog ownership extension', () => {
   it.each([

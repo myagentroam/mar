@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -15,13 +15,13 @@ import {
   type PersonalUsageOverview,
   type UsageGroup
 } from '@myagentroam/protocol';
-import { PersonalUsageService } from '../../service/PersonalUsageService.js';
+import { PersonalUsageService } from '../../service/personal-usage-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/personal-usage-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
-import { createManagementPaginationService } from '../../service/ManagementPaginationService.js';
+import { createManagementPaginationService } from '../../service/management-pagination-service.js';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();

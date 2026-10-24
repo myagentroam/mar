@@ -4,8 +4,8 @@ import { vi } from 'vitest';
 import {
   createAdminAuthService,
   type AdminAuthStateOptions
-} from '../../../src/service/AdminAuthService.js';
-import { createAdminSessionStateService } from '../../../src/service/AdminSessionStateService.js';
+} from '../../../src/service/admin-auth-service.js';
+import { createAdminSessionStateService } from '../../../src/service/admin-session-state-service.js';
 import { authenticationEnUS, authenticationZhCN } from '../../../src/i18n/authentication.js';
 import type { AppLocale } from '../../../src/i18n/locale-config.js';
 

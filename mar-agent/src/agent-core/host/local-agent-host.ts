@@ -208,8 +208,7 @@ export class LocalAgentHost implements MarAgentHost {
         'process.manage',
         'code.execute',
         'user-input.request',
-        'event.publish',
-        'session.store'
+        'event.publish'
       ],
       limits: {
         maxProcesses: TOOL_EXECUTION_LIMITS.maxProcesses,

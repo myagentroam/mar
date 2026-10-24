@@ -1,5 +1,5 @@
 import type { Session, RunnerCommandState } from '../model/workbench.js';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 
 export function runnerLabel(runner: Session['runner']): string {
   if (runner === 'mar-agent') return translate('common.marAgent');

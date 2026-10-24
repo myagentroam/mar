@@ -1081,11 +1081,9 @@ describe('context GC runtime integration', () => {
       expect(result).toMatchObject({
         projection: { checkpoint: { generation: 1 } }
       });
-      expect(result && buildContextProjection(result.records, workspace)).toEqual(
-        result && result.projection
-      );
+      expect(result && buildContextProjection(result.records)).toEqual(result && result.projection);
       const refreshed = await store.readExecutionState(session.id);
-      expect(buildContextProjection(refreshed.contextRecords, workspace).checkpoint).toMatchObject({
+      expect(buildContextProjection(refreshed.contextRecords).checkpoint).toMatchObject({
         generation: 1
       });
       await store.close();

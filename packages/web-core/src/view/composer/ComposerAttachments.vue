@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
 
 defineProps<{ readonly attachments: readonly ComposerAttachment[] }>();

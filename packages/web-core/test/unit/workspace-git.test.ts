@@ -5,9 +5,9 @@ import type {
   HistoryFile,
   HistoryRef
 } from '../../src/model/workspace-git.js';
-import type { ScopedHttpService } from '../../src/service/ScopedHttpService.js';
-import { changeKey, createWorkspaceGitService } from '../../src/service/WorkspaceGitService.js';
-import type { WorkspaceFileOperationTarget } from '../../src/service/WorkspaceFileOperationService.js';
+import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
+import { changeKey, createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import type { WorkspaceFileOperationTarget } from '../../src/service/workspace-file-operation-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 
 function deferred<T>() {

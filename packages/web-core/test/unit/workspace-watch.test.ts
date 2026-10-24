@@ -1,6 +1,6 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkspaceWatchService } from '../../src/service/WorkspaceWatchService.js';
+import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 
 describe('Shared Workspace Watch', () => {
   it('adds feature-gated prewarm to initial only and not to renew', async () => {

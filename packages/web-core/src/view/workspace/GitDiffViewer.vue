@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import 'highlight.js/styles/github.css';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { inlineTextSearch } from '../../util/file-preview.js';
 import {
   navigationTargetAtTextPosition,
@@ -688,6 +688,7 @@ defineExpose({
     <template #mobile-actions>
       <div class="diff-mobile-action-row diff-mobile-navigation">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousFile')"
           circle
           size="small"
@@ -697,6 +698,7 @@ defineExpose({
           ><MarIcon name="chevron-left"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousChange')"
           circle
           size="small"
@@ -706,6 +708,7 @@ defineExpose({
           ><MarIcon name="chevron-up"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextChange')"
           circle
           size="small"
@@ -715,6 +718,7 @@ defineExpose({
           ><MarIcon name="chevron-down"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextFile')"
           circle
           size="small"
@@ -726,6 +730,7 @@ defineExpose({
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
           size="small"
@@ -734,6 +739,7 @@ defineExpose({
           ><MarIcon name="source-code"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('inlineFind.label')"
           v-if="findAvailable"
           circle
@@ -743,6 +749,7 @@ defineExpose({
           ><MarIcon name="search"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.downloadDiff')"
           :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
           circle
@@ -752,12 +759,12 @@ defineExpose({
           <MarIcon name="download" />
         </el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview2')"
           v-if="!embedded"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
           circle
           size="small"
-          type="primary"
           @click="emit('close')"
         >
           <MarIcon name="close" />
@@ -770,6 +777,7 @@ defineExpose({
         :aria-label="translate('generated.gitDiffViewer.diffToolbar')"
       >
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
           size="small"
@@ -778,6 +786,7 @@ defineExpose({
           ><MarIcon name="source-code"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousFile2')"
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
@@ -794,6 +803,7 @@ defineExpose({
           {{ currentFileNumber }} / {{ paths.length }}
         </span>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextFile2')"
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
@@ -805,6 +815,7 @@ defineExpose({
         </el-button>
         <span class="diff-toolbar-divider" aria-hidden="true" />
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousChange2')"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
@@ -821,6 +832,7 @@ defineExpose({
           {{ activeDiffNumber }} / {{ hunks.length }}
         </span>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextChange2')"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
@@ -831,13 +843,12 @@ defineExpose({
           <MarIcon name="chevron-down" />
         </el-button>
         <el-button
+          class="file-toolbar-control diff-close-button"
           v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview')"
           v-if="!embedded"
-          class="diff-close-button"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
           circle
           size="small"
-          type="primary"
           @click="emit('close')"
         >
           <MarIcon name="close" />

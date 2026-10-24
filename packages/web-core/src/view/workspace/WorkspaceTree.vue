@@ -2,12 +2,12 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, ref } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { filterWorkspaceTree, groupWorkspaceTree } from '../../util/workspace-tree-filter.js';
 
 const props = defineProps<{

@@ -2,7 +2,7 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -14,9 +14,9 @@ import {
   type QuickOpenCandidate,
   type QuickOpenSessionCandidate,
   type QuickOpenSourceStatus
-} from '../../service/QuickOpenService.js';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/quick-open-service.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -370,7 +370,7 @@ function onKeydown(event: KeyboardEvent): void {
             "
           />
           <span class="entry-main">
-            <strong>
+            <span class="entry-name">
               <span
                 v-for="(fragment, fragmentIndex) in highlightedPath(
                   entry.kind === 'FILE'
@@ -385,7 +385,7 @@ function onKeydown(event: KeyboardEvent): void {
                 :class="{ 'quick-open-match': fragment.matched }"
                 >{{ fragment.text }}</span
               >
-            </strong>
+            </span>
             <code v-if="entry.kind !== 'SESSION'"
               ><span
                 v-for="(fragment, fragmentIndex) in highlightedPath(entry.path)"
@@ -567,7 +567,7 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: 6px;
   padding: 0.55rem 0.65rem;
   background: transparent;
-  color: inherit;
+  color: var(--mar-text-secondary);
   cursor: pointer;
   text-align: left;
 }
@@ -580,11 +580,14 @@ function onKeydown(event: KeyboardEvent): void {
   display: grid;
   gap: 0.15rem;
 }
-.quick-open-results strong,
+.quick-open-results .entry-name,
 .quick-open-results code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.entry-name {
+  font-weight: 400;
 }
 .quick-open-results code,
 .quick-open-results small {
