@@ -117,7 +117,7 @@ describe('Web theme preference', () => {
     expect(service.theme.value).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#f7f8fa');
+    expect(themeColorAttributes.get('content')).toBe('#f7f9fd');
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
   });
 
@@ -137,6 +137,6 @@ describe('Web theme preference', () => {
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#f7f8fa');
+    expect(themeColorAttributes.get('content')).toBe('#f7f9fd');
   });
 });

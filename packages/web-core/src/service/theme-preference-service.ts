@@ -7,7 +7,7 @@ export type { ThemePreference } from '../model/custom-theme.js';
 
 export const THEME_STORAGE_KEY = 'mar.theme';
 export const CUSTOM_THEMES_STORAGE_KEY = 'mar.customThemes';
-const LIGHT_THEME_COLOR = '#f7f8fa';
+const LIGHT_THEME_COLOR = '#f7f9fd';
 const DARK_THEME_COLOR = '#0e1116';
 
 export interface ThemePreferenceService {
