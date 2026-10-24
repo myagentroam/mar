@@ -68,7 +68,7 @@ interface EnqueueDisposition {
 }
 
 interface NativeSteerAdmission {
-  readonly sessionId: string;
+  sessionId: string;
   readonly pauseVersion: number | undefined;
   readonly task: Promise<boolean>;
 }
@@ -450,23 +450,28 @@ export class ContinuousRunCoordinator<TAttachment> {
     const task = attempt
       .then(async (result) => {
         if (result.status === 'notAccepted') return false;
+        const currentPrepared = this.preparedInputs.get(itemId) ?? prepared;
         onAccepted?.();
         this.options.runtime.consumeSteeredQueueItem(itemId, active.id);
         this.immediateQueueItems.delete(itemId);
         if (this.nativeSteerPauseCurrent(admission))
-          this.options.runtime.resumeSessionQueue(item.sessionId);
+          this.options.runtime.resumeSessionQueue(admission.sessionId);
         this.options.clearImages(itemId);
-        if (prepared.goal !== undefined && this.goalCurrent(prepared)) {
+        if (currentPrepared.goal !== undefined && this.goalCurrent(currentPrepared)) {
           const current = this.preparedInputs.get(executionId);
           if (current !== undefined)
-            this.preparedInputs.set(executionId, { ...current, goal: prepared.goal });
+            this.preparedInputs.set(executionId, { ...current, goal: currentPrepared.goal });
         }
         try {
-          await this.options.afterExecutionSteered?.({ ...prepared, runId: executionId });
+          await this.options.afterExecutionSteered?.({
+            ...currentPrepared,
+            sessionId: admission.sessionId,
+            runId: executionId
+          });
         } catch (error) {
           nodeLog('queue.native_steer.continuation_failed', {
             level: 'warn',
-            sessionId: item.sessionId,
+            sessionId: admission.sessionId,
             executionId,
             code: safeErrorCode(error, 'NATIVE_STEER_CONTINUATION_FAILED')
           });
@@ -478,14 +483,14 @@ export class ContinuousRunCoordinator<TAttachment> {
             if (result.status === 'accepted')
               this.options.emitRun(executionId, 'conversation.item', result.item);
           },
-          () => this.publish(item.sessionId)
+          () => this.publish(admission.sessionId)
         ]) {
           try {
             notify();
           } catch {
             nodeLog('queue.native_steer.notification_failed', {
               level: 'warn',
-              sessionId: item.sessionId,
+              sessionId: admission.sessionId,
               executionId
             });
           }
@@ -495,7 +500,7 @@ export class ContinuousRunCoordinator<TAttachment> {
       .finally(() => {
         release();
         this.steerInFlight.delete(itemId);
-        this.schedule(item.sessionId);
+        this.schedule(admission.sessionId);
       });
     const admission: NativeSteerAdmission = { sessionId: item.sessionId, pauseVersion, task };
     this.steerInFlight.set(itemId, admission);
@@ -867,6 +872,8 @@ export class ContinuousRunCoordinator<TAttachment> {
     for (const [id, pending] of this.preparedInputs)
       if (pending.sessionId === previousId)
         this.preparedInputs.set(id, { ...pending, sessionId: nextId, externalSessionId: nextId });
+    for (const admission of this.steerInFlight.values())
+      if (admission.sessionId === previousId) admission.sessionId = nextId;
     const timer = this.scheduledSessions.get(previousId);
     if (timer !== undefined) {
       clearTimeout(timer);

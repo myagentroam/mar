@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunnerSteerResult } from '../../src/runner/abstract-runner.js';
-import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
+import {
+  ContinuousRunCoordinator,
+  type PreparedExecutionInput
+} from '../../src/service/continuous-run-coordinator.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
 import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
 
@@ -30,6 +33,8 @@ async function fixture(native = false) {
   });
   const receipt = Promise.withResolvers<RunnerSteerResult>();
   const runner = { control: vi.fn(), steer: vi.fn(() => receipt.promise) };
+  const afterExecutionSteered = vi.fn(async () => undefined);
+  const goalCurrent = vi.fn((_input: PreparedExecutionInput<unknown>) => true);
   const coordinator = new ContinuousRunCoordinator({
     runtime,
     control: runner.control,
@@ -42,7 +47,9 @@ async function fixture(native = false) {
     cleanupAttachments: vi.fn(),
     migrateAssets: vi.fn(),
     emitRun: vi.fn(),
-    markInterrupted: vi.fn()
+    markInterrupted: vi.fn(),
+    afterExecutionSteered,
+    goalCurrent
   });
   coordinators.push(coordinator);
   const queueService = new WorkspaceQueueWorkbenchService({
@@ -103,10 +110,10 @@ async function fixture(native = false) {
     expect.objectContaining({ input: 'original' })
   );
   runner.control.mockClear();
-  const stop = (operation = 'run.interrupt') => {
-    service.operations()[operation]!({ runId: run.id, sessionId: session.id });
+  const stop = (operation = 'run.interrupt', sessionId = session.id) => {
+    service.operations()[operation]!({ runId: run.id, sessionId });
     expect(runtime.getRun(run.id)?.status).toBe('CANCELLING');
-    expect(runtime.sessionQueue(session.id).paused).toBe(true);
+    expect(runtime.sessionQueue(sessionId).paused).toBe(true);
     expect(runner.control).toHaveBeenCalledWith(
       operation === 'run.cancel' ? operation : 'run.interrupt',
       { runId: executionId }
@@ -144,6 +151,8 @@ async function fixture(native = false) {
     session,
     coordinator,
     runner,
+    afterExecutionSteered,
+    goalCurrent,
     receipt,
     submit,
     run,
@@ -308,6 +317,82 @@ describe('user stop owns the Session FIFO pause', () => {
       paused: false,
       itemIds: [older.id, later.id]
     });
+  });
+
+  it('keeps the newer stop after an in-flight native Session changes identity', async () => {
+    const f = await fixture(true);
+    const ordinary = f.submit('ordinary');
+    const target = f.submit('guidance');
+    const attempt = f.coordinator.executeQueueItem(target.id);
+    const promoted = f.runtime.promoteSessionIdentity(f.session.id, 'native-stopped');
+    f.coordinator.migrateSession(f.session.id, promoted.id);
+    f.stop('session.interrupt', promoted.id);
+    f.receipt.resolve({ status: 'notAccepted' });
+    expect(await attempt).toMatchObject({ delivery: 'QUEUED' });
+    const ids = [ordinary.id, target.id];
+    expect(f.runtime.sessionQueue(promoted.id)).toMatchObject({ paused: true, itemIds: ids });
+    f.finishExecution();
+    await f.coordinator.dispatch(promoted.id);
+    f.runtime.finishRun(f.run.id, 'INTERRUPTED');
+    f.runtime.removeTerminalRun(f.run.id);
+    await f.coordinator.dispatch(promoted.id);
+    expect(f.runtime.sessionQueue(promoted.id)).toMatchObject({ paused: true, itemIds: ids });
+    for (const id of ids) {
+      expect(f.runtime.getQueueItem(id)?.content).toBe(id);
+      expect(f.coordinator.pending(id)?.input).toBe(id);
+    }
+    expect(f.runner.control.mock.calls.filter(([operation]) => operation === 'run.start')).toEqual(
+      []
+    );
+  });
+
+  it('resumes the admission-owned pause on the promoted native Session', async () => {
+    const f = await fixture(true);
+    const ordinary = f.submit('ordinary');
+    f.runtime.pauseSessionQueue(f.session.id);
+    const target = f.submit('guidance');
+    const goal = { id: 'active-goal', revision: 2, epoch: 1 };
+    f.coordinator.prepare(target.id, { ...f.coordinator.pending(target.id)!, goal });
+    const attempt = f.coordinator.executeQueueItem(target.id);
+    const promoted = f.runtime.promoteSessionIdentity(f.session.id, 'native-resumed');
+    f.coordinator.migrateSession(f.session.id, promoted.id);
+    f.goalCurrent.mockImplementation((input) => input.sessionId === promoted.id);
+    f.receipt.resolve({ status: 'handled' });
+    expect(await attempt).toMatchObject({ delivery: 'ACCEPTED' });
+    expect(f.runtime.sessionQueue(promoted.id)).toMatchObject({
+      paused: false,
+      itemIds: [ordinary.id]
+    });
+    expect(f.runtime.getQueueItem(target.id)).toBeUndefined();
+    expect(f.runtime.findMessageSubmission(promoted.id, target.id)).toMatchObject({
+      kind: 'run',
+      run: { id: f.run.id, sessionId: promoted.id }
+    });
+    expect(f.runtime.currentExecutionId(f.run.id)).toBe(f.executionId);
+    expect(f.coordinator.pending(f.executionId)?.goal).toEqual(goal);
+    expect(f.afterExecutionSteered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: promoted.id,
+        externalSessionId: promoted.id,
+        runId: f.executionId
+      })
+    );
+  });
+
+  it('keeps dispatch gated across native Session identity promotion until the receipt settles', async () => {
+    const f = await fixture(true);
+    const ordinary = f.submit('ordinary');
+    const target = f.submit('guidance');
+    const attempt = f.coordinator.executeQueueItem(target.id);
+    const promoted = f.runtime.promoteSessionIdentity(f.session.id, 'native-in-flight');
+    f.coordinator.migrateSession(f.session.id, promoted.id);
+    f.finishExecution();
+    await f.coordinator.dispatch(promoted.id);
+    expect(f.runtime.sessionQueue(promoted.id).itemIds).toEqual([ordinary.id, target.id]);
+    expect(f.runner.control).not.toHaveBeenCalled();
+    f.receipt.resolve({ status: 'handled' });
+    expect(await attempt).toMatchObject({ delivery: 'ACCEPTED' });
+    expect(f.runtime.sessionQueue(promoted.id).itemIds).toEqual([ordinary.id]);
   });
 
   it('resumes the admission-owned pause despite queue edits and consumes native input only once', async () => {
