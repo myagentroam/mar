@@ -417,6 +417,10 @@ defineExpose({
   font-size: 13px;
 }
 
+.workspace-file-tab-close {
+  --mar-action-icon-size: 14px;
+}
+
 .workspace-file-window-close {
   flex: 0 0 24px;
   margin-inline: 0.25rem;

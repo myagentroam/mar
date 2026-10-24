@@ -9,6 +9,106 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['dark', 'light']) {
+  test(`Git change restore icons stay compact on mobile in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`${fixture.url}icon-system.html?git-change-icons=1&theme=${theme}`);
+    const restore = page.locator('.change-restore').first();
+    const glyph = restore.locator('[data-mar-icon="undo"]');
+    await expect(glyph).toBeVisible();
+    const desktopBounds = await glyph.boundingBox();
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(glyph).toHaveCSS('width', '14px');
+      await expect(glyph).toHaveCSS('height', '14px');
+      await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+      await expect(page.locator('.changes-refresh-button svg')).toHaveCSS('width', '18px');
+      const bounds = (await restore.boundingBox())!;
+      expect(bounds.width).toBeGreaterThanOrEqual(20);
+      expect(bounds.height).toBeGreaterThanOrEqual(18);
+      await restore.focus();
+      await expect(restore).toBeFocused();
+      await restore.hover();
+      await expect(glyph).toHaveCSS('width', '14px');
+      await page.locator('.current-changes').screenshot({
+        path: testInfo.outputPath(`git-change-icons-${theme}-${width}.png`)
+      });
+    }
+
+    await page.getByRole('button', { name: 'Show restore loading', exact: true }).click();
+    await expect(restore).toBeDisabled();
+    await expect(restore.locator('[data-mar-icon="loading-action"]')).toHaveCSS('width', '14px');
+    await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+    await expect(page.locator('.change-restore').nth(1)).toBeDisabled();
+    await expect(page.locator('.change-restore').nth(1).locator('svg')).toHaveCSS('width', '14px');
+
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await expect(restore.locator('svg')).toHaveCSS('width', `${desktopBounds!.width}px`);
+  });
+}
+
+for (const theme of ['dark', 'light']) {
+  for (const [name, path, selector] of [
+    ['resource tree', 'icon-system.html', '.tree-more-button'],
+    ['session rows', 'icon-system.html?session-icons=1', '.session-more-button'],
+    ['file tree', 'file-tree.html', 'button.file-tree-more'],
+    ['workspace tabs', 'workspace-tabs.html?locale=en-US&layout=dynamic', '.tab-close, .tab-pin'],
+    ['file tabs', 'file-tabs.html', '.workspace-file-tab-close'],
+    ['attachments', 'icon-system.html?attachment-icons=1', '.composer-attachment-remove'],
+    ['notifications', 'visual-alignment.html?mobile=1', '.workbench-notification-delete']
+  ] as const) {
+    test(`Compact secondary icons in ${name} preserve mobile controls in ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`${fixture.url}${path}`);
+      if (name === 'file tree') {
+        await page.getByRole('button', { name: 'Toggle mobile', exact: true }).click();
+      }
+      if (name === 'session rows') await page.locator('.session-link').focus();
+      if (name === 'notifications') await page.locator('.workbench-notification-trigger').click();
+      const controls = page.locator(selector);
+      await expect(controls.first()).toBeVisible();
+      await page.locator('html').evaluate((element, selectedTheme) => {
+        element.dataset.theme = selectedTheme === 'light' ? 'daylight' : 'vscode-dark-2026';
+        element.classList.toggle('dark', selectedTheme === 'dark');
+      }, theme);
+      for (const width of [320, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        for (const control of await controls.all()) {
+          await expect(control.locator('svg')).toHaveCSS('width', '14px');
+          await expect(control.locator('svg')).toHaveCSS('height', '14px');
+          const bounds = (await control.boundingBox())!;
+          expect(bounds.width).toBeGreaterThanOrEqual(20);
+          expect(bounds.height).toBeGreaterThanOrEqual(18);
+        }
+        await controls.first().focus();
+        await expect(controls.first()).toBeFocused();
+        await controls.first().hover();
+        await expect(controls.first().locator('svg')).toHaveCSS('width', '14px');
+      }
+      if (name === 'resource tree') {
+        await expect(page.locator('.session-search-button svg')).toHaveCSS('width', '18px');
+        await expect(page.locator('.node-expand-button svg')).toHaveCSS('width', '12px');
+        await expect(page.locator('.tree-node [data-mar-icon="node"]')).toHaveCSS('width', '16px');
+      }
+      if (name === 'file tabs') {
+        await expect(page.locator('.workspace-file-window-close svg')).toHaveCSS('width', '18px');
+        await expect(controls.first()).toHaveCSS('width', '36px');
+        await expect(controls.first()).toHaveCSS('height', '36px');
+      }
+      await page.screenshot({ path: testInfo.outputPath(`compact-${name}-${theme}.png`) });
+      if (name === 'attachments' || name === 'notifications') {
+        await controls.first().click();
+        await expect(controls).toHaveCount(0);
+      }
+    });
+  }
+}
+
 for (const dpr of [1, 2, 3]) {
   test.describe(`More action dots DPR ${dpr}`, () => {
     test.use({ deviceScaleFactor: dpr });
@@ -587,6 +687,9 @@ test('Terminal close icons preserve accessible names and close only the selected
   const close = page.getByRole('button', { name: 'Close terminal 1', exact: true });
   await expect(close).toBeVisible();
   await expect(close.locator('svg[data-mar-icon="close"][aria-hidden="true"]')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(close.locator('svg')).toHaveCSS('width', '14px');
+  await expect(page.locator('.terminal-tab-add svg')).toHaveCSS('width', '18px');
   await close.focus();
   await page.keyboard.press('Enter');
   await expect(close).toHaveCount(0);

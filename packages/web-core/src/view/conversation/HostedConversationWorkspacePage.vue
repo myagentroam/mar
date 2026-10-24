@@ -1677,6 +1677,7 @@ onBeforeUnmount(() => {
 }
 
 .history-more-button {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;
@@ -1949,6 +1950,7 @@ onBeforeUnmount(() => {
 }
 
 .file-delete {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 26px;
   height: 26px;

@@ -1021,6 +1021,7 @@ function submitSessionSearch(): void {
 }
 
 .session-more-button {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;

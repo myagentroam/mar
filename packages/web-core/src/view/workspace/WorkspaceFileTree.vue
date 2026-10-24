@@ -645,6 +645,7 @@ defineExpose({ reveal });
 }
 
 .file-tree-more {
+  --mar-action-icon-size: 14px;
   display: inline-flex;
   width: 22px;
   height: 20px;

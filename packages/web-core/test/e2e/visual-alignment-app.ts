@@ -26,6 +26,8 @@ import { i18n, localePreferenceService } from '../../src/service/LocalePreferenc
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
+const mobileNotificationsOpen = ref(false);
+const mobileNotificationPanelTarget = ref<HTMLElement>();
 localePreferenceService().setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
@@ -234,8 +236,24 @@ const app = createApp({
         service,
         uploads: [],
         statusLabel: String,
-        mobileMode: mobile
+        mobileMode: mobile,
+        mobileOpen: mobileNotificationsOpen.value,
+        mobilePresented: mobileNotificationsOpen.value,
+        mobilePanelTarget: mobileNotificationPanelTarget.value,
+        'onUpdate:mobileOpen': (open: boolean) => {
+          mobileNotificationsOpen.value = open;
+          if (open) void service.load();
+        }
       }),
+      mobile
+        ? h('div', {
+            ref: mobileNotificationPanelTarget,
+            class: 'notification-fixture-drawer',
+            hidden: !mobileNotificationsOpen.value,
+            style:
+              'position:fixed;z-index:40;top:60px;right:8px;bottom:8px;width:calc(100vw - 16px);max-width:390px;overflow-y:auto'
+          })
+        : null,
       h('section', { class: 'composer', style: 'margin-top: 32px' }, [
         h(ComposerToolbar, {
           ...toolbar,
