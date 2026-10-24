@@ -86,6 +86,13 @@ export interface SessionStoreCompactInput {
   turnId?: string;
 }
 
+/** Store-issued ownership spanning SDK cleanup and the final durable mutation. */
+export interface SessionStoreMaintenance {
+  readonly sessionIds: readonly string[];
+  /** Idempotent; releases maintenance only, never another owner's Execution/retained references. */
+  release(): Promise<void>;
+}
+
 /**
  * Session persistence port. Implementations preserve record order, committed-resource
  * visibility and the existing per-Session writer/checkpoint atomic boundaries.
@@ -205,6 +212,12 @@ export interface SessionStore {
   /** Retention requires the originating owner to hold an active Execution lease. */
   retainSessionLease(sessionId: string, owner: object): Promise<() => Promise<void>>;
   hasRetainedSessionLease(sessionId: string, owner: object): boolean;
+  /** Conflicts fail before cleanup; delete includes the Store's current Session tree. */
+  acquireSessionMaintenance(
+    sessionId: string,
+    kind: 'clear' | 'delete',
+    owner?: object
+  ): Promise<SessionStoreMaintenance>;
   forkSession(
     sessionId: string,
     input: {
@@ -218,8 +231,14 @@ export interface SessionStore {
       readonly boundaryTurnId: string | null;
     }
   ): Promise<MarAgentSessionSummary>;
-  clearSession(sessionId: string): Promise<MarAgentSessionSummary>;
-  delete(sessionId: string): Promise<{ readonly deleted: boolean }>;
+  clearSession(
+    sessionId: string,
+    maintenance?: SessionStoreMaintenance
+  ): Promise<MarAgentSessionSummary>;
+  delete(
+    sessionId: string,
+    maintenance?: SessionStoreMaintenance
+  ): Promise<{ readonly deleted: boolean }>;
   /** Stop using the handle and release its leases before closing it. Never preempts other owners. */
   close(): Promise<void>;
 }

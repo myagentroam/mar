@@ -289,29 +289,40 @@ export async function createMarAgentWithAdapter(
             'MAR_AGENT_EXECUTION_ACTIVE',
             'A session cannot be cleared while an execution is active.'
           );
-        await extensions.endSession(id, 'clear');
-        extensions.retireSession(id);
-        await completeAgentCleanup([
-          () => extensions.clearSession(id),
-          () => runtime?.inputs?.retire(),
-          () => runtime?.subagents?.dispose(),
-          () => closeModelAdapters(runtime === undefined ? [] : [...runtime.adapters.values()]),
-          () => {
-            // Existing SDK Session handles share this runtime and remain usable after clear.
-            if (runtime) {
-              runtime.adapters.clear();
-              runtime.adapterGeneration = modelGeneration;
-              delete runtime.todo;
-              delete runtime.subagents;
-              delete runtime.subagentsOpening;
-              delete runtime.contextualWorldState;
-              delete runtime.inputs;
-              delete runtime.requestSnapshots;
-            }
-          },
-          () => options.host.disposeSessionResources?.(id),
-          () => store.clearSession(id)
-        ]);
+        const maintenance = await store.acquireSessionMaintenance(id, 'clear', sessionWriterOwner);
+        let failed = false;
+        try {
+          await completeAgentCleanup([
+            () => extensions.endSession(id, 'clear'),
+            () => extensions.retireSession(id),
+            () => extensions.clearSession(id),
+            () => runtime?.inputs?.retire(),
+            () => runtime?.subagents?.dispose(),
+            () => closeModelAdapters(runtime === undefined ? [] : [...runtime.adapters.values()]),
+            () => {
+              // Existing SDK Session handles share this runtime and remain usable after clear.
+              if (runtime) {
+                runtime.adapters.clear();
+                runtime.adapterGeneration = modelGeneration;
+                delete runtime.todo;
+                delete runtime.subagents;
+                delete runtime.subagentsOpening;
+                delete runtime.contextualWorldState;
+                delete runtime.inputs;
+                delete runtime.requestSnapshots;
+              }
+            },
+            () => options.host.disposeSessionResources?.(id),
+            () => store.clearSession(id, maintenance)
+          ]);
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          const releasing = maintenance.release();
+          if (failed) await releasing.catch(() => undefined);
+          else await releasing;
+        }
       }),
     setSystemInstruction: (systemInstruction) => {
       if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
@@ -402,36 +413,61 @@ export async function createMarAgentWithAdapter(
     },
     deleteSession: (id) =>
       trackSessionLifecycle(id, 'delete', async () => {
-        const sessionIds = await store.sessionTree(id);
-        const sessionIdSet = new Set(sessionIds);
-        const executionKeys = [...active.keys()].filter((key) =>
-          sessionIdSet.has(key.slice(0, key.indexOf(':')))
-        );
-        for (const key of executionKeys) active.get(key)?.abort();
-        await Promise.all(
-          sessionIds.map((sessionId) => extensions.endSession(sessionId, 'other', false))
-        );
-        for (const sessionId of sessionIds) extensions.retireSession(sessionId);
-        const runtimes = sessionIds.flatMap((sessionId) => {
-          const runtime = sessionRuntimes.get(sessionId);
-          sessionRuntimes.delete(sessionId);
-          return runtime === undefined ? [] : [runtime];
-        });
-        await completeAgentCleanup([
-          ...sessionIds.map((sessionId) => () => extensions.clearSession(sessionId)),
-          ...runtimes.map((runtime) => () => runtime.inputs?.retire()),
-          ...runtimes.map((runtime) => () => runtime.subagents?.dispose()),
-          () =>
-            Promise.allSettled(
-              executionKeys.flatMap((key) => {
-                const result = executionResults.get(key);
-                return result === undefined ? [] : [result];
-              })
+        const maintenance = await store.acquireSessionMaintenance(id, 'delete', sessionWriterOwner);
+        let failed = false;
+        try {
+          const sessionIds = maintenance.sessionIds;
+          const sessionIdSet = new Set(sessionIds);
+          const executionKeys = [...active.keys()].filter((key) =>
+            sessionIdSet.has(key.slice(0, key.indexOf(':')))
+          );
+          for (const key of executionKeys) active.get(key)?.abort();
+          const runtimes = sessionIds.flatMap((sessionId) => {
+            const runtime = sessionRuntimes.get(sessionId);
+            return runtime === undefined ? [] : [runtime];
+          });
+          await completeAgentCleanup([
+            async () => {
+              let failure: { error: unknown } | undefined;
+              await Promise.all(
+                sessionIds.map(async (sessionId) => {
+                  try {
+                    await extensions.endSession(sessionId, 'other', false);
+                  } catch (error) {
+                    failure ??= { error };
+                  }
+                })
+              );
+              if (failure) throw failure.error;
+            },
+            ...sessionIds.map((sessionId) => () => extensions.retireSession(sessionId)),
+            () => {
+              for (const sessionId of sessionIds) sessionRuntimes.delete(sessionId);
+            },
+            ...sessionIds.map((sessionId) => () => extensions.clearSession(sessionId)),
+            ...runtimes.map((runtime) => () => runtime.inputs?.retire()),
+            ...runtimes.map((runtime) => () => runtime.subagents?.dispose()),
+            () =>
+              Promise.allSettled(
+                executionKeys.flatMap((key) => {
+                  const result = executionResults.get(key);
+                  return result === undefined ? [] : [result];
+                })
+              ),
+            () => closeModelAdapters(runtimes.flatMap((runtime) => [...runtime.adapters.values()])),
+            ...sessionIds.map(
+              (sessionId) => () => options.host.disposeSessionResources?.(sessionId)
             ),
-          () => closeModelAdapters(runtimes.flatMap((runtime) => [...runtime.adapters.values()])),
-          ...sessionIds.map((sessionId) => () => options.host.disposeSessionResources?.(sessionId)),
-          () => store.delete(id)
-        ]);
+            () => store.delete(id, maintenance)
+          ]);
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          const releasing = maintenance.release();
+          if (failed) await releasing.catch(() => undefined);
+          else await releasing;
+        }
       }),
     dispose: () => {
       if (disposal) return disposal;
