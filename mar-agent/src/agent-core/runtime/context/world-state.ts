@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { MarAgentError } from '../../error.js';
 import { contextualBlock, contextualChanges, type ContextualPart } from './contextual-blocks.js';
 import type { ModelContextualBlock, ModelTextBlock, ModelMessage } from '../../model/contracts.js';
-import { compactSummaryFromCheckpoint } from '../../session/store/index.js';
+import { compactSummaryFromCheckpoint } from '../../session/store/execution-state.js';
 export interface ContextualWorldState {
   generation: string | undefined;
   initialized: boolean;
@@ -225,7 +225,7 @@ function nullableWorldStateString(value: unknown): string | undefined | null {
 }
 
 export async function persistContextualWorldState(
-  store: import('../../session/store/index.js').JsonlSessionStore,
+  store: import('../../session/store/contracts.js').SessionStore,
   sessionId: string,
   state: ContextualWorldState
 ): Promise<void> {

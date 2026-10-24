@@ -263,6 +263,24 @@ export {
 } from './agent-core/session/catalog.js';
 export type { SessionListInput, SessionSource } from './agent-core/session/types.js';
 export type {
+  SessionStore,
+  SessionStoreSession,
+  SessionRecordInput,
+  SessionStoreCompactInput,
+  SessionRecord,
+  SessionExecutionState,
+  CompactHistoryMessage,
+  CompactUserInput,
+  SessionInputImage,
+  SessionInputImageMetadata,
+  SessionInputImageData,
+  RestoredSessionInputImage,
+  CodeModeStateEntry,
+  ContextGcCheckpointDraft,
+  AvailableToolResultResource
+} from './agent-core/session/store/contracts.js';
+export type { OpenMarAgentSessionCatalogInput } from './agent-core/session/catalog.js';
+export type {
   ApplyPatchFileResult,
   ApplyPatchResult,
   ApplyPatchPartialResult,

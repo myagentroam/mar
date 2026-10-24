@@ -1,6 +1,6 @@
 import { restoreNativeModelContext } from '../../model/native-context.js';
 import { appliedInputRecord } from '../../session/deferred-input.js';
-import { inputMetadataFromRecord } from '../../session/store/index.js';
+import { inputMetadataFromRecord } from '../../session/store/execution-state.js';
 import type { ModelMessage } from '../../model/contracts.js';
 import {
   contextGcTargetKey,

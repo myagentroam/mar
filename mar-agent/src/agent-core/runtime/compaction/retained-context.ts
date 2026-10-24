@@ -1,5 +1,5 @@
 import type { ModelMessage } from '../../model/contracts.js';
-import { parseModelInputMetadata } from '../../session/store/index.js';
+import { parseModelInputMetadata } from '../../session/store/execution-state.js';
 import { restoreModelContext } from '../context/projection.js';
 import type { CompactSnapshotAnchor } from '../events.js';
 

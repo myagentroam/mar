@@ -1,4 +1,5 @@
 import { restoreMessages } from '../runtime/context/restore.js';
+import type { SessionStore } from '../session/store/contracts.js';
 import { createNativeSteer } from './native-steer.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
@@ -119,11 +120,10 @@ import {
   type SmartCompactionInput
 } from '../runtime/compaction/smart.js';
 import {
-  JsonlSessionStore,
   compactSummaryFromCheckpoint,
-  inputMetadataFromRecord,
-  type CompactUserInput
-} from '../session/store/index.js';
+  inputMetadataFromRecord
+} from '../session/store/execution-state.js';
+import type { CompactUserInput } from '../session/store/contracts.js';
 import {
   SubagentSessionController,
   type SubagentMailboxMessage,
@@ -235,7 +235,7 @@ interface SessionServices {
   readonly host: MarAgentHost;
   readonly description: HostDescription;
   readonly settings: Pick<CreateMarAgentOptions, 'workspaceMapping' | 'systemInstruction'>;
-  readonly store: JsonlSessionStore;
+  readonly store: SessionStore;
   readonly extensions: ExtensionManager;
   readonly registry: AgentSessionRegistry;
   readonly hasCustomAdapters: boolean;
@@ -250,7 +250,7 @@ interface SessionServices {
   ) => ModelAdapter;
   readonly activeAdaptersExcept: (sessionId: string) => ReadonlySet<ModelAdapter>;
   readonly assertCanStart: (sessionId?: string) => void;
-  readonly assertSessionAdmission: (sessionId: string) => void;
+  readonly assertSessionAdmission: (sessionId?: string) => void;
 }
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
@@ -262,7 +262,9 @@ export function createSessionOpener(services: SessionServices) {
     sessionId: string,
     workspace?: string
   ): Promise<InternalMarAgentSession> => {
+    services.assertSessionAdmission();
     const storedSession = await store.getSession(sessionId);
+    services.assertSessionAdmission();
     const storedWorkspace = storedSession.workspace;
     const sessionSource = storedSession.source;
     const logicalWorkspace =
