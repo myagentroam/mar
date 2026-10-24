@@ -2,7 +2,8 @@ import { createApp } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
-import UserManagementPage from '../../../../ee/web/src/view/settings/UserManagementPage.vue';
+import { createEnterpriseManagementComposition } from '../../../../ee/web/src/composition/enterprise-management.js';
+import type { ManagementPageContext } from '../../src/service/management-composition.js';
 import { i18n } from '../../../../ee/web/src/service/locale-preference-service.js';
 
 i18n.global.locale.value =
@@ -15,7 +16,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-const app = createApp(UserManagementPage, { request });
+const context: ManagementPageContext = {
+  admin: {
+    authenticated: true,
+    mustChangePassword: false,
+    edition: 'ENTERPRISE',
+    role: 'ADMIN',
+    isAdmin: true,
+    managementWritable: true
+  },
+  request,
+  nodes: [],
+  onlineNodeCount: 0,
+  serverVersion: undefined
+};
+const composition = createEnterpriseManagementComposition();
+if (!composition.items(context.admin).some((item) => item.id === 'users'))
+  throw new Error('Users menu is unavailable');
+const page = composition.resolve('users', context.admin);
+if (page.id !== 'users') throw new Error('Users menu resolved to a different page');
+const app = createApp(page.component, { ...page.props(context) });
 app.use(ElementPlus);
 app.use(i18n);
 app.mount('#app');
