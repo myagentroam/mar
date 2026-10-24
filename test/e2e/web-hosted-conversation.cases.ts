@@ -326,6 +326,128 @@ const snapshot = {
 } as const;
 hostedConversationSnapshotSchema.parse(snapshot);
 
+for (const lateOutcome of ['snapshot', 'failure'] as const) {
+  test(`Hosted history replaces a pending initial Watch and ignores late A ${lateOutcome}`, async ({
+    page
+  }) => {
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    const second = {
+      ...conversation,
+      id: 'conversation-2',
+      sessionId: 'session-2',
+      title: 'History B'
+    };
+    const secondSnapshot = { ...snapshot, conversation: second, turns: [], files: [] };
+    await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+      json(route, { items: [conversation, second], nextCursor: null })
+    );
+    await page.route('**/api/conversation-templates', (route) =>
+      json(route, { templates: [snapshot.template] })
+    );
+    let releaseA!: () => void;
+    const pendingA = new Promise<void>((resolve) => (releaseA = resolve));
+    let releaseB!: () => void;
+    const pendingB = new Promise<void>((resolve) => (releaseB = resolve));
+    let completedA!: () => void;
+    const aCompleted = new Promise<void>((resolve) => (completedA = resolve));
+    let watchA: Record<string, unknown> | undefined;
+    const starts = { a: 0, b: 0 };
+    await page.route(
+      '**/api/nodes/node-1/hosted-conversations/conversation-1/watch',
+      async (route) => {
+        if (route.request().method() === 'DELETE') return json(route, { unwatched: true });
+        starts.a += 1;
+        const request = route.request().postDataJSON() as { watchId: string };
+        watchA = {
+          nodeGeneration: 'mock-node-generation',
+          nodeId: 'node-1',
+          watchId: request.watchId,
+          conversationId: conversation.id
+        };
+        if (lateOutcome === 'snapshot') {
+          await json(route, {
+            accepted: true,
+            watchId: request.watchId,
+            nodeGeneration: 'mock-node-generation',
+            expiresAt: 1_900_000_030_000
+          });
+        } else {
+          await pendingA;
+          await json(
+            route,
+            { error: { code: 'STALE_A_FAILED', message: 'Old opening failed' } },
+            500
+          );
+        }
+        completedA();
+      }
+    );
+    await page.route(
+      '**/api/nodes/node-1/hosted-conversations/conversation-2/watch',
+      async (route) => {
+        if (route.request().method() === 'DELETE') return json(route, { unwatched: true });
+        starts.b += 1;
+        await pendingB;
+        await fulfillMockHostedConversationWatch(page, route, second.id, secondSnapshot);
+      }
+    );
+    try {
+      await page.goto('/console');
+      await page.getByRole('button', { name: '进入控制台' }).click();
+      await page.getByRole('button', { name: '对话', exact: true }).click();
+      const rowA = page
+        .locator('.hosted-conversation-history article', { hasText: conversation.title })
+        .locator('.history-open');
+      const rowB = page
+        .locator('.hosted-conversation-history article', { hasText: second.title })
+        .locator('.history-open');
+      await expect.poll(() => starts.a).toBe(1);
+      await expect(page.locator('.page-loading-state')).toBeVisible();
+      await rowA.click();
+      expect(starts.a).toBe(1);
+      await rowB.click();
+      await expect.poll(() => starts.b).toBe(1);
+      await expect(rowB).toHaveAttribute('aria-current', 'page');
+      await expect(rowA).not.toHaveAttribute('aria-current', 'page');
+      if (lateOutcome === 'snapshot') {
+        await aCompleted;
+        await page.evaluate(
+          ({ watch, payload }) => {
+            const socket = (
+              window as unknown as {
+                __consoleMockWorkbenchWebSocket: {
+                  acceptHostedConversationWatch(
+                    watch: Record<string, unknown>,
+                    payload: unknown
+                  ): void;
+                };
+              }
+            ).__consoleMockWorkbenchWebSocket;
+            socket.acceptHostedConversationWatch(watch, payload);
+          },
+          { watch: watchA!, payload: snapshot }
+        );
+      } else {
+        releaseA();
+        await aCompleted;
+      }
+      await expect(rowB).toHaveAttribute('aria-current', 'page');
+      await expect(page.locator('.page-loading-state')).toBeVisible();
+      await rowB.click();
+      expect(starts.b).toBe(1);
+      releaseB();
+      await expect(page.locator('.page-loading-state')).toHaveCount(0);
+      await expect(page.locator('.hosted-workspace .hosted-timeline-scroll')).toBeVisible();
+      await expect(rowB).toHaveAttribute('aria-current', 'page');
+      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      expect(starts).toEqual({ a: 1, b: 1 });
+    } finally {
+      releaseA();
+      releaseB();
+    }
+  });
+}
+
 test('Touch conversation content preserves browser menus while desktop content disables them', async ({
   browser,
   browserName,
