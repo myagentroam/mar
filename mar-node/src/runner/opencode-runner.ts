@@ -94,6 +94,13 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     super();
   }
 
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [runId, managed] of this.execution) {
+      if (managed.sessionId === previousId)
+        this.execution.set(runId, { ...managed, sessionId: nativeSessionId });
+    }
+  }
+
   profile(capabilities: NodeCapabilities): RunnerProfile {
     const base = declaredRunnerProfiles({
       codexAvailable: capabilities.codex.available,

@@ -329,6 +329,12 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
 
   abstract stop(): void | Promise<void>;
 
+  /** Synchronously migrate Runner-owned state without I/O or event publication. */
+  migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    void previousId;
+    void nativeSessionId;
+  }
+
   bindControl(control: RunnerControl): void {
     if (this.control !== undefined) throw new Error(`RUNNER_CONTROL_ALREADY_BOUND:${this.name}`);
     this.control = control;

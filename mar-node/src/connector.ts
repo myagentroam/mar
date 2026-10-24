@@ -1066,8 +1066,9 @@ export class NodeConnector {
         this.commandStates.validateSessionIdentityPromotion(previousId, nextId),
       migrateCommands: (previousId, nextId) =>
         this.commandStates.promoteSessionIdentity(previousId, nextId),
+      migrateAttachments: (previousId, nextId) =>
+        this.runAttachmentService.migrateSession(previousId, nextId),
       migrateGoal: (previousId, nextId) => {
-        this.runAttachmentService.migrateSession(previousId, nextId);
         this.goalCoordinator.migrateSession(previousId, nextId);
         this.goalMcpBridge.migrateSession(previousId, nextId);
       },
@@ -1075,7 +1076,7 @@ export class NodeConnector {
         this.continuousRunCoordinator.migrateSession(previousId, nextId),
       migrateRunnerState: (previousId, nextId) => {
         this.modelUsage.promoteSession(previousId, nextId);
-        this.runEventBridge.migrateRunnerSessionIdentity(previousId, nextId);
+        this.runners.migrateSessionIdentity(previousId, nextId);
       },
       emitSession: (session) => this.emitSessionWorkbenchEvent({ session }),
       emitRun: (run) => this.emitWorkbenchEvent('run', { run }),
@@ -1456,9 +1457,6 @@ export class NodeConnector {
       events: this.runEventService,
       emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
       queues: this.workspaceQueueWorkbenchService,
-      codex: this.codexClient,
-      claude: this.claudeClient,
-      openCode: this.openCodeClient,
       send: (type, payload, replyTo) => this.send(type, payload, replyTo)
     });
     this.connectionLifecycle = new NodeConnectionLifecycleService({
