@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Direct download stream fixture</title>
+  </head>
+  <body>
+    <button>empty.bin</button>
+    <button>nonempty.bin</button>
+    <output>ready</output>
+    <script type="module">
+      import { createWorkspaceDirectDownloadStream } from '/packages/web-core/src/service/workspace-direct-download-stream-service.ts';
+      for (const button of document.querySelectorAll('button')) {
+        button.addEventListener('click', async () => {
+          try {
+            const fileName = button.textContent;
+            const bytes = new TextEncoder().encode(
+              fileName === 'empty.bin' ? '' : 'direct download'
+            );
+            const stream = await createWorkspaceDirectDownloadStream(fileName, bytes.length);
+            if (bytes.length > 0) await stream.sink.write(bytes);
+            await stream.sink.close();
+            document.querySelector('output').textContent = 'closed';
+          } catch (error) {
+            document.querySelector('output').textContent = String(error);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
