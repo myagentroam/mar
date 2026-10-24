@@ -109,6 +109,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
+      const pathToFileGap = await root.evaluate((heading) => {
+        const path = heading.querySelector('.repository-physical-path')!.getBoundingClientRect();
+        const file = heading
+          .nextElementSibling!.querySelector('.change-file-name')!
+          .getBoundingClientRect();
+        return file.top - path.bottom;
+      });
+      expect(pathToFileGap).toBeGreaterThanOrEqual(4);
+      expect(pathToFileGap).toBeLessThanOrEqual(6);
+      expect(
+        await headings.nth(1).evaluate((heading) => parseFloat(getComputedStyle(heading).marginTop))
+      ).toBeGreaterThan(6);
       for (const heading of await headings.all()) {
         expect(
           await heading.evaluate((element) => element.scrollWidth <= element.clientWidth)

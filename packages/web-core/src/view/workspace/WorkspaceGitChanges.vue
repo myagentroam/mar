@@ -492,7 +492,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-template-columns: minmax(0, 1fr);
   margin-top: 0.5rem;
   border-top: 1px solid var(--mar-border-default);
-  padding: 0.35rem 0.25rem 0.3rem;
+  padding: 0.35rem 0.25rem 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
