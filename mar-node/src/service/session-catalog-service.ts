@@ -1,4 +1,5 @@
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { removeNativeSession } from '../native-session-history.js';
@@ -59,11 +60,32 @@ export class SessionCatalogService {
   }
 
   private async list(input: Record<string, unknown>): Promise<unknown> {
+    if (
+      input.sessionGroup !== undefined &&
+      input.sessionGroup !== 'MAIN' &&
+      input.sessionGroup !== 'CHILD'
+    )
+      throw new Error('SESSION_INVALID');
     const sessions = await this.collect(input);
+    const runningCounts = { MAIN: 0, CHILD: 0 };
+    for (const session of sessions)
+      if ('activity' in session && session.activity === 'MANAGED_ACTIVE')
+        runningCounts[sessionGroup(session)] += 1;
+    const query =
+      typeof input.query === 'string'
+        ? input.query.trim().normalize('NFKC').toLocaleLowerCase()
+        : '';
     const page = sessionPage(
       sessions.filter(
         (session) =>
-          input.parentSessionId === undefined || session.parentSessionId === input.parentSessionId
+          (input.parentSessionId === undefined ||
+            session.parentSessionId === input.parentSessionId) &&
+          (input.sessionGroup === undefined || sessionGroup(session) === input.sessionGroup) &&
+          (query.length === 0 ||
+            (session.customTitle ?? session.runnerTitle ?? '')
+              .normalize('NFKC')
+              .toLocaleLowerCase()
+              .includes(query))
       ),
       input
     );
@@ -75,7 +97,7 @@ export class SessionCatalogService {
           ),
           nextCursor: page.nextCursor
         }
-      : page;
+      : { ...page, runningCounts };
   }
 
   private async graph(input: Record<string, unknown>): Promise<unknown> {
@@ -189,13 +211,7 @@ export class SessionCatalogService {
         workspaceId,
         !registeredOnly && query === undefined && this.options.discoveryPending(workspaceId)
       );
-    const sessions = [...merged.values()].filter((session) => {
-      if (query === undefined) return true;
-      const title = (session.customTitle ?? session.runnerTitle ?? '')
-        .normalize('NFKC')
-        .toLocaleLowerCase();
-      return title.includes(query);
-    });
+    const sessions = [...merged.values()];
     return workspaceId === undefined
       ? sessions
       : sessions.filter((session) => session.workspaceId === workspaceId);

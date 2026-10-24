@@ -142,4 +142,96 @@ describe('Public workbench entity actions', () => {
     expect(current.notice).toHaveBeenCalledWith(expect.any(String), 'success');
     expect(current.loading.value).toBe(false);
   });
+
+  it('clears only the parent relationship after confirmation and reports request failures', async () => {
+    dialogs.confirm.mockResolvedValue('confirm');
+    const child = {
+      id: 'session/child',
+      workspaceId: 'workspace',
+      runner: 'mar-agent',
+      sessionGroup: 'CHILD'
+    } as Session;
+    const moved = { ...child, sessionGroup: 'MAIN' } as Session;
+    const request = vi.fn().mockResolvedValue({ session: moved });
+    const current = state(request);
+
+    await expect(current.service.moveSessionToMain(child)).resolves.toBe(moved);
+    expect(request).toHaveBeenCalledWith('/api/agent-sessions/session%2Fchild/metadata', {
+      method: 'PATCH',
+      body: JSON.stringify({ nodeId: 'node', clearParent: true })
+    });
+    expect(current.notice).toHaveBeenCalledWith(expect.any(String), 'success');
+    expect(current.loading.value).toBe(false);
+
+    const error = new Error('offline');
+    const failed = state(vi.fn().mockRejectedValue(error));
+    await expect(failed.service.moveSessionToMain(child)).resolves.toBeUndefined();
+    expect(failed.notice).toHaveBeenCalledWith(expect.any(String), 'error', error);
+    expect(failed.loading.value).toBe(false);
+  });
+
+  it('ignores a duplicate move while confirmation is pending', async () => {
+    let resolveConfirmation!: (value: string) => void;
+    dialogs.confirm.mockImplementation(
+      () => new Promise((resolve) => (resolveConfirmation = resolve))
+    );
+    const moved = {
+      id: 'child',
+      workspaceId: 'workspace',
+      runner: 'codex',
+      sessionGroup: 'MAIN'
+    } as Session;
+    const request = vi.fn().mockResolvedValue({ session: moved });
+    const current = state(request);
+    const child = { ...moved, sessionGroup: 'CHILD' } as Session;
+
+    const pending = current.service.moveSessionToMain(child);
+    await expect(current.service.moveSessionToMain(child)).resolves.toBeUndefined();
+    expect(dialogs.confirm).toHaveBeenCalledOnce();
+    expect(request).not.toHaveBeenCalled();
+    resolveConfirmation('confirm');
+    await expect(pending).resolves.toBe(moved);
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it('waits for the move response before replacing the session and refreshing without changing its body', async () => {
+    let resolveMove!: (session: Session) => void;
+    const child = {
+      id: 'child',
+      workspaceId: 'workspace',
+      runner: 'codex',
+      sessionGroup: 'CHILD'
+    } as Session;
+    const moved = { ...child, sessionGroup: 'MAIN' } as Session;
+    const sessions = ref([child]);
+    const turns = ref([{ id: 'turn-1', body: 'Existing response' }]);
+    const bodyBefore = turns.value;
+    const replaceSession = vi.fn((previousId: string, replacement: Session) => {
+      sessions.value = sessions.value.map((session) =>
+        session.id === previousId ? replacement : session
+      );
+    });
+    const refreshSessions = vi.fn(async () => undefined);
+    const controller = createWorkbenchEntityController({
+      actions: {
+        moveSessionToMain: () => new Promise<Session>((resolve) => (resolveMove = resolve))
+      },
+      sessions,
+      turns,
+      replaceSession,
+      refreshSessions
+    } as never);
+
+    const moving = controller.moveSessionToMain(child);
+    expect(sessions.value).toEqual([child]);
+    expect(replaceSession).not.toHaveBeenCalled();
+    expect(refreshSessions).not.toHaveBeenCalled();
+
+    resolveMove(moved);
+    await moving;
+    expect(replaceSession).toHaveBeenCalledWith('child', moved);
+    expect(sessions.value).toEqual([moved]);
+    expect(refreshSessions).toHaveBeenCalledOnce();
+    expect(turns.value).toBe(bodyBefore);
+  });
 });

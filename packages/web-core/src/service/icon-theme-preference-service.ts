@@ -19,8 +19,8 @@ export function createIconThemePreferenceService(): IconThemePreferenceService {
   return {
     theme,
     setTheme(next) {
-      theme.value = next;
       localStorage.setItem(ICON_THEME_STORAGE_KEY, next);
+      theme.value = next;
     }
   };
 }

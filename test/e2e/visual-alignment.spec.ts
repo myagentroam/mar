@@ -136,6 +136,35 @@ test('Shared tooltip cancels stale targets and follows content, hidden, removed 
   await expect(page.getByTestId('tooltip-live')).toHaveText('0');
 });
 
+test('Markdown copy hints share the tooltip host across content replacement and unmount', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1&locale=en-US`);
+  const copy = page.getByRole('button', { name: 'Copy code', exact: true });
+  const hint = page.locator('.mar-tooltip:visible');
+  await expect(copy).not.toHaveAttribute('title');
+  await copy.hover();
+  await expect(hint).toHaveText('Copy code');
+  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await copy.focus();
+  await copy.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(copy).toBeFocused();
+  await copy.blur();
+  await page.mouse.move(0, 0);
+  await copy.focus();
+  await expect(hint).toHaveText('Copy code');
+  await page.getByTestId('rename').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveCount(0);
+  await expect(page.locator('.agent-markdown pre')).toHaveText('Updated\n');
+  await copy.focus();
+  await expect(hint).toHaveText('Copy code');
+  await expect(copy).not.toHaveAttribute('title');
+  await page.getByTestId('remove').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(copy).toHaveCount(0);
+  await expect(hint).toHaveCount(0);
+});
+
 test('Table overflow hints share the theme without template-ref warnings', async ({ page }) => {
   const warnings: string[] = [];
   page.on('console', (message) => {
@@ -354,7 +383,7 @@ test('Performance hover displays the details panel without a second hint', async
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [390, 767, 768, 1280]) {
-    test(`Session performance clears the final row and stays near the mobile bottom: ${theme}, ${width}px`, async ({
+    test(`Session performance clears the final row and keeps compact bottom spacing: ${theme}, ${width}px`, async ({
       browser
     }, testInfo) => {
       const context = await browser.newContext({
@@ -374,16 +403,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const region = (await page.locator('.conversation-scroll-region').boundingBox())!;
         const lastRow = (await page.getByTestId('last-row').boundingBox())!;
         const bottomGap = region.y + region.height - infoBox.y - infoBox.height;
-        if (width < 768) {
-          expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
-          expect(bottomGap).toBeGreaterThanOrEqual(0);
-          expect(bottomGap).toBeLessThanOrEqual(4);
-        } else {
-          const rootFontSize = await page
-            .locator('html')
-            .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-          expect(bottomGap).toBeCloseTo(rootFontSize * 0.75, 1);
-        }
+        const rootFontSize = await page
+          .locator('html')
+          .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+        expect(bottomGap).toBeGreaterThanOrEqual(0);
+        expect(bottomGap).toBeCloseTo(rootFontSize * 0.25, 1);
+        if (width < 768) expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
         if (width < 768) await info.tap();
         else await info.focus();
         await expect(page.locator('.mar-tooltip:visible')).toContainText('420 ms');
@@ -409,7 +434,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           bottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
           root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
         }));
-        expect(padding.bottom).toBeCloseTo(padding.root, 1);
+        expect(padding.bottom).toBeCloseTo(padding.root * 0.5, 1);
       } finally {
         await context.close();
       }

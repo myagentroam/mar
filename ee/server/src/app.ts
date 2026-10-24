@@ -512,6 +512,9 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
       : undefined;
   if (notifications !== undefined)
     nodeControl.setNotificationHandler((nodeId, payload) => notifications.consume(nodeId, payload));
+  nodeControl.setSessionGroupChangedHandler(async (change) => {
+    await Promise.all([recentRuns?.reclassify(change), notifications?.reclassify(change)]);
+  });
   if (webPushConfiguration !== undefined && webPushClients !== undefined) {
     registerWebPushRoutes({
       app,

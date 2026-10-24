@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import { sessionGroupChangedSchema, type SessionGroupChanged } from '@myagentroam/protocol';
 import { watchEventSchema, workbenchEventSchema, type NodeEnvelope } from '@myagentroam/protocol';
 import type { RelayedWorkbenchEvent, WorkbenchRelayService } from './workbench-relay-service.js';
 
@@ -9,6 +10,7 @@ interface NodeMessageProjectorOptions {
   readonly notification?: (nodeId: string, payload: unknown) => Promise<boolean>;
   readonly hostedConversationActivity?: (nodeId: string, payload: unknown) => Promise<boolean>;
   readonly recentRuns?: (nodeId: string, payload: unknown) => Promise<boolean>;
+  readonly sessionGroupChanged?: (change: SessionGroupChanged) => Promise<void>;
   readonly sendWatchEvent?: (
     connectionId: string,
     message: object
@@ -22,11 +24,30 @@ const PROJECTED_TYPES = new Set([
   'approval.request',
   'session.external-id',
   'session.channel.ready',
-  'recent-runs'
+  'recent-runs',
+  'session.group.changed'
 ]);
 
 export class NodeMessageProjector {
+  private readonly sessionProjectionTails = new Map<string, Promise<void>>();
+
   constructor(private readonly options: NodeMessageProjectorOptions) {}
+
+  /** Orders classification-bearing projections without blocking other Node traffic. */
+  enqueueSessionProjection(nodeId: string, project: () => Promise<unknown>): Promise<void> {
+    const run = async () => {
+      await project();
+    };
+    const previous = this.sessionProjectionTails.get(nodeId);
+    const current = previous === undefined ? run() : previous.then(run);
+    const settled = current.catch(() => undefined);
+    this.sessionProjectionTails.set(nodeId, settled);
+    void settled.then(() => {
+      if (this.sessionProjectionTails.get(nodeId) === settled)
+        this.sessionProjectionTails.delete(nodeId);
+    });
+    return current;
+  }
 
   handles(type: string): boolean {
     return PROJECTED_TYPES.has(type);
@@ -34,6 +55,21 @@ export class NodeMessageProjector {
 
   project(nodeId: string, socket: WebSocket, envelope: NodeEnvelope): void {
     switch (envelope.type) {
+      case 'session.group.changed': {
+        const parsed = sessionGroupChangedSchema.safeParse(envelope.payload);
+        if (!parsed.success || parsed.data.nodeId !== nodeId) {
+          this.options.sendInvalid(socket, envelope.id);
+          return;
+        }
+        if (this.options.sessionGroupChanged === undefined) return;
+        void this.enqueueSessionProjection(nodeId, () =>
+          this.options.sessionGroupChanged!(parsed.data)
+        ).then(
+          () => this.options.send(socket, 'session.group.ack', parsed.data, envelope.id),
+          () => socket.close(1011, 'SESSION_GROUP_PROJECTION_FAILED')
+        );
+        return;
+      }
       case 'workbench.event':
         this.workbenchEvent(nodeId, socket, envelope);
         return;
@@ -50,7 +86,9 @@ export class NodeMessageProjector {
         this.channelReady(socket, envelope);
         return;
       case 'recent-runs':
-        void this.options.recentRuns?.(nodeId, envelope.payload).catch(() => false);
+        void this.enqueueSessionProjection(nodeId, async () =>
+          this.options.recentRuns?.(nodeId, envelope.payload)
+        ).catch(() => false);
     }
   }
 
@@ -100,7 +138,10 @@ export class NodeMessageProjector {
       record(event.payload.event) &&
       event.payload.event.eventType === 'notification'
     ) {
-      void this.options.notification?.(nodeId, event.payload.event.payload).catch(() => false);
+      const payload = event.payload.event.payload;
+      void this.enqueueSessionProjection(nodeId, async () =>
+        this.options.notification?.(nodeId, payload)
+      ).catch(() => false);
       return;
     }
     if (
@@ -110,7 +151,10 @@ export class NodeMessageProjector {
       record(event.payload.event) &&
       event.payload.event.eventType === 'notification'
     ) {
-      void this.options.notification?.(nodeId, event.payload.event.payload).catch(() => false);
+      const payload = event.payload.event.payload;
+      void this.enqueueSessionProjection(nodeId, async () =>
+        this.options.notification?.(nodeId, payload)
+      ).catch(() => false);
       return;
     }
     if (

@@ -77,7 +77,7 @@ describe('Workbench Event Projection', () => {
     expect(onNodeConnected).toHaveBeenCalledOnce();
   });
 
-  it('Projects real-time MAR Agent Session events into the shared Session view', () => {
+  it('projects MAR Agent Session events only through the Watch projection entry, not ordinary broadcasts', () => {
     const mergeSessions = vi.fn();
     const service = createWorkbenchEventProjectionService({
       nodes: { value: [] },
@@ -105,10 +105,10 @@ describe('Workbench Event Projection', () => {
       onNodeConnected: vi.fn()
     } as never);
 
-    service.apply({
+    const event = {
       nodeId: 'node-1',
       sequence: 1,
-      category: 'session',
+      category: 'session' as const,
       payload: {
         session: {
           id: 'native-mar-agent-1',
@@ -117,7 +117,11 @@ describe('Workbench Event Projection', () => {
           externalSessionId: 'native-mar-agent-1'
         }
       }
-    });
+    };
+
+    service.applyBroadcast(event);
+    expect(mergeSessions).not.toHaveBeenCalled();
+    service.apply(event);
 
     expect(mergeSessions).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'native-mar-agent-1', runner: 'mar-agent' })

@@ -27,6 +27,9 @@ interface ScheduledSessionCoordinatorOptions {
     context: ScheduledRunContext
   ) => Promise<{ readonly runId: string }>;
   readonly sessionTitle: (sessionId: string) => string;
+  readonly sessionGroup?: (
+    task: ScheduledSessionTask
+  ) => import('@myagentroam/protocol').SessionGroup;
   readonly emitNotification: (payload: unknown) => void;
   readonly now?: () => number;
 }
@@ -94,6 +97,7 @@ export class ScheduledSessionCoordinator {
         eventType: 'notification',
         payload: {
           targetType: 'WORKSPACE_SESSION',
+          sessionGroup: this.options.sessionGroup?.(task) ?? 'MAIN',
           userId: currentTask.ownerUserId,
           workspaceId: task.workspaceId,
           sessionId: task.sessionId,
@@ -121,6 +125,7 @@ export class ScheduledSessionCoordinator {
         eventType: 'notification',
         payload: {
           targetType: 'WORKSPACE_SESSION',
+          sessionGroup: this.options.sessionGroup?.(task) ?? 'MAIN',
           userId: task.ownerUserId,
           workspaceId: task.workspaceId,
           sessionId,

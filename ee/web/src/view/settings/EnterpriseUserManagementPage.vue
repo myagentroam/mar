@@ -7,9 +7,9 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import type { FormInstance, FormRules } from 'element-plus';
+import type { ButtonInstance, FormInstance, FormRules } from 'element-plus';
 import {
   organizationCascaderOptions,
   organizationPath,
@@ -53,6 +53,30 @@ const userOpen = ref(false);
 const editingUser = ref<EnterpriseUser>();
 const userDetail = ref<EnterpriseUser>();
 const userFormRef = ref<FormInstance>();
+const createUserTrigger = ref<ButtonInstance>();
+const creatingUser = ref(false);
+let userGeneration = 0;
+let disposed = false;
+let returningFromCreation = false;
+watch(
+  userOpen,
+  (open) => {
+    if (open) returningFromCreation = editingUser.value === undefined;
+    userGeneration += 1;
+    creatingUser.value = false;
+  },
+  { flush: 'sync' }
+);
+function isCurrentCreation(generation: number): boolean {
+  return !disposed && userOpen.value && generation === userGeneration;
+}
+function restoreCreateFocus(): void {
+  if (!returningFromCreation) return;
+  void nextTick(() => {
+    if (!disposed && !userOpen.value && credentials.value === undefined)
+      createUserTrigger.value?.ref?.focus();
+  });
+}
 const userForm = ref<{
   username: string;
   email: string;
@@ -60,7 +84,13 @@ const userForm = ref<{
   role: EnterpriseRole;
   organizationId: number;
 }>({ username: '', email: '', nickname: '', role: 'MEMBER', organizationId: 1 });
-const credentials = ref<{ titleKey: string; username: string; password: string }>();
+const credentialResults = ref<{ titleKey: string; username: string; password: string }[]>([]);
+const credentials = computed(() => credentialResults.value[0]);
+const credentialSequence = ref(0);
+function dismissCredentials(): void {
+  credentialResults.value.shift();
+  credentialSequence.value += 1;
+}
 const keyword = ref('');
 const roleFilter = ref<EnterpriseRole | ''>('');
 const organizationFilter = ref<number>();
@@ -215,27 +245,30 @@ function changeSort(input: { readonly prop?: string; readonly order?: string | n
     input.order === 'descending' ? 'desc' : input.order === 'ascending' ? 'asc' : undefined;
   void usersPage.load(true);
 }
-async function createUser(): Promise<void> {
+async function createUser(draft: typeof userForm.value, generation: number): Promise<void> {
   try {
     const result = await props.request<{ user: EnterpriseUser; temporaryPassword: string }>(
       '/api/enterprise/users',
       {
         method: 'POST',
         body: JSON.stringify({
-          ...userForm.value,
-          email: userForm.value.email || undefined,
-          nickname: userForm.value.nickname || undefined
+          ...draft,
+          email: draft.email || undefined,
+          nickname: draft.nickname || undefined
         })
       }
     );
-    credentials.value = {
+    if (disposed) return;
+    // UI cancellation cannot revoke a successful write or discard its one-time credentials.
+    credentialResults.value.push({
       titleKey: 'generated.organizationUserManagementPage.userCreated',
       username: result.user.username,
       password: result.temporaryPassword
-    };
-    userOpen.value = false;
+    });
+    if (isCurrentCreation(generation)) userOpen.value = false;
     await load();
   } catch (error) {
+    if (!isCurrentCreation(generation)) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -262,8 +295,20 @@ function openEditUser(user: EnterpriseUser): void {
   userOpen.value = true;
 }
 async function saveUser(): Promise<void> {
+  if (editingUser.value === undefined) {
+    if (!userOpen.value || creatingUser.value || disposed) return;
+    const generation = userGeneration;
+    const draft = { ...userForm.value };
+    creatingUser.value = true;
+    try {
+      const valid = await userFormRef.value?.validate().catch(() => false);
+      if (valid && isCurrentCreation(generation)) await createUser(draft, generation);
+    } finally {
+      if (isCurrentCreation(generation)) creatingUser.value = false;
+    }
+    return;
+  }
   if (!(await userFormRef.value?.validate().catch(() => false))) return;
-  if (editingUser.value === undefined) return createUser();
   try {
     await props.request(`/api/enterprise/users/${editingUser.value.id}`, {
       method: 'PATCH',
@@ -308,11 +353,11 @@ async function resetPassword(user: EnterpriseUser): Promise<void> {
       `/api/management/users/${user.id}/reset-password`,
       { method: 'POST' }
     );
-    credentials.value = {
+    credentialResults.value.push({
       titleKey: 'generated.organizationUserManagementPage.passwordReset',
       username: user.username,
       password: result.temporaryPassword
-    };
+    });
   } catch (error) {
     if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
@@ -374,7 +419,11 @@ onMounted(() => {
   usersPage.start();
   void load();
 });
-onUnmounted(() => usersPage.dispose());
+onUnmounted(() => {
+  disposed = true;
+  userGeneration += 1;
+  usersPage.dispose();
+});
 </script>
 
 <template>
@@ -446,6 +495,7 @@ onUnmounted(() => usersPage.dispose());
       <el-button
         type="primary"
         :icon="marIcon('plus')"
+        ref="createUserTrigger"
         :disabled="!writable"
         @click="openCreateUser"
         >{{ translate('generated.organizationUserManagementPage.createUser') }}</el-button
@@ -545,6 +595,8 @@ onUnmounted(() => usersPage.dispose());
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userOpen"
       v-model="userOpen"
+      @close="userOpen = false"
+      @close-auto-focus="restoreCreateFocus"
       :title="
         editingUser === undefined
           ? translate('generated.organizationUserManagementPage.createUser2')
@@ -559,12 +611,13 @@ onUnmounted(() => usersPage.dispose());
           ><el-input
             v-model="userForm.username"
             :placeholder="translate('generated.organizationUserManagementPage.enterAUsername2')"
-            :disabled="editingUser !== undefined" /></el-form-item
+            :disabled="creatingUser || editingUser !== undefined" /></el-form-item
         ><el-form-item
           :label="translate('generated.organizationUserManagementPage.email2')"
           prop="email"
           ><el-input
             v-model="userForm.email"
+            :disabled="creatingUser"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterAnEmailAddressOptional')
             " /></el-form-item
@@ -573,6 +626,7 @@ onUnmounted(() => usersPage.dispose());
           prop="nickname"
           ><el-input
             v-model="userForm.nickname"
+            :disabled="creatingUser"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterADisplayNameOptional')
             " /></el-form-item
@@ -581,7 +635,7 @@ onUnmounted(() => usersPage.dispose());
           prop="role"
           ><el-select
             v-model="userForm.role"
-            :disabled="editingUser?.fixedAdmin"
+            :disabled="creatingUser || editingUser?.fixedAdmin"
             :placeholder="translate('generated.organizationUserManagementPage.selectARole3')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
@@ -596,7 +650,7 @@ onUnmounted(() => usersPage.dispose());
           ><el-cascader
             v-model="userForm.organizationId"
             style="width: 100%"
-            :disabled="userForm.role === 'ADMIN'"
+            :disabled="creatingUser || userForm.role === 'ADMIN'"
             filterable
             :placeholder="
               translate('generated.organizationUserManagementPage.selectAnOrganization3')
@@ -608,21 +662,28 @@ onUnmounted(() => usersPage.dispose());
         ><el-button @click="userOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel5')
         }}</el-button
-        ><el-button type="primary" :disabled="!writable" @click="saveUser">{{
-          editingUser === undefined
-            ? translate('generated.organizationUserManagementPage.createUser3')
-            : translate('generated.organizationUserManagementPage.save2')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :disabled="!writable"
+          :loading="creatingUser"
+          @click="saveUser"
+          >{{
+            editingUser === undefined
+              ? translate('generated.organizationUserManagementPage.createUser3')
+              : translate('generated.organizationUserManagementPage.save2')
+          }}</el-button
+        ></template
       ></el-dialog
     >
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentials !== undefined"
+      :key="credentialSequence"
       :model-value="credentials !== undefined"
       :title="translate(credentials.titleKey)"
       width="min(440px, calc(100vw - 32px))"
-      @update:model-value="credentials = undefined"
+      @close="dismissCredentials"
       :close-icon="marIcon('close')"
       ><el-alert
         :title="
@@ -654,7 +715,7 @@ onUnmounted(() => usersPage.dispose());
         ><el-button @click="copyCredentials">{{
           translate('generated.organizationUserManagementPage.copyUsernameAndPassword')
         }}</el-button
-        ><el-button type="primary" @click="credentials = undefined">{{
+        ><el-button type="primary" @click="dismissCredentials">{{
           translate('generated.organizationUserManagementPage.done')
         }}</el-button></template
       >

@@ -1,4 +1,21 @@
 export const workspaceZhCN = {
+  sessionGroups: {
+    label: '会话分组',
+    main: '主会话',
+    child: '子会话',
+    unread: '未读',
+    running: '运行 {count} 个会话',
+    emptyMain: '暂无主会话',
+    emptyChild: '暂无子会话',
+    noResults: '没有匹配的会话',
+    move: '移动到主会话',
+    confirm: '移动',
+    cancel: '取消',
+    description:
+      '仅清除此会话与父会话的分组关系，并移动到“主会话”。会话历史、运行任务和队列不受影响；其子会话的关系不变。',
+    moved: '已移动到主会话',
+    failed: '无法移动会话：{reason}'
+  },
   generated: {
     sessionPrompt: {
       title: '会话提示词',

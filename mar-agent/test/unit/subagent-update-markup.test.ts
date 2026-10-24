@@ -38,7 +38,7 @@ describe('subagent update markup', () => {
     expect(xml.match(/<mar_subagent_update /g)).toHaveLength(1);
   });
 
-  it('emits a terminal without inventing a message and preserves ordered evidence', () => {
+  it('emits terminal text and ordered changed files without automatic command or read records', () => {
     const xml = renderSubagentUpdate({
       ...snapshot,
       status: 'completed',
@@ -55,7 +55,9 @@ describe('subagent update markup', () => {
     expect(xml.indexOf('<changed_file>a&lt;&amp;</changed_file>')).toBeLessThan(
       xml.indexOf('<changed_file>b</changed_file>')
     );
-    expect(xml).toContain('<evidence startLine="3" endLine="8">a&lt;&amp;</evidence>');
+    expect(xml).not.toContain('<verification');
+    expect(xml).not.toContain('<evidence');
+    expect(xml).toContain('truncated="false"');
     expect(xml).toContain('deliveryStatus="applied"');
   });
 

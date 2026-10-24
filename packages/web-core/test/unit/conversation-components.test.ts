@@ -1147,7 +1147,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       props.value = { ...props.value, turns: turns('first') };
       await rendering;
       await nextTick();
-      expect(setupState?.['renderedItemCount']).toBe(9);
+      expect(setupState?.['renderedItemCount']).toBe(2);
       const staleFrame = [...frames.values()][0]!;
       props.value = { ...props.value, initializing: true, turns: turns('second') };
       await nextTick();
@@ -1159,7 +1159,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(frames.size).toBe(0);
       props.value = { ...props.value, initializing: false };
       await nextTick();
-      for (let batch = 0; batch < 20 && frames.size > 0; batch += 1) {
+      for (let batch = 0; batch < 120 && frames.size > 0; batch += 1) {
         const [id, callback] = [...frames.entries()][0]!;
         frames.delete(id);
         await callback(0);
@@ -1290,11 +1290,17 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html.match(/class="process-heading"/gu)).toHaveLength(2);
     expect(html).toContain('data-process-id="process-one"');
     expect(html).toContain('data-process-id="process-two"');
-    const markers = ['First process reasoning marker', 'Second process marker'];
+    const markers = [
+      'data-process-id="process-one"',
+      'data-process-id="process-two"',
+      'Second process marker'
+    ];
+    expect(html).not.toContain('First process reasoning marker');
     expect(html).not.toContain('First process tool marker');
     expect(html).not.toContain('First process command marker');
     // Collapsing affects mounting, not authoritative membership or record order.
     const projected = conversationWorkProcessBlocks([conversationTurn(items)])[0]!;
+    expect(projected.preview?.text).toBe('First process reasoning marker');
     expect(
       projected.entries.flatMap(({ displayItem }) =>
         'items' in displayItem ? displayItem.items.map((item) => item.id) : [displayItem.item.id]
@@ -1437,9 +1443,15 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
       expect(html).toContain('data-process-id="process-before"');
       expect(html).toContain('data-process-id="process-after"');
-      expect(html).toContain('Before compact');
-      expect(html).toContain('After compact');
-      expect(html.indexOf('Before compact')).toBeLessThan(html.indexOf('After compact'));
+      expect(html).not.toContain('Before compact');
+      const positions = [
+        'data-process-id="process-before"',
+        'data-entry-key="session-1:compact"',
+        'data-process-id="process-after"',
+        'After compact'
+      ].map((marker) => html.indexOf(marker));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((left, right) => left - right));
     }
   );
 
@@ -1495,9 +1507,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
     expect(html).toContain('data-process-id="process-before-reply"');
     expect(html).toContain('data-process-id="process-after-reply"');
+    expect(html).not.toContain('Before reply process marker');
     const positions = [
-      'Before reply process marker',
+      'data-process-id="process-before-reply"',
       'The reply establishes a process boundary.',
+      'data-process-id="process-after-reply"',
       'After reply process marker'
     ].map((marker) => html.indexOf(marker));
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -1621,7 +1635,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
   });
 
   it.each(['summary', 'visible_thinking', 'unspecified'])(
-    'shows %s previews above the process and in its own collapsed reasoning row',
+    'shows %s previews above only the active process and retains its reasoning row',
     async (representation) => {
       const text =
         representation === 'summary'
@@ -1643,8 +1657,41 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(html).not.toContain('full thinking detail');
       expect(html).not.toContain('Full summary detail');
       const closed = await render(ConversationTimeline, { ...props, runs: [] });
-      expect(closed).toMatch(/class="process-summary"[^>]*>Inspect files<\/p>/u);
+      expect(closed).not.toContain('class="process-summary"');
       expect(closed).not.toContain('reasoning-subtitle');
+      const sealed = await render(ConversationTimeline, {
+        ...props,
+        turns: [
+          conversationTurn(
+            [reasoning, conversationItem('reply', 'assistant_message', { text: 'Public reply' })],
+            { status: 'RUNNING' }
+          )
+        ]
+      });
+      expect(sealed).not.toContain('class="process-summary"');
+      expect(sealed).toContain('Public reply');
+    }
+  );
+
+  it.each(['SUCCEEDED', 'CANCELLED', 'FAILED'])(
+    'hides the top preview after the process Run reaches %s',
+    async (status) => {
+      const reasoning = {
+        ...conversationItem('terminal-preview', 'reasoning', {
+          representation: 'summary',
+          sections: [{ text: '**Inspect files**\nFull summary detail' }]
+        }),
+        processGroup: { id: 'terminal-process', isStart: true as const }
+      };
+      const html = await render(ConversationTimeline, {
+        ...timelineProps,
+        synchronized: true,
+        runs: [{ id: 'run-1', status }],
+        turns: [conversationTurn([reasoning], { status })]
+      });
+      expect(html).toContain('data-process-id="terminal-process"');
+      expect(html).not.toContain('class="process-summary"');
+      expect(html).toContain('aria-expanded="false"');
     }
   );
 

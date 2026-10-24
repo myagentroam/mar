@@ -147,6 +147,118 @@ function controller() {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('coordinates a group change only within the same Workspace', async () => {
+    const { page } = controller();
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionGroups: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    await flushComponent();
+    captured.restartWorkspace.mockClear();
+
+    page.selectWorkspaceSessionGroup('CHILD');
+    await flushComponent();
+    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-a');
+
+    captured.restartWorkspace.mockClear();
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-b' };
+    await flushComponent();
+    expect(page.workspaceSessionGroup.value).toBe('MAIN');
+    expect(captured.restartWorkspace).not.toHaveBeenCalled();
+
+    page.selectWorkspaceSessionGroup('CHILD');
+    await flushComponent();
+    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
+  });
+
+  it('shows only sessions in the current group page while retaining the selected session body', async () => {
+    const { page } = controller();
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionGroups: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.selectedSessionId.value = 'body-session';
+    page.sessions.value = [
+      {
+        id: 'body-session',
+        workspaceId: 'workspace-a',
+        runner: 'codex',
+        externalSessionId: 'native-body',
+        sessionGroup: 'MAIN'
+      },
+      {
+        id: 'listed-main',
+        workspaceId: 'workspace-a',
+        runner: 'codex',
+        externalSessionId: 'native-listed',
+        sessionGroup: 'MAIN'
+      },
+      {
+        id: 'cached-ghost',
+        workspaceId: 'workspace-a',
+        runner: 'codex',
+        externalSessionId: 'native-ghost',
+        sessionGroup: 'MAIN'
+      }
+    ];
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          sessions: [
+            {
+              id: 'listed-main',
+              workspaceId: 'workspace-a',
+              runner: 'codex',
+              externalSessionId: 'native-listed',
+              sessionGroup: 'MAIN'
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    );
+
+    await page.refreshWorkspaceSessions();
+
+    expect(page.sessions.value.map((session) => session.id)).toContain('body-session');
+    expect(page.sessions.value.map((session) => session.id)).toContain('cached-ghost');
+    expect(page.visibleWorkspaceSessions.value.map((session) => session.id)).toEqual([
+      'listed-main'
+    ]);
+  });
+
+  it('does not project ordinary session broadcasts before a Session Watch initial', () => {
+    const { page } = controller();
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.selectedSessionId.value = 'session-a';
+    const session = {
+      id: 'session-a',
+      workspaceId: 'workspace-a',
+      runner: 'codex' as const,
+      externalSessionId: 'native-a',
+      runnerTitle: 'Original title',
+      activity: 'IDLE' as const
+    };
+    page.sessions.value = [session];
+    captured.live!.onEvent({
+      nodeId: 'node-a',
+      sequence: 1,
+      category: 'session',
+      payload: {
+        session: { ...session, runnerTitle: 'Broadcast title', activity: 'MANAGED_ACTIVE' }
+      }
+    });
+    expect(page.sessions.value).toEqual([session]);
+  });
+
   it('toggles active mobile top menus without changing their selected page', () => {
     const { page } = controller();
     page.mobileViewport.value = true;

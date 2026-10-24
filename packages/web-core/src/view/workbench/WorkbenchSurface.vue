@@ -245,8 +245,11 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         />
       </template>
     </WorkbenchHeader>
-    <section v-if="page.view === 'nodes'" class="session-layout">
-      <section v-if="page.workspaceTarget === undefined" class="welcome-panel compact-welcome">
+    <section v-show="page.view === 'nodes'" class="session-layout">
+      <section
+        v-if="page.view === 'nodes' && page.workspaceTarget === undefined"
+        class="welcome-panel compact-welcome"
+      >
         <h1>{{ translate('generated.workbenchSurface.selectAWorkspace') }}</h1>
         <p>
           {{ translate('generated.workbenchSurface.selectANodeInTheResourceExplorer') }}
@@ -258,7 +261,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           }}</el-button>
         </p>
       </section>
-      <template v-else>
+      <template v-else-if="page.view === 'nodes' && page.workspaceTarget !== undefined">
         <WorkspaceTabs
           v-if="page.mobileViewport"
           placement="body"
@@ -331,6 +334,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :class="['workspace-grid', `mobile-surface-${page.mobileWorkspaceSurface}`]"
         >
           <WorkspaceSessionList
+            :session-group="page.workspaceSessionGroup"
+            :group-state="page.workspaceSessionGroupState"
+            @select-group="page.selectWorkspaceSessionGroup"
+            @move-to-main="page.moveSessionToMain"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
             :mobile-viewport="page.mobileViewport"
@@ -542,6 +549,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @drag-start="page.draggingQueueItemId = $event"
                     @reorder="page.reorderWorkspaceQueue"
                     @edit="page.composerQueueService.startEditing($event)"
+                    @cancel-edit="page.composerQueueService.finishEditing()"
                     @update-content="page.editingQueueContent = $event"
                     @save="page.saveQueuedMessage"
                     @execute="
@@ -715,57 +723,55 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             />
           </aside>
         </div>
-        <div
-          v-for="tab in page.workspaceTabs"
-          :key="tab.id"
-          v-show="tab.id === page.activeWorkspaceTabId && page.terminalReady"
-          tabindex="-1"
-          :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'terminal'"
-          :class="[
-            'terminal-dock',
-            { 'mobile-active': page.mobileWorkspaceSurface === 'terminal' }
-          ]"
-        >
-          <TerminalDock
-            :error-message="errorMessage"
-            :ref="
-              (instance) => {
-                if (instance === null) page.terminalDocks.delete(tab.id);
-                else
-                  page.terminalDocks.set(
-                    tab.id,
-                    instance as unknown as {
-                      release(): Promise<void>;
-                      toggle(): Promise<void>;
-                    }
-                  );
-              }
-            "
-            :node-id="tab.nodeId"
-            :direct="page.terminalDirectClient"
-            :workspace-id="tab.workspaceId"
-            :csrf-token="page.csrfToken"
-            :renew-csrf-token="page.renewCsrfToken"
-            :enabled="tab.id === page.activeWorkspaceTabId && page.terminalReady"
-            :capability="page.nodeManifest?.terminal"
-            :node-os-release="
-              page.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease
-            "
-            :visible="
-              tab.id === page.activeWorkspaceTabId &&
-              page.terminalReady &&
-              (!page.mobileViewport || page.mobileWorkspaceSurface === 'terminal')
-            "
-            :mobile-mode="page.mobileViewport"
-            :active="tab.id === page.activeWorkspaceTabId"
-            @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
-            @notice="page.notice"
-          />
-        </div>
       </template>
+      <div
+        v-for="tab in page.workspaceTabs"
+        :key="tab.id"
+        v-show="tab.id === page.activeWorkspaceTabId && page.terminalReady"
+        tabindex="-1"
+        :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'terminal'"
+        :class="['terminal-dock', { 'mobile-active': page.mobileWorkspaceSurface === 'terminal' }]"
+      >
+        <TerminalDock
+          :error-message="errorMessage"
+          :ref="
+            (instance) => {
+              if (instance === null) page.terminalDocks.delete(tab.id);
+              else
+                page.terminalDocks.set(
+                  tab.id,
+                  instance as unknown as {
+                    release(): Promise<void>;
+                    toggle(): Promise<void>;
+                  }
+                );
+            }
+          "
+          :node-id="tab.nodeId"
+          :direct="page.terminalDirectClient"
+          :workspace-id="tab.workspaceId"
+          :csrf-token="page.csrfToken"
+          :renew-csrf-token="page.renewCsrfToken"
+          :enabled="
+            page.view === 'nodes' && tab.id === page.activeWorkspaceTabId && page.terminalReady
+          "
+          :capability="page.nodeManifest?.terminal"
+          :node-os-release="page.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease"
+          :visible="
+            page.view === 'nodes' &&
+            tab.id === page.activeWorkspaceTabId &&
+            page.terminalReady &&
+            (!page.mobileViewport || page.mobileWorkspaceSurface === 'terminal')
+          "
+          :mobile-mode="page.mobileViewport"
+          :active="page.view === 'nodes' && tab.id === page.activeWorkspaceTabId"
+          @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
+          @notice="page.notice"
+        />
+      </div>
     </section>
     <HostedConversationWorkspacePage
-      v-else-if="page.view === 'conversations'"
+      v-if="page.view === 'conversations'"
       :connected="page.liveConnected"
       :workspace="page.hostedConversationWorkspace"
       :request="page.request"
@@ -806,7 +812,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         />
       </slot>
     </template>
-    <template v-else>
+    <template v-else-if="page.view === 'management'">
       <slot name="management-notice" />
       <component
         :is="managementPage.component"

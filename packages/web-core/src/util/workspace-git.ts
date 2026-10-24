@@ -107,6 +107,20 @@ export function changeEntries(value: unknown): readonly ChangeEntry[] {
   return changeRepositories(value).flatMap((repository) => repository.changes);
 }
 
+export function limitChangeRepositories(
+  repositories: readonly ChangeRepository[],
+  limit: number
+): readonly ChangeRepository[] {
+  let remaining = limit;
+  return repositories.flatMap((repository) => {
+    if (repository.changes.length === 0) return [repository];
+    if (remaining <= 0) return [];
+    const changes = repository.changes.slice(0, remaining);
+    remaining -= changes.length;
+    return [{ ...repository, changes }];
+  });
+}
+
 export function hasExplicitChangeRepositoryGroups(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false;
   const repositories = (value as { readonly repositories?: unknown }).repositories;

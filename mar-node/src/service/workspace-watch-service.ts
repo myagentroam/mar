@@ -15,6 +15,9 @@ export class WorkspaceWatchService {
   parseTopics(input: Record<string, unknown>): WorkspaceWatch['topics'] {
     if (!plain(input.topics)) throw new Error('WORKSPACE_WATCH_INVALID');
     const sessions = input.topics.sessions === true;
+    const sessionGroup = input.topics.sessionGroup;
+    if (sessionGroup !== undefined && sessionGroup !== 'MAIN' && sessionGroup !== 'CHILD')
+      throw new Error('WORKSPACE_WATCH_INVALID');
     const changes = input.topics.changes === true;
     const rawFiles = input.topics.files;
     let files: WorkspaceWatch['topics']['files'];
@@ -37,7 +40,7 @@ export class WorkspaceWatchService {
       };
     }
     if (!sessions && !changes && files === undefined) throw new Error('WORKSPACE_WATCH_INVALID');
-    return { sessions, changes, files };
+    return { sessions, changes, files, ...(sessionGroup === undefined ? {} : { sessionGroup }) };
   }
 
   key(input: Record<string, unknown>): string {

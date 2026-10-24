@@ -1,10 +1,12 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { ref, watch, type Ref } from 'vue';
+import { computed, ref, watch, type Ref } from 'vue';
+import type { SessionGroup, SessionRunningCounts } from '@myagentroam/protocol';
 import type { AgentRun, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
 
 interface SessionPage {
+  readonly runningCounts?: SessionRunningCounts;
   readonly sessions: Session[];
   readonly nextCursor: string | null;
 }
@@ -25,12 +27,30 @@ export function createWorkspaceSessionService(options: {
   readonly selectedSessionId: Ref<string | undefined>;
   readonly paging: SessionPaging;
   readonly pageSize: number;
+  readonly groupingSupported?: () => boolean;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
   const refreshing = ref(false);
+  const groups = ref(new Map<string, SessionGroup>());
+  const runningCounts = ref<SessionRunningCounts>({ MAIN: 0, CHILD: 0 });
+  const listedSessionIds = ref<ReadonlySet<string>>(new Set());
+  const currentGroup = computed<SessionGroup | undefined>(() => {
+    const target = options.workspaceTarget.value;
+    if (target === undefined || options.groupingSupported?.() !== true) return undefined;
+    return groups.value.get(options.tabId(target.nodeId, target.workspaceId)) ?? 'MAIN';
+  });
+  const groupQuery = () =>
+    currentGroup.value === undefined ? '' : `&sessionGroup=${currentGroup.value}`;
+
+  function selectGroup(group: SessionGroup): void {
+    const target = options.workspaceTarget.value;
+    if (target === undefined || currentGroup.value === undefined || currentGroup.value === group)
+      return;
+    groups.value.set(options.tabId(target.nodeId, target.workspaceId), group);
+  }
   const searchQuery = ref('');
   const searchResults = ref<Session[]>([]);
   const searchNextCursor = ref<string | null>(null);
@@ -42,6 +62,31 @@ export function createWorkspaceSessionService(options: {
     { readonly id: string; readonly generation: number; readonly page: SessionPage } | undefined;
   let searchGeneration = 0;
   let loadMoreOperation = 0;
+
+  watch(
+    currentGroup,
+    () => {
+      const target = options.workspaceTarget.value;
+      if (target === undefined) return;
+      const id = options.tabId(target.nodeId, target.workspaceId);
+      synchronizationGenerations.set(id, (synchronizationGenerations.get(id) ?? 0) + 1);
+      latestSnapshot = undefined;
+      loadMoreOperation += 1;
+      options.paging.loadingMore.value = false;
+      options.paging.reset(id);
+      options.paging.nextCursors.value.set(id, null);
+      options.sessions.value = options.sessions.value.filter(
+        (session) =>
+          session.workspaceId !== target.workspaceId ||
+          session.id === options.selectedSessionId.value
+      );
+      listedSessionIds.value = new Set();
+      const query = searchQuery.value;
+      clearSearch();
+      if (query) void search(query);
+    },
+    { flush: 'sync' }
+  );
 
   function preserveStablePresentation(current: Session | undefined, next: Session): Session {
     let merged = next;
@@ -165,10 +210,12 @@ export function createWorkspaceSessionService(options: {
   }
 
   function applySnapshot(nodeId: string, workspaceId: string, page: SessionPage): void {
+    if (page.runningCounts !== undefined) runningCounts.value = page.runningCounts;
     const id = options.tabId(nodeId, workspaceId);
     const generation = (synchronizationGenerations.get(id) ?? 0) + 1;
     synchronizationGenerations.set(id, generation);
     latestSnapshot = { id, generation, page };
+    listedSessionIds.value = new Set(page.sessions.map((session) => session.id));
     options.paging.initialize(id);
     merge(page.sessions, { authoritativeOrder: true, authoritativeActivity: true });
     options.paging.nextCursors.value.set(id, page.nextCursor);
@@ -179,6 +226,7 @@ export function createWorkspaceSessionService(options: {
     ) {
       loadMoreOperation += 1;
       options.paging.loadingMore.value = false;
+      if (searchQuery.value && currentGroup.value !== undefined) void search(searchQuery.value);
     }
   }
 
@@ -207,11 +255,15 @@ export function createWorkspaceSessionService(options: {
     options.paging.loadMoreErrors.value.delete(id);
     try {
       const result = await options.request<SessionPage>(
-        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}&cursor=${encodeURIComponent(cursor)}`
+        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}${groupQuery()}&cursor=${encodeURIComponent(cursor)}`
       );
       if (!isCurrent()) return;
       if (result.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
       merge(result.sessions);
+      listedSessionIds.value = new Set([
+        ...listedSessionIds.value,
+        ...result.sessions.map((session) => session.id)
+      ]);
       options.paging.append(id, result.sessions.length, result.nextCursor);
     } catch (error) {
       if (!isCurrent()) return;
@@ -237,7 +289,7 @@ export function createWorkspaceSessionService(options: {
     searching.value = true;
     try {
       const result = await options.request<SessionPage>(
-        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}&query=${encodeURIComponent(normalized)}`
+        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}${groupQuery()}&query=${encodeURIComponent(normalized)}`
       );
       if (
         generation !== searchGeneration ||
@@ -248,6 +300,7 @@ export function createWorkspaceSessionService(options: {
         return;
       searchResults.value = result.sessions;
       searchNextCursor.value = result.nextCursor;
+      if (result.runningCounts !== undefined) runningCounts.value = result.runningCounts;
     } catch (error) {
       if (generation === searchGeneration)
         options.notice(options.errorMessage(error), 'error', error);
@@ -268,6 +321,8 @@ export function createWorkspaceSessionService(options: {
 
   watch(options.workspaceTarget, () => {
     clearSearch();
+    listedSessionIds.value = new Set();
+    runningCounts.value = { MAIN: 0, CHILD: 0 };
     loadMoreOperation += 1;
     options.paging.loadingMore.value = false;
   });
@@ -297,7 +352,7 @@ export function createWorkspaceSessionService(options: {
     loadMoreSearchResultsError.value = undefined;
     try {
       const result = await options.request<SessionPage>(
-        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}&cursor=${encodeURIComponent(cursor)}&query=${encodeURIComponent(query)}`
+        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}${groupQuery()}&cursor=${encodeURIComponent(cursor)}&query=${encodeURIComponent(query)}`
       );
       if (!isCurrent()) return;
       if (result.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
@@ -334,7 +389,7 @@ export function createWorkspaceSessionService(options: {
       options.workspaceTarget.value?.workspaceId === workspaceId;
     const firstPage = await options
       .request<SessionPage>(
-        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}`
+        `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(workspaceId)}&limit=${options.pageSize}${groupQuery()}`
       )
       .catch((error) => {
         if (!isCurrent()) return undefined;
@@ -362,7 +417,9 @@ export function createWorkspaceSessionService(options: {
     }
     if (firstPage !== undefined) {
       options.paging.reset(id);
+      listedSessionIds.value = new Set(firstPage.sessions.map((session) => session.id));
       merge(firstPage.sessions, { authoritativeOrder: true });
+      if (firstPage.runningCounts !== undefined) runningCounts.value = firstPage.runningCounts;
       options.paging.nextCursors.value.set(id, firstPage.nextCursor);
     }
     if (throwOnError) return firstPage;
@@ -373,13 +430,18 @@ export function createWorkspaceSessionService(options: {
     if (workspaceId === undefined || refreshing.value) return;
     refreshing.value = true;
     try {
-      await synchronize(workspaceId);
+      if (searchQuery.value) await search(searchQuery.value);
+      else await synchronize(workspaceId);
     } finally {
       refreshing.value = false;
     }
   }
 
   return {
+    currentGroup,
+    selectGroup,
+    runningCounts,
+    listedSessionIds,
     refreshing,
     searchQuery,
     searchResults,

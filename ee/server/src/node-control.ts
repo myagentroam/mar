@@ -96,6 +96,9 @@ export class NodeControl extends NodeIdentityControl {
   private readonly terminalRelay: TerminalRelayService;
   private readonly messageProjector: NodeMessageProjector;
   private notificationHandler?: (nodeId: string, payload: unknown) => Promise<boolean>;
+  private sessionGroupChangedHandler?: (
+    change: import('@myagentroam/protocol').SessionGroupChanged
+  ) => Promise<void>;
   private hostedConversationActivityHandler?: (
     nodeId: string,
     payload: unknown
@@ -193,6 +196,8 @@ export class NodeControl extends NodeIdentityControl {
       revoked: (connectionId, code) => this.terminalDirect.revokeConnection(connectionId, code)
     });
     this.messageProjector = new NodeMessageProjector({
+      sessionGroupChanged: (change) =>
+        this.sessionGroupChangedHandler?.(change) ?? Promise.resolve(),
       relay: this.workbenchRelay,
       notification: (nodeId, payload) =>
         this.notificationHandler?.(nodeId, payload) ?? Promise.resolve(false),
@@ -210,6 +215,12 @@ export class NodeControl extends NodeIdentityControl {
 
   setNotificationHandler(handler: (nodeId: string, payload: unknown) => Promise<boolean>): void {
     this.notificationHandler = handler;
+  }
+
+  setSessionGroupChangedHandler(
+    handler: (change: import('@myagentroam/protocol').SessionGroupChanged) => Promise<void>
+  ): void {
+    this.sessionGroupChangedHandler = handler;
   }
 
   setHostedConversationActivityHandler(
@@ -283,7 +294,9 @@ export class NodeControl extends NodeIdentityControl {
     this.requestBroker.rejectNode(nodeId, new Error('NODE_OFFLINE'));
     this.terminalRelay.disconnectNode(nodeId);
     this.workbenchRelay.broadcast({ type: 'node', nodeId, connected: false });
-    void this.recentRunDisconnectHandler?.(nodeId).catch(() => undefined);
+    void this.messageProjector
+      .enqueueSessionProjection(nodeId, async () => this.recentRunDisconnectHandler?.(nodeId))
+      .catch(() => undefined);
   }
 
   /**
@@ -523,14 +536,16 @@ export class NodeControl extends NodeIdentityControl {
       return true;
     }
     if (envelope.type === 'notification.channels.send') {
-      await resolveNotificationChannels({
-        nodeId,
-        envelope,
-        isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        service: this.notificationChannels,
-        respond: (payload) =>
-          this.send(socket, 'notification.channels.response', payload, envelope.id)
-      });
+      await this.messageProjector.enqueueSessionProjection(nodeId, () =>
+        resolveNotificationChannels({
+          nodeId,
+          envelope,
+          isCurrentConnection: () => this.sockets.get(nodeId) === socket,
+          service: this.notificationChannels,
+          respond: (payload) =>
+            this.send(socket, 'notification.channels.response', payload, envelope.id)
+        })
+      );
       return true;
     }
     if (envelope.type === 'restart.authorize') {

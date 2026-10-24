@@ -27,6 +27,7 @@ interface SessionLifecycleServiceOptions {
   readonly identity: SessionIdentityService;
   readonly present: (session: NodeAgentSession) => unknown;
   readonly emitSession: (session: NodeAgentSession) => void;
+  readonly parentCleared?: (session: NodeAgentSession) => void;
   readonly invalidateWorkspaceSessions: (workspaceId: string) => void;
   readonly execute: (operation: string, data: Record<string, unknown>) => Promise<unknown>;
   readonly interceptedSessionId: (clientMessageId: string) => string | undefined;
@@ -52,6 +53,15 @@ export class SessionLifecycleService {
   }
 
   private async updateMetadata(input: Record<string, unknown>): Promise<unknown> {
+    if (
+      input.parentSessionId !== undefined ||
+      (input.clearParent !== undefined &&
+        (input.clearParent !== true ||
+          input.customTitle !== undefined ||
+          input.pinned !== undefined ||
+          input.sessionPrompt !== undefined))
+    )
+      throw new Error('SESSION_INVALID');
     const sessionPrompt =
       input.sessionPrompt === undefined ? undefined : normalizeSessionPrompt(input.sessionPrompt);
     if (
@@ -70,6 +80,28 @@ export class SessionLifecycleService {
       this.options.runtime.getAgentSession(input.sessionId) ??
       (await this.options.projection.createMetadataProjection(input.sessionId));
     if (current === undefined) throw new Error('SESSION_NOT_FOUND');
+    if (input.clearParent === true) {
+      if (current.externalSessionId === null) throw new Error('SESSION_ACTIVATION_REQUIRED');
+      const metadata = this.options
+        .database()
+        .getNativeSessionMetadata(current.runner, current.externalSessionId, current.workspaceId);
+      const parentSessionId =
+        metadata === undefined ? current.parentSessionId : metadata.parentSessionId;
+      if (parentSessionId == null) {
+        const next =
+          current.parentSessionId == null
+            ? current
+            : this.options.runtime.clearSessionParent(current.id);
+        return { session: this.options.present(next) };
+      }
+      this.options
+        .database()
+        .clearSessionParent(current.runner, current.externalSessionId, current.workspaceId);
+      const next = this.options.runtime.clearSessionParent(current.id);
+      this.options.parentCleared?.(next);
+      this.options.emitSession(next);
+      return { session: this.options.present(next) };
+    }
     if (sessionPrompt !== undefined && current.externalSessionId === null)
       throw new Error('SESSION_ACTIVATION_REQUIRED');
     if (input.pinned === false) {

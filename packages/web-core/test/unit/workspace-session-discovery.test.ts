@@ -6,7 +6,8 @@ import { createWorkspaceSessionPagingService } from '../../src/service/workspace
 
 function state(
   runs: readonly Record<string, unknown>[] = [],
-  request: ReturnType<typeof vi.fn> = vi.fn()
+  request: ReturnType<typeof vi.fn> = vi.fn(),
+  groupingSupported?: () => boolean
 ) {
   const sessions = ref<Record<string, unknown>[]>([]);
   const selectedNodeId = ref('node-1');
@@ -20,6 +21,7 @@ function state(
     selectedSessionId: { value: 'session-1' } as never,
     paging,
     pageSize: 10,
+    ...(groupingSupported === undefined ? {} : { groupingSupported }),
     tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
     request: request as never,
     notice,
@@ -378,6 +380,177 @@ describe('Web Workspace Session Discovery', () => {
     expect(controller.searchResults.value.map((session) => session.id)).toEqual(['remote-match']);
     expect(controller.searchNextCursor.value).toBe('next-search-page');
     expect(sessions.value.map((session) => session.id)).toEqual(['loaded-only']);
+  });
+
+  it('keeps group selection per Workspace and leaves unsupported Nodes on the mixed list', async () => {
+    const grouped = state(
+      [],
+      vi.fn().mockResolvedValue({ sessions: [], nextCursor: null }),
+      () => true
+    );
+    expect(grouped.controller.currentGroup.value).toBe('MAIN');
+    grouped.controller.selectGroup('CHILD');
+    expect(grouped.controller.currentGroup.value).toBe('CHILD');
+
+    grouped.selectedWorkspaceId.value = 'workspace-2';
+    await nextTick();
+    expect(grouped.controller.currentGroup.value).toBe('MAIN');
+    grouped.controller.selectGroup('CHILD');
+    grouped.selectedWorkspaceId.value = 'workspace-1';
+    await nextTick();
+    expect(grouped.controller.currentGroup.value).toBe('CHILD');
+
+    grouped.selectedNodeId.value = 'node-2';
+    await nextTick();
+    expect(grouped.controller.currentGroup.value).toBe('MAIN');
+    grouped.controller.selectGroup('CHILD');
+    grouped.selectedNodeId.value = 'node-1';
+    await nextTick();
+    expect(grouped.controller.currentGroup.value).toBe('CHILD');
+
+    const legacyRequest = vi.fn().mockResolvedValue({ sessions: [], nextCursor: null });
+    const legacy = state([], legacyRequest);
+    expect(legacy.controller.currentGroup.value).toBeUndefined();
+    legacy.controller.selectGroup('CHILD');
+    await legacy.controller.synchronize('workspace-1');
+    expect(legacy.controller.currentGroup.value).toBeUndefined();
+    expect(legacyRequest).toHaveBeenCalledWith(
+      '/api/agent-sessions?nodeId=node-1&workspaceId=workspace-1&limit=10'
+    );
+  });
+
+  it('includes the selected group in every Workspace list and search request', async () => {
+    const request = vi.fn().mockResolvedValue({ sessions: [], nextCursor: 'next' });
+    const { controller, paging } = state([], request, () => true);
+
+    await controller.synchronize('workspace-1');
+    await controller.loadMore();
+    await controller.search('needle');
+    await controller.loadMoreSearchResults();
+    await controller.refresh();
+
+    expect(request).toHaveBeenCalledTimes(5);
+    expect(request.mock.calls.every(([path]) => path.includes('sessionGroup=MAIN'))).toBe(true);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('next');
+  });
+
+  it('tracks current page membership across snapshots, synchronization, pagination, and group changes', async () => {
+    const appended = { id: 'appended', workspaceId: 'workspace-1', runner: 'codex' };
+    const synchronized = { id: 'synchronized', workspaceId: 'workspace-1', runner: 'codex' };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ sessions: [appended], nextCursor: 'append-cursor' })
+      .mockResolvedValueOnce({ sessions: [synchronized], nextCursor: null });
+    const { controller, sessions } = state([], request, () => true);
+    const currentBodySession = {
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const
+    };
+    sessions.value = [currentBodySession, { ...currentBodySession, id: 'cached-only' }];
+
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: [{ id: 'snapshot', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: 'first-cursor'
+    });
+    expect(controller.listedSessionIds.value).toEqual(new Set(['snapshot']));
+
+    await controller.loadMore();
+    expect(controller.listedSessionIds.value).toEqual(new Set(['snapshot', 'appended']));
+    expect(sessions.value.some((session) => session.id === currentBodySession.id)).toBe(true);
+
+    await controller.synchronize('workspace-1');
+    expect(controller.listedSessionIds.value).toEqual(new Set(['synchronized']));
+    expect(sessions.value.some((session) => session.id === currentBodySession.id)).toBe(true);
+
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: [{ id: 'watch-replacement', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: null
+    });
+    expect(controller.listedSessionIds.value).toEqual(new Set(['watch-replacement']));
+
+    controller.selectGroup('CHILD');
+    expect(controller.listedSessionIds.value).toEqual(new Set());
+    expect(sessions.value.some((session) => session.id === currentBodySession.id)).toBe(true);
+  });
+
+  it('invalidates an old group page, clears pagination errors, and reruns search for the selected group', async () => {
+    let resolveMainAppend!: (page: unknown) => void;
+    const mainAppend = new Promise((resolve) => (resolveMainAppend = resolve));
+    const request = vi.fn((path: string) => {
+      if (path.includes('sessionGroup=CHILD'))
+        return Promise.resolve({
+          sessions: [{ id: 'child-result', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'child-search-cursor'
+        });
+      if (path.includes('cursor=main-cursor')) return mainAppend;
+      if (path.includes('query=release'))
+        return Promise.resolve({
+          sessions: [{ id: 'main-result', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: 'main-search-cursor'
+        });
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const { controller, paging, sessions } = state([], request, () => true);
+    sessions.value = [{ id: 'main-loaded', workspaceId: 'workspace-1', runner: 'codex' }];
+    paging.nextCursors.value.set('node-1:workspace-1', 'main-cursor');
+    paging.loadMoreErrors.value.set('node-1:workspace-1', new Error('old page failure'));
+
+    await controller.search('release');
+    const oldAppend = controller.loadMore();
+    controller.selectGroup('CHILD');
+    resolveMainAppend({
+      sessions: [{ id: 'stale-main-page', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: null
+    });
+    await oldAppend;
+    await vi.waitFor(() => expect(controller.searchResults.value[0]?.id).toBe('child-result'));
+
+    expect(request.mock.calls[0]?.[0]).toContain('sessionGroup=MAIN');
+    expect(request.mock.calls[1]?.[0]).toContain('sessionGroup=MAIN');
+    expect(request.mock.calls[2]?.[0]).toContain('sessionGroup=CHILD');
+    expect(controller.currentGroup.value).toBe('CHILD');
+    expect(controller.searchQuery.value).toBe('release');
+    expect(controller.searchNextCursor.value).toBe('child-search-cursor');
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBeNull();
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(sessions.value.some((session) => session.id === 'stale-main-page')).toBe(false);
+  });
+
+  it('refreshes the active grouped search after a move without waiting for a Watch snapshot', async () => {
+    const child = {
+      id: 'child-match',
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const,
+      sessionGroup: 'CHILD' as const
+    };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ sessions: [child], nextCursor: 'child-search-cursor' })
+      .mockResolvedValue({
+        sessions: [],
+        nextCursor: null,
+        runningCounts: { MAIN: 1, CHILD: 0 }
+      });
+    const { controller } = state([], request, () => true);
+    controller.selectGroup('CHILD');
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: [child],
+      nextCursor: null,
+      runningCounts: { MAIN: 0, CHILD: 1 }
+    });
+    await controller.search('release');
+    expect(controller.searchResults.value.map((session) => session.id)).toEqual(['child-match']);
+
+    controller.merge([{ ...child, sessionGroup: 'MAIN' }]);
+    await controller.refresh();
+
+    expect(controller.searchQuery.value).toBe('release');
+    expect(controller.searchResults.value).toEqual([]);
+    expect(controller.searchNextCursor.value).toBeNull();
+    expect(controller.runningCounts.value).toEqual({ MAIN: 1, CHILD: 0 });
+    expect(request.mock.calls[1]?.[0]).toContain('sessionGroup=CHILD&query=release');
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it('Retains search results and cursor after an append failure, then retries successfully', async () => {

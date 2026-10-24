@@ -128,6 +128,36 @@ describe('Visible history render budget', () => {
     ).toBe(40);
   });
 
+  it('limits large visible records by content size across progressive frames', () => {
+    const turns = [
+      turn(
+        Array.from({ length: 3 }, (_, index) =>
+          item(`reply-${index}`, 'assistant_message', { payload: { text: 'x'.repeat(96) } })
+        )
+      )
+    ];
+    const blocks = conversationWorkProcessBlocks(turns);
+
+    expect(nextConversationRenderItemCount(turns, 0, blocks, () => undefined, 8, 128)).toBe(1);
+    expect(nextConversationRenderItemCount(turns, 1, blocks, () => undefined, 8, 128)).toBe(2);
+  });
+
+  it.each([undefined, false])('does not charge folded payloads to the content budget', (open) => {
+    const turns = [
+      turn(
+        Array.from({ length: 30 }, (_, index) =>
+          item(`tool-${index}`, 'command_execution', {
+            processGroup: { id: 'large-folded', ...(index === 0 ? { isStart: true } : {}) },
+            payload: { output: 'x'.repeat(96) }
+          })
+        )
+      )
+    ];
+    const blocks = conversationWorkProcessBlocks(turns);
+
+    expect(nextConversationRenderItemCount(turns, 0, blocks, () => open, 8, 64)).toBe(30);
+  });
+
   it('does not share group visibility across session identities', () => {
     const turns = [
       turn(commands('same', 20)),

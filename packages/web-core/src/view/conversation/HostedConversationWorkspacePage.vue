@@ -161,6 +161,7 @@ function retryDirectoryAppend(): void {
   void props.workspace.loadMoreConversations();
 }
 const openingConversationKey = ref<string>();
+let openingConversationSequence = 0;
 const waitingForSnapshot = computed(
   () =>
     props.connected !== false &&
@@ -410,8 +411,9 @@ async function openConversation(
   conversation: HostedConversationSummary,
   closePanels = true
 ): Promise<void> {
-  if (openingConversationKey.value !== undefined) return;
   const key = conversationKey(conversation);
+  if (openingConversationKey.value === key) return;
+  const sequence = ++openingConversationSequence;
   openingConversationKey.value = key;
   entry.suspend();
   draftingNewConversation.value = false;
@@ -419,9 +421,10 @@ async function openConversation(
   try {
     await props.selectConversation(conversation);
   } catch (error) {
-    showMessage(hostedErrorMessage(error), 'error', error);
+    if (sequence === openingConversationSequence)
+      showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
-    if (openingConversationKey.value === key) openingConversationKey.value = undefined;
+    if (sequence === openingConversationSequence) openingConversationKey.value = undefined;
   }
 }
 
@@ -1362,7 +1365,6 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <div v-else class="files-draft-empty">
-        <MarIcon name="folder-open" aria-hidden="true" />
         <p>{{ translate('hostedConversations.filesAvailableAfterCreate') }}</p>
       </div>
     </aside>
@@ -1390,6 +1392,7 @@ onBeforeUnmount(() => {
           })
         "
         @focus="filePage?.focus()"
+        @close="filePreview.close"
       >
         <WorkspaceTextFilePage
           ref="filePage"
@@ -1806,17 +1809,9 @@ onBeforeUnmount(() => {
 }
 
 .files-draft-empty {
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-  padding: 28px 20px;
+  padding: 20px;
   color: var(--mar-text-tertiary);
   text-align: center;
-}
-
-.files-draft-empty > .mar-icon {
-  color: var(--mar-text-faint);
-  font-size: 24px;
 }
 
 .files-draft-empty p {

@@ -1344,7 +1344,7 @@ describe('persistent subagent sessions', () => {
     await controller.dispose();
   });
 
-  it('keeps running observations compact and restores complete bounded evidence at terminal', async () => {
+  it('keeps model observations compact while preserving automatic records for native inspection', async () => {
     const commentary = 'progress '.repeat(2_000);
     const { controller, releaseStart, releaseResult, startEntered } =
       await openingControllerFixture(4, [
@@ -1400,7 +1400,10 @@ describe('persistent subagent sessions', () => {
 
     releaseResult('completed');
     const terminal = await controller.output(started.agentId, { waitMs: 10_000 });
-    expect(terminal).toMatchObject({
+    expect(terminal.status).toBe('completed');
+    expect(terminal).not.toHaveProperty('verification');
+    expect(terminal).not.toHaveProperty('evidence');
+    expect(await controller.inspect(started.agentId)).toMatchObject({
       status: 'completed',
       verification: ['verification passed'],
       evidence: [{ path: 'src/a.ts', startLine: 1, endLine: 20 }]

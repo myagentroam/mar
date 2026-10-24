@@ -164,7 +164,8 @@ void load();
             ? translate('generated.licenseManagementPage.generating')
             : translate('generated.licenseManagementPage.generationFailed')
         "
-        :title="requestCode"
+        v-tooltip="requestCode"
+        :aria-label="translate('generated.licenseManagementPage.licenseRequestCode')"
         readonly
       >
         <template #append>

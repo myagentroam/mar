@@ -85,9 +85,6 @@ export function renderSubagentUpdate(snapshot: SubagentTaskSnapshot, truncated =
   }
   if (snapshot.summary !== undefined) field('summary', snapshot.summary);
   for (const path of snapshot.changedFiles ?? []) field('changed_file', path);
-  for (const text of snapshot.verification ?? []) field('verification', text);
-  for (const { path, startLine, endLine } of snapshot.evidence ?? [])
-    field('evidence', path, { startLine, endLine });
   if (snapshot.latestActivity) field('activity', '', snapshot.latestActivity);
   return root + ' truncated="' + String(truncated) + '">\n' + lines.join('') + close;
 }

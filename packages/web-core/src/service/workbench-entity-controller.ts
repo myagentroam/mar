@@ -54,6 +54,14 @@ export function createWorkbenchEntityController(options: {
     if (await options.actions.setSessionPinned(session, pinned)) await options.refreshSessions();
   }
 
+  async function moveSessionToMain(session: Session): Promise<void> {
+    const updated = await options.actions.moveSessionToMain(session);
+    if (updated !== undefined) {
+      options.replaceSession(session.id, updated);
+      await options.refreshSessions();
+    }
+  }
+
   async function movePinnedSession(session: Session, direction: 'up' | 'down'): Promise<void> {
     if (await options.actions.movePinnedSession(session, direction))
       await options.refreshSessions();
@@ -115,6 +123,7 @@ export function createWorkbenchEntityController(options: {
   return {
     renameNode,
     renameSession,
+    moveSessionToMain,
     setSessionPinned,
     movePinnedSession,
     movePinnedSessionTo,

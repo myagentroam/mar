@@ -91,7 +91,12 @@ const app = createApp({
             branch: 'develop',
             locked: false,
             prunable: false,
-            changes: [entry, { ...entry, path: 'src/other.ts' }]
+            changes: [
+              entry,
+              { ...entry, path: 'src/other.ts' },
+              { ...entry, path: 'src/new.ts', change: 'ADDED', state: 'UNTRACKED' as const },
+              { ...entry, path: 'src/deleted.ts', change: 'DELETED', state: 'STAGED' as const }
+            ]
           }
         ]),
         worktrees: ref([]),

@@ -43,7 +43,9 @@ export function renderComponent(
   slots: Record<string, unknown> = {},
   options: { validate?: () => Promise<boolean> } = {}
 ) {
+  const teleportRoot = element('teleport-root');
   const renderer = createRenderer<TestElement, TestElement>({
+    querySelector: () => teleportRoot,
     createElement: (tag) => element(tag),
     createText: (text) => element('#text', text),
     createComment: (text) => element('#comment', text),
@@ -90,6 +92,9 @@ export function renderComponent(
     'ElCheckTag',
     'ElSwitch',
     'ElTooltip',
+    'ElDropdown',
+    'ElDropdownMenu',
+    'ElDropdownItem',
     'ElEmpty',
     'ElDescriptions',
     'ElDescriptionsItem',

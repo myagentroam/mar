@@ -419,6 +419,34 @@ describe('Server Workbench notification service', () => {
     expect(database.raw.execute).not.toHaveBeenCalled();
   });
 
+  it('rejects ordinary notifications with an invalid session group before authorization or storage', async () => {
+    const database = {
+      raw: { execute: vi.fn() },
+      userCanRequestNode: vi.fn(async () => true)
+    };
+    const push = vi.fn();
+    const service = new WorkbenchNotificationService(database as never, push, () => 1_000);
+    const base = {
+      userId: 7,
+      notificationId: 'run:1',
+      kind: 'RUN_TERMINAL',
+      workspaceId: 'workspace-1',
+      targetType: 'WORKSPACE_SESSION',
+      sessionId: 'session-1',
+      sessionTitle: 'Session',
+      runId: 'run-1',
+      occurredAt: 900,
+      outcome: 'SUCCEEDED'
+    };
+
+    for (const sessionGroup of ['OTHER', 'main', null, 1])
+      expect(await service.consume('node-1', { ...base, sessionGroup })).toBe(false);
+
+    expect(database.userCanRequestNode).not.toHaveBeenCalled();
+    expect(database.raw.execute).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it('ignores expired notifications after authorization without accessing notification storage', async () => {
     const database = {
       raw: { execute: vi.fn() },
@@ -619,7 +647,12 @@ describe('Server Workbench notification service', () => {
     const push = vi.fn();
     const service = new WorkbenchNotificationService(database as never, push, () => now);
     expect(await service.list(7)).toEqual([
-      expect.objectContaining({ createdAt, updatedAt: createdAt, read: false })
+      expect.objectContaining({
+        createdAt,
+        updatedAt: createdAt,
+        read: false,
+        target: expect.objectContaining({ sessionGroup: 'MAIN' })
+      })
     ]);
 
     now = 20_000;
@@ -634,8 +667,150 @@ describe('Server Workbench notification service', () => {
 
     const restored = new WorkbenchNotificationService(database as never, vi.fn(), () => now);
     expect(await restored.list(7)).toEqual([
-      expect.objectContaining({ createdAt, updatedAt: createdAt, read: true })
+      expect.objectContaining({
+        createdAt,
+        updatedAt: createdAt,
+        read: true,
+        target: expect.objectContaining({ sessionGroup: 'MAIN' })
+      })
     ]);
+  });
+
+  it('reclassifies only active authorized Workspace notifications for the exact Session and preserves read state and TTL', async () => {
+    const now = 1_000;
+    const makeRow = (id: string, userId: number, overrides: Record<string, unknown> = {}) => ({
+      id,
+      user_id: userId,
+      kind: 'run',
+      title: 'Workspace: Session',
+      message: 'Notification',
+      node_id: 'node-1',
+      target_type: 'WORKSPACE_SESSION',
+      workspace_id: 'workspace-1',
+      session_id: 'session-1',
+      session_title: 'Session',
+      run_id: 'run-1',
+      created_at: 700,
+      expires_at: 10_000,
+      read_at: null as number | null,
+      deleted_at: null as number | null,
+      session_group: 'CHILD',
+      ...overrides
+    });
+    const rows: Record<string, unknown>[] = [
+      makeRow('unread-7', 7),
+      makeRow('read-7', 7, { read_at: 900 }),
+      makeRow('revoked-8', 8),
+      makeRow('other-workspace', 9, { workspace_id: 'workspace-other' }),
+      makeRow('other-session', 10, { session_id: 'session-other' }),
+      makeRow('other-node', 11, { node_id: 'node-other' }),
+      makeRow('hosted-conversation', 12, { target_type: 'HOSTED_CONVERSATION' }),
+      makeRow('deleted', 13, { deleted_at: 900 }),
+      makeRow('expired', 14, { expires_at: now })
+    ];
+    const before = rows.map((row) => ({ ...row }));
+    const execute = vi.fn(async (sql: string, parameters: unknown[] = []) => {
+      if (sql.startsWith('SELECT DISTINCT user_id FROM workbench_notifications')) {
+        expect(sql).toContain('node_id=? AND workspace_id=? AND session_id=?');
+        expect(sql).toContain("target_type='WORKSPACE_SESSION'");
+        expect(sql).toContain('deleted_at IS NULL AND expires_at>?');
+        const [nodeId, workspaceId, sessionId, timestamp] = parameters;
+        const userIds = new Set(
+          rows
+            .filter(
+              (row) =>
+                row.node_id === nodeId &&
+                row.workspace_id === workspaceId &&
+                row.session_id === sessionId &&
+                row.target_type === 'WORKSPACE_SESSION' &&
+                row.deleted_at == null &&
+                Number(row.expires_at) > Number(timestamp)
+            )
+            .map((row) => row.user_id)
+        );
+        return [[...userIds].map((user_id) => ({ user_id })), []];
+      }
+      if (sql.startsWith('UPDATE workbench_notifications SET session_group=')) {
+        expect(sql).toContain(
+          "node_id=? AND workspace_id=? AND session_id=? AND target_type='WORKSPACE_SESSION'"
+        );
+        expect(sql).toContain('deleted_at IS NULL AND expires_at>?');
+        const [sessionGroup, userId, nodeId, workspaceId, sessionId, timestamp] = parameters;
+        let affectedRows = 0;
+        for (const row of rows) {
+          if (
+            row.user_id !== userId ||
+            row.node_id !== nodeId ||
+            row.workspace_id !== workspaceId ||
+            row.session_id !== sessionId ||
+            row.target_type !== 'WORKSPACE_SESSION' ||
+            row.deleted_at != null ||
+            Number(row.expires_at) <= Number(timestamp)
+          )
+            continue;
+          row.session_group = sessionGroup;
+          affectedRows += 1;
+        }
+        return [{ affectedRows }, []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const userCanRequestNode = vi.fn(async (userId: number) => userId !== 8);
+    const push = vi.fn();
+    const service = new WorkbenchNotificationService(
+      { raw: { execute }, userCanRequestNode } as never,
+      push,
+      () => now
+    );
+    const change = {
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'session-1',
+      sessionGroup: 'MAIN'
+    } as const;
+
+    await service.reclassify(change);
+
+    expect(userCanRequestNode).toHaveBeenCalledTimes(2);
+    expect(userCanRequestNode).toHaveBeenCalledWith(
+      7,
+      'node-1',
+      'workbench.event.receive',
+      change,
+      'workspace-1'
+    );
+    expect(userCanRequestNode).toHaveBeenCalledWith(
+      8,
+      'node-1',
+      'workbench.event.receive',
+      change,
+      'workspace-1'
+    );
+    expect(rows.filter((row) => row.session_group === 'MAIN').map((row) => row.id)).toEqual([
+      'unread-7',
+      'read-7'
+    ]);
+    expect(rows.find((row) => row.id === 'revoked-8')?.session_group).toBe('CHILD');
+    expect(rows.filter((row) => row.session_group === 'CHILD').map((row) => row.id)).toEqual([
+      'revoked-8',
+      'other-workspace',
+      'other-session',
+      'other-node',
+      'hosted-conversation',
+      'deleted',
+      'expired'
+    ]);
+    for (const id of ['unread-7', 'read-7']) {
+      const index = rows.findIndex((row) => row.id === id);
+      expect(rows[index]).toMatchObject({
+        read_at: before[index]?.read_at,
+        expires_at: before[index]?.expires_at,
+        created_at: before[index]?.created_at,
+        deleted_at: before[index]?.deleted_at
+      });
+    }
+    expect(push).toHaveBeenCalledExactlyOnceWith(7, { type: 'notification.updated' });
+    expect(push).toHaveBeenCalledTimes(1);
   });
 
   it('synchronizes other browsers only when read state actually changes', async () => {

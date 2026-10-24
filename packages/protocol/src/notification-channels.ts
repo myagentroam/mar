@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sessionGroupSchema } from './session-group.js';
 import { mailNotificationRequestSchema } from './mail-notification.js';
 
 const notificationInput = z
@@ -48,7 +49,8 @@ export const notificationChannelsRequestSchema = notificationInput
     eventType: z.literal('notification'),
     kind: z.literal('AGENT_MESSAGE'),
     occurredAt: z.number().int().nonnegative().safe(),
-    sessionTitle: z.string().min(1).max(160)
+    sessionTitle: z.string().min(1).max(160),
+    sessionGroup: sessionGroupSchema.optional()
   })
   .superRefine(validateChannels);
 export type NotificationChannelsRequest = z.infer<typeof notificationChannelsRequestSchema>;

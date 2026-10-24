@@ -498,7 +498,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     ]);
   });
 
-  it('deletes by stable file ID and converges the current snapshot from the authoritative response', async () => {
+  it('deletes only the stable target file ID from the current snapshot', async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
     const deletedFile = {
       id: 'file-output',
@@ -543,6 +543,128 @@ describe('Web Hosted Conversation Workspace Service', () => {
         init: { method: 'DELETE', body: '{}' }
       }
     ]);
+  });
+
+  describe('file deletion response ordering', () => {
+    const target = {
+      id: 'file-target',
+      conversationId: conversation.id,
+      category: 'OUTPUT',
+      relativePath: 'target.txt',
+      displayName: 'target.txt',
+      mimeType: 'text/plain',
+      size: 6,
+      source: 'AGENT',
+      createdAt: 2,
+      updatedAt: 2
+    } as const;
+    const existing = { ...target, id: 'file-existing', relativePath: 'existing.txt' };
+    const added = { ...target, id: 'file-added', relativePath: 'added.txt' };
+    const initial = { ...snapshot, files: [target, existing] };
+
+    it('preserves newer files Watch additions and metadata when an older deletion response arrives', async () => {
+      const response = deferred<unknown>();
+      let watchId = '';
+      const workspace = service(async (path, init) => {
+        if (!path.endsWith('/watch')) return response.promise as never;
+        watchId = (JSON.parse(String(init?.body)) as { watchId: string }).watchId;
+        return {
+          accepted: true,
+          watchId,
+          nodeGeneration: 'generation-current',
+          expiresAt: Date.now() + 45_000
+        } as never;
+      });
+      workspace.selectConversation('node-1', conversation.id);
+      try {
+        const watching = workspace.beginSelectedConversationWatch();
+        await Promise.resolve();
+        const identity = {
+          workbenchConnectionId: 'connection-current',
+          watchId,
+          nodeGeneration: 'generation-current',
+          nodeId: 'node-1',
+          conversationId: conversation.id,
+          expiresAt: Date.now() + 45_000
+        };
+        expect(
+          workspace.handleWatchEvent({
+            type: 'watch.hosted-conversation.snapshot',
+            ...identity,
+            revision: 1,
+            snapshotSequence: 1,
+            payload: initial
+          })
+        ).toBe(true);
+        await watching;
+        const deleting = workspace.deleteFile(target.id);
+        const updated = { ...existing, size: 42, updatedAt: 3 };
+        const error = { code: 'FILE_SCAN_PARTIAL', message: 'A file could not be scanned.' };
+        expect(
+          workspace.handleWatchEvent({
+            type: 'watch.hosted-conversation.event',
+            ...identity,
+            event: {
+              sequence: 2,
+              category: 'hosted-conversation',
+              payload: {
+                conversationId: conversation.id,
+                kind: 'files',
+                files: [target, updated, added],
+                error
+              }
+            }
+          })
+        ).toBe(true);
+        expect(workspace.snapshot.value?.files).toEqual([target, updated, added]);
+        const authoritative = workspace.snapshot.value;
+        response.resolve({ deletedFileId: target.id, files: [existing] });
+        await expect(deleting).resolves.toEqual({ deletedFileId: target.id, files: [existing] });
+        expect(workspace.snapshot.value).toEqual({ ...authoritative, files: [updated, added] });
+      } finally {
+        workspace.stopSelectedConversationWatch();
+      }
+    });
+
+    it.each(['request failure', 'wrong file ID', 'wrong conversation ID'] as const)(
+      'keeps the current files unchanged after %s',
+      async (failure) => {
+        const error = new Error('Deletion failed');
+        const workspace = service(async () => {
+          if (failure === 'request failure') throw error;
+          return {
+            deletedFileId: failure === 'wrong file ID' ? 'another-file' : target.id,
+            files:
+              failure === 'wrong conversation ID'
+                ? [{ ...existing, conversationId: 'another-conversation' }]
+                : [existing]
+          } as never;
+        });
+        workspace.selectConversation('node-1', conversation.id, initial as never);
+        const before = workspace.snapshot.value;
+        await expect(workspace.deleteFile(target.id)).rejects.toThrow(
+          failure === 'request failure' ? error : 'HOSTED_CONVERSATION_RESPONSE_INVALID'
+        );
+        expect(workspace.snapshot.value).toBe(before);
+      }
+    );
+
+    it('does not apply a late deletion response to another selected conversation', async () => {
+      const response = deferred<unknown>();
+      const workspace = service(async () => response.promise as never);
+      workspace.selectConversation('node-1', conversation.id, initial as never);
+      const deleting = workspace.deleteFile(target.id);
+      workspace.selectConversation('node-2', 'conversation-2', {
+        ...snapshot,
+        conversation: { ...conversation, id: 'conversation-2', nodeId: 'node-2' },
+        files: [{ ...target, conversationId: 'conversation-2' }]
+      } as never);
+      const selected = workspace.snapshot.value;
+      response.resolve({ deletedFileId: target.id, files: [existing] });
+      await expect(deleting).resolves.toMatchObject({ deletedFileId: target.id });
+      expect(workspace.snapshot.value).toBe(selected);
+      expect(workspace.selectedConversationId.value).toBe('conversation-2');
+    });
   });
 
   it('restores the current Hosted Watch when permanent deletion fails so writes cannot continue without a live subscription', async () => {

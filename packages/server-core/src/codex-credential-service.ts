@@ -161,6 +161,7 @@ interface LoginAttemptRecord {
   readonly timer: NodeJS.Timeout;
   readonly pollIntervalMs: number;
   nextPollAt: number;
+  flight?: Promise<CodexLoginAttempt> | undefined;
 }
 
 interface RefreshFlight {
@@ -825,8 +826,24 @@ export class CodexCredentialService {
       this.#deleteAttempt(attempt);
       return codexLoginAttemptSchema.parse({ id: attempt.id, status: 'EXPIRED' });
     }
+    if (attempt.flight) return attempt.flight;
     if (this.#now() < attempt.nextPollAt) return publicPendingAttempt(attempt);
+    const flight = this.#completeLogin(attempt, validateCommit).finally(() => {
+      attempt.flight = undefined;
+    });
+    attempt.flight = flight;
+    return flight;
+  }
 
+  async #completeLogin(
+    attempt: LoginAttemptRecord,
+    validateCommit?: () => void
+  ): Promise<CodexLoginAttempt> {
+    const assertCurrent = () => {
+      if (this.#attempts.get(attempt.id) !== attempt || this.#now() >= attempt.expiresAt)
+        throw new Error('CODEX_LOGIN_ATTEMPT_NOT_FOUND');
+      validateCommit?.();
+    };
     const poll = await this.#requestWithProxy(
       `${this.#authIssuer}/api/accounts/deviceauth/token`,
       'POST',
@@ -837,22 +854,23 @@ export class CodexCredentialService {
         user_code: attempt.userCode
       })
     );
-    if (poll.status === 403 || poll.status === 404) {
-      attempt.nextPollAt = this.#now() + attempt.pollIntervalMs;
-      return publicPendingAttempt(attempt);
-    }
-    if (!poll.ok) {
-      this.#deleteAttempt(attempt);
-      return codexLoginAttemptSchema.parse({
-        id: attempt.id,
-        status: 'FAILED',
-        code: 'CODEX_DEVICE_AUTH_FAILED',
-        message: 'Codex device authorization failed.'
-      });
-    }
-
     try {
+      assertCurrent();
+      if (poll.status === 403 || poll.status === 404) {
+        attempt.nextPollAt = this.#now() + attempt.pollIntervalMs;
+        return publicPendingAttempt(attempt);
+      }
+      if (!poll.ok) {
+        this.#deleteAttempt(attempt);
+        return codexLoginAttemptSchema.parse({
+          id: attempt.id,
+          status: 'FAILED',
+          code: 'CODEX_DEVICE_AUTH_FAILED',
+          message: 'Codex device authorization failed.'
+        });
+      }
       const code = asRecord(await safeJson(poll));
+      assertCurrent();
       const authorizationCode = requiredString(code['authorization_code'], 8192);
       const codeVerifier = requiredString(code['code_verifier'], 8192);
       const tokenResponse = await this.#requestWithProxy(
@@ -870,6 +888,7 @@ export class CodexCredentialService {
       );
       if (!tokenResponse.ok) throw new Error('CODEX_TOKEN_EXCHANGE_FAILED');
       const tokens = parseTokenResponse(await safeJson(tokenResponse), undefined);
+      assertCurrent();
       const credentialId = attempt.draft.targetCredentialId ?? attempt.id;
       const candidate = credentialFromTokens({
         id: credentialId,
@@ -881,6 +900,7 @@ export class CodexCredentialService {
         revision: 1
       });
       await this.#requestCatalog(candidate);
+      assertCurrent();
       const saved = await this.#mutateDocument(async (document) => {
         const index = document.credentials.findIndex(
           (credential) => credential.id === credentialId
@@ -904,6 +924,15 @@ export class CodexCredentialService {
               attempt.draft.ownership
             );
         }
+        if (
+          document.credentials.some(
+            (credential) =>
+              credential.id !== credentialId &&
+              sameOwnership(credential.ownership, attempt.draft.ownership) &&
+              normalizeName(credential.name) === normalizeName(attempt.draft.name)
+          )
+        )
+          throw new Error('CODEX_CREDENTIAL_NAME_CONFLICT');
         const next = {
           ...candidate,
           revision: (existing?.revision ?? 0) + 1,
@@ -919,7 +948,7 @@ export class CodexCredentialService {
           document.credentials[index] = next;
         }
         return next;
-      });
+      }, assertCurrent);
       this.#recordAudit(attempt.actor.userId, saved, 'credential.saved');
       this.#deleteAttempt(attempt);
       return codexLoginAttemptSchema.parse({
@@ -929,6 +958,8 @@ export class CodexCredentialService {
       });
     } catch (error) {
       this.#deleteAttempt(attempt);
+      if (this.#now() >= attempt.expiresAt)
+        return codexLoginAttemptSchema.parse({ id: attempt.id, status: 'EXPIRED' });
       if (error instanceof Error && /^CODEX_[A-Z0-9_]+$/u.test(error.message))
         return codexLoginAttemptSchema.parse({
           id: attempt.id,
@@ -1827,7 +1858,10 @@ export class CodexCredentialService {
     }
   }
 
-  async #mutateDocument<T>(mutate: (document: CredentialDocument) => T | Promise<T>): Promise<T> {
+  async #mutateDocument<T>(
+    mutate: (document: CredentialDocument) => T | Promise<T>,
+    validateCommit?: () => void
+  ): Promise<T> {
     const prior = this.#mutationTail;
     let release!: () => void;
     this.#mutationTail = new Promise<void>((resolve) => {
@@ -1841,6 +1875,8 @@ export class CodexCredentialService {
       const serialized = JSON.stringify(validated);
       if (Buffer.byteLength(serialized) > MAX_DOCUMENT_BYTES)
         throw new Error('CODEX_CREDENTIAL_STORE_LIMIT_REACHED');
+      // Recheck after asynchronous mutation checks, with no await before issuing the write.
+      validateCommit?.();
       await this.database.raw.execute(
         `INSERT INTO system_settings (setting_key,setting_value,updated_at)
          VALUES ('${CREDENTIAL_SETTING_KEY}',CAST(? AS JSON),?)

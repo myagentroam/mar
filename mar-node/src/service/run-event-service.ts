@@ -1,3 +1,4 @@
+import { sessionGroup } from './session-presentation-service.js';
 import type { RunEvent, WorkbenchEventCategory } from '@myagentroam/protocol';
 import {
   permissionStopSchema,
@@ -330,6 +331,7 @@ export class RunEventService {
       workspaceId: run.workspaceId,
       sessionId: run.sessionId,
       sessionTitle: session.customTitle ?? session.runnerTitle ?? session.id,
+      sessionGroup: sessionGroup(session),
       runId
     };
     if (!Number.isSafeInteger(base.userId)) return undefined;

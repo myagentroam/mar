@@ -269,7 +269,9 @@ export class SubagentScheduler implements SubagentController {
       agentId: task.agentId,
       description: task.input.description,
       status: task.status,
-      ...(task.result ? { ...task.result } : {}),
+      ...(task.result
+        ? { summary: task.result.summary, changedFiles: [...task.result.changedFiles] }
+        : {}),
       ...(task.errorCode ? { errorCode: task.errorCode } : {}),
       ...(task.errorMessage ? { errorMessage: task.errorMessage } : {})
     };

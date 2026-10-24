@@ -1,4 +1,21 @@
 export const workspaceEnUS = {
+  sessionGroups: {
+    label: 'Session groups',
+    main: 'Main Sessions',
+    child: 'Child Sessions',
+    unread: 'Unread',
+    running: '{count} running sessions',
+    emptyMain: 'No main sessions',
+    emptyChild: 'No child sessions',
+    noResults: 'No matching sessions',
+    move: 'Move to Main Sessions',
+    confirm: 'Move',
+    cancel: 'Cancel',
+    description:
+      "This only clears the session's group relationship with its parent and moves it to Main Sessions. Its history, active runs, and queue are preserved. Relationships of its own child sessions are unchanged.",
+    moved: 'Moved to Main Sessions',
+    failed: 'Unable to move the session: {reason}'
+  },
   generated: {
     sessionPrompt: {
       title: 'Session Prompt',

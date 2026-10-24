@@ -1551,7 +1551,7 @@ onBeforeUnmount(() => {
               <el-tag
                 :type="statusType(row.lastTestStatus)"
                 effect="plain"
-                :title="statusDetail(row)"
+                v-tooltip="statusDetail(row)"
                 >{{ statusLabel(row.lastTestStatus) }}</el-tag
               >
             </template>

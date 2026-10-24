@@ -164,6 +164,82 @@ describe('Session Catalog collection', () => {
     }
   });
 
+  it('keeps the mixed default list and counts active sessions before query, group, and paging', async () => {
+    const f = fixture();
+    const active = new Set(['main-active', 'child-active']);
+    f.present.mockImplementation((session) => ({
+      ...session,
+      activity: active.has(session.id) ? 'MANAGED_ACTIVE' : 'IDLE'
+    }));
+    const create = (
+      id: string,
+      parentSessionId: string | null,
+      customTitle: string
+    ): NodeAgentSession =>
+      f.runtime.createAgentSession({
+        workspaceId: 'workspace-a',
+        cwd: '/workspace-a',
+        runner: 'claude-code',
+        externalSessionId: id,
+        parentSessionId,
+        customTitle
+      });
+    try {
+      create('main-active', null, 'Hidden running main');
+      create('child-active', 'missing-parent', 'Hidden running child');
+      create('main-visible', null, 'Visible main');
+      create('grandchild-visible', 'child-active', 'Visible child');
+
+      const list = f.catalog.operations()['session.list']!;
+      const mixed = (await list({ workspaceId: 'workspace-a', registeredOnly: true })) as {
+        sessions: NodeAgentSession[];
+        runningCounts: { MAIN: number; CHILD: number };
+      };
+      expect(mixed.sessions.map(({ id }) => id)).toHaveLength(4);
+      expect(mixed.sessions.map(({ id }) => id)).toEqual(
+        expect.arrayContaining([
+          'main-active',
+          'child-active',
+          'main-visible',
+          'grandchild-visible'
+        ])
+      );
+      expect(mixed.runningCounts).toEqual({ MAIN: 1, CHILD: 1 });
+
+      const mainPage = (await list({
+        workspaceId: 'workspace-a',
+        registeredOnly: true,
+        query: 'visible',
+        sessionGroup: 'MAIN',
+        limit: 1
+      })) as { sessions: NodeAgentSession[]; runningCounts: { MAIN: number; CHILD: number } };
+      expect(mainPage.sessions.map(({ id }) => id)).toEqual(['main-visible']);
+      expect(mainPage.runningCounts).toEqual({ MAIN: 1, CHILD: 1 });
+
+      const childPage = (await list({
+        workspaceId: 'workspace-a',
+        registeredOnly: true,
+        query: 'visible',
+        sessionGroup: 'CHILD',
+        limit: 1
+      })) as { sessions: NodeAgentSession[] };
+      expect(childPage.sessions.map(({ id }) => id)).toEqual(['grandchild-visible']);
+
+      const marctl = (await list({
+        workspaceId: 'workspace-a',
+        registeredOnly: true,
+        view: 'marctl',
+        parentSessionId: 'missing-parent'
+      })) as { view: string; sessions: NodeAgentSession[]; nextCursor: string | null };
+      expect(Object.keys(marctl).sort()).toEqual(['nextCursor', 'sessions', 'view']);
+      expect(marctl.sessions.map(({ id }) => id)).toEqual(['child-active']);
+      expect(marctl.sessions[0]).not.toHaveProperty('sessionGroup');
+      expect(marctl.sessions[0]).not.toHaveProperty('runningCounts');
+    } finally {
+      f.database.close();
+    }
+  });
+
   it.each([20, 80])(
     'builds one request-local lookup instead of scanning for each of %s candidates',
     (size) => {
