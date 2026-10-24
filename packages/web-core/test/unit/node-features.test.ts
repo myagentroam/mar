@@ -25,7 +25,8 @@ describe('Public Node Feature Gating', () => {
     expect(NODE_FEATURES).toMatchObject({
       'prompt-completion': { introducedIn: '0.10.21' },
       [FEATURE_DEMO]: { introducedIn: '0.9.119' },
-      WORKSPACE_INDEX_PREPARATION: { introducedIn: '0.9.143' }
+      WORKSPACE_INDEX_PREPARATION: { introducedIn: '0.9.143' },
+      SESSION_GROUPS: { introducedIn: '0.11.19' }
     });
     expect(supportsNodeFeature('0.9.119', FEATURE_DEMO)).toBe(true);
     expect(supportsNodeFeature('0.10.25', 'MAR_AGENT_AUTO')).toBe(true);
@@ -43,6 +44,9 @@ describe('Public Node Feature Gating', () => {
     expect(supportsNodeFeature('0.10.21', 'prompt-completion')).toBe(true);
     for (const version of ['0.10.20', '', 'unknown', '0.10.21-beta.1', '00.10.21'])
       expect(supportsNodeFeature(version, 'prompt-completion')).toBe(false);
+    expect(supportsNodeFeature('0.11.19', 'SESSION_GROUPS')).toBe(true);
+    for (const version of ['0.11.18', 'unknown', '', '0.11.19-beta.1'])
+      expect(supportsNodeFeature(version, 'SESSION_GROUPS')).toBe(false);
   });
 
   it('Rejects unknown, invalid, prerelease, and out-of-range versions conservatively', () => {

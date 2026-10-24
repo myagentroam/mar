@@ -63,6 +63,33 @@ export class RecentRunService {
     });
   }
 
+  async reclassify(change: import('@myagentroam/protocol').SessionGroupChanged): Promise<void> {
+    await this.enqueue(change.nodeId, async () => {
+      this.cleanup();
+      for (const [key, run] of this.runsBySession) {
+        if (
+          run.nodeId !== change.nodeId ||
+          run.workspaceId !== change.workspaceId ||
+          run.sessionId !== change.sessionId
+        )
+          continue;
+        if (
+          !(await this.database.userCanRequestNode(
+            run.userId,
+            change.nodeId,
+            'workbench.event.receive',
+            change,
+            change.workspaceId
+          ))
+        )
+          continue;
+        const next = { ...run, sessionGroup: change.sessionGroup };
+        this.runsBySession.set(key, next);
+        this.push(run.userId, { type: 'recent-run.updated', run: publicRun(next) });
+      }
+    });
+  }
+
   async list(userId: number): Promise<readonly RecentRun[]> {
     this.cleanup();
     const runs: RecentRun[] = [];
@@ -197,5 +224,5 @@ function newerThan(left: RecentRunProjection, right: RecentRunProjection): boole
 function publicRun(run: StoredRecentRun): RecentRun {
   const { userId: _userId, ...value } = run;
   void _userId;
-  return value;
+  return { ...value, sessionGroup: value.sessionGroup ?? 'MAIN' };
 }

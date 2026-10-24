@@ -152,6 +152,36 @@ describe('shared ordinary Session and Run routes', () => {
     expect(requestNode).not.toHaveBeenCalled();
   });
 
+  it('clears only the parent relationship when explicitly requested', async () => {
+    const { app, requestNode, headers } = fixture();
+    const url = '/api/agent-sessions/session-one/metadata';
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url,
+      headers,
+      payload: { nodeId: 'node-one', clearParent: true }
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(requestNode).toHaveBeenCalledTimes(1);
+    expect(requestNode.mock.calls[0]).toContainEqual({
+      sessionId: 'session-one',
+      clearParent: true
+    });
+
+    requestNode.mockClear();
+    for (const payload of [
+      { nodeId: 'node-one', clearParent: false },
+      { nodeId: 'node-one', clearParent: true, customTitle: 'Do not combine' },
+      { nodeId: 'node-one', clearParent: true, parentSessionId: null },
+      { nodeId: 'node-one', parentSessionId: 'another-session' }
+    ]) {
+      const invalid = await app.inject({ method: 'PATCH', url, headers, payload });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('SESSION_INVALID');
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
   it('authorizes bounded session tool resources and rejects invalid requests before forwarding', async () => {
     const { app, requestNode, headers } = fixture();
     const resourceRef = 'c10a59dd-680f-46f6-9b75-31bfbd520506';
@@ -218,6 +248,39 @@ describe('shared ordinary Session and Run routes', () => {
       expect(requestNode.mock.calls[1]).toContainEqual({ sessionId: session.id });
     }
   );
+
+  it('forwards only strict MAIN or CHILD session-list filters and preserves the unfiltered default', async () => {
+    const { app, requestNode, headers } = fixture();
+    for (const sessionGroup of ['MAIN', 'CHILD'] as const) {
+      requestNode.mockClear();
+      const result = await app.inject({
+        url: `/api/agent-sessions?nodeId=node-one&sessionGroup=${sessionGroup}`,
+        headers
+      });
+      expect(result.statusCode).toBe(200);
+      expect(requestNode.mock.calls[0]).toContain('session.list');
+      expect(requestNode.mock.calls[0]).toContainEqual(expect.objectContaining({ sessionGroup }));
+    }
+
+    requestNode.mockClear();
+    const unfiltered = await app.inject({ url: '/api/agent-sessions?nodeId=node-one', headers });
+    expect(unfiltered.statusCode).toBe(200);
+    expect(requestNode.mock.calls[0]).toContain('session.list');
+    expect(requestNode.mock.calls[0]).not.toContainEqual(
+      expect.objectContaining({ sessionGroup: expect.any(String) })
+    );
+
+    for (const sessionGroup of ['main', 'BOTH', '']) {
+      requestNode.mockClear();
+      const invalid = await app.inject({
+        url: `/api/agent-sessions?nodeId=node-one&sessionGroup=${encodeURIComponent(sessionGroup)}`,
+        headers
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('SESSION_INVALID');
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+  });
 
   it('reads stable native sources without serving an index-based conditional cache hit', async () => {
     const { app, requestNode, headers } = fixture();

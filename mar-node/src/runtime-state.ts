@@ -434,6 +434,10 @@ export class NodeRuntimeState {
     });
   }
 
+  clearSessionParent(sessionId: string): NodeAgentSession {
+    return this.replaceSession(this.requireSession(sessionId).id, { parentSessionId: null });
+  }
+
   /**
    * Give a new or restored managed Session a readable local title while the
    * Runner still has a placeholder. Never replace a user rename or a

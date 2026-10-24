@@ -191,7 +191,11 @@ describe('Shared workbench shell', () => {
             mobileViewport: true,
             notificationService: {
               recentRuns: ref([]),
-              load: async () => undefined
+              load: async () => undefined,
+              sessionGroupState: () => ({
+                MAIN: { running: 0, unread: false },
+                CHILD: { running: 0, unread: false }
+              })
             } as unknown as WorkbenchNotificationService,
             performanceDiagnostics: {} as ReturnType<typeof createWebPerformanceDiagnostics>,
             uploads: [],

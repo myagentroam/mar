@@ -22,6 +22,7 @@ export * from './mail-notification.js';
 export * from './notification-channels.js';
 export * from './web-push.js';
 export * from './workbench-notification.js';
+export * from './session-group.js';
 export * from './model-usage.js';
 export * from './management-pagination.js';
 
@@ -385,7 +386,11 @@ export const nodeCapabilitiesSchema = z
     promptCompletion: promptCompletionCapabilitySchema.optional(),
     chatgptLogin: chatgptLoginCapabilitySchema.optional(),
     workspaceDirectTransfer: workspaceDirectTransferCapabilitySchema.optional(),
-    terminalDirect: terminalDirectCapabilitySchema.optional()
+    terminalDirect: terminalDirectCapabilitySchema.optional(),
+    sessionGroups: z
+      .object({ apiVersion: z.literal(1) })
+      .strict()
+      .optional()
   })
   .superRefine((capabilities, context) => {
     if (
@@ -1579,6 +1584,7 @@ export const recentRunSchema = z.object({
   workspaceName: z.string().max(128).optional(),
   sessionId: z.string().min(1).max(128),
   sessionTitle: z.string().min(1).max(160),
+  sessionGroup: z.enum(['MAIN', 'CHILD']).optional(),
   userMessage: z.string().max(500).optional(),
   runner: runnerNameSchema,
   status: agentRunStatusSchema,
@@ -1927,6 +1933,10 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   }),
   directTransfer: workspaceDirectTransferCapabilitySchema.optional(),
   terminalDirect: terminalDirectCapabilitySchema.optional(),
+  sessionGroups: z
+    .object({ apiVersion: z.literal(1) })
+    .strict()
+    .optional(),
   git: capabilitySchemaWith({
     supportsCurrentChanges: z.boolean(),
     supportsTurnChanges: z.boolean(),

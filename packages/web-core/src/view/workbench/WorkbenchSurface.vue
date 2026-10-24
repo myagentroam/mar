@@ -334,6 +334,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :class="['workspace-grid', `mobile-surface-${page.mobileWorkspaceSurface}`]"
         >
           <WorkspaceSessionList
+            :session-group="page.workspaceSessionGroup"
+            :group-state="page.workspaceSessionGroupState"
+            @select-group="page.selectWorkspaceSessionGroup"
+            @move-to-main="page.moveSessionToMain"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
             :mobile-viewport="page.mobileViewport"

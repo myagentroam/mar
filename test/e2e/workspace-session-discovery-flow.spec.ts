@@ -89,17 +89,32 @@ test('Cold Node session discovery streams batches through the real relay and slo
             ? firstSlow.promise
             : retrySlow.promise);
         if (workspace === undefined) throw new Error('TEST_WORKSPACE_REQUIRED');
-        return (name === 'mar-agent' ? ['fast-native', 'explicit-custom'] : ['slow-custom']).map(
-          (id) =>
-            context.createProjection({
-              workspace,
-              runner: name as 'mar-agent' | 'codex',
-              externalSessionId: id,
-              cwd: workspace.path,
-              title: id === 'fast-native' ? 'Fast native title' : 'Runner title',
-              titleOrigin: 'OFFICIAL',
-              lastActivityAt: id === 'fast-native' ? 200 : 100
-            })
+        return (
+          name === 'mar-agent'
+            ? [
+                'fast-native',
+                'explicit-custom',
+                ...Array.from({ length: 45 }, (_, index) => `child-${index}`)
+              ]
+            : ['slow-custom']
+        ).map((id) =>
+          context.createProjection({
+            workspace,
+            runner: name as 'mar-agent' | 'codex',
+            externalSessionId: id,
+            cwd: workspace.path,
+            title: id.startsWith('child-')
+              ? `Child session ${id.slice(6)}`
+              : id === 'fast-native'
+                ? 'Fast native title'
+                : 'Runner title',
+            titleOrigin: 'OFFICIAL',
+            lastActivityAt: id.startsWith('child-')
+              ? 1000 + Number(id.slice(6))
+              : id === 'fast-native'
+                ? 200
+                : 100
+          })
         );
       };
     }
@@ -122,6 +137,13 @@ test('Cold Node session discovery streams batches through the real relay and slo
     });
     expect(created.status()).toBe(201);
     const workspaceId = ((await created.json()) as { workspace: { id: string } }).workspace.id;
+    for (let index = 0; index < 45; index += 1)
+      database.saveNativeSessionMetadata({
+        runner: 'mar-agent',
+        externalSessionId: `child-${index}`,
+        workspaceId,
+        parentSessionId: 'fast-native'
+      });
     database.saveNativeSessionMetadata({
       runner: 'mar-agent',
       externalSessionId: 'explicit-custom',
@@ -148,6 +170,16 @@ test('Cold Node session discovery streams batches through the real relay and slo
     await expect(rows).toHaveCount(2);
     await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(1);
     await expect(rows.filter({ hasText: 'New Session' })).toHaveCount(1);
+    await expect(page.getByRole('tab', { name: '主会话', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await page.getByRole('tab', { name: '子会话', exact: true }).click();
+    await expect(rows.filter({ hasText: 'Child session' }).first()).toBeVisible();
+    await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(0);
+    await page.getByRole('tab', { name: '主会话', exact: true }).click();
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: 'Child session' })).toHaveCount(0);
     await expect(rows.filter({ hasText: 'Pinned slow custom title' })).toHaveCount(0);
     firstSlow.reject(new Error('TEST_NATIVE_DISCOVERY_FAILED'));
     await internals.workspaceState.sessionCacheReads.get(workspaceId)?.catch(() => undefined);
@@ -161,6 +193,22 @@ test('Cold Node session discovery streams batches through the real relay and slo
     await expect(rows.first()).toContainText('Pinned slow custom title');
     await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(1);
     await expect(rows.filter({ hasText: 'New Session' })).toHaveCount(1);
+    await page.getByRole('tab', { name: '子会话', exact: true }).click();
+    const child = page.locator('.session-list li').filter({ hasText: 'Child session 44' });
+    await child.hover();
+    await child.locator('.session-more-button').click();
+    await page.getByRole('menuitem', { name: '移动到主会话' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '移动', exact: true }).click();
+    await expect(child).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: '子会话', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(
+      database.getNativeSessionMetadata('mar-agent', 'child-44', workspaceId)?.parentSessionId
+    ).toBeNull();
+    await page.getByRole('tab', { name: '主会话', exact: true }).click();
+    await expect(rows.filter({ hasText: 'Child session 44' })).toHaveCount(1);
   } finally {
     fast.resolve();
     firstSlow.resolve();

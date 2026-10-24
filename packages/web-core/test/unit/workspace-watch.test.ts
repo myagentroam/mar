@@ -126,6 +126,91 @@ describe('Shared Workspace Watch', () => {
     service.stop();
   });
 
+  it('keeps grouped sessions on the shared Workspace Watch and rejects a late previous-group snapshot', async () => {
+    let sessionGroup: 'MAIN' | 'CHILD' = 'MAIN';
+    const requests: { path: string; init?: RequestInit }[] = [];
+    const snapshots: unknown[] = [];
+    const service = createWorkspaceWatchService({
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
+      workspaces: {
+        value: [{ id: 'workspace-1', path: '/project', kind: 'GIT_WORKSPACE' }]
+      } as never,
+      heartbeatMs: 15_000,
+      sessionGroup: () => sessionGroup,
+      request: (path, init) => {
+        requests.push(init === undefined ? { path } : { path, init });
+        return Promise.resolve({ accepted: true }) as never;
+      },
+      onSnapshot: (_nodeId, _workspaceId, snapshot) => snapshots.push(snapshot)
+    });
+
+    await service.start('workspace-1');
+    const mainWatch = JSON.parse(String(requests[0]?.init?.body)) as {
+      watchId: string;
+      workbenchConnectionId: string;
+      topics: Record<string, unknown>;
+    };
+    expect(requests.filter(({ init }) => init?.method === 'POST')).toHaveLength(1);
+    expect(mainWatch.topics).toEqual({
+      sessions: true,
+      sessionGroup: 'MAIN',
+      files: { path: '.', limit: 200 },
+      changes: true
+    });
+
+    sessionGroup = 'CHILD';
+    expect(
+      service.handleEvent({
+        type: 'watch.workspace.snapshot',
+        workbenchConnectionId: mainWatch.workbenchConnectionId,
+        nodeGeneration: 'test-generation',
+        watchId: mainWatch.watchId,
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        topic: 'sessions',
+        revision: 1,
+        payload: { sessions: [{ id: 'stale-main-session' }] }
+      })
+    ).toBe(false);
+    expect(snapshots).toEqual([]);
+
+    await service.restart('workspace-1');
+    const posts = requests.filter(({ init }) => init?.method === 'POST');
+    expect(posts).toHaveLength(2);
+    const childWatch = JSON.parse(String(posts[1]?.init?.body)) as {
+      watchId: string;
+      workbenchConnectionId: string;
+      mode: string;
+      topics: Record<string, unknown>;
+    };
+    expect(childWatch).toMatchObject({
+      workbenchConnectionId: mainWatch.workbenchConnectionId,
+      mode: 'initial',
+      topics: { sessions: true, sessionGroup: 'CHILD' }
+    });
+    expect(childWatch.topics).toEqual({
+      sessions: true,
+      sessionGroup: 'CHILD',
+      files: { path: '.', limit: 200 },
+      changes: true
+    });
+    expect(
+      service.handleEvent({
+        type: 'watch.workspace.snapshot',
+        workbenchConnectionId: childWatch.workbenchConnectionId,
+        nodeGeneration: 'test-generation',
+        watchId: childWatch.watchId,
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        topic: 'sessions',
+        revision: 1,
+        payload: { sessions: [{ id: 'child-session' }] }
+      })
+    ).toBe(true);
+    expect(snapshots).toEqual([{ sessions: { sessions: [{ id: 'child-session' }] } }]);
+    service.stop();
+  });
+
   it('Preserves a ready topic when the initial Workspace snapshot arrives before a failed ACK', async () => {
     vi.useFakeTimers();
     let rejectRequest!: (error: Error) => void;

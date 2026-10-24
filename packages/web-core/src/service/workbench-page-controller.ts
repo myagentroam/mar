@@ -1675,6 +1675,9 @@ export function createWorkbenchPageController<
   } = workspaceRegistrationService;
 
   const workspaceSessionDiscovery = createWorkspaceSessionService({
+    groupingSupported: () =>
+      nodeManifest.value?.sessionGroups?.apiVersion === 1 &&
+      supportsNodeFeature(workspaceHost.value?.nodeAppVersion ?? '', 'SESSION_GROUPS'),
     sessions,
     runs,
     workspaceTarget,
@@ -1688,6 +1691,9 @@ export function createWorkbenchPageController<
   });
 
   const {
+    currentGroup: workspaceSessionGroup,
+    selectGroup: selectWorkspaceSessionGroup,
+    runningCounts: workspaceSessionRunningCounts,
     refreshing: refreshingWorkspaceSessions,
     searchQuery: workspaceSessionSearchQuery,
     searchResults: workspaceSessionSearchResults,
@@ -1705,10 +1711,27 @@ export function createWorkbenchPageController<
     refresh: refreshWorkspaceSessions
   } = workspaceSessionDiscovery;
   const visibleWorkspaceSessions = computed(() =>
-    workspaceSessionSearchQuery.value.length > 0
+    (workspaceSessionSearchQuery.value.length > 0
       ? workspaceSessionSearchResults.value
       : unfilteredWorkspaceSessions.value
+    ).filter(
+      (session) =>
+        workspaceSessionGroup.value === undefined ||
+        ((session.sessionGroup ?? 'MAIN') === workspaceSessionGroup.value &&
+          (workspaceSessionSearchQuery.value.length > 0 ||
+            workspaceSessionDiscovery.listedSessionIds.value.has(session.id)))
+    )
   );
+  const workspaceSessionGroupState = computed(() => {
+    const target = workspaceTarget.value;
+    const state = workbenchNotificationService.sessionGroupState(
+      target?.nodeId,
+      target?.workspaceId
+    );
+    state.MAIN.running = workspaceSessionRunningCounts.value.MAIN;
+    state.CHILD.running = workspaceSessionRunningCounts.value.CHILD;
+    return state;
+  });
   const canLoadMoreWorkspaceSessions = computed(() =>
     workspaceSessionSearchQuery.value.length > 0
       ? workspaceSessionSearchNextCursor.value !== null
@@ -2029,6 +2052,7 @@ export function createWorkbenchPageController<
   }
 
   const workspaceWatchService = createWorkspaceWatchService({
+    sessionGroup: () => workspaceSessionGroup.value,
     workspaceTarget,
     workspaces,
     heartbeatMs: WORKSPACE_WATCH_HEARTBEAT_MS,
@@ -2046,13 +2070,21 @@ export function createWorkbenchPageController<
       const branch = currentChangesBranch(snapshot.changes);
       if (branch !== undefined) updateWorkspaceBranch(nodeId, workspaceId, branch);
       const sessionPage = snapshot.sessions as
-        { readonly sessions?: readonly Session[]; readonly nextCursor?: string | null } | undefined;
+        | {
+            readonly sessions?: readonly Session[];
+            readonly nextCursor?: string | null;
+            readonly runningCounts?: import('@myagentroam/protocol').SessionRunningCounts;
+          }
+        | undefined;
       if (Array.isArray(sessionPage?.sessions)) {
         const selectedSession = sessions.value.find(
           (session) => session.id === selectedSessionId.value
         );
         applyWorkspaceSessionSnapshot(nodeId, workspaceId, {
           sessions: [...sessionPage.sessions],
+          ...(sessionPage.runningCounts === undefined
+            ? {}
+            : { runningCounts: sessionPage.runningCounts }),
           nextCursor: sessionPage.nextCursor ?? null
         });
         const refreshedSelectedSession = sessions.value.find(
@@ -2065,6 +2097,19 @@ export function createWorkbenchPageController<
       }
     }
   });
+
+  watch(
+    [workspaceTarget, workspaceSessionGroup] as const,
+    ([target, group], [previousTarget, previousGroup]) => {
+      if (
+        target !== undefined &&
+        target.nodeId === previousTarget?.nodeId &&
+        target.workspaceId === previousTarget?.workspaceId &&
+        group !== previousGroup
+      )
+        void watchCoordinator.current?.restartWorkspace(target.workspaceId);
+    }
+  );
 
   function selectWorkspace(target: WorkspaceTarget, openDraft = true): Promise<boolean> {
     return workbenchWorkspaceSelectionService.select(target, openDraft);
@@ -2402,6 +2447,7 @@ export function createWorkbenchPageController<
   const {
     renameNode,
     renameSession,
+    moveSessionToMain,
     setSessionPinned,
     movePinnedSession,
     movePinnedSessionTo,
@@ -3497,6 +3543,10 @@ export function createWorkbenchPageController<
     cleanupSessionsEnabled,
     renameNode,
     renameSession,
+    moveSessionToMain,
+    workspaceSessionGroup,
+    workspaceSessionGroupState,
+    selectWorkspaceSessionGroup,
     rollbackConversation,
     rollbackConversationEnabled,
     rewindConversationEnabled,

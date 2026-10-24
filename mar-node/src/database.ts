@@ -477,6 +477,15 @@ export class NodeDatabase {
     };
   }
 
+  clearSessionParent(runner: RunnerName, externalSessionId: string, workspaceId: string): void {
+    const result = this.raw
+      .prepare(
+        "UPDATE agent_sessions SET metadata = json_set(metadata, '$.parentSessionId', NULL) WHERE id = ? AND runner = ? AND workspace_id = ?"
+      )
+      .run(externalSessionId, runner, workspaceId);
+    if (result.changes !== 1) throw new Error('SESSION_NOT_FOUND');
+  }
+
   saveNativeSessionMetadata(input: {
     readonly parentSessionId?: string | null;
     readonly runner: RunnerName;
@@ -521,7 +530,8 @@ export class NodeDatabase {
     const model = input.model === undefined ? (current?.model ?? null) : input.model;
     const effort = input.effort === undefined ? (current?.effort ?? null) : input.effort;
     const access = input.access === undefined ? (current?.access ?? null) : input.access;
-    const parentSessionId = current?.parentSessionId ?? input.parentSessionId ?? null;
+    const parentSessionId =
+      current === undefined ? (input.parentSessionId ?? null) : (current.parentSessionId ?? null);
     const metadata = JSON.stringify({
       version: 1,
       parentSessionId,

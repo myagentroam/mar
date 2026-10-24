@@ -13,7 +13,10 @@ export interface WorkspaceWatchSnapshotServiceOptions {
   readonly watch: WorkspaceWatchService;
   readonly files: WorkspaceFileService;
   readonly changes: WorkspaceChangeService;
-  readonly listSessions: (workspaceId: string) => Promise<unknown>;
+  readonly listSessions: (
+    workspaceId: string,
+    sessionGroup?: import('@myagentroam/protocol').SessionGroup
+  ) => Promise<unknown>;
   readonly nodeId: () => string;
   readonly emitWatchEvent: (payload: unknown) => void;
   readonly filesRefreshIntervalMs?: number;
@@ -134,7 +137,7 @@ export class WorkspaceWatchSnapshotService {
     const workspace = this.options.requireWorkspace(workspaceId);
     const subscribers = this.subscribers(workspaceId, topic);
     if (subscribers.length === 0) return;
-    if (topic !== 'files') {
+    if (topic === 'changes') {
       const first = subscribers[0];
       if (first === undefined) return;
       const revision = this.readRevision(workspaceId, topic);
@@ -160,7 +163,10 @@ export class WorkspaceWatchSnapshotService {
     }
     const views = new Map<string, WorkspaceWatch[]>();
     for (const watch of subscribers) {
-      const key = JSON.stringify(watch.topics.files);
+      const key =
+        topic === 'files'
+          ? JSON.stringify(watch.topics.files)
+          : (watch.topics.sessionGroup ?? 'ALL');
       views.set(key, [...(views.get(key) ?? []), watch]);
     }
     await Promise.all(
@@ -190,12 +196,12 @@ export class WorkspaceWatchSnapshotService {
     const key =
       topic === 'files'
         ? `${workspace.id}:files:${JSON.stringify(watch.topics.files)}`
-        : `${workspace.id}:${topic}:${this.readRevision(workspace.id, topic)}`;
+        : `${workspace.id}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}:${this.readRevision(workspace.id, topic)}`;
     const active = this.reads.get(key);
     if (active !== undefined) return active;
     const read = (
       topic === 'sessions'
-        ? this.options.listSessions(workspace.id)
+        ? this.options.listSessions(workspace.id, watch.topics.sessionGroup)
         : topic === 'changes'
           ? workspace.kind === 'GIT_WORKSPACE'
             ? this.options.changes.current(workspace)
@@ -228,7 +234,7 @@ export class WorkspaceWatchSnapshotService {
   private viewKey(workspaceId: string, topic: WorkspaceWatchTopic, watch: WorkspaceWatch): string {
     return topic === 'files'
       ? `${workspaceId}:files:${JSON.stringify(watch.topics.files)}`
-      : `${workspaceId}:${topic}`;
+      : `${workspaceId}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}`;
   }
 
   private readActive(workspaceId: string, topic: WorkspaceWatchTopic): boolean {

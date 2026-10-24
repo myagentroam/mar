@@ -5,6 +5,8 @@ lastUpdated: 2026-10-24
 
 # Conversations, Tools, and Notifications
 
+**Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Each tab shows its active-session count and unread indicator; the entry badge remains the total across both groups. Opening a record only navigates to its conversation and does not switch the Chats group.
+
 Conversation groups your messages, Agent replies, reasoning summaries, plans, commands, tools, file changes, approvals, and questions in execution order. Expand supporting cards when details are needed; Agent Markdown is sanitized before display.
 
 Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Subagents are grouped separately by identity; image generation, plans, approvals, and questions remain separate.

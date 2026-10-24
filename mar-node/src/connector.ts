@@ -63,6 +63,7 @@ import { WorkspaceSessionService } from './service/workspace-session-service.js'
 import { WorkbenchEventService } from './service/workbench-event-service.js';
 import { RunDomainState } from './service/run-domain-state.js';
 import { RecentRunProjectionService } from './service/recent-run-projection-service.js';
+import { sessionGroupChangedSchema, type SessionGroupChanged } from '@myagentroam/protocol';
 import {
   SessionDomainState,
   type ExternalSessionActivationState
@@ -108,7 +109,10 @@ import {
 } from './service/notification-mcp-bridge.js';
 import { SessionCatalogService } from './service/session-catalog-service.js';
 import { SessionCommandService } from './service/session-command-service.js';
-import { SessionPresentationService } from './service/session-presentation-service.js';
+import {
+  SessionPresentationService,
+  sessionGroup
+} from './service/session-presentation-service.js';
 import {
   isPlainRecord,
   isRunnerImageAttachment,
@@ -220,6 +224,7 @@ export class NodeConnector {
   private readonly restartAuthorization: RunAuthorizationControl;
   private readonly restartHandoff: PlannedRestartHandoff;
   private readonly inFlightOperations = new Set<Promise<unknown>>();
+  private readonly pendingSessionGroups = new Map<string, SessionGroupChanged>();
   private readonly mailNotificationControl = new MailNotificationControl((envelope) =>
     this.sendEnvelope(envelope)
   );
@@ -1085,6 +1090,17 @@ export class NodeConnector {
       emitTurn: (turn) => this.emitConversationTurn(turn)
     });
     this.sessionLifecycleService = new SessionLifecycleService({
+      parentCleared: (session) => {
+        this.recentRunProjectionService.clearSessionParent(session.workspaceId, session.id);
+        const change: SessionGroupChanged = {
+          nodeId: session.nodeId,
+          workspaceId: session.workspaceId,
+          sessionId: session.id,
+          sessionGroup: 'MAIN'
+        };
+        this.pendingSessionGroups.set(session.id, change);
+        this.send('session.group.changed', change);
+      },
       database: () => {
         if (this.database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
         return this.database;
@@ -1390,8 +1406,20 @@ export class NodeConnector {
         await this.connectionLifecycle.register(nodeId, credential);
         this.mailNotificationControl.setFeatures(payload);
         this.usageOutbox?.connected(payload);
+        for (const change of this.pendingSessionGroups.values())
+          this.send('session.group.changed', change);
       },
       usageAck: (payload) => this.usageOutbox?.handle(createEnvelope('usage.ack', payload)),
+      sessionGroupAck: (payload) => {
+        const parsed = sessionGroupChangedSchema.safeParse(payload);
+        if (!parsed.success) return;
+        const pending = this.pendingSessionGroups.get(parsed.data.sessionId);
+        if (
+          pending?.nodeId === parsed.data.nodeId &&
+          pending.workspaceId === parsed.data.workspaceId
+        )
+          this.pendingSessionGroups.delete(parsed.data.sessionId);
+      },
       bindUsage: (payload) => {
         if (
           !isPlainRecord(payload) ||
@@ -1405,6 +1433,8 @@ export class NodeConnector {
       },
       connected: (payload) => {
         this.usageOutbox?.connected(payload);
+        for (const change of this.pendingSessionGroups.values())
+          this.send('session.group.changed', change);
         this.connectionLifecycle.connected();
         this.mailNotificationControl.setFeatures(payload);
       },
@@ -1554,6 +1584,16 @@ export class NodeConnector {
         const session = this.runtime.getAgentSession(sessionId);
         return session?.customTitle ?? session?.runnerTitle ?? sessionId;
       },
+      sessionGroup: (task) =>
+        sessionGroup(
+          this.runtime.getAgentSession(task.sessionId) ??
+            this.database?.getNativeSessionMetadata(
+              task.runner,
+              task.sessionId,
+              task.workspaceId
+            ) ??
+            {}
+        ),
       emitNotification: (payload) => this.emitWorkbenchEvent('conversation', payload)
     });
     this.runnerService = new RunnerService(
@@ -1600,8 +1640,12 @@ export class NodeConnector {
       files: this.workspaceFileService,
       uploads: this.workspaceUploadService,
       changes: this.workspaceChangeService,
-      listSessions: (workspaceId) =>
-        this.executeNodeOperation('session.list', { workspaceId, limit: 30 }),
+      listSessions: (workspaceId, sessionGroup) =>
+        this.executeNodeOperation('session.list', {
+          workspaceId,
+          limit: 30,
+          ...(sessionGroup === undefined ? {} : { sessionGroup })
+        }),
       invalidate: this.invalidateWorkspaceFiles,
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,

@@ -53,6 +53,7 @@ export interface GoalExitSummary {
 }
 
 export interface Session {
+  readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
   readonly id: string;
   readonly workspaceId: string;
   readonly runner: RunnerId;
@@ -291,6 +292,7 @@ export interface ComposerSkillToken {
 }
 export type { UserSessionSummary } from '../service/admin-auth-service.js';
 export interface NodeWorkbenchManifest {
+  readonly sessionGroups?: { readonly apiVersion: 1 };
   readonly manifestVersion: number;
   readonly observedAt: number;
   readonly nodeGeneration?: string;

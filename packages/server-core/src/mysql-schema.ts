@@ -177,7 +177,12 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   workbench_notifications: CORE_MYSQL_SCHEMA_V19['workbench_notifications']!.replace(
     "enum('run','approval','plan','user-input','schedule')",
     AGENT_NOTIFICATION_KIND
-  ).replace('`message` varchar(512)', '`message` varchar(4000)'),
+  )
+    .replace('`message` varchar(512)', '`message` varchar(4000)')
+    .replace(
+      '  PRIMARY KEY',
+      "  `session_group` enum('MAIN','CHILD') DEFAULT NULL,\n  PRIMARY KEY"
+    ),
   mail_deliveries: MAIL_DELIVERIES_SQL.replace(
     '  PRIMARY KEY',
     '  `notification_result` json DEFAULT NULL,\n  PRIMARY KEY'
@@ -569,6 +574,27 @@ export const CORE_MYSQL_MIGRATIONS = [
         await connection.query('ROLLBACK');
         throw error;
       }
+    }
+  },
+  {
+    version: 33,
+    name: 'notification_session_groups',
+    checksum: createHash('sha256')
+      .update(
+        "ALTER TABLE workbench_notifications ADD COLUMN session_group enum('MAIN','CHILD') DEFAULT NULL"
+      )
+      .digest('hex'),
+    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+      const [rows] = (await connection.execute(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='workbench_notifications' AND COLUMN_NAME='session_group'"
+      )) as [readonly unknown[], unknown];
+      if (rows.length === 0)
+        await connection.execute(
+          "ALTER TABLE workbench_notifications ADD COLUMN session_group enum('MAIN','CHILD') DEFAULT NULL"
+        );
+      await validateMysqlSchema(connection, {
+        workbench_notifications: CORE_MYSQL_SCHEMA['workbench_notifications']!
+      });
     }
   }
 ] as const;

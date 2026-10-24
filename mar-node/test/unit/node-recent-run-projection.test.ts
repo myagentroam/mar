@@ -332,6 +332,26 @@ describe('Node recent Run lightweight projection', () => {
     service.dispose();
   });
 
+  it('keeps a cleared parent classification as MAIN in the cached reconnect snapshot', () => {
+    const emit = vi.fn();
+    const service = new RecentRunProjectionService(emit, () => 1_000);
+    try {
+      service.record(run('RUNNING', 1, 100), { ...session(), parentSessionId: 'parent-1' });
+      expect(service.snapshot()[0]).toMatchObject({ sessionGroup: 'CHILD' });
+
+      service.clearSessionParent('workspace-1', 'session-1');
+      service.publishSnapshot();
+
+      expect(service.snapshot()[0]).toMatchObject({ sessionGroup: 'MAIN' });
+      expect(emit).toHaveBeenLastCalledWith({
+        kind: 'SNAPSHOT',
+        runs: [expect.objectContaining({ sessionId: 'session-1', sessionGroup: 'MAIN' })]
+      });
+    } finally {
+      service.dispose();
+    }
+  });
+
   it('keeps separate tasks for different initiating users in the same session', () => {
     const service = new RecentRunProjectionService(vi.fn(), () => 1_000);
     service.record(run('RUNNING', 1, 100), session());

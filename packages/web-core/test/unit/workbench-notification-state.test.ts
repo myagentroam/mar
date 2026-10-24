@@ -171,6 +171,76 @@ describe('Workspace session unread queries', () => {
     expect(state.hasUnreadSession('node', 'one:workspace', 'session-1')).toBe(false);
   });
 
+  it('derives group unread flags from Server notifications and counts distinct active sessions', async () => {
+    const entries: WorkbenchNotification[] = [
+      { ...notification('main-unread', 'main-session'), source: 'server' },
+      {
+        ...notification('child-unread', 'child-session'),
+        source: 'server',
+        target: { ...notification('child-unread').target, sessionGroup: 'CHILD' }
+      },
+      {
+        ...notification('read-child', 'read-child'),
+        source: 'server',
+        read: true,
+        target: { ...notification('read-child').target, sessionGroup: 'CHILD' }
+      },
+      {
+        ...notification('expired-child', 'expired-child'),
+        source: 'server',
+        expiresAt: Date.now(),
+        target: { ...notification('expired-child').target, sessionGroup: 'CHILD' }
+      },
+      { ...hostedNotification('hosted'), source: 'server' },
+      {
+        ...notification('local-child'),
+        source: 'local',
+        kind: 'upload',
+        target: { nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'local-child' }
+      },
+      {
+        ...notification('other-workspace'),
+        source: 'server',
+        target: {
+          ...notification('other-workspace').target,
+          workspaceId: 'workspace-2',
+          sessionGroup: 'CHILD'
+        }
+      }
+    ];
+    const mainRun = { ...workspaceRun(), runId: 'main-run', sessionId: 'main-session' };
+    const recentRuns: RecentRun[] = [
+      mainRun,
+      { ...mainRun, runId: 'main-run-2' },
+      { ...workspaceRun('CANCELLING'), runId: 'legacy-run', sessionId: 'legacy-session' },
+      {
+        ...workspaceRun(),
+        runId: 'child-run',
+        sessionId: 'child-session',
+        sessionGroup: 'CHILD'
+      },
+      { ...workspaceRun('SUCCEEDED'), runId: 'terminal-run', sessionGroup: 'CHILD' },
+      { ...workspaceRun(), runId: 'other-node', nodeId: 'node-2', sessionGroup: 'CHILD' },
+      {
+        ...workspaceRun(),
+        runId: 'other-workspace',
+        workspaceId: 'workspace-2',
+        sessionGroup: 'CHILD'
+      }
+    ];
+    const request = vi.fn(async () => ({ notifications: [], recentRuns }));
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
+      request: request as never
+    });
+    await state.load();
+    state.notifications.value = entries;
+
+    expect(state.sessionGroupState('node-1', 'workspace-1')).toEqual({
+      MAIN: { running: 2, unread: true },
+      CHILD: { running: 1, unread: true }
+    });
+  });
+
   it.each([false, true])(
     'keeps a session unread until its last unread notification expires without a refresh: reversed=%s',
     (reversed) => {
