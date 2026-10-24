@@ -26,6 +26,23 @@
   pointer-events: none;
 }
 
+@media (min-width: 768px) {
+  .conversation-scroll-region.is-empty {
+    margin-top: auto;
+  }
+
+  .conversation-scroll-region.is-empty + .composer-host {
+    box-sizing: border-box;
+    width: min(calc(100% - 2rem), 45rem);
+    align-self: center;
+    margin-bottom: auto;
+  }
+
+  .conversation-scroll-region.is-empty + .composer-host > .composer {
+    background: transparent;
+  }
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,

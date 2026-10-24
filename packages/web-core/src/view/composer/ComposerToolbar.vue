@@ -464,9 +464,9 @@ function selectFiles(event: Event): void {
 .composer-send-button,
 .composer-stop-button {
   display: inline-grid;
-  width: var(--mar-compact-control-size);
-  min-width: var(--mar-compact-control-size);
-  height: var(--mar-compact-control-size);
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px solid var(--mar-color-brand);
   border-radius: 50%;
@@ -474,6 +474,12 @@ function selectFiles(event: Event): void {
   color: var(--mar-color-on-accent);
   padding: 0;
   cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .composer-toolbar {
+    padding-right: 0.75rem;
+  }
 }
 
 .composer-stop-button {

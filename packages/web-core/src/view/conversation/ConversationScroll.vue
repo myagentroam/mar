@@ -90,7 +90,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="conversation-scroll-region">
+  <div class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
       <div
         ref="content"
@@ -242,6 +242,27 @@ onBeforeUnmount(() => {
   padding: 2rem 1rem;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .conversation-scroll-region.is-empty {
+    flex: 0 0 auto;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-scroll {
+    height: auto;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-scroll-content.is-empty {
+    min-height: 0;
+  }
+
+  .conversation-scroll-region.is-empty .conversation-empty {
+    flex: none;
+    padding: 0.5rem 1rem 1rem;
+  }
 }
 
 .conversation-empty h2 {
