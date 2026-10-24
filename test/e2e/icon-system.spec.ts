@@ -102,9 +102,15 @@ for (const theme of ['dark', 'light']) {
       await send.press('Enter');
       await expect(page.getByTestId('sends')).toHaveText('1');
       await expect(send).toBeDisabled();
-      expect(
-        (await send.locator('[data-mar-icon="loading-action"]').boundingBox())!.width
-      ).toBeCloseTo(expectedPrimary, 1);
+      // Rotation changes the painted bounds, not the icon's layout size.
+      const pendingSize = await send
+        .locator('[data-mar-icon="loading-action"]')
+        .evaluate((graphic) => {
+          const style = getComputedStyle(graphic);
+          return { width: parseFloat(style.width), height: parseFloat(style.height) };
+        });
+      expect(pendingSize.width).toBeCloseTo(expectedPrimary, 1);
+      expect(pendingSize.height).toBeCloseTo(expectedPrimary, 1);
     }
     expect(errors).toEqual([]);
   });
