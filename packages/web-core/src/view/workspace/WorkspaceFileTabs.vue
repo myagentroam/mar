@@ -248,6 +248,7 @@ defineExpose({
     :overlay="props.presentation !== 'window'"
     :label="previewLabel"
     @focus="focusActivePage"
+    @close="requestCloseAll"
   >
     <section
       ref="root"

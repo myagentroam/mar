@@ -705,12 +705,25 @@ for (const source of ['conversation', 'attachment']) {
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
       await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
-      if (source === 'conversation' && shape === 'small') {
+      if (shape === 'small') {
         await page.setViewportSize({ width: 1920, height: 1080 });
         await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
         await expect(dialog).toBeVisible();
+        await image.click();
+        await expect(dialog).toBeVisible();
+        const imageBounds = (await image.boundingBox())!;
+        await page.mouse.move(
+          imageBounds.x + imageBounds.width / 2,
+          imageBounds.y + imageBounds.height / 2
+        );
+        await page.mouse.down();
+        await page.mouse.move(8, 8);
+        await page.mouse.up();
+        await expect(dialog).toBeVisible();
         await dialog.click({ position: { x: 8, y: 8 } });
         await expect(dialog).toHaveCount(0);
+        await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
+        await expect(image).toBeVisible();
       }
     });
   }

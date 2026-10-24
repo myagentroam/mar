@@ -1386,6 +1386,7 @@ onBeforeUnmount(() => {
           })
         "
         @focus="filePage?.focus()"
+        @close="filePreview.close"
       >
         <WorkspaceTextFilePage
           ref="filePage"
