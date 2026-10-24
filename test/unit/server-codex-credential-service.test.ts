@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer as createHttpsServer } from 'node:https';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { CodexCredentialService } from '../../ee/server/src/service/codex-credential-service.js';
@@ -1451,6 +1451,171 @@ describe('Codex credential service', () => {
     expect((await credentials.list(1))[0]).not.toHaveProperty('fedramp');
     const catalogHeaders = request.mock.calls[4]?.[1]?.headers as Record<string, string>;
     expect(catalogHeaders).not.toHaveProperty('X-OpenAI-Fedramp');
+  });
+
+  describe('standard device login attempt lifecycle', () => {
+    const actor = { userId: 1, sessionFingerprint: 'owner-session' };
+    const draft = {
+      name: 'Team Codex',
+      ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
+    };
+    const ttl = 15 * 60 * 1000;
+    const deviceResponse = () =>
+      new Response(
+        JSON.stringify({ device_auth_id: 'device-secret', user_code: 'ABCD-EFGH', interval: 5 })
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+    });
+
+    afterEach(() => {
+      vi.clearAllTimers();
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    it('releases all 128 slots at expiry without polling and keeps unexpired attempts limited', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      let sequence = 0;
+      const credentials = service(
+        database().database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      for (let index = 0; index < 128; index++) await credentials.startLogin(actor, draft);
+
+      await vi.advanceTimersByTimeAsync(ttl - 1);
+      await expect(credentials.startLogin(actor, draft)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_LIMIT_REACHED'
+      );
+      expect(request).toHaveBeenCalledTimes(128);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(credentials.startLogin(actor, draft)).resolves.toMatchObject({
+        id: 'attempt-129',
+        status: 'PENDING'
+      });
+      await expect(credentials.loginAttempt(actor, 'attempt-1')).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      expect(request).toHaveBeenCalledTimes(129);
+      expect(vi.getTimerCount()).toBe(1);
+      expect(timers).toHaveBeenCalledTimes(129);
+      expect(timers.mock.results.every((result) => !result.value.hasRef())).toBe(true);
+    });
+
+    it.each([
+      { stage: 'success', status: 'SUCCEEDED', code: undefined },
+      { stage: 'poll failure', status: 'FAILED', code: 'CODEX_DEVICE_AUTH_FAILED' },
+      { stage: 'malformed code', status: 'FAILED', code: 'CODEX_UPSTREAM_RESPONSE_INVALID' },
+      { stage: 'token failure', status: 'FAILED', code: 'CODEX_TOKEN_EXCHANGE_FAILED' },
+      { stage: 'catalog failure', status: 'FAILED', code: 'CODEX_CREDENTIAL_CHECK_FAILED' }
+    ])('clears the expiry timer after $stage', async ({ stage, status, code }) => {
+      const fixture = database();
+      const authorizedToken = jwt({
+        exp: Math.floor((NOW + 60 * 60 * 1000) / 1000),
+        'https://api.openai.com/auth': { chatgpt_account_id: 'account-secret' }
+      });
+      const request = vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith('/usercode')) return deviceResponse();
+        if (String(url).endsWith('/deviceauth/token'))
+          return new Response(
+            JSON.stringify(
+              stage === 'malformed code'
+                ? {}
+                : { authorization_code: 'authorization-secret', code_verifier: 'verifier-secret' }
+            ),
+            { status: stage === 'poll failure' ? 500 : 200 }
+          );
+        if (String(url).endsWith('/oauth/token'))
+          return new Response(
+            JSON.stringify({
+              access_token: authorizedToken,
+              refresh_token: 'refresh-secret',
+              id_token: authorizedToken
+            }),
+            { status: stage === 'token failure' ? 400 : 200 }
+          );
+        return new Response(JSON.stringify({ models: [] }), {
+          status: stage === 'catalog failure' ? 500 : 200
+        });
+      });
+      const credentials = service(fixture.database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      expect(vi.getTimerCount()).toBe(1);
+
+      const completed = await credentials.loginAttempt(actor, attempt.id);
+      expect(completed).toMatchObject({ status, ...(code ? { code } : {}) });
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await credentials.list(1)).toHaveLength(status === 'SUCCEEDED' ? 1 : 0);
+      await expect(credentials.loginAttempt(actor, attempt.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+    });
+
+    it('keeps ownership checks and clears only the cancelled attempt timer', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      let sequence = 0;
+      const credentials = service(
+        database().database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      const first = await credentials.startLogin(actor, draft);
+      const second = await credentials.startLogin(actor, draft);
+      for (const other of [
+        { ...actor, userId: 2 },
+        { ...actor, sessionFingerprint: 'other-session' }
+      ]) {
+        await expect(credentials.loginAttempt(other, first.id)).rejects.toThrow(
+          'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+        );
+        await expect(credentials.cancelLogin(other, first.id)).rejects.toThrow(
+          'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+        );
+      }
+      expect(vi.getTimerCount()).toBe(2);
+      await credentials.cancelLogin(actor, first.id);
+      expect(vi.getTimerCount()).toBe(1);
+      await expect(credentials.loginAttempt(actor, first.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      await credentials.cancelLogin(actor, second.id);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(request).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the timer when polling observes expiry before the timer runs', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      const credentials = service(database().database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      vi.setSystemTime(NOW + ttl);
+      await expect(credentials.loginAttempt(actor, attempt.id)).resolves.toMatchObject({
+        status: 'EXPIRED'
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      expect(request).toHaveBeenCalledOnce();
+    });
+
+    it('clears outstanding standard attempt timers through the existing close lifecycle', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      const credentials = service(database().database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      expect(vi.getTimerCount()).toBe(1);
+      credentials.closeChatgptLogins();
+      credentials.closeChatgptLogins();
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(credentials.loginAttempt(actor, attempt.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      expect(request).toHaveBeenCalledOnce();
+    });
   });
 
   it('rejects a malformed SOCKS5 URL when starting login with a stable input error', async () => {
