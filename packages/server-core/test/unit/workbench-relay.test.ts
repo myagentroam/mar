@@ -107,6 +107,79 @@ describe('public page-level Workbench relay', () => {
     }
   });
 
+  it.each([
+    {
+      type: 'direct.prepare',
+      requestId: 'request-0001',
+      nodeId: 'node-1',
+      nodeGeneration: 'generation-1',
+      purpose: 'TRANSPORT'
+    },
+    {
+      type: 'terminal.direct.prepare',
+      requestId: 'request-0001',
+      nodeId: 'node-1',
+      nodeGeneration: 'generation-1',
+      transportSessionId: 'transport-1',
+      terminalId: 'terminal-1',
+      afterSequence: 0,
+      readonly: false
+    }
+  ] as const)(
+    'contains $type rejection at the registered message listener without affecting another page',
+    async (frame) => {
+      const { relay, attach } = fixture();
+      const failure = Promise.withResolvers<void>();
+      const handler = vi
+        .fn(async (): Promise<void> => undefined)
+        .mockImplementationOnce(() => failure.promise);
+      const disconnected = vi.fn();
+      const unhandled = vi.fn();
+      relay.setDirectTransferHandler({ message: handler, disconnected });
+      relay.setTerminalDirectHandler({ message: handler });
+      process.on('unhandledRejection', unhandled);
+      try {
+        const failed = attach();
+        const healthy = attach();
+        const failedId = String(failed.sent[0]!.workbenchConnectionId);
+        const healthyId = String(healthy.sent[0]!.workbenchConnectionId);
+        failed.receive(frame);
+        expect(handler).toHaveBeenCalledWith(
+          { userId: 1, sessionHash: 'session-one', workbenchConnectionId: failedId },
+          frame
+        );
+        healthy.receive({ type: 'ping', id: 'before-rejection' });
+        failure.reject(new Error('DB_WRITE_FAILED: private request and credential details'));
+        // Cross an event-loop turn so an escaped rejection is observable, not just pending.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(failed.close).toHaveBeenCalledExactlyOnceWith(1011, 'WORKBENCH_MESSAGE_FAILED');
+        expect(failed.sent).toHaveLength(1);
+        expect(disconnected).toHaveBeenCalledExactlyOnceWith(failedId);
+        expect(relay.ownsConnection('session-one', failedId)).toBe(true);
+        expect(await relay.sendDirectConnection(failedId, { type: 'test' })).toBe('unavailable');
+
+        healthy.receive({ type: 'ping', id: 'after-rejection' });
+        healthy.receive({ ...frame, requestId: 'request-0002' });
+        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler).toHaveBeenLastCalledWith(
+          { userId: 1, sessionHash: 'session-one', workbenchConnectionId: healthyId },
+          { ...frame, requestId: 'request-0002' }
+        );
+        expect(healthy.sent.slice(1)).toEqual([
+          { type: 'pong', id: 'before-rejection' },
+          { type: 'pong', id: 'after-rejection' }
+        ]);
+        expect(healthy.close).not.toHaveBeenCalled();
+        expect(await relay.sendDirectConnection(healthyId, { type: 'test' })).toBe('delivered');
+        expect(healthy.sent.at(-1)).toEqual({ type: 'test' });
+      } finally {
+        process.off('unhandledRejection', unhandled);
+        relay.close();
+      }
+    }
+  );
+
   it('revocation during disconnected grace invalidates the old logical identity', () => {
     const { relay, attach } = fixture();
     try {
