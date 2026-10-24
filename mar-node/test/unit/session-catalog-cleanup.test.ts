@@ -8,6 +8,7 @@ import { SessionCatalogService } from '../../src/service/session-catalog-service
 import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
 import { SessionDomainState } from '../../src/service/session-domain-state.js';
 import { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
+import { CommandStateStore } from '../../src/runner-command-engine.js';
 import type {
   ExternalResumeContext,
   ExternalResumeResult
@@ -50,17 +51,27 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
   const removeNative = vi.fn(
     async (_session: NodeAgentSession, _nativeId: string): Promise<boolean | 'MISSING'> => true
   );
+  const aliases = new Map<string, string>();
   const runners = {
-    require: () => ({ removeNative, nativeAliasesFor: () => [], managedAliasId: () => undefined })
+    require: () => ({
+      removeNative,
+      nativeAliasesFor: (id: string) =>
+        [...aliases].filter(([, managedId]) => managedId === id).map(([nativeId]) => nativeId),
+      managedAliasId: (id: string) => aliases.get(id),
+      forgetNativeAlias: (id: string) => aliases.delete(id)
+    })
   } as never;
   const state = new SessionDomainState<NodeAgentSession, unknown>();
+  const commands = new CommandStateStore();
   const projection = new NativeSessionProjectionService({
     database: () => database,
     nodeId: () => 'node-1',
     runtime,
     runners,
     state,
-    commands: { removeSession: vi.fn() } as never,
+    commands,
+    releaseResumeState: (directIds, projectionIds) =>
+      resume.forgetSessions(directIds, projectionIds),
     capabilities: () => ({
       platform: 'linux',
       architecture: 'x64',
@@ -70,6 +81,13 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
     }),
     present: vi.fn()
   });
+  const resumeNative = vi.fn(
+    async (
+      source: NodeAgentSession,
+      context: ExternalResumeContext
+    ): Promise<ExternalResumeResult> => ({ session: context.promote(source.id)! })
+  );
+  const resume = externalResumeFixture({ runtime, state, target }, resumeNative);
   projection.remember([target]);
   const refreshActivity = vi.fn(async (_session: NodeAgentSession) => {});
   const externalActivity = vi.fn((): unknown => 'IDLE');
@@ -101,6 +119,10 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
     runtime,
     target,
     projection,
+    resume,
+    resumeNative,
+    aliases,
+    commands,
     removeNative,
     state,
     refreshActivity,
@@ -111,7 +133,11 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
 }
 
 function externalResumeFixture(
-  f: ReturnType<typeof removalFixture>,
+  f: {
+    runtime: NodeRuntimeState;
+    state: SessionDomainState<NodeAgentSession, unknown>;
+    target: NodeAgentSession;
+  },
   resumeNative: (
     source: NodeAgentSession,
     context: ExternalResumeContext
@@ -137,6 +163,145 @@ function externalResumeFixture(
   });
 }
 
+describe('External resume state ownership', () => {
+  it('synchronously releases only matching direct and projection state through the resume owner', async () => {
+    vi.useFakeTimers();
+    const f = removalFixture('EXTERNAL');
+    try {
+      const direct = { ...f.target, id: 'target-direct' };
+      const alias = { ...f.target, id: 'alias-direct', externalSessionId: 'alias-native' };
+      const linked = { ...f.target, id: 'linked-direct', externalSessionId: 'linked-native' };
+      const unrelated = f.runtime.createAgentSession({
+        workspaceId: f.target.workspaceId,
+        runner: f.target.runner,
+        cwd: f.target.cwd,
+        externalSessionId: 'unrelated-native'
+      });
+      const otherCwd = { ...f.target, id: 'other-cwd', cwd: '/workspace/other' };
+      const otherRunner = { ...f.target, id: 'other-runner', runner: 'codex' as const };
+      f.state.directNative.delete(f.target.id);
+      f.projection.remember([direct, alias, linked, unrelated, otherCwd, otherRunner]);
+      f.aliases.set('alias-native', f.target.id);
+      f.aliases.set('unrelated-alias', unrelated.id);
+      f.resumeNative.mockResolvedValue({
+        failureCode: 'RESUME_FAILED',
+        messageFailureCode: 'MESSAGE_RESUME_FAILED',
+        failureDetail: 'Controlled resume failure'
+      });
+      for (const source of [direct, alias, linked, unrelated]) {
+        await expect(f.resume.resume(source)).resolves.toBeUndefined();
+        f.resume.setActivity(source.id, 'IDLE');
+        f.state.resumedByDirectId.set(source.id, source.id);
+      }
+      f.state.resumedByDirectId.set(direct.id, f.target.id);
+      f.state.resumedByDirectId.set(alias.id, f.target.id);
+      f.state.resumedByDirectId.set(linked.id, f.target.id);
+      f.resume.setActivity(f.target.id, 'BUSY');
+      f.resume.setActivity('alias-native', 'BUSY');
+      const command = {
+        commandId: 'plan',
+        active: true,
+        label: 'Plan',
+        detail: null,
+        closable: true,
+        closeInput: '/plan'
+      };
+      f.commands.set(f.target.id, command);
+      f.commands.set(unrelated.id, command);
+      const retainedTimers = new Map(
+        [linked, unrelated].map((direct) => [direct.id, f.state.failureTimers.get(direct.id)!])
+      );
+      expect(vi.getTimerCount()).toBe(4);
+      vi.advanceTimersByTime(29 * 60_000);
+      const release = vi.spyOn(f.resume, 'forgetSessions');
+
+      expect(f.projection.forget(f.target, new Set([f.target.externalSessionId!]))).toBeUndefined();
+
+      expect(release).toHaveBeenCalledExactlyOnceWith(
+        new Set([direct.id, alias.id]),
+        new Set([f.target.id])
+      );
+      expect([...f.state.directNative.keys()]).toEqual([
+        linked.id,
+        unrelated.id,
+        otherCwd.id,
+        otherRunner.id
+      ]);
+      expect(f.runtime.getAgentSession(f.target.id)).toBeUndefined();
+      expect(f.runtime.getAgentSession(unrelated.id)).toEqual(unrelated);
+      expect(f.commands.list(f.target.id)).toEqual([]);
+      expect(f.commands.list(unrelated.id)).toEqual([command]);
+      expect([...f.aliases]).toEqual([['unrelated-alias', unrelated.id]]);
+      expect([...f.state.resumedByDirectId]).toEqual([[unrelated.id, unrelated.id]]);
+      expect([...f.state.externalActivity]).toEqual([
+        [linked.id, 'IDLE'],
+        [unrelated.id, 'IDLE'],
+        ['alias-native', 'BUSY']
+      ]);
+      for (const failures of [
+        f.state.resumeFailures,
+        f.state.messageResumeFailures,
+        f.state.resumeFailureDetails
+      ])
+        expect([...failures.keys()]).toEqual([linked.id, unrelated.id]);
+      expect(f.state.resumeFailures.get(unrelated.id)).toBe('RESUME_FAILED');
+      expect(f.state.messageResumeFailures.get(unrelated.id)).toBe('MESSAGE_RESUME_FAILED');
+      expect(f.state.resumeFailureDetails.get(unrelated.id)).toBe('Controlled resume failure');
+      expect(f.state.failureTimers).toEqual(retainedTimers);
+      expect(vi.getTimerCount()).toBe(2);
+      vi.advanceTimersByTime(59_999);
+      expect(f.resume.failure(unrelated.id).code).toBe('RESUME_FAILED');
+      vi.advanceTimersByTime(1);
+      expect(f.state.resumeFailures.size).toBe(0);
+      expect(f.state.messageResumeFailures.size).toBe(0);
+      expect(f.state.resumeFailureDetails.size).toBe(0);
+      expect(f.state.failureTimers.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      f.database.close();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(['BUSY', undefined] as const)(
+    'preserves resume failures and does not invent missing activity (%s)',
+    async (activity) => {
+      vi.useFakeTimers();
+      const f = removalFixture('EXTERNAL');
+      try {
+        f.resumeNative.mockResolvedValue({
+          ...(activity === undefined ? {} : { activity }),
+          failureCode: 'RESUME_FAILED',
+          messageFailureCode: 'MESSAGE_RESUME_FAILED',
+          failureDetail: 'Controlled resume failure'
+        });
+        await expect(f.resume.resolveForMessage(f.target.id)).rejects.toThrow(
+          activity === 'BUSY' ? 'EXTERNAL_SESSION_ACTIVE' : 'MESSAGE_RESUME_FAILED'
+        );
+        expect(f.state.externalActivity.has(f.target.id)).toBe(activity !== undefined);
+        expect(f.state.externalActivity.get(f.target.id)).toBe(activity);
+        expect(f.resume.failure(f.target.id)).toEqual({
+          code: 'RESUME_FAILED',
+          detail: 'Controlled resume failure'
+        });
+        expect(f.runtime.getAgentSession(f.target.id)?.nativeControl).toBe('EXTERNAL');
+        expect(f.state.resumedByDirectId.size).toBe(0);
+        vi.advanceTimersByTime(30 * 60_000 - 1);
+        expect(f.resume.failure(f.target.id).code).toBe('RESUME_FAILED');
+        vi.advanceTimersByTime(1);
+        expect(f.resume.failure(f.target.id)).toEqual({ code: 'SESSION_RESUME_REJECTED' });
+        expect(f.state.messageResumeFailures.size).toBe(0);
+        expect(f.state.failureTimers.size).toBe(0);
+      } finally {
+        f.database.close();
+        vi.clearAllTimers();
+        vi.useRealTimers();
+      }
+    }
+  );
+});
+
 describe('SessionCatalogService removal admission', () => {
   it('rejects late external activation rather than recreating a deleted session and Run', async () => {
     const f = removalFixture('EXTERNAL');
@@ -147,7 +312,8 @@ describe('SessionCatalogService removal admission', () => {
       await finishResume.promise;
       return { activity: 'IDLE' as const, session: context.create(source) };
     });
-    const resume = externalResumeFixture(f, resumeNative);
+    f.resumeNative.mockImplementation(resumeNative);
+    const resume = f.resume;
     f.removeNative.mockImplementation(async () => {
       deleting.resolve();
       await finishDelete.promise;
@@ -198,7 +364,8 @@ describe('SessionCatalogService removal admission', () => {
           return { activity: 'IDLE' as const, session: context.promote(source.id)! };
         }
       );
-      const resume = externalResumeFixture(f, resumeNative);
+      f.resumeNative.mockImplementation(resumeNative);
+      const resume = f.resume;
       const message = {
         sessionId: f.target.id,
         clientMessageId: 'before-activation',

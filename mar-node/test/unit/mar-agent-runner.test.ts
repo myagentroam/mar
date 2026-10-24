@@ -1704,6 +1704,7 @@ describe('MAR Agent Node Runner', () => {
       capabilities: () => unavailableCapabilities(),
       state: {} as never,
       commands: {} as never,
+      releaseResumeState: vi.fn(),
       present: (value) => value as never
     });
 
