@@ -4,14 +4,16 @@ import {
   CORE_MYSQL_BASELINE_VERSION,
   CORE_MYSQL_MIGRATIONS,
   CORE_MYSQL_SCHEMA,
-  CORE_MYSQL_SCHEMA_V9
+  CORE_MYSQL_SCHEMA_V9,
+  validateCoreMysqlDatabase
 } from '../../packages/server-core/src/mysql-schema.js';
 import { validateMysqlSchema } from '../../packages/server-core/src/mysql-schema-support.js';
 import {
   ENTERPRISE_MYSQL_BASELINE_VERSION,
   ENTERPRISE_MYSQL_MIGRATIONS,
   ENTERPRISE_MYSQL_SCHEMA,
-  ENTERPRISE_MYSQL_SCHEMA_V4
+  ENTERPRISE_MYSQL_SCHEMA_V4,
+  validateEnterpriseMysqlDatabase
 } from '../../ee/server/src/mysql/enterprise-migrations.js';
 import { MYSQL_MIGRATION_DEMO } from '../../packages/server-core/src/mysql-migration-demo.js';
 
@@ -28,6 +30,42 @@ function schemaConnection() {
   });
   return { definitions, query };
 }
+
+describe.each([
+  ['Core', validateCoreMysqlDatabase],
+  ['Enterprise', validateEnterpriseMysqlDatabase]
+] as const)('%s Session share startup references', (_edition, validate) => {
+  it.each(['owner', 'Node', 'Workspace', 'Workspace on another Node'])(
+    'rejects a share with a missing %s reference',
+    async () => {
+      const query = vi.fn(async (sql: string) => {
+        const table = /^SHOW CREATE TABLE `([^`]+)`/u.exec(sql)?.[1];
+        if (table)
+          return [
+            [{ 'Create Table': { ...CORE_MYSQL_SCHEMA, ...ENTERPRISE_MYSQL_SCHEMA }[table] }],
+            []
+          ];
+        return [sql.includes('FROM session_shares') ? [{ orphan: 1 }] : [], []];
+      });
+      await expect(validate({ query, execute: vi.fn(), release: vi.fn() })).rejects.toThrow(
+        'SERVER_DATABASE_REFERENCE_INVALID'
+      );
+    }
+  );
+
+  it('accepts a share whose owner, Node and Node-scoped Workspace exist', async () => {
+    const query = vi.fn(async (sql: string) => {
+      const table = /^SHOW CREATE TABLE `([^`]+)`/u.exec(sql)?.[1];
+      return [
+        table
+          ? [{ 'Create Table': { ...CORE_MYSQL_SCHEMA, ...ENTERPRISE_MYSQL_SCHEMA }[table] }]
+          : [],
+        []
+      ];
+    });
+    await expect(validate({ query, execute: vi.fn(), release: vi.fn() })).resolves.toBeUndefined();
+  });
+});
 
 it.each([21, 22, 23])(
   'rolls back model configuration migration v%s on failure',
@@ -83,7 +121,7 @@ describe('Server MySQL installation baselines', () => {
   it('preserves the shared Core v9 baseline and appends the scheduled notification migration', async () => {
     expect(CORE_MYSQL_BASELINE_VERSION).toBe(9);
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     ]);
     expect(CORE_MYSQL_MIGRATIONS[2]?.name).toBe('mail_templates_and_deliveries');
     expect(CORE_MYSQL_MIGRATIONS[3]?.name).toBe('mail_template_notification_titles');
@@ -120,7 +158,10 @@ describe('Server MySQL installation baselines', () => {
     expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 28)?.name).toBe(
       'notification_channels'
     );
-    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('session_shares');
+    expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 29)?.name).toBe(
+      'session_shares'
+    );
+    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('mobile_only_web_push_clients');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('session_shares');
     expect(CORE_MYSQL_SCHEMA.mar_agent_models).not.toContain('high_density_compaction');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('users');

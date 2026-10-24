@@ -203,6 +203,13 @@ export async function validateCoreMysqlDatabase(
 ): Promise<void> {
   await validateMysqlSchema(connection, CORE_MYSQL_SCHEMA);
   await validateMysqlReferences(connection, CORE_MYSQL_SCHEMA_V19);
+  await validateMysqlSessionShareReferences(connection);
+  await assertMysqlNoForeignKeys(connection);
+}
+
+export async function validateMysqlSessionShareReferences(
+  connection: Pick<import('./mysql-migrations.js').MysqlMigrationConnection, 'query'>
+): Promise<void> {
   const [shareOrphans] = await connection.query(`SELECT 1 AS orphan FROM session_shares share_record
     LEFT JOIN users owner ON owner.id=share_record.user_id
     LEFT JOIN nodes node ON node.id=share_record.node_id
@@ -210,7 +217,6 @@ export async function validateCoreMysqlDatabase(
     WHERE owner.id IS NULL OR node.id IS NULL OR workspace.workspace_id IS NULL LIMIT 1`);
   if (!Array.isArray(shareOrphans) || shareOrphans.length !== 0)
     throw new Error('SERVER_DATABASE_REFERENCE_INVALID');
-  await assertMysqlNoForeignKeys(connection);
 }
 
 const XAI_SUBSCRIPTION_ENDPOINT_SQL =
