@@ -1116,6 +1116,10 @@ function submitSessionSearch(): void {
   padding: 2px 6px;
 }
 
+.session-group-tabs ~ .session-list {
+  margin-top: 0;
+}
+
 .session-list li:first-child {
   padding-top: 4px;
 }
