@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { SessionStore, SessionRecordInput, SessionStoreCompactInput } from './contracts.js';
+import type {
+  SessionStore,
+  SessionStoreMaintenance,
+  SessionRecordInput,
+  SessionStoreCompactInput
+} from './contracts.js';
 import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -115,6 +120,7 @@ interface SessionWriterLease extends SessionCurrentState {
   owner: object | undefined;
   executing: boolean;
   retained: number;
+  maintenance?: SessionStoreMaintenance;
   appendFailure?: { error: unknown };
   release: () => Promise<void>;
 }
@@ -147,6 +153,10 @@ export class JsonlSessionStore implements SessionStore {
   static readonly #instances = new Map<string, SharedStore>();
   static readonly #opening = new Map<string, Promise<SharedStore>>();
   readonly #shared: SharedStore;
+  readonly #maintenance = new WeakMap<
+    SessionStoreMaintenance,
+    { sessionId: string; kind: 'clear' | 'delete' }
+  >();
   #leaseClosed = false;
   private constructor(shared: SharedStore) {
     this.#shared = shared;
@@ -414,9 +424,21 @@ export class JsonlSessionStore implements SessionStore {
     }
     return { directory, release };
   }
-  /** Append the durable creation record before making this Session visible in the index. */
   async createSession(input: { title?: string; workspace: string; source?: SessionSource }) {
     this.#assertOpen();
+    const source = normalizeSessionSource(input.source);
+    if (source.type !== 'subagent') return this.#createSession(input, source);
+    // Publish under the parent's existing serial domain so tree admission cannot miss a child.
+    return this.#serializeRecordOperation(source.parentSessionId, async () => {
+      this.#assertOpen();
+      if (this.#shared.writerLeases.get(source.parentSessionId)?.maintenance)
+        throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
+      await this.getSession(source.parentSessionId);
+      return this.#createSession(input, source);
+    });
+  }
+  /** Append the durable creation record before making this Session visible in the index. */
+  async #createSession(input: Parameters<SessionStore['createSession']>[0], source: SessionSource) {
     const id = randomUUID();
     const now = new Date().toISOString();
     const meta: SessionMeta = {
@@ -425,7 +447,7 @@ export class JsonlSessionStore implements SessionStore {
       workspace: input.workspace,
       createdAt: now,
       lastActivityAt: now,
-      source: normalizeSessionSource(input.source),
+      source,
       nextSequence: 1,
       automaticTitlePending: input.title === undefined,
       resume: {
@@ -882,9 +904,11 @@ export class JsonlSessionStore implements SessionStore {
     }
   }
   /** Reset history with the same recovery journal while preserving the Session identity. */
-  async clearSession(sessionId: string) {
+  async clearSession(sessionId: string, maintenance?: SessionStoreMaintenance) {
     this.#assertOpen();
-    const release = await this.acquireSessionLease(sessionId);
+    const holding = maintenance ?? (await this.acquireSessionMaintenance(sessionId, 'clear'));
+    this.#assertMaintenance(sessionId, 'clear', holding);
+    let failed = false;
     try {
       const meta = this.#shared.index.sessions.find((item) => item.id === sessionId);
       if (!meta) throw new MarAgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
@@ -909,8 +933,15 @@ export class JsonlSessionStore implements SessionStore {
         }
       ];
       return await this.#replaceHistory(meta, retained, { kind: 'clear', clearedAt });
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
-      await release();
+      if (!maintenance) {
+        const releasing = holding.release();
+        if (failed) await releasing.catch(() => undefined);
+        else await releasing;
+      }
     }
   }
   /** Called only while rollback or clear holds the maintenance lease. */
@@ -1537,7 +1568,7 @@ export class JsonlSessionStore implements SessionStore {
       this.#assertOpen();
       let lease = this.#shared.writerLeases.get(sessionId);
       if (lease) {
-        if (lease.executing || owner === undefined || lease.owner !== owner)
+        if (lease.maintenance || lease.executing || owner === undefined || lease.owner !== owner)
           throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
         if (lease.appendFailure) throw lease.appendFailure.error;
         lease.executing = true;
@@ -1561,12 +1592,98 @@ export class JsonlSessionStore implements SessionStore {
     const lease = this.#shared.writerLeases.get(sessionId);
     return lease?.owner === owner && lease.retained > 0;
   }
+  async acquireSessionMaintenance(
+    sessionId: string,
+    kind: 'clear' | 'delete',
+    owner?: object
+  ): Promise<SessionStoreMaintenance> {
+    this.#assertOpen();
+    const acquired = new Map<string, SessionWriterLease>();
+    let sessionIds: readonly string[] = [];
+    let released = false;
+    const holding: SessionStoreMaintenance = Object.freeze({
+      get sessionIds() {
+        return sessionIds;
+      },
+      release: async () => {
+        if (released) return;
+        released = true;
+        this.#maintenance.delete(holding);
+        let failure: { error: unknown } | undefined;
+        for (const [id, writer] of [...acquired].reverse()) {
+          try {
+            await this.#serializeRecordOperation(id, async () => {
+              delete writer.maintenance;
+              await this.#releaseUnusedWriter(id, writer);
+            });
+          } catch (error) {
+            failure ??= { error };
+          }
+        }
+        if (failure) throw failure.error;
+      }
+    });
+    try {
+      // Re-read membership after acquiring writers; never hand the SDK a pre-lock tree snapshot.
+      for (;;) {
+        const tree = kind === 'delete' ? await this.sessionTree(sessionId) : [sessionId];
+        for (const id of tree.toReversed()) {
+          if (acquired.has(id)) continue;
+          await this.#serializeRecordOperation(id, async () => {
+            this.#assertOpen();
+            let writer = this.#shared.writerLeases.get(id);
+            if (
+              writer &&
+              (writer.maintenance ||
+                owner === undefined ||
+                writer.owner !== owner ||
+                (kind === 'clear' && writer.executing))
+            )
+              throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
+            if (!writer) {
+              // Deleting a stale index entry must not recreate its missing directory.
+              const release =
+                kind === 'delete' && !(await sessionDirectoryExists(this.#sessionDirectory(id)))
+                  ? async () => {}
+                  : await this.#acquireSessionLease(id);
+              writer = { owner, executing: false, retained: 0, release };
+              this.#shared.writerLeases.set(id, writer);
+            }
+            writer.maintenance = holding;
+            acquired.set(id, writer);
+          });
+        }
+        const current = kind === 'clear' ? tree : await this.sessionTree(sessionId);
+        if (current.every((id) => acquired.has(id))) {
+          sessionIds = Object.freeze(current);
+          break;
+        }
+      }
+      this.#maintenance.set(holding, { sessionId, kind });
+      return holding;
+    } catch (error) {
+      await holding.release().catch(() => undefined);
+      throw error;
+    }
+  }
+  #assertMaintenance(
+    sessionId: string,
+    kind: 'clear' | 'delete',
+    holding: SessionStoreMaintenance
+  ) {
+    const current = this.#maintenance.get(holding);
+    if (current?.sessionId !== sessionId || current.kind !== kind)
+      throw new MarAgentError(
+        'MAR_AGENT_SESSION_LOCKED',
+        'Session maintenance ownership is invalid.'
+      );
+  }
   /** Native writes join their Agent's sole writer, without admitting another Execution. */
   async acquireSessionWriteLease(sessionId: string, owner: object): Promise<() => Promise<void>> {
     return this.#serializeRecordOperation(sessionId, async () => {
       this.#assertOpen();
       let lease = this.#shared.writerLeases.get(sessionId);
-      if (lease && lease.owner !== owner)
+      if (lease && (lease.maintenance || lease.owner !== owner))
         throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
       if (lease?.appendFailure) throw lease.appendFailure.error;
       if (!lease) {
@@ -1589,7 +1706,7 @@ export class JsonlSessionStore implements SessionStore {
   async retainSessionLease(sessionId: string, owner: object): Promise<() => Promise<void>> {
     return this.#serializeRecordOperation(sessionId, async () => {
       const lease = this.#shared.writerLeases.get(sessionId);
-      if (!lease || !lease.executing || lease.owner !== owner)
+      if (!lease || lease.maintenance || !lease.executing || lease.owner !== owner)
         throw new MarAgentError(
           'MAR_AGENT_SESSION_LOCKED',
           'Retained work requires its originating Session writer.'
@@ -1606,7 +1723,7 @@ export class JsonlSessionStore implements SessionStore {
     });
   }
   async #releaseUnusedWriter(sessionId: string, lease: SessionWriterLease): Promise<void> {
-    if (lease.executing || lease.retained) return;
+    if (lease.maintenance || lease.executing || lease.retained) return;
     try {
       await lease.release();
     } finally {
@@ -2022,21 +2139,15 @@ export class JsonlSessionStore implements SessionStore {
       throw error;
     }
   }
-  async delete(sessionId: string): Promise<{ readonly deleted: boolean }> {
+  async delete(
+    sessionId: string,
+    maintenance?: SessionStoreMaintenance
+  ): Promise<{ readonly deleted: boolean }> {
     this.#assertOpen();
-    await this.#refreshIndex();
-    const tree = sessionTreeIds(this.#shared.index.sessions, sessionId);
-    if (tree.length === 0)
-      throw new MarAgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
-    const releases: Array<() => Promise<void>> = [];
-    try {
-      for (const id of tree.toReversed())
-        if (await sessionDirectoryExists(join(this.#shared.root, 'sessions', id)))
-          releases.push(await this.acquireSessionLease(id));
-    } catch (error) {
-      await Promise.allSettled(releases.toReversed().map((release) => release()));
-      throw error;
-    }
+    const holding = maintenance ?? (await this.acquireSessionMaintenance(sessionId, 'delete'));
+    this.#assertMaintenance(sessionId, 'delete', holding);
+    const tree = holding.sessionIds;
+    let failed = false;
     try {
       const deleted = await sessionDirectoryExists(join(this.#shared.root, 'sessions', sessionId));
       for (const id of tree.toReversed()) {
@@ -2050,8 +2161,15 @@ export class JsonlSessionStore implements SessionStore {
       this.#shared.index.revision++;
       await this.#saveIndex(tree);
       return { deleted };
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
-      await Promise.allSettled(releases.toReversed().map((release) => release()));
+      if (!maintenance) {
+        const releasing = holding.release();
+        if (failed) await releasing.catch(() => undefined);
+        else await releasing;
+      }
     }
   }
   #assertOpen() {

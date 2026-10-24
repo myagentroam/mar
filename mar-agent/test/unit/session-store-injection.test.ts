@@ -10,6 +10,7 @@ import {
   SecretValue,
   type MarAgentModelConfiguration,
   type SessionStore,
+  type SessionStoreMaintenance,
   type MarAgent
 } from '../../src/index.js';
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
@@ -232,6 +233,74 @@ it('isolates Agent writer owners on a borrowed Store and releases leases without
     await store.close();
   }
 });
+
+it.each(['clearSession', 'deleteSession'] as const)(
+  'preserves %s error priority when an injected maintenance release throws synchronously',
+  async (action) => {
+    for (const cleanupFails of [false, true]) {
+      const { workspace, host } = await fixture();
+      const backend = textSessionStore();
+      const agentHost = host();
+      const primary = new Error('Host cleanup failed');
+      const releaseFailure = new Error('Synchronous release failed');
+      const releases: Promise<void>[] = [];
+      let original!: SessionStoreMaintenance;
+      const acquire = backend.store.acquireSessionMaintenance.bind(backend.store);
+      const clear = backend.store.clearSession.bind(backend.store);
+      const remove = backend.store.delete.bind(backend.store);
+      const admission = vi
+        .spyOn(backend.store, 'acquireSessionMaintenance')
+        .mockImplementationOnce(async (...args) => {
+          original = await acquire(...args);
+          return {
+            sessionIds: original.sessionIds,
+            release() {
+              releases.push(original.release());
+              throw releaseFailure;
+            }
+          };
+        });
+      const clearing = vi
+        .spyOn(backend.store, 'clearSession')
+        .mockImplementation((id) => clear(id, original));
+      const deleting = vi
+        .spyOn(backend.store, 'delete')
+        .mockImplementation((id) => remove(id, original));
+      const hostCleanup = vi.spyOn(agentHost, 'disposeSessionResources');
+      if (cleanupFails) hostCleanup.mockRejectedValueOnce(primary);
+      const agent = await createMarAgentWithAdapter({
+        mode: 'normal',
+        host: agentHost,
+        models: [model],
+        sessionStore: backend.store
+      });
+      try {
+        const session = await agent.createSession({ workspace });
+        await expect(agent[action](session.id)).rejects.toBe(
+          cleanupFails ? primary : releaseFailure
+        );
+        expect(action === 'clearSession' ? clearing : deleting).toHaveBeenCalledTimes(1);
+        await Promise.all(releases);
+        if (action === 'clearSession') {
+          const release = await backend.store.acquireSessionLease(session.id, {});
+          await release();
+        } else
+          await expect(backend.store.getSession(session.id)).rejects.toMatchObject({
+            code: 'MAR_AGENT_SESSION_NOT_FOUND'
+          });
+      } finally {
+        await Promise.all(releases);
+        await agent.dispose();
+        expect(backend.closeCount()).toBe(0);
+        await backend.store.close();
+        admission.mockRestore();
+        clearing.mockRestore();
+        deleting.mockRestore();
+        hostCleanup.mockRestore();
+      }
+    }
+  }
+);
 
 it('rejects ambiguous Catalog sources and never takes ownership on failed Host negotiation', async () => {
   const backend = textSessionStore();
