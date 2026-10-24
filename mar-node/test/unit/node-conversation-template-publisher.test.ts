@@ -14,7 +14,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   conversationTemplatePublishResultSchema,
   type ConversationTemplateDraft,
@@ -24,6 +24,10 @@ import {
 import { NodeDatabase } from '../../src/database.js';
 import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
 import { ConversationTemplateNodeService } from '../../src/service/conversation-template-node-service.js';
+import {
+  HostedConversationNodeService,
+  type HostedConversationRuntime
+} from '../../src/service/hosted-conversation-node-service.js';
 
 const directories: string[] = [];
 
@@ -37,6 +41,180 @@ afterEach(async () => {
 });
 
 describe('Node conversation template publication', () => {
+  it('preserves the schema v2 JSON and hashes through real publication and hosted recovery', async () => {
+    const fixture = await publisherFixture('/projects/manifest-vector');
+    await mkdir(join(fixture.workspace, 'lib'));
+    await writeFile(join(fixture.workspace, 'lib', 'data.txt'), 'template data');
+    await writeFile(join(fixture.workspace, 'run.sh'), '#!/bin/sh\necho ok\n');
+    await chmod(join(fixture.workspace, 'run.sh'), 0o755);
+    await symlink('lib/data.txt', join(fixture.workspace, 'data-link'));
+    await symlink('/usr', join(fixture.workspace, 'runtime-link'));
+    await fixture.operations['conversation.template.publish']!({
+      templateId: 'template-1',
+      jobId: 'manifest-vector',
+      draft: fixture.draft,
+      requestedByUserId: 7
+    });
+    const completed = await waitForSuccessfulPublish(
+      fixture.operations,
+      'template-1',
+      'manifest-vector'
+    );
+    const row = fixture.database.raw
+      .prepare('SELECT * FROM conversation_template_versions WHERE id=?')
+      .get(completed.version.id) as {
+      storage_key: string;
+      manifest: string;
+      manifest_hash: string;
+      content_hash: string;
+      mcp_config_hash: string;
+    };
+    await expect(row.manifest).toMatchFileSnapshot('./support/template-version-manifest-v2.txt');
+    expect(
+      await readFile(
+        join(fixture.store.templateVersionDirectory(row.storage_key), 'manifest.json'),
+        'utf8'
+      )
+    ).toBe(`${row.manifest}\n`);
+    expect(row.manifest_hash).toBe(createHash('sha256').update(row.manifest).digest('hex'));
+    expect(row.manifest_hash).toBe(
+      '888eabbe6c7987c1bb446b6e67098047865dab96bb802602f8d60417bc4ed029'
+    );
+    expect(row.content_hash).toBe(
+      'c182488cea50bb4b8975c47b544e20729671000c49354bf1e2594c720fdab0b8'
+    );
+    expect(row.mcp_config_hash).toBe(
+      '1cc721806e02d0c9554fda333d2f02f9554d7d1b87fc8a98827c49f677556d66'
+    );
+    await expect(
+      fixture.operations['conversation.template.version.inspect']!({
+        templateId: 'template-1',
+        versionId: completed.version.id
+      })
+    ).resolves.toMatchObject({ valid: true, code: null });
+    const hosted = hostedPublisherConsumer(fixture, completed.version.id);
+    const created = (await hosted.create()) as {
+      conversation: { id: string; activeVersionId: string; sessionId: string };
+    };
+    expect(created.conversation).toMatchObject({
+      activeVersionId: completed.version.id,
+      sessionId: 'published-session'
+    });
+    expect(hosted.runtime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceDirectory: join(
+          fixture.store.templateVersionDirectory(row.storage_key),
+          'content'
+        ),
+        defaultModelId: 'model-1'
+      })
+    );
+    await hosted.service.dispose();
+    fixture.database.close();
+    const recoveredDatabase = new NodeDatabase(fixture.databasePath, 'node-1');
+    const recoveredStore = new HostedConversationStore({
+      dataDirectory: fixture.dataDirectory,
+      rootDirectory: fixture.store.rootDirectory,
+      nodeId: 'node-1',
+      database: recoveredDatabase
+    });
+    await recoveredStore.initialize();
+    const recovered = hostedPublisherConsumer(
+      { ...fixture, database: recoveredDatabase, store: recoveredStore },
+      completed.version.id
+    );
+    await expect(
+      recovered.service.operations()['conversation.hosted.get']!({
+        conversationId: created.conversation.id,
+        __requestUserId: 7,
+        __marAgentModels: [hostedModel]
+      })
+    ).resolves.toMatchObject({ conversation: created.conversation });
+    expect(recovered.runtime.createSession).not.toHaveBeenCalled();
+    expect(recovered.runtime.history).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'published-session' })
+    );
+    await recovered.service.dispose();
+    recoveredDatabase.close();
+  });
+
+  it.each(['relative/source', '/tmp/template'])(
+    'distinguishes source input from persisted corruption: %s',
+    async (sourceWorkspacePath) => {
+      const invalidSource = await publisherFixture(sourceWorkspacePath);
+      await expect(
+        invalidSource.operations['conversation.template.source.inspect']!({
+          mode: 'VALIDATE',
+          draft: invalidSource.draft
+        })
+      ).resolves.toMatchObject({ valid: false, code: 'CONVERSATION_TEMPLATE_SOURCE_INVALID' });
+      invalidSource.database.close();
+
+      const fixture = await publishedEmptyFixture();
+      const hosted = hostedPublisherConsumer(fixture, fixture.versionId);
+      await rewritePublishedManifest(fixture, { sourceWorkspacePath });
+      await expect(hosted.create()).rejects.toThrow('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
+      expect(hosted.runtime.createSession).not.toHaveBeenCalled();
+      await expect(
+        fixture.operations['conversation.template.version.inspect']!({
+          templateId: 'template-1',
+          versionId: fixture.versionId
+        })
+      ).resolves.toMatchObject({ valid: false, code: 'CONVERSATION_TEMPLATE_VERSION_CORRUPTED' });
+      await hosted.service.dispose();
+      fixture.database.close();
+    }
+  );
+
+  it.each([
+    'version identity',
+    'template identity',
+    'draft node',
+    'host policy',
+    'content hash',
+    'MCP hash',
+    'file count',
+    'byte total',
+    'raw JSON',
+    'content directory mode'
+  ])('preserves Hosted binding validation for %s', async (corruption) => {
+    const fixture = await publishedEmptyFixture();
+    const hosted = hostedPublisherConsumer(fixture, fixture.versionId);
+    const columns: Record<string, string> = {
+      'content hash': 'content_hash',
+      'MCP hash': 'mcp_config_hash',
+      'file count': 'file_count',
+      'byte total': 'total_bytes'
+    };
+    const column = columns[corruption];
+    if (column !== undefined) {
+      fixture.database.raw
+        .prepare(`UPDATE conversation_template_versions SET ${column}=? WHERE id=?`)
+        .run(column.endsWith('hash') ? '0'.repeat(64) : 1, fixture.versionId);
+    } else if (corruption === 'content directory mode') {
+      await chmod(join(fixture.versionDirectory, 'content'), 0o755);
+    } else if (corruption === 'raw JSON') {
+      const path = join(fixture.versionDirectory, 'manifest.json');
+      await chmod(path, 0o644);
+      await writeFile(path, `${await readFile(path, 'utf8')}\n`);
+      await chmod(path, 0o444);
+    } else {
+      const patch: Record<string, unknown> =
+        corruption === 'version identity'
+          ? { versionId: 'other' }
+          : corruption === 'template identity'
+            ? { templateId: 'other' }
+            : corruption === 'host policy'
+              ? { hostPolicyVersion: 2 }
+              : { draft: { ...fixture.draft, nodeId: 'other' } };
+      await rewritePublishedManifest(fixture, patch);
+    }
+    await expect(hosted.create()).rejects.toThrow('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
+    expect(hosted.runtime.createSession).not.toHaveBeenCalled();
+    await hosted.service.dispose();
+    fixture.database.close();
+  });
+
   it('publishes template instructions while excluding root maintenance documents', async () => {
     const fixture = await publisherFixture();
     await mkdir(join(fixture.workspace, 'knowledge'));
@@ -990,6 +1168,8 @@ async function publisherFixture(sourceWorkspacePathOverride?: string) {
     updatedAt: 1_900
   };
   return {
+    dataDirectory: join(directory, 'data'),
+    databasePath: join(directory, 'node-runtime.sqlite'),
     database,
     store,
     service,
@@ -997,6 +1177,109 @@ async function publisherFixture(sourceWorkspacePathOverride?: string) {
     workspace,
     sourceWorkspacePath,
     draft
+  };
+}
+
+async function publishedEmptyFixture() {
+  const fixture = await publisherFixture();
+  await fixture.operations['conversation.template.publish']!({
+    templateId: 'template-1',
+    jobId: 'binding-vector',
+    draft: fixture.draft,
+    requestedByUserId: 7
+  });
+  const completed = await waitForSuccessfulPublish(
+    fixture.operations,
+    'template-1',
+    'binding-vector'
+  );
+  const row = fixture.database.raw
+    .prepare('SELECT storage_key FROM conversation_template_versions WHERE id=?')
+    .get(completed.version.id) as { storage_key: string };
+  return {
+    ...fixture,
+    versionId: completed.version.id,
+    versionDirectory: fixture.store.templateVersionDirectory(row.storage_key)
+  };
+}
+
+async function rewritePublishedManifest(
+  fixture: Awaited<ReturnType<typeof publishedEmptyFixture>>,
+  patch: Record<string, unknown>
+) {
+  const path = join(fixture.versionDirectory, 'manifest.json');
+  const manifest = JSON.stringify({ ...JSON.parse(await readFile(path, 'utf8')), ...patch });
+  await chmod(path, 0o644);
+  await writeFile(path, `${manifest}\n`);
+  await chmod(path, 0o444);
+  // Rebind raw text/hash so the test reaches semantic checks, not an earlier digest failure.
+  fixture.database.raw
+    .prepare('UPDATE conversation_template_versions SET manifest=?,manifest_hash=? WHERE id=?')
+    .run(manifest, createHash('sha256').update(manifest).digest('hex'), fixture.versionId);
+}
+
+const hostedModel = {
+  id: 'model-1',
+  name: 'Model One',
+  protocol: 'OPENAI_RESPONSES',
+  baseUrl: 'https://models.example.test/v1',
+  apiKey: 'test-key',
+  modelId: 'model-1',
+  contextWindowTokens: 100_000,
+  maxOutputTokens: 4096,
+  inputCapabilities: ['TEXT'],
+  outputCapabilities: ['TEXT'],
+  reasoningEfforts: ['high'],
+  hostedWebSearch: false,
+  responsesPreviousResponseId: false,
+  enabled: true
+};
+
+function hostedPublisherConsumer(
+  fixture: Awaited<ReturnType<typeof publisherFixture>>,
+  versionId: string
+) {
+  const runtime = {
+    createSession: vi.fn<HostedConversationRuntime['createSession']>(async () => ({
+      sessionId: 'published-session'
+    })),
+    history: vi.fn<HostedConversationRuntime['history']>(async () => ({
+      turns: [],
+      nextCursor: null
+    })),
+    rollback: vi.fn<HostedConversationRuntime['rollback']>(async () => ({ lastActivityAt: 2_000 })),
+    startRun: vi.fn<HostedConversationRuntime['startRun']>(),
+    releaseSession: vi.fn<HostedConversationRuntime['releaseSession']>(async () => undefined)
+  } satisfies HostedConversationRuntime;
+  const service = new HostedConversationNodeService({
+    database: fixture.database,
+    store: fixture.store,
+    runtime,
+    nodeId: () => 'node-1',
+    processExecutorFactory: () => ({ spawn: vi.fn() }) as never,
+    readImage: async () => undefined
+  });
+  return {
+    service,
+    runtime,
+    create: () =>
+      service.operations()['conversation.hosted.create']!({
+        templateId: 'template-1',
+        clientRequestId: 'published-create',
+        __requestUserId: 7,
+        __template: {
+          id: 'template-1',
+          nodeId: 'node-1',
+          name: 'Research',
+          description: 'Research template',
+          status: 'ACTIVE',
+          currentVersionId: versionId,
+          available: true,
+          createdAt: 1_000,
+          updatedAt: 2_000
+        },
+        __marAgentModels: [hostedModel]
+      })
   };
 }
 
