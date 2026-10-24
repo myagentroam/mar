@@ -9,6 +9,58 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const scenario of [
+  { width: 1280, height: 900, locale: 'en-US', theme: 'daylight' },
+  { width: 1440, height: 900, locale: 'zh-CN', theme: 'midnight' },
+  { width: 1280, height: 320, locale: 'en-US', theme: 'daylight' },
+  { width: 1280, height: 160, locale: 'en-US', theme: 'midnight' }
+] as const) {
+  test(`Desktop notifications show more entries without clipping at ${scenario.width}x${scenario.height} (${scenario.locale})`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize(scenario);
+    await page.goto(
+      `${fixture.url}workbench-mobile-drawer.html?locale=${scenario.locale}&theme=${scenario.theme}`
+    );
+    await page
+      .getByRole('button', {
+        name: scenario.locale === 'zh-CN' ? '打开通知中心' : 'Open notification center',
+        exact: true
+      })
+      .click();
+    const panel = page.locator('.workbench-notification-panel');
+    const section = panel.locator('.workbench-notification-section');
+    const entries = panel.locator('.workbench-notification-list > li');
+    await expect(entries).toHaveCount(30);
+    await panel.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const bounds = (await panel.boundingBox())!;
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(scenario.height - 4);
+    await expect(section).toHaveCSS('overflow-y', 'auto');
+    if (scenario.height === 900) {
+      const visibleEntries = await section.evaluate((element) => {
+        const viewport = element.getBoundingClientRect();
+        return [...element.querySelectorAll('.workbench-notification-list > li')].filter(
+          (entry) => {
+            const bounds = entry.getBoundingClientRect();
+            return bounds.top >= viewport.top - 1 && bounds.bottom <= viewport.bottom + 1;
+          }
+        ).length;
+      });
+      expect(visibleEntries).toBeGreaterThanOrEqual(5);
+      await panel.screenshot({ path: testInfo.outputPath('notification-height.png') });
+    }
+    await section.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const last = (await entries.last().boundingBox())!;
+    const viewport = (await section.boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1);
+  });
+}
+
 for (const theme of ['daylight', 'midnight']) {
   test(`Notification delete controls share themed hover and keyboard feedback in ${theme}`, async ({
     page

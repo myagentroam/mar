@@ -461,9 +461,15 @@ const emit = defineEmits<{
 .workbench-notification-section {
   min-height: 0;
   max-height: min(calc(6 * 44px), 35dvh);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+@media (min-width: 768px) {
+  .workbench-notification-section {
+    max-height: min(24rem, 55dvh);
+  }
 }
 .workbench-notification-section .workbench-notification-upload-list,
 .workbench-notification-section .workbench-notification-list {
