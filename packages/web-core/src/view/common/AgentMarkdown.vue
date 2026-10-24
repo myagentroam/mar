@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { computed, onBeforeUnmount } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue';
 import { marIconSvg } from '../../util/icon-shapes.js';
 import DOMPurify from 'dompurify';
 
@@ -11,6 +11,7 @@ import taskLists from 'markdown-it-task-lists';
 import 'highlight.js/styles/github.css';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
+import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 
 const props = defineProps<{
   readonly content: string;
@@ -51,7 +52,7 @@ const defaultFenceRenderer = renderer.renderer.rules.fence ?? (() => '');
 renderer.renderer.rules.fence = (tokens, index, options, environment, self) => {
   const rendered = defaultFenceRenderer(tokens, index, options, environment, self);
   const label = renderer.utils.escapeHtml(translate('generated.conversationTimeline.copyCode'));
-  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button utility-control" data-code-copy aria-label="${label}" title="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
+  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button utility-control" data-code-copy aria-label="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
 };
 
 renderer.core.ruler.after('linkify', 'workspace-file-locations', (state) => {
@@ -167,8 +168,33 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
 };
 
 const locale = localePreferenceService().locale;
+const markdownRoot = ref<HTMLElement>();
+const tooltipService = inject(TOOLTIP_SERVICE_KEY, undefined);
+let codeCopyButtons = new Set<HTMLButtonElement>();
 const copyResetTimers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>();
+
+// v-html buttons cannot use Vue directives; register only this rendered markdown's controls.
+function syncCodeTooltips(): void {
+  const nextButtons = new Set(
+    markdownRoot.value?.querySelectorAll<HTMLButtonElement>('[data-code-copy]') ?? []
+  );
+  for (const button of codeCopyButtons) {
+    if (nextButtons.has(button)) continue;
+    tooltipService?.remove(button);
+    const timer = copyResetTimers.get(button);
+    if (timer !== undefined) clearTimeout(timer);
+    copyResetTimers.delete(button);
+  }
+  codeCopyButtons = nextButtons;
+  for (const button of codeCopyButtons)
+    tooltipService?.update(button, button.getAttribute('aria-label'));
+}
+
+onMounted(syncCodeTooltips);
+onUpdated(syncCodeTooltips);
 onBeforeUnmount(() => {
+  for (const button of codeCopyButtons) tooltipService?.remove(button);
+  codeCopyButtons.clear();
   for (const timer of copyResetTimers.values()) clearTimeout(timer);
   copyResetTimers.clear();
 });
@@ -203,17 +229,18 @@ async function onCopyClick(event: MouseEvent): Promise<void> {
   try {
     if (navigator.clipboard?.writeText === undefined) throw new Error('CLIPBOARD_UNAVAILABLE');
     await navigator.clipboard.writeText(text);
+    if (!codeCopyButtons.has(button)) return;
     const previous = copyResetTimers.get(button);
     if (previous !== undefined) clearTimeout(previous);
     button.dataset.copied = 'true';
     button.setAttribute('aria-label', translate('generated.conversationTimeline.copiedCode'));
-    button.title = translate('generated.conversationTimeline.copiedCode');
+    tooltipService?.update(button, translate('generated.conversationTimeline.copiedCode'));
     copyResetTimers.set(
       button,
       setTimeout(() => {
         delete button.dataset.copied;
         button.setAttribute('aria-label', translate('generated.conversationTimeline.copyCode'));
-        button.title = translate('generated.conversationTimeline.copyCode');
+        tooltipService?.update(button, translate('generated.conversationTimeline.copyCode'));
         copyResetTimers.delete(button);
       }, 500)
     );
@@ -260,7 +287,7 @@ function onLinkClick(event: MouseEvent): void {
 </script>
 
 <template>
-  <div class="agent-markdown" v-html="html" @click="onMarkdownClick"></div>
+  <div ref="markdownRoot" class="agent-markdown" v-html="html" @click="onMarkdownClick"></div>
 </template>
 
 <style scoped>

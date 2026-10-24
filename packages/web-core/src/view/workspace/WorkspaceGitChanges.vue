@@ -280,7 +280,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 class="repository-sync-tag"
                 effect="plain"
                 size="small"
-                :title="translate('gitSync.description', repository.tracking)"
+                v-tooltip="translate('gitSync.description', repository.tracking)"
                 :aria-label="translate('gitSync.description', repository.tracking)"
               >
                 <span aria-hidden="true"

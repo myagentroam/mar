@@ -136,6 +136,35 @@ test('Shared tooltip cancels stale targets and follows content, hidden, removed 
   await expect(page.getByTestId('tooltip-live')).toHaveText('0');
 });
 
+test('Markdown copy hints share the tooltip host across content replacement and unmount', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1&locale=en-US`);
+  const copy = page.getByRole('button', { name: 'Copy code', exact: true });
+  const hint = page.locator('.mar-tooltip:visible');
+  await expect(copy).not.toHaveAttribute('title');
+  await copy.hover();
+  await expect(hint).toHaveText('Copy code');
+  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await copy.focus();
+  await copy.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(copy).toBeFocused();
+  await copy.blur();
+  await page.mouse.move(0, 0);
+  await copy.focus();
+  await expect(hint).toHaveText('Copy code');
+  await page.getByTestId('rename').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(hint).toHaveCount(0);
+  await expect(page.locator('.agent-markdown pre')).toHaveText('Updated\n');
+  await copy.focus();
+  await expect(hint).toHaveText('Copy code');
+  await expect(copy).not.toHaveAttribute('title');
+  await page.getByTestId('remove').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(copy).toHaveCount(0);
+  await expect(hint).toHaveCount(0);
+});
+
 test('Table overflow hints share the theme without template-ref warnings', async ({ page }) => {
   const warnings: string[] = [];
   page.on('console', (message) => {

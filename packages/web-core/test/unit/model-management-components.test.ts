@@ -213,6 +213,7 @@ describe('Shared model, credential and image management', () => {
           render: () => h(component, { request, writable: true, nodes: [] })
         });
         app.use(i18n).use(ElementPlus);
+        app.directive('tooltip', { getSSRProps: () => ({}) });
         app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
         app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);

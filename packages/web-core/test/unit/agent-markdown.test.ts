@@ -1,4 +1,4 @@
-import { createRenderer, createSSRApp, h, ssrContextKey } from 'vue';
+import { createRenderer, createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +11,8 @@ vi.mock('dompurify', () => ({
 
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import AgentMarkdownInteractive from '../../src/view/common/AgentMarkdown.vue?unit-render';
+import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/tooltip-service.js';
 
 const originalLocale = localePreferenceService().locale.value;
 
@@ -146,7 +148,7 @@ describe('AgentMarkdown code block copy button', () => {
     expect(html).toContain('agent-markdown-code-copy icon-button utility-control');
     expect(html).toContain('agent-markdown-code-icon--check');
     expect(html).toContain('aria-label="复制代码"');
-    expect(html).toContain('title="复制代码"');
+    expect(html).not.toContain(' title=');
     expect(html.match(/data-code-copy/gu)).toHaveLength(1);
     expect(stripTags(html)).toContain('const value = 1;');
   });
@@ -173,11 +175,17 @@ describe('AgentMarkdown code block copy button', () => {
 
   it('shows a check for 500ms only after code reaches the clipboard', async () => {
     vi.useFakeTimers();
+    let click: ((event: MouseEvent) => void) | undefined;
     class HostNode {
       constructor(readonly type: string) {}
+      querySelectorAll() {
+        return [button];
+      }
     }
     const renderer = createRenderer<HostNode, HostNode>({
-      patchProp() {},
+      patchProp(_element, key, _previous, value) {
+        if (key === 'onClick') click = value as (event: MouseEvent) => void;
+      },
       insert() {},
       remove() {},
       createElement: (type) => new HostNode(type),
@@ -198,8 +206,10 @@ describe('AgentMarkdown code block copy button', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const button = {
       dataset: {} as Record<string, string>,
-      title: '',
-      labels: new Map<string, string>(),
+      labels: new Map<string, string>([['aria-label', '复制代码']]),
+      getAttribute(name: string) {
+        return this.labels.get(name) ?? null;
+      },
       setAttribute(name: string, value: string) {
         this.labels.set(name, value);
       },
@@ -210,48 +220,59 @@ describe('AgentMarkdown code block copy button', () => {
       }
     };
     class Target {
-      closest() {
-        return button;
+      closest(selector: string) {
+        return selector === '[data-code-copy]' ? button : null;
       }
     }
     vi.stubGlobal('Element', Target);
-    let setupState: Record<string, unknown> | undefined;
+    const tooltipService = new TooltipService({} as Document);
+    const updateTooltip = vi.spyOn(tooltipService, 'update');
+    const removeTooltip = vi.spyOn(tooltipService, 'remove');
     const app = renderer.createApp({
       render: () =>
-        h(AgentMarkdown, {
-          content: '```js\nconst value = 1;\n```',
-          onVnodeMounted: (vnode) => {
-            setupState = (
-              vnode.component as unknown as { readonly setupState: Record<string, unknown> } | null
-            )?.setupState;
-          }
+        h(AgentMarkdownInteractive, {
+          content: '```js\nconst value = 1;\n```'
         })
     });
     app.use(i18n);
-    app.config.warnHandler = () => {};
-    app.provide(ssrContextKey, { modules: new Set<string>() });
+    app.provide(TOOLTIP_SERVICE_KEY, tooltipService);
     app.mount(new HostNode('container'));
     try {
-      const copy = setupState?.['onCopyClick'] as (event: MouseEvent) => Promise<void>;
-      const pending = copy({
+      expect(updateTooltip).toHaveBeenLastCalledWith(button, '复制代码');
+      expect(click).toBeDefined();
+      click?.({
         target: new Target(),
         preventDefault: vi.fn()
       } as unknown as MouseEvent);
       expect(writeText).toHaveBeenCalledWith('const value = 1;\n');
       expect(button.dataset['copied']).toBeUndefined();
       resolveCopy?.();
-      await pending;
+      await Promise.resolve();
       expect(button.dataset['copied']).toBe('true');
       expect(button.labels.get('aria-label')).toBe('代码已复制');
+      expect(updateTooltip).toHaveBeenLastCalledWith(button, '代码已复制');
       vi.advanceTimersByTime(499);
       expect(button.dataset['copied']).toBe('true');
       vi.advanceTimersByTime(1);
       expect(button.dataset['copied']).toBeUndefined();
       expect(button.labels.get('aria-label')).toBe('复制代码');
+      expect(updateTooltip).toHaveBeenLastCalledWith(button, '复制代码');
+      expect(button).not.toHaveProperty('title');
+      click?.({
+        target: new Target(),
+        preventDefault: vi.fn()
+      } as unknown as MouseEvent);
+      expect(writeText).toHaveBeenCalledTimes(2);
     } finally {
       app.unmount();
       vi.useRealTimers();
       vi.unstubAllGlobals();
     }
+    expect(removeTooltip).toHaveBeenCalledWith(button);
+    const updatesBeforeCompletion = updateTooltip.mock.calls.length;
+    resolveCopy?.();
+    await Promise.resolve();
+    expect(button.dataset['copied']).toBeUndefined();
+    expect(updateTooltip).toHaveBeenCalledTimes(updatesBeforeCompletion);
   });
 });
