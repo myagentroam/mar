@@ -16,11 +16,9 @@ import {
 } from '../../tools/code-mode/state.js';
 import {
   contextGcBaseFromRecords,
-  contextGcBaseSequence,
   contextGcMinimumUsageGrowth,
   latestValidContextGcCheckpoint,
   normalizeContextGcReplacements,
-  parseContextGcCheckpoint,
   sameContextGcBase,
   validateContextGcCheckpoint,
   type ContextGcCheckpointDraft,
@@ -1390,7 +1388,7 @@ export class JsonlSessionStore implements SessionStore {
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC planning boundary is invalid.'
         );
-      const previous = latestValidContextGcCheckpoint(records, boundarySequence, meta.workspace);
+      const previous = latestValidContextGcCheckpoint(records, boundarySequence);
       if (previous) {
         const minimumUsageGrowth = contextGcMinimumUsageGrowth(draft.trigger.contextWindowTokens);
         if (
@@ -1775,19 +1773,7 @@ export class JsonlSessionStore implements SessionStore {
       if (executionModel.reasoningEffort === undefined) delete resume.reasoningEffort;
       else resume.reasoningEffort = executionModel.reasoningEffort;
     }
-    if (isCompactCheckpoint(record)) {
-      resume.compactSequence = record.sequence;
-      delete resume.gcSequence;
-      delete resume.gcGeneration;
-      delete resume.gcBaseSequence;
-    } else {
-      const checkpoint = parseContextGcCheckpoint(record);
-      if (checkpoint) {
-        resume.gcSequence = record.sequence;
-        resume.gcGeneration = checkpoint.generation;
-        resume.gcBaseSequence = contextGcBaseSequence(checkpoint.base);
-      }
-    }
+    if (isCompactCheckpoint(record)) resume.compactSequence = record.sequence;
     if (record.type !== 'todo.updated' || !todoItemsFromSnapshot(record.payload)) return;
     resume.todoSequence = record.sequence;
     resume.todoRevision++;

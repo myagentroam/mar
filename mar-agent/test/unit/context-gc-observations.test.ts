@@ -58,7 +58,7 @@ function successfulRollout(add: ReturnType<typeof records>['add']) {
   add('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
 }
 function requestProjection(values: readonly SessionRecord[]) {
-  const projection = buildContextProjection(values, '/workspace');
+  const projection = buildContextProjection(values);
   return {
     messages: projection.entries.flatMap((e) => (e.message ? [e.message] : [])),
     messageSources: projection.entries.flatMap((e) => (e.message ? [e.record] : []))

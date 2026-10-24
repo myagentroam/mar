@@ -98,7 +98,7 @@ function plan(
   usage: ModelUsage,
   overrides: Partial<ContextGcPlannerInput> = {}
 ) {
-  const projection = buildContextProjection(values, '/workspace');
+  const projection = buildContextProjection(values);
   return planContextGc({
     records: values,
     messages: projection.entries.map((entry) => entry.message),
@@ -632,7 +632,7 @@ describe('context GC high-water policy', () => {
       expect(selected).toBeDefined();
       expect(selected!.draft.replacements.some((r) => r.callId === 'tiny')).toBe(false);
       expect(selected!.draft.replacements.filter((r) => r.kind === 'EXEC_OUTPUT')).toHaveLength(4);
-      const before = buildContextProjection(fixture.values, '/workspace');
+      const before = buildContextProjection(fixture.values);
       const beforeRecords = structuredClone(fixture.values);
       const checkpoint = fixture.add('context.gc.completed', {
         ...selected!.draft,
@@ -640,7 +640,7 @@ describe('context GC high-water policy', () => {
         generation: 1
       });
       expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-      const restored = buildContextProjection(structuredClone(fixture.values), '/workspace');
+      const restored = buildContextProjection(structuredClone(fixture.values));
       expect(restored.checkpoint?.checkpointId).toBe('medium-exec');
       const tiny = before.entries.find(
         (e) => e.message.callId === 'tiny' && e.message.role === 'tool'
@@ -688,14 +688,14 @@ describe('context GC high-water policy', () => {
       const selected = plan(fixture.values, usage, { modelProtocol });
       expect(selected?.draft.replacements).toHaveLength(4);
       expect(selected!.draft.replacements.every((r) => r.kind === 'WEB_OUTPUT')).toBe(true);
-      const original = buildContextProjection(fixture.values, '/workspace');
+      const original = buildContextProjection(fixture.values);
       const checkpoint = fixture.add('context.gc.completed', {
         ...selected!.draft,
         checkpointId: 'medium-web',
         generation: 1
       });
       expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-      const restored = buildContextProjection(structuredClone(fixture.values), '/workspace');
+      const restored = buildContextProjection(structuredClone(fixture.values));
       expect(restored.entries.filter((e) => e.message.role === 'tool_call')).toEqual(
         original.entries.filter((e) => e.message.role === 'tool_call')
       );
@@ -717,7 +717,7 @@ describe('context GC high-water policy', () => {
       addWebResult(fixture, `tiny-web-${i}`, 'KEEP');
     }
     for (let i = 0; i < 5; i++) successfulRollout(fixture.add, 6_000);
-    const projection = buildContextProjection(fixture.values, '/workspace');
+    const projection = buildContextProjection(fixture.values);
     expect(
       inspectContextGc({
         records: fixture.values,
@@ -743,7 +743,7 @@ describe('context GC high-water policy', () => {
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
     const patch = selected?.draft.replacements.find((r) => r.kind === 'TOOL_CALL_INPUT');
     expect(patch).toBeDefined();
-    const original = buildContextProjection(fixture.values, '/workspace');
+    const original = buildContextProjection(fixture.values);
     const messages = original.entries.map((e) => e.message);
     const sources = original.entries.map((e) => e.record);
     const patchOnly = applyContextGcReplacementsToMessages(messages, sources, [patch!]);
@@ -812,9 +812,9 @@ describe('context GC high-water policy', () => {
       generation: 1
     });
     expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-    expect(
-      buildContextProjection(structuredClone(fixture.values), '/workspace').checkpoint?.checkpointId
-    ).toBe('later-positive-group');
+    expect(buildContextProjection(structuredClone(fixture.values)).checkpoint?.checkpointId).toBe(
+      'later-positive-group'
+    );
   });
 
   it('never accepts a zero-token reclaim even with a zero override and Compact credit', () => {

@@ -122,7 +122,7 @@ function successfulRolloutWithoutUsage(add: ReturnType<typeof records>['add']) {
 }
 
 function requestProjection(values: readonly SessionRecord[]) {
-  const projection = buildContextProjection(values, '/workspace');
+  const projection = buildContextProjection(values);
   return {
     messages: projection.entries.flatMap((entry) =>
       entry.message === undefined ? [] : [entry.message]
@@ -843,7 +843,7 @@ describe('context GC planner', () => {
       expect(parseContextGcCheckpoint(retiredOutputCheckpoint)).toBeDefined();
       expect(validateContextGcCheckpoint(retiredRecords, retiredOutputCheckpoint)).toBeUndefined();
       retiredRecords[retiredRecords.length - 1] = retiredOutputCheckpoint;
-      const restored = buildContextProjection(retiredRecords, '/workspace');
+      const restored = buildContextProjection(retiredRecords);
       expect(restored.checkpoint?.checkpointId).toBe(payload.checkpointId);
       expect(
         restored.entries.find(
@@ -1009,7 +1009,7 @@ describe('context GC planner', () => {
         generation: 1
       });
       expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-      const projected = buildContextProjection(fixture.values, '/workspace');
+      const projected = buildContextProjection(fixture.values);
       const projectedResult = projected.entries.find(
         ({ record }) => record.sequence === result.sequence
       )?.message;
@@ -1778,7 +1778,7 @@ describe('context GC planner', () => {
     expect(checkpoint.replacements).toEqual([replacement]);
   });
 
-  it('reuses validation only for the same snapshot, boundary and workspace', () => {
+  it('reuses checkpoint selection only for the same snapshot and boundary', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -1809,29 +1809,28 @@ describe('context GC planner', () => {
       generation: 1
     });
     const cache = new ContextGcCheckpointCache();
-    const first = cache.read(fixture.values, undefined, '/workspace');
+    const first = cache.read(fixture.values);
     expect(first).toBeDefined();
-    expect(cache.read(fixture.values, undefined, '/workspace')).toBe(first);
-    expect(buildContextProjection(fixture.values, '/workspace', cache).checkpoint).toBe(
-      first!.payload
-    );
-    expect(cache.read([...fixture.values], undefined, '/workspace')).not.toBe(first);
-    const second = cache.read(fixture.values, undefined, '/workspace');
-    expect(cache.read(fixture.values, undefined, '/different-workspace')).not.toBe(second);
-    expect(
-      cache.read(fixture.values, selected.draft.boundarySequence, '/workspace')
-    ).toBeUndefined();
+    expect(cache.read(fixture.values)).toBe(first);
+    expect(buildContextProjection(fixture.values, cache).checkpoint).toBe(first!.payload);
+    expect(cache.read([...fixture.values])).not.toBe(first);
+    const second = cache.read(fixture.values);
+    expect(second).not.toBe(first);
+    expect(cache.read(fixture.values)).toBe(second);
+    expect(cache.read(fixture.values, selected.draft.boundarySequence)).toBeUndefined();
+    const afterBoundaryChange = cache.read(fixture.values);
+    expect(afterBoundaryChange).not.toBe(second);
+    expect(afterBoundaryChange).toEqual(first);
+    expect(cache.read(fixture.values)).toBe(afterBoundaryChange);
 
     const legacy = structuredClone(fixture.values);
     delete (legacy.at(-1)!.payload as { metrics: { tokenEstimator?: string } }).metrics
       .tokenEstimator;
-    expect(cache.read(legacy, undefined, '/workspace')?.payload.checkpointId).toBe(
-      'cached-checkpoint'
-    );
+    expect(cache.read(legacy)?.payload.checkpointId).toBe('cached-checkpoint');
     const corrupted = structuredClone(legacy);
     (corrupted.at(-1)!.payload as { metrics: Record<string, unknown> }).metrics.tokenEstimator =
       'UNKNOWN_ESTIMATOR';
-    expect(cache.read(corrupted, undefined, '/workspace')).toBeUndefined();
+    expect(cache.read(corrupted)).toBeUndefined();
   });
 
   it('restores the latest committed checkpoint without replaying archived integrity evidence', () => {
