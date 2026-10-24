@@ -3,6 +3,7 @@ import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
+import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -59,8 +60,31 @@ const tabs = ref<WorkspaceFileTab[]>(createTabs());
 const active = ref(1);
 const loading = ref(true);
 createTooltipApp({
-  render: () =>
-    h('div', [
+  render: () => {
+    if (query.has('diff-navigation'))
+      return h(Inspector, {
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        workspaceName: 'project',
+        workspaceKind: 'GIT_WORKSPACE',
+        csrfToken: 'fixture-csrf',
+        renewCsrfToken: async () => 'fixture-csrf',
+        enabled: true,
+        mobileViewport: window.innerWidth < 768,
+        contentSearchEnabled: false,
+        codeNavigationEnabled: false,
+        codeNavigationPrewarmEnabled: false,
+        filesWatchStatus: 'ready',
+        changesWatchStatus: 'ready',
+        historyCapability: false,
+        fileWriteEnabled: false,
+        subscriptionSnapshot: {
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          files: { files: { entries: [], nextCursor: null, truncated: false } }
+        }
+      });
+    return h('div', [
       h(
         'button',
         { id: 'file-tabs-background-action', type: 'button' },
@@ -138,7 +162,8 @@ createTooltipApp({
               'Reopen file previews'
             )
           ])
-    ])
+    ]);
+  }
 })
   .use(i18n)
   .use(ElementPlus)

@@ -821,6 +821,9 @@ async function openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<vo
   const source = currentFilePosition();
   const tab = workspaceFileTabService.open(intent);
   recordFileNavigation(source, tab.id, intent.targetLine, intent.targetColumn);
+  await nextTick();
+  if (workspaceFileTabService.activeTabId.value === tab.id)
+    workspaceFileTabsRef.value?.focusPage(tab.id);
 }
 
 async function reloadPreviewFile(preview: PreviewFrame): Promise<void> {

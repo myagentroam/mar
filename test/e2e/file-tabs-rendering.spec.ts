@@ -100,6 +100,82 @@ for (const [kind, label] of [
   });
 }
 
+for (const width of [1280, 390]) {
+  test(`Git Diff keeps focus through repeated file navigation at ${width}px`, async ({ page }) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 800 });
+      const paths = ['src/first.ts', 'src/second.ts', 'src/third.ts'] as const;
+      await page.route('**/api/workspaces/workspace/changes?*', (route) =>
+        route.fulfill({
+          json: {
+            repositories: [
+              {
+                repositoryPath: '',
+                repositoryName: 'project',
+                source: 'ROOT',
+                changes: paths.map((path) => ({
+                  path,
+                  state: 'UNSTAGED',
+                  change: 'MODIFIED',
+                  diffAvailable: true
+                }))
+              }
+            ]
+          }
+        })
+      );
+      await page.route('**/api/workspaces/workspace/changes/diff?*', (route) => {
+        const path = new URL(route.request().url()).searchParams.get('path');
+        return route.fulfill({
+          json: { diff: { binary: false, text: `@@ -1 +1 @@\n-before\n+${path}` } }
+        });
+      });
+      await page.goto(`${fixture.url}file-tabs.html?diff-navigation=1`);
+      await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      await page.getByRole('button', { name: 'View diff for src/first.ts', exact: true }).click();
+      const frame = page.locator('.workspace-file-page-frame:visible');
+      await expect(frame.locator('.unified-history-diff')).toContainText('src/first.ts');
+      await frame.focus();
+      for (const [key, path] of [
+        ['ArrowRight', paths[1]],
+        ['ArrowRight', paths[2]],
+        ['ArrowRight', paths[0]],
+        ['ArrowLeft', paths[2]],
+        ['ArrowLeft', paths[1]],
+        ['ArrowLeft', paths[0]]
+      ] as const) {
+        await page.keyboard.press(key);
+        await expect(frame.locator('.unified-history-diff')).toContainText(path);
+        await expect(frame).toBeFocused();
+      }
+      await frame.getByRole('button', { name: 'Next file', exact: true }).click();
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[1]);
+      await page.keyboard.press('ArrowRight');
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[2]);
+      await page.keyboard.press('Control+f');
+      const findInput = frame.locator('.inline-find-bar input');
+      await findInput.fill('before');
+      await page.keyboard.press('ArrowLeft');
+      await page.keyboard.press('ArrowRight');
+      await expect(findInput).toBeFocused();
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[2]);
+      await page.keyboard.press('Escape');
+      await expect(frame).toBeFocused();
+      await page.keyboard.press('ArrowLeft');
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[1]);
+      const tabs = page.getByRole('tablist', { name: 'File preview tabs' }).getByRole('tab');
+      await tabs.first().click();
+      await expect(tabs.first()).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(tabs.nth(1)).toBeFocused();
+      await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('File preview overlay stays bounded, modal, and stable across viewport changes', async ({
   page
 }) => {
