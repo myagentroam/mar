@@ -7,6 +7,10 @@ import { ConversationHistoryService } from '../../src/service/conversation-histo
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
 import { rewindTitle } from '../../src/service/session-catalog-service.js';
 import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import type { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
+import type { SessionDomainState } from '../../src/service/session-domain-state.js';
+import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
+import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { withClaudePlanTag } from '../../src/runner-command-engine.js';
 import { executeNodeOperation as operation } from './support/node-connector.js';
@@ -19,6 +23,69 @@ afterEach(async () => {
   }
 });
 describe('Node Workbench history projection and pagination', () => {
+  it('routes history activity and synchronous projection cleanup through the lazily bound resume owner', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-history-resume-owner-'));
+    const database = new NodeDatabase(':memory:', 'history-resume-owner');
+    const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+    const connector = new NodeConnector({
+      reconnect: false,
+      database,
+      capabilities: {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.version,
+        codex: { available: true, version: 'codex-cli 0.147.0' },
+        claudeCode: { available: false }
+      }
+    });
+    rewindFixtures.push({ root, connector });
+    const internals = connector as unknown as {
+      runtime: NodeRuntimeState;
+      runners: RunnerRegistry;
+      sessionState: SessionDomainState<NodeAgentSession, unknown>;
+      nativeSessionProjectionService: NativeSessionProjectionService;
+      conversationHistoryService: ConversationHistoryService;
+      externalSessionResumeService: ExternalSessionResumeService;
+    };
+    const session = internals.runtime.createAgentSession({
+      workspaceId: workspace.id,
+      runner: 'codex',
+      cwd: root,
+      externalSessionId: 'history-activity-native',
+      nativeControl: 'EXTERNAL'
+    });
+    internals.nativeSessionProjectionService.remember([session]);
+    const activity = vi.spyOn(internals.runners.require('codex'), 'readExternalActivity');
+    const setActivity = vi.spyOn(internals.externalSessionResumeService, 'setActivity');
+    activity.mockResolvedValue(undefined);
+    await internals.conversationHistoryService.refreshExternalActivity(session);
+    expect(setActivity).not.toHaveBeenCalled();
+    expect(internals.sessionState.externalActivity.has(session.id)).toBe(false);
+
+    activity.mockResolvedValue('BUSY');
+    await internals.conversationHistoryService.refreshExternalActivity(session);
+    expect(setActivity).toHaveBeenLastCalledWith(session.id, 'BUSY');
+    expect(internals.sessionState.externalActivity.get(session.id)).toBe('BUSY');
+    activity.mockResolvedValue(undefined);
+    await internals.conversationHistoryService.refreshExternalActivity(session);
+    expect(setActivity).toHaveBeenCalledTimes(1);
+    expect(internals.sessionState.externalActivity.get(session.id)).toBe('BUSY');
+    activity.mockResolvedValue('IDLE');
+    await internals.conversationHistoryService.refreshExternalActivity(session);
+    expect(setActivity).toHaveBeenLastCalledWith(session.id, 'IDLE');
+    expect(internals.sessionState.externalActivity.get(session.id)).toBe('IDLE');
+    expect(setActivity).toHaveBeenCalledTimes(2);
+
+    const release = vi.spyOn(internals.externalSessionResumeService, 'forgetSessions');
+    expect(
+      internals.nativeSessionProjectionService.forget(session, new Set([session.id]))
+    ).toBeUndefined();
+    expect(release).toHaveBeenCalledExactlyOnceWith(new Set([session.id]), new Set([session.id]));
+    expect(internals.sessionState.externalActivity.has(session.id)).toBe(false);
+    expect(internals.sessionState.directNative.has(session.id)).toBe(false);
+    expect(internals.runtime.getAgentSession(session.id)).toBeUndefined();
+  });
+
   it('increments Copy suffixes for rewind branches and preserves the complete suffix at the length limit', () => {
     const title = rewindTitle('A'.repeat(160), [
       `${'A'.repeat(151)} (Copy 1)`,

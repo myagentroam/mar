@@ -858,6 +858,8 @@ export class NodeConnector {
       capabilities: () => this.capabilities,
       state: this.sessionState,
       commands: this.commandStates,
+      releaseResumeState: (directIds, projectionIds) =>
+        this.externalSessionResumeService.forgetSessions(directIds, projectionIds),
       present: (session) => this.sessionPresentationService.present(session)
     });
     this.conversationHistoryService = new ConversationHistoryService({
@@ -868,7 +870,7 @@ export class NodeConnector {
       snapshotSequence: () => this.workbenchEventService.snapshotSequence(),
       hasManagedActiveRun: (session) => hasManagedActiveRun(this.runtime, session),
       setExternalActivity: (sessionId, activity) =>
-        this.sessionState.externalActivity.set(sessionId, activity)
+        this.externalSessionResumeService.setActivity(sessionId, activity)
     });
     this.conversationSegmentService = new ConversationSegmentService((session, input) =>
       this.conversationHistoryService.read(session, input)

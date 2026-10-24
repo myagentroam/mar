@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
 import { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
 import { NodeConnector } from '../../src/connector.js';
@@ -17,10 +20,23 @@ import {
 } from './support/claude-connector.js';
 
 describe('Claude session discovery, resumption, and projection', () => {
+  let directory: string;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'mar-claude-discovery-'));
+    vi.stubEnv('HOME', directory);
+    vi.stubEnv('USERPROFILE', directory);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
   it('retains the JSONL activity time on duplicate Claude SDK and JSONL discoveries and merges with Codex by activity time', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-discovery-order');
     const workspace = database.saveWorkspace({
-      path: '/workspace',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -93,7 +109,7 @@ describe('Claude session discovery, resumption, and projection', () => {
   it('Claude SDK discovery keeps only the current workspace and filters other worktrees using the SDK-reported cwd', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-sdk-worktree-boundary');
     const workspace = database.saveWorkspace({
-      path: '/workspace-sdk-current',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -102,13 +118,13 @@ describe('Claude session discovery, resumption, and projection', () => {
         sessionId: 'other-worktree-session',
         summary: 'session from another worktree',
         lastModified: 100,
-        cwd: '/workspace-sdk-other'
+        cwd: `${directory}-other-worktree`
       },
       {
         sessionId: 'sidechain-session',
         summary: 'derived session',
         lastModified: 99,
-        cwd: '/workspace-sdk-current',
+        cwd: workspace.path,
         isSidechain: true,
         agentId: 'agent-child'
       },
@@ -117,7 +133,7 @@ describe('Claude session discovery, resumption, and projection', () => {
         summary: 'latest user message',
         firstPrompt: 'first user message',
         lastModified: 101,
-        cwd: '/workspace-sdk-current'
+        cwd: workspace.path
       },
       {
         sessionId: 'custom-title-session',
@@ -125,7 +141,7 @@ describe('Claude session discovery, resumption, and projection', () => {
         firstPrompt: 'first user message',
         customTitle: 'Custom title',
         lastModified: 102,
-        cwd: '/workspace-sdk-current'
+        cwd: workspace.path
       }
     ]);
     const connector = new NodeConnector({
@@ -168,7 +184,7 @@ describe('Claude session discovery, resumption, and projection', () => {
   it('shows external Claude history as a normal session and activates it after SDK validation of the first message', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-resume');
     const workspace = database.saveWorkspace({
-      path: '/workspace',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -252,7 +268,7 @@ describe('Claude session discovery, resumption, and projection', () => {
         content: 'Continue this session'
       });
 
-      expect(sessionInfo).toHaveBeenCalledWith('cli-session', '/workspace');
+      expect(sessionInfo).toHaveBeenCalledWith('cli-session', workspace.path);
       expect(resumed).toMatchObject({
         session: {
           id: 'cli-session',
@@ -274,7 +290,7 @@ describe('Claude session discovery, resumption, and projection', () => {
   it('after resuming external Claude history, later discovery projects only the same managed session', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-resume-discovery-projection');
     const workspace = database.saveWorkspace({
-      path: '/workspace',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -400,7 +416,7 @@ describe('Claude session discovery, resumption, and projection', () => {
   it('after Claude resumes, projects a new native session ID reported by the SDK onto the same managed session', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-resume-native-alias');
     const workspace = database.saveWorkspace({
-      path: '/workspace',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -495,7 +511,7 @@ describe('Claude session discovery, resumption, and projection', () => {
   it('attempts Claude SDK history validation but creates no Run when validation fails', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-resume-rejected');
     const workspace = database.saveWorkspace({
-      path: '/workspace',
+      path: directory,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -540,7 +556,7 @@ describe('Claude session discovery, resumption, and projection', () => {
         content: 'Try to resume'
       })
     ).rejects.toThrow('SESSION_RESUME_REJECTED');
-    expect(sessionInfo).toHaveBeenCalledWith('missing-cli-session', '/workspace');
+    expect(sessionInfo).toHaveBeenCalledWith('missing-cli-session', workspace.path);
     expect(internals.runtime.listRunsForSession(external.id)).toEqual([]);
     await connector.stop();
   });

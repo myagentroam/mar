@@ -2,7 +2,7 @@ import type { RunnerDefaultConfiguration } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import type { SessionDomainState } from './session-domain-state.js';
+import type { ExternalSessionActivationState, SessionDomainState } from './session-domain-state.js';
 
 const RESUME_FAILURE_TTL_MS = 30 * 60_000;
 
@@ -30,6 +30,22 @@ export class ExternalSessionResumeService {
   private readonly resumeTasks = new Map<string, Promise<NodeAgentSession | undefined>>();
 
   constructor(private readonly options: ExternalSessionResumeServiceOptions) {}
+
+  setActivity(sessionId: string, activity: ExternalSessionActivationState): void {
+    this.options.state.externalActivity.set(sessionId, activity);
+  }
+
+  forgetSessions(directIds: ReadonlySet<string>, projectionIds: ReadonlySet<string>): void {
+    for (const directId of directIds) {
+      this.options.state.externalActivity.delete(directId);
+      this.options.state.resumedByDirectId.delete(directId);
+      this.clearFailure(directId);
+    }
+    for (const [directId, resumedId] of this.options.state.resumedByDirectId)
+      if (projectionIds.has(resumedId)) this.options.state.resumedByDirectId.delete(directId);
+    for (const projectionId of projectionIds)
+      this.options.state.externalActivity.delete(projectionId);
+  }
 
   transitioning(sessionId: string): boolean {
     return this.transitions.has(sessionId);
