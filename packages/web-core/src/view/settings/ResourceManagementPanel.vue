@@ -66,6 +66,7 @@ const hosting = createResourceHostingService<Row>(props.request, () => ({
 const pushingAllUpgrades = ref(false);
 const detailsRefreshing = ref(false);
 let detailsRefreshRequest = 0;
+let detailsGeneration = 0;
 
 const details = shallowRef<Row>();
 const editing = shallowRef<Row>();
@@ -519,40 +520,57 @@ function openEdit(row: Row): void {
   editName.value = row.label;
   props.prepareEdit?.(row);
 }
+function ownsDetails(generation: number, row: Row): boolean {
+  return generation === detailsGeneration && details.value?.key === row.key;
+}
+function closeDetails(): void {
+  detailsGeneration++;
+  details.value = undefined;
+  detailsRefreshing.value = false;
+  usageStatuses.value = [];
+  usageLoading.value = undefined;
+}
 async function openDetails(row: Row): Promise<void> {
+  closeDetails();
+  const generation = detailsGeneration;
   details.value = row;
   if (row.resourceType === 'WORKSPACE') {
     try {
       const result = await props.request<{ workspaces: readonly { id: string; path: string }[] }>(
         `/api/workspaces?nodeId=${encodeURIComponent(row.nodeId)}`
       );
+      if (!ownsDetails(generation, row)) return;
       const workspacePath = result.workspaces.find(
         (workspace) => workspace.id === row.workspaceId
       )?.path;
       details.value = workspacePath === undefined ? row : { ...row, path: workspacePath };
     } catch {
-      details.value = row;
+      if (ownsDetails(generation, row)) details.value = row;
     }
     return;
   }
   await refreshNodeDetails(row);
+  if (!ownsDetails(generation, row)) return;
   try {
     const result = await props.request<{
       statuses: readonly { runner: 'codex' | 'claude-code'; available: boolean }[];
     }>(`/api/runner-usage/status?nodeId=${encodeURIComponent(row.nodeId)}`);
-    usageStatuses.value = result.statuses;
+    if (ownsDetails(generation, row)) usageStatuses.value = result.statuses;
   } catch {
-    usageStatuses.value = [];
+    if (ownsDetails(generation, row)) usageStatuses.value = [];
   }
 }
 async function refreshNodeDetails(row = details.value): Promise<void> {
   if (row?.resourceType !== 'NODE') return;
+  const generation = detailsGeneration;
   const requestId = ++detailsRefreshRequest;
+  const current = () => ownsDetails(generation, row) && requestId === detailsRefreshRequest;
   detailsRefreshing.value = true;
   try {
     const result = await props.request<{
       nodes: readonly (Partial<Row> & { id: string })[];
     }>(props.nodePath ?? '/api/nodes');
+    if (!current()) return;
     const latest = result.nodes.find((node) => node.id === row.nodeId);
     if (latest === undefined) return;
     resources.value = resources.value.map((current) =>
@@ -561,6 +579,7 @@ async function refreshNodeDetails(row = details.value): Promise<void> {
     if (details.value?.key === row.key)
       details.value = resources.value.find((current) => current.key === row.key);
   } catch (error) {
+    if (!current()) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -569,7 +588,7 @@ async function refreshNodeDetails(row = details.value): Promise<void> {
       error
     );
   } finally {
-    if (requestId === detailsRefreshRequest) detailsRefreshing.value = false;
+    if (current()) detailsRefreshing.value = false;
   }
 }
 async function saveEdit(): Promise<void> {
@@ -660,7 +679,7 @@ async function removeResource(row: Row): Promise<void> {
         : `/api/workspaces/${encodeURIComponent(row.workspaceId!)}?nodeId=${encodeURIComponent(row.nodeId)}`,
       { method: 'DELETE' }
     );
-    details.value = undefined;
+    closeDetails();
     await load();
     emit('changed');
   } catch (error) {
@@ -670,15 +689,17 @@ async function removeResource(row: Row): Promise<void> {
 async function showUsage(runner: RunnerUsageName): Promise<void> {
   const row = details.value;
   if (row === undefined || usageLoading.value !== undefined) return;
+  const generation = detailsGeneration;
   usageLoading.value = runner;
   try {
-    usage.value = (
-      await props.request<{ usage: RunnerUsage }>(
-        `/api/runner-usage?nodeId=${encodeURIComponent(row.nodeId)}&runner=${encodeURIComponent(runner)}`
-      )
-    ).usage;
+    const result = await props.request<{ usage: RunnerUsage }>(
+      `/api/runner-usage?nodeId=${encodeURIComponent(row.nodeId)}&runner=${encodeURIComponent(runner)}`
+    );
+    if (!ownsDetails(generation, row)) return;
+    usage.value = result.usage;
     usageOpen.value = true;
   } catch (error) {
+    if (!ownsDetails(generation, row)) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -687,7 +708,7 @@ async function showUsage(runner: RunnerUsageName): Promise<void> {
       error
     );
   } finally {
-    usageLoading.value = undefined;
+    if (ownsDetails(generation, row)) usageLoading.value = undefined;
   }
 }
 function usageDisabledReason(runner: RunnerUsageName): string {
@@ -700,7 +721,10 @@ onMounted(() => {
   pagination.start();
   void load();
 });
-onUnmounted(() => pagination.dispose());
+onUnmounted(() => {
+  closeDetails();
+  pagination.dispose();
+});
 </script>
 <template>
   <section
@@ -920,8 +944,8 @@ onUnmounted(() => pagination.dispose());
       :node-refreshing="detailsRefreshing"
       :upgrade="detailsUpgradeState"
       :request="request"
-      @update:node-open="details = undefined"
-      @update:workspace-open="details = undefined"
+      @update:node-open="closeDetails"
+      @update:workspace-open="closeDetails"
       @computer-use-changed="updateComputerUse"
       @refresh-node="refreshNodeDetails()"
       @usage="showUsage"
