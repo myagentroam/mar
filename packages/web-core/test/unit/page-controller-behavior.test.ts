@@ -147,6 +147,30 @@ function controller() {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('does not project ordinary session broadcasts before a Session Watch initial', () => {
+    const { page } = controller();
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.selectedSessionId.value = 'session-a';
+    const session = {
+      id: 'session-a',
+      workspaceId: 'workspace-a',
+      runner: 'codex' as const,
+      externalSessionId: 'native-a',
+      runnerTitle: 'Original title',
+      activity: 'IDLE' as const
+    };
+    page.sessions.value = [session];
+    captured.live!.onEvent({
+      nodeId: 'node-a',
+      sequence: 1,
+      category: 'session',
+      payload: {
+        session: { ...session, runnerTitle: 'Broadcast title', activity: 'MANAGED_ACTIVE' }
+      }
+    });
+    expect(page.sessions.value).toEqual([session]);
+  });
+
   it('toggles active mobile top menus without changing their selected page', () => {
     const { page } = controller();
     page.mobileViewport.value = true;
