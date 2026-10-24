@@ -9,7 +9,7 @@ import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
-import { iconThemes } from '../../icon-themes/index.js';
+import { iconThemes, type IconThemeId } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
 import type { SettingsSection } from '../../model/settings.js';
 import { iconThemePreferenceService } from '../../service/icon-theme-preference-service.js';
@@ -91,6 +91,13 @@ const customThemes = computed(() =>
 function setTheme(value: ThemePreference): void {
   try {
     themeService.setTheme(value);
+  } catch {
+    showMessage(t('customThemes.storageFailed'), 'error');
+  }
+}
+function setIconTheme(value: IconThemeId): void {
+  try {
+    iconThemeService.setTheme(value);
   } catch {
     showMessage(t('customThemes.storageFailed'), 'error');
   }
@@ -390,7 +397,7 @@ async function confirmLogout(): Promise<void> {
           :model-value="iconTheme"
           class="theme-select"
           :aria-label="t('settings.iconTheme')"
-          @update:model-value="iconThemeService.setTheme($event as 'seti' | 'material')"
+          @update:model-value="setIconTheme($event as IconThemeId)"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >

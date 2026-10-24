@@ -6,6 +6,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import ThemeControlsFixture from './theme-controls-fixture.vue';
+import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 
@@ -53,6 +54,9 @@ const app = createApp({
           quickPromptsFailed: false,
           refreshQuickPrompts: async () => undefined
         }),
+        h('div', { 'data-testid': 'icon-theme-preview' }, [
+          h(FileTypeIcon, { name: 'example.ts' })
+        ]),
         h(ThemeControlsFixture)
       ]);
   }

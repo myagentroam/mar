@@ -91,4 +91,32 @@ describe('File Icon Theme Preferences', () => {
       material.resolveFolder(true, 'other')
     );
   });
+
+  it.each(['seti', 'material'] as const)(
+    'keeps the effective %s theme on storage failure and confirms a later successful write',
+    (previous) => {
+      const next = previous === 'seti' ? 'material' : 'seti';
+      const storage = new Map([[ICON_THEME_STORAGE_KEY, previous]]);
+      const failure = new Error('Storage unavailable');
+      let failWrite = true;
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: 'seti' | 'material') => {
+          expect(service.theme.value).toBe(previous);
+          if (failWrite) throw failure;
+          storage.set(key, value);
+        }
+      });
+      const service = createIconThemePreferenceService();
+
+      expect(() => service.setTheme(next)).toThrow(failure);
+      expect(service.theme.value).toBe(previous);
+      expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(previous);
+
+      failWrite = false;
+      service.setTheme(next);
+      expect(service.theme.value).toBe(next);
+      expect(createIconThemePreferenceService().theme.value).toBe(next);
+    }
+  );
 });
