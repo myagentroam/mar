@@ -296,7 +296,6 @@ export class WorkspaceFileService {
     if (path.startsWith('mar-attachment:')) throw new Error('FILE_PATH_ESCAPE');
     return this.serializeMutation(workspace.id, async () => {
       const result = await writeWorkspaceTextFile(workspace.path, path, content, expectedRevision);
-      this.dispose(workspace.id);
       this.onInvalidated(workspace.id);
       return result;
     });
@@ -343,7 +342,6 @@ export class WorkspaceFileService {
         workspace.path,
         action === 'MOVE' ? { action, path, destination: destination as string } : { action, path }
       );
-      this.dispose(workspace.id);
       this.onInvalidated(workspace.id);
       return result;
     });

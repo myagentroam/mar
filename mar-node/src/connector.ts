@@ -392,12 +392,14 @@ export class NodeConnector {
     invalidate: (workspaceId) =>
       void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions')
   });
+  private readonly invalidateWorkspaceFiles = (workspaceId: string): void => {
+    this.workspaceFileService.dispose(workspaceId);
+    this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
+    this.workspaceCoordinator.invalidate(workspaceId);
+  };
   private readonly workspaceFileService = new WorkspaceFileService(
     this.workspaceState,
-    (workspaceId) => {
-      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-      this.workspaceCoordinator.invalidate(workspaceId);
-    },
+    this.invalidateWorkspaceFiles,
     {},
     (workspaceId, resourcePath) =>
       this.workspaceUploadService.fileResource(workspaceId, resourcePath) ??
@@ -405,11 +407,7 @@ export class NodeConnector {
   );
   private readonly workspaceUploadService = new WorkspaceUploadService(
     this.workspaceState,
-    (workspaceId) => {
-      this.workspaceFileService.dispose(workspaceId);
-      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-      this.workspaceCoordinator.invalidate(workspaceId);
-    },
+    this.invalidateWorkspaceFiles,
     () => this.attachmentTemporaryRoot()
   );
   private directTransferService: DirectTransferService | undefined;
@@ -1606,11 +1604,7 @@ export class NodeConnector {
       changes: this.workspaceChangeService,
       listSessions: (workspaceId) =>
         this.executeNodeOperation('session.list', { workspaceId, limit: 30 }),
-      invalidate: (workspaceId) => {
-        this.workspaceFileService.dispose(workspaceId);
-        this.workspaceWorkbenchService.invalidateWorkspaceFiles(workspaceId);
-        this.workspaceCoordinator.invalidate(workspaceId);
-      },
+      invalidate: this.invalidateWorkspaceFiles,
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,
       emitWatchEvent: (payload) => this.send('watch.event', payload)
