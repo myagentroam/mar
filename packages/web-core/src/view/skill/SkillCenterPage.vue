@@ -934,13 +934,14 @@ function scopeLabel(scope: string): string {
 }
 .skill-category-strip button:hover {
   border-color: var(--mar-text-faint);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
 }
 .skill-category-strip button.selected {
-  border-color: var(--mar-color-brand);
-  background: var(--el-color-primary-light-9);
-  color: var(--mar-color-brand-text);
-  font-weight: 600;
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
   outline: 2px solid var(--el-color-primary);

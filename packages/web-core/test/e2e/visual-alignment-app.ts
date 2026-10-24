@@ -14,6 +14,7 @@ import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndi
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import UtilityInteractionFixture from './utility-interaction-fixture.vue';
+import ListHierarchyFixture from './list-hierarchy-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import { createWorkbenchContextCommandService } from '../../src/service/workbench-context-command-service.js';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
@@ -98,6 +99,10 @@ const hostedWorkspace = {
     hostedSnapshot.value.conversation.modelId = modelId;
   }
 } as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
+const modelOptions = new URLSearchParams(location.search).has('model-options');
+const modelEffortSelection = ref('model:one');
+const selectedModel = ref('one');
+const selectedEffort = ref('medium');
 const toolbar = {
   draftSessionOpen: false,
   runner: 'mar-agent' as const,
@@ -108,9 +113,14 @@ const toolbar = {
   modelEffortLabel: 'Model',
   selectedModel: '',
   selectedEffort: '',
-  models: [],
-  efforts: [],
-  hideModelSelection: true,
+  models: modelOptions
+    ? [
+        { id: 'one', label: 'Model One' },
+        { id: 'two', label: 'Model Two' }
+      ]
+    : [],
+  efforts: modelOptions ? ['medium', 'high'] : [],
+  hideModelSelection: !modelOptions,
   access: 'auto',
   accessLabel: 'Auto',
   accessOptions: [],
@@ -257,6 +267,18 @@ const app = createApp({
       h('section', { class: 'composer', style: 'margin-top: 32px' }, [
         h(ComposerToolbar, {
           ...toolbar,
+          ...(modelOptions
+            ? {
+                modelEffortSelection: modelEffortSelection.value,
+                selectedModel: selectedModel.value,
+                selectedEffort: selectedEffort.value,
+                onUpdateModelEffort: (value: string) => {
+                  modelEffortSelection.value = value;
+                  if (value.startsWith('model:')) selectedModel.value = value.slice(6);
+                  else selectedEffort.value = value.slice(7);
+                }
+              }
+            : {}),
           canCompactContext: canCompact.value,
           onCompact: () =>
             new URLSearchParams(location.search).has('context-confirm')
@@ -356,17 +378,19 @@ const resourceDetailsFixture = {
 };
 (new URLSearchParams(location.search).has('empty-conversation')
   ? createApp(emptyConversationFixture)
-  : new URLSearchParams(location.search).has('utility-interaction')
-    ? createApp(UtilityInteractionFixture)
-    : new URLSearchParams(location.search).has('resource-details')
-      ? createApp(resourceDetailsFixture)
-      : new URLSearchParams(location.search).has('shared-tooltip')
-        ? createApp(SharedTooltipFixture)
-        : new URLSearchParams(location.search).has('loading-feedback')
-          ? createApp(LoadingFeedbackFixture)
-          : new URLSearchParams(location.search).has('session-performance')
-            ? createApp(sessionPerformanceFixture)
-            : app
+  : new URLSearchParams(location.search).has('list-hierarchy')
+    ? createApp(ListHierarchyFixture)
+    : new URLSearchParams(location.search).has('utility-interaction')
+      ? createApp(UtilityInteractionFixture)
+      : new URLSearchParams(location.search).has('resource-details')
+        ? createApp(resourceDetailsFixture)
+        : new URLSearchParams(location.search).has('shared-tooltip')
+          ? createApp(SharedTooltipFixture)
+          : new URLSearchParams(location.search).has('loading-feedback')
+            ? createApp(LoadingFeedbackFixture)
+            : new URLSearchParams(location.search).has('session-performance')
+              ? createApp(sessionPerformanceFixture)
+              : app
 )
   .use(i18n)
   .use(ElementPlus)

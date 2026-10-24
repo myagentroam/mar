@@ -152,7 +152,7 @@ async function sendTest(): Promise<void> {
               <span aria-hidden="true">·</span>
               {{ template.locale }}
             </span>
-            <strong>{{ template.name }}</strong>
+            <span class="template-choice__name">{{ template.name }}</span>
             <span class="template-choice__subject">{{ template.subject }}</span>
           </button>
         </div>
@@ -275,7 +275,7 @@ async function sendTest(): Promise<void> {
   border-radius: var(--mar-radius-selection);
   padding: 13px 14px;
   background: var(--el-fill-color-blank);
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-secondary);
   text-align: left;
   cursor: pointer;
   transition:
@@ -285,6 +285,7 @@ async function sendTest(): Promise<void> {
 .template-choice.is-selected {
   border-color: var(--mar-border-medium);
   background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 .template-choice:hover {
   background: var(--mar-fill-hover);
@@ -298,20 +299,19 @@ async function sendTest(): Promise<void> {
 }
 .template-choice__meta,
 .template-choice__subject {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
 }
 .template-choice__meta {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: var(--el-color-primary);
   font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  letter-spacing: 0.035em;
+  font-weight: 400;
 }
-.template-choice strong {
+.template-choice__name {
   font-size: var(--mar-font-size-body);
+  font-weight: 400;
   line-height: 1.45;
 }
 .template-choice__subject {

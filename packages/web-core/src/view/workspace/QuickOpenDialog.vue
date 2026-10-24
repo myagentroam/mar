@@ -370,7 +370,7 @@ function onKeydown(event: KeyboardEvent): void {
             "
           />
           <span class="entry-main">
-            <strong>
+            <span class="entry-name">
               <span
                 v-for="(fragment, fragmentIndex) in highlightedPath(
                   entry.kind === 'FILE'
@@ -385,7 +385,7 @@ function onKeydown(event: KeyboardEvent): void {
                 :class="{ 'quick-open-match': fragment.matched }"
                 >{{ fragment.text }}</span
               >
-            </strong>
+            </span>
             <code v-if="entry.kind !== 'SESSION'"
               ><span
                 v-for="(fragment, fragmentIndex) in highlightedPath(entry.path)"
@@ -567,7 +567,7 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: 6px;
   padding: 0.55rem 0.65rem;
   background: transparent;
-  color: inherit;
+  color: var(--mar-text-secondary);
   cursor: pointer;
   text-align: left;
 }
@@ -580,11 +580,14 @@ function onKeydown(event: KeyboardEvent): void {
   display: grid;
   gap: 0.15rem;
 }
-.quick-open-results strong,
+.quick-open-results .entry-name,
 .quick-open-results code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.entry-name {
+  font-weight: 400;
 }
 .quick-open-results code,
 .quick-open-results small {

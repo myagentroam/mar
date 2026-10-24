@@ -759,10 +759,13 @@ function selectFiles(event: Event): void {
   line-height: var(--mar-compact-control-size);
 }
 
-:global(.composer-mini-popper .el-select-dropdown__item.composer-model-effort-option-selected) {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
-  font-weight: 600;
+:global(.composer-model-effort-popper .el-select-dropdown__item.is-selected),
+:global(
+  .composer-model-effort-popper .el-select-dropdown__item.composer-model-effort-option-selected
+) {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 
 :global(.composer-model-effort-popper .el-select-dropdown__wrap),

@@ -282,7 +282,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         <div class="theme-controls">
           <el-button
             link
-            type="primary"
             :icon="marIcon('check')"
             :disabled="service.theme.value === item.id"
             @click="applyTheme(item)"

@@ -2624,7 +2624,7 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column :label="translate('marAgentModels.model')" min-width="220">
             <template #default="{ row }">
-              <strong>{{ row.displayName }}</strong>
+              <span class="catalog-model-name">{{ row.displayName }}</span>
               <code class="catalog-model-id">{{ row.upstreamModelId }}</code>
               <div class="catalog-reasoning">
                 <span class="catalog-reasoning-label">{{
@@ -2799,6 +2799,10 @@ onBeforeUnmount(() => {
 .catalog-table-wrap {
   min-height: 180px;
   overflow-x: auto;
+}
+.catalog-model-name {
+  color: var(--mar-text-primary);
+  font-weight: 400;
 }
 .catalog-model-id {
   display: block;

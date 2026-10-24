@@ -143,7 +143,7 @@ function runStatusType(
   white-space: nowrap;
 }
 .recent-session-title {
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.35;
 }
 .recent-sessions-list small {

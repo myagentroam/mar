@@ -734,7 +734,7 @@ function openBlankMenu(event: MouseEvent): void {
 .settings-nav button.active {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .settings-nav button:focus-visible {
