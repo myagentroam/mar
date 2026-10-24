@@ -114,7 +114,7 @@ createApp({
         })
       );
     const source = query.get('diff');
-    if (source === 'HISTORY' || source === 'TOOL_CHANGE')
+    if (source === 'HISTORY' || source === 'TOOL_CHANGE' || source === 'WORKING_TREE')
       return withActions(
         h(GitDiffViewer, {
           ref: handle,
@@ -129,6 +129,7 @@ createApp({
           },
           source,
           diff: {
+            afterText: source === 'WORKING_TREE' ? content : undefined,
             text:
               '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-old\n+new\n' +
               (longContent ? content : '')

@@ -196,8 +196,8 @@ const minimapViewportStyle = computed(() => {
   return { height: `${height}%`, top: `${Math.min(100 - height, Math.max(0, top))}%` };
 });
 const minimapStyle = computed(() => ({
-  right: `${workingTreeScrollbarWidth.value}px`,
-  bottom: `${workingTreeScrollbarHeight.value}px`
+  right: `calc(var(--diff-content-inset) + ${workingTreeScrollbarWidth.value}px)`,
+  bottom: `calc(var(--diff-content-inset) + ${workingTreeScrollbarHeight.value}px)`
 }));
 
 function textLines(value: string): readonly string[] {
@@ -1024,13 +1024,15 @@ defineExpose({
   display: none;
 }
 .unified-diff-content {
+  --diff-content-inset: 0.5rem;
   position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  padding: 0;
+  padding: var(--diff-content-inset);
+  background: var(--mar-bg-panel);
 }
 .unified-diff-content > .empty {
   margin: 1rem;
@@ -1103,7 +1105,7 @@ defineExpose({
 .diff-minimap {
   position: absolute;
   z-index: 1;
-  top: 0;
+  top: var(--diff-content-inset);
   right: 0;
   bottom: 0;
   box-sizing: border-box;
@@ -1221,6 +1223,10 @@ defineExpose({
   color: var(--mar-text-tertiary);
 }
 @media (max-width: 767px) {
+  .unified-diff-content {
+    --diff-content-inset: 0px;
+  }
+
   .diff-preview-toolbar {
     display: none;
   }

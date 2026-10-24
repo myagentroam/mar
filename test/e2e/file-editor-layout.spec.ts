@@ -62,6 +62,41 @@ for (const shape of ['small', 'landscape', 'portrait']) {
   });
 }
 
+test('Working-tree Diff keeps its minimap inside the content inset across viewports', async ({
+  page
+}, testInfo) => {
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}file-editor-layout.html?diff=WORKING_TREE&long=1`);
+    const content = page.locator('.unified-diff-content');
+    const minimap = content.locator('.diff-minimap');
+    const code = content.locator('.unified-diff-code');
+    await expect(minimap).toBeVisible();
+    const background = await code.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await expect(content).toHaveCSS('background-color', background);
+    const gaps = await content.evaluate((element) => {
+      const outer = element.getBoundingClientRect();
+      const pane = element.querySelector('.unified-diff-pane')!.getBoundingClientRect();
+      const map = element.querySelector('.diff-minimap')!.getBoundingClientRect();
+      const code = element.querySelector<HTMLElement>('.unified-diff-code')!;
+      const inset = parseFloat(getComputedStyle(element).paddingLeft);
+      return [
+        pane.left - outer.left - inset,
+        pane.top - outer.top - inset,
+        outer.bottom - pane.bottom - inset,
+        outer.right - map.right - inset - (code.offsetWidth - code.clientWidth),
+        map.top - outer.top - inset,
+        outer.bottom - map.bottom - inset - (code.offsetHeight - code.clientHeight)
+      ];
+    });
+    for (const gap of gaps) expect(Math.abs(gap)).toBeLessThan(1);
+    const bounds = (await minimap.boundingBox())!;
+    await minimap.click({ position: { x: bounds.width / 2, y: bounds.height - 2 } });
+    await expect.poll(() => code.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath(`diff-inset-minimap-${width}.png`) });
+  }
+});
+
 for (const theme of ['light', 'dark']) {
   test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
     browser
@@ -94,6 +129,21 @@ for (const theme of ['light', 'dark']) {
           });
           await expect(find).toBeVisible();
           const header = page.locator('.workspace-file-page-frame-header');
+          const frameContent = page.locator('.workspace-file-page-frame-content');
+          for (const side of ['top', 'right', 'bottom', 'left']) {
+            await expect(frameContent).toHaveCSS(`padding-${side}`, '0px');
+          }
+          if (mode.startsWith('diff')) {
+            const content = page.locator('.unified-diff-content');
+            const inset = await page.evaluate(() =>
+              window.innerWidth < 768
+                ? 0
+                : 0.5 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+            );
+            for (const side of ['top', 'right', 'bottom', 'left']) {
+              await expect(content).toHaveCSS(`padding-${side}`, `${inset}px`);
+            }
+          }
           const metadata = header.locator('.file-preview-eyebrow');
           await expect(metadata).toBeVisible();
           // Measure in one frame so the preview's entrance transition cannot skew the comparison.
