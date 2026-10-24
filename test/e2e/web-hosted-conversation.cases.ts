@@ -779,6 +779,80 @@ test('Hosted conversation entry aligns compact controls across languages and vie
   expect(messageBodies[0]).toMatchObject({ prompt: 'First message', attachmentIds: [] });
 });
 
+test('Hosted file deletion preserves files published by Watch before the HTTP response', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const target = snapshot.files[0];
+  const existing = {
+    ...target,
+    id: 'file-existing',
+    relativePath: 'existing.txt',
+    displayName: 'existing.txt'
+  };
+  const added = {
+    ...target,
+    id: 'file-added',
+    relativePath: 'watch-added.txt',
+    displayName: 'watch-added.txt'
+  };
+  await page.route('**/api/hosted-conversations?limit=20', (route) =>
+    json(route, { items: [conversation], nextCursor: null })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    json(route, { templates: [snapshot.template] })
+  );
+  await page.route('**/api/nodes/node-1/hosted-conversations/conversation-1/watch', (route) =>
+    fulfillMockHostedConversationWatch(page, route, conversation.id, {
+      ...snapshot,
+      files: [target, existing]
+    })
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let deleting = false;
+  await page.route(
+    '**/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1',
+    async (route) => {
+      expect(route.request().method()).toBe('DELETE');
+      expect(route.request().postData()).toBe('{}');
+      deleting = true;
+      await gate;
+      await json(route, { deletedFileId: target.id, files: [existing] });
+    }
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  const files = page.locator('.hosted-conversation-files');
+  const targetButton = files.getByRole('button', { name: /^result\.txt/u });
+  const addedButton = files.getByRole('button', { name: /^watch-added\.txt/u });
+  await expect(targetButton).toBeVisible();
+  await page.getByRole('button', { name: '删除文件“result.txt”' }).click();
+  await page
+    .locator('.el-message-box')
+    .getByRole('button', { name: '删除文件', exact: true })
+    .click();
+  try {
+    await expect.poll(() => deleting).toBe(true);
+    await emitMockHostedConversationEvent(page, {
+      conversationId: conversation.id,
+      kind: 'files',
+      files: [target, existing, added],
+      error: null
+    });
+    await expect(addedButton).toBeVisible();
+    await expect(targetButton).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(targetButton).toHaveCount(0);
+  await expect(addedButton).toBeVisible();
+  await expect(files.getByRole('button', { name: /^existing\.txt/u })).toBeVisible();
+});
+
 test('Standalone chat reuses scrolling, Composer, and mobile history through one Hosted Watch', async ({
   page,
   browserName

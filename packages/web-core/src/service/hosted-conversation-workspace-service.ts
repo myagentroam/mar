@@ -1427,7 +1427,10 @@ export function createHostedConversationWorkspaceService(
     )
       throw responseInvalid();
     if (sameSelectedContext(context) && snapshot.value !== undefined) {
-      replaceSnapshot({ ...snapshot.value, files: parsed.data.files });
+      replaceSnapshot({
+        ...snapshot.value,
+        files: snapshot.value.files.filter((file) => file.id !== fileId)
+      });
     }
     return parsed.data;
   }
