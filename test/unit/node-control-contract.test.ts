@@ -21,6 +21,72 @@ import {
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('Server rejects retired reconcile messages through the existing authenticated unknown-message path', async () => {
+    const database = new ServerDatabase(':memory:');
+    const control = new NodeControl(database);
+    const registered = database.registerNode(
+      database.createNodeRegistrationToken(database.getAdmin().id).token,
+      { metadata: '{}' }
+    )!;
+    const sent: Array<{ type: string; payload: unknown; replyTo?: string }> = [];
+    const socket = {
+      readyState: 1,
+      OPEN: 1,
+      send: (raw: string) => sent.push(JSON.parse(raw)),
+      close: vi.fn()
+    };
+    const internal = control as unknown as {
+      handleMessage(
+        socket: unknown,
+        raw: string,
+        setNodeId: (id: string) => void,
+        getNodeId: () => string | undefined
+      ): Promise<void>;
+    };
+    let nodeId: string | undefined;
+    const receive = async (type: string, payload: unknown) => {
+      const envelope = createEnvelope(type, payload);
+      await internal.handleMessage(
+        socket,
+        JSON.stringify(envelope),
+        (id) => {
+          nodeId = id;
+        },
+        () => nodeId
+      );
+      return envelope.id;
+    };
+    try {
+      await receive('authenticate', {
+        nodeId: registered.nodeId,
+        credential: registered.credential
+      });
+      expect(control.isNodeConnected(registered.nodeId)).toBe(true);
+      const before = await control.listNodes();
+      for (const [type, payload] of [
+        ['runs.reconcile', { runIds: ['active-run', 'unknown-run'] }],
+        ['lease.reconcile', { runId: 'active-run', known: false }],
+        ['lease.reconcile', { runId: 'unknown-run', known: true }],
+        ['lease.reconcile', {}],
+        ['unknown.control.message', {}]
+      ] as const) {
+        const id = await receive(type, payload);
+        expect(sent.filter((message) => message.replyTo === id)).toMatchObject([
+          { type: 'error', payload: { code: 'MESSAGE_TYPE_UNKNOWN' } }
+        ]);
+        expect(await control.listNodes()).toEqual(before);
+      }
+      const heartbeatId = await receive('heartbeat', {});
+      expect(sent.filter((message) => message.replyTo === heartbeatId)).toMatchObject([
+        { type: 'ack', payload: { type: 'heartbeat' } }
+      ]);
+      expect(control.isNodeConnected(registered.nodeId)).toBe(true);
+    } finally {
+      control.close();
+      database.close();
+    }
+  });
+
   it.each(['start', 'status', 'ack', 'cancel'])(
     'ChatGPT login %s uses authorized internal relay only and is not a public Workbench operation',
     async (action) => {
