@@ -93,6 +93,43 @@ for (const theme of ['light', 'dark']) {
             exact: true
           });
           await expect(find).toBeVisible();
+          const header = page.locator('.workspace-file-page-frame-header');
+          const metadata = header.locator('.file-preview-eyebrow');
+          await expect(metadata).toBeVisible();
+          // Measure in one frame so the preview's entrance transition cannot skew the comparison.
+          const alignment = await header.evaluate(
+            (element, button) => {
+              const metadataBox = element
+                .querySelector('.file-preview-eyebrow')!
+                .getBoundingClientRect();
+              const buttonBox = button!.getBoundingClientRect();
+              const headerBox = element.getBoundingClientRect();
+              const pathBox = element
+                .querySelector('.workspace-file-page-frame-title > small')
+                ?.getBoundingClientRect();
+              return {
+                offset: Math.abs(
+                  metadataBox.y + metadataBox.height / 2 - (buttonBox.y + buttonBox.height / 2)
+                ),
+                pathRight: pathBox?.right,
+                left: metadataBox.left,
+                top: metadataBox.top,
+                bottom: metadataBox.bottom,
+                headerTop: headerBox.top,
+                headerBottom: headerBox.bottom
+              };
+            },
+            await find.elementHandle()
+          );
+          if (width === 1280) {
+            expect(alignment.offset).toBeLessThan(1);
+            if (alignment.pathRight !== undefined) {
+              expect(alignment.pathRight).toBeLessThan(alignment.left);
+            }
+          } else {
+            expect(alignment.top).toBeGreaterThanOrEqual(alignment.headerTop);
+            expect(alignment.bottom).toBeLessThanOrEqual(alignment.headerBottom);
+          }
           const radius = await find.evaluate((element) =>
             getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
           );
