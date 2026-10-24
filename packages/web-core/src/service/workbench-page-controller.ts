@@ -629,7 +629,7 @@ export function createWorkbenchPageController<
     readonly { readonly id: SettingsSection; readonly label: string }[]
   >(() => [
     { id: 'account', label: translate('navigation.account') },
-    { id: 'usage', label: translate('modelUsage.title') },
+    { id: 'usage', label: translate('usageStatistics.title') },
     { id: 'appearance', label: translate('settings.appearance') },
     { id: 'custom-themes', label: translate('customThemes.title') },
     {

@@ -8,10 +8,10 @@ import type {
   PersonalUsageRecords,
   UsageTotals
 } from '@myagentroam/protocol';
-import { PersonalUsageService } from '../../src/service/personal-usage-service.js';
-import * as personalUsageServiceModule from '../../src/service/personal-usage-service.js';
-import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
-import InteractivePersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue?unit-render';
+import { UsageStatisticsService } from '../../src/service/usage-statistics-service.js';
+import * as usageStatisticsServiceModule from '../../src/service/usage-statistics-service.js';
+import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
+import InteractiveUsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue?unit-render';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import { MANAGEMENT_PAGE_SIZE } from '../../src/service/management-pagination-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -20,7 +20,7 @@ import { personalSettingsZhCN } from '../../src/i18n/personal-settings.zh-CN.js'
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { absoluteMessageTime } from '../../src/util/time-presentation.js';
 import { absoluteMessageTime as conversationTime } from '../../src/util/conversation-presentation.js';
-import { cacheHitRate } from '../../src/util/personal-usage-presentation.js';
+import { cacheHitRate } from '../../src/util/usage-statistics-presentation.js';
 import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 
 type Requester = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -137,14 +137,14 @@ afterEach(() => {
   localePreferenceService().setLocale(originalLocale);
 });
 
-describe('personal usage service', () => {
+describe('usage statistics service', () => {
   it('uses the real total for direct unvisited page jumps instead of discovering pages incrementally', async () => {
     const request = vi.fn(async (path: string): Promise<unknown> => {
       if (path.includes('/overview')) return overview();
       const page = Number(new URL(path, 'http://test').searchParams.get('page') ?? 1);
       return { records: [record(`page-${page}`)], total: '61', page, nextCursor: null };
     });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     expect(service.state.total).toBe('61');
     await service.goToPage(4);
@@ -169,7 +169,7 @@ describe('personal usage service', () => {
         nextCursor: null
       };
     });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     await service.loadMore(true);
     const calls = request.mock.calls.length;
@@ -198,7 +198,7 @@ describe('personal usage service', () => {
         nextCursor: cursor === 'third' ? null : cursor === 'second' ? 'third' : 'second'
       };
     });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     await service.goToPage(2);
     await service.goToPage(3);
@@ -224,7 +224,7 @@ describe('personal usage service', () => {
       .mockResolvedValueOnce({ records: [record('original')], total: '60', nextCursor: null })
       .mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce({ records: [record('late')], total: '60', nextCursor: null });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     service.startAutoRefresh(visibility);
     await vi.advanceTimersByTimeAsync(60_000);
@@ -248,7 +248,7 @@ describe('personal usage service', () => {
       .mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce(overview())
       .mockResolvedValueOnce({ records: [record('filtered')], total: '60', nextCursor: null });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     const page = service.goToPage(2);
     await service.load(query({ runner: 'codex' }));
@@ -272,7 +272,7 @@ describe('personal usage service', () => {
           }
     );
     const report = vi.fn();
-    const service = new PersonalUsageService(request as Requester, report);
+    const service = new UsageStatisticsService(request as Requester, report);
     await service.load(query());
     await service.goToPage(2);
     expect(service.state.records.map((row) => row.recordId)).toEqual(['second']);
@@ -303,7 +303,7 @@ describe('personal usage service', () => {
         ? overview({ models })
         : { records: [record('first')], total: '60', nextCursor: 'next' }
     );
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query({ purpose: 'conversation' }), { rolling: true });
     expect(service.state.availableModels).toEqual(models);
     models = overview().models;
@@ -343,7 +343,7 @@ describe('personal usage service', () => {
             nextCursor: path.includes('page=2') ? null : 'next'
           }
     );
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query(), { rolling: true });
     await service.goToPage(2);
     service.startAutoRefresh(visibility);
@@ -372,7 +372,7 @@ describe('personal usage service', () => {
         : { records: [record('first')], total: '60', nextCursor: null }
     );
     const report = vi.fn();
-    const service = new PersonalUsageService(request as Requester, report);
+    const service = new UsageStatisticsService(request as Requester, report);
     await service.load(query());
     const lastRefreshed = service.state.lastRefreshedAt;
     service.startAutoRefresh(visibility);
@@ -401,7 +401,7 @@ describe('personal usage service', () => {
       .fn<(path: string) => Promise<unknown>>()
       .mockResolvedValueOnce(overview())
       .mockResolvedValueOnce({ records: [record('original')], total: '60', nextCursor: null });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     const pending = deferred<PersonalUsageOverview>();
     request
@@ -430,7 +430,7 @@ describe('personal usage service', () => {
       .fn<(path: string, init?: RequestInit) => Promise<unknown>>()
       .mockResolvedValueOnce(overview())
       .mockResolvedValueOnce({ records: [record('original')], total: '60', nextCursor: null });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     await service.load(query());
     const pending = deferred<PersonalUsageOverview>();
     request
@@ -465,7 +465,7 @@ describe('personal usage service', () => {
       return path.includes('/overview') ? secondOverview.promise : secondRecords.promise;
     });
     const reportError = vi.fn();
-    const service = new PersonalUsageService(request as Requester, reportError);
+    const service = new UsageStatisticsService(request as Requester, reportError);
 
     const oldLoad = service.load(
       query({ runner: 'codex', model: 'model/a', mode: 'work', purpose: 'conversation' })
@@ -506,7 +506,7 @@ describe('personal usage service', () => {
           ? overview({ models })
           : { records: [], total: '0', nextCursor: null }
       );
-      const service = new PersonalUsageService(request as Requester, vi.fn());
+      const service = new UsageStatisticsService(request as Requester, vi.fn());
       await service.load(query({ purpose }));
       expect(service.state.availableModels).toEqual([fast]);
 
@@ -537,7 +537,7 @@ describe('personal usage service', () => {
         overview({ models: [{ key: 'model-a', label: 'Model A', ...totals() }] })
       )
       .mockResolvedValueOnce({ records: [record('filtered')], total: '60', nextCursor: null });
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
 
     await service.load(query({ purpose: 'conversation' }));
     expect(service.state.availableModels.map((model) => model.key)).toEqual(['model-a', 'model-b']);
@@ -572,7 +572,7 @@ describe('personal usage service', () => {
       .fn<(path: string, init?: RequestInit) => Promise<unknown>>()
       .mockRejectedValue(error);
     const reportError = vi.fn();
-    const service = new PersonalUsageService(request as Requester, reportError);
+    const service = new UsageStatisticsService(request as Requester, reportError);
 
     await service.load(query());
     expect(service.state.failed).toBe(true);
@@ -593,7 +593,7 @@ describe('personal usage service', () => {
     const request = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(
       () => pending.promise
     );
-    const service = new PersonalUsageService(request as Requester, vi.fn());
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
     const loading = service.load(query());
 
     service.dispose();
@@ -605,16 +605,18 @@ describe('personal usage service', () => {
   });
 });
 
-describe('personal usage settings contract', () => {
+describe('usage statistics settings contract', () => {
   it.each(['en-US', 'zh-CN'] as const)('renders missing usage as zero in %s', async (locale) => {
     localePreferenceService().setLocale(locale);
     const request = vi.fn();
-    const service = new PersonalUsageService(request, vi.fn());
+    const service = new UsageStatisticsService(request, vi.fn());
     service.state.overview = overview();
-    vi.spyOn(personalUsageServiceModule, 'PersonalUsageService').mockImplementation(function () {
-      return service;
-    });
-    const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+    vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
+      function () {
+        return service;
+      }
+    );
+    const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
     // Tooltip layout is browser-only; SSR has no tooltip output.
     app.directive('tooltip', {});
     app.use(i18n).use(ElementPlus);
@@ -624,7 +626,7 @@ describe('personal usage settings contract', () => {
     const summary = html.match(/<div class="section-heading"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
     expect(summary).toBeDefined();
     expect(summary).toContain('0 (0%)');
-    expect(summary).not.toContain(commonMessages[locale].modelUsage.unknown);
+    expect(summary).not.toContain(commonMessages[locale].usageStatistics.unknown);
   });
 
   it.each([
@@ -720,7 +722,7 @@ describe('personal usage settings contract', () => {
       vi.stubGlobal('document', {});
       vi.stubGlobal('HTMLElement', class {});
       const request = vi.fn();
-      const service = new PersonalUsageService(request, vi.fn());
+      const service = new UsageStatisticsService(request, vi.fn());
       vi.spyOn(service, 'load').mockResolvedValue(true);
       vi.spyOn(service, 'startAutoRefresh').mockImplementation(() => undefined);
       Object.assign(service.state, {
@@ -737,18 +739,20 @@ describe('personal usage settings contract', () => {
           record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
         ]
       });
-      vi.spyOn(personalUsageServiceModule, 'PersonalUsageService').mockImplementation(function () {
-        return service;
-      });
-      const view = renderComponent(InteractivePersonalUsageSettings, { request });
+      vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
+        function () {
+          return service;
+        }
+      );
+      const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
       try {
         await flushComponent();
         const cards = view
           .findAll('section')
           .filter((node) => node.props['class'] === 'overview-cell');
         expect(cards.map(textContent)).toEqual([
-          expect.stringContaining(commonMessages[locale].modelUsage.last24Hours),
-          expect.stringContaining(commonMessages[locale].modelUsage.last7Days)
+          expect.stringContaining(commonMessages[locale].usageStatistics.last24Hours),
+          expect.stringContaining(commonMessages[locale].usageStatistics.last7Days)
         ]);
         expect(textContent(cards[0]!)).toContain('41');
         expect(textContent(cards[1]!)).toContain('73');
@@ -765,8 +769,8 @@ describe('personal usage settings contract', () => {
         expect(choices).not.toContain('initial-model');
         const statuses = view.findAll('ElTag').filter((node) => node.props['role'] === 'status');
         expect(statuses.map((node) => node.props['aria-label'])).toEqual([
-          commonMessages[locale].modelUsage.states.failed,
-          commonMessages[locale].modelUsage.states.succeeded
+          commonMessages[locale].usageStatistics.states.failed,
+          commonMessages[locale].usageStatistics.states.succeeded
         ]);
         expect(statuses.map((node) => node.props['type'])).toEqual(['danger', 'info']);
         service.state.records = [
@@ -788,9 +792,9 @@ describe('personal usage settings contract', () => {
         await flushComponent();
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
-        ).toBe(commonMessages[locale].modelUsage.trend);
+        ).toBe(commonMessages[locale].usageStatistics.trend);
         expect(textContent(view.findAll('summary')[0]!)).toBe(
-          commonMessages[locale].modelUsage.chartData
+          commonMessages[locale].usageStatistics.chartData
         );
         const recordTable = view
           .findAll('ElTable')
@@ -809,7 +813,7 @@ describe('personal usage settings contract', () => {
     async (locale) => {
       localePreferenceService().setLocale(locale);
       const request = vi.fn();
-      const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+      const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
       app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       let selectedRange: unknown;
@@ -818,7 +822,7 @@ describe('personal usage settings contract', () => {
         defineComponent({
           props: ['modelValue', 'ariaLabel'],
           setup(props, { attrs, slots }) {
-            if (props.ariaLabel === commonMessages[locale].modelUsage.range) {
+            if (props.ariaLabel === commonMessages[locale].usageStatistics.range) {
               selectedRange = props.modelValue;
             }
             return () => h(ElSelect, { ...attrs, ...props }, slots);
@@ -829,13 +833,17 @@ describe('personal usage settings contract', () => {
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
 
-      expect(html).toContain(commonMessages[locale].modelUsage.title);
+      expect(html).toContain(commonMessages[locale].usageStatistics.title);
+      expect(html).toContain(locale === 'en-US' ? 'Usage statistics' : '用量统计');
+      expect(html).toContain(
+        locale === 'en-US' ? 'Agent usage for the current account' : '当前账号的 Agent 用量'
+      );
       expect(html).not.toContain(locale === 'en-US' ? 'About these statistics' : '统计说明');
-      expect(html).toContain(commonMessages[locale].modelUsage.range);
+      expect(html).toContain(commonMessages[locale].usageStatistics.range);
       expect(selectedRange).toBe('24h');
       const refreshButton = html.match(/<button\b[\s\S]*?<\/button>/u)?.[0];
       expect(refreshButton).toContain('<svg');
-      expect(refreshButton).toContain(commonMessages[locale].modelUsage.refresh);
+      expect(refreshButton).toContain(commonMessages[locale].usageStatistics.refresh);
       expect(request).not.toHaveBeenCalled();
     }
   );
@@ -845,7 +853,7 @@ describe('personal usage settings contract', () => {
     async (locale) => {
       localePreferenceService().setLocale(locale);
       const request = vi.fn();
-      const service = new PersonalUsageService(request, vi.fn());
+      const service = new UsageStatisticsService(request, vi.fn());
       service.state.overview = overview({
         selected: totals({
           inputTokens: '1000',
@@ -855,10 +863,12 @@ describe('personal usage settings contract', () => {
           requests: '1'
         })
       });
-      vi.spyOn(personalUsageServiceModule, 'PersonalUsageService').mockImplementation(function () {
-        return service;
-      });
-      const app = createSSRApp({ render: () => h(PersonalUsageSettings, { request }) });
+      vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
+        function () {
+          return service;
+        }
+      );
+      const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
       app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
@@ -868,7 +878,7 @@ describe('personal usage settings contract', () => {
       expect(legend).toBeDefined();
       const legendText = legend!.replace(/<[^>]*>/gu, '');
       for (const category of ['input', 'cache', 'output'] as const) {
-        expect(legendText).toContain(commonMessages[locale].modelUsage[category]);
+        expect(legendText).toContain(commonMessages[locale].usageStatistics[category]);
       }
       expect(legendText).not.toMatch(/[\d%]/u);
       const summary = html.match(/<div class="section-heading"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
@@ -879,15 +889,15 @@ describe('personal usage settings contract', () => {
     }
   );
 
-  it('keeps every personal usage message key and placeholder aligned across locales', () => {
+  it('keeps every usage statistics message key and placeholder aligned across locales', () => {
     const leaves = (value: unknown, prefix = ''): [string, string][] => {
       if (typeof value === 'string') return [[prefix, value]];
       return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
         leaves(child, prefix ? `${prefix}.${key}` : key)
       );
     };
-    const zh = leaves(personalSettingsZhCN.modelUsage);
-    const en = leaves(personalSettingsEnUS.modelUsage);
+    const zh = leaves(personalSettingsZhCN.usageStatistics);
+    const en = leaves(personalSettingsEnUS.usageStatistics);
     expect(zh.map(([key]) => key)).toEqual(en.map(([key]) => key));
     for (const [key, value] of zh) {
       const english = en.find(([candidate]) => candidate === key)?.[1];

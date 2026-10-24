@@ -8,7 +8,7 @@ import type {
 const REFRESH_INTERVAL = 60_000;
 
 /** Owns request cancellation, paging and the short-lived personal usage projection. */
-export class PersonalUsageService {
+export class UsageStatisticsService {
   readonly state = reactive({
     loading: false,
     loadingPage: false,

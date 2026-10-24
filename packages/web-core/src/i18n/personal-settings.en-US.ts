@@ -1,12 +1,13 @@
 export const personalSettingsEnUS = {
-  modelUsage: {
+  usageStatistics: {
     pagination: 'Usage record pages',
     updateRecords: 'Update records',
     recordsSnapshot: 'Records have not auto-refreshed to preserve your current view.',
     refreshDelayed: 'Refresh unavailable; retrying shortly',
     refreshed: 'Last refreshed: {time}',
     overviewScope: 'Current category · Unaffected by filters below',
-    title: 'Personal usage',
+    title: 'Usage statistics',
+    accountScope: 'Agent usage for the current account',
     refresh: 'Refresh',
     last24Hours: 'Last 24 hours',
     last7Days: 'Last 7 days',

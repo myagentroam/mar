@@ -15,17 +15,17 @@ import {
   type PersonalUsageOverview,
   type UsageGroup
 } from '@myagentroam/protocol';
-import { PersonalUsageService } from '../../service/personal-usage-service.js';
+import { UsageStatisticsService } from '../../service/usage-statistics-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
-import { cacheHitRate } from '../../util/personal-usage-presentation.js';
+import { cacheHitRate } from '../../util/usage-statistics-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
 import { createManagementPaginationService } from '../../service/management-pagination-service.js';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
-const service = new PersonalUsageService(props.request, (error) =>
+const service = new UsageStatisticsService(props.request, (error) =>
   showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
@@ -61,6 +61,12 @@ const usageStateTypes: Record<PersonalUsageRecords['records'][number]['state'], 
   };
 const activeBucket = ref<PersonalUsageOverview['buckets'][number]>();
 const bucketAnchor = shallowRef<SVGElement>();
+const bucketReference = computed(() => {
+  const target = bucketAnchor.value;
+  return target
+    ? { contextElement: target, getBoundingClientRect: () => target.getBoundingClientRect() }
+    : undefined;
+});
 function showBucket(bucket: PersonalUsageOverview['buckets'][number], event: Event): void {
   bucketAnchor.value = event.currentTarget as SVGElement;
   activeBucket.value = bucket;
@@ -89,9 +95,9 @@ const rules = computed<FormRules>(() => ({
       validator: (_rule: unknown, _value: unknown, done: (error?: Error) => void) => {
         try {
           const value = query();
-          done(value.to > Date.now() ? new Error(t('modelUsage.invalidRange')) : undefined);
+          done(value.to > Date.now() ? new Error(t('usageStatistics.invalidRange')) : undefined);
         } catch {
-          done(new Error(t('modelUsage.invalidRange')));
+          done(new Error(t('usageStatistics.invalidRange')));
         }
       }
     }
@@ -141,7 +147,7 @@ function number(value: string | null | undefined, compact = false): string {
   }).format(BigInt(value ?? '0'));
 }
 function time(value: number | null | undefined): string {
-  return value == null ? t('modelUsage.unknown') : absoluteMessageTime(value);
+  return value == null ? t('usageStatistics.unknown') : absoluteMessageTime(value);
 }
 function countDetail(value: string): string {
   const compact = number(value, true);
@@ -155,7 +161,7 @@ function cacheLabel(
   value: { cacheReadTokens?: string | null; inputTokens?: string | null },
   compact = false
 ): string {
-  return t('modelUsage.cacheWithRate', {
+  return t('usageStatistics.cacheWithRate', {
     tokens: number(value.cacheReadTokens, compact),
     rate: cacheHitRate(value.cacheReadTokens, value.inputTokens, locale.value)
   });
@@ -165,7 +171,7 @@ function cacheTooltip(value: {
   cacheWriteTokens?: string | null;
   inputTokens?: string | null;
 }): string {
-  return `${t('modelUsage.cacheReadTokens')}: ${cacheLabel(value)} · ${t('modelUsage.cacheWriteTokens')}: ${number(value.cacheWriteTokens)}`;
+  return `${t('usageStatistics.cacheReadTokens')}: ${cacheLabel(value)} · ${t('usageStatistics.cacheWriteTokens')}: ${number(value.cacheWriteTokens)}`;
 }
 function hasCacheDetails(value: {
   cacheReadTokens?: string | null;
@@ -199,7 +205,7 @@ const overviewCards = computed(() =>
       ]
     : []
 );
-const runnerName = (runner: string) => t(`modelUsage.runnerNames.${runner}`);
+const runnerName = (runner: string) => t(`usageStatistics.runnerNames.${runner}`);
 const recordKey = (record: { recordId: string; ledgerId?: string }) =>
   record.ledgerId ?? record.recordId;
 function compareCount(a: Record<string, unknown>, b: Record<string, unknown>, key: string): number {
@@ -225,18 +231,18 @@ onUnmounted(() => {
     :loading="pageLoading"
     variant="page"
     class="usage settings-panel"
-    data-testid="personal-usage"
+    data-testid="usage-statistics"
   >
     <div class="usage-content">
       <header>
-        <h2>{{ t('modelUsage.title') }}</h2>
+        <h2>{{ t('usageStatistics.title') }}</h2>
         <div class="refresh-actions">
           <span class="metadata" role="status">
             {{
               state.refreshFailed
-                ? t('modelUsage.refreshDelayed')
+                ? t('usageStatistics.refreshDelayed')
                 : state.lastRefreshedAt
-                  ? t('modelUsage.refreshed', { time: time(state.lastRefreshedAt) })
+                  ? t('usageStatistics.refreshed', { time: time(state.lastRefreshedAt) })
                   : ''
             }}
           </span>
@@ -246,11 +252,12 @@ onUnmounted(() => {
             :disabled="pageLoading"
             @click="refresh()"
             :loading-icon="marIcon('loading-action')"
-            >{{ t('modelUsage.refresh') }}</el-button
+            >{{ t('usageStatistics.refresh') }}</el-button
           >
         </div>
       </header>
-      <nav class="usage-purposes" :aria-label="t('modelUsage.purpose')">
+      <p class="metadata">{{ t('usageStatistics.accountScope') }}</p>
+      <nav class="usage-purposes" :aria-label="t('usageStatistics.purpose')">
         <button
           v-for="purpose in purposes"
           :key="purpose"
@@ -258,22 +265,22 @@ onUnmounted(() => {
           :aria-pressed="draft.purpose === purpose"
           @click="selectPurpose(purpose)"
         >
-          {{ t(`modelUsage.purposes.${purpose}`) }}
+          {{ t(`usageStatistics.purposes.${purpose}`) }}
         </button>
       </nav>
-      <p v-if="state.overview" class="metadata">{{ t('modelUsage.overviewScope') }}</p>
+      <p v-if="state.overview" class="metadata">{{ t('usageStatistics.overviewScope') }}</p>
       <div v-if="state.overview" class="overview">
         <section v-for="card in overviewCards" :key="card.label" class="overview-cell">
-          <h3>{{ t(`modelUsage.${card.label}`) }}</h3>
+          <h3>{{ t(`usageStatistics.${card.label}`) }}</h3>
           <p>
-            {{ t('modelUsage.input') }}
+            {{ t('usageStatistics.input') }}
             <span
               v-tooltip="{ content: number(card.value.inputTokens), touch: true }"
               class="usage-count"
               tabindex="0"
               >{{ number(card.value.inputTokens, true) }}</span
             >
-            · {{ t('modelUsage.cache') }}
+            · {{ t('usageStatistics.cache') }}
             <span
               v-tooltip="{
                 touch: true,
@@ -284,7 +291,7 @@ onUnmounted(() => {
               :tabindex="hasCacheDetails(card.value) ? 0 : undefined"
               >{{ cacheLabel(card.value, true) }}</span
             >
-            · {{ t('modelUsage.output') }}
+            · {{ t('usageStatistics.output') }}
             <span
               v-tooltip="{ content: number(card.value.outputTokens), touch: true }"
               class="usage-count"
@@ -297,9 +304,9 @@ onUnmounted(() => {
             class="usage-count"
             tabindex="0"
             >{{ number(card.value.totalTokens, true) }}</strong
-          ><span>{{ t('modelUsage.totalTokens') }}</span>
+          ><span>{{ t('usageStatistics.totalTokens') }}</span>
           <span class="metadata">
-            · {{ t('modelUsage.requests') }} {{ number(card.value.requests) }}</span
+            · {{ t('usageStatistics.requests') }} {{ number(card.value.requests) }}</span
           >
         </section>
       </div>
@@ -311,25 +318,25 @@ onUnmounted(() => {
         label-position="top"
         @submit.prevent="refresh()"
       >
-        <el-form-item :label="t('modelUsage.range')"
+        <el-form-item :label="t('usageStatistics.range')"
           ><el-select
             v-model="draft.period"
-            :aria-label="t('modelUsage.range')"
+            :aria-label="t('usageStatistics.range')"
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :label="t('modelUsage.last24Hours')" value="24h" /><el-option
-              :label="t('modelUsage.last7Days')"
+            <el-option :label="t('usageStatistics.last24Hours')" value="24h" /><el-option
+              :label="t('usageStatistics.last7Days')"
               value="7d"
-            /><el-option :label="t('modelUsage.custom')" value="custom" /> </el-select
+            /><el-option :label="t('usageStatistics.custom')" value="custom" /> </el-select
         ></el-form-item>
-        <el-form-item :label="t('modelUsage.runner')"
+        <el-form-item :label="t('usageStatistics.runner')"
           ><el-select
             v-model="draft.runner"
             clearable
-            :placeholder="t('modelUsage.all')"
-            :aria-label="t('modelUsage.runner')"
+            :placeholder="t('usageStatistics.all')"
+            :aria-label="t('usageStatistics.runner')"
             @change="
               draft.model = '';
               change();
@@ -342,48 +349,48 @@ onUnmounted(() => {
               :label="runnerName(runner)"
               :value="runner" /></el-select
         ></el-form-item>
-        <el-form-item :label="t('modelUsage.model')"
+        <el-form-item :label="t('usageStatistics.model')"
           ><el-select
             v-model="draft.model"
             clearable
-            :placeholder="t('modelUsage.all')"
-            :aria-label="t('modelUsage.model')"
+            :placeholder="t('usageStatistics.all')"
+            :aria-label="t('usageStatistics.model')"
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="model in modelOptions"
               :key="model.key"
-              :label="model.label || t('modelUsage.unknown')"
+              :label="model.label || t('usageStatistics.unknown')"
               :value="model.key" /></el-select
         ></el-form-item>
-        <el-form-item :label="t('modelUsage.mode')"
+        <el-form-item :label="t('usageStatistics.mode')"
           ><el-select
             v-model="draft.mode"
             clearable
-            :placeholder="t('modelUsage.all')"
-            :aria-label="t('modelUsage.mode')"
+            :placeholder="t('usageStatistics.all')"
+            :aria-label="t('usageStatistics.mode')"
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
             ><el-option
               v-for="mode in ['work', 'conversation']"
               :key="mode"
-              :label="t(`modelUsage.modes.${mode}`)"
+              :label="t(`usageStatistics.modes.${mode}`)"
               :value="mode" /></el-select
         ></el-form-item>
         <el-form-item
           v-if="draft.period === 'custom'"
           prop="range"
-          :label="t('modelUsage.custom')"
+          :label="t('usageStatistics.custom')"
           class="custom-range"
           ><el-date-picker
             v-model="draft.range"
             type="datetimerange"
             single-panel
             :validate-event="false"
-            :start-placeholder="t('modelUsage.from')"
-            :end-placeholder="t('modelUsage.to')"
+            :start-placeholder="t('usageStatistics.from')"
+            :end-placeholder="t('usageStatistics.to')"
             @change="change"
             :prefix-icon="marIcon('calendar')"
             :clear-icon="marIcon('clear-input')"
@@ -395,10 +402,10 @@ onUnmounted(() => {
       </el-form>
       <template v-if="state.overview">
         <div class="section-heading">
-          <h3>{{ t('modelUsage.trend') }}</h3>
+          <h3>{{ t('usageStatistics.trend') }}</h3>
           <span
             v-tooltip="{
-              content: t('modelUsage.selected', {
+              content: t('usageStatistics.selected', {
                 tokens: number(state.overview.selected.totalTokens),
                 input: number(state.overview.selected.inputTokens),
                 cache: cacheLabel(state.overview.selected),
@@ -410,7 +417,7 @@ onUnmounted(() => {
             class="usage-count"
             tabindex="0"
             >{{
-              t('modelUsage.selected', {
+              t('usageStatistics.selected', {
                 tokens: number(state.overview.selected.totalTokens, true),
                 input: number(state.overview.selected.inputTokens, true),
                 cache: cacheLabel(state.overview.selected, true),
@@ -421,14 +428,14 @@ onUnmounted(() => {
           >
         </div>
         <p class="metadata">
-          {{ t('modelUsage.timeZone', { zone: timeZone }) }}
+          {{ t('usageStatistics.timeZone', { zone: timeZone }) }}
         </p>
         <p v-if="state.overview.selected.requests === '0'" class="empty">
-          {{ t('modelUsage.empty') }}
+          {{ t('usageStatistics.empty') }}
         </p>
         <div v-else class="trend">
           <div class="legend">
-            <span class="input-key" />{{ t('modelUsage.input') }}
+            <span class="input-key" />{{ t('usageStatistics.input') }}
             <span class="cache-key" />
             <span
               v-tooltip="{
@@ -438,15 +445,15 @@ onUnmounted(() => {
               }"
               :class="{ 'usage-count': hasCacheDetails(state.overview.selected) }"
               :tabindex="hasCacheDetails(state.overview.selected) ? 0 : undefined"
-              >{{ t('modelUsage.cache') }}</span
+              >{{ t('usageStatistics.cache') }}</span
             >
-            <span class="output-key" />{{ t('modelUsage.output') }}
+            <span class="output-key" />{{ t('usageStatistics.output') }}
           </div>
           <svg
             class="usage-trend-chart"
             viewBox="0 0 800 170"
             role="img"
-            :aria-label="t('modelUsage.trend')"
+            :aria-label="t('usageStatistics.trend')"
             preserveAspectRatio="none"
           >
             <line x1="0" y1="155" x2="800" y2="155" class="axis" />
@@ -454,13 +461,10 @@ onUnmounted(() => {
               v-for="(bucket, index) in state.overview.buckets"
               :key="bucket.from"
               class="trend-bucket"
-              tabindex="0"
-              :aria-label="`${time(bucket.from)} – ${time(bucket.to)} · ${t('modelUsage.inputTokens')}: ${countDetail(bucket.inputTokens)} · ${t('modelUsage.cache')}: ${cacheLabel(bucket, true)} · ${t('modelUsage.outputTokens')}: ${countDetail(bucket.outputTokens)} · ${t('modelUsage.totalTokens')}: ${countDetail(bucket.totalTokens)}`"
+              :aria-label="`${time(bucket.from)} – ${time(bucket.to)} · ${t('usageStatistics.inputTokens')}: ${countDetail(bucket.inputTokens)} · ${t('usageStatistics.cache')}: ${cacheLabel(bucket, true)} · ${t('usageStatistics.outputTokens')}: ${countDetail(bucket.outputTokens)} · ${t('usageStatistics.totalTokens')}: ${countDetail(bucket.totalTokens)}`"
               :transform="`translate(${(index * 800) / state.overview.buckets.length},0)`"
               @mouseenter="showBucket(bucket, $event)"
               @mouseleave="activeBucket = undefined"
-              @focus="showBucket(bucket, $event)"
-              @blur="activeBucket = undefined"
             >
               <rect
                 class="input-bar"
@@ -499,22 +503,23 @@ onUnmounted(() => {
           <el-tooltip
             v-bind="tooltipOptions"
             virtual-triggering
-            :virtual-ref="bucketAnchor"
+            :virtual-ref="bucketReference"
             :visible="!!activeBucket"
             :enterable="false"
           >
             <template v-if="activeBucket" #content>
               <div>{{ time(activeBucket.from) }} – {{ time(activeBucket.to) }}</div>
               <div>
-                {{ t('modelUsage.inputTokens') }}: {{ countDetail(activeBucket.inputTokens) }}
+                {{ t('usageStatistics.inputTokens') }}: {{ countDetail(activeBucket.inputTokens) }}
               </div>
-              <div>{{ t('modelUsage.cache') }}: {{ cacheLabel(activeBucket, true) }}</div>
+              <div>{{ t('usageStatistics.cache') }}: {{ cacheLabel(activeBucket, true) }}</div>
               <div>{{ cacheTooltip(activeBucket) }}</div>
               <div>
-                {{ t('modelUsage.outputTokens') }}: {{ countDetail(activeBucket.outputTokens) }}
+                {{ t('usageStatistics.outputTokens') }}:
+                {{ countDetail(activeBucket.outputTokens) }}
               </div>
               <div>
-                {{ t('modelUsage.totalTokens') }}: {{ countDetail(activeBucket.totalTokens) }}
+                {{ t('usageStatistics.totalTokens') }}: {{ countDetail(activeBucket.totalTokens) }}
               </div>
             </template>
           </el-tooltip>
@@ -525,18 +530,22 @@ onUnmounted(() => {
           <details>
             <summary class="mar-disclosure-summary">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
-                t('modelUsage.chartData')
+                t('usageStatistics.chartData')
               }}
             </summary>
-            <el-table :data="state.overview.buckets" :empty-text="t('modelUsage.empty')"
-              ><el-table-column :label="t('modelUsage.time')"
+            <el-table :data="state.overview.buckets" :empty-text="t('usageStatistics.empty')"
+              ><el-table-column :label="t('usageStatistics.time')"
                 ><template #default="{ row }"
                   >{{ time(row.from) }} – {{ time(row.to) }}</template
                 ></el-table-column
               ><el-table-column
                 v-for="key in tokenColumns"
                 :key="key"
-                :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
+                :label="
+                  key === 'cacheReadTokens'
+                    ? t('usageStatistics.cache')
+                    : t(`usageStatistics.${key}`)
+                "
                 :min-width="key === 'cacheReadTokens' ? 170 : 110"
               >
                 <template #default="{ row }">
@@ -565,29 +574,29 @@ onUnmounted(() => {
           </details>
         </div>
         <div class="section-heading">
-          <h3>{{ t('modelUsage.distribution') }}</h3>
-          <el-radio-group v-model="metric" :aria-label="t('modelUsage.metric')"
-            ><el-radio-button value="totalTokens">{{ t('modelUsage.tokens') }}</el-radio-button
+          <h3>{{ t('usageStatistics.distribution') }}</h3>
+          <el-radio-group v-model="metric" :aria-label="t('usageStatistics.metric')"
+            ><el-radio-button value="totalTokens">{{ t('usageStatistics.tokens') }}</el-radio-button
             ><el-radio-button value="requests">{{
-              t('modelUsage.requests')
+              t('usageStatistics.requests')
             }}</el-radio-button></el-radio-group
           >
         </div>
         <div class="distributions">
           <section v-for="distribution in distributions" :key="distribution.kind">
-            <h4>{{ t(`modelUsage.${distribution.kind}`) }}</h4>
-            <p v-if="!distribution.groups.length" class="empty">{{ t('modelUsage.empty') }}</p>
+            <h4>{{ t(`usageStatistics.${distribution.kind}`) }}</h4>
+            <p v-if="!distribution.groups.length" class="empty">{{ t('usageStatistics.empty') }}</p>
             <ol v-else>
               <li v-for="group in distribution.groups" :key="group.key">
                 <div>
                   <span>{{
                     distribution.kind === 'runners'
                       ? runnerName(group.key)
-                      : group.label || t('modelUsage.unknown')
+                      : group.label || t('usageStatistics.unknown')
                   }}</span>
                 </div>
                 <div class="distribution-cache metadata">
-                  {{ t('modelUsage.cache') }}
+                  {{ t('usageStatistics.cache') }}
                   <span
                     v-tooltip="{
                       touch: true,
@@ -600,7 +609,11 @@ onUnmounted(() => {
                   >
                   ·
                   {{
-                    t(metric === 'totalTokens' ? 'modelUsage.totalTokens' : 'modelUsage.requests')
+                    t(
+                      metric === 'totalTokens'
+                        ? 'usageStatistics.totalTokens'
+                        : 'usageStatistics.requests'
+                    )
                   }}
                   <strong
                     v-tooltip="{ content: number(group[metric]), touch: true }"
@@ -621,20 +634,20 @@ onUnmounted(() => {
           </section>
         </div>
         <div class="section-heading">
-          <h3>{{ t('modelUsage.records') }}</h3>
-          <span>{{ t('modelUsage.recordsHint') }}</span>
+          <h3>{{ t('usageStatistics.records') }}</h3>
+          <span>{{ t('usageStatistics.recordsHint') }}</span>
         </div>
         <div v-if="state.recordsStale" class="records-update">
-          <span class="metadata">{{ t('modelUsage.recordsSnapshot') }}</span>
+          <span class="metadata">{{ t('usageStatistics.recordsSnapshot') }}</span>
           <el-button link :disabled="state.loading" @click="refresh()">{{
-            t('modelUsage.updateRecords')
+            t('usageStatistics.updateRecords')
           }}</el-button>
         </div>
         <el-table
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
-          :empty-text="t('modelUsage.empty')"
+          :empty-text="t('usageStatistics.empty')"
           class="records"
           :aria-busy="state.loadingPage"
           @sort-change="sortChanged"
@@ -656,7 +669,7 @@ onUnmounted(() => {
                     'reasoningTokens'
                   ]"
                   :key="key"
-                  ><dt>{{ t(`modelUsage.${key}`) }}</dt>
+                  ><dt>{{ t(`usageStatistics.${key}`) }}</dt>
                   <dd>
                     <span
                       v-tooltip="{
@@ -679,38 +692,48 @@ onUnmounted(() => {
                         key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
                       }}</span
                     >
-                    <template v-else>{{ row[key] ?? t('modelUsage.unknown') }}</template>
+                    <template v-else>{{ row[key] ?? t('usageStatistics.unknown') }}</template>
                   </dd></template
                 >
-                <dt>{{ t('modelUsage.coverageLabel') }}</dt>
+                <dt>{{ t('usageStatistics.coverageLabel') }}</dt>
                 <dd>
-                  {{ t(`modelUsage.coverages.${row.coverage}`) }} ·
-                  {{ t(`modelUsage.roles.${row.agentRole}`) }}
+                  {{ t(`usageStatistics.coverages.${row.coverage}`) }} ·
+                  {{ t(`usageStatistics.roles.${row.agentRole}`) }}
                 </dd>
               </dl></template
             ></el-table-column
           >
-          <el-table-column prop="endedAt" :label="t('modelUsage.time')" sortable min-width="180"
+          <el-table-column
+            prop="endedAt"
+            :label="t('usageStatistics.time')"
+            sortable
+            min-width="180"
             ><template #default="{ row }">{{ time(row.endedAt) }}</template></el-table-column
           >
-          <el-table-column prop="runner" :label="t('modelUsage.runner')" sortable min-width="110"
+          <el-table-column
+            prop="runner"
+            :label="t('usageStatistics.runner')"
+            sortable
+            min-width="110"
             ><template #default="{ row }">{{ runnerName(row.runner) }}</template></el-table-column
           >
-          <el-table-column :label="t('modelUsage.model')" min-width="160"
+          <el-table-column :label="t('usageStatistics.model')" min-width="160"
             ><template #default="{ row }">{{
-              row.actualModel ?? row.requestedModel ?? t('modelUsage.unknown')
+              row.actualModel ?? row.requestedModel ?? t('usageStatistics.unknown')
             }}</template></el-table-column
           >
-          <el-table-column :label="t('modelUsage.purpose')" min-width="100"
+          <el-table-column :label="t('usageStatistics.purpose')" min-width="100"
             ><template #default="{ row }">{{
-              t(`modelUsage.purposes.${row.purpose}`)
+              t(`usageStatistics.purposes.${row.purpose}`)
             }}</template></el-table-column
           >
           <el-table-column
             v-for="key in tokenColumns"
             :key="key"
             :prop="key"
-            :label="key === 'cacheReadTokens' ? t('modelUsage.cache') : t(`modelUsage.${key}`)"
+            :label="
+              key === 'cacheReadTokens' ? t('usageStatistics.cache') : t(`usageStatistics.${key}`)
+            "
             sortable
             :sort-method="
               (a: Record<string, unknown>, b: Record<string, unknown>) => compareCount(a, b, key)
@@ -738,14 +761,14 @@ onUnmounted(() => {
               >
             </template>
           </el-table-column>
-          <el-table-column :label="t('modelUsage.state')" min-width="105"
+          <el-table-column :label="t('usageStatistics.state')" min-width="105"
             ><template #default="{ row }"
               ><el-tag
                 :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
                 effect="plain"
                 role="status"
-                :aria-label="t(`modelUsage.states.${row.state}`)"
-                >{{ t(`modelUsage.states.${row.state}`) }}</el-tag
+                :aria-label="t(`usageStatistics.states.${row.state}`)"
+                >{{ t(`usageStatistics.states.${row.state}`) }}</el-tag
               ></template
             ></el-table-column
           >
@@ -759,12 +782,12 @@ onUnmounted(() => {
           :has-more="state.page < Math.ceil(Number(state.total) / 20)"
           :loading="state.loading || state.loadingPage"
           :loading-more="state.loadingPage"
-          :aria-label="t('modelUsage.pagination')"
+          :aria-label="t('usageStatistics.pagination')"
           @page="service.goToPage($event)"
           @load-more="service.loadMore($event)"
         />
       </template>
-      <p v-else-if="state.failed">{{ t('modelUsage.retry') }}</p>
+      <p v-else-if="state.failed">{{ t('usageStatistics.retry') }}</p>
     </div>
   </LoadingPanel>
 </template>
@@ -905,8 +928,7 @@ p {
 .trend-bucket {
   cursor: pointer;
 }
-.usage-count:focus-visible,
-.trend-bucket:focus-visible {
+.usage-count:focus-visible {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }

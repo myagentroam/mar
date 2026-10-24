@@ -36,7 +36,7 @@ import QuickPromptSettings from './QuickPromptSettings.vue';
 import PersonalInstructionsSettings from './PersonalInstructionsSettings.vue';
 import PromptCompletionPreferences from './PromptCompletionPreferences.vue';
 import PersonalGitSettings from './PersonalGitSettings.vue';
-import PersonalUsageSettings from './PersonalUsageSettings.vue';
+import UsageStatisticsSettings from './UsageStatisticsSettings.vue';
 import SystemNotificationControl from './SystemNotificationControl.vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
 import type { QuickPrompt } from '../../model/workbench.js';
@@ -187,7 +187,7 @@ async function confirmLogout(): Promise<void> {
         section === 'usage' || section === 'git' || section === 'quick-prompts'
     }"
   >
-    <PersonalUsageSettings v-if="section === 'usage'" :request="request" />
+    <UsageStatisticsSettings v-if="section === 'usage'" :request="request" />
     <PersonalGitSettings v-else-if="section === 'git'" :request="request" />
     <section v-if="section === 'account'" class="full settings-panel">
       <h2>{{ translate('generated.settingsContent.accountSecurity') }}</h2>
