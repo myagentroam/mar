@@ -31,20 +31,21 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type { NodeWorkspace } from '../database.js';
 import { discoverAllNativeSessions } from '../native-session-history.js';
-import { readCodexNativeContextUsage } from '../native-session-history.js';
+import { readCodexNativeContextUsage } from './codex/native-context-usage.js';
+import { codexThreadCwd, extractCodexThreads } from './codex/conversation-parser.js';
 import {
-  codexThreadCwd,
+  deduplicateDirectSessions,
+  isWithinWorkspace,
+  latestNativeActivity
+} from '../util/runner-native-session-parsers.js';
+import {
   codexThreadHistoryModes,
   codexPaginatedThread,
   codexPaginatedCursor,
-  codexPaginatedConversationPage,
-  deduplicateDirectSessions,
-  extractCodexThreads,
-  isWithinWorkspace,
-  latestNativeActivity
+  codexPaginatedConversationPage
 } from './codex/conversation-parser.js';
 import { codexSessionControl } from '../codex-app-server.js';
-import { extractId } from '../util/runner-native-session-parsers.js';
+import { extractId } from './codex/conversation-parser.js';
 import { nodeLog } from '../operational.js';
 import { conversationClientMessageId } from '../util/conversation-identity.js';
 import type { NodeConversationTurn } from '../runtime-model.js';

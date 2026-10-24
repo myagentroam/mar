@@ -3,7 +3,7 @@ import type { FakeRunnerStatus, FakeRunnerStep } from '../fake-runner.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { FakeTestRunner } from '../runner/fake-test-runner.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import { isTerminalRunStatus } from '../runner/codex/conversation-parser.js';
+import { isTerminalRunStatus } from '../util/node-operation-parsers.js';
 import type { RunDomainState } from './run-domain-state.js';
 
 interface FakeManagedRunServiceOptions {

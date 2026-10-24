@@ -11,7 +11,7 @@ import type { FakeRunnerStatus } from '../../fake-runner.js';
 import type { RunnerImageAttachment } from '../../service/run-attachment-service.js';
 import { parseSecretEnvironment } from '../../util/secret-environment.js';
 import { runnerErrorProjection } from '../../util/runner-error.js';
-import { boundedConversationItemId, compactRunnerText } from '../codex/conversation-parser.js';
+import { boundedConversationItemId, compactRunnerText } from '../../util/node-operation-parsers.js';
 import { openCodePatchToolPayload, openCodeQuestions } from './conversation-parser.js';
 import { normalizeOpenCodeTool } from './tool-normalizer.js';
 import { OpenCodeRunner } from '../opencode-runner.js';

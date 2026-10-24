@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { createEnvelope, type NodeCapabilities, type NodeEnvelope } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import { ControlOutboundScheduler } from '../control-outbound-scheduler.js';
-import { nodeConnectEndpoint } from '../runner/codex/conversation-parser.js';
+import { nodeConnectEndpoint } from '../util/node-operation-parsers.js';
 
 interface NodeControlChannelOptions {
   readonly config: () => NodeConfig | undefined;

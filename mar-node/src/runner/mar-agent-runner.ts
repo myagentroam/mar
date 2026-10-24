@@ -18,7 +18,7 @@ import {
   type MarAgentSessionCatalog,
   type MarAgentSessionSummary
 } from '@myagentroam/agent';
-import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';

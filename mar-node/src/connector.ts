@@ -113,10 +113,10 @@ import {
   isPlainRecord,
   isRunnerImageAttachment,
   parseRunnerImageAttachments
-} from './runner/codex/conversation-parser.js';
+} from './util/node-operation-parsers.js';
 import { WebToolService } from './service/web-tool-service.js';
 
-export { nodeConnectEndpoint, validatedCapabilities } from './runner/codex/conversation-parser.js';
+export { nodeConnectEndpoint, validatedCapabilities } from './util/node-operation-parsers.js';
 import { NodeControlChannel } from './service/node-control-channel.js';
 import { NodeControlMessageService } from './service/node-control-message-service.js';
 import { NodeRequestService } from './service/node-request-service.js';

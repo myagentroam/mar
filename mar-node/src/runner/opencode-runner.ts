@@ -18,7 +18,7 @@ import {
   type RunnerSessionPresentation,
   type RunnerSessionPresentationContext
 } from './abstract-runner.js';
-import { isWithinWorkspace } from './codex/conversation-parser.js';
+import { isWithinWorkspace } from '../util/runner-native-session-parsers.js';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import {

@@ -565,12 +565,14 @@ describe('execution-private attribution to durable outbox', () => {
       };
       const execute = vi.fn(async (operation: string, _data: Record<string, unknown>) =>
         operation === 'session.create'
-          ? { session: { id: 'bootstrap' } }
+          ? { session: { id: 'bootstrap', runner } }
           : { run: { id: 'run' }, delivery: 'STARTED', idempotent: false }
       );
+      const prepareExecutionContext = vi.fn(() => undefined);
       const options = {
         execute,
         identity: { wait: () => Promise.resolve('native') },
+        runners: { require: () => ({ prepareExecutionContext }) },
         interceptedSessionId: () => undefined,
         runtime: {
           getAgentSession: () => ({ id: 'native', runner }),
@@ -596,6 +598,9 @@ describe('execution-private attribution to durable outbox', () => {
           expect.objectContaining({ __requestUserId: 42, __usageGrant: grant })
         );
       }
+      expect(prepareExecutionContext).toHaveBeenCalledWith(
+        expect.objectContaining({ runner, __requestUserId: 42, __usageGrant: grant })
+      );
       expect(JSON.stringify(result)).not.toContain(grant.token);
     }
   );
