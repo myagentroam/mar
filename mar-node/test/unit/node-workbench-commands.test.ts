@@ -46,11 +46,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('invalidates Workspace session projections after lifecycle configuration changes', async () => {
     const database = new NodeDatabase(':memory:', 'session-lifecycle-events');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/session-lifecycle-events',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-session-lifecycle-');
     const connector = new NodeConnector({ reconnect: false, database });
     const internals = connector as unknown as {
       workspaceSessionService: { markCacheStale(workspaceId: string): void };
@@ -1184,11 +1180,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('restores the existing Thread before returning the managed Codex compact Run and settles it after compaction', async () => {
     const database = new NodeDatabase(':memory:', 'node-compact');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/compact',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-compact-');
     let notify: ((notification: { method: string; params: unknown }) => void) | undefined;
     const configuredEnvironments: Readonly<Record<string, string>>[] = [];
     const resumeThread = vi.fn().mockResolvedValue({ thread: { id: 'thread-compact' } });
@@ -1262,7 +1254,9 @@ describe('Node Workbench Manifest and command control', () => {
     expect(resumeThread.mock.invocationCallOrder[0]).toBeLessThan(
       compactRequest.mock.invocationCallOrder[0]!
     );
-    expect(internals.runtime.sessionQueue(session.id).paused).toBe(false);
+    await vi.waitFor(() => {
+      expect(internals.runtime.sessionQueue(session.id).paused).toBe(false);
+    });
     await expect(
       operation(connector, 'session.command.execute', {
         sessionId: session.id,
@@ -1800,11 +1794,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('wraps only the input sent to the Runner while Claude Code Plan Mode is active', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-plan-input');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/claude-plan-input',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-claude-plan-input-');
     let prompt: string | undefined;
     const connector = new NodeConnector({
       reconnect: false,
@@ -1912,11 +1902,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('activates an existing MAR Agent session before running a runtime command', async () => {
     const database = new NodeDatabase(':memory:', 'node-mar-command-activation');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/mar-command-activation',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-command-activation-');
     const connector = new NodeConnector({
       reconnect: false,
       database,
@@ -2116,4 +2102,10 @@ function operation(connector: NodeConnector, operation: string, data: unknown): 
       executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
     }
   ).executeNodeOperation(operation, data);
+}
+
+async function saveTempWorkspace(database: NodeDatabase, prefix: string) {
+  const path = await mkdtemp(join(tmpdir(), prefix));
+  onTestFinished(() => rm(path, { recursive: true, force: true }));
+  return database.saveWorkspace({ path, kind: 'DIRECTORY', gitSummary: null });
 }
