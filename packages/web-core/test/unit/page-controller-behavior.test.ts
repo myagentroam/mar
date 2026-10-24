@@ -159,6 +159,8 @@ describe('Workbench controller composition behavior', () => {
       expect(page.mobileSidebarOpen.value).toBe(false);
     }
     page.selectNavigation('conversations');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
+    page.selectNavigation('conversations');
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
     page.selectNavigation('conversations');
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
@@ -166,10 +168,37 @@ describe('Workbench controller composition behavior', () => {
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
   });
 
+  it.each(['nodes', 'conversations'] as const)(
+    'switches to mobile %s content without opening a menu or retaining another tool surface',
+    (view) => {
+      const { page } = controller();
+      page.mobileViewport.value = true;
+      page.selectNavigation(view === 'nodes' ? 'conversations' : 'nodes');
+      page.openMobileWorkspaceSurface('terminal');
+      page.selectNavigation(view);
+      expect(page.view.value).toBe(view);
+      expect(page.mobileSidebarOpen.value).toBe(false);
+      expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
+      expect(page.mobileUtilityPanel.value).toBeUndefined();
+      expect(page.mobileWorkspaceSurface.value).toBe('conversation');
+
+      page.selectNavigation(view);
+      expect(page.mobileSidebarOpen.value).toBe(view === 'nodes');
+      expect(page.hostedConversationMobileHistoryOpen.value).toBe(view === 'conversations');
+      page.selectMobileUtilityPanel('notifications');
+      page.selectNavigation(view === 'nodes' ? 'conversations' : 'nodes');
+      expect(page.mobileSidebarOpen.value).toBe(false);
+      expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
+      expect(page.mobileUtilityPanel.value).toBeUndefined();
+    }
+  );
+
   it('replaces hosted history and utility drawers when switching mobile menus', () => {
     const { page } = controller();
     page.mobileViewport.value = true;
     page.selectNavigation('conversations');
+    page.selectNavigation('conversations');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
     page.selectMobileUtilityPanel('recent-sessions');
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
     expect(page.mobileUtilityPanel.value).toBe('recent-sessions');
@@ -180,6 +209,17 @@ describe('Workbench controller composition behavior', () => {
     page.selectNavigation('settings');
     expect(page.mobileUtilityPanel.value).toBeUndefined();
     expect(page.mobileSidebarOpen.value).toBe(true);
+  });
+
+  it('replaces a mobile utility menu with the active Work resource menu', () => {
+    const { page } = controller();
+    page.mobileViewport.value = true;
+    page.selectMobileUtilityPanel('notifications');
+    page.selectNavigation('nodes');
+    expect(page.mobileUtilityPanel.value).toBeUndefined();
+    expect(page.mobileSidebarOpen.value).toBe(true);
+    page.selectNavigation('nodes');
+    expect(page.mobileSidebarOpen.value).toBe(false);
   });
 
   it('consumes host navigation and version rather than recreating defaults', () => {

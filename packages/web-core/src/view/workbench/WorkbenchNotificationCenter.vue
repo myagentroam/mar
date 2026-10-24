@@ -268,7 +268,7 @@ const emit = defineEmits<{
                   <button
                     v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                     type="button"
-                    class="workbench-notification-delete"
+                    class="icon-button workbench-notification-delete"
                     :aria-label="
                       translate('generated.workbenchNotificationCenter.delete', {
                         value0: task.name
@@ -309,7 +309,7 @@ const emit = defineEmits<{
                   }}</time>
                 </button>
                 <button
-                  class="workbench-notification-delete"
+                  class="icon-button workbench-notification-delete"
                   :aria-label="
                     translate('generated.workbenchNotificationCenter.deleteNotification', {
                       value0: notification.title
@@ -444,11 +444,13 @@ const emit = defineEmits<{
   font-size: var(--mar-font-size-meta);
 }
 .workbench-notification-panel button {
+  font: inherit;
+}
+.workbench-notification-panel button:not(.icon-button) {
   border: 0;
   background: transparent;
   color: var(--mar-color-brand-text);
   cursor: pointer;
-  font: inherit;
 }
 .workbench-notification-upload-list,
 .workbench-notification-list {
@@ -578,11 +580,6 @@ const emit = defineEmits<{
   min-width: 24px;
   min-height: 24px;
   place-items: center;
-  color: var(--mar-text-neutral-control);
-}
-.workbench-notification-panel .workbench-notification-delete:hover,
-.workbench-notification-panel .workbench-notification-delete:focus-visible {
-  color: var(--mar-text-tertiary);
 }
 .workbench-notification-empty {
   margin: 0;

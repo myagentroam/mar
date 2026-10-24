@@ -311,15 +311,6 @@ function openBlankMenu(event: MouseEvent): void {
   >
     <header v-if="mobileViewport" class="mobile-menu-header">
       <strong>{{ menuLabel }}</strong>
-      <button
-        v-tooltip="$t('workbench.closeSidebar')"
-        class="icon-button"
-        type="button"
-        :aria-label="$t('workbench.closeSidebar')"
-        @click="emit('closeMobileSidebar')"
-      >
-        <MarIcon name="close" />
-      </button>
     </header>
     <div
       v-show="mobileUtilityPanel !== undefined"

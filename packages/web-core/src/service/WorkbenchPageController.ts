@@ -654,7 +654,7 @@ export function createWorkbenchPageController<
       mobileUtilityPanel.value === undefined;
     if (mobileViewport.value && nextView === 'conversations') {
       const historyWasOpen = hostedConversationMobileHistoryOpen.value;
-      hostedConversationMobileHistoryOpen.value = previousView !== nextView || !historyWasOpen;
+      hostedConversationMobileHistoryOpen.value = previousView === nextView && !historyWasOpen;
       if (previousView === nextView) {
         navigationService.selectMobileUtilityPanel(undefined);
         closeMobileSidebar();
@@ -668,7 +668,13 @@ export function createWorkbenchPageController<
     )
       managementSection.value = managementItems.value[0]?.id ?? options.systemManagementSection;
     selectWorkbenchView(nextView);
-    if (collapseSidebar) closeMobileSidebar();
+    if (
+      collapseSidebar ||
+      (mobileViewport.value &&
+        previousView !== nextView &&
+        (nextView === 'nodes' || nextView === 'conversations'))
+    )
+      closeMobileSidebar();
     if (previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations'))
       void workbenchNotificationService.recover().catch(() => undefined);
     navigationWatchService.transition(previousView, nextView);
