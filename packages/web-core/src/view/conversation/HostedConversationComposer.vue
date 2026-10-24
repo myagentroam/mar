@@ -172,11 +172,6 @@ const selectedModelLabel = computed(
 const templateName = computed(() => snapshot.value?.conversation.templateName ?? '');
 const draftTemplates = computed(() => props.entry?.templates.value ?? []);
 const draftTemplateId = computed(() => props.entry?.selectedTemplateId.value ?? '');
-const draftTemplateName = computed(
-  () =>
-    draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
-    translate('hostedConversations.templatePlaceholder')
-);
 const templateSelectionDisabled = computed(() => props.readonly || starting.value);
 const loadedTemplateLabel = computed(() =>
   templateName.value === ''
@@ -620,43 +615,29 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <el-dropdown
+        <el-select
           v-if="draft && !snapshot"
-          class="hosted-template-menu"
+          class="hosted-template-select"
+          :model-value="draftTemplateId"
           :disabled="templateSelectionDisabled"
-          trigger="click"
-          @command="selectTemplate(String($event))"
+          :placeholder="translate('hostedConversations.templatePlaceholder')"
+          :suffix-icon="marIcon('chevron-down')"
+          :aria-label="translate('hostedConversations.chooseTemplate')"
+          filterable
+          @change="selectTemplate(String($event))"
           @visible-change="refreshDraftTemplates"
         >
-          <button
-            v-tooltip="draftTemplateName"
-            class="hosted-template-name hosted-template-trigger"
-            type="button"
-            :disabled="templateSelectionDisabled"
-            :aria-label="translate('hostedConversations.chooseTemplate')"
-            :aria-description="draftTemplateName"
-          >
-            <MarIcon name="document" aria-hidden="true" />
-            <span>{{ draftTemplateName }}</span>
-            <MarIcon name="chevron-down" aria-hidden="true" />
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="draftTemplates.length === 0" disabled>
-                {{ translate('hostedConversations.noTemplates') }}
-              </el-dropdown-item>
-              <el-dropdown-item
-                v-for="template in draftTemplates"
-                :key="template.id"
-                :command="template.id"
-                :disabled="!template.available"
-                :class="{ 'is-selected': template.id === draftTemplateId }"
-              >
-                {{ template.name }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
+          <el-option
+            v-for="template in draftTemplates"
+            :key="template.id"
+            :label="template.name"
+            :value="template.id"
+            :disabled="!template.available"
+          />
+          <template #empty>
+            {{ translate('hostedConversations.noTemplates') }}
           </template>
-        </el-dropdown>
+        </el-select>
         <span
           v-tooltip="loadedTemplateLabel"
           v-if="templateName"
@@ -827,19 +808,9 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
-.hosted-template-name.hosted-template-trigger {
-  width: auto;
-  max-width: 22rem;
-  cursor: pointer;
-}
-
-.hosted-template-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.hosted-template-name.hosted-template-trigger > span {
-  max-width: 16rem;
+.hosted-template-select {
+  width: 240px;
+  max-width: 100%;
 }
 
 .hosted-model-trigger,
@@ -953,14 +924,9 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
   }
 
-  .hosted-template-menu {
+  .hosted-template-select {
     width: 100%;
     grid-column: 2 / 4;
-  }
-
-  .hosted-template-name.hosted-template-trigger {
-    width: 100%;
-    max-width: 100%;
   }
 
   .hosted-send-button,

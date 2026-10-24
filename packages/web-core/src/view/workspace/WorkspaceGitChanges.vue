@@ -151,7 +151,13 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             {{ worktreeReference(worktree) }}
           </code>
           <span class="git-worktree-statuses">
-            <el-tag v-if="worktree.current" effect="plain" size="small">
+            <el-tag
+              v-if="worktree.current"
+              class="repository-current"
+              type="info"
+              effect="plain"
+              size="small"
+            >
               {{ translate('gitWorktrees.current') }}
             </el-tag>
             <el-tag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
@@ -217,7 +223,13 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               <el-tag class="repository-kind" type="info" effect="plain" size="small">
                 {{ repositoryKindLabel(repository.source) }}
               </el-tag>
-              <el-tag v-if="repository.current" effect="plain" size="small">
+              <el-tag
+                v-if="repository.current"
+                class="repository-current"
+                type="info"
+                effect="plain"
+                size="small"
+              >
                 {{ translate('gitWorktrees.current') }}
               </el-tag>
               <el-tag
@@ -401,7 +413,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 .git-worktree-name {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .git-worktree-list code {
@@ -414,12 +426,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.25rem;
   align-items: center;
   justify-content: flex-end;
-}
-
-.git-worktree-statuses :deep(.el-tag) {
-  height: 1.25rem;
-  padding-inline: 0.3rem;
-  font-size: var(--mar-font-size-meta);
 }
 
 .git-worktrees-truncated {
@@ -448,12 +454,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 .change-list .change-repository-heading {
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr);
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
   border-top: 1px solid var(--mar-border-default);
-  padding: 0.5rem 0.25rem 0.35rem;
+  padding: 0.35rem 0.25rem 0.3rem;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .change-list > .change-repository-heading:first-child {
@@ -472,6 +478,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .change-repository-heading strong {
   color: var(--mar-text-primary);
+  font-weight: inherit;
 }
 
 .repository-heading-content {
@@ -512,11 +519,17 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.25rem;
 }
 
-.repository-tags-row :deep(.el-tag) {
-  height: 1.3rem;
+.repository-tags-row :deep(.el-tag),
+.git-worktree-statuses :deep(.el-tag) {
   padding-inline: 0.28rem;
   font-size: var(--mar-font-size-meta);
-  font-weight: 500;
+  font-weight: 400;
+}
+
+.repository-kind,
+.repository-current,
+.repository-sync-tag {
+  --el-tag-border-color: var(--mar-border-default);
 }
 
 .repository-sync-tag {

@@ -910,9 +910,34 @@ test('Touch usage counts reveal exact values and cache details without requiring
   }
 });
 
+test('Usage chart hover details do not create a focus outline', async ({ page }) => {
+  for (const theme of ['light', 'dark']) {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}icon-system.html?usage=1&theme=${theme}`);
+      await expect(
+        page.getByRole('heading', { name: 'Usage statistics', exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByText('Agent usage for the current account', { exact: true })
+      ).toBeVisible();
+      const bucket = page.locator('.trend-bucket').first();
+      const hint = page.locator('[role="tooltip"]:visible');
+      await bucket.hover();
+      await expect(hint).toContainText('Input tokens:');
+      await bucket.click();
+      await expect(bucket).not.toBeFocused();
+      await expect(bucket).toHaveCSS('outline-style', 'none');
+      await expect(hint).toContainText('Input tokens:');
+      await page.getByRole('heading', { name: 'Usage statistics', exact: true }).hover();
+      await expect(hint).toHaveCount(0);
+    }
+  }
+});
+
 test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {
   await page.goto(`${fixture.url}icon-system.html?usage=1`);
-  const chart = page.locator('[data-testid="personal-usage"] svg[role="img"]');
+  const chart = page.locator('[data-testid="usage-statistics"] svg[role="img"]');
   await expect(chart).toBeVisible();
   const chartSize = await chart.evaluate((svg) => ({
     height: svg.getBoundingClientRect().height,

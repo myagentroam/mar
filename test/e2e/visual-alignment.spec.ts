@@ -354,7 +354,7 @@ test('Performance hover displays the details panel without a second hint', async
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [390, 767, 768, 1280]) {
-    test(`Session performance clears the final row and stays near the mobile bottom: ${theme}, ${width}px`, async ({
+    test(`Session performance clears the final row and keeps compact bottom spacing: ${theme}, ${width}px`, async ({
       browser
     }, testInfo) => {
       const context = await browser.newContext({
@@ -374,16 +374,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const region = (await page.locator('.conversation-scroll-region').boundingBox())!;
         const lastRow = (await page.getByTestId('last-row').boundingBox())!;
         const bottomGap = region.y + region.height - infoBox.y - infoBox.height;
-        if (width < 768) {
-          expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
-          expect(bottomGap).toBeGreaterThanOrEqual(0);
-          expect(bottomGap).toBeLessThanOrEqual(4);
-        } else {
-          const rootFontSize = await page
-            .locator('html')
-            .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-          expect(bottomGap).toBeCloseTo(rootFontSize * 0.75, 1);
-        }
+        const rootFontSize = await page
+          .locator('html')
+          .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+        expect(bottomGap).toBeGreaterThanOrEqual(0);
+        expect(bottomGap).toBeCloseTo(rootFontSize * 0.25, 1);
+        if (width < 768) expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
         if (width < 768) await info.tap();
         else await info.focus();
         await expect(page.locator('.mar-tooltip:visible')).toContainText('420 ms');
@@ -409,7 +405,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           bottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
           root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
         }));
-        expect(padding.bottom).toBeCloseTo(padding.root, 1);
+        expect(padding.bottom).toBeCloseTo(padding.root * 0.5, 1);
       } finally {
         await context.close();
       }

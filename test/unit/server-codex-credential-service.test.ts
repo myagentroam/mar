@@ -1,143 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { createServer as createHttpsServer } from 'node:https';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
-import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodexCredentialService } from '../../ee/server/src/service/codex-credential-service.js';
 import { startSocks5Proxy } from '../../packages/server-core/test/support/socks5-proxy.js';
 
-const NOW = 1_800_000_000_000;
+import {
+  NOW,
+  jwt,
+  activeCredential,
+  database,
+  service,
+  authorizationFixture
+} from './support/codex-credential-service.js';
+
 const PROJECT_USER_AGENT = `MyAgentRoam/0.9.27 (${process.platform}; ${process.arch})`;
-
-function jwt(payload: Record<string, unknown>): string {
-  return [
-    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
-    Buffer.from(JSON.stringify(payload)).toString('base64url'),
-    'signature'
-  ].join('.');
-}
-
-function activeCredential(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'credential-1',
-    name: 'Team Codex',
-    type: 'CODEX_OAUTH',
-    ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 },
-    status: 'ACTIVE',
-    accessToken: jwt({ exp: Math.floor((NOW + 60 * 60 * 1000) / 1000) }),
-    refreshToken: 'refresh-secret',
-    accountId: 'account-secret',
-    accessTokenExpiresAt: NOW + 60 * 60 * 1000,
-    lastRefreshAt: NOW - 1_000,
-    lastCheckedAt: NOW - 1_000,
-    proxy: null,
-    revision: 1,
-    createdAt: NOW - 10_000,
-    updatedAt: NOW - 1_000,
-    ...overrides
-  };
-}
-
-function database(
-  credentials: readonly Record<string, unknown>[] = [],
-  modelCounts: Readonly<Record<string, number>> = {},
-  options: {
-    readonly version?: 1 | 2 | 3;
-    readonly userOrganizations?: Readonly<Record<number, number>>;
-    readonly scopedOrganizationIds?: readonly number[];
-    readonly modelGrants?: readonly Record<string, unknown>[];
-  } = {}
-) {
-  let document: unknown = { version: options.version ?? 3, credentials };
-  const execute = vi.fn(async (sql: string, parameters: unknown[] = []) => {
-    if (sql.includes("setting_key='mar_agent_credentials'"))
-      return [[{ setting_value: JSON.stringify(document) }], []];
-    if (sql.includes('INSERT INTO system_settings')) {
-      document = JSON.parse(String(parameters[0]));
-      return [{ affectedRows: 1 }, []];
-    }
-    if (sql.includes('credential_id') && sql.includes('mar_agent_models'))
-      return [
-        Object.entries(modelCounts).map(([credential_id, imported_model_count]) => ({
-          credential_id,
-          imported_model_count
-        })),
-        []
-      ];
-    if (sql.includes('SELECT organization_id FROM users WHERE id=?')) {
-      const organizationId = options.userOrganizations?.[Number(parameters[0])];
-      return [organizationId === undefined ? [] : [{ organization_id: organizationId }], []];
-    }
-    if (sql.includes('WITH RECURSIVE ancestors')) {
-      const organizationId = Number(parameters[0]);
-      const ancestorOrganizationId = Number(parameters[1]);
-      const allowed =
-        organizationId === ancestorOrganizationId ||
-        options.scopedOrganizationIds?.includes(organizationId) === true;
-      return [allowed ? [{ present: 1 }] : [], []];
-    }
-    if (sql.includes('FROM resource_grants') && sql.includes('model_id'))
-      return [options.modelGrants ?? [], []];
-    return [[], []];
-  });
-  const audit = vi.fn(async (_event: unknown) => undefined);
-  return {
-    audit,
-    database: { raw: { execute }, audit } as unknown as MysqlServerDatabase,
-    execute,
-    document: () => document
-  };
-}
-
-function service(
-  database: MysqlServerDatabase,
-  request: typeof fetch = vi.fn(),
-  now: () => number = () => NOW,
-  id: () => string = () => 'generated-id',
-  authorization: AuthorizationService = authorizationFixture()
-) {
-  return new CodexCredentialService(database, {
-    authorization,
-    request,
-    now,
-    id,
-    authIssuer: 'https://auth.example.test',
-    codexBaseUrl: 'https://chatgpt.example.test/backend-api/codex',
-    clientId: 'codex-client',
-    projectVersion: '0.9.27'
-  });
-}
-
-function authorizationFixture(
-  contexts: Readonly<
-    Record<
-      number,
-      { readonly role: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER'; readonly organizationId: number }
-    >
-  > = {
-    1: { role: 'ADMIN', organizationId: 1 },
-    2: { role: 'ORG_ADMIN', organizationId: 2 },
-    7: { role: 'MEMBER', organizationId: 4 },
-    8: { role: 'MEMBER', organizationId: 5 }
-  }
-): AuthorizationService {
-  return {
-    actorContext: vi.fn(async (userId: number) => contexts[userId]),
-    isPersonalAdmin: vi.fn(async (userId: number) => userId === 99),
-    authorize: vi.fn(async (userId: number, _permissionId: string, context: object) => {
-      const actor = contexts[userId];
-      if (actor?.role === 'ADMIN') return { allowed: true };
-      const organizationId = (context as { organizationId?: number }).organizationId;
-      if (
-        actor?.role === 'ORG_ADMIN' &&
-        (organizationId === actor.organizationId || organizationId === 4)
-      )
-        return { allowed: true };
-      return { allowed: false, reason: 'RBAC_SCOPE_DENIED' };
-    })
-  } as unknown as AuthorizationService;
-}
 
 async function startCatalogServer(status = 200, body?: string) {
   const fixtures = join(process.cwd(), 'mar-agent', 'test', 'fixtures');
@@ -1451,6 +1328,171 @@ describe('Codex credential service', () => {
     expect((await credentials.list(1))[0]).not.toHaveProperty('fedramp');
     const catalogHeaders = request.mock.calls[4]?.[1]?.headers as Record<string, string>;
     expect(catalogHeaders).not.toHaveProperty('X-OpenAI-Fedramp');
+  });
+
+  describe('standard device login attempt lifecycle', () => {
+    const actor = { userId: 1, sessionFingerprint: 'owner-session' };
+    const draft = {
+      name: 'Team Codex',
+      ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
+    };
+    const ttl = 15 * 60 * 1000;
+    const deviceResponse = () =>
+      new Response(
+        JSON.stringify({ device_auth_id: 'device-secret', user_code: 'ABCD-EFGH', interval: 5 })
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+    });
+
+    afterEach(() => {
+      vi.clearAllTimers();
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    it('releases all 128 slots at expiry without polling and keeps unexpired attempts limited', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      let sequence = 0;
+      const credentials = service(
+        database().database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      for (let index = 0; index < 128; index++) await credentials.startLogin(actor, draft);
+
+      await vi.advanceTimersByTimeAsync(ttl - 1);
+      await expect(credentials.startLogin(actor, draft)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_LIMIT_REACHED'
+      );
+      expect(request).toHaveBeenCalledTimes(128);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(credentials.startLogin(actor, draft)).resolves.toMatchObject({
+        id: 'attempt-129',
+        status: 'PENDING'
+      });
+      await expect(credentials.loginAttempt(actor, 'attempt-1')).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      expect(request).toHaveBeenCalledTimes(129);
+      expect(vi.getTimerCount()).toBe(1);
+      expect(timers).toHaveBeenCalledTimes(129);
+      expect(timers.mock.results.every((result) => !result.value.hasRef())).toBe(true);
+    });
+
+    it.each([
+      { stage: 'success', status: 'SUCCEEDED', code: undefined },
+      { stage: 'poll failure', status: 'FAILED', code: 'CODEX_DEVICE_AUTH_FAILED' },
+      { stage: 'malformed code', status: 'FAILED', code: 'CODEX_UPSTREAM_RESPONSE_INVALID' },
+      { stage: 'token failure', status: 'FAILED', code: 'CODEX_TOKEN_EXCHANGE_FAILED' },
+      { stage: 'catalog failure', status: 'FAILED', code: 'CODEX_CREDENTIAL_CHECK_FAILED' }
+    ])('clears the expiry timer after $stage', async ({ stage, status, code }) => {
+      const fixture = database();
+      const authorizedToken = jwt({
+        exp: Math.floor((NOW + 60 * 60 * 1000) / 1000),
+        'https://api.openai.com/auth': { chatgpt_account_id: 'account-secret' }
+      });
+      const request = vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith('/usercode')) return deviceResponse();
+        if (String(url).endsWith('/deviceauth/token'))
+          return new Response(
+            JSON.stringify(
+              stage === 'malformed code'
+                ? {}
+                : { authorization_code: 'authorization-secret', code_verifier: 'verifier-secret' }
+            ),
+            { status: stage === 'poll failure' ? 500 : 200 }
+          );
+        if (String(url).endsWith('/oauth/token'))
+          return new Response(
+            JSON.stringify({
+              access_token: authorizedToken,
+              refresh_token: 'refresh-secret',
+              id_token: authorizedToken
+            }),
+            { status: stage === 'token failure' ? 400 : 200 }
+          );
+        return new Response(JSON.stringify({ models: [] }), {
+          status: stage === 'catalog failure' ? 500 : 200
+        });
+      });
+      const credentials = service(fixture.database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      expect(vi.getTimerCount()).toBe(1);
+
+      const completed = await credentials.loginAttempt(actor, attempt.id);
+      expect(completed).toMatchObject({ status, ...(code ? { code } : {}) });
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await credentials.list(1)).toHaveLength(status === 'SUCCEEDED' ? 1 : 0);
+      await expect(credentials.loginAttempt(actor, attempt.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+    });
+
+    it('keeps ownership checks and clears only the cancelled attempt timer', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      let sequence = 0;
+      const credentials = service(
+        database().database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      const first = await credentials.startLogin(actor, draft);
+      const second = await credentials.startLogin(actor, draft);
+      for (const other of [
+        { ...actor, userId: 2 },
+        { ...actor, sessionFingerprint: 'other-session' }
+      ]) {
+        await expect(credentials.loginAttempt(other, first.id)).rejects.toThrow(
+          'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+        );
+        await expect(credentials.cancelLogin(other, first.id)).rejects.toThrow(
+          'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+        );
+      }
+      expect(vi.getTimerCount()).toBe(2);
+      await credentials.cancelLogin(actor, first.id);
+      expect(vi.getTimerCount()).toBe(1);
+      await expect(credentials.loginAttempt(actor, first.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      await credentials.cancelLogin(actor, second.id);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(request).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the timer when polling observes expiry before the timer runs', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      const credentials = service(database().database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      vi.setSystemTime(NOW + ttl);
+      await expect(credentials.loginAttempt(actor, attempt.id)).resolves.toMatchObject({
+        status: 'EXPIRED'
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      expect(request).toHaveBeenCalledOnce();
+    });
+
+    it('clears outstanding standard attempt timers through the existing close lifecycle', async () => {
+      const request = vi.fn(async () => deviceResponse());
+      const credentials = service(database().database, request as typeof fetch, Date.now);
+      const attempt = await credentials.startLogin(actor, draft);
+      expect(vi.getTimerCount()).toBe(1);
+      credentials.closeChatgptLogins();
+      credentials.closeChatgptLogins();
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(credentials.loginAttempt(actor, attempt.id)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_NOT_FOUND'
+      );
+      expect(request).toHaveBeenCalledOnce();
+    });
   });
 
   it('rejects a malformed SOCKS5 URL when starting login with a stable input error', async () => {

@@ -291,6 +291,10 @@ onBeforeUnmount(() => {
   background: var(--mar-conversation-canvas);
 }
 
+:where(.conversation-scroll-region:not(.is-empty)) .conversation-scroll {
+  padding-bottom: 0.5rem;
+}
+
 .conversation-scroll-content {
   display: flow-root;
 }
@@ -412,7 +416,7 @@ onBeforeUnmount(() => {
 .conversation-status {
   position: absolute;
   right: 1rem;
-  bottom: 0.75rem;
+  bottom: 0.25rem;
   z-index: 2;
 }
 
@@ -423,10 +427,6 @@ onBeforeUnmount(() => {
 @media (max-width: 767px) {
   .conversation-scroll-region:has(.conversation-status:not(:empty)) .conversation-scroll {
     padding-bottom: calc(var(--mar-utility-control-size) + 0.5rem);
-  }
-
-  .conversation-status:not(.has-latest) {
-    bottom: 0.25rem;
   }
 }
 </style>

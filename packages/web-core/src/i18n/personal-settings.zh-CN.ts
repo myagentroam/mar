@@ -1,12 +1,13 @@
 export const personalSettingsZhCN = {
-  modelUsage: {
+  usageStatistics: {
     pagination: '用量明细分页',
     updateRecords: '更新明细',
     recordsSnapshot: '明细未自动更新，保留当前浏览内容。',
     refreshDelayed: '刷新暂不可用，稍后自动重试',
     refreshed: '上次刷新：{time}',
     overviewScope: '当前统计项 · 不受下方筛选影响',
-    title: '个人用量',
+    title: '用量统计',
+    accountScope: '当前账号的 Agent 用量',
     refresh: '刷新',
     last24Hours: '最近 24 小时',
     last7Days: '最近 7 天',

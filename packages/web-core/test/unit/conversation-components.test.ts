@@ -1147,7 +1147,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       props.value = { ...props.value, turns: turns('first') };
       await rendering;
       await nextTick();
-      expect(setupState?.['renderedItemCount']).toBe(9);
+      expect(setupState?.['renderedItemCount']).toBe(2);
       const staleFrame = [...frames.values()][0]!;
       props.value = { ...props.value, initializing: true, turns: turns('second') };
       await nextTick();
@@ -1159,7 +1159,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       expect(frames.size).toBe(0);
       props.value = { ...props.value, initializing: false };
       await nextTick();
-      for (let batch = 0; batch < 20 && frames.size > 0; batch += 1) {
+      for (let batch = 0; batch < 120 && frames.size > 0; batch += 1) {
         const [id, callback] = [...frames.entries()][0]!;
         frames.delete(id);
         await callback(0);

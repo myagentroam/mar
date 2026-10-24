@@ -856,10 +856,7 @@ function submitSessionSearch(): void {
 
 .workspace-kind-tag,
 .workspace-branch-tag {
-  --el-tag-bg-color: var(--mar-bg-subtle);
-  --el-tag-border-color: var(--mar-border-default);
-  --el-tag-text-color: var(--mar-text-secondary);
-  color: var(--mar-text-secondary);
+  color: var(--el-tag-text-color);
   min-height: 1.5em;
   height: auto;
   border-radius: var(--mar-radius-marker);
@@ -868,7 +865,16 @@ function submitSessionSearch(): void {
   padding: 0 5px;
 }
 
+.workspace-kind-tag {
+  --el-tag-bg-color: var(--mar-color-warning-bg);
+  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
+  --el-tag-text-color: var(--mar-color-warning-text);
+}
+
 .workspace-branch-tag {
+  --el-tag-bg-color: var(--mar-color-brand-subtle);
+  --el-tag-border-color: var(--mar-color-brand-border);
+  --el-tag-text-color: var(--mar-color-brand-text);
   max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;

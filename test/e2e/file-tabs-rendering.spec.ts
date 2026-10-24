@@ -91,6 +91,9 @@ for (const [kind, label] of [
         page.getByRole('dialog', { name: `/workspace/file-1.txt ${label}`, exact: true })
       ).toBeVisible();
       await expect(page.getByRole('dialog')).toHaveCount(1);
+      await page.mouse.click(8, 8);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.getByText('Files closed')).toBeVisible();
     } finally {
       await fixture.close();
     }
@@ -120,18 +123,46 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
       width: number;
       height: number;
     }) => {
-      const bounds = await surface.boundingBox();
-      expect(bounds).not.toBeNull();
-      expect(bounds!.x).toBeCloseTo(expected.x, 0);
-      expect(bounds!.y).toBeCloseTo(expected.y, 0);
-      expect(bounds!.width).toBeCloseTo(expected.width, 0);
-      expect(bounds!.height).toBeCloseTo(expected.height, 0);
+      await expect
+        .poll(async () => {
+          const bounds = await surface.boundingBox();
+          return bounds === null
+            ? null
+            : {
+                x: Math.round(bounds.x),
+                y: Math.round(bounds.y),
+                width: Math.round(bounds.width),
+                height: Math.round(bounds.height)
+              };
+        })
+        .toEqual(expected);
     };
 
     await expectBounds({ x: 240, y: 120, width: 1440, height: 960 });
     await captureScreenshot(page, 'file-preview-overlay-1920x1200.png');
+    await page.getByRole('button', { name: 'Finish loading', exact: true }).click();
+    await page.getByText('Content of Long project file-1.txt', { exact: true }).click();
+    await expect(surface).toBeVisible();
+    await page.mouse.move(300, 300);
+    await page.mouse.down();
+    await page.mouse.move(12, 12);
+    await page.mouse.up();
+    await expect(surface).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.dataset.fileTabsCloseAllowed = 'false';
+    });
     await page.mouse.click(12, 12);
     await expect(surface).toBeVisible();
+    await expect(tabs).toHaveCount(12);
+    await page.evaluate(() => {
+      document.documentElement.dataset.fileTabsCloseAllowed = 'true';
+    });
+    await page.mouse.click(12, 12);
+    await expect(surface).toHaveCount(0);
+    await expect(page.getByText('Files closed')).toBeVisible();
+    await page.getByRole('button', { name: 'Reopen file previews' }).click();
+    await expect(surface).toBeVisible();
+    await expect(tabs).toHaveCount(12);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expectBounds({ x: 16, y: 16, width: 1248, height: 768 });
     await expect(tabs).toHaveCount(12);

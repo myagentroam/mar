@@ -3,10 +3,15 @@ const props = defineProps<{
   readonly overlay: boolean;
   readonly label: string;
 }>();
-const emit = defineEmits<{ focus: [] }>();
+const emit = defineEmits<{ focus: []; close: [] }>();
 
 function focusContent(): void {
   emit('focus');
+}
+
+function requestClose(): void {
+  // The owner controls visibility after its unsaved-change guards accept.
+  emit('close');
 }
 </script>
 
@@ -17,7 +22,8 @@ function focusContent(): void {
     :title="props.label"
     :aria-label="props.label"
     :show-close="false"
-    :close-on-click-modal="false"
+    :close-on-click-modal="true"
+    :before-close="requestClose"
     :close-on-press-escape="false"
     append-to-body
     align-center

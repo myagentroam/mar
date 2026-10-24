@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { json, mockConsoleApi } from './support/web-console-api.js';
+import { emitMockSessionEvent, json, mockConsoleApi } from './support/web-console-api.js';
 
 async function prepareFiles(page: Page): Promise<void> {
   await mockConsoleApi(
@@ -58,6 +58,96 @@ async function openFile(page: Page, path: string): Promise<void> {
   await expect(
     page.getByRole('region', { name: `${path} 文件预览` }).locator('.cm-content')
   ).toBeVisible();
+}
+
+for (const width of [1280, 390]) {
+  test.describe(`Agent message file line ranges at ${width}px`, () => {
+    test.use({ isMobile: width === 390, hasTouch: width === 390 });
+
+    test('Deleted file links report FILE_NOT_FOUND without opening a browser window', async ({
+      page
+    }) => {
+      await prepareFiles(page);
+      const reads: string[] = [];
+      await page
+        .context()
+        .route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) => {
+          const path = new URL(route.request().url()).searchParams.get('path') ?? '';
+          reads.push(path);
+          if (path === 'src/deleted.ts')
+            return json(
+              route,
+              {
+                error: {
+                  code: 'FILE_NOT_FOUND',
+                  message: 'The file does not exist.',
+                  requestId: 'deleted-file-preview'
+                }
+              },
+              404
+            );
+          if (path === 'first.ts') {
+            const content = "// First line\nexport const value = 'first.ts';\n// Last line\n";
+            return json(route, {
+              file: {
+                path,
+                encoding: 'utf-8',
+                size: content.length,
+                content,
+                truncated: false,
+                nextOffset: null,
+                revision: 'a'.repeat(64)
+              }
+            });
+          }
+          return route.fallback();
+        });
+      await page.locator('.session-list button').first().click();
+      await page.setViewportSize({ width, height: 844 });
+      await emitMockSessionEvent(page, 'conversation', {
+        sessionId: 'session-1',
+        runId: 'run-1',
+        item: {
+          itemId: 'agent-review-file-ranges',
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          segmentId: 'turn-1:segment:0',
+          segmentIndex: 0,
+          payload: {
+            text: '[Deleted source](src/deleted.ts#L186-L217)\n\n[Existing source](first.ts#L2-L3)',
+            format: 'markdown',
+            model: null
+          }
+        }
+      });
+      const popups: Page[] = [];
+      page.on('popup', (popup) => popups.push(popup));
+      const deletedLink = page
+        .locator('.agent-markdown')
+        .getByRole('link', { name: 'Deleted source' });
+      if (width === 390) await deletedLink.tap();
+      else await deletedLink.click();
+      await expect.poll(() => reads.length + popups.length).toBeGreaterThan(0);
+      expect(popups.map((popup) => popup.url())).toEqual([]);
+      const error = page.locator('.el-message--error');
+      await expect(error).toContainText('FILE_NOT_FOUND');
+      await expect(error).toContainText('deleted-file-preview');
+      await expect.poll(() => reads).toContain('src/deleted.ts');
+      await expect(page).toHaveURL(/\/console(?:[?#]|$)/u);
+      await page.keyboard.press('Escape');
+
+      const existingLink = page
+        .locator('.agent-markdown')
+        .getByRole('link', { name: 'Existing source' });
+      if (width === 390) await existingLink.tap();
+      else await existingLink.click();
+      const preview = page.getByRole('dialog', { name: 'first.ts 文件预览' });
+      await expect(preview.locator('.cm-activeLine')).toContainText(
+        "export const value = 'first.ts';"
+      );
+      expect(popups).toHaveLength(0);
+    });
+  });
 }
 
 for (const shortcut of ['Escape', 'Alt+Shift+w']) {

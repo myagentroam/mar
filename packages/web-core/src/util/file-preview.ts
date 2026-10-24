@@ -137,7 +137,13 @@ export function workspaceFileTarget(
     if (url.origin !== currentOrigin || url.search.length > 0) return undefined;
     source = url.pathname + url.hash;
   }
-  source = source.replace(/#L(\d+)$/u, ':$1');
+  const hashLine = source.match(/#L(\d+)(?:-L(\d+))?$/u);
+  if (hashLine !== null) {
+    const endLine = hashLine[2] === undefined ? undefined : Number(hashLine[2]);
+    if (endLine !== undefined && (!Number.isSafeInteger(endLine) || endLine < Number(hashLine[1])))
+      return undefined;
+    source = `${source.slice(0, -hashLine[0].length)}:${hashLine[1]}`;
+  }
   if (source.includes('?') || source.includes('#')) return undefined;
   let decoded: string;
   try {

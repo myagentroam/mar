@@ -1,17 +1,20 @@
 import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CORE_MYSQL_BASELINE_VERSION,
   CORE_MYSQL_MIGRATIONS,
   CORE_MYSQL_SCHEMA,
-  CORE_MYSQL_SCHEMA_V9
+  CORE_MYSQL_SCHEMA_V9,
+  validateCoreMysqlDatabase
 } from '../../packages/server-core/src/mysql-schema.js';
 import { validateMysqlSchema } from '../../packages/server-core/src/mysql-schema-support.js';
 import {
   ENTERPRISE_MYSQL_BASELINE_VERSION,
   ENTERPRISE_MYSQL_MIGRATIONS,
   ENTERPRISE_MYSQL_SCHEMA,
-  ENTERPRISE_MYSQL_SCHEMA_V4
+  ENTERPRISE_MYSQL_SCHEMA_V4,
+  validateEnterpriseMysqlDatabase
 } from '../../ee/server/src/mysql/enterprise-migrations.js';
 import { MYSQL_MIGRATION_DEMO } from '../../packages/server-core/src/mysql-migration-demo.js';
 
@@ -28,6 +31,68 @@ function schemaConnection() {
   });
   return { definitions, query };
 }
+
+describe.each([
+  ['Core', validateCoreMysqlDatabase],
+  ['Enterprise', validateEnterpriseMysqlDatabase]
+] as const)('%s Session share startup references', (_edition, validate) => {
+  it.each([
+    { reference: 'valid', owner: 42, node: 'share-node', workspace: 'share-workspace' },
+    { reference: 'missing owner', owner: 43, node: 'share-node', workspace: 'share-workspace' },
+    { reference: 'missing Node', owner: 42, node: 'missing-node', workspace: 'share-workspace' },
+    {
+      reference: 'missing Workspace',
+      owner: 42,
+      node: 'share-node',
+      workspace: 'missing-workspace'
+    },
+    {
+      reference: 'Workspace on another Node',
+      owner: 42,
+      node: 'share-node',
+      workspace: 'other-workspace'
+    }
+  ])('validates $reference share references against relational fixtures', async (share) => {
+    const fixture = new DatabaseSync(':memory:');
+    try {
+      fixture.exec(`
+        CREATE TABLE users (id INTEGER PRIMARY KEY);
+        CREATE TABLE nodes (id TEXT PRIMARY KEY);
+        CREATE TABLE workspaces (workspace_id TEXT, node_id TEXT, PRIMARY KEY (node_id, workspace_id));
+        CREATE TABLE session_shares (user_id INTEGER, node_id TEXT, workspace_id TEXT);
+        INSERT INTO users VALUES (42);
+        INSERT INTO nodes VALUES ('share-node'), ('other-node');
+        INSERT INTO workspaces VALUES ('other-workspace', 'other-node');
+      `);
+      // Keep the Workspace present when its Node is missing to isolate the Node predicate.
+      fixture
+        .prepare('INSERT INTO workspaces VALUES (?, ?)')
+        .run('share-workspace', share.reference === 'missing Node' ? 'missing-node' : 'share-node');
+      fixture
+        .prepare('INSERT INTO session_shares VALUES (?, ?, ?)')
+        .run(share.owner, share.node, share.workspace);
+      const query = vi.fn(async (sql: string) => {
+        const table = /^SHOW CREATE TABLE `([^`]+)`/u.exec(sql)?.[1];
+        if (table)
+          return [
+            [{ 'Create Table': { ...CORE_MYSQL_SCHEMA, ...ENTERPRISE_MYSQL_SCHEMA }[table] }],
+            []
+          ];
+        // Execute the production share query, not a precomputed orphan result.
+        // The MySQL integration suite separately covers the real startup boundary.
+        return [sql.includes('FROM session_shares') ? fixture.prepare(sql).all() : [], []];
+      });
+      const validation = validate({ query, execute: vi.fn(), release: vi.fn() });
+      if (share.reference === 'valid') {
+        await expect(validation).resolves.toBeUndefined();
+      } else {
+        await expect(validation).rejects.toThrow('SERVER_DATABASE_REFERENCE_INVALID');
+      }
+    } finally {
+      fixture.close();
+    }
+  });
+});
 
 it.each([21, 22, 23])(
   'rolls back model configuration migration v%s on failure',
@@ -83,7 +148,7 @@ describe('Server MySQL installation baselines', () => {
   it('preserves the shared Core v9 baseline and appends the scheduled notification migration', async () => {
     expect(CORE_MYSQL_BASELINE_VERSION).toBe(9);
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     ]);
     expect(CORE_MYSQL_MIGRATIONS[2]?.name).toBe('mail_templates_and_deliveries');
     expect(CORE_MYSQL_MIGRATIONS[3]?.name).toBe('mail_template_notification_titles');
@@ -120,7 +185,10 @@ describe('Server MySQL installation baselines', () => {
     expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 28)?.name).toBe(
       'notification_channels'
     );
-    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('session_shares');
+    expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 29)?.name).toBe(
+      'session_shares'
+    );
+    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('mobile_only_web_push_clients');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('session_shares');
     expect(CORE_MYSQL_SCHEMA.mar_agent_models).not.toContain('high_density_compaction');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('users');

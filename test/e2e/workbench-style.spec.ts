@@ -9,6 +9,118 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Git repository headers keep tags subordinate to file content in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const change = {
+      repositoryPath: '',
+      repositoryName: 'project',
+      source: 'ROOT',
+      path: 'src/main.ts',
+      state: 'UNSTAGED',
+      change: 'MODIFIED',
+      diffAvailable: true
+    };
+    await page.route('**/api/workspaces/workspace/**', (route) =>
+      route.fulfill({
+        json: new URL(route.request().url()).pathname.endsWith('/changes')
+          ? {
+              changes: [change],
+              repositories: [
+                {
+                  repositoryPath: '',
+                  repositoryName: 'project',
+                  physicalPath: '/home/example/project',
+                  source: 'ROOT',
+                  current: true,
+                  branch: 'develop',
+                  status: 'DIRTY',
+                  tracking: { upstream: 'origin/develop', ahead: 25, behind: 0 },
+                  changes: [change]
+                },
+                {
+                  repositoryPath: 'packages/agent',
+                  repositoryName: 'agent',
+                  source: 'SUBMODULE',
+                  current: false,
+                  branch: 'develop',
+                  status: 'CLEAN',
+                  changes: []
+                },
+                {
+                  repositoryPath: '',
+                  repositoryName: 'review',
+                  worktreePath: '/home/example/project/.worktrees/review',
+                  physicalPath: '/home/example/project/.worktrees/review',
+                  source: 'WORKTREE',
+                  current: false,
+                  branch: 'feature/long-branch-name',
+                  status: 'UNAVAILABLE',
+                  locked: true,
+                  changes: []
+                }
+              ]
+            }
+          : { files: { entries: [], nextCursor: null } }
+      })
+    );
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      if (width >= 768) {
+        await inspector.evaluate((element) => {
+          (element as HTMLElement).style.width = '360px';
+        });
+      }
+      await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      const headings = inspector.locator('.change-repository-heading');
+      await expect(headings).toHaveCount(3);
+      const root = headings.first();
+      await expect(root.locator('.repository-title-row strong')).toHaveCSS('font-weight', '500');
+      await expect(root.locator('.repository-title-row strong')).toHaveCSS(
+        'font-size',
+        width >= 768 ? '14px' : '13px'
+      );
+      for (const tag of await inspector.locator('.repository-tags-row .el-tag').all()) {
+        await expect(tag).toHaveCSS('height', '20px');
+        await expect(tag).toHaveCSS('font-weight', '400');
+        await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
+      }
+      const colors = await root.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        probe.style.color = 'var(--mar-border-default)';
+        const border = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-text-secondary)';
+        const secondary = getComputedStyle(probe).color;
+        probe.remove();
+        return { border, secondary };
+      });
+      await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
+      for (const selector of ['.repository-kind', '.repository-current', '.repository-sync-tag']) {
+        await expect(root.locator(selector)).toHaveCSS('border-color', colors.border);
+      }
+      await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
+      await expect(root.locator('.el-tag--warning')).toBeVisible();
+      await expect(headings.nth(1).locator('.el-tag--success')).toBeVisible();
+      await expect(headings.nth(2).locator('.el-tag--warning')).toBeVisible();
+      await expect(inspector.locator('.change-file-name')).toHaveCSS(
+        'font-size',
+        width >= 768 ? '12px' : '11px'
+      );
+      for (const heading of await headings.all()) {
+        expect(
+          await heading.evaluate((element) => element.scrollWidth <= element.clientWidth)
+        ).toBe(true);
+      }
+      await inspector.screenshot({
+        path: testInfo.outputPath(`git-headers-${width}.png`),
+        animations: 'disabled'
+      });
+    }
+  });
+
   test(`Content search uses neutral row feedback without losing match emphasis in ${theme}`, async ({
     page
   }, testInfo) => {

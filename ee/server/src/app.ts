@@ -370,19 +370,17 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
           new ModelUsageGrants(loadOrCreateRuntimeCredentialHmacKey(dataDirectory), now),
           now
         );
+  let modelUsageCleanupTimer: NodeJS.Timeout | undefined;
   if (modelUsage !== undefined) {
     nodeControl.setModelUsageService(modelUsage);
     registerModelUsageRoutes({ app, database, usage: new ModelUsageQueryService(mysqlPool!, now) });
     const cleanupUsage = () =>
       modelUsage.cleanup().catch(() => app.log.warn('MODEL_USAGE_CLEANUP_FAILED'));
     app.addHook('onReady', cleanupUsage);
-    const cleanupTimer = setInterval(() => {
+    modelUsageCleanupTimer = setInterval(() => {
       void cleanupUsage();
     }, 3_600_000);
-    cleanupTimer.unref();
-    app.addHook('onClose', async () => {
-      clearInterval(cleanupTimer);
-    });
+    modelUsageCleanupTimer.unref();
   }
   const runtimeCredentials =
     codexCredentials === undefined || marAgentModels === undefined
@@ -534,10 +532,6 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
         report: (code) => {
           app.log.warn({ code }, 'Web Push operation failed');
         }
-      });
-      app.addHook('onClose', async () => {
-        webPushDispatcher?.close();
-        await webPushDispatcher?.flush();
       });
     }
   }
@@ -1058,17 +1052,22 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
   // a still-connected Node, then release the database only after the listener ends.
   app.addHook('preClose', async () => {
     stopSkillCleanup();
+    webPushDispatcher?.close();
     nodeControl.close();
   });
   app.addHook('onClose', async () => {
     stopSkillCleanup();
+    webPushDispatcher?.close();
     traffic.close();
     recentRuns?.dispose();
+    if (modelUsageCleanupTimer !== undefined) clearInterval(modelUsageCleanupTimer);
     if (auditCleanupTimer !== undefined) clearInterval(auditCleanupTimer);
     if (codexCredentialMaintenanceTimer !== undefined)
       clearInterval(codexCredentialMaintenanceTimer);
     // Startup or the interval owns failure reporting; draining only preserves dependency order.
     await skillCleanupInFlight?.catch(() => undefined);
+    // Keep notification rechecks and late subscription expiry ahead of pool release.
+    await webPushDispatcher?.flush();
     await database.close();
   });
   return app;

@@ -12,7 +12,7 @@ import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
 import { changeKey } from '../../src/service/workspace-git-service.js';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
-import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
+import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
@@ -463,7 +463,7 @@ const app = createApp({
         coverage: 'observed-only'
       };
       return () =>
-        h(PersonalUsageSettings, {
+        h(UsageStatisticsSettings, {
           request: async <T>(path: string) =>
             (path.includes('/overview?') ? overview : { records: [], total: '0', page: 1 }) as T
         });

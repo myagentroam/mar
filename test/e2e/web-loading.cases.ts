@@ -249,7 +249,7 @@ test('Unified loading: a successful empty settings page stays ready during refre
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page
     .getByRole('navigation', { name: '设置菜单' })
-    .getByRole('button', { name: '个人用量', exact: true })
+    .getByRole('button', { name: '用量统计', exact: true })
     .click();
   const mask = page.locator('.mar-page-loading:visible').last();
   await expect.poll(() => reads).toBe(1);
@@ -267,7 +267,7 @@ test('Unified loading: a successful empty settings page stays ready during refre
   first.release();
   await expect(mask).toHaveCount(0);
   const refresh = page
-    .getByTestId('personal-usage')
+    .getByTestId('usage-statistics')
     .getByRole('button', { name: '刷新', exact: true });
   await refresh.click();
   await expect.poll(() => reads).toBe(2);

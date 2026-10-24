@@ -477,7 +477,7 @@ for (const scheme of ['Light', 'Dark']) {
   });
 
   test(
-    'workspace Git and branch labels use neutral ' + scheme + ' theme colors',
+    'workspace Git and branch labels use distinct ' + scheme + ' theme colors',
     async ({ page }, testInfo) => {
       const row = page.locator('.theme-option').filter({
         has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
@@ -490,14 +490,31 @@ for (const scheme of ['Light', 'Dark']) {
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
       const colors =
         scheme === 'Light'
-          ? ['rgb(82, 98, 122)', 'rgb(243, 246, 251)', 'rgb(203, 214, 228)']
-          : ['rgb(159, 176, 199)', 'rgb(22, 29, 40)', 'rgb(39, 49, 66)'];
-      async function expectColors(expected: string[]): Promise<void> {
-        for (const tag of [git, branch]) {
-          await expect(tag).toHaveCSS('color', expected[0]!);
-          await expect(tag.locator('.el-tag__content')).toHaveCSS('color', expected[0]!);
-          await expect(tag).toHaveCSS('background-color', expected[1]!);
-          await expect(tag).toHaveCSS('border-top-color', expected[2]!);
+          ? {
+              git: ['#a15c07', '#fff4df', '#a15c078c'],
+              branch: ['#075fc7', '#eaf2ff', '#8ab8ff']
+            }
+          : {
+              git: ['#d29922', '#f1c56e24', '#d299228c'],
+              branch: ['#3093ff', '#3093ff24', '#1f73cf7a']
+            };
+      async function expectColors(expected: Record<'git' | 'branch', string[]>): Promise<void> {
+        for (const [tag, palette] of [
+          [git, expected.git],
+          [branch, expected.branch]
+        ] as const) {
+          // Theme transitions can expose transient OKLab colors before the final palette settles.
+          await expect(async () => {
+            const actual = await tag.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return [style.color, style.backgroundColor, style.borderTopColor];
+            });
+            expect(actual.map(resolvedColorToHex)).toEqual(palette);
+            const contentColor = await tag
+              .locator('.el-tag__content')
+              .evaluate((element) => getComputedStyle(element).color);
+            expect(resolvedColorToHex(contentColor)).toBe(palette[0]);
+          }).toPass({ timeout: 5_000 });
         }
       }
       await expect(git).toHaveText('Git');
@@ -544,14 +561,19 @@ for (const scheme of ['Light', 'Dark']) {
       await row.getByRole('button', { name: 'Inspect ' + scheme, exact: true }).click();
       const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
       const theme = JSON.parse(await editor.inputValue());
-      theme.name = scheme + ' neutral labels';
+      theme.name = scheme + ' Git labels';
       Object.assign(theme.colors, {
         '--mar-text-secondary': '#bacac0',
         '--mar-bg-subtle': '#1b2521',
-        '--mar-border-default': '#3f5148'
+        '--mar-border-default': '#3f5148',
+        '--mar-color-warning-text': '#e3b669',
+        '--mar-color-warning-bg': '#30271a',
+        '--mar-color-brand-text': '#91b7ed',
+        '--mar-color-brand-subtle': '#1d2d43',
+        '--mar-color-brand-border': '#4a6d9c'
       });
       await page.locator('input[type=file]').setInputFiles({
-        name: 'neutral-labels.json',
+        name: 'git-labels.json',
         mimeType: 'application/json',
         buffer: Buffer.from(JSON.stringify(theme))
       });
@@ -561,7 +583,16 @@ for (const scheme of ['Light', 'Dark']) {
         .filter({ has: page.getByRole('button', { name: 'Inspect ' + theme.name, exact: true }) })
         .getByRole('button', { name: 'Apply theme', exact: true })
         .click();
-      await expectColors(['rgb(186, 202, 192)', 'rgb(27, 37, 33)', 'rgb(63, 81, 72)']);
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expectColors({
+          git: ['#e3b669', '#30271a', '#e3b6698c'],
+          branch: ['#91b7ed', '#1d2d43', '#4a6d9c']
+        });
+        await workspace.locator('.session-heading').screenshot({
+          path: testInfo.outputPath('workspace-labels-custom-' + width + '.png')
+        });
+      }
     }
   );
 }

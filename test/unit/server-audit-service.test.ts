@@ -216,6 +216,8 @@ describe('Server structured audit', () => {
   });
 
   it('reads conversation text only from an authorized detail query', async () => {
+    const businessQuery = vi.fn();
+    const businessExecute = vi.fn(async () => [[{ role: 'ORG_ADMIN' }], []]);
     const query = vi.fn(async (sql: string, params: readonly unknown[]) => {
       void sql;
       void params;
@@ -241,9 +243,10 @@ describe('Server structured audit', () => {
     const service = new AuditService(
       {
         raw: {
-          execute: vi.fn(async () => [[{ role: 'ORG_ADMIN' }], []]),
-          query
-        }
+          execute: businessExecute,
+          query: businessQuery
+        },
+        auditRaw: { query }
       } as unknown as MysqlServerDatabase,
       authorization as unknown as AuthorizationService
     );
@@ -260,6 +263,16 @@ describe('Server structured audit', () => {
     expect(query.mock.calls[0]?.[0]).toContain('LEFT JOIN audit_conversation_payloads');
     expect(query.mock.calls[0]?.[0]).toContain('AS has_conversation_payload');
     expect(query.mock.calls[0]?.[1]).toEqual(['event-1', [2]]);
+    expect(query.mock.calls[0]?.[0]).toContain('LIMIT 1');
+    expect(businessExecute).toHaveBeenCalledWith(
+      'SELECT role FROM users WHERE id=? AND enabled=TRUE',
+      [7]
+    );
+    expect(authorization.authorize).toHaveBeenCalledWith(7, 'AUDIT_READ', {
+      ownerType: 'ORGANIZATION',
+      organizationId: 2
+    });
+    expect(businessQuery).not.toHaveBeenCalled();
   });
 
   it('keeps a queue item id in the audit event header without a conversation payload', async () => {
@@ -283,9 +296,9 @@ describe('Server structured audit', () => {
     const service = new AuditService(
       {
         raw: {
-          execute: vi.fn(async () => [[{ role: 'ORG_ADMIN' }], []]),
-          query
-        }
+          execute: vi.fn(async () => [[{ role: 'ORG_ADMIN' }], []])
+        },
+        auditRaw: { query }
       } as unknown as MysqlServerDatabase,
       {
         managedOrganizationIds: vi.fn(async () => [2]),
@@ -301,24 +314,31 @@ describe('Server structured audit', () => {
     expect(query.mock.calls[0]?.[0]).toContain('event.queue_item_id');
   });
 
-  it('does not query details when a MEMBER lacks an audit read scope', async () => {
-    const query = vi.fn();
-    const service = new AuditService(
-      {
-        raw: {
-          execute: vi.fn(async () => [[{ role: 'MEMBER' }], []]),
-          query
-        }
-      } as unknown as MysqlServerDatabase,
-      {
-        managedOrganizationIds: vi.fn(async () => []),
-        authorize: vi.fn(async () => ({ allowed: false, reason: 'RBAC_DENIED' }))
-      } as unknown as AuthorizationService
-    );
+  it.each(['detail', 'export'] as const)(
+    'does not query %s when a MEMBER lacks an audit scope',
+    async (operation) => {
+      const query = vi.fn();
+      const businessQuery = vi.fn();
+      const service = new AuditService(
+        {
+          raw: {
+            execute: vi.fn(async () => [[{ role: 'MEMBER' }], []]),
+            query: businessQuery
+          },
+          auditRaw: { query }
+        } as unknown as MysqlServerDatabase,
+        {
+          managedOrganizationIds: vi.fn(async () => []),
+          authorize: vi.fn(async () => ({ allowed: false, reason: 'RBAC_DENIED' }))
+        } as unknown as AuthorizationService
+      );
 
-    await expect(service.detail(8, 'event-1')).rejects.toThrow('RBAC_DENIED');
-    expect(query).not.toHaveBeenCalled();
-  });
+      const result = operation === 'detail' ? service.detail(8, 'event-1') : service.export(8);
+      await expect(result).rejects.toThrow('RBAC_DENIED');
+      expect(query).not.toHaveBeenCalled();
+      expect(businessQuery).not.toHaveBeenCalled();
+    }
+  );
 
   it('defaults retention, normalizes cleanup limits and cleans in batches', async () => {
     const connectionSql: string[] = [];
@@ -340,13 +360,15 @@ describe('Server structured audit', () => {
       if (sql.includes('SELECT setting_value')) return [[], []];
       return [{ affectedRows: 1 }, []];
     });
+    const businessGetConnection = vi.fn();
+    const auditGetConnection = vi.fn(async () => connection);
     const service = new AuditService(
       {
         raw: {
           execute,
-          query: execute,
-          getConnection: vi.fn(async () => connection)
-        }
+          getConnection: businessGetConnection
+        },
+        auditRaw: { getConnection: auditGetConnection }
       } as unknown as MysqlServerDatabase,
       { authorize: vi.fn(async () => ({ allowed: true })) } as unknown as AuthorizationService,
       () => 200 * 24 * 60 * 60 * 1000
@@ -364,6 +386,11 @@ describe('Server structured audit', () => {
     expect(connection.execute.mock.calls[2]?.[1]).toEqual(['event-1', 'event-2']);
     expect(connection.beginTransaction).toHaveBeenCalledTimes(1);
     expect(connection.commit).toHaveBeenCalledTimes(1);
+    expect(connection.release).toHaveBeenCalledTimes(1);
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(auditGetConnection).toHaveBeenCalledTimes(1);
+    expect(businessGetConnection).not.toHaveBeenCalled();
+    expect(execute.mock.calls.every(([sql]) => sql.includes('SELECT setting_value'))).toBe(true);
 
     connectionSql.length = 0;
     connection.execute.mockClear();
@@ -405,6 +432,45 @@ describe('Server structured audit', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('rolls back failed cleanup on the same audit connection', async () => {
+    const failure = new Error('AUDIT_DELETE_FAILED');
+    const connection = {
+      beginTransaction: vi.fn(async () => undefined),
+      commit: vi.fn(async () => undefined),
+      rollback: vi.fn(async () => undefined),
+      release: vi.fn(),
+      execute: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT id FROM audit_events')) return [[{ id: 'event-1' }], []];
+        throw failure;
+      })
+    };
+    const businessGetConnection = vi.fn();
+    const auditGetConnection = vi.fn(async () => connection);
+    const service = new AuditService(
+      {
+        raw: {
+          execute: vi.fn(async () => [[{ setting_value: '30' }], []]),
+          getConnection: businessGetConnection
+        },
+        auditRaw: { getConnection: auditGetConnection }
+      } as unknown as MysqlServerDatabase,
+      {} as AuthorizationService
+    );
+
+    await expect(service.cleanupBatch(2)).rejects.toBe(failure);
+
+    expect(auditGetConnection).toHaveBeenCalledOnce();
+    expect(businessGetConnection).not.toHaveBeenCalled();
+    expect(connection.beginTransaction).toHaveBeenCalledOnce();
+    expect(connection.execute).toHaveBeenCalledTimes(2);
+    expect(connection.execute.mock.calls[1]?.[0]).toContain(
+      'DELETE FROM audit_conversation_payloads'
+    );
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
   it('The fixed Community administrator can read system settings without an activated License', async () => {
     const execute = vi.fn(async (sql: string) => {
       if (sql.includes('is_fixed_admin'))
@@ -426,6 +492,8 @@ describe('Server structured audit', () => {
   });
 
   it('CSV exports include only the selected time range and neutralize spreadsheet formula prefixes', async () => {
+    const businessQuery = vi.fn();
+    const businessExecute = vi.fn(async () => [[{ role: 'ADMIN' }], []]);
     const row = { ...auditRow('event-1', 20, 1), actor_username: '=IMPORTXML("https://bad")' };
     const query = vi.fn(async (sql: string, params: readonly unknown[]) => {
       void sql;
@@ -435,9 +503,10 @@ describe('Server structured audit', () => {
     const service = new AuditService(
       {
         raw: {
-          execute: vi.fn(async () => [[{ role: 'ADMIN' }], []]),
-          query
-        }
+          execute: businessExecute,
+          query: businessQuery
+        },
+        auditRaw: { query }
       } as unknown as MysqlServerDatabase,
       {} as AuthorizationService
     );
@@ -447,6 +516,48 @@ describe('Server structured audit', () => {
     expect(csv).toContain('"\'=IMPORTXML(""https://bad"")"');
     expect(csv).not.toContain(',=IMPORTXML');
     expect(query.mock.calls[0]?.[1]).toEqual([10, 30, 10_000]);
+    expect(query.mock.calls[0]?.[0]).toContain('ORDER BY occurred_at DESC,id DESC LIMIT ?');
+    expect(query.mock.calls[0]?.[0]).not.toContain('user_message');
+    expect(businessExecute).toHaveBeenCalledWith(
+      'SELECT role FROM users WHERE id=? AND enabled=TRUE',
+      [1]
+    );
+    expect(businessQuery).not.toHaveBeenCalled();
+  });
+
+  it('exports only the managed organization scope through the audit pool', async () => {
+    const businessQuery = vi.fn();
+    const query = vi.fn(async (_sql: string, _params: readonly unknown[]) => [
+      [auditRow('scoped-event', 20, 2)],
+      []
+    ]);
+    const authorization = {
+      managedOrganizationIds: vi.fn(async () => [2, 3]),
+      authorize: vi.fn(async () => ({ allowed: true }))
+    };
+    const service = new AuditService(
+      {
+        raw: {
+          execute: vi.fn(async () => [[{ role: 'ORG_ADMIN' }], []]),
+          query: businessQuery
+        },
+        auditRaw: { query }
+      } as unknown as MysqlServerDatabase,
+      authorization as unknown as AuthorizationService
+    );
+
+    const csv = await service.export(7, { from: 10, to: 30 });
+
+    expect(csv).toContain('scoped-event');
+    expect(query.mock.calls[0]?.[0]).toContain(
+      'WHERE organization_id IN (?) AND occurred_at>=? AND occurred_at<=?'
+    );
+    expect(query.mock.calls[0]?.[1]).toEqual([[2, 3], 10, 30, 10_000]);
+    expect(authorization.authorize).toHaveBeenCalledWith(7, 'AUDIT_EXPORT', {
+      ownerType: 'ORGANIZATION',
+      organizationId: 2
+    });
+    expect(businessQuery).not.toHaveBeenCalled();
   });
 
   it('resolves organization ownership through owner_type and scope resource mappings', async () => {

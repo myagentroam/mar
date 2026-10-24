@@ -1,7 +1,182 @@
 import { expect, test } from '@playwright/test';
-import { mockConsoleApi, json, write } from './support/web-console-api.js';
+import { mockConsoleApi, mockEmptyWorkspaceFiles, json, write } from './support/web-console-api.js';
 
 // Terminal
+
+for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
+  const evicted = scenario === 'evicted';
+  test(`Terminal pending creation ${scenario === 'navigation' ? 'survives temporary settings and conversation navigation' : evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
+    page
+  }) => {
+    let resolveOpen!: () => void;
+    const openGate = new Promise<void>((resolve) => (resolveOpen = resolve));
+    let opens = 0;
+    const closes: { terminalId: string; nodeId: string }[] = [];
+    const terminals = new Map<
+      string,
+      {
+        id: string;
+        workspaceId: string;
+        profileId: string;
+        state: 'RUNNING';
+        latestSequence: number;
+      }
+    >();
+    await page.addInitScript(() => {
+      class MockWebSocket extends EventTarget {
+        static readonly OPEN = 1;
+        static readonly CLOSED = 3;
+        static readonly instances: MockWebSocket[] = [];
+        readyState = MockWebSocket.OPEN;
+        constructor(readonly url: string) {
+          super();
+          MockWebSocket.instances.push(this);
+          queueMicrotask(() =>
+            this.dispatchEvent(
+              new MessageEvent('message', {
+                data: JSON.stringify({
+                  type: 'attach',
+                  terminalId: 'terminal-pending',
+                  afterSequence: 0
+                })
+              })
+            )
+          );
+        }
+        send(): void {}
+        close(): void {
+          this.readyState = MockWebSocket.CLOSED;
+          this.dispatchEvent(new CloseEvent('close'));
+        }
+      }
+      Object.defineProperty(window, 'WebSocket', { configurable: true, value: MockWebSocket });
+    });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    if (scenario === 'navigation') {
+      await page.route('**/api/hosted-conversations?limit=20', (route) =>
+        json(route, { items: [], nextCursor: null })
+      );
+      await page.route('**/api/conversation-templates', (route) => json(route, { templates: [] }));
+    }
+    await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
+    await page.route('**/api/workspaces?nodeId=node-1', (route) =>
+      json(route, {
+        workspaces: [1, 2].map((id) => ({
+          id: `workspace-${id}`,
+          path: `/project-${id}`,
+          kind: 'DIRECTORY'
+        }))
+      })
+    );
+    await page.route('**/api/terminals**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/terminals' && route.request().method() === 'POST') {
+        opens++;
+        const body = route.request().postDataJSON() as { nodeId: string; workspaceId: string };
+        expect(body).toMatchObject({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+        await openGate;
+        const terminal = {
+          id: 'terminal-pending',
+          workspaceId: body.workspaceId,
+          profileId: 'default',
+          state: 'RUNNING' as const,
+          latestSequence: 0
+        };
+        terminals.set(terminal.id, terminal);
+        return json(route, { terminal });
+      }
+      if (route.request().method() === 'DELETE') {
+        const terminalId = path.split('/').at(-1)!;
+        closes.push({ terminalId, ...(route.request().postDataJSON() as { nodeId: string }) });
+        terminals.delete(terminalId);
+        return json(route, {});
+      }
+      if (path.endsWith('/attach-ticket')) return json(route, { ticket: 'pending-ticket' });
+      return json(route, { terminals: [...terminals.values()] });
+    });
+    try {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.goto('/console');
+      await page.getByRole('button', { name: '进入控制台' }).click();
+      await page.getByRole('button', { name: '工作', exact: true }).click();
+      const tree = page.locator('.workspace-tree');
+      await tree.getByRole('button', { name: /node-1/ }).click();
+      await tree.getByRole('button', { name: 'project-1', exact: true }).click();
+      await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
+      await page.keyboard.press('Control+Shift+Backquote');
+      await expect.poll(() => opens).toBe(1);
+      const first = page.locator('.workspace-tab[data-tab-id="node-1:workspace-1"]');
+      if (scenario === 'navigation') {
+        for (const name of ['设置', '对话']) {
+          await page.getByRole('button', { name, exact: true }).click();
+          await expect(page.locator('.terminal-dock')).toHaveCount(1);
+          await expect(page.locator('.terminal-dock')).toBeHidden();
+          expect(closes).toEqual([]);
+        }
+        const conversationNavigation = page.getByRole('button', { name: '对话', exact: true });
+        await conversationNavigation.focus();
+        resolveOpen();
+        await expect(page.locator('.xterm-host')).toHaveCount(1);
+        await expect(page.locator('.xterm-host')).toBeHidden();
+        await expect(conversationNavigation).toBeFocused();
+        expect(closes).toEqual([]);
+        await page.getByRole('button', { name: '工作', exact: true }).click();
+        await expect(page.locator('.xterm-host')).toBeVisible();
+        for (const name of ['设置', '对话']) {
+          await page.getByRole('button', { name, exact: true }).click();
+          await expect(page.locator('.xterm-host')).toBeHidden();
+          expect(closes).toEqual([]);
+          await page.getByRole('button', { name: '工作', exact: true }).click();
+          await expect(page.locator('.xterm-host')).toBeVisible();
+          await expect(page.locator('.terminal-tab-select')).toHaveCount(1);
+        }
+        expect(opens).toBe(1);
+        await first.locator('.tab-close').click();
+        await expect
+          .poll(() => closes)
+          .toEqual([{ terminalId: 'terminal-pending', nodeId: 'node-1' }]);
+        expect(terminals.size).toBe(0);
+        return;
+      }
+      await tree.getByRole('button', { name: 'project-2', exact: true }).click();
+      const second = page.locator('.workspace-tab[data-tab-id="node-1:workspace-2"]');
+      await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
+      if (evicted) {
+        await first.locator('.tab-close').click();
+        await expect(first).toHaveCount(0);
+      }
+      await second.getByRole('tab').focus();
+      resolveOpen();
+      if (evicted) {
+        await expect
+          .poll(() => closes)
+          .toEqual([{ terminalId: 'terminal-pending', nodeId: 'node-1' }]);
+        expect(terminals.size).toBe(0);
+        await expect(page.locator('.xterm-host')).toHaveCount(0);
+      } else {
+        await expect(page.locator('.xterm-host')).toHaveCount(1);
+        await expect(page.locator('.xterm-host')).toBeHidden();
+        await expect(second.getByRole('tab')).toBeFocused();
+        expect(closes).toEqual([]);
+        await first.getByRole('tab').click();
+        await expect(page.locator('.xterm-host')).toBeVisible();
+        await expect(page.locator('.terminal-tab-select')).toHaveCount(1);
+        expect(opens).toBe(1);
+        await page.locator('.terminal-tab-close').click();
+        await expect
+          .poll(() => closes)
+          .toEqual([{ terminalId: 'terminal-pending', nodeId: 'node-1' }]);
+        expect(terminals.size).toBe(0);
+      }
+      await expect(second.getByRole('tab')).toHaveAttribute(
+        'aria-selected',
+        evicted ? 'true' : 'false'
+      );
+    } finally {
+      resolveOpen();
+    }
+  });
+}
 
 test('Terminal creation, attachment, resizing, and closure require explicit Node capability', async ({
   page

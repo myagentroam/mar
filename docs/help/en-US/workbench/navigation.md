@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-24
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -65,9 +65,9 @@ Windows, macOS, and Linux use browser notification interfaces; banners, sounds, 
 
 Logout or Session revocation invalidates the corresponding mobile binding. Late Push with an unconfirmed binding shows only a generic prompt opening Console. Already dispatched messages cannot reliably be recalled, and provider acceptance does not prove display. Check site permission, OS notification settings, and Do Not Disturb if no banner appears; failure does not lose in-app notifications.
 
-## Personal usage
+## Usage statistics
 
-Open **Settings → Personal usage** to review Conversation usage for main agents and subagents by default. **Conversation**, **Compact**, and **Composer Prediction** are separate categories; title generation and other requests are also available. Compact and prediction are excluded from Conversation. Switching categories updates the rolling last 24 hours and last 7 days (168 hours), charts, and records together. Top summaries for the current category do not change with the filters below. Filter charts and records by time, Runner, model, and Work/Conversation mode. Times use the browser time zone shown on the page.
+Open **Settings → Usage statistics** to view Agent usage for the current account. The default Conversation category includes main agents and subagents. **Conversation**, **Compact**, and **Composer Prediction** are separate categories; title generation and other requests are also available. Compact and prediction are excluded from Conversation. Switching categories updates the rolling last 24 hours and last 7 days (168 hours), charts, and records together. Top summaries for the current category do not change with the filters below. Filter charts and records by time, Runner, model, and Work/Conversation mode. Times use the browser time zone shown on the page.
 
 The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging, sorting, or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, scrolling to the bottom loads more; you can also select **Load more** to append the next batch. Column sorting applies to the current desktop page or the already loaded mobile records. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes. The last refresh time does not mean every Node has finished syncing.
 

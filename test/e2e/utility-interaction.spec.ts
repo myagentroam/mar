@@ -66,6 +66,97 @@ async function checkUtility(
   await expect(control).toHaveCSS('outline-color', colors.focus);
 }
 
+for (const width of [1280, 390]) {
+  test(`Queue and Goal editors cancel only their own draft with Escape at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&work-item-editing`);
+      await page.evaluate(() => {
+        document.body.dataset.outerEscape = '0';
+        document.body.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !event.isComposing)
+            document.body.dataset.outerEscape = String(
+              Number(document.body.dataset.outerEscape) + 1
+            );
+        });
+      });
+      const queue = page.locator('.composer-queue');
+      const queueEdit = queue
+        .locator('.queue-item-actions')
+        .getByRole('button', { name: 'Edit', exact: true });
+      const goalEdit = queue
+        .locator('.goal-actions')
+        .getByRole('button', { name: 'Edit', exact: true });
+      const queueInput = queue.locator('.composer-queue-input textarea');
+      const goalInput = queue.locator('.goal-objective-input textarea');
+      await queueEdit.click();
+      await goalEdit.click();
+      await queueInput.fill('Unsaved queue draft');
+      await goalInput.fill('Unsaved goal draft');
+      for (const input of [queueInput, goalInput]) {
+        const prevented = await input.evaluate((element) => {
+          const event = new KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+            isComposing: true
+          });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        expect(prevented).toBe(false);
+        await expect(input).toBeVisible();
+      }
+      await queueInput.press('Escape');
+      await expect(queueInput).toHaveCount(0);
+      await expect(queueEdit).toBeFocused();
+      await expect(queue.locator('.queue-item-content > p')).toHaveText(
+        'Review the pending change'
+      );
+      await expect(goalInput).toHaveValue('Unsaved goal draft');
+      await queueEdit.click();
+      await expect(queueInput).toHaveValue('Review the pending change');
+      await goalInput.press('Escape');
+      await expect(goalInput).toHaveCount(0);
+      await expect(goalEdit).toBeFocused();
+      await expect(queue.locator('.goal-objective')).toHaveText('Review the pending goal');
+      await expect(queueInput).toBeVisible();
+      await goalEdit.click();
+      await expect(goalInput).toHaveValue('Review the pending goal');
+
+      await page.getByTestId('disable').click();
+      for (const input of [queueInput, goalInput]) {
+        await input.press('Escape');
+        await expect(input).toBeVisible();
+      }
+      await page.getByTestId('disable').click();
+      await queue.locator('.goal-editor-actions').getByRole('button', { name: 'Cancel' }).focus();
+      await page.keyboard.press('Escape');
+      await expect(goalInput).toHaveCount(0);
+      await expect(goalEdit).toBeFocused();
+      await queue.locator('.queue-item-actions').getByRole('button', { name: 'Save' }).focus();
+      await page.keyboard.press('Escape');
+      await expect(queueInput).toHaveCount(0);
+      await expect(queueEdit).toBeFocused();
+      await expect(page.locator('body')).toHaveAttribute('data-outer-escape', '0');
+      await queueEdit.click();
+      await queueInput.fill('Saved through Enter');
+      await queueInput.press('Enter');
+      await expect(queueInput).toHaveCount(0);
+      await expect(queue.locator('.queue-item-content > p')).toHaveText('Saved through Enter');
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Queue and Goal inline edits keep their display typography in ${theme}`, async ({
     browser

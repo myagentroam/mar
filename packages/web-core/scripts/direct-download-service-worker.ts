@@ -191,12 +191,15 @@ self.addEventListener('message', (event) => {
     fileName: value.fileName,
     size: value.size,
     port,
-    timeout
+    timeout,
+    closeRequested: false
   });
   port.onmessage = (message) => {
-    if (message.data?.type !== 'abort') return;
     const session = directDownloads.get(value.id);
     if (session?.port !== port) return;
+    // Empty downloads can close before iframe navigation reaches the fetch handler.
+    if (message.data?.type === 'close') { session.closeRequested = true; return; }
+    if (message.data?.type !== 'abort') return;
     directDownloads.delete(value.id);
     clearTimeout(timeout);
     port.close();
@@ -219,6 +222,12 @@ self.addEventListener('fetch', (event) => {
   let controller;
   let closed = false;
   let pullOutstanding = false;
+  const finish = () => {
+    closed = true;
+    controller.close();
+    session.port.postMessage({ type: 'finished' });
+    session.port.close();
+  };
   const requestChunk = () => {
     if (closed || pullOutstanding) return;
     pullOutstanding = true;
@@ -239,10 +248,7 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (value?.type === 'close') {
-      closed = true;
-      controller.close();
-      session.port.postMessage({ type: 'finished' });
-      session.port.close();
+      finish();
       return;
     }
     if (value?.type === 'abort') {
@@ -254,7 +260,8 @@ self.addEventListener('fetch', (event) => {
   const body = new ReadableStream({
     start(value) {
       controller = value;
-      requestChunk();
+      if (session.closeRequested) finish();
+      else requestChunk();
     },
     pull() {
       requestChunk();

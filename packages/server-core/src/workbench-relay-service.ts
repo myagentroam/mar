@@ -135,7 +135,9 @@ export class WorkbenchRelayService {
         socket.close(4002, 'WORKBENCH_MESSAGE_INVALID');
         return;
       }
-      void this.handleMessage(socket, user, serialized);
+      void this.handleMessage(socket, user, serialized).catch(() =>
+        socket.close(1011, 'WORKBENCH_MESSAGE_FAILED')
+      );
     });
     socket.on('close', () => this.disconnect(socket));
   }

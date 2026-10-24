@@ -47,6 +47,17 @@ describe('AgentMarkdown workspace images', () => {
     );
   });
 
+  it('keeps review file line ranges in controlled previews instead of opening website routes', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const path =
+      'my-agent-roam/packages/web-core/src/view/conversation/HostedConversationEntryPage.vue';
+    const html = await render(`[HostedConversationEntryPage.vue](${path}#L47-L59)`);
+    expect(html).toContain(`href="${path}#L47-L59"`);
+    expect(html).toContain(`data-workspace-file="${path}"`);
+    expect(html).toContain('data-workspace-line="47"');
+    expect(html).not.toContain('target="_blank"');
+  });
+
   it('loads workspace, temporary, and external absolute file images through the controlled file response', async () => {
     vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
     const imageResourceUrl = vi.fn(

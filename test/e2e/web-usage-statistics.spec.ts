@@ -5,7 +5,7 @@ test.use({ timezoneId: 'Asia/Shanghai' });
 
 // Mock APIs isolate browser behavior; the ledger integration has its own real database test.
 for (const locale of ['en-US', 'zh-CN'] as const) {
-  test(`Personal usage filters, pagination and recovery remain accessible in ${locale}`, async ({
+  test(`Usage statistics filters, pagination and recovery remain accessible in ${locale}`, async ({
     page
   }, testInfo) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -24,7 +24,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const labels =
       locale === 'en-US'
         ? {
-            title: 'Personal usage',
+            title: 'Usage statistics',
             refresh: 'Refresh',
             more: 'Load more',
             noMore: 'No more',
@@ -48,7 +48,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
             week: 'Last 7 days'
           }
         : {
-            title: '个人用量',
+            title: '用量统计',
             refresh: '刷新',
             more: '加载更多',
             noMore: '没有更多了',
@@ -178,7 +178,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.goto('/console?view=settings&settings=usage');
     if (locale === 'zh-CN') await page.getByRole('button', { name: '设置', exact: true }).click();
     await page.getByRole('button', { name: labels.title, exact: true }).click();
-    const panel = page.getByTestId('personal-usage');
+    const panel = page.getByTestId('usage-statistics');
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel).toHaveAttribute('aria-busy', 'true');
     const loadingMask = panel.locator(':scope > .el-loading-mask');
@@ -210,6 +210,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     // The paused refresh clock also controls Element Plus loading transitions.
     await page.clock.runFor(500);
     await expect(loadingMask).toBeHidden();
+    await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
+    await expect(
+      panel.getByText(
+        locale === 'en-US' ? 'Agent usage for the current account' : '当前账号的 Agent 用量',
+        { exact: true }
+      )
+    ).toBeVisible();
     const categories = panel.locator('.usage-purposes');
     const categoryFontSize = await categories.evaluate((element) =>
       getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
@@ -345,6 +352,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(tooltip).toContainText(cacheSummary);
     await expect(tooltip).toContainText(`${exact(totals.cacheReadTokens)} (25%)`);
     await expectMetricOrder(tooltip, numericHeaders);
+    await bucket.click();
+    await expect(bucket).not.toBeFocused();
+    await expect(bucket).toHaveCSS('outline-style', 'none');
+    await expect(tooltip).toContainText(exact(totals.inputTokens));
     await expect(bucket).toHaveAccessibleName(
       new RegExp(
         `${labels.inputTokens}.*${labels.cache}.*${labels.outputTokens}.*${labels.totalTokens}`
@@ -352,13 +363,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     await panel.getByRole('heading', { name: labels.title, exact: true }).hover();
     await page.clock.runFor(300);
-    await page.keyboard.press('Tab');
-    await bucket.focus();
-    await page.clock.runFor(200);
-    await expect(tooltip).toContainText(exact(totals.inputTokens));
-    await expect(bucket).toHaveCSS('outline-style', 'solid');
-    await bucket.evaluate((element) => (element as SVGElement).blur());
-    await page.clock.runFor(300);
+    await expect(tooltip).toHaveCount(0);
     await panel.getByText(labels.chart, { exact: true }).click();
     await expect(panel.locator('.trend details')).toHaveAttribute('open', '');
     expect(

@@ -31,6 +31,7 @@ const emit = defineEmits<{
   dragStart: [queueItemId: string];
   reorder: [queueItemId: string];
   edit: [item: WorkspaceQueueItem];
+  cancelEdit: [];
   updateContent: [value: string];
   save: [queueItemId: string];
   execute: [item: WorkspaceQueueItem, editedContent?: string];
@@ -231,6 +232,18 @@ function cancelGoalEdit(): void {
   goalEditing.value = false;
 }
 
+async function onEditEscape(event: KeyboardEvent, editor: 'queue' | 'goal'): Promise<void> {
+  if (event.isComposing || event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (props.loading) return;
+  const workItem = (event.currentTarget as HTMLElement).closest('.work-item');
+  if (editor === 'goal') cancelGoalEdit();
+  else emit('cancelEdit');
+  await nextTick();
+  workItem?.querySelector<HTMLButtonElement>('.work-item-edit-action')?.focus();
+}
+
 function updateGoal(): void {
   const objective = goalObjective.value.trim();
   if (objective.length === 0) return;
@@ -287,7 +300,11 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             <button class="utility-control" type="button" @click="goalDetailsOpen = true">
               {{ translate('goal.view') }}
             </button>
-            <button class="utility-control" type="button" @click="startGoalEdit">
+            <button
+              class="utility-control work-item-edit-action"
+              type="button"
+              @click="startGoalEdit"
+            >
               {{ translate('goal.edit') }}
             </button>
             <button
@@ -300,7 +317,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             </button>
           </div>
         </div>
-        <div v-if="goalEditing" class="goal-editor">
+        <div v-if="goalEditing" class="goal-editor" @keydown="onEditEscape($event, 'goal')">
           <el-input
             v-model="goalObjective"
             class="goal-objective-input"
@@ -364,6 +381,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           :class="{ editing: editingQueueItemId === item.queueItemId }"
           :data-queue-item-id="item.queueItemId"
           draggable="true"
+          @keydown="editingQueueItemId === item.queueItemId && onEditEscape($event, 'queue')"
           @pointerdown="onItemPointerDown($event, item)"
           @pointermove="onItemPointerMove"
           @pointerup="onItemPointerUp"
@@ -419,7 +437,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
               }}</span>
             </button>
             <button
-              class="utility-control"
+              class="utility-control work-item-edit-action"
               v-tooltip="translate('generated.composerQueue.edit')"
               v-else
               type="button"

@@ -1,7 +1,10 @@
 import type { AgentRun, ConversationItem, ConversationTurn } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 import { toolPresentation } from './tool-presentation.js';
-import { conversationPayload } from './conversation-history.js';
+import {
+  CONVERSATION_INITIAL_RENDER_CHARACTERS,
+  conversationPayload
+} from './conversation-history.js';
 import { isTerminalRunStatus } from '../service/run-service.js';
 import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
@@ -223,13 +226,15 @@ export function nextConversationRenderItemCount(
   renderedCount: number,
   blocks: readonly ConversationProcessBlock[],
   processOpen: (id: string) => boolean | undefined,
-  budget: number
+  budget: number,
+  characterBudget = CONVERSATION_INITIAL_RENDER_CHARACTERS
 ): number {
   const groups = new Map(blocks.filter((block) => block.groupId).map((block) => [block.id, block]));
   const introduced = new Set<string>();
   let scanned = 0;
   let added = 0;
   let work = 0;
+  let characters = 0;
   for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex--) {
     const turn = turns[turnIndex]!;
     for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
@@ -239,15 +244,20 @@ export function nextConversationRenderItemCount(
         ? groups.get(`${turn.sessionId}:${item.processGroup.id}`)
         : undefined;
       let cost = 1;
+      let contentVisible = true;
       if (group) {
         const open = processOpen(group.id);
+        contentVisible = (open ?? group.active) || group.preview?.id === item.id;
         cost = (open ?? group.active) ? 1 : 0;
         // Previews remain outside the collapsed body, including during history backfill.
         if (group.preview?.id === item.id) cost = 1;
         if (open === undefined && !introduced.has(group.id)) cost++;
       }
       if (work + cost > budget) return renderedCount + added;
+      const itemCharacters = contentVisible ? JSON.stringify(item.payload ?? null).length : 0;
+      if (added > 0 && characters + itemCharacters > characterBudget) return renderedCount + added;
       work += cost;
+      characters += itemCharacters;
       added++;
       if (group) introduced.add(group.id);
     }
