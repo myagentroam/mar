@@ -10,6 +10,7 @@ import {
   contextGcBaseFromRecords,
   contextGcCheckpointIntervalEligible,
   contextGcLogicalPathKey,
+  contextGcMinimumUsageGrowth,
   contextGcTargetKey,
   normalizeContextGcReplacements,
   type ContextGcCheckpointDraft,
@@ -329,20 +330,33 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     input.contextWindowTokens
   );
   const previous = input.checkpointCache!.read(input.records, undefined, input.workspace);
+  const checkpointEligible = contextGcCheckpointIntervalEligible(
+    {
+      usageSequence: usageRecord.sequence,
+      contextInputTokens: contextUsageTokens,
+      contextWindowTokens: input.contextWindowTokens,
+      normalRolloutOrdinal,
+      modelId: input.modelId,
+      platform: input.platform
+    },
+    previous?.payload.trigger
+  );
+  // Discovery and economic evaluation have their own low-growth opportunities;
+  // neither a protected candidate nor periodic discovery makes a draft eligible.
   if (
-    !contextGcCheckpointIntervalEligible(
-      {
-        usageSequence: usageRecord.sequence,
-        contextInputTokens: contextUsageTokens,
-        contextWindowTokens: input.contextWindowTokens,
-        normalRolloutOrdinal,
-        modelId: input.modelId,
-        platform: input.platform
-      },
-      previous?.payload.trigger
+    previous?.payload.trigger.modelId === input.modelId &&
+    previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
+  ) {
+    const rolloutGrowth = normalRolloutOrdinal - previous.payload.trigger.normalRolloutOrdinal;
+    if (
+      rolloutGrowth < 2 ||
+      (previous.payload.metrics.protectedCandidateTokens === 0 &&
+        rolloutGrowth < CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
+        contextUsageTokens - previous.payload.trigger.contextInputTokens <
+          contextGcMinimumUsageGrowth(input.contextWindowTokens))
     )
-  )
-    return {};
+      return {};
+  }
   if (input.messages.length !== input.messageSources.length) return {};
   const groups = buildToolGroups(input.records, input.messages, input.messageSources);
   const existing = previous?.payload.replacements ?? [];
@@ -405,20 +419,21 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
         protectedCandidateTokens
       }
     );
-    const plan = finalizePlan(input, marginal ?? stageAPlanWithProtectedCandidates);
+    const plan = checkpointEligible
+      ? finalizePlan(input, marginal ?? stageAPlanWithProtectedCandidates)
+      : undefined;
     const retryAfterRollouts = Math.min(
       exec.retryAfterRollouts,
       codeMode.retryAfterRollouts,
       web.retryAfterRollouts
     );
-    return plan
-      ? {
-          plan,
-          ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
-            ? { retryAfterRollouts }
-            : {})
-        }
-      : {};
+    if (!plan && checkpointEligible) return {};
+    return {
+      ...(plan ? { plan } : {}),
+      ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
+        ? { retryAfterRollouts }
+        : {})
+    };
   }
 
   const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
@@ -442,7 +457,7 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     }
   );
   if (combined?.economics.passes) {
-    const plan = finalizePlan(input, combined);
+    const plan = checkpointEligible ? finalizePlan(input, combined) : undefined;
     return plan ? { plan } : {};
   }
   const retryAfterRollouts = Math.min(

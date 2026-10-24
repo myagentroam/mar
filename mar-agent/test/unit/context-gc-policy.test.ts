@@ -23,6 +23,7 @@ import {
   applyContextGcReplacementsToMessages
 } from '../../src/agent-core/runtime/context/projection.js';
 import { contextGcMessageTokens } from '../../src/agent-core/runtime/context/gc-tokens.js';
+import * as gcTokens from '../../src/agent-core/runtime/context/gc-tokens.js';
 import { validateContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
 import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
@@ -292,6 +293,137 @@ function addWebResult(fixture: ReturnType<typeof records>, id: string, content: 
 }
 
 describe('context GC checkpoint eligibility across planner, runtime and store', () => {
+  it.each([true, false])(
+    'evaluates low-growth terminal candidates without committing: protected at checkpoint=%s',
+    async (pending) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-low-growth-'));
+      const store = await JsonlSessionStore.open(home);
+      const cacheEconomics = vi.spyOn(gcTokens, 'contextGcCacheImpact');
+      try {
+        const session = await store.createSession({ workspace: '/workspace' });
+        const fixture = records();
+        addPatchCandidate(fixture);
+        if (pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
+        for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+        let copied = 1;
+        const appendNewRecords = async () => {
+          for (const record of fixture.values.slice(copied))
+            await store.append(session.id, {
+              type: record.type,
+              payload: record.payload,
+              executionId: record.executionId,
+              turnId: record.turnId
+            });
+          copied = fixture.values.length;
+          return (await store.readExecutionState(session.id)).contextRecords;
+        };
+        const initialRecords = await appendNewRecords();
+        const first = plan(initialRecords, { contextInputTokens: 6_000, cacheReadTokens: 0 });
+        expect(first).toBeDefined();
+        expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
+        expect(first!.draft.replacements.some((r) => r.callId === 'low-growth')).toBe(false);
+        await store.commitContextGc(session.id, first!.draft, initialRecords);
+        const commit = vi.spyOn(store, 'commitContextGc');
+        if (!pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
+        const inspect = (values: readonly SessionRecord[]) => {
+          const projection = buildContextProjection(values, '/workspace');
+          return inspectContextGc({
+            records: values,
+            messages: projection.entries.map((entry) => entry.message),
+            messageSources: projection.entries.map((entry) => entry.record),
+            system: 'System.',
+            tools: [],
+            modelId: 'coding',
+            modelProtocol: 'OPENAI_RESPONSES',
+            contextWindowTokens: 10_000,
+            usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+            workspace: '/workspace',
+            platform: 'linux',
+            activeProcessIds: new Set()
+          });
+        };
+
+        // Protected output is revisited before maturity; late output is not scanned
+        // on every low-growth request before its six-rollout discovery opportunity.
+        for (let index = 0; index < (pending ? 2 : 5); index++)
+          successfulRollout(fixture.add, 6_000);
+        const immature = await appendNewRecords();
+        cacheEconomics.mockClear();
+        expect(inspect(immature)).toEqual(pending ? { retryAfterRollouts: 2 } : {});
+        expect(cacheEconomics).not.toHaveBeenCalled();
+
+        for (let index = 0; index < (pending ? 2 : 1); index++)
+          successfulRollout(fixture.add, 6_000);
+        const mature = await appendNewRecords();
+        cacheEconomics.mockClear();
+        expect(inspect(mature).plan).toBeUndefined();
+        // Cache-impact calculation follows the aggregate gross-savings gate in
+        // evaluateCandidateSet. Observe its real inputs, without stubbing economics.
+        expect(cacheEconomics).toHaveBeenCalled();
+        expect(
+          cacheEconomics.mock.calls.some(
+            ([, before, after, cacheRead, reclaimed]) =>
+              cacheRead === 0 &&
+              reclaimed >= contextGcMinimumReclaimedTokens(6_000, 10_000) &&
+              before.some((message) => message.callId === 'low-growth') &&
+              after.some(
+                (message) =>
+                  message.callId === 'low-growth' &&
+                  message.role === 'tool' &&
+                  JSON.parse(message.content).contextGcFormatVersion === 3
+              )
+          )
+        ).toBe(true);
+
+        const getActiveProcessIds = vi.fn(async () => new Set<string>());
+        const runtime = new ContextGcRuntime();
+        const input = {
+          store,
+          sessionId: session.id,
+          system: 'System.',
+          tools: [],
+          modelId: 'coding',
+          modelProtocol: 'OPENAI_RESPONSES',
+          contextWindowTokens: 10_000,
+          usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+          workspace: '/workspace',
+          platform: 'linux' as const,
+          getActiveProcessIds
+        };
+        cacheEconomics.mockClear();
+        expect(await runtime.run(input)).toBe(false);
+        expect(getActiveProcessIds).toHaveBeenCalledTimes(1);
+        expect(cacheEconomics).toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+        expect(
+          (await store.read(session.id)).filter((record) => record.type === 'context.gc.completed')
+        ).toHaveLength(1);
+
+        // Once both durable thresholds are met, the same mature output commits
+        // with positive economics rather than having been rejected as uneconomical.
+        for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 8_000);
+        await appendNewRecords();
+        runtime.reset();
+        const result = await runtime.run({
+          ...input,
+          usage: { contextInputTokens: 8_000, cacheReadTokens: 0 }
+        });
+        expect(result && result.projection.checkpoint).toMatchObject({
+          generation: 2,
+          metrics: { stage: 'STAGE_A_AND_EXEC', minimumObservedRollouts: 8 }
+        });
+        expect(
+          result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
+        ).toBeGreaterThan(0);
+        expect(commit).toHaveBeenCalledTimes(1);
+      } finally {
+        cacheEconomics.mockRestore();
+        await store.close();
+        await rm(home, { recursive: true, force: true });
+      }
+    }
+  );
+
   it.each([
     { label: 'both thresholds exactly met', rollouts: 2, usage: 8_000, allowed: true },
     {
