@@ -1,4 +1,5 @@
-import type { CompactInput, ExecutionHandle, ExecutionResult } from '../../sdk/types.js';
+import type { ExecutionResult } from '../contracts.js';
+import type { CompactInput, ExecutionHandle } from '../execution-handle.js';
 import type { MarAgentEvent } from '../events.js';
 import { AsyncQueue } from '../async-queue.js';
 import { MarAgentError, describeMarAgentError } from '../../error.js';
