@@ -121,6 +121,99 @@ async function fixture() {
   return { home, store, agent };
 }
 
+function childInput(workspace: string, parentSessionId: string, rootSessionId = parentSessionId) {
+  return {
+    workspace,
+    source: {
+      type: 'subagent',
+      parentSessionId,
+      rootSessionId,
+      parentExecutionId: 'parent',
+      description: 'maintenance child',
+      role: 'general-purpose'
+    }
+  } as const;
+}
+
+it.each(['clear', 'delete'] as const)(
+  'rejects descendant creation after %s admission without blocking unrelated Sessions',
+  async (kind) => {
+    const f = await fixture();
+    const root = await f.store.createSession({ workspace: f.home });
+    const child = await f.store.createSession(childInput(f.home, root.id));
+    const other = await f.store.createSession({ workspace: f.home });
+    const before = await f.store.list({ source: 'subagent', rootSessionId: root.id });
+    const holding = await f.store.acquireSessionMaintenance(root.id, kind);
+    try {
+      await expect(f.store.createSession(childInput(f.home, root.id))).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_LOCKED'
+      });
+      if (kind === 'delete')
+        await expect(
+          f.store.createSession(childInput(f.home, child.id, root.id))
+        ).rejects.toMatchObject({
+          code: 'MAR_AGENT_SESSION_LOCKED'
+        });
+      expect(await f.store.list({ source: 'subagent', rootSessionId: root.id })).toEqual(before);
+      const unrelated = await f.store.createSession(childInput(f.home, other.id));
+      const release = await f.store.acquireSessionLease(unrelated.id, {});
+      await release();
+      if (kind === 'delete') await f.store.delete(root.id, holding);
+      else await f.store.clearSession(root.id, holding);
+    } finally {
+      await holding.release();
+    }
+    if (kind === 'delete') {
+      await expect(f.store.createSession(childInput(f.home, root.id))).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_NOT_FOUND'
+      });
+      await expect(f.store.getSession(child.id)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_NOT_FOUND'
+      });
+      await expect(
+        f.store.list({ source: 'subagent', rootSessionId: root.id })
+      ).resolves.toMatchObject({ sessions: [] });
+    } else await expect(f.store.createSession(childInput(f.home, root.id))).resolves.toBeDefined();
+  }
+);
+
+it('finishes an in-flight child publication before tree maintenance admission', async () => {
+  const f = await fixture();
+  const root = await f.store.createSession({ workspace: f.home });
+  const entered = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const append = f.store.append.bind(f.store);
+  vi.spyOn(f.store, 'append').mockImplementationOnce(async (...args) => {
+    entered.resolve();
+    await resume.promise;
+    return append(...args);
+  });
+  const creating = f.store.createSession(childInput(f.home, root.id));
+  await entered.promise;
+  const admitting = f.store.acquireSessionMaintenance(root.id, 'delete');
+  try {
+    expect(
+      await Promise.race([
+        admitting.then(() => 'admitted'),
+        new Promise<string>((resolve) => setTimeout(() => resolve('pending'), 30))
+      ])
+    ).toBe('pending');
+  } finally {
+    resume.resolve();
+    const child = await creating;
+    const holding = await admitting;
+    try {
+      expect(holding.sessionIds).toEqual(expect.arrayContaining([root.id, child.id]));
+      await f.store.delete(root.id, holding);
+      await expect(f.store.getSession(child.id)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_NOT_FOUND'
+      });
+    } finally {
+      await holding.release();
+    }
+  }
+});
+
 it.each(['clearSession', 'deleteSession', 'tree'] as const)(
   'rejects foreign-owner %s before observable cleanup and permits retry',
   async (operation) => {

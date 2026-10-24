@@ -426,9 +426,21 @@ export class JsonlSessionStore implements SessionStore {
     }
     return { directory, release };
   }
-  /** Append the durable creation record before making this Session visible in the index. */
   async createSession(input: { title?: string; workspace: string; source?: SessionSource }) {
     this.#assertOpen();
+    const source = normalizeSessionSource(input.source);
+    if (source.type !== 'subagent') return this.#createSession(input, source);
+    // Publish under the parent's existing serial domain so tree admission cannot miss a child.
+    return this.#serializeRecordOperation(source.parentSessionId, async () => {
+      this.#assertOpen();
+      if (this.#shared.writerLeases.get(source.parentSessionId)?.maintenance)
+        throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
+      await this.getSession(source.parentSessionId);
+      return this.#createSession(input, source);
+    });
+  }
+  /** Append the durable creation record before making this Session visible in the index. */
+  async #createSession(input: Parameters<SessionStore['createSession']>[0], source: SessionSource) {
     const id = randomUUID();
     const now = new Date().toISOString();
     const meta: SessionMeta = {
@@ -437,7 +449,7 @@ export class JsonlSessionStore implements SessionStore {
       workspace: input.workspace,
       createdAt: now,
       lastActivityAt: now,
-      source: normalizeSessionSource(input.source),
+      source,
       nextSequence: 1,
       automaticTitlePending: input.title === undefined,
       resume: {

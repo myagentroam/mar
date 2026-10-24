@@ -69,6 +69,12 @@ export function textSessionStore() {
   };
   const store: SessionStore = {
     createSession: async (input) => {
+      if (input.source?.type === 'subagent') {
+        const parentId = input.source.parentSessionId;
+        if (maintenance.has(parentId))
+          throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
+        get(parentId);
+      }
       const now = new Date().toISOString();
       const session = {
         id: randomUUID(),
