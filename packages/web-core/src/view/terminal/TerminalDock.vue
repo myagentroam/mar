@@ -216,6 +216,9 @@ async function openTerminal(): Promise<void> {
       return;
     }
     // A cached Workspace Dock still owns the result while another tab is in front.
+    // A list read started before this write must not discard the newly owned terminal.
+    refreshRevision += 1;
+    refreshing.value = false;
     insertOpenedTerminal(result.terminal);
     selectTerminal(result.terminal.id);
   } catch (error) {

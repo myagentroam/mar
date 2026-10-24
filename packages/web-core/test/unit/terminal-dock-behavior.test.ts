@@ -76,7 +76,7 @@ function fixture() {
     await trigger(view.findAll('ElButton')[0]!, 'onClick');
     expect(requests('POST')).toHaveLength(1);
   };
-  return { view, props, opening, notice, requests, expand, handle: () => handle };
+  return { view, props, opening, fetch, notice, requests, expand, handle: () => handle };
 }
 
 const previousLocale = i18n.global.locale.value;
@@ -153,6 +153,35 @@ describe('Terminal Dock creation ownership', () => {
       );
       expect(f.requests('DELETE')).toHaveLength(1);
     } finally {
+      f.view.unmount();
+    }
+  });
+
+  it('keeps a created terminal when an older list snapshot arrives after returning to its Dock', async () => {
+    const f = fixture();
+    const listing = pending();
+    try {
+      await f.expand();
+      f.props.active = false;
+      await flushComponent();
+      f.fetch.mockImplementationOnce(async () => listing.promise);
+      f.props.active = true;
+      await flushComponent();
+      f.opening.resolve(response({ terminal }));
+      await flushComponent();
+      expect(f.view.findAll('terminal-view')).toHaveLength(1);
+      listing.resolve(response({ terminals: [] }));
+      await flushComponent();
+      expect(f.view.findAll('terminal-view')[0]?.props['terminalId']).toBe('terminal-a');
+      expect(f.requests('POST')).toHaveLength(1);
+      expect(f.requests('DELETE')).toHaveLength(0);
+      await trigger(
+        f.view.findAll('button').find((b) => b.props['aria-label'] === 'Close terminal 1')!,
+        'onClick'
+      );
+      expect(f.requests('DELETE')).toHaveLength(1);
+    } finally {
+      listing.resolve(response({ terminals: [] }));
       f.view.unmount();
     }
   });
