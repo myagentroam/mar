@@ -742,6 +742,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loading).toContain(
       i18n.global.t('generated.conversationScroll.loadingConversationHistory')
     );
+    expect(loading).toContain('read-loading-indicator');
     expect(loading).not.toContain(
       i18n.global.t('generated.conversationScroll.loadEarlierMessages')
     );
@@ -773,6 +774,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       i18n.global.t('generated.conversationScroll.loadingEarlierMessages')
     );
     expect(loadingOlder).toContain('busy-indicator');
+    expect(loadingOlder).toContain('read-loading-indicator');
+    expect(loadingOlder).not.toContain('data-mar-icon="loading-action"');
     expect(loadingOlder).not.toMatch(
       /<button(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
     );
