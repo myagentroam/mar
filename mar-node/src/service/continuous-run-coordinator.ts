@@ -67,6 +67,12 @@ interface EnqueueDisposition {
   };
 }
 
+interface NativeSteerAdmission {
+  readonly sessionId: string;
+  readonly pauseVersion: number | undefined;
+  readonly task: Promise<boolean>;
+}
+
 export interface ContinuousRunCoordinatorOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
   readonly steer?: (
@@ -122,10 +128,7 @@ export class ContinuousRunCoordinator<TAttachment> {
     string,
     Promise<{ readonly run: NodeAgentRun; readonly delivery: string }>
   >();
-  private readonly steerInFlight = new Map<
-    string,
-    { readonly sessionId: string; readonly task: Promise<boolean> }
-  >();
+  private readonly steerInFlight = new Map<string, NativeSteerAdmission>();
   private suspended = false;
 
   constructor(private readonly options: ContinuousRunCoordinatorOptions) {}
@@ -271,10 +274,10 @@ export class ContinuousRunCoordinator<TAttachment> {
     ) {
       const attempt = this.tryNativeSteer(input.submissionId, active, input.onNativeAccepted);
       if (attempt)
-        return attempt.then((accepted) =>
+        return attempt.task.then((accepted) =>
           accepted
             ? 'ACCEPTED'
-            : this.suspended || this.options.stopped()
+            : !this.nativeSteerPauseCurrent(attempt) || this.suspended || this.options.stopped()
               ? 'QUEUED'
               : this.settleFallback(input)
         );
@@ -300,6 +303,7 @@ export class ContinuousRunCoordinator<TAttachment> {
       (input.steerTarget.executionId === undefined ||
         this.options.runtime.currentExecutionId(active.id) === input.steerTarget.executionId);
     const intent = input.steerTarget !== undefined && !steering ? 'SEND' : input.intent;
+    if (active?.status === 'CANCELLING' && intent !== 'REPLACE_CURRENT') return 'QUEUED';
     if (steering) this.prepareSteering(input.submissionId);
     const executionEnded =
       active !== undefined &&
@@ -405,10 +409,10 @@ export class ContinuousRunCoordinator<TAttachment> {
     if (active) {
       const attempt = this.tryNativeSteer(itemId, active);
       if (attempt)
-        return attempt.then((accepted) =>
+        return attempt.task.then((accepted) =>
           accepted
             ? { run: active, delivery: 'ACCEPTED' }
-            : this.suspended || this.options.stopped()
+            : !this.nativeSteerPauseCurrent(attempt) || this.suspended || this.options.stopped()
               ? { run: active, delivery: 'QUEUED' }
               : this.executeQueueItemFallback(itemId)
         );
@@ -420,9 +424,9 @@ export class ContinuousRunCoordinator<TAttachment> {
     itemId: string,
     active: NodeAgentRun,
     onAccepted?: () => void
-  ): Promise<boolean> | undefined {
+  ): NativeSteerAdmission | undefined {
     const previous = this.steerInFlight.get(itemId);
-    if (previous) return previous.task;
+    if (previous) return previous;
     if (this.suspended || this.options.stopped() || !this.options.steer || !this.canSteer(active))
       return undefined;
     const executionId = this.options.runtime.currentExecutionId(active.id);
@@ -430,6 +434,7 @@ export class ContinuousRunCoordinator<TAttachment> {
     this.prepareSteering(itemId);
     const prepared = this.preparedInputs.get(itemId)!;
     const item = this.options.runtime.getQueueItem(itemId)!;
+    const pauseVersion = this.options.runtime.sessionQueuePauseVersion(item.sessionId);
     const release = this.options.runtime.reserveQueueItem(itemId);
     let attempt: ReturnType<NonNullable<ContinuousRunCoordinatorOptions['steer']>>;
     try {
@@ -448,7 +453,8 @@ export class ContinuousRunCoordinator<TAttachment> {
         onAccepted?.();
         this.options.runtime.consumeSteeredQueueItem(itemId, active.id);
         this.immediateQueueItems.delete(itemId);
-        this.options.runtime.resumeSessionQueue(item.sessionId);
+        if (this.nativeSteerPauseCurrent(admission))
+          this.options.runtime.resumeSessionQueue(item.sessionId);
         this.options.clearImages(itemId);
         if (prepared.goal !== undefined && this.goalCurrent(prepared)) {
           const current = this.preparedInputs.get(executionId);
@@ -491,8 +497,15 @@ export class ContinuousRunCoordinator<TAttachment> {
         this.steerInFlight.delete(itemId);
         this.schedule(item.sessionId);
       });
-    this.steerInFlight.set(itemId, { sessionId: item.sessionId, task });
-    return task;
+    const admission: NativeSteerAdmission = { sessionId: item.sessionId, pauseVersion, task };
+    this.steerInFlight.set(itemId, admission);
+    return admission;
+  }
+
+  private nativeSteerPauseCurrent(admission: NativeSteerAdmission): boolean {
+    return (
+      this.options.runtime.sessionQueuePauseVersion(admission.sessionId) === admission.pauseVersion
+    );
   }
 
   private async executeQueueItemFallback(itemId: string): Promise<{

@@ -78,7 +78,8 @@ export class NodeRuntimeState {
   private readonly queueVersions = new Map<string, number>();
   /** Snapshot version of the last FIFO membership or ordering change. */
   private readonly queueOrderVersions = new Map<string, number>();
-  private readonly pausedQueues = new Set<string>();
+  /** Each pause owns its snapshot version so late admissions cannot undo a newer pause. */
+  private readonly pausedQueues = new Map<string, number>();
   /** Bounded tombstones reject stale internal start envelopes after terminal cleanup. */
   private readonly terminalRunIds = new Map<string, NodeAgentRun | undefined>();
   /**
@@ -326,7 +327,7 @@ export class NodeRuntimeState {
     const queueVersion = this.queueVersions.get(id);
     const queueOrderVersion = this.queueOrderVersions.get(id);
     const lease = this.leases.get(id);
-    const paused = this.pausedQueues.has(id);
+    const pauseVersion = this.pausedQueues.get(id);
 
     this.sessions.delete(id);
     this.sessions.set(nativeSessionId, next);
@@ -368,9 +369,9 @@ export class NodeRuntimeState {
       this.leases.delete(id);
       this.leases.set(nativeSessionId, lease);
     }
-    if (paused) {
+    if (pauseVersion !== undefined) {
       this.pausedQueues.delete(id);
-      this.pausedQueues.add(nativeSessionId);
+      this.pausedQueues.set(nativeSessionId, pauseVersion);
     }
     for (const [key, submission] of [...this.messageSubmissions]) {
       if (!key.startsWith(`${id}\u0000`)) continue;
@@ -632,7 +633,8 @@ export class NodeRuntimeState {
   }
   consumeSteeredQueueItem(itemId: string, runId: string): void {
     const item = this.requireQueueItem(itemId);
-    const run = this.getRun(runId);
+    const activeRun = this.getRun(runId);
+    const run = activeRun ?? this.terminalRunIds.get(runId);
     if (!run || run.sessionId !== item.sessionId || !this.receivingQueueItems.has(itemId))
       throw new Error('QUEUE_ITEM_INVALID');
     this.queuedItems.set(
@@ -641,11 +643,22 @@ export class NodeRuntimeState {
     );
     this.queueItems.delete(itemId);
     this.bumpQueueVersion(item.sessionId);
-    this.messageSubmissions.set(`${item.sessionId}\u0000${item.clientMessageId}`, {
-      kind: 'run',
-      id: run.id
-    });
-    this.recentUserMessages.set(run.id, item.content);
+    const key = `${item.sessionId}\u0000${item.clientMessageId}`;
+    if (activeRun !== undefined) {
+      this.messageSubmissions.set(key, { kind: 'run', id: run.id });
+      this.recentUserMessages.set(run.id, item.content);
+    } else {
+      this.messageSubmissions.delete(key);
+      this.rememberTerminalMessageSubmission(key, run.id);
+    }
+  }
+
+  private rememberTerminalMessageSubmission(key: string, runId: string): void {
+    this.terminalMessageSubmissions.set(key, runId);
+    if (this.terminalMessageSubmissions.size > 1_024)
+      this.terminalMessageSubmissions.delete(
+        this.terminalMessageSubmissions.keys().next().value as string
+      );
   }
 
   claimNextQueueItem(
@@ -717,8 +730,12 @@ export class NodeRuntimeState {
   }
 
   pauseSessionQueue(sessionId: string): void {
-    this.pausedQueues.add(sessionId);
     this.bumpQueueVersion(sessionId, false);
+    this.pausedQueues.set(sessionId, this.queueVersions.get(sessionId)!);
+  }
+
+  sessionQueuePauseVersion(sessionId: string): number | undefined {
+    return this.pausedQueues.get(sessionId);
   }
 
   resumeSessionQueue(sessionId: string): void {
@@ -1288,11 +1305,7 @@ export class NodeRuntimeState {
     for (const [key, candidate] of this.messageSubmissions)
       if (candidate.kind === 'run' && candidate.id === runId) {
         this.messageSubmissions.delete(key);
-        this.terminalMessageSubmissions.set(key, runId);
-        if (this.terminalMessageSubmissions.size > 1_024)
-          this.terminalMessageSubmissions.delete(
-            this.terminalMessageSubmissions.keys().next().value as string
-          );
+        this.rememberTerminalMessageSubmission(key, runId);
       }
     for (const [approvalId, approval] of this.approvals)
       if (approval.runId === runId || executionIds.has(approval.runId))
