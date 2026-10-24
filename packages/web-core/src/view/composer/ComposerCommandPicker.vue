@@ -95,8 +95,8 @@ function statusText(): string {
         @mouseenter="emit('activate', index)"
         @click="emit('select', command)"
       >
-        <strong>/{{ command.id }}</strong
-        ><span>{{ command.description }}</span>
+        <span class="candidate-name">/{{ command.id }}</span>
+        <span class="candidate-description">{{ command.description }}</span>
       </button>
     </template>
     <template v-if="skillsEnabled && skills.length > 0">
@@ -115,8 +115,8 @@ function statusText(): string {
         @mouseenter="emit('activate', commands.length + index)"
         @click="emit('selectSkill', skill)"
       >
-        <strong>{{ skill.name }}</strong
-        ><span>{{ skill.description }}</span>
+        <span class="candidate-name">{{ skill.name }}</span>
+        <span class="candidate-description">{{ skill.description }}</span>
       </button>
     </template>
     <template v-if="quickPrompts.length > 0">
@@ -133,8 +133,8 @@ function statusText(): string {
         @mouseenter="emit('activate', index)"
         @click="emit('selectQuickPrompt', prompt)"
       >
-        <strong v-tooltip="`#${prompt.phrase}`">#{{ prompt.phrase }}</strong>
-        <span class="quick-prompt-content">{{ prompt.prompt }}</span>
+        <span v-tooltip="`#${prompt.phrase}`" class="candidate-name">#{{ prompt.phrase }}</span>
+        <span class="candidate-description">{{ prompt.prompt }}</span>
       </button>
     </template>
     <p v-if="commands.length === 0 && skills.length === 0 && quickPrompts.length === 0">
@@ -168,6 +168,7 @@ function statusText(): string {
 .command-picker button {
   font-family: inherit;
   font-size: var(--mar-font-size-body);
+  font-weight: 400;
   line-height: 1.4;
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -176,7 +177,7 @@ function statusText(): string {
   border-bottom: 1px solid var(--mar-fill-hover);
   border-radius: 0;
   background: var(--mar-control-bg-color-overlay);
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   cursor: pointer;
   padding: 0.55rem 0.65rem;
   text-align: left;
@@ -188,6 +189,7 @@ function statusText(): string {
 
 .command-picker button.active {
   background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .command-picker button:focus-visible {
@@ -195,25 +197,17 @@ function statusText(): string {
   outline-offset: -2px;
 }
 
-.command-picker button strong {
-  font-weight: 600;
-}
-
-.command-picker button span,
+.command-picker .candidate-description,
 .command-picker p {
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
 }
 
-.command-picker button span {
+.command-picker .candidate-description {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.quick-prompt-content {
-  color: var(--mar-text-tertiary);
 }
 
 .command-picker > p:last-child {
@@ -241,7 +235,7 @@ function statusText(): string {
     width: 100%;
   }
 
-  .command-picker strong {
+  .command-picker .candidate-name {
     white-space: nowrap;
   }
 

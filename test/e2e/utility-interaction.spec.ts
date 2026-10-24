@@ -151,11 +151,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(options.first()).toHaveCSS('background-color', colors.selected);
         await options.first().hover();
         await expect(options.first()).toHaveCSS('background-color', colors.selected);
-        await expect(options.first().locator('strong')).toHaveCSS('color', colors.primary);
-        await expect(options.first().locator(kind === 'commands' ? 'span' : 'code')).toHaveCSS(
-          'color',
-          colors.tertiary
-        );
+        await expect(options.first().locator('.candidate-name')).toHaveCSS('color', colors.primary);
+        await expect(
+          options.first().locator(kind === 'commands' ? '.candidate-description' : 'code')
+        ).toHaveCSS('color', colors.tertiary);
         if (kind === 'files')
           await expect(options.first().locator('.entry-kind')).toHaveCSS('color', colors.faint);
       }
@@ -167,6 +166,32 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(page.getByTestId('events')).toContainText('file:second.ts');
     await expect(page.getByTestId('events')).toContainText('command-active:1');
     await expect(page.getByTestId('events')).toContainText('file-active:1');
+  });
+
+  test(`completion names stay regular and inactive names recede in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const candidates of ['commands', 'skills', 'quick-prompts']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}&candidates=${candidates}`
+        );
+        const colors = await palette(page);
+        for (const kind of ['commands', 'files']) {
+          const options = page.getByTestId(kind).getByRole('option');
+          await expect(options).toHaveCount(2);
+          const selectedName = options.first().locator('.candidate-name');
+          const inactiveName = options.nth(1).locator('.candidate-name');
+          await expect(selectedName).toHaveCSS('font-weight', '400');
+          await expect(inactiveName).toHaveCSS('font-weight', '400');
+          await expect(selectedName).toHaveCSS('color', colors.primary);
+          await expect(inactiveName).toHaveCSS('color', colors.secondary);
+          await options.nth(1).hover();
+          await expect(inactiveName).toHaveCSS('color', colors.secondary);
+          await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+          await expect(options.nth(1)).toHaveCSS('background-color', colors.hover);
+        }
+      }
+    }
   });
 }
 

@@ -39,6 +39,20 @@ const commands: RunnerCommand[] = ['first', 'second'].map((id) => ({
   available: true,
   reasonCode: null
 }));
+const candidateKind = new URLSearchParams(location.search).get('candidates') ?? 'commands';
+const skills = commands.map((command) => ({
+  name: command.id,
+  description: command.description,
+  localStatus: 'READY',
+  source: 'WORKSPACE' as const,
+  skillFilePath: `/workspace/.agents/skills/${command.id}/SKILL.md`
+}));
+const quickPrompts = commands.map((command) => ({
+  id: command.id,
+  phrase: command.id,
+  prompt: command.description,
+  updatedAt: 1
+}));
 const entries = [
   { name: 'first.ts', path: '/workspace/first.ts', kind: 'FILE' as const },
   { name: 'second.ts', path: '/workspace/second.ts', kind: 'FILE' as const }
@@ -123,13 +137,13 @@ const request = async <T,>(): Promise<T> => ({}) as T;
     <section class="picker-host" data-testid="commands">
       <ComposerCommandPicker
         :open="true"
-        :commands="commands"
-        :skills="[]"
-        :quick-prompts="[]"
+        :commands="candidateKind === 'commands' ? commands : []"
+        :skills="candidateKind === 'skills' ? skills : []"
+        :quick-prompts="candidateKind === 'quick-prompts' ? quickPrompts : []"
         :quick-prompts-loading="false"
         :quick-prompts-failed="false"
-        picker-kind="runner"
-        :skills-enabled="false"
+        :picker-kind="candidateKind === 'quick-prompts' ? 'quick-prompt' : 'runner'"
+        :skills-enabled="candidateKind === 'skills'"
         :skills-loading="false"
         :skills-failed="false"
         :active-index="0"
