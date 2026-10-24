@@ -98,19 +98,59 @@ for (const theme of ['dark', 'light']) {
       }
       await stop.click();
       await expect(page.getByTestId('stops')).toHaveText('1');
+      const readyColors = await send.evaluate((button) => {
+        const style = getComputedStyle(button);
+        const circle = getComputedStyle(button, '::before');
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          border: style.borderTopColor,
+          circleBackground: circle.backgroundColor,
+          circleBorder: circle.borderTopColor
+        };
+      });
       await send.focus();
       await send.press('Enter');
       await expect(page.getByTestId('sends')).toHaveText('1');
       await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute('aria-busy', 'true');
+      const pending = send.locator('[data-mar-icon="loading-action"]');
+      await expect(pending).toHaveCSS('animation-duration', '1s');
+      await expect(send).toHaveCSS('color', readyColors.color);
+      await expect(send).toHaveCSS('background-color', readyColors.background);
+      await expect(send).toHaveCSS('border-top-color', readyColors.border);
+      await expect(send).toHaveCSS('cursor', 'progress');
+      expect(
+        await send.evaluate((button) => {
+          const circle = getComputedStyle(button, '::before');
+          return { background: circle.backgroundColor, border: circle.borderTopColor };
+        })
+      ).toEqual({ background: readyColors.circleBackground, border: readyColors.circleBorder });
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('sends')).toHaveText('1');
       // Rotation changes the painted bounds, not the icon's layout size.
-      const pendingSize = await send
-        .locator('[data-mar-icon="loading-action"]')
-        .evaluate((graphic) => {
-          const style = getComputedStyle(graphic);
-          return { width: parseFloat(style.width), height: parseFloat(style.height) };
-        });
+      const pendingSize = await pending.evaluate((graphic) => {
+        const style = getComputedStyle(graphic);
+        return { width: parseFloat(style.width), height: parseFloat(style.height) };
+      });
       expect(pendingSize.width).toBeCloseTo(expectedPrimary, 1);
       expect(pendingSize.height).toBeCloseTo(expectedPrimary, 1);
+      if (width !== 360) {
+        await page.screenshot({
+          path: testInfo.outputPath(`sending-${theme}-${mobile ? 'mobile' : 'desktop'}.png`)
+        });
+      }
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(pending).toHaveCSS('animation-name', 'none');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.goto(
+        `${fixture.url}icon-system.html?composer-icons=1&empty-draft=1&theme=${theme}`
+      );
+      await expect(send).toBeDisabled();
+      await expect(send).not.toHaveAttribute('aria-busy', 'true');
+      await expect(send.locator('[data-mar-icon="send"]')).toBeVisible();
+      await expect(send).toHaveCSS('cursor', 'not-allowed');
+      await expect(send).not.toHaveCSS('color', readyColors.color);
     }
     expect(errors).toEqual([]);
   });

@@ -501,12 +501,20 @@ function selectFiles(event: Event): void {
   outline-color: var(--mar-color-danger-text);
 }
 
-.composer-send-button:disabled,
+.composer-send-button:disabled:not([aria-busy='true']),
 .composer-stop-button:disabled {
   cursor: not-allowed;
   border-color: var(--mar-border-default);
   background: var(--mar-fill-soft);
   color: var(--mar-text-faint);
+}
+
+.composer-send-button[aria-busy='true'] {
+  cursor: progress;
+}
+
+.composer-send-button[aria-busy='true'] :deep(.mar-icon[data-mar-icon='loading-action']) {
+  animation-duration: 1s;
 }
 
 @media (max-width: 767px) {
@@ -561,7 +569,7 @@ function selectFiles(event: Event): void {
     background: transparent;
   }
 
-  .composer-send-button:disabled::before,
+  .composer-send-button:disabled:not([aria-busy='true'])::before,
   .composer-stop-button:disabled::before {
     border-color: var(--mar-border-default);
     background: var(--mar-fill-soft);
