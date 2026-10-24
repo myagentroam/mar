@@ -406,13 +406,7 @@ export class SubagentSessionController implements SubagentController {
             snapshot.latestMessage?.truncated === true ||
             (includeTerminalDetails &&
               (snapshot.summary !== state.summary ||
-                (snapshot.changedFiles?.length ?? 0) < state.changedFiles.length ||
-                (snapshot.evidence?.length ?? 0) < state.evidence.length ||
-                (snapshot.verification?.length ?? 0) < state.verification.length ||
-                (snapshot.verification?.some(
-                  (value, index) => value !== state.verification[index]
-                ) ??
-                  false))),
+                (snapshot.changedFiles?.length ?? 0) < state.changedFiles.length)),
           acknowledge: () => {
             state.observedMessageRevision = Math.max(
               state.observedMessageRevision,
@@ -1632,23 +1626,12 @@ export class SubagentSessionController implements SubagentController {
               ? [...state.changedFiles]
               : state.changedFiles.slice(0, TOOL_EXECUTION_LIMITS.subagentChangedFilesMaxItems)
           }),
-      ...(!includeTerminalDetails || !terminal || state.verification.length === 0
+      ...(!full || !includeTerminalDetails || !terminal || state.verification.length === 0
         ? {}
-        : {
-            verification: full
-              ? [...state.verification]
-              : state.verification
-                  .slice(0, TOOL_EXECUTION_LIMITS.subagentVerificationMaxItems)
-                  .map((text) => truncateUtf8(text, 2_000))
-          }),
-      ...(!includeTerminalDetails || !terminal || state.evidence.length === 0
+        : { verification: [...state.verification] }),
+      ...(!full || !includeTerminalDetails || !terminal || state.evidence.length === 0
         ? {}
-        : {
-            evidence: (full
-              ? state.evidence
-              : state.evidence.slice(0, TOOL_EXECUTION_LIMITS.subagentEvidenceMaxItems)
-            ).map((item) => ({ ...item }))
-          }),
+        : { evidence: state.evidence.map((item) => ({ ...item })) }),
       ...(state.errorCode === undefined ? {} : { errorCode: state.errorCode }),
       ...(state.errorMessage === undefined ? {} : { errorMessage: state.errorMessage })
     };
