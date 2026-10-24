@@ -14,7 +14,13 @@ let shutdown: Promise<void> | undefined;
 const stop = () => (shutdown ??= app.shutdown());
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    void stop().finally(() => process.exit(0));
+    void stop().then(
+      () => process.exit(0),
+      () => {
+        console.error(`SERVER_SHUTDOWN_FAILED: Server shutdown failed after ${signal}.`);
+        process.exit(1);
+      }
+    );
   });
 }
 try {
