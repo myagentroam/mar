@@ -277,6 +277,16 @@ onBeforeUnmount(() => {
 }
 
 .conversation-latest {
+  --el-button-text-color: var(--mar-text-secondary);
+  --el-button-bg-color: var(--mar-control-bg-color-overlay);
+  --el-button-border-color: var(--mar-border-default);
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-hover-bg-color: var(--mar-fill-row-hover);
+  --el-button-hover-border-color: var(--mar-border-medium);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-active-bg-color: var(--mar-fill-selection);
+  --el-button-active-border-color: var(--mar-border-medium);
+  --el-button-outline-color: var(--mar-color-brand);
   position: absolute;
   right: 1rem;
   bottom: 0.75rem;

@@ -10,6 +10,75 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Jump to latest uses neutral floating feedback in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 900 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}visual-alignment.html?session-performance=1&theme=${theme}`);
+        await page.getByTestId('leave-latest').click();
+        const latest = page.getByRole('button', { name: 'Jump to latest' });
+        await expect(latest).toBeVisible();
+        await latest.scrollIntoViewIfNeeded();
+        const tokens = await latest.evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          const color = (token: string) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const result = {
+            text: color('--mar-text-secondary'),
+            activeText: color('--mar-text-primary'),
+            background: color('--mar-control-bg-color-overlay'),
+            hover: color('--mar-fill-row-hover'),
+            pressed: color('--mar-fill-selection'),
+            border: color('--mar-border-default'),
+            focus: color('--mar-color-brand')
+          };
+          probe.remove();
+          return result;
+        });
+        await page.mouse.move(0, 0);
+        await expect(latest).toHaveCSS('color', tokens.text);
+        await expect(latest).toHaveCSS('background-color', tokens.background);
+        await expect(latest).toHaveCSS('border-top-color', tokens.border);
+        await page.locator('.conversation-scroll-region').screenshot({
+          path: testInfo.outputPath(`latest-normal-${width}.png`)
+        });
+        await latest.hover();
+        await expect(latest).toHaveCSS('color', tokens.activeText);
+        await expect(latest).toHaveCSS('background-color', tokens.hover);
+        await page.locator('.conversation-scroll-region').screenshot({
+          path: testInfo.outputPath(`latest-hover-${width}.png`)
+        });
+        await page.mouse.move(0, 0);
+        await latest.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(latest).toBeFocused();
+        await expect(latest).toHaveCSS('outline-style', 'solid');
+        await expect(latest).toHaveCSS('outline-color', tokens.focus);
+        await page.locator('.conversation-scroll-region').screenshot({
+          path: testInfo.outputPath(`latest-focus-${width}.png`)
+        });
+        await latest.hover();
+        await page.mouse.down();
+        await expect(latest).toHaveCSS('background-color', tokens.pressed);
+        await page.mouse.up();
+        await expect(latest).toHaveCount(0);
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   test(`Reasoning previews share normalized content and native ellipsis in ${theme}`, async ({
     page
   }, testInfo) => {
