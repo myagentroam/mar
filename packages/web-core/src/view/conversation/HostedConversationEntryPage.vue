@@ -1,46 +1,29 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
-import { computed, onMounted, reactive, ref } from 'vue';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { onMounted, ref } from 'vue';
 import type { HostedConversationSnapshot } from '@myagentroam/protocol';
 import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
+import type { createHostedConversationWorkspaceService } from '../../service/hosted-conversation-workspace-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
+import HostedConversationComposer from './HostedConversationComposer.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
+  readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
+  readonly mobileViewport: boolean;
+  readonly connected?: boolean;
+  readonly createConversation: (snapshot: HostedConversationSnapshot) => Promise<void>;
 }>();
 const emit = defineEmits<{
-  created: [snapshot: HostedConversationSnapshot];
+  started: [];
 }>();
 
 const service = createHostedConversationEntryService(props.request);
-const formRef = ref<FormInstance>();
-const form = reactive({ templateId: '' });
 const loading = ref(false);
-const creating = ref(false);
 const loaded = ref(false);
 let loadSequence = 0;
-
-const templates = service.templates;
-const selected = computed(() =>
-  templates.value.find((template) => template.id === form.templateId)
-);
-const createDisabled = computed(
-  () => creating.value || selected.value === undefined || !selected.value.available
-);
-const rules = computed<FormRules>(() => ({
-  templateId: [
-    {
-      required: true,
-      message: translate('hostedConversations.templateRequired'),
-      trigger: 'change'
-    }
-  ]
-}));
 
 async function load(): Promise<void> {
   const sequence = ++loadSequence;
@@ -48,9 +31,7 @@ async function load(): Promise<void> {
   try {
     await service.loadTemplates();
     if (sequence !== loadSequence) return;
-    form.templateId = service.selectedTemplateId.value ?? '';
     loaded.value = true;
-    formRef.value?.clearValidate();
   } catch (error) {
     if (sequence !== loadSequence) return;
     showMessage(
@@ -63,35 +44,23 @@ async function load(): Promise<void> {
   }
 }
 
-function selectTemplate(templateId: string): void {
-  service.selectTemplate(templateId);
-}
-
-function refreshTemplatesOnOpen(visible: boolean): void {
-  if (visible && !loading.value && !creating.value) void load();
-}
-
-async function create(): Promise<void> {
-  if (creating.value) return;
+async function createConversation(): Promise<boolean> {
   try {
-    await formRef.value?.validate();
-  } catch {
-    return;
-  }
-  if (createDisabled.value) return;
-  creating.value = true;
-  try {
-    service.selectTemplate(form.templateId);
-    emit('created', await service.create());
+    const snapshot = await service.create();
+    await props.createConversation(snapshot);
+    return true;
   } catch (error) {
     showMessage(
       error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed'),
       'error',
       error
     );
-  } finally {
-    creating.value = false;
+    return false;
   }
+}
+
+function refreshTemplatesOnOpen(visible: boolean): void {
+  if (visible && !loading.value) void load();
 }
 
 onMounted(load);
@@ -106,63 +75,21 @@ onMounted(load);
   >
     <div class="conversation-create-panel">
       <div class="conversation-create-heading">
-        <MarIcon name="conversation" class="conversation-create-icon" aria-hidden="true" />
-        <h2>{{ translate('hostedConversations.temporaryTitle') }}</h2>
+        <h2>{{ translate('conversationEmpty.hosted.title') }}</h2>
+        <p>{{ translate('hostedConversations.chooseTemplateHint') }}</p>
       </div>
-
-      <p v-if="loaded && templates.length === 0" class="conversation-template-empty">
-        {{ translate('hostedConversations.noTemplates') }}
-      </p>
-
-      <el-form
-        v-else
-        ref="formRef"
-        class="temporary-conversation-composer"
-        :model="form"
-        :rules="rules"
-        hide-required-asterisk
-        @submit.prevent="create"
-      >
-        <el-form-item
-          class="template-selection-row"
-          :label="translate('hostedConversations.chooseTemplateLabel')"
-          prop="templateId"
-        >
-          <el-select
-            v-model="form.templateId"
-            filterable
-            :placeholder="translate('hostedConversations.templatePlaceholder')"
-            :aria-label="translate('hostedConversations.chooseTemplate')"
-            :disabled="creating"
-            @change="selectTemplate"
-            @visible-change="refreshTemplatesOnOpen"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-          >
-            <el-option
-              v-for="template in templates"
-              :key="template.id"
-              :value="template.id"
-              :label="template.name"
-              :disabled="creating || !template.available"
-            >
-              <span class="template-option-copy">{{ template.name }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-
-        <el-button
-          class="create-conversation-button"
-          native-type="submit"
-          type="primary"
-          :loading="creating"
-          :disabled="createDisabled"
-          :loading-icon="marIcon('loading-action')"
-        >
-          <MarIcon name="session-add" />
-          <span>{{ translate('hostedConversations.start') }}</span>
-        </el-button>
-      </el-form>
+      <HostedConversationComposer
+        :connected="connected"
+        :workspace="workspace"
+        :mobile-viewport="mobileViewport"
+        :readonly="false"
+        readonly-reason=""
+        draft
+        :entry="service"
+        :create-conversation="createConversation"
+        :reload-templates="refreshTemplatesOnOpen"
+        @started="emit('started')"
+      />
     </div>
   </section>
 </template>
@@ -177,145 +104,52 @@ onMounted(load);
   flex: 1 1 auto;
   place-items: center;
   padding: 24px;
-  text-align: center;
 }
 
 .conversation-create-panel {
   box-sizing: border-box;
   display: grid;
-  width: min(400px, 100%);
+  width: min(45rem, 100%);
   min-width: 0;
-  gap: 18px;
-  padding: 22px 24px 24px;
+  gap: 1rem;
 }
 
 .conversation-create-heading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.conversation-create-icon {
-  width: 22px;
-  height: 22px;
-  flex: none;
-  color: var(--mar-color-brand);
-  font-size: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  text-align: center;
 }
 
 .conversation-create-heading h2 {
   margin: 0;
   color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-title);
-  line-height: 1.35;
+  font-size: var(--mar-font-size-page-title);
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.conversation-template-empty {
-  margin: 8px 0 0;
+.conversation-create-heading p {
+  max-width: 32rem;
+  margin: 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.6;
-}
-
-.temporary-conversation-composer {
-  display: grid;
-  width: 100%;
-  grid-template-columns: auto minmax(0, 240px);
-  justify-content: center;
-  row-gap: 14px;
-}
-
-.temporary-conversation-composer :deep(.el-form-item) {
-  margin: 0;
-}
-
-.template-selection-row {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  align-items: start;
-}
-
-.template-selection-row :deep(.el-form-item__label) {
-  min-height: 36px;
-  padding-right: 12px;
-  color: var(--mar-text-secondary);
-  font-weight: 600;
-  line-height: 36px;
-}
-
-.template-selection-row :deep(.el-form-item__content) {
-  width: 100%;
-  min-width: 0;
-}
-
-.temporary-conversation-composer :deep(.el-select) {
-  width: 100%;
-}
-
-.temporary-conversation-composer :deep(.el-select__wrapper) {
-  min-height: 36px;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 6px;
-  background: var(--mar-bg-page);
-  box-shadow: none;
-  padding-inline: 8px 28px;
-  transition:
-    border-color 120ms ease,
-    background-color 120ms ease;
-}
-
-.temporary-conversation-composer :deep(.el-select__wrapper:hover),
-.temporary-conversation-composer :deep(.el-select__wrapper.is-focused) {
-  border-color: var(--mar-color-brand-border);
-  background: var(--mar-bg-panel);
-  box-shadow: none;
-}
-
-.template-option-copy {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.create-conversation-button {
-  min-width: 132px;
-  grid-column: 2;
-  justify-self: start;
-  padding-inline: 18px;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 767px) {
   .hosted-entry-page {
-    padding: 16px;
-  }
-
-  .conversation-create-panel {
-    gap: 16px;
-    padding: 20px;
-  }
-
-  .temporary-conversation-composer {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .template-selection-row {
-    gap: 4px;
-  }
-
-  .template-selection-row :deep(.el-form-item__label) {
-    justify-content: flex-start;
+    place-items: end stretch;
     padding: 0;
   }
 
-  .create-conversation-button {
+  .conversation-create-panel {
     width: 100%;
-    grid-column: 1;
+  }
+
+  .conversation-create-heading {
+    display: none;
   }
 }
 </style>

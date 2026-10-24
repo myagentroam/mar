@@ -14,6 +14,7 @@ import {
   hostedConversationSubmissionContext,
   type createHostedConversationWorkspaceService
 } from '../../service/hosted-conversation-workspace-service.js';
+import type { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
 import {
   conversationActivityLabel,
@@ -31,7 +32,7 @@ interface HostedAttachment {
   readonly controller: AbortController;
   fileId?: string;
   receivedBytes: number;
-  status: 'UPLOADING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'UPLOADING' | 'COMPLETED' | 'FAILED';
   error?: string;
 }
 
@@ -41,6 +42,13 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly readonly: boolean;
   readonly readonlyReason: string;
+  readonly draft?: boolean;
+  readonly entry?: ReturnType<typeof createHostedConversationEntryService>;
+  readonly createConversation?: () => Promise<boolean>;
+  readonly reloadTemplates?: (visible: boolean) => void;
+}>();
+const emit = defineEmits<{
+  started: [];
 }>();
 
 const input = ref('');
@@ -49,6 +57,7 @@ const attachments = ref<HostedAttachment[]>([]);
 const draggingAttachments = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const configurationUpdating = ref(false);
+const starting = ref(false);
 let messageIntent:
   | {
       readonly fingerprint: string;
@@ -73,8 +82,9 @@ const selectedSubmissionContext = computed(() => {
 });
 const submitting = computed(
   () =>
-    props.workspace.messageSubmitting.value &&
-    props.workspace.messageSubmissionContext.value === selectedSubmissionContext.value
+    starting.value ||
+    (props.workspace.messageSubmitting.value &&
+      props.workspace.messageSubmissionContext.value === selectedSubmissionContext.value)
 );
 const activeRun = computed(() => {
   const run = snapshot.value?.run;
@@ -106,13 +116,20 @@ const {
 const pendingAttachments = computed(() =>
   attachments.value.some((attachment) => attachment.status === 'UPLOADING')
 );
+const failedDraftAttachments = computed(
+  () =>
+    props.draft === true && attachments.value.some((attachment) => attachment.status === 'FAILED')
+);
 const completedAttachmentIds = computed(() =>
   attachments.value.flatMap((attachment) =>
     attachment.status === 'COMPLETED' && attachment.fileId !== undefined ? [attachment.fileId] : []
   )
 );
 const inputHasContent = computed(
-  () => input.value.trim().length > 0 || completedAttachmentIds.value.length > 0
+  () =>
+    input.value.trim().length > 0 ||
+    completedAttachmentIds.value.length > 0 ||
+    attachments.value.some((attachment) => attachment.status === 'PENDING')
 );
 const canReplaceCurrent = computed(
   () =>
@@ -139,7 +156,7 @@ const elapsedLabel = computed(() =>
 );
 const models = computed(() => snapshot.value?.models ?? []);
 const selectedModelId = computed(() => snapshot.value?.conversation.modelId ?? '');
-const modelUnavailable = computed(() => models.value.length === 0);
+const modelUnavailable = computed(() => snapshot.value !== undefined && models.value.length === 0);
 const modelSelectionDisabled = computed(
   () =>
     props.readonly ||
@@ -153,6 +170,14 @@ const selectedModelLabel = computed(
     models.value.find((model) => model.id === selectedModelId.value)?.name ?? selectedModelId.value
 );
 const templateName = computed(() => snapshot.value?.conversation.templateName ?? '');
+const draftTemplates = computed(() => props.entry?.templates.value ?? []);
+const draftTemplateId = computed(() => props.entry?.selectedTemplateId.value ?? '');
+const draftTemplateName = computed(
+  () =>
+    draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
+    translate('hostedConversations.templatePlaceholder')
+);
+const templateSelectionDisabled = computed(() => props.readonly || starting.value);
 const loadedTemplateLabel = computed(() =>
   templateName.value === ''
     ? ''
@@ -196,11 +221,11 @@ function queueFiles(files: Iterable<File>): void {
       clientRequestId: crypto.randomUUID(),
       controller: new AbortController(),
       receivedBytes: 0,
-      status: 'UPLOADING'
+      status: props.draft && snapshot.value === undefined ? 'PENDING' : 'UPLOADING'
     };
     attachments.value = [...attachments.value, attachment];
     messageIntent = undefined;
-    void uploadAttachment(attachment);
+    if (attachment.status === 'UPLOADING') void uploadAttachment(attachment);
   }
 }
 
@@ -278,8 +303,18 @@ function messageFingerprint(): string {
   return JSON.stringify({
     input: input.value,
     attachments: completedAttachmentIds.value,
-    modelId: selectedModelId.value
+    modelId: selectedModelId.value,
+    templateId: draftTemplateId.value
   });
+}
+
+function selectTemplate(templateId: string): void {
+  props.entry?.selectTemplate(templateId);
+  messageIntent = undefined;
+}
+
+function refreshDraftTemplates(visible: boolean): void {
+  if (visible) props.reloadTemplates?.(true);
 }
 
 async function confirmDroppedAttachments(files: readonly File[]): Promise<boolean> {
@@ -305,17 +340,43 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   if (
     composerReadonly.value ||
     pendingAttachments.value ||
-    !inputHasContent.value ||
-    snapshot.value === undefined
+    failedDraftAttachments.value ||
+    !inputHasContent.value
   )
     return;
-  const submittedMessage = messageFingerprint();
-  const submittedAttachments = attachments.value;
-  const fingerprint = JSON.stringify({ deliveryIntent, message: submittedMessage });
-  if (messageIntent?.fingerprint !== fingerprint)
-    messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
-  const submittedIntent = messageIntent;
+  const creating = props.draft === true && snapshot.value === undefined;
+  if (creating) {
+    const template = draftTemplates.value.find(
+      (candidate) => candidate.id === draftTemplateId.value && candidate.available
+    );
+    if (template === undefined) {
+      showMessage(translate('hostedConversations.templateRequired'), 'warning');
+      return;
+    }
+  }
+  starting.value = creating;
+  let submittedIntent: typeof messageIntent;
   try {
+    if (creating) {
+      if (props.createConversation === undefined || !(await props.createConversation())) return;
+      if (snapshot.value === undefined) return;
+      const pending = attachments.value.filter((attachment) => attachment.status === 'PENDING');
+      await Promise.all(pending.map((attachment) => uploadAttachment(attachment)));
+      const pendingIds = new Set(pending.map((attachment) => attachment.id));
+      if (
+        attachments.value.some(
+          (attachment) => pendingIds.has(attachment.id) && attachment.status !== 'COMPLETED'
+        )
+      )
+        return;
+    }
+    if (snapshot.value === undefined || (creating && modelUnavailable.value)) return;
+    const submittedMessage = messageFingerprint();
+    const submittedAttachments = attachments.value;
+    const fingerprint = JSON.stringify({ deliveryIntent, message: submittedMessage });
+    if (messageIntent?.fingerprint !== fingerprint)
+      messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
+    submittedIntent = messageIntent;
     await props.workspace.sendMessage({
       prompt: input.value,
       attachmentIds: completedAttachmentIds.value,
@@ -334,10 +395,13 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
     attachments.value = [];
     messageIntent = undefined;
+    if (props.draft) emit('started');
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
     showMessage(hostedErrorMessage(error), 'error', error);
+  } finally {
+    starting.value = false;
   }
 }
 
@@ -431,12 +495,13 @@ onBeforeUnmount(() => {
     :working-busy="!readonly && conversationActivityBusy(activeRun, workspace.turns.value)"
     :elapsed-label="elapsedLabel"
     :connection-busy="
-      connected === false || (!workspace.watchReady.value && !workspace.watchFailureCode.value)
+      connected === false ||
+      (!draft && !workspace.watchReady.value && !workspace.watchFailureCode.value)
     "
     :connection-label="
       connected === false
         ? translate('conversationActivity.reconnecting')
-        : !workspace.watchReady.value && !workspace.watchFailureCode.value
+        : !draft && !workspace.watchReady.value && !workspace.watchFailureCode.value
           ? translate('conversationActivity.syncing')
           : ''
     "
@@ -458,7 +523,10 @@ onBeforeUnmount(() => {
         <li v-for="attachment in attachments" :key="attachment.id">
           <img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.name" />
           <span v-tooltip="attachment.name">{{ attachment.name }}</span>
-          <small v-if="attachment.status === 'UPLOADING'" role="status" aria-live="polite">
+          <small v-if="attachment.status === 'PENDING'" role="status" aria-live="polite">
+            {{ translate('hostedConversations.uploadAfterCreate') }}
+          </small>
+          <small v-else-if="attachment.status === 'UPLOADING'" role="status" aria-live="polite">
             {{
               translate('hostedConversations.uploadProgress', {
                 value: Math.round(
@@ -520,7 +588,7 @@ onBeforeUnmount(() => {
         >
           <MarIcon name="attachment" />
         </button>
-        <div class="hosted-model-slot">
+        <div v-if="snapshot" class="hosted-model-slot">
           <el-dropdown
             class="hosted-model-menu"
             :disabled="modelSelectionDisabled"
@@ -552,6 +620,43 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
+        <el-dropdown
+          v-if="draft && !snapshot"
+          class="hosted-template-menu"
+          :disabled="templateSelectionDisabled"
+          trigger="click"
+          @command="selectTemplate(String($event))"
+          @visible-change="refreshDraftTemplates"
+        >
+          <button
+            v-tooltip="draftTemplateName"
+            class="hosted-template-name hosted-template-trigger"
+            type="button"
+            :disabled="templateSelectionDisabled"
+            :aria-label="translate('hostedConversations.chooseTemplate')"
+            :aria-description="draftTemplateName"
+          >
+            <MarIcon name="document" aria-hidden="true" />
+            <span>{{ draftTemplateName }}</span>
+            <MarIcon name="chevron-down" aria-hidden="true" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-if="draftTemplates.length === 0" disabled>
+                {{ translate('hostedConversations.noTemplates') }}
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-for="template in draftTemplates"
+                :key="template.id"
+                :command="template.id"
+                :disabled="!template.available"
+                :class="{ 'is-selected': template.id === draftTemplateId }"
+              >
+                {{ template.name }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <span
           v-tooltip="loadedTemplateLabel"
           v-if="templateName"
@@ -588,6 +693,7 @@ onBeforeUnmount(() => {
           :disabled="
             composerReadonly ||
             pendingAttachments ||
+            failedDraftAttachments ||
             !inputHasContent ||
             configurationUpdating ||
             modelUnavailable
@@ -721,6 +827,21 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
+.hosted-template-name.hosted-template-trigger {
+  width: auto;
+  max-width: 22rem;
+  cursor: pointer;
+}
+
+.hosted-template-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hosted-template-name.hosted-template-trigger > span {
+  max-width: 16rem;
+}
+
 .hosted-model-trigger,
 .hosted-template-name {
   min-height: var(--mar-compact-control-size);
@@ -830,6 +951,16 @@ onBeforeUnmount(() => {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+  }
+
+  .hosted-template-menu {
+    width: 100%;
+    grid-column: 2 / 4;
+  }
+
+  .hosted-template-name.hosted-template-trigger {
+    width: 100%;
+    max-width: 100%;
   }
 
   .hosted-send-button,

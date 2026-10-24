@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-24
 ---
 
 # Start a Conversation from a Template
@@ -10,10 +10,10 @@ lastUpdated: 2026-10-23
 ## Create a conversation
 
 1. Open **Chat** from the main menu to enter Conversation mode. The entry is always visible and does not require you to select or receive access to any Node or Workspace.
-2. If an existing conversation is open, select **+ New chat** above the history search field to show the temporary new-conversation panel in the center. The page does not open a dialog.
-3. Select a published template granted to your current organization or one of its ancestors from the list above **Start chat**. A template grant is sufficient to create and continue your own hosted conversations; it does not also grant access to the hosting Node, source Workspace, files, or terminal. A grant to the root organization makes the template available to everyone in the enterprise. This browser remembers the most recently selected template and selects it by default while it remains in the current catalog.
-4. If no remembered selection can be restored and only one template is available, the page may preselect that template but never creates a conversation automatically. Review the template name and description, then explicitly select **Start chat**.
-5. Wait for the success notice. If the network response is interrupted, retry directly. Unless you switch templates or reload the catalog, the retry remains part of the same creation intent and does not create a duplicate.
+2. If an existing conversation is open, select **+ New chat** above the history search field to show the temporary Composer start area in the center. The page does not open a dialog.
+3. Select a published template granted to your current organization or one of its ancestors from the Composer toolbar. A template grant is sufficient to create and continue your own hosted conversations; it does not also grant access to the hosting Node, source Workspace, files, or terminal. A grant to the root organization makes the template available to everyone in the enterprise. This browser remembers the most recently selected template and selects it by default while it remains in the current catalog.
+4. If no remembered selection can be restored and only one template is available, the page may preselect that template but never creates a conversation automatically. Review the template name, then explicitly send a message or attachment. The page creates the conversation, uploads any draft attachments, and sends the first message in that order.
+5. If the creation response is interrupted, retry directly. Unless you switch templates or reload the catalog, the retry remains part of the same creation intent and does not create a duplicate.
 
 Creation binds the template version available at that time. Later draft edits do not affect the conversation, and publishing a new version does not switch it immediately. Before each new Run, Node queries and fully validates the latest available version, then starts the Run with that candidate. The switch becomes atomic only after the Run starts successfully and the message is accepted. Disabling, archiving, or deleting a template does not rewrite the template-name snapshot or last active version of an existing conversation.
 
@@ -26,6 +26,8 @@ Opening an existing conversation displays three areas:
 - **Related files:** Shows only Node-projected `inbox/` uploads and `output/` files. Ordinary paths or natural-language text in an Agent response never create file entries. An explicit Markdown file link opens only when it targets `/workspace/inbox`, `/workspace/output`, or uniquely matches a current related-file projection. Drop multiple files into the upload area or click it to choose files. Selecting a file row or valid message link opens the same unified read-only file preview used by the regular Workbench, including download. Text larger than 512 KiB shows only its first range; images, PDFs, audio/video, and supported Office files preview through a controlled content stream and use the same file's download endpoint.
 
 On desktop, conversation history uses the same left-side menu area as other pages. Select **Fold** to fold both the brand area and conversation history so the main conversation moves left; select **Expand** to restore conversation history. Related files remain on the right of the main conversation.
+
+Before creation, **Related files** shows only an explanation and has no upload target without a conversation. Once the first send creates the conversation, the upload area and file list become available in place.
 
 Mobile does not show the global **Expand/Fold** control or three tabs. Select **Chat** in the top navigation again to open the history drawer, and use the **Files** button at the top-right of the main conversation to open related files. Selecting a conversation or the scrim outside a drawer closes it.
 
@@ -99,6 +101,6 @@ When you select **Delete**, the confirmation states that the action cannot be un
 - A template grant does not add the hosting Node or source Workspace to **Work**. Ordinary Workspace, file, terminal, or Node operations still require a separate resource grant.
 - The page stores only the most recently selected template ID in this browser and safely ignores it when that template is no longer available. It never creates a conversation silently when opened, refreshed, or reduced to one template. **+ New chat** only opens the temporary center panel.
 
-**Success:** the page shows the new conversation title and a creation confirmation.
+**Success:** the page shows the new conversation title and first message, and **Related files** is available.
 
 If no template is selectable, ask an administrator to check template publishing and template access. If creation reports a hosting, version, isolation, or storage-capacity problem, an administrator should inspect the corresponding Node. Administrators can see [Manage Conversation Templates](../administration/conversation-templates.md).
