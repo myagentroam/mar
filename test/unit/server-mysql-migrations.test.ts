@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CORE_MYSQL_BASELINE_VERSION,
@@ -35,9 +36,41 @@ describe.each([
   ['Core', validateCoreMysqlDatabase],
   ['Enterprise', validateEnterpriseMysqlDatabase]
 ] as const)('%s Session share startup references', (_edition, validate) => {
-  it.each(['owner', 'Node', 'Workspace', 'Workspace on another Node'])(
-    'rejects a share with a missing %s reference',
-    async () => {
+  it.each([
+    { reference: 'valid', owner: 42, node: 'share-node', workspace: 'share-workspace' },
+    { reference: 'missing owner', owner: 43, node: 'share-node', workspace: 'share-workspace' },
+    { reference: 'missing Node', owner: 42, node: 'missing-node', workspace: 'share-workspace' },
+    {
+      reference: 'missing Workspace',
+      owner: 42,
+      node: 'share-node',
+      workspace: 'missing-workspace'
+    },
+    {
+      reference: 'Workspace on another Node',
+      owner: 42,
+      node: 'share-node',
+      workspace: 'other-workspace'
+    }
+  ])('validates $reference share references against relational fixtures', async (share) => {
+    const fixture = new DatabaseSync(':memory:');
+    try {
+      fixture.exec(`
+        CREATE TABLE users (id INTEGER PRIMARY KEY);
+        CREATE TABLE nodes (id TEXT PRIMARY KEY);
+        CREATE TABLE workspaces (workspace_id TEXT, node_id TEXT, PRIMARY KEY (node_id, workspace_id));
+        CREATE TABLE session_shares (user_id INTEGER, node_id TEXT, workspace_id TEXT);
+        INSERT INTO users VALUES (42);
+        INSERT INTO nodes VALUES ('share-node'), ('other-node');
+        INSERT INTO workspaces VALUES ('other-workspace', 'other-node');
+      `);
+      // Keep the Workspace present when its Node is missing to isolate the Node predicate.
+      fixture
+        .prepare('INSERT INTO workspaces VALUES (?, ?)')
+        .run('share-workspace', share.reference === 'missing Node' ? 'missing-node' : 'share-node');
+      fixture
+        .prepare('INSERT INTO session_shares VALUES (?, ?, ?)')
+        .run(share.owner, share.node, share.workspace);
       const query = vi.fn(async (sql: string) => {
         const table = /^SHOW CREATE TABLE `([^`]+)`/u.exec(sql)?.[1];
         if (table)
@@ -45,25 +78,19 @@ describe.each([
             [{ 'Create Table': { ...CORE_MYSQL_SCHEMA, ...ENTERPRISE_MYSQL_SCHEMA }[table] }],
             []
           ];
-        return [sql.includes('FROM session_shares') ? [{ orphan: 1 }] : [], []];
+        // Execute the production share query, not a precomputed orphan result.
+        // The MySQL integration suite separately covers the real startup boundary.
+        return [sql.includes('FROM session_shares') ? fixture.prepare(sql).all() : [], []];
       });
-      await expect(validate({ query, execute: vi.fn(), release: vi.fn() })).rejects.toThrow(
-        'SERVER_DATABASE_REFERENCE_INVALID'
-      );
+      const validation = validate({ query, execute: vi.fn(), release: vi.fn() });
+      if (share.reference === 'valid') {
+        await expect(validation).resolves.toBeUndefined();
+      } else {
+        await expect(validation).rejects.toThrow('SERVER_DATABASE_REFERENCE_INVALID');
+      }
+    } finally {
+      fixture.close();
     }
-  );
-
-  it('accepts a share whose owner, Node and Node-scoped Workspace exist', async () => {
-    const query = vi.fn(async (sql: string) => {
-      const table = /^SHOW CREATE TABLE `([^`]+)`/u.exec(sql)?.[1];
-      return [
-        table
-          ? [{ 'Create Table': { ...CORE_MYSQL_SCHEMA, ...ENTERPRISE_MYSQL_SCHEMA }[table] }]
-          : [],
-        []
-      ];
-    });
-    await expect(validate({ query, execute: vi.fn(), release: vi.fn() })).resolves.toBeUndefined();
   });
 });
 
