@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/protocol",
-  "version": "0.11.15",
+  "version": "0.11.16",
   "description": "Shared runtime protocol schemas for MyAgentRoam.",
   "license": "Apache-2.0",
   "type": "module",
