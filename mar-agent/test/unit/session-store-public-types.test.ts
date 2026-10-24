@@ -28,8 +28,46 @@ it('allows an external strict NodeNext consumer to implement and inject the Stor
       join(root, 'consumer.mts'),
       [
         "import { createMarAgent, openMarAgentSessionCatalog, type CreateMarAgentOptions, type SessionStore } from '@myagentroam/agent';",
+        "import type { SessionStoreCompactInput, CompactHistoryMessage, ModelMessage, ModelUsage, ModelInputMetadata, ModelTextBlock, ModelContextualBlock, EnvironmentContextState } from '@myagentroam/agent';",
+        "import type { SessionExecutionState, TodoSnapshot, TodoItem, CodeToolCallRecord, CodeObservation } from '@myagentroam/agent';",
+        "import type { ContextGcCheckpointDraft, ContextGcBase, ContextGcPlatform, ContextGcEconomicsPolicy, ContextGcMetrics, ContextGcReplacement, ContextGcTarget, ContextGcReadItemReplacement, ContextGcWebToolName, ContextGcSubagentToolName } from '@myagentroam/agent';",
+        '// @ts-expect-error Model adapters are not a public extension point.',
+        "import type { ModelAdapter } from '@myagentroam/agent';",
+        '// @ts-expect-error Internal implementation paths remain outside package exports.',
+        "import type { ModelRequest } from '@myagentroam/agent/agent-core/model/contracts.js';",
         "import { textSessionStore } from './store.mjs';",
-        'const store: SessionStore = textSessionStore().store;',
+        "const todoItem: TodoItem = { id: 'verify', step: 'Verify the Store', status: 'pending' };",
+        'const todo: TodoSnapshot = { revision: 1, items: [todoItem] };',
+        'const state: SessionExecutionState = { automaticTitlePending: false, todo, contextRecords: [] };',
+        'const store: SessionStore = { ...textSessionStore().store, readExecutionState: async () => state };',
+        "const metadata: ModelInputMetadata = { source: 'user', recordId: 'input' };",
+        "const textBlock: ModelTextBlock = { text: 'Retained input' };",
+        "const contextualBlock: ModelContextualBlock = { id: 'environment', kind: 'environment', source: 'sdk', authority: 'context', revision: '1', operation: 'replace' };",
+        "const call: CodeToolCallRecord = { callId: 'read', toolName: 'read', input: { path: 'file.ts' }, status: 'completed' };",
+        "const observation: CodeObservation = { type: 'value', id: 'value', format: 'text', value: 'Retained evidence' };",
+        "const message: ModelMessage = { role: 'user', content: textBlock.text, textBlocks: [textBlock], metadata, contextKind: 'contextual', contextualBlock };",
+        "const result: ModelMessage = { role: 'tool', content: 'Retained evidence', callId: 'code', name: 'code_exec', calls: [call], observations: [observation] };",
+        'const usage: ModelUsage = { totalInputTokens: 20, inputTokens: 20, outputTokens: 2 };',
+        "const environment: EnvironmentContextState = { platform: 'linux', workspace: '/workspace' };",
+        "const replacement: CompactHistoryMessage = { role: 'user', kind: 'summary', content: 'Summary', metadata };",
+        "const compact: SessionStoreCompactInput = { summary: 'Summary', replacementHistory: [replacement], retainedModelContext: [message, result], environment, usage };",
+        "void store.compact('session', compact);",
+        'function persistGc(draft: ContextGcCheckpointDraft) {',
+        '  const base: ContextGcBase = draft.base;',
+        '  const platform: ContextGcPlatform = draft.trigger.platform;',
+        '  const economics: ContextGcEconomicsPolicy = { ...draft.economics, version: 1 };',
+        '  const metrics: ContextGcMetrics = { ...draft.metrics, reclaimedTokens: 100 };',
+        "  const target: ContextGcTarget = { sequence: 1, recordId: 'tool', role: 'tool' };",
+        "  const item: ContextGcReadItemReplacement = { index: 0, path: 'file.ts', replacement: 'Superseded', evidenceSequence: 2 };",
+        "  const webTool: ContextGcWebToolName = 'web_fetch';",
+        "  const subagentTool: ContextGcSubagentToolName = 'agent_wait';",
+        '  const replacements: ContextGcReplacement[] = [',
+        "    { kind: 'READ_OUTPUT_ITEMS', callId: 'read', target, items: [item], evidenceSequences: [2] },",
+        "    { kind: 'WEB_OUTPUT', toolName: webTool, callId: 'web', target, replacementContent: 'Superseded', evidenceSequence: 2 },",
+        "    { kind: 'SUBAGENT_OUTPUT', toolName: subagentTool, callId: 'wait', target, replacementContent: 'Superseded', terminalToolName: subagentTool, terminalCallId: 'done', evidenceSequence: 2 }",
+        '  ];',
+        "  return store.commitContextGc('session', { ...draft, base, trigger: { ...draft.trigger, platform }, economics, metrics, replacements });",
+        '}',
         'declare const options: CreateMarAgentOptions;',
         'void createMarAgent({ ...options, sessionStore: store });',
         'void openMarAgentSessionCatalog({ sessionStore: store });',
@@ -57,7 +95,11 @@ it('allows an external strict NodeNext consumer to implement and inject the Stor
       '--typeRoots',
       nodeTypes,
       join(root, 'consumer.mts')
-    ]);
+    ]).catch((error) => {
+      throw new Error(`Public Store consumer failed to compile:\n${error.stdout}${error.stderr}`, {
+        cause: error
+      });
+    });
     expect(result.stderr).toBe('');
   } finally {
     await rm(root, { recursive: true, force: true });

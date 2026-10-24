@@ -28,7 +28,28 @@ export type {
   SessionRecord
 } from './types.js';
 export type { CodeModeStateEntry } from '../../tools/code-mode/state.js';
-export type { ContextGcCheckpointDraft } from '../context-gc-checkpoint.js';
+export type { TodoSnapshot, TodoItem } from '../../tools/contracts.js';
+export type { CodeToolCallRecord, CodeObservation } from '../../tools/code-mode/observations.js';
+export type {
+  ModelMessage,
+  ModelUsage,
+  ModelInputMetadata,
+  ModelTextBlock,
+  ModelContextualBlock
+} from '../../model/contracts.js';
+export type { EnvironmentContextState } from '../../runtime/context/contracts.js';
+export type {
+  ContextGcCheckpointDraft,
+  ContextGcBase,
+  ContextGcPlatform,
+  ContextGcEconomicsPolicy,
+  ContextGcMetrics,
+  ContextGcReplacement,
+  ContextGcTarget,
+  ContextGcReadItemReplacement
+} from '../context-gc-checkpoint.js';
+export type { ContextGcWebToolName } from '../context-gc-replacements.js';
+export type { ContextGcSubagentToolName } from '../context-gc-subagent.js';
 export type { AvailableToolResultResource } from '../../tools/result-extensions.js';
 
 /** Logical Session identity, without a physical index or recovery layout. */
