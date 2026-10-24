@@ -80,7 +80,7 @@ for (const theme of ['daylight', 'midnight']) {
       const tokens = await remove.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.cssText =
-          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-hover);border-color:var(--mar-color-brand)';
+          'position:absolute;color:var(--mar-text-primary);background:transparent;border-color:var(--mar-color-brand)';
         element.append(probe);
         const style = getComputedStyle(probe);
         const colors = {
@@ -115,6 +115,9 @@ for (const theme of ['daylight', 'midnight']) {
       await expect(remove).toHaveCSS('outline-style', 'solid');
       await expect(remove).toHaveCSS('outline-width', '2px');
       await expect(remove).toHaveCSS('outline-color', tokens.focus);
+      await expect(remove).toHaveCSS('outline-offset', '2px');
+      await expect(remove).toHaveCSS('color', tokens.foreground);
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
       await remove.evaluate((element: HTMLButtonElement) => {
         element.disabled = true;

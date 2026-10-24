@@ -268,7 +268,7 @@ const emit = defineEmits<{
                   <button
                     v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                     type="button"
-                    class="icon-button workbench-notification-delete"
+                    class="icon-button utility-control workbench-notification-delete"
                     :aria-label="
                       translate('generated.workbenchNotificationCenter.delete', {
                         value0: task.name
@@ -309,7 +309,7 @@ const emit = defineEmits<{
                   }}</time>
                 </button>
                 <button
-                  class="icon-button workbench-notification-delete"
+                  class="icon-button utility-control workbench-notification-delete"
                   :aria-label="
                     translate('generated.workbenchNotificationCenter.deleteNotification', {
                       value0: notification.title

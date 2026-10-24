@@ -52,6 +52,7 @@ async function render(section: SettingsSection, slots = {}) {
       )
   });
   app.use(i18n).use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 810, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return { html: await renderToString(app), request };
