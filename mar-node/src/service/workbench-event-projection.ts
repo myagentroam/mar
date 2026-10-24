@@ -9,7 +9,7 @@ import {
   isNodeAgentRun,
   isNodeConversationTurn,
   isPlainRecord
-} from '../runner/codex/conversation-parser.js';
+} from '../util/node-operation-parsers.js';
 
 export interface WorkbenchEventProjectionQueries {
   readonly getRun: NodeRuntimeState['getRun'];

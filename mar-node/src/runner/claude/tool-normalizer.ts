@@ -3,7 +3,7 @@ import {
   compactRunnerText,
   compactRunnerValue
 } from '../../util/node-operation-parsers.js';
-import type { NativeTranscriptToolCall } from '../../native-session-history.js';
+import type { NativeTranscriptToolCall } from '../../native-transcript-model.js';
 import {
   RunnerUsageTracker,
   usageToken,

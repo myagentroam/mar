@@ -6,7 +6,7 @@ import { imageRefSchema } from '@myagentroam/protocol';
 import type { CodexComposerInput } from '../codex-app-server.js';
 import type { NodeAgentSession } from '../database.js';
 import type { NodeMessageAttachmentInput } from '../runtime-model.js';
-import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import {
   AttachmentDomainState,
   type SessionAttachmentRetention

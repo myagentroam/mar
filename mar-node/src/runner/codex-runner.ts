@@ -34,14 +34,16 @@ import { discoverAllNativeSessions } from '../native-session-history.js';
 import { readCodexNativeContextUsage } from '../native-session-history.js';
 import {
   codexThreadCwd,
-  codexThreadHistoryModes,
-  codexPaginatedThread,
-  codexPaginatedCursor,
-  codexPaginatedConversationPage,
   deduplicateDirectSessions,
   extractCodexThreads,
   isWithinWorkspace,
   latestNativeActivity
+} from '../util/runner-native-session-parsers.js';
+import {
+  codexThreadHistoryModes,
+  codexPaginatedThread,
+  codexPaginatedCursor,
+  codexPaginatedConversationPage
 } from './codex/conversation-parser.js';
 import { codexSessionControl } from '../codex-app-server.js';
 import { extractId } from '../util/runner-native-session-parsers.js';

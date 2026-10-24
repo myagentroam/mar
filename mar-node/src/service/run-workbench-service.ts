@@ -4,7 +4,7 @@ import { nodeOperationData } from '../util/node-operation-data.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import { isTerminalRunStatus } from '../util/node-operation-parsers.js';
-import { isPlainRecord } from '../runner/codex/conversation-parser.js';
+import { isPlainRecord } from '../util/node-operation-parsers.js';
 import { isHostedConversationImageRunId } from '../runner/mar-agent/generated-images.js';
 import { assertRunOwner } from './run-ownership-policy.js';
 

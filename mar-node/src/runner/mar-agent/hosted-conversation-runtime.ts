@@ -16,7 +16,7 @@ import {
   type WorkspacePathMount
 } from '@myagentroam/agent';
 import type { NodeAgentSession } from '../../database.js';
-import type { NativeTranscriptImageAttachment } from '../../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
 import { projectMarAgentHistory } from './history-projection.js';
 import type {
   HostedConversationRuntime,

@@ -18,13 +18,15 @@ import { ResponseLatencyTracker } from '../../service/response-latency-tracker.j
 import { GenerationTimingTracker } from '../../service/generation-timing-tracker.js';
 import {
   boundedConversationItemId,
+  compactRunnerText,
+  isPlainRecord
+} from '../../util/node-operation-parsers.js';
+import {
   codexImageAttachments,
   codexLiveConversationItem,
   codexSourceItemId,
   CodexUsageNormalizer,
-  codexUserInputQuestions,
-  compactRunnerText,
-  isPlainRecord
+  codexUserInputQuestions
 } from './conversation-parser.js';
 
 type CodexImageInput = Extract<CodexComposerInput, { readonly type: 'localImage' }>;

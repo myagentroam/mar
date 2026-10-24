@@ -29,16 +29,16 @@ import type { NodeAgentSession, NodeWorkspace } from '../database.js';
 import {
   discoverNativeSessions,
   readNativeSession,
-  readClaudeNativeContextUsage,
-  type NativeSessionHistory
+  readClaudeNativeContextUsage
 } from '../native-session-history.js';
+import type { NativeSessionHistory } from '../native-transcript-model.js';
 import {
   claudeDiscoveredSession,
   deduplicateDirectSessions,
   isNativeHistory,
   isWithinWorkspace,
   latestNativeActivity
-} from './codex/conversation-parser.js';
+} from '../util/runner-native-session-parsers.js';
 
 export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   readonly name = 'claude-code' as const;

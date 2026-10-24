@@ -6,7 +6,7 @@ import type {
   NativeSessionHistory,
   NativeTranscriptImageAttachment,
   NativeTranscriptItem
-} from '../native-session-history.js';
+} from '../native-transcript-model.js';
 import { stripClaudePlanTag } from '../runner-command-engine.js';
 import { publicGoalHistoryText } from '../service/goal-runtime.js';
 import { parseCodexComposerImageMarkers } from '../runner/codex/composer-image-markers.js';

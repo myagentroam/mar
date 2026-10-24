@@ -14,7 +14,7 @@ import {
   MarAgentHostedConversationRuntime,
   type HostedLocalAgentHostInput
 } from '../../src/runner/mar-agent/hosted-conversation-runtime.js';
-import type { NativeTranscriptImageAttachment } from '../../src/native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../../src/native-transcript-model.js';
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
 
 describe('MAR Agent hosted conversation runtime', () => {

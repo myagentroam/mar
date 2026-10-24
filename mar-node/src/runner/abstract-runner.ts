@@ -15,7 +15,7 @@ import type { NodeConversationTurn } from '../runtime-model.js';
 import type { ChannelDelivery } from '../claude-channel.js';
 import type { CodexSessionControl } from '../codex-app-server.js';
 import type { ExternalSessionActivationState } from '../service/session-domain-state.js';
-import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import type { RunnerExecutionContext } from './execution-context.js';
 
 export type RegisteredRunnerName = RunnerName | 'fake';

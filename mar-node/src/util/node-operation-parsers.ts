@@ -11,7 +11,7 @@ import type {
   NodeConversationTurn,
   NodeMessageAttachmentInput
 } from '../runtime-model.js';
-import type { NativeTranscriptToolCall } from '../native-session-history.js';
+import type { NativeTranscriptToolCall } from '../native-transcript-model.js';
 
 const MAX_COMPOSER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;

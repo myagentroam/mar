@@ -9,9 +9,9 @@ import {
   readClaudeNativeContextUsage,
   readCodexNativeContextUsage,
   readNativeSession,
-  removeNativeSession,
-  type NativeTranscriptItem
+  removeNativeSession
 } from '../../src/native-session-history.js';
+import type { NativeTranscriptItem } from '../../src/native-transcript-model.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
 import { claudeAssistantBlocks } from '../../src/runner/claude/conversation-parser.js';

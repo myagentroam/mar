@@ -14,12 +14,12 @@ import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
 import type { FakeRunnerStatus } from '../../fake-runner.js';
 import {
   boundedConversationItemId,
-  claudePlanText,
   compactRunnerText,
   extractClaudeText,
-  extractClaudeToolUses,
-  type PublicConversationItem
-} from '../codex/conversation-parser.js';
+  extractClaudeToolUses
+} from '../../util/node-operation-parsers.js';
+import { claudePlanText } from '../../util/runner-native-session-parsers.js';
+import type { PublicConversationItem } from '../../native-transcript-model.js';
 import { normalizeClaudeTool, extractClaudeToolResults } from './tool-normalizer.js';
 import { claudeContentBlocks } from '../../util/node-operation-parsers.js';
 import { ClaudeCodeRunner } from '../claude-code-runner.js';

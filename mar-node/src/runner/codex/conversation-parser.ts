@@ -148,7 +148,7 @@ export class CodexUsageNormalizer {
 }
 import { basename, extname } from 'node:path';
 import type { RunnerHistoryImageRegistrar } from '../abstract-runner.js';
-import type { NativeTranscriptImageAttachment } from '../../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
 import { runnerErrorProjection } from '../../util/runner-error.js';
 import { conversationImageAttachmentSchema } from '@myagentroam/protocol';
 import type {
@@ -163,28 +163,7 @@ const MAX_COMPOSER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
 const MAX_ASSISTANT_MESSAGE_CHARACTERS = 64 * 1024;
 
-export type PublicConversationItem = {
-  readonly sourceItemId?: string;
-  readonly itemId: string;
-  readonly kind:
-    | 'assistant_message'
-    | 'reasoning'
-    | 'tool_call'
-    | 'command_execution'
-    | 'user_input_request'
-    | 'plan'
-    | 'context_compaction'
-    | 'file_change'
-    | 'warning'
-    | 'error'
-    | 'unknown';
-  readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'DECLINED' | 'INTERRUPTED';
-  readonly payload: Record<string, unknown>;
-  readonly merge?: boolean;
-  readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
-};
-
-export * from '../../util/runner-native-session-parsers.js';
+import type { PublicConversationItem } from '../../native-transcript-model.js';
 
 /** Only the official thread descriptor can declare history-only Revert support. */
 export function codexThreadHistoryModes(
@@ -1576,5 +1555,3 @@ import {
   isPlainRecord,
   nativePageEnd
 } from '../../util/node-operation-parsers.js';
-
-export * from '../../util/node-operation-parsers.js';

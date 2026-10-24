@@ -25,7 +25,7 @@ import {
 } from '@myagentroam/protocol';
 import type { RunnerCommandDescriptor, RunnerCommandState } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../../database.js';
-import { boundedConversationItemId } from '../codex/conversation-parser.js';
+import { boundedConversationItemId } from '../../util/node-operation-parsers.js';
 import { MarAgentRunner } from '../mar-agent-runner.js';
 import { parseSecretEnvironment } from '../../util/secret-environment.js';
 import type { RunnerCommandContext } from '../abstract-runner.js';
