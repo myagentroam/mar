@@ -8,6 +8,14 @@ vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
 }));
 
 const lifetime = vi.hoisted(() => ({ mounted: 0, unmounted: 0 }));
+vi.mock('../../src/view/settings/SettingsContent.vue?unit-render', async () => {
+  const { defineComponent, h } = await import('vue');
+  return { __esModule: true, default: defineComponent(() => () => h('settings-fixture')) };
+});
+vi.mock('../../src/view/conversation/HostedConversationWorkspacePage.vue?unit-render', async () => {
+  const { defineComponent, h } = await import('vue');
+  return { default: defineComponent(() => () => h('hosted-fixture')) };
+});
 vi.mock('../../src/service/management-composition.js', async () => {
   const { defineComponent, h } = await import('vue');
   const component = defineComponent({
@@ -87,6 +95,7 @@ function pageFixture() {
     sidebarCollapsed: false,
     settingsSection: 'account',
     settingsItems: [],
+    loading: false,
     managementSection: 'overview',
     managementItems: [],
     hostedConversationWorkspace: {
@@ -178,6 +187,45 @@ describe('Workbench surface composition behavior', () => {
       view.unmount();
     }
     expect(lifetime.unmounted).toBe(2);
+  });
+
+  it('keeps Dock ownership across temporary top-level views and destroys only removed tabs', async () => {
+    lifetime.mounted = 0;
+    lifetime.unmounted = 0;
+    const page = pageFixture();
+    const view = renderComponent(Surface, { page });
+    try {
+      const instances = [...page.terminalDocks.values()];
+      expect(instances).toHaveLength(2);
+      for (const target of ['settings', 'conversations', 'management']) {
+        page.view = target;
+        await flushComponent();
+        expect(lifetime).toEqual({ mounted: 2, unmounted: 0 });
+        expect([...page.terminalDocks.values()][0]).toBe(instances[0]);
+        expect(view.findAll('terminal-fixture')).toHaveLength(2);
+        expect(
+          view
+            .findAll('terminal-fixture')
+            .every(
+              (node) =>
+                node.props.active === false &&
+                node.props.enabled === false &&
+                node.props.visible === false
+            )
+        ).toBe(true);
+        page.view = 'nodes';
+        await flushComponent();
+        expect(lifetime).toEqual({ mounted: 2, unmounted: 0 });
+        expect(view.findAll('terminal-fixture')[0]?.props.visible).toBe(true);
+      }
+      page.view = 'settings';
+      page.workspaceTabs = page.workspaceTabs.slice(1);
+      await flushComponent();
+      expect(lifetime).toEqual({ mounted: 2, unmounted: 1 });
+    } finally {
+      view.unmount();
+    }
+    expect(lifetime).toEqual({ mounted: 2, unmounted: 2 });
   });
 
   it('mounts exactly one workspace tab strip at the placement selected by the viewport', async () => {

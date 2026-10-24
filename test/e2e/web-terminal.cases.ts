@@ -3,8 +3,9 @@ import { mockConsoleApi, mockEmptyWorkspaceFiles, json, write } from './support/
 
 // Terminal
 
-for (const evicted of [false, true]) {
-  test(`Terminal pending creation ${evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
+for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
+  const evicted = scenario === 'evicted';
+  test(`Terminal pending creation ${scenario === 'navigation' ? 'survives temporary settings and conversation navigation' : evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
     page
   }) => {
     let resolveOpen!: () => void;
@@ -51,6 +52,12 @@ for (const evicted of [false, true]) {
       Object.defineProperty(window, 'WebSocket', { configurable: true, value: MockWebSocket });
     });
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    if (scenario === 'navigation') {
+      await page.route('**/api/hosted-conversations?limit=20', (route) =>
+        json(route, { items: [], nextCursor: null })
+      );
+      await page.route('**/api/conversation-templates', (route) => json(route, { templates: [] }));
+    }
     await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
     await page.route('**/api/workspaces?nodeId=node-1', (route) =>
       json(route, {
@@ -98,8 +105,40 @@ for (const evicted of [false, true]) {
       await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
       await page.keyboard.press('Control+Shift+Backquote');
       await expect.poll(() => opens).toBe(1);
-      await tree.getByRole('button', { name: 'project-2', exact: true }).click();
       const first = page.locator('.workspace-tab[data-tab-id="node-1:workspace-1"]');
+      if (scenario === 'navigation') {
+        for (const name of ['设置', '对话']) {
+          await page.getByRole('button', { name, exact: true }).click();
+          await expect(page.locator('.terminal-dock')).toHaveCount(1);
+          await expect(page.locator('.terminal-dock')).toBeHidden();
+          expect(closes).toEqual([]);
+        }
+        const conversationNavigation = page.getByRole('button', { name: '对话', exact: true });
+        await conversationNavigation.focus();
+        resolveOpen();
+        await expect(page.locator('.xterm-host')).toHaveCount(1);
+        await expect(page.locator('.xterm-host')).toBeHidden();
+        await expect(conversationNavigation).toBeFocused();
+        expect(closes).toEqual([]);
+        await page.getByRole('button', { name: '工作', exact: true }).click();
+        await expect(page.locator('.xterm-host')).toBeVisible();
+        for (const name of ['设置', '对话']) {
+          await page.getByRole('button', { name, exact: true }).click();
+          await expect(page.locator('.xterm-host')).toBeHidden();
+          expect(closes).toEqual([]);
+          await page.getByRole('button', { name: '工作', exact: true }).click();
+          await expect(page.locator('.xterm-host')).toBeVisible();
+          await expect(page.locator('.terminal-tab-select')).toHaveCount(1);
+        }
+        expect(opens).toBe(1);
+        await first.locator('.tab-close').click();
+        await expect
+          .poll(() => closes)
+          .toEqual([{ terminalId: 'terminal-pending', nodeId: 'node-1' }]);
+        expect(terminals.size).toBe(0);
+        return;
+      }
+      await tree.getByRole('button', { name: 'project-2', exact: true }).click();
       const second = page.locator('.workspace-tab[data-tab-id="node-1:workspace-2"]');
       await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       if (evicted) {
