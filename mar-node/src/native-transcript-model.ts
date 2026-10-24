@@ -21,11 +21,7 @@ export interface NativeTranscriptToolCall {
   readonly inputTruncated: boolean;
   readonly outputSummary: string | null;
   readonly outputTruncated: boolean;
-  readonly claudeResult?: {
-    readonly agentId?: string;
-    readonly task_id?: string;
-    readonly task_type?: string;
-  };
+  readonly subagentResult?: NativeTranscriptSubagentResult;
   readonly toolCategory?: 'IMAGE_GENERATION';
   /** Metadata only: native transcript image bytes are never retained here. */
   readonly imageAttachments?: readonly NativeTranscriptImageAttachment[];
@@ -78,7 +74,7 @@ export type NativeTranscriptItem = (
   | NativeTranscriptReasoningSummary
   | NativeTranscriptContextCompaction
   | NativeTranscriptUnknown
-) & { readonly sourceItemId?: string };
+) & { readonly sourceItemId?: string; readonly rewindAfter?: string };
 
 export interface NativeSessionHistory {
   readonly runner: RunnerName;
@@ -127,3 +123,54 @@ export type PublicConversationItem = {
   readonly merge?: boolean;
   readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
 };
+
+export interface NativeTranscriptSubagentResult {
+  readonly agentId?: string;
+  readonly taskId?: string;
+  readonly taskType?: string;
+}
+
+export interface ParsedNativeTranscript {
+  readonly externalSessionId?: string;
+  readonly cwd: string;
+  readonly title?: string;
+  readonly items: readonly NativeTranscriptItem[];
+}
+
+export interface NativeUserInputQuestion {
+  readonly id: string;
+  readonly prompt: string;
+  readonly input: 'SINGLE_SELECT' | 'MULTI_SELECT' | 'SHORT_TEXT';
+  readonly options: readonly {
+    readonly value: string;
+    readonly label: string;
+    readonly description: string | null;
+  }[];
+  readonly allowOther: boolean;
+  readonly multiSelect: boolean;
+}
+
+export interface NativeTranscriptProjection {
+  userText(text: string): string;
+  planText(text: string): string | undefined;
+  normalizeTool(call: NativeTranscriptToolCall):
+    | {
+        readonly kind: 'command_execution' | 'file_change' | 'tool_call';
+        readonly payload: Record<string, unknown>;
+      }
+    | undefined;
+  userInputQuestions(call: NativeTranscriptToolCall): readonly NativeUserInputQuestion[];
+}
+
+/** Fixed in-process ownership seam, not a runtime plugin registry. */
+export interface NativeTranscriptAdapter {
+  readonly runner: 'codex' | 'claude-code';
+  transcriptRoot(): string;
+  includesPath(path: string): boolean;
+  parse(
+    path: string,
+    window: import('./native-jsonl-reader.js').JsonlBackwardWindow
+  ): ParsedNativeTranscript | undefined;
+  locateCandidates?(externalSessionId: string): Promise<readonly string[]>;
+  createProjection(precedingItems: readonly NativeTranscriptItem[]): NativeTranscriptProjection;
+}

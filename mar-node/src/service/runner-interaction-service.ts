@@ -5,7 +5,7 @@ import type { ClaudeCodeRunner } from '../runner/claude-code-runner.js';
 import { denyPermission } from '../claude-agent-sdk.js';
 import type { CodexRunner } from '../runner/codex-runner.js';
 import { boundedConversationItemId, isTerminalRunStatus } from '../util/node-operation-parsers.js';
-import { claudeUserInputQuestions } from '../util/runner-native-session-parsers.js';
+import { claudeUserInputQuestions } from '../runner/claude/conversation-parser.js';
 import type { PublicConversationItem } from '../native-transcript-model.js';
 import type { RunDomainState } from './run-domain-state.js';
 

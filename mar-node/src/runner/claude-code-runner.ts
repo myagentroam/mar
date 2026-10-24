@@ -23,17 +23,14 @@ import type {
 import { claudeDefaultModel, declaredRunnerProfiles } from '../runner-profiles.js';
 import { ClaudeChannelGate } from '../claude-channel.js';
 import type { ChannelDelivery } from '../claude-channel.js';
-import { claudeUserInputQuestions } from '../util/runner-native-session-parsers.js';
+import { claudeUserInputQuestions } from './claude/conversation-parser.js';
 import { withClaudePlanTag } from '../runner-command-engine.js';
 import type { NodeAgentSession, NodeWorkspace } from '../database.js';
-import {
-  discoverNativeSessions,
-  readNativeSession,
-  readClaudeNativeContextUsage
-} from '../native-session-history.js';
+import { discoverNativeSessions, readNativeSession } from '../native-session-history.js';
+import { readClaudeNativeContextUsage } from './claude/native-context-usage.js';
 import type { NativeSessionHistory } from '../native-transcript-model.js';
+import { claudeDiscoveredSession } from './claude/conversation-parser.js';
 import {
-  claudeDiscoveredSession,
   deduplicateDirectSessions,
   isNativeHistory,
   isWithinWorkspace,

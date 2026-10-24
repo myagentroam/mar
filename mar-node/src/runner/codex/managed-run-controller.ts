@@ -9,7 +9,7 @@ import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
 import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
 import type { CodexComposerInput, CodexRunConfiguration } from '../../codex-app-server.js';
 import type { FakeRunnerStatus } from '../../fake-runner.js';
-import { extractId } from '../../util/runner-native-session-parsers.js';
+import { extractId } from './conversation-parser.js';
 import { parseSecretEnvironment } from '../../util/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
 import { runnerErrorProjection } from '../../util/runner-error.js';

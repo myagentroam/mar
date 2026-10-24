@@ -1,9 +1,9 @@
-import {
-  claudeContentBlocks,
-  compactRunnerText,
-  compactRunnerValue
-} from '../../util/node-operation-parsers.js';
-import type { NativeTranscriptToolCall } from '../../native-transcript-model.js';
+import { claudeContentBlocks } from './message-parsers.js';
+import { compactRunnerText, compactRunnerValue } from '../../util/node-operation-parsers.js';
+import type {
+  NativeTranscriptToolCall,
+  NativeTranscriptSubagentResult
+} from '../../native-transcript-model.js';
 import {
   RunnerUsageTracker,
   usageToken,
@@ -72,6 +72,17 @@ export interface ClaudeToolResultMetadata {
   readonly task_type?: string;
 }
 
+export function claudeNativeToolResultMetadata(
+  result: NativeTranscriptSubagentResult | undefined
+): ClaudeToolResultMetadata | undefined {
+  if (result === undefined) return undefined;
+  return {
+    ...(result.agentId === undefined ? {} : { agentId: result.agentId }),
+    ...(result.taskId === undefined ? {} : { task_id: result.taskId }),
+    ...(result.taskType === undefined ? {} : { task_type: result.taskType })
+  };
+}
+
 export function restoreClaudeSubagentTitles(
   calls: readonly NativeTranscriptToolCall[]
 ): Map<string, string> {
@@ -80,7 +91,7 @@ export function restoreClaudeSubagentTitles(
     claudeSubagentProjection(
       call.toolName,
       call.input,
-      call.claudeResult ?? call.outputSummary,
+      claudeNativeToolResultMetadata(call.subagentResult) ?? call.outputSummary,
       titles
     );
   return titles;

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import type { NodeAgentSession } from '../../database.js';
 import { open, stat } from 'node:fs/promises';
 import { StringDecoder } from 'node:string_decoder';
@@ -1547,7 +1548,6 @@ export function isCodexImageBlock(value: unknown): boolean {
 }
 
 import {
-  codexTimestamp,
   compactRunnerText,
   compactRunnerValue,
   boundedConversationItemId,
@@ -1555,3 +1555,83 @@ import {
   isPlainRecord,
   nativePageEnd
 } from '../../util/node-operation-parsers.js';
+
+export function extractId(result: unknown, key: 'thread' | 'turn'): string {
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    key in result &&
+    typeof (result as Record<string, unknown>)[key] === 'object' &&
+    (result as Record<string, unknown>)[key] !== null &&
+    typeof ((result as Record<string, unknown>)[key] as Record<string, unknown>)['id'] === 'string'
+  ) {
+    return ((result as Record<string, unknown>)[key] as Record<string, unknown>)['id'] as string;
+  }
+  throw new Error(`CODEX_${key.toUpperCase()}_ID_MISSING`);
+}
+
+export function extractCodexThreads(result: unknown): readonly {
+  readonly id: string;
+  readonly source: string | undefined;
+  readonly derived: boolean;
+  readonly cwd: unknown;
+  readonly title: string | undefined;
+  readonly titleOrigin: 'OFFICIAL' | 'PREVIEW' | undefined;
+}[] {
+  if (typeof result !== 'object' || result === null || !('data' in result)) return [];
+  const data = (result as { data?: unknown }).data;
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const value = entry as {
+      id?: unknown;
+      sourceKind?: unknown;
+      source?: string | { kind?: unknown } | unknown;
+      cwd?: unknown;
+      name?: unknown;
+      preview?: unknown;
+    };
+    if (typeof value.id !== 'string') return [];
+    const source =
+      typeof value.sourceKind === 'string'
+        ? value.sourceKind
+        : typeof value.source === 'string'
+          ? value.source
+          : typeof value.source === 'object' &&
+              value.source !== null &&
+              typeof (value.source as { kind?: unknown }).kind === 'string'
+            ? ((value.source as { kind: string }).kind as string)
+            : undefined;
+    const sourceRecord = isPlainRecord(value.source) ? value.source : undefined;
+    const derived =
+      source === 'subagent' ||
+      sourceRecord?.kind === 'subagent' ||
+      isPlainRecord(sourceRecord?.subagent) ||
+      isPlainRecord(sourceRecord?.subAgent);
+    const name = typeof value.name === 'string' ? value.name.trim() : '';
+    const preview = typeof value.preview === 'string' ? value.preview.trim() : '';
+    const title = name || preview || undefined;
+    const titleOrigin = name ? 'OFFICIAL' : preview ? 'PREVIEW' : undefined;
+    return [{ id: value.id, source, derived, cwd: value.cwd, title, titleOrigin }];
+  });
+}
+
+export function codexThreadCwd(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) throw new Error('CODEX_THREAD_CWD_INVALID');
+  if (!value.startsWith('file:')) return value;
+  try {
+    return fileURLToPath(value);
+  } catch {
+    throw new Error('CODEX_THREAD_CWD_INVALID');
+  }
+}
+
+export function codexTimestamp(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value))
+    return value < 10_000_000_000 ? value * 1_000 : value;
+  if (typeof value === 'string') {
+    const timestamp = Date.parse(value);
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }
+  return null;
+}
