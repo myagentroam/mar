@@ -1591,6 +1591,19 @@ export class SubagentSessionController implements SubagentController {
         : full
           ? { ...state.latestMessage }
           : projectLatestMessage(state.latestMessage, terminal);
+    const summary =
+      !includeTerminalDetails || state.summary === undefined
+        ? undefined
+        : full
+          ? state.summary
+          : truncateUtf8(state.summary, TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes);
+    const omitDuplicateMessage =
+      !full &&
+      terminal &&
+      latestMessage?.phase === 'final_answer' &&
+      summary !== undefined &&
+      summary === state.latestMessage?.text &&
+      (state.receipt === undefined || state.receipt.turnId === latestMessage.turnId);
     return {
       agentId: state.agentId,
       description: state.description,
@@ -1605,20 +1618,15 @@ export class SubagentSessionController implements SubagentController {
         ? { permissionStop: state.permissionStop }
         : {}),
       ...state.receipt,
+      ...(omitDuplicateMessage ? { turnId: latestMessage.turnId } : {}),
       ...(state.modelId === undefined ? {} : { modelId: state.modelId }),
       ...(state.modelName === undefined ? {} : { modelName: state.modelName }),
       ...(state.reasoningEffort === undefined ? {} : { reasoningEffort: state.reasoningEffort }),
-      ...(latestMessage === undefined ? {} : { latestMessage }),
+      ...(latestMessage === undefined || omitDuplicateMessage ? {} : { latestMessage }),
       ...(!includeLatestActivity || state.latestActivity === undefined
         ? {}
         : { latestActivity: { ...state.latestActivity } }),
-      ...(!includeTerminalDetails || state.summary === undefined
-        ? {}
-        : {
-            summary: full
-              ? state.summary
-              : truncateUtf8(state.summary, TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes)
-          }),
+      ...(summary === undefined ? {} : { summary }),
       ...(!includeTerminalDetails || !terminal || state.changedFiles.length === 0
         ? {}
         : {

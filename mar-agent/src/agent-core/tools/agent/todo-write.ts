@@ -37,7 +37,10 @@ export async function executeTodoWrite(arguments_: unknown, context: ToolRuntime
   const value = parseTodoWriteInput(arguments_);
   const todo = context.todo.write(value);
   await context.emit({ type: 'todo.updated', revision: todo.revision, items: todo.items });
-  return { content: JSON.stringify(todo), data: todo };
+  return {
+    content: JSON.stringify({ revision: todo.revision, count: todo.items.length }),
+    data: todo
+  };
 }
 
 function parseTodoWriteInput(value: unknown): { items: TodoItem[] } {

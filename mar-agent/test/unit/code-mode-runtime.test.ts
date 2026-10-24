@@ -1530,9 +1530,19 @@ describe('Code Mode SDK and protocol integration', () => {
         expect(task).not.toHaveProperty('taskId');
         expect(task.status).toBe('completed');
         expect(task.changedFiles).toContain('output.txt');
-        expect(task.evidence).toContainEqual(
-          expect.objectContaining({ path: expect.stringContaining('input.txt') })
+        expect(task).not.toHaveProperty('evidence');
+        expect(task).not.toHaveProperty('verification');
+        expect(task.summary ?? task.latestMessage?.text).toBe('done');
+        const store = await JsonlSessionStore.open(home);
+        const records = await store.read(task.agentId);
+        const read = records.find(
+          (record) => record.type === 'tool.completed' && record.payload.toolName === 'read'
         );
+        expect(read?.payload).toMatchObject({
+          data: {
+            results: [expect.objectContaining({ path: expect.stringContaining('input.txt') })]
+          }
+        });
       } finally {
         await agent.dispose();
       }

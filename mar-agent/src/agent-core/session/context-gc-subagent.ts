@@ -70,10 +70,12 @@ export function contextGcCompletedSubagentTurnId(
   if (
     snapshot.status !== 'completed' ||
     !isNonemptyString(snapshot.summary) ||
-    snapshot.latestMessage?.phase !== 'final_answer' ||
     (snapshot.deliveryStatus !== undefined && snapshot.deliveryStatus !== 'applied')
   )
     return undefined;
+  if (snapshot.latestMessage === undefined)
+    return isNonemptyString(snapshot.turnId) ? snapshot.turnId : undefined;
+  if (snapshot.latestMessage.phase !== 'final_answer') return undefined;
   const turnId = snapshot.latestMessage.turnId;
   return snapshot.turnId === undefined || snapshot.turnId === turnId ? turnId : undefined;
 }
@@ -103,7 +105,10 @@ export function contextGcSubagentPriorFinalIsRetained(
     retained.agentId === source.agentId &&
     retained.description === source.description &&
     contextGcCompletedSubagentTurnId(retained) === source.latestMessage!.turnId &&
-    stableJson(retained.latestMessage) === stableJson(source.latestMessage)
+    (stableJson(retained.latestMessage) === stableJson(source.latestMessage) ||
+      (retained.latestMessage === undefined &&
+        source.latestMessage!.truncated !== true &&
+        retained.summary === source.latestMessage!.text))
   );
 }
 
@@ -299,10 +304,13 @@ function parseContextGcSubagentSnapshot(value: unknown): ContextGcSubagentSnapsh
     !isOptionalSubagentEvidence(parsed.evidence)
   )
     return undefined;
-  const receiptCount = [parsed.messageId, parsed.turnId, parsed.deliveryStatus].filter(
-    (item) => item !== undefined
-  ).length;
-  if (receiptCount !== 0 && receiptCount !== 3) return undefined;
+  if (
+    (parsed.messageId !== undefined || parsed.deliveryStatus !== undefined) &&
+    (parsed.messageId === undefined ||
+      parsed.turnId === undefined ||
+      parsed.deliveryStatus === undefined)
+  )
+    return undefined;
   const latestMessage = parseContextGcSubagentLatestMessage(parsed.latestMessage);
   if (parsed.latestMessage !== undefined && !latestMessage) return undefined;
   const latestActivity = parseContextGcSubagentLatestActivity(parsed.latestActivity);
