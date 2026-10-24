@@ -1021,7 +1021,8 @@ describe('Node Session message FIFO', () => {
           runtime.createQueueItem({
             sessionId: current.id,
             clientMessageId: id,
-            content: id
+            content: id,
+            ...(id === 'goal:continuation' ? { goalInput: true as const } : {})
           }).item
       );
       const internal = items[internalIndex]!;
@@ -1218,7 +1219,12 @@ describe('Node Session message FIFO', () => {
       const runtime = preparedRuntime();
       const current = session(runtime, 'mar-agent');
       const add = (clientMessageId: string, sessionId = current.id) =>
-        runtime.createQueueItem({ sessionId, clientMessageId, content: clientMessageId }).item;
+        runtime.createQueueItem({
+          sessionId,
+          clientMessageId,
+          content: clientMessageId,
+          ...(clientMessageId === 'goal:continuation' ? { goalInput: true as const } : {})
+        }).item;
       const internal = add('goal:continuation');
       const first = add('first');
       const second = add('second');
@@ -1252,6 +1258,47 @@ describe('Node Session message FIFO', () => {
       expect(runtime.sessionQueue(current.id)).toEqual(before);
       expect(runtime.getQueueItem(internal.id)).toBe(internal);
       expect(emit).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['update', 'delete', 'execute'] as const)(
+    'rejects ordinary queue %s operations on a Goal input without side effects',
+    async (action) => {
+      const runtime = preparedRuntime();
+      const current = session(runtime);
+      const item = runtime.createQueueItem({
+        sessionId: current.id,
+        clientMessageId: 'objective-message',
+        content: 'Finish the task',
+        goalInput: true
+      }).item;
+      const before = runtime.sessionQueue(current.id);
+      const emit = vi.fn();
+      const coordinator = {
+        pending: vi.fn(),
+        deleteQueueItem: vi.fn(),
+        executeQueueItem: vi.fn()
+      };
+      const service = new WorkspaceQueueWorkbenchService({
+        runtime,
+        resolve: async (id) => runtime.getAgentSession(id),
+        coordinator: coordinator as never,
+        emit,
+        prepareInput: (_runner, input) => input
+      });
+      await expect(
+        Promise.resolve().then(() =>
+          service.operations()[`workspace.queue.message.${action}`]!({
+            workspaceId: current.workspaceId,
+            queueItemId: item.id,
+            content: 'Changed'
+          })
+        )
+      ).rejects.toThrow('QUEUE_ITEM_INVALID');
+      expect(runtime.getQueueItem(item.id)).toBe(item);
+      expect(runtime.sessionQueue(current.id)).toEqual(before);
+      expect(emit).not.toHaveBeenCalled();
+      for (const handler of Object.values(coordinator)) expect(handler).not.toHaveBeenCalled();
     }
   );
 

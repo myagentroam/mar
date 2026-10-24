@@ -52,7 +52,8 @@ function fixture() {
       runId: id,
       sessionId: session.id,
       clientMessageId: id,
-      content: id
+      content: id,
+      ...(goal ? { goalInput: true as const } : {})
     });
     const input: PreparedExecutionInput = {
       runId: id,

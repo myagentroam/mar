@@ -307,6 +307,7 @@ export class SessionMessageService {
         sessionId: session.id,
         clientMessageId,
         content: publicContent,
+        ...(internalGoal || goalMessage?.activated === true ? { goalInput: true as const } : {}),
         ...(internalSchedule ? { source: 'SCHEDULED' as const } : {}),
         ...(input.__suppressNotifications === true ? { suppressNotifications: true } : {}),
         ...(Number.isSafeInteger(input.__requestUserId)

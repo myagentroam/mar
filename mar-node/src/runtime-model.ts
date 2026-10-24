@@ -35,6 +35,8 @@ export interface NodeQueueItem {
   readonly runner: RunnerName;
   readonly clientMessageId: string;
   readonly content: string;
+  /** Node-owned Goal startup or continuation, not an ordinary queued message. */
+  readonly goalInput?: true;
   readonly suppressNotifications?: boolean;
   readonly attachments: readonly NodeMessageAttachmentInput[];
   readonly initiatedByUserId?: number;
