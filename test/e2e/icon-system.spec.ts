@@ -100,7 +100,7 @@ for (const dpr of [1, 2, 3]) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`Git change restore icons stay compact on mobile in ${theme}`, async ({
+  test(`Git change status columns and restore icons stay aligned in ${theme}`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 844 });
@@ -108,17 +108,52 @@ for (const theme of ['dark', 'light']) {
     const restore = page.locator('.change-restore').first();
     const glyph = restore.locator('[data-mar-icon="undo"]');
     await expect(glyph).toBeVisible();
+    await expect(glyph).toHaveCSS('width', '14px');
+    await expect(glyph).toHaveCSS('animation-name', 'none');
     const desktopBounds = await glyph.boundingBox();
+    await expect(page.locator('.change-status')).toHaveText([
+      'M',
+      'W',
+      'M',
+      'W',
+      'A',
+      '?',
+      'D',
+      'S'
+    ]);
 
-    for (const width of [320, 390]) {
+    for (const width of [1280, 320, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await expect(glyph).toHaveCSS('width', '14px');
       await expect(glyph).toHaveCSS('height', '14px');
       await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
-      await expect(page.locator('.changes-refresh-button svg')).toHaveCSS('width', '18px');
+      if (width < 768) {
+        await expect(page.locator('.changes-refresh-button svg')).toHaveCSS('width', '18px');
+      }
       const bounds = (await restore.boundingBox())!;
-      expect(bounds.width).toBeGreaterThanOrEqual(20);
+      expect(bounds.width).toBe(20);
       expect(bounds.height).toBeGreaterThanOrEqual(18);
+      const columns = await page.locator('.change-entry').evaluateAll((rows) =>
+        rows.map((row) => {
+          const cells = Array.from(row.querySelectorAll<HTMLElement>('.change-status'));
+          const status = cells.map((cell) => {
+            const box = cell.getBoundingClientRect();
+            return { x: box.x, width: box.width, font: getComputedStyle(cell).fontFamily };
+          });
+          const graphic = row.querySelector('svg[data-mar-icon="undo"]')!.getBoundingClientRect();
+          const state = cells[1].getBoundingClientRect();
+          return { status, gap: graphic.left - state.right };
+        })
+      );
+      for (const column of columns) {
+        expect(column.gap).toBeGreaterThanOrEqual(3);
+        expect(column.gap).toBeLessThanOrEqual(6.5);
+        for (const [index, cell] of column.status.entries()) {
+          expect(cell.font).toMatch(/monospace/);
+          expect(cell.width).toBeCloseTo(columns[0].status[0].width, 1);
+          expect(cell.x).toBeCloseTo(columns[0].status[index].x, 1);
+        }
+      }
       await restore.focus();
       await expect(restore).toBeFocused();
       await restore.hover();
@@ -128,12 +163,27 @@ for (const theme of ['dark', 'light']) {
       });
     }
 
+    const beforeLoading = (await glyph.boundingBox())!;
+    const controlBeforeLoading = (await restore.boundingBox())!;
     await page.getByRole('button', { name: 'Show restore loading', exact: true }).click();
     await expect(restore).toBeDisabled();
     await expect(restore.locator('[data-mar-icon="loading-action"]')).toHaveCSS('width', '14px');
     await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
     await expect(page.locator('.change-restore').nth(1)).toBeDisabled();
     await expect(page.locator('.change-restore').nth(1).locator('svg')).toHaveCSS('width', '14px');
+    const loadingBounds = (await restore.locator('svg').boundingBox())!;
+    // Rotation changes the bounding box, but must not move the icon's center or button layout.
+    expect(loadingBounds.x + loadingBounds.width / 2).toBeCloseTo(
+      beforeLoading.x + beforeLoading.width / 2,
+      1
+    );
+    expect(loadingBounds.y + loadingBounds.height / 2).toBeCloseTo(
+      beforeLoading.y + beforeLoading.height / 2,
+      1
+    );
+    const controlDuringLoading = (await restore.boundingBox())!;
+    expect(controlDuringLoading.width).toBeCloseTo(controlBeforeLoading.width, 1);
+    expect(controlDuringLoading.height).toBeCloseTo(controlBeforeLoading.height, 1);
 
     await page.setViewportSize({ width: 1280, height: 844 });
     await expect(restore.locator('svg')).toHaveCSS('width', `${desktopBounds!.width}px`);

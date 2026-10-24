@@ -90,7 +90,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const preview = process.locator('.process-summary');
       const heading = process.locator('.process-heading');
       await expect(preview).toHaveText(thinkingPreview);
+      await expect(heading).toHaveAttribute('aria-expanded', 'true');
+      await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
+      await expect(preview).toHaveText(thinkingPreview);
       await heading.click();
       const thinking = process.locator('.reasoning-group').first();
       const subtitle = thinking.locator('.reasoning-subtitle');
@@ -122,6 +125,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveText('Public summary: inspect files');
       await expect(process.locator('.reasoning-group')).toHaveCount(0);
+      await heading.click();
+      await page.getByTestId('finish-reasoning-process').click();
+      await expect(heading).toHaveAttribute('aria-expanded', 'true');
+      await expect(preview).toHaveCount(0);
+      await expect(process.locator('.reasoning-subtitle').first()).toHaveText(thinkingPreview);
+      await expect(page.getByText('Finished reviewing files.', { exact: true })).toBeVisible();
+      await heading.click();
+      await expect(heading).toHaveAttribute('aria-expanded', 'false');
+      await expect(preview).toHaveCount(0);
+      await heading.click();
+      await expect(preview).toHaveCount(0);
+      const completedSummary = process.locator('.reasoning-group').last();
+      await completedSummary.locator('summary').click();
+      await expect(completedSummary.locator('p')).toContainText('Full summary detail');
     }
   });
 }
@@ -145,12 +162,16 @@ test('Long reasoning history stays responsive through progressive rendering and 
   for (let iteration = 0; iteration < 3; iteration++) {
     await page.getByTestId('load-stress-history').click();
     await expect(processes).toHaveCount(80);
-    const longPreview = page.locator('[data-process-id="stress-process-0"] .process-summary');
-    expect(await longPreview.textContent()).toBe(`${'.'.repeat(64 * 1024)}x`);
+    const firstProcess = processes.first();
+    await expect(page.locator('.process-summary')).toHaveCount(0);
     await expect(processes.first().locator('.process-heading')).toHaveAttribute(
       'aria-expanded',
       'false'
     );
+    await firstProcess.locator('.process-heading').click();
+    const longPreview = firstProcess.locator('.reasoning-subtitle');
+    await expect(longPreview).toHaveText(`${'.'.repeat(64 * 1024)}x`);
+    await expect(firstProcess.locator('.process-summary')).toHaveCount(0);
     await page.getByTestId('toggle-stress-timeline').click();
     await expect(processes).toHaveCount(0);
     await page.getByTestId('toggle-stress-timeline').click();

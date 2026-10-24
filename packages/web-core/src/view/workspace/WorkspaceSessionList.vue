@@ -6,6 +6,7 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import SessionGroupTabs from '../common/SessionGroupTabs.vue';
 import { marIcon } from '../../util/mar-icons.js';
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
@@ -21,6 +22,11 @@ import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
 
 const props = defineProps<{
+  readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
+  readonly groupState?: Record<
+    import('@myagentroam/protocol').SessionGroup,
+    { running: number; unread: boolean }
+  >;
   readonly sessions: readonly Session[];
   readonly selectedSessionId: string | undefined;
   readonly mobileViewport: boolean;
@@ -58,6 +64,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
+  moveToMain: [session: Session];
   create: [];
   open: [sessionId: string];
   rename: [session: Session];
@@ -434,6 +442,12 @@ function submitSessionSearch(): void {
         </template>
       </el-dropdown>
     </div>
+    <SessionGroupTabs
+      v-if="sessionGroup && groupState"
+      :model-value="sessionGroup"
+      :state="groupState"
+      @update:model-value="emit('selectGroup', $event)"
+    />
     <p v-if="watchStatus === 'loading'" class="watch-status">
       {{ translate('workspaceWatch.loadingSessions') }}
     </p>
@@ -603,6 +617,13 @@ function submitSessionSearch(): void {
                   }}</el-dropdown-item
                 >
                 <el-dropdown-item
+                  v-if="sessionGroup && session.sessionGroup === 'CHILD'"
+                  :disabled="loading || !nodeReady"
+                  @click="emit('moveToMain', session)"
+                >
+                  <MarIcon name="chevron-up" />{{ translate('sessionGroups.move') }}
+                </el-dropdown-item>
+                <el-dropdown-item
                   v-if="
                     props.sessionPromptSupported &&
                     session.runtime?.capabilities?.includes('session.prompt')
@@ -662,7 +683,17 @@ function submitSessionSearch(): void {
       v-else-if="watchStatus !== 'loading' && watchStatus !== 'failed'"
       class="empty sidebar-empty"
     >
-      {{ translate('generated.workspaceSessionList.syncingOpenCodeCodexAndClaudeCodeSessions') }}
+      {{
+        translate(
+          searchQuery
+            ? 'sessionGroups.noResults'
+            : sessionGroup === 'MAIN'
+              ? 'sessionGroups.emptyMain'
+              : sessionGroup === 'CHILD'
+                ? 'sessionGroups.emptyChild'
+                : 'generated.workspaceSessionList.syncingOpenCodeCodexAndClaudeCodeSessions'
+        )
+      }}
     </p>
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"

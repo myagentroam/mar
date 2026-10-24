@@ -843,7 +843,7 @@ function terminalDimension(value: unknown, fallback: number): number {
 
 function terminalSequence(value: unknown): number {
   if (value === undefined) return 0;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0)
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
     throw new Error('TERMINAL_REPLAY_INVALID');
   return value;
 }

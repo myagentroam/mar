@@ -16,8 +16,10 @@ import {
   type MailNotificationRequest
 } from '@myagentroam/protocol';
 import type { NodeRuntimeState } from '../runtime-state.js';
+import { sessionGroup } from './session-presentation-service.js';
 
 interface Capability {
+  readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
   readonly executionId: string;
   readonly sessionId: string;
   readonly workspaceId: string;
@@ -207,7 +209,7 @@ export function resolveNotificationCapability(
     (run.source === 'SCHEDULED' ? 'SCHEDULED' : 'MANUAL') !== capability.source
   )
     return undefined;
-  return { ...capability, sessionId: session.id };
+  return { ...capability, sessionId: session.id, sessionGroup: sessionGroup(session) };
 }
 
 function notificationMcpStdioArgs(): readonly string[] {

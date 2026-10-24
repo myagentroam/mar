@@ -69,6 +69,7 @@ export function unavailableCapabilities(): NodeCapabilities {
     promptCompletion: { apiVersion: 1, contextVersion: 3, automaticTriggers: true },
     chatgptLogin: { apiVersion: 1, loopback: true },
     workspaceDirectTransfer: workspaceDirectTransferCapability(),
+    sessionGroups: { apiVersion: 1 },
     terminalDirect: terminalDirectCapability()
   };
 }
@@ -112,6 +113,7 @@ export function detectCapabilities(
     promptCompletion: { apiVersion: 1, contextVersion: 3, automaticTriggers: true },
     chatgptLogin: { apiVersion: 1, loopback: true },
     workspaceDirectTransfer: workspaceDirectTransferCapability(),
+    sessionGroups: { apiVersion: 1 },
     terminalDirect: terminalDirectCapability()
   };
 }
@@ -159,6 +161,7 @@ export async function detectCapabilitiesAsync(
     promptCompletion: { apiVersion: 1, contextVersion: 3, automaticTriggers: true },
     chatgptLogin: { apiVersion: 1, loopback: true },
     workspaceDirectTransfer: workspaceDirectTransferCapability(),
+    sessionGroups: { apiVersion: 1 },
     terminalDirect: terminalDirectCapability()
   };
 }

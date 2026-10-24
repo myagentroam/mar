@@ -8,7 +8,7 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
   if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
   const directory = resolve(process.cwd(), 'test/runs', runId);
   await mkdir(directory, { recursive: true });
-  await page.screenshot({ path: resolve(directory, name), fullPage: true });
+  await page.screenshot({ path: resolve(directory, name), fullPage: true, animations: 'disabled' });
 }
 
 for (const width of [1280, 390]) {
@@ -100,6 +100,83 @@ for (const [kind, label] of [
   });
 }
 
+for (const width of [1280, 390]) {
+  test(`Git Diff keeps focus through repeated file navigation at ${width}px`, async ({ page }) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 800 });
+      const paths = ['src/first.ts', 'src/second.ts', 'src/third.ts'] as const;
+      await page.route('**/api/workspaces/workspace/changes?*', (route) =>
+        route.fulfill({
+          json: {
+            repositories: [
+              {
+                repositoryPath: '',
+                repositoryName: 'project',
+                source: 'ROOT',
+                changes: paths.map((path) => ({
+                  path,
+                  state: 'UNSTAGED',
+                  change: 'MODIFIED',
+                  diffAvailable: true
+                }))
+              }
+            ]
+          }
+        })
+      );
+      await page.route('**/api/workspaces/workspace/changes/diff?*', (route) => {
+        const path = new URL(route.request().url()).searchParams.get('path');
+        return route.fulfill({
+          json: { diff: { binary: false, text: `@@ -1 +1 @@\n-before\n+${path}` } }
+        });
+      });
+      await page.goto(`${fixture.url}file-tabs.html?diff-navigation=1`);
+      await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      await page.getByRole('button', { name: 'View diff for src/first.ts', exact: true }).click();
+      const frame = page.locator('.workspace-file-page-frame:visible');
+      await expect(frame.locator('.unified-history-diff')).toContainText('src/first.ts');
+      await captureScreenshot(page, `file-preview-diff-${width}.png`);
+      await frame.focus();
+      for (const [key, path] of [
+        ['ArrowRight', paths[1]],
+        ['ArrowRight', paths[2]],
+        ['ArrowRight', paths[0]],
+        ['ArrowLeft', paths[2]],
+        ['ArrowLeft', paths[1]],
+        ['ArrowLeft', paths[0]]
+      ] as const) {
+        await page.keyboard.press(key);
+        await expect(frame.locator('.unified-history-diff')).toContainText(path);
+        await expect(frame).toBeFocused();
+      }
+      await frame.getByRole('button', { name: 'Next file', exact: true }).click();
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[1]);
+      await page.keyboard.press('ArrowRight');
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[2]);
+      await page.keyboard.press('Control+f');
+      const findInput = frame.locator('.inline-find-bar input');
+      await findInput.fill('before');
+      await page.keyboard.press('ArrowLeft');
+      await page.keyboard.press('ArrowRight');
+      await expect(findInput).toBeFocused();
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[2]);
+      await page.keyboard.press('Escape');
+      await expect(frame).toBeFocused();
+      await page.keyboard.press('ArrowLeft');
+      await expect(frame.locator('.unified-history-diff')).toContainText(paths[1]);
+      const tabs = page.getByRole('tablist', { name: 'File preview tabs' }).getByRole('tab');
+      await tabs.first().click();
+      await expect(tabs.first()).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(tabs.nth(1)).toBeFocused();
+      await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('File preview overlay stays bounded, modal, and stable across viewport changes', async ({
   page
 }) => {
@@ -137,8 +214,30 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
         })
         .toEqual(expected);
     };
+    const expectContentInset = async (insetRem: number) => {
+      const inset = await page.evaluate(
+        (rem) => Math.round(rem * parseFloat(getComputedStyle(document.documentElement).fontSize)),
+        insetRem
+      );
+      await expect
+        .poll(() =>
+          surface.evaluate((element) => {
+            const outer = element.getBoundingClientRect();
+            const inner = element.querySelector('.workspace-file-tabs')!.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return [
+              inner.left - outer.left - parseFloat(style.borderLeftWidth),
+              inner.top - outer.top - parseFloat(style.borderTopWidth),
+              outer.right - inner.right - parseFloat(style.borderRightWidth),
+              outer.bottom - inner.bottom - parseFloat(style.borderBottomWidth)
+            ].map(Math.round);
+          })
+        )
+        .toEqual([inset, inset, inset, inset]);
+    };
 
     await expectBounds({ x: 240, y: 120, width: 1440, height: 960 });
+    await expectContentInset(0.5);
     await captureScreenshot(page, 'file-preview-overlay-1920x1200.png');
     await page.getByRole('button', { name: 'Finish loading', exact: true }).click();
     await page.getByText('Content of Long project file-1.txt', { exact: true }).click();
@@ -165,10 +264,12 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
     await expect(tabs).toHaveCount(12);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expectBounds({ x: 16, y: 16, width: 1248, height: 768 });
+    await expectContentInset(0.5);
     await expect(tabs).toHaveCount(12);
     await captureScreenshot(page, 'file-preview-overlay-1280x800.png');
     await page.setViewportSize({ width: 390, height: 844 });
     await expectBounds({ x: 0, y: 0, width: 390, height: 844 });
+    await expectContentInset(0);
     await expect(tabs).toHaveCount(12);
     await captureScreenshot(page, 'file-preview-overlay-390x844.png');
 

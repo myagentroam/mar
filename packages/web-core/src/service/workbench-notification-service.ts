@@ -64,6 +64,7 @@ type ActiveNotificationTarget =
     >;
 
 export interface RecentRun {
+  readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
   readonly nodeId: string;
   readonly runId: string;
   readonly workspaceId: string;
@@ -99,6 +100,10 @@ export type WorkbenchNotificationInput = (
 };
 
 export interface WorkbenchNotificationService {
+  sessionGroupState(
+    nodeId?: string,
+    workspaceId?: string
+  ): Record<import('@myagentroam/protocol').SessionGroup, { running: number; unread: boolean }>;
   readonly notifications: Ref<WorkbenchNotification[]>;
   readonly unreadCount: Readonly<Ref<number>>;
   readonly previewNotificationId: Readonly<Ref<string | undefined>>;
@@ -642,6 +647,40 @@ export function createWorkbenchNotificationService(
     persist();
   }
 
+  function sessionGroupState(nodeId?: string, workspaceId?: string) {
+    const state = { MAIN: { running: 0, unread: false }, CHILD: { running: 0, unread: false } };
+    const active = new Set<string>();
+    for (const run of recentRuns.value) {
+      if (
+        (nodeId !== undefined && run.nodeId !== nodeId) ||
+        (workspaceId !== undefined && run.workspaceId !== workspaceId) ||
+        !['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+      )
+        continue;
+      const key = `${run.nodeId}:${run.workspaceId}:${run.sessionId}`;
+      if (active.has(key)) continue;
+      active.add(key);
+      state[run.sessionGroup ?? 'MAIN'].running += 1;
+    }
+    for (const notification of notifications.value) {
+      if (
+        notification.source !== 'server' ||
+        notification.read ||
+        notification.expiresAt <= Date.now() ||
+        notification.target.targetType !== 'WORKSPACE_SESSION'
+      )
+        continue;
+      const target = notification.target;
+      if (
+        (nodeId !== undefined && target.nodeId !== nodeId) ||
+        (workspaceId !== undefined && target.workspaceId !== workspaceId)
+      )
+        continue;
+      state[target.sessionGroup ?? 'MAIN'].unread = true;
+    }
+    return state;
+  }
+
   function hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean {
     return recentRuns.value.some(
       (run) =>
@@ -794,6 +833,7 @@ export function createWorkbenchNotificationService(
   return {
     notifications,
     recentRuns,
+    sessionGroupState,
     unreadCount,
     notificationRevision,
     previewNotificationId,
@@ -891,6 +931,9 @@ function isRecentRun(value: unknown): value is RecentRun {
     (value.workspaceName === undefined || typeof value.workspaceName === 'string') &&
     typeof value.sessionId === 'string' &&
     typeof value.sessionTitle === 'string' &&
+    (value.sessionGroup === undefined ||
+      value.sessionGroup === 'MAIN' ||
+      value.sessionGroup === 'CHILD') &&
     (value.userMessage === undefined || typeof value.userMessage === 'string') &&
     typeof value.runner === 'string' &&
     [

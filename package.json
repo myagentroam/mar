@@ -2,7 +2,7 @@
   "name": "my-agent-roam",
   "private": true,
   "license": "LicenseRef-MAR-ESAL-1.0",
-  "version": "0.11.18",
+  "version": "0.11.19",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "build": "pnpm --filter @myagentroam/server... --filter @myagentroam/web-console... --filter @myagentroam/node... build",

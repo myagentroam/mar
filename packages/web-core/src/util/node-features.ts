@@ -9,6 +9,7 @@ export interface NodeFeatureVersionRange {
 export const FEATURE_DEMO = '__feature-demo__';
 
 export const NODE_FEATURES: Readonly<Record<string, NodeFeatureVersionRange>> = {
+  SESSION_GROUPS: { introducedIn: '0.11.19' },
   SESSION_PROMPT: { introducedIn: '0.10.33' },
   MAR_AGENT_AUTO: { introducedIn: '0.10.25' },
   'prompt-completion': { introducedIn: '0.10.21' },

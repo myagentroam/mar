@@ -33,6 +33,7 @@ import { personalGitZhCN } from './personal-git.zh-CN.js';
 
 export const commonMessages = {
   'en-US': {
+    sessionGroups: workspaceEnUS.sessionGroups,
     sessionShare: sessionShareEnUS,
     personalGit: personalGitEnUS,
     promptCompletion: promptCompletionEnUS,
@@ -154,6 +155,7 @@ export const commonMessages = {
     }
   },
   'zh-CN': {
+    sessionGroups: workspaceZhCN.sessionGroups,
     sessionShare: sessionShareZhCN,
     personalGit: personalGitZhCN,
     promptCompletion: promptCompletionZhCN,

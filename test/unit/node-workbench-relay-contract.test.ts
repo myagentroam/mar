@@ -9,6 +9,64 @@ import { WorkbenchRelayService } from '../../ee/server/src/service/workbench-rel
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('clears offline recent sessions after previously admitted projections finish', async () => {
+    const database = new ServerDatabase(':memory:');
+    const nodeId = registerOwnedNode(database);
+    const control = new NodeControl(database);
+    const active = new Set<string>();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    control.setNotificationHandler(async () => {
+      await pending;
+      return true;
+    });
+    control.setRecentRunHandler(
+      async () => {
+        active.add('session-1');
+        return true;
+      },
+      async () => {
+        active.clear();
+      }
+    );
+    const internals = control as unknown as {
+      sockets: Map<string, unknown>;
+      handleAuthenticatedMessage(
+        nodeId: string,
+        socket: unknown,
+        envelope: ReturnType<typeof createEnvelope>
+      ): Promise<boolean>;
+      messageProjector: {
+        enqueueSessionProjection(nodeId: string, project: () => Promise<void>): Promise<void>;
+      };
+    };
+    const socket = { readyState: 1, OPEN: 1, send: vi.fn(), close: vi.fn() };
+    internals.sockets.set(nodeId, socket);
+    try {
+      await internals.handleAuthenticatedMessage(
+        nodeId,
+        socket,
+        createEnvelope('workbench.event', {
+          sequence: 1,
+          category: 'conversation',
+          payload: { event: { eventType: 'notification', payload: {} } }
+        })
+      );
+      await internals.handleAuthenticatedMessage(nodeId, socket, createEnvelope('recent-runs', {}));
+      control.closeNode(nodeId, 1000, 'TEST_NODE_OFFLINE');
+      expect(control.isNodeConnected(nodeId)).toBe(false);
+      release();
+      await internals.messageProjector.enqueueSessionProjection(nodeId, async () => undefined);
+      expect(active.size).toBe(0);
+    } finally {
+      release();
+      control.close();
+      database.close();
+    }
+  });
+
   it('Global Workbench frames relay by Node sequence and repeated resume does not replay events', async () => {
     const database = new ServerDatabase(':memory:');
     const nodeId = registerOwnedNode(database);

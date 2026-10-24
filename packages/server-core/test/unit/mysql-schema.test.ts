@@ -144,6 +144,52 @@ describe('Core MySQL schema', () => {
     ]);
   });
 
+  it('adds nullable notification session groups once and validates the upgraded table on retries', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 33)!;
+    const currentDefinition = CORE_MYSQL_SCHEMA.workbench_notifications!;
+    let hasSessionGroup = false;
+    let definition = currentDefinition.replace(
+      "  `session_group` enum('MAIN','CHILD') DEFAULT NULL,\n",
+      ''
+    );
+    const notificationRows = [{ id: 'existing-notification', read_at: 500, expires_at: 10_000 }];
+    const originalRows = notificationRows.map((row) => ({ ...row }));
+    const alter =
+      "ALTER TABLE workbench_notifications ADD COLUMN session_group enum('MAIN','CHILD') DEFAULT NULL";
+    const execute = vi.fn(async (sql: string) => {
+      if (
+        sql ===
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='workbench_notifications' AND COLUMN_NAME='session_group'"
+      )
+        return [hasSessionGroup ? [{ COLUMN_NAME: 'session_group' }] : [], []];
+      if (sql === alter) {
+        expect(hasSessionGroup).toBe(false);
+        hasSessionGroup = true;
+        definition = currentDefinition;
+        return [[], []];
+      }
+      throw new Error(`Unexpected migration statement: ${sql}`);
+    });
+    const query = vi.fn(async (sql: string) => {
+      expect(sql).toBe('SHOW CREATE TABLE `workbench_notifications`');
+      return [[{ 'Create Table': definition }], []];
+    });
+
+    await migration.up({ execute, query } as never);
+    await migration.up({ execute, query } as never);
+
+    expect(migration.name).toBe('notification_session_groups');
+    expect(hasSessionGroup).toBe(true);
+    expect(definition).toBe(currentDefinition);
+    expect(execute.mock.calls.map(([sql]) => sql)).toEqual([
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='workbench_notifications' AND COLUMN_NAME='session_group'",
+      alter,
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='workbench_notifications' AND COLUMN_NAME='session_group'"
+    ]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(notificationRows).toEqual(originalRows);
+  });
+
   it('adds recoverable share passwords once and validates retries without rewriting the prior migration', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 30)!;
     let added = false;
@@ -545,8 +591,12 @@ describe('Core MySQL schema', () => {
     expect(CORE_MYSQL_SCHEMA.workbench_notifications).toContain(
       "enum('run','approval','plan','user-input','schedule','agent')"
     );
+    expect(CORE_MYSQL_SCHEMA.workbench_notifications).toContain(
+      "`session_group` enum('MAIN','CHILD') DEFAULT NULL"
+    );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+      33
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');

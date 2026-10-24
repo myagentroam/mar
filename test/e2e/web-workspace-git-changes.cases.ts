@@ -166,6 +166,72 @@ for (const language of [
   });
 }
 
+test('Git Changes progressively renders large result sets without losing repository groups', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+  const repository = (repositoryPath: string, source: string, count: number) => ({
+    repositoryPath,
+    repositoryName: repositoryPath || 'project',
+    source,
+    branch: 'main',
+    status: count === 0 ? 'CLEAN' : 'DIRTY',
+    changes: Array.from({ length: count }, (_, index) => ({
+      path: `${repositoryPath}/file-${index}.txt`,
+      state: 'UNTRACKED',
+      change: 'ADDED',
+      diffAvailable: true
+    }))
+  });
+  const summary = {
+    branch: 'main',
+    changes: [],
+    repositories: [
+      repository('', 'ROOT', 300),
+      repository('child', 'SUBMODULE', 150),
+      repository('empty', 'SUBMODULE', 0)
+    ]
+  };
+  await page.unroute(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/);
+  await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) =>
+    json(route, summary)
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
+    fulfillMockWorkspaceWatch(
+      page,
+      route,
+      { id: 'session-1', workspaceId: 'workspace-1' },
+      'GIT_WORKSPACE',
+      undefined,
+      summary
+    )
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: 'Open console', exact: true }).click();
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+
+  const entries = page.locator('.change-entry');
+  const loadMore = page.getByRole('button', { name: 'Load more', exact: true });
+  await expect(entries).toHaveCount(200);
+  await expect(page.locator('[data-repository-path="empty"]')).toBeVisible();
+  await loadMore.click();
+  await expect(entries).toHaveCount(400);
+  await loadMore.click();
+  await expect(entries).toHaveCount(450);
+  await expect(loadMore).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Refresh Git changes', exact: true }).click();
+  await expect(entries).toHaveCount(200);
+  await expect(loadMore).toBeVisible();
+});
+
 test('Files Watch snapshots cannot overwrite manually refreshed Git Changes', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.unroute(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/);

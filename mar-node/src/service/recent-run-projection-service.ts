@@ -1,4 +1,5 @@
 import type { NodeAgentSession } from '../database.js';
+import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import {
   composerVisibleText,
@@ -42,6 +43,7 @@ export class RecentRunProjectionService {
       workspaceId: run.workspaceId,
       sessionId: run.sessionId,
       sessionTitle: session.customTitle ?? session.runnerTitle ?? session.id,
+      sessionGroup: sessionGroup(session),
       ...(latestUserMessage === undefined ? {} : { userMessage: latestUserMessage }),
       runner: run.runner,
       status: run.status,
@@ -61,6 +63,12 @@ export class RecentRunProjectionService {
   snapshot(): readonly RecentRunProjection[] {
     this.cleanup();
     return [...this.runsBySession.values()].sort(compareRecentRuns);
+  }
+
+  clearSessionParent(workspaceId: string, sessionId: string): void {
+    for (const [key, run] of this.runsBySession)
+      if (run.workspaceId === workspaceId && run.sessionId === sessionId)
+        this.runsBySession.set(key, { ...run, sessionGroup: 'MAIN' });
   }
 
   publishSnapshot(): void {

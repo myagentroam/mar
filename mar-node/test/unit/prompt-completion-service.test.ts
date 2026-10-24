@@ -101,6 +101,17 @@ function fixture(
   };
 }
 
+function holdRecords(f: ReturnType<typeof fixture>) {
+  let release!: () => void;
+  let reject!: (error: Error) => void;
+  const pending = new Promise<void>((resolve, rejectRecord) => {
+    release = resolve;
+    reject = rejectRecord;
+  });
+  f.record.mockReturnValue(pending);
+  return { release, reject };
+}
+
 describe('PromptCompletionService', () => {
   it.each(['MANUAL', 'AUTO'] as const)(
     'only manual requests generate with no draft or conversation: %s',
@@ -181,6 +192,119 @@ describe('PromptCompletionService', () => {
     );
     f.service.dispose();
   });
+
+  it('returns successive generated results while earlier journal records remain pending', async () => {
+    const f = fixture();
+    const records = holdRecords(f);
+    let firstResponse: unknown;
+    let secondResponse: unknown;
+    const first = f.service.generate(f.request, f.authorization).then((value) => {
+      firstResponse = value;
+    });
+    let second: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() =>
+        expect(firstResponse).toMatchObject({ status: 'ready', suggestion: 'Test compatibility' })
+      );
+      expect(f.release).toHaveBeenCalledOnce();
+      f.advance(2_001);
+      second = f.service
+        .generate({ ...f.request, requestId: 'second', intentSequence: 2 }, f.authorization)
+        .then((value) => {
+          secondResponse = value;
+        });
+      await vi.waitFor(() =>
+        expect(secondResponse).toMatchObject({ status: 'ready', requestId: 'second' })
+      );
+      expect(f.record).toHaveBeenCalledTimes(2);
+      expect(f.generate).toHaveBeenCalledTimes(2);
+      expect(f.release).toHaveBeenCalledTimes(2);
+    } finally {
+      records.release();
+      await Promise.all([first, second]);
+      f.service.dispose();
+    }
+  });
+
+  it('returns the original generation error before a pending record later rejects', async () => {
+    const f = fixture();
+    const records = holdRecords(f);
+    const generationError = Object.assign(new Error('Private provider failure'), {
+      code: 'PROMPT_COMPLETION_GENERATION_FAILED'
+    });
+    f.generate.mockRejectedValueOnce(generationError);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let outcome: unknown;
+    const result = f.service.generate(f.request, f.authorization).catch((error: unknown) => {
+      outcome = error;
+    });
+    try {
+      await vi.waitFor(() => expect(outcome).toBe(generationError));
+      expect(f.release).toHaveBeenCalledOnce();
+      expect(warning).not.toHaveBeenCalled();
+      records.reject(new Error('Private journal path and contents'));
+      // The late rejection must be handled even after the caller receives its error.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(warning.mock.calls).toEqual([['PROMPT_COMPLETION_JOURNAL_WRITE_FAILED']]);
+      expect(f.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          reason: 'PROMPT_COMPLETION_GENERATION_FAILED',
+          output: null
+        })
+      );
+    } finally {
+      records.release();
+      await result;
+      warning.mockRestore();
+      f.service.dispose();
+    }
+  });
+
+  it.each([
+    { recordFailure: 'throw', generationFails: false },
+    { recordFailure: 'reject', generationFails: false },
+    { recordFailure: 'throw', generationFails: true },
+    { recordFailure: 'reject', generationFails: true }
+  ])(
+    'preserves generation outcome when record fails: $recordFailure, generationFails=$generationFails',
+    async ({ recordFailure, generationFails }) => {
+      const f = fixture();
+      const generationError = Object.assign(new Error('Private provider failure'), {
+        code: 'PROMPT_COMPLETION_GENERATION_FAILED'
+      });
+      const recordError = new Error('Private journal path and contents');
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      if (generationFails) f.generate.mockRejectedValueOnce(generationError);
+      f.record.mockImplementationOnce(() => {
+        if (recordFailure === 'throw') throw recordError;
+        return Promise.reject(recordError);
+      });
+      try {
+        const result = f.service.generate(f.request, f.authorization);
+        if (generationFails) await expect(result).rejects.toBe(generationError);
+        else
+          await expect(result).resolves.toMatchObject({
+            status: 'ready',
+            suggestion: 'Test compatibility'
+          });
+        // Cross an event-loop turn so an unhandled rejection would reach the test runner.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(warning.mock.calls).toEqual([['PROMPT_COMPLETION_JOURNAL_WRITE_FAILED']]);
+        expect(f.release).toHaveBeenCalledOnce();
+        expect(f.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            status: generationFails ? 'failed' : 'ready',
+            output: generationFails ? null : 'Test compatibility',
+            reason: generationFails ? 'PROMPT_COMPLETION_GENERATION_FAILED' : undefined
+          })
+        );
+      } finally {
+        warning.mockRestore();
+        f.service.dispose();
+      }
+    }
+  );
 
   it('keeps per-user limits across pages, cache invalidation and model failures', async () => {
     const f = fixture();
@@ -303,6 +427,7 @@ describe('PromptCompletionService', () => {
         });
       })
     );
+    const records = holdRecords(f);
     try {
       const result = f.service.generate(f.request, { ...f.authorization, expiresAt: 301_000 });
       await vi.advanceTimersByTimeAsync(11_999);
@@ -312,7 +437,9 @@ describe('PromptCompletionService', () => {
       await expect(result).resolves.toMatchObject({ status: 'cancelled' });
       expect(signal?.aborted).toBe(true);
       expect(f.release).toHaveBeenCalledOnce();
+      expect(f.record).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
     } finally {
+      records.release();
       f.service.dispose();
       vi.useRealTimers();
     }
@@ -431,17 +558,25 @@ describe('PromptCompletionService', () => {
       });
     });
     const f = fixture(generate);
+    const records = holdRecords(f);
     const pending = f.service.generate(f.request, f.authorization);
-    await ready;
-    expect(
-      await f.service.generate({ ...f.request, intentSequence: 2 }, f.authorization)
-    ).toMatchObject({ status: 'skipped', reason: 'IN_FLIGHT' });
-    f.service.cancel('1', { requestId: 'request', pageEpoch: 'page', intentSequence: 1 });
-    expect(generate.mock.calls[0]?.[0].signal.aborted).toBe(true);
-    finish({ suggestion: 'late' });
-    expect(await pending).toMatchObject({ status: 'cancelled' });
-    expect(f.release).toHaveBeenCalledTimes(1);
-    f.service.dispose();
+    try {
+      await ready;
+      expect(
+        await f.service.generate({ ...f.request, intentSequence: 2 }, f.authorization)
+      ).toMatchObject({ status: 'skipped', reason: 'IN_FLIGHT' });
+      f.service.cancel('1', { requestId: 'request', pageEpoch: 'page', intentSequence: 1 });
+      expect(generate.mock.calls[0]?.[0].signal.aborted).toBe(true);
+      finish({ suggestion: 'late' });
+      expect(await pending).toMatchObject({ status: 'cancelled' });
+      expect(f.release).toHaveBeenCalledTimes(1);
+      expect(f.record).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
+    } finally {
+      records.release();
+      finish({ suggestion: 'late' });
+      await pending;
+      f.service.dispose();
+    }
   });
 
   it('rechecks authorization without rejecting normal conversation updates', async () => {

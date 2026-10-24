@@ -16,7 +16,7 @@ import {
 import { formatDateTime } from '../../util/time-presentation.js';
 
 const props = defineProps<{
-  readonly service: Pick<WorkbenchNotificationService, 'recentRuns' | 'load'>;
+  readonly service: Pick<WorkbenchNotificationService, 'recentRuns' | 'load' | 'sessionGroupState'>;
   readonly mobileMode: boolean;
   readonly mobileOpen?: boolean;
   readonly mobilePresented?: boolean;
@@ -27,6 +27,13 @@ const emit = defineEmits<{
   'update:mobileOpen': [open: boolean];
 }>();
 const desktopOpen = ref(false);
+const sessionGroup = ref<import('@myagentroam/protocol').SessionGroup>('MAIN');
+const groupState = computed(() => props.service.sessionGroupState());
+const visibleRuns = computed(() =>
+  props.service.recentRuns.value.filter(
+    (run) => (run.sessionGroup ?? 'MAIN') === sessionGroup.value
+  )
+);
 const trigger = ref<HTMLElement>();
 const open = computed({
   get: () => (props.mobileMode ? props.mobileOpen === true : desktopOpen.value),
@@ -94,7 +101,10 @@ function runTime(run: RecentRun): string {
       popper-class="recent-sessions-popover"
     >
       <WorkbenchRecentSessionList
-        :runs="service.recentRuns.value"
+        :runs="visibleRuns"
+        :session-group="sessionGroup"
+        :group-state="groupState"
+        @select-group="sessionGroup = $event"
         :mobile-mode="false"
         :run-time="runTime"
         @open-recent-run="openSession"
@@ -132,7 +142,10 @@ function runTime(run: RecentRun): string {
       :to="mobilePanelTarget"
     >
       <WorkbenchRecentSessionList
-        :runs="service.recentRuns.value"
+        :runs="visibleRuns"
+        :session-group="sessionGroup"
+        :group-state="groupState"
+        @select-group="sessionGroup = $event"
         :mobile-mode="true"
         :run-time="runTime"
         @open-recent-run="openSession"

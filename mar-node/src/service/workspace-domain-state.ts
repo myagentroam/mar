@@ -12,6 +12,7 @@ export interface WorkspaceWatch {
   expiresAt: number;
   readonly topics: {
     readonly sessions: boolean;
+    readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
     readonly changes: boolean;
     readonly files:
       { readonly path: string; readonly cursor?: string; readonly limit?: number } | undefined;

@@ -8,6 +8,12 @@ import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { SettingsSection } from '../../src/model/settings.js';
+import InteractiveSettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
+import { iconThemePreferenceService } from '../../src/service/icon-theme-preference-service.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
+import { renderComponent, trigger } from './support/component-renderer.js';
+
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const originalLocale = localePreferenceService().locale.value;
 beforeEach(() => {
@@ -23,6 +29,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   localePreferenceService().setLocale(originalLocale);
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -59,6 +66,57 @@ async function render(section: SettingsSection, slots = {}) {
 }
 
 describe('Shared personal settings components', () => {
+  it.each(['en-US', 'zh-CN'] as const)(
+    'retains the saved icon selection, reports each failed save and allows retry: %s',
+    async (locale) => {
+      localePreferenceService().setLocale(locale);
+      const service = iconThemePreferenceService();
+      service.setTheme('seti');
+      const setItem = vi.fn((key: string): void => {
+        if (key === 'mar.icon-theme') throw new Error('Storage unavailable');
+      });
+      vi.stubGlobal('localStorage', { getItem: () => 'seti', setItem });
+      const view = renderComponent(InteractiveSettingsContent, {
+        section: 'appearance',
+        webVersion: 'test-version',
+        sessions: [],
+        newPassword: '',
+        changePassword: async () => false,
+        passwordValidationError: '',
+        registrationToken: undefined,
+        loading: false,
+        formatSessionTime: String,
+        request: vi.fn(),
+        quickPrompts: [],
+        quickPromptsLoading: false,
+        quickPromptsFailed: false,
+        refreshQuickPrompts: async () => undefined
+      });
+      try {
+        const select = () =>
+          view.findAll('ElSelect').find((node) => node.props['id'] === 'appearance-icon-theme')!;
+        expect(select().props['modelValue']).toBe('seti');
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          await trigger(select(), 'onUpdate:modelValue', 'material');
+          expect(service.theme.value).toBe('seti');
+          expect(select().props['modelValue']).toBe('seti');
+          expect(showMessage).toHaveBeenCalledTimes(attempt);
+          expect(showMessage).toHaveBeenLastCalledWith(
+            commonMessages[locale].customThemes.storageFailed,
+            'error'
+          );
+        }
+        setItem.mockImplementation(() => undefined);
+        await trigger(select(), 'onUpdate:modelValue', 'material');
+        expect(service.theme.value).toBe('material');
+        expect(select().props['modelValue']).toBe('material');
+        expect(showMessage).toHaveBeenCalledTimes(2);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it.each([false, true])(
     'keeps loading panel content and caller attributes when busy=%s',
     async (loading) => {

@@ -29,6 +29,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
 const timelineVisible = ref(true);
 const initializing = ref(false);
@@ -110,7 +111,7 @@ const turns = ref<ConversationTurn[]>([
     id: 'turn',
     sessionId: 'session',
     runId: 'run',
-    status: 'SUCCEEDED',
+    status: previewFixture ? 'RUNNING' : 'SUCCEEDED',
     items: previewFixture
       ? [
           {
@@ -186,6 +187,23 @@ function publishSummary() {
     }
   ];
 }
+
+function finishPreview() {
+  previewRunStatus.value = 'SUCCEEDED';
+  turns.value = turns.value.map((turn) => ({
+    ...turn,
+    status: 'SUCCEEDED',
+    items: [
+      ...turn.items,
+      {
+        id: 'reply',
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: { text: 'Finished reviewing files.' }
+      }
+    ]
+  }));
+}
 </script>
 
 <template>
@@ -257,6 +275,8 @@ function publishSummary() {
     <ConversationTimeline
       v-if="timelineVisible"
       :turns="turns"
+      :runs="previewFixture ? [{ id: 'run', status: previewRunStatus }] : []"
+      :synchronized="previewFixture"
       :loading="false"
       :initializing="initializing"
       :initial-render-version="renderVersion"
@@ -274,6 +294,9 @@ function publishSummary() {
     </template>
     <button v-if="previewFixture" data-testid="publish-reasoning-summary" @click="publishSummary">
       Publish summary
+    </button>
+    <button v-if="previewFixture" data-testid="finish-reasoning-process" @click="finishPreview">
+      Finish process
     </button>
     <button data-testid="toggle-following" @click="following = !following">Toggle following</button>
     <section class="scroll-sample">

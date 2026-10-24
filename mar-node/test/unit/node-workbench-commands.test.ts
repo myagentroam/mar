@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createEnvelope } from '@myagentroam/protocol';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
@@ -45,11 +46,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('invalidates Workspace session projections after lifecycle configuration changes', async () => {
     const database = new NodeDatabase(':memory:', 'session-lifecycle-events');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/session-lifecycle-events',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-session-lifecycle-');
     const connector = new NodeConnector({ reconnect: false, database });
     const internals = connector as unknown as {
       workspaceSessionService: { markCacheStale(workspaceId: string): void };
@@ -185,6 +182,333 @@ describe('Node Workbench Manifest and command control', () => {
       expect(publish).not.toHaveBeenCalled();
       expect(markStale).not.toHaveBeenCalled();
       expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      await connector.stop();
+    }
+  });
+
+  it('clears only the parent after SQLite succeeds and makes repeat clears side-effect free', async () => {
+    const database = new NodeDatabase(':memory:', 'session-parent-clear');
+    const workspace = database.saveWorkspace({
+      path: '/workspace/session-parent-clear',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ reconnect: false, database });
+    const internals = connector as unknown as {
+      runtime: {
+        createAgentSession(input: unknown): NodeAgentSession;
+        getAgentSession(sessionId: string): NodeAgentSession | undefined;
+      };
+      workbenchEventService: { publish(event: unknown): void };
+      workspaceSessionService: { markCacheStale(workspaceId: string): void };
+      workspaceWorkbenchService: {
+        invalidateTopic(workspaceId: string, topic: 'sessions'): Promise<void>;
+      };
+      pendingSessionGroups: Map<string, unknown>;
+      send(type: string, payload: unknown): void;
+    };
+    try {
+      const session = internals.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'mar-agent',
+        cwd: workspace.path,
+        externalSessionId: 'child-native',
+        parentSessionId: 'parent-session'
+      });
+      database.saveNativeSessionMetadata({
+        runner: session.runner,
+        externalSessionId: session.externalSessionId!,
+        workspaceId: workspace.id,
+        parentSessionId: 'parent-session'
+      });
+      const originalSend = internals.send.bind(connector);
+      const originalPublish = internals.workbenchEventService.publish.bind(
+        internals.workbenchEventService
+      );
+      const publish = vi.spyOn(internals.workbenchEventService, 'publish');
+      const markStale = vi.spyOn(internals.workspaceSessionService, 'markCacheStale');
+      const invalidate = vi
+        .spyOn(internals.workspaceWorkbenchService, 'invalidateTopic')
+        .mockResolvedValue(undefined);
+      const send = vi.spyOn(internals, 'send');
+
+      for (const extra of [
+        { clearParent: false },
+        { clearParent: true, customTitle: 'also rename' },
+        { clearParent: true, pinned: true },
+        { clearParent: true, sessionPrompt: 'also change the prompt' },
+        { clearParent: true, parentSessionId: 'another-parent' }
+      ])
+        await expect(
+          operation(connector, 'session.metadata.update', { sessionId: session.id, ...extra })
+        ).rejects.toThrow('SESSION_INVALID');
+
+      const failedClear = vi.spyOn(database, 'clearSessionParent').mockImplementationOnce(() => {
+        throw new Error('PARENT_WRITE_FAILED');
+      });
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true
+        })
+      ).rejects.toThrow('PARENT_WRITE_FAILED');
+      expect(
+        database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
+      ).toMatchObject({ parentSessionId: 'parent-session' });
+      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe('parent-session');
+      expect(publish).not.toHaveBeenCalled();
+      expect(markStale).not.toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      failedClear.mockRestore();
+
+      const phases: string[] = [];
+      const clearParentInDatabase = database.clearSessionParent.bind(database);
+      const clearParent = vi.spyOn(database, 'clearSessionParent').mockImplementation((...args) => {
+        expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe(
+          'parent-session'
+        );
+        clearParentInDatabase(...args);
+        phases.push('sqlite-committed');
+      });
+      send.mockImplementation((type, payload) => {
+        if (type === 'session.group.changed') {
+          expect(
+            database.getNativeSessionMetadata(
+              session.runner,
+              session.externalSessionId!,
+              workspace.id
+            )
+          ).toMatchObject({ parentSessionId: null });
+          expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
+          phases.push('parent-cleared');
+        }
+        originalSend(type, payload);
+      });
+      publish.mockImplementation((event) => {
+        expect(
+          database.getNativeSessionMetadata(
+            session.runner,
+            session.externalSessionId!,
+            workspace.id
+          )
+        ).toMatchObject({ parentSessionId: null });
+        expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
+        phases.push('session-published');
+        originalPublish(event);
+      });
+
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true
+        })
+      ).resolves.toMatchObject({
+        session: { id: session.id, parentSessionId: null, sessionGroup: 'MAIN' }
+      });
+      expect(phases).toEqual(['sqlite-committed', 'parent-cleared', 'session-published']);
+      expect(clearParent).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(
+        'session.group.changed',
+        expect.objectContaining({
+          nodeId: session.nodeId,
+          workspaceId: workspace.id,
+          sessionId: session.id,
+          sessionGroup: 'MAIN'
+        })
+      );
+      expect(markStale).toHaveBeenCalledExactlyOnceWith(workspace.id);
+      expect(invalidate).toHaveBeenCalledWith(workspace.id, 'sessions');
+      expect(internals.pendingSessionGroups.size).toBe(1);
+      const pendingChange = internals.pendingSessionGroups.get(session.id);
+      expect(pendingChange).toMatchObject({
+        nodeId: session.nodeId,
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        sessionGroup: 'MAIN'
+      });
+
+      send.mockClear();
+      publish.mockClear();
+      markStale.mockClear();
+      invalidate.mockClear();
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true
+        })
+      ).resolves.toMatchObject({ session: { id: session.id, parentSessionId: null } });
+      expect(clearParent).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+      expect(markStale).not.toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(internals.pendingSessionGroups.size).toBe(1);
+      expect(internals.pendingSessionGroups.get(session.id)).toBe(pendingChange);
+    } finally {
+      await connector.stop();
+    }
+  });
+
+  it('syncs a stale runtime parent from explicit null metadata without reprojecting or interrupting an active run', async () => {
+    const database = new NodeDatabase(':memory:', 'session-parent-null-authority');
+    const workspace = database.saveWorkspace({
+      path: '/workspace/session-parent-null-authority',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ reconnect: false, database });
+    const internals = connector as unknown as {
+      runtime: {
+        createAgentSession(input: unknown): NodeAgentSession;
+        getAgentSession(sessionId: string): NodeAgentSession | undefined;
+        createMessageRun(input: unknown): { run: { id: string } };
+        transitionRun(id: string, next: 'RUNNING'): { id: string; status: string };
+        getRun(id: string): { id: string; sessionId: string; status: string } | undefined;
+      };
+      workbenchEventService: { publish(event: unknown): void };
+      pendingSessionGroups: Map<string, unknown>;
+      send(type: string, payload: unknown): void;
+    };
+    try {
+      const session = internals.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'mar-agent',
+        cwd: workspace.path,
+        externalSessionId: 'stale-child-native',
+        parentSessionId: 'parent-session'
+      });
+      database.saveNativeSessionMetadata({
+        runner: session.runner,
+        externalSessionId: session.externalSessionId!,
+        workspaceId: workspace.id,
+        parentSessionId: 'parent-session'
+      });
+      const activeRun = internals.runtime.createMessageRun({
+        sessionId: session.id,
+        clientMessageId: 'active-child-run',
+        content: 'keep running'
+      }).run;
+      internals.runtime.transitionRun(activeRun.id, 'RUNNING');
+
+      database.clearSessionParent(session.runner, session.externalSessionId!, workspace.id);
+      expect(
+        database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
+      ).toMatchObject({ parentSessionId: null });
+      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe('parent-session');
+
+      const clearParent = vi.spyOn(database, 'clearSessionParent');
+      const publish = vi.spyOn(internals.workbenchEventService, 'publish');
+      const send = vi.spyOn(internals, 'send');
+      const result = (await operation(connector, 'session.metadata.update', {
+        sessionId: session.id,
+        clearParent: true
+      })) as { session: { id: string; parentSessionId: string | null; sessionGroup: string } };
+
+      expect(result.session).toMatchObject({
+        id: session.id,
+        parentSessionId: null,
+        sessionGroup: 'MAIN'
+      });
+      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
+      expect(clearParent).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toEqual([]);
+      expect(internals.pendingSessionGroups.size).toBe(0);
+      expect(internals.runtime.getRun(activeRun.id)).toMatchObject({
+        id: activeRun.id,
+        sessionId: session.id,
+        status: 'RUNNING'
+      });
+    } finally {
+      await connector.stop();
+    }
+  });
+
+  it('replays pending session-group changes on registration and authentication until a matching scoped ACK', async () => {
+    const database = new NodeDatabase(':memory:', 'session-group-ack-reconnect');
+    const workspace = database.saveWorkspace({
+      path: '/workspace/session-group-ack-reconnect',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ reconnect: false, database });
+    const internals = connector as unknown as {
+      config: unknown;
+      runtime: { createAgentSession(input: unknown): NodeAgentSession };
+      controlMessages: { handle(raw: string): void };
+      connectionLifecycle: { register(nodeId: string, credential: string): Promise<void> };
+      pendingSessionGroups: Map<string, unknown>;
+      send(type: string, payload: unknown): void;
+    };
+    try {
+      internals.config = {};
+      const session = internals.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'mar-agent',
+        cwd: workspace.path,
+        externalSessionId: 'child-native',
+        parentSessionId: 'parent-session'
+      });
+      database.saveNativeSessionMetadata({
+        runner: session.runner,
+        externalSessionId: session.externalSessionId!,
+        workspaceId: workspace.id,
+        parentSessionId: 'parent-session'
+      });
+      const register = vi
+        .spyOn(internals.connectionLifecycle, 'register')
+        .mockResolvedValue(undefined);
+      const send = vi.spyOn(internals, 'send');
+      const sendControl = (type: string, payload: unknown) =>
+        internals.controlMessages.handle(JSON.stringify(createEnvelope(type, payload)));
+
+      await operation(connector, 'session.metadata.update', {
+        sessionId: session.id,
+        clearParent: true
+      });
+      const change = send.mock.calls.find(([type]) => type === 'session.group.changed')?.[1] as {
+        nodeId: string;
+        workspaceId: string;
+        sessionId: string;
+        sessionGroup: 'MAIN';
+      };
+      expect(change).toMatchObject({
+        nodeId: session.nodeId,
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        sessionGroup: 'MAIN'
+      });
+      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
+
+      for (const mismatch of [
+        { ...change, nodeId: 'different-node' },
+        { ...change, workspaceId: 'different-workspace' },
+        { ...change, sessionId: 'different-session' }
+      ]) {
+        sendControl('session.group.ack', mismatch);
+        expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
+      }
+
+      send.mockClear();
+      sendControl('registered', { nodeId: change.nodeId, credential: 'test-credential' });
+      await vi.waitFor(() =>
+        expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(1)
+      );
+      expect(register).toHaveBeenCalledWith(change.nodeId, 'test-credential');
+      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
+
+      send.mockClear();
+      sendControl('authenticated', {});
+      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(1);
+      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
+
+      sendControl('session.group.ack', change);
+      expect(internals.pendingSessionGroups.has(session.id)).toBe(false);
+      send.mockClear();
+      sendControl('authenticated', {});
+      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(0);
     } finally {
       await connector.stop();
     }
@@ -856,11 +1180,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('restores the existing Thread before returning the managed Codex compact Run and settles it after compaction', async () => {
     const database = new NodeDatabase(':memory:', 'node-compact');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/compact',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-compact-');
     let notify: ((notification: { method: string; params: unknown }) => void) | undefined;
     const configuredEnvironments: Readonly<Record<string, string>>[] = [];
     const resumeThread = vi.fn().mockResolvedValue({ thread: { id: 'thread-compact' } });
@@ -934,7 +1254,9 @@ describe('Node Workbench Manifest and command control', () => {
     expect(resumeThread.mock.invocationCallOrder[0]).toBeLessThan(
       compactRequest.mock.invocationCallOrder[0]!
     );
-    expect(internals.runtime.sessionQueue(session.id).paused).toBe(false);
+    await vi.waitFor(() => {
+      expect(internals.runtime.sessionQueue(session.id).paused).toBe(false);
+    });
     await expect(
       operation(connector, 'session.command.execute', {
         sessionId: session.id,
@@ -1472,11 +1794,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('wraps only the input sent to the Runner while Claude Code Plan Mode is active', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-plan-input');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/claude-plan-input',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-claude-plan-input-');
     let prompt: string | undefined;
     const connector = new NodeConnector({
       reconnect: false,
@@ -1584,11 +1902,7 @@ describe('Node Workbench Manifest and command control', () => {
 
   it('activates an existing MAR Agent session before running a runtime command', async () => {
     const database = new NodeDatabase(':memory:', 'node-mar-command-activation');
-    const workspace = database.saveWorkspace({
-      path: '/workspace/mar-command-activation',
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
+    const workspace = await saveTempWorkspace(database, 'mar-command-activation-');
     const connector = new NodeConnector({
       reconnect: false,
       database,
@@ -1788,4 +2102,10 @@ function operation(connector: NodeConnector, operation: string, data: unknown): 
       executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
     }
   ).executeNodeOperation(operation, data);
+}
+
+async function saveTempWorkspace(database: NodeDatabase, prefix: string) {
+  const path = await mkdtemp(join(tmpdir(), prefix));
+  onTestFinished(() => rm(path, { recursive: true, force: true }));
+  return database.saveWorkspace({ path, kind: 'DIRECTORY', gitSummary: null });
 }

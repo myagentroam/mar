@@ -147,17 +147,19 @@ async function load(): Promise<void> {
 }
 
 async function save(): Promise<void> {
-  const valid = await form.value?.validate().catch(() => false);
-  if (!valid) return;
+  if (saving.value) return;
+  const scope = activeScope.value;
+  const property = activeItem.value.property;
+  const content = formState.value.content;
   saving.value = true;
   try {
-    instructions.value = (
-      await props.request<{ instructions: Instructions }>(
-        `/api/personal-instructions/${activeScope.value}`,
-        { method: 'PUT', body: JSON.stringify({ content: formState.value.content }) }
-      )
-    ).instructions;
-    formState.value.content = instructions.value[activeItem.value.property];
+    const valid = await form.value?.validate().catch(() => false);
+    if (!valid) return;
+    const response = await props.request<{ instructions: Instructions }>(
+      `/api/personal-instructions/${scope}`,
+      { method: 'PUT', body: JSON.stringify({ content }) }
+    );
+    mergeSubmittedScope(property, content, response.instructions);
     showMessage(translate('personalInstructions.saved'), 'success');
   } catch (error) {
     showMessage(
@@ -170,22 +172,37 @@ async function save(): Promise<void> {
   }
 }
 
+function mergeSubmittedScope(
+  property: keyof Instructions,
+  submittedContent: string,
+  response: Instructions
+): void {
+  const active = activeItem.value.property === property;
+  const draft = active ? formState.value.content : instructions.value[property];
+  // A response owns only its submitted scope, not other or more recent drafts.
+  if (draft !== submittedContent) return;
+  instructions.value[property] = response[property];
+  if (active) formState.value.content = response[property];
+}
+
 async function clear(): Promise<void> {
+  if (saving.value) return;
+  const scope = activeScope.value;
+  const property = activeItem.value.property;
+  const content = formState.value.content;
+  saving.value = true;
   try {
     await ElMessageBox.confirm(
       translate('personalInstructions.clearConfirmation'),
       translate('personalInstructions.clear'),
       { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
     );
-    saving.value = true;
-    instructions.value = (
-      await props.request<{ instructions: Instructions }>(
-        `/api/personal-instructions/${activeScope.value}`,
-        { method: 'DELETE' }
-      )
-    ).instructions;
-    formState.value.content = '';
-    void form.value?.clearValidate();
+    const response = await props.request<{ instructions: Instructions }>(
+      `/api/personal-instructions/${scope}`,
+      { method: 'DELETE' }
+    );
+    mergeSubmittedScope(property, content, response.instructions);
+    if (activeScope.value === scope) void form.value?.clearValidate();
     showMessage(translate('personalInstructions.cleared'), 'success');
   } catch (error) {
     if (error !== 'cancel')

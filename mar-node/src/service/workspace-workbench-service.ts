@@ -42,7 +42,10 @@ export interface WorkspaceWorkbenchServiceOptions {
   readonly files: WorkspaceFileService;
   readonly uploads: WorkspaceUploadService;
   readonly changes: WorkspaceChangeService;
-  readonly listSessions: (workspaceId: string) => Promise<unknown>;
+  readonly listSessions: (
+    workspaceId: string,
+    sessionGroup?: import('@myagentroam/protocol').SessionGroup
+  ) => Promise<unknown>;
   readonly invalidate: (workspaceId: string) => void;
   readonly nodeId: () => string;
   readonly nodeGeneration: () => string;

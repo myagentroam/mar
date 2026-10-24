@@ -7,6 +7,7 @@ interface NodeControlMessageServiceOptions {
   readonly register: (nodeId: string, credential: string, payload?: unknown) => Promise<void>;
   readonly connected: (payload?: unknown) => void;
   readonly usageAck?: (payload: unknown) => void;
+  readonly sessionGroupAck?: (payload: unknown) => void;
   readonly bindUsage?: (payload: unknown) => void;
   readonly close: (code: number, reason: string) => void;
   readonly inspectWorkspace: (envelope: NodeEnvelope) => Promise<void>;
@@ -72,6 +73,10 @@ export class NodeControlMessageService {
       return;
     }
     if (envelope.type === 'ack') return;
+    if (envelope.type === 'session.group.ack') {
+      this.options.sessionGroupAck?.(envelope.payload);
+      return;
+    }
     if (envelope.type === 'run.approval.decision') {
       this.decideApproval(envelope);
       return;

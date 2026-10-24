@@ -128,6 +128,50 @@ export function createWorkbenchEntityService(options: {
     }
   }
 
+  const movingSessions = new Set<string>();
+  async function moveSessionToMain(session: Session): Promise<Session | undefined> {
+    const target = options.workspaceTarget.value;
+    if (target === undefined || session.sessionGroup !== 'CHILD' || movingSessions.has(session.id))
+      return;
+    movingSessions.add(session.id);
+    try {
+      try {
+        await ElMessageBox.confirm(
+          translate('sessionGroups.description'),
+          translate('sessionGroups.move'),
+          {
+            closeIcon: marIcon('close'),
+            confirmButtonText: translate('sessionGroups.confirm'),
+            cancelButtonText: translate('sessionGroups.cancel')
+          }
+        );
+      } catch {
+        return;
+      }
+      if (options.workspaceTarget.value !== target) return;
+      options.loading.value = true;
+      const result = await options.request<{ session: Session }>(
+        `/api/agent-sessions/${options.sessionPathId(session.id)}/metadata`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ nodeId: target.nodeId, clearParent: true })
+        }
+      );
+      if (options.workspaceTarget.value !== target) return;
+      options.notice(translate('sessionGroups.moved'), 'success');
+      return result.session;
+    } catch (error) {
+      options.notice(
+        translate('sessionGroups.failed', { reason: options.errorMessage(error) }),
+        'error',
+        error
+      );
+    } finally {
+      movingSessions.delete(session.id);
+      options.loading.value = false;
+    }
+  }
+
   async function setSessionPinned(session: Session, pinned: boolean): Promise<boolean> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (nodeId === undefined) return false;
@@ -291,6 +335,7 @@ export function createWorkbenchEntityService(options: {
   return {
     renameNode,
     renameSession,
+    moveSessionToMain,
     setSessionPinned,
     movePinnedSession,
     deleteSession,

@@ -84,8 +84,8 @@ export class WorkbenchNotificationService {
         ? await connection.execute<ResultSetHeader>(
             `INSERT INTO workbench_notifications
              (id,user_id,source_id,source_key,kind,title,message,node_id,workspace_id,session_id,
-              session_title,run_id,created_at,expires_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              session_title,run_id,created_at,expires_at,session_group)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON DUPLICATE KEY UPDATE source_key=VALUES(source_key)`,
             [
               id,
@@ -107,7 +107,8 @@ export class WorkbenchNotificationService {
               payload.sessionTitle,
               payload.runId,
               createdAt,
-              createdAt + TTL_MS
+              createdAt + TTL_MS,
+              payload.sessionGroup ?? null
             ]
           )
         : await connection.execute<ResultSetHeader>(
@@ -166,6 +167,38 @@ export class WorkbenchNotificationService {
       [userId, sha256(sourceId), this.now()]
     );
     return rows[0] === undefined ? undefined : mapRow(rows[0]);
+  }
+
+  async reclassify(change: import('@myagentroam/protocol').SessionGroupChanged): Promise<void> {
+    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
+      "SELECT DISTINCT user_id FROM workbench_notifications WHERE node_id=? AND workspace_id=? AND session_id=? AND target_type='WORKSPACE_SESSION' AND deleted_at IS NULL AND expires_at>?",
+      [change.nodeId, change.workspaceId, change.sessionId, this.now()]
+    );
+    for (const row of rows) {
+      const userId = Number(row['user_id']);
+      if (
+        !(await this.database.userCanRequestNode(
+          userId,
+          change.nodeId,
+          'workbench.event.receive',
+          change,
+          change.workspaceId
+        ))
+      )
+        continue;
+      await this.database.raw.execute(
+        "UPDATE workbench_notifications SET session_group=? WHERE user_id=? AND node_id=? AND workspace_id=? AND session_id=? AND target_type='WORKSPACE_SESSION' AND deleted_at IS NULL AND expires_at>?",
+        [
+          change.sessionGroup,
+          userId,
+          change.nodeId,
+          change.workspaceId,
+          change.sessionId,
+          this.now()
+        ]
+      );
+      this.push(userId, { type: 'notification.updated' });
+    }
   }
 
   async forPush(userId: number, id: string) {
@@ -320,7 +353,8 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
           nodeId: String(row['node_id']),
           workspaceId: String(row['workspace_id']),
           sessionId: String(row['session_id']),
-          sessionName: String(row['session_title'])
+          sessionName: String(row['session_title']),
+          sessionGroup: row['session_group'] ?? 'MAIN'
         };
   return serverNotificationSchema.parse({
     id: String(row['id']),
@@ -408,6 +442,9 @@ function parsePayload(value: unknown) {
   if (value.targetType !== undefined && value.targetType !== 'WORKSPACE_SESSION') return undefined;
   if (
     !bounded(value.workspaceId, 128) ||
+    (value.sessionGroup !== undefined &&
+      value.sessionGroup !== 'MAIN' &&
+      value.sessionGroup !== 'CHILD') ||
     !bounded(value.sessionId, 128) ||
     !bounded(value.sessionTitle, 160)
   )
@@ -416,6 +453,7 @@ function parsePayload(value: unknown) {
     ...base,
     targetType: 'WORKSPACE_SESSION' as const,
     workspaceId: value.workspaceId,
+    sessionGroup: value.sessionGroup === 'CHILD' ? ('CHILD' as const) : ('MAIN' as const),
     sessionId: value.sessionId,
     sessionTitle: value.sessionTitle
   };

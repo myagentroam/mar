@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { showMessage } from '../../packages/web-core/src/service/message-feedback-service.js';
 import Audit from '../../ee/web/src/view/settings/AuditManagementPage.vue?unit-render';
 import { i18n } from '../../ee/web/src/service/locale-preference-service.js';
 import {
@@ -9,7 +10,11 @@ import {
 } from '../../packages/web-core/test/unit/support/component-renderer.js';
 
 const initialLocale = i18n.global.locale.value;
+vi.mock('../../packages/web-core/src/service/message-feedback-service.js', () => ({
+  showMessage: vi.fn()
+}));
 afterEach(() => {
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
   i18n.global.locale.value = initialLocale;
 });
@@ -61,7 +66,148 @@ function browser(mobile: boolean) {
   );
 }
 
+function detailFixture() {
+  browser(false);
+  const pending: { resolve: (value: unknown) => void; reject: (error: Error) => void }[] = [];
+  const request = vi.fn((path: string) => {
+    if (path.includes('?')) return Promise.resolve({ events, total: events.length, page: 1 });
+    return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+  });
+  const view = renderComponent(Audit, { request });
+  return {
+    view,
+    pending,
+    open(index: number) {
+      const table = view.findAll('ElTable')[0]!;
+      return (table.props['onRowClick'] as (event: unknown) => Promise<void>)(events[index]);
+    },
+    text: () => textContent(view.findAll('ElDialog')[0]!)
+  };
+}
+
+function detail(index: number, message: string) {
+  return {
+    ...events[index],
+    conversationPayload: { conversationTitle: 'Audit detail', userMessage: message }
+  };
+}
+
 describe('Audit management behavior', () => {
+  it('keeps B when detail requests succeed in reverse order', async () => {
+    const fixture = detailFixture();
+    try {
+      await flushComponent();
+      const a = fixture.open(0);
+      const b = fixture.open(1);
+      fixture.pending[1]!.resolve(detail(1, 'Current B payload'));
+      await b;
+      await flushComponent();
+      expect(fixture.text()).toContain('Current B payload');
+      fixture.pending[0]!.resolve(detail(0, 'Obsolete A payload'));
+      await a;
+      await flushComponent();
+      expect(fixture.text()).toContain('Current B payload');
+      expect(fixture.text()).not.toContain('Obsolete A payload');
+    } finally {
+      fixture.view.unmount();
+    }
+  });
+
+  it('suppresses an old failure while B is pending and reports only the current failure', async () => {
+    const fixture = detailFixture();
+    try {
+      await flushComponent();
+      const a = fixture.open(0);
+      const b = fixture.open(1);
+      fixture.pending[0]!.reject(new Error('Obsolete A failure'));
+      await a;
+      await flushComponent();
+      expect(showMessage).not.toHaveBeenCalled();
+      expect(fixture.text()).toContain(events[1]!.id);
+      fixture.pending[1]!.reject(new Error('Current B failure'));
+      await b;
+      await flushComponent();
+      expect(showMessage).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('Current B failure'),
+        'error',
+        expect.any(Error)
+      );
+      expect(fixture.text()).toContain(events[1]!.id);
+    } finally {
+      fixture.view.unmount();
+    }
+  });
+
+  it.each(['footer', 'close', 'model'] as const)(
+    'invalidates pending detail on %s close, including reopening the same target',
+    async (close) => {
+      const fixture = detailFixture();
+      try {
+        await flushComponent();
+        const a = fixture.open(0);
+        await flushComponent();
+        const dialog = fixture.view.findAll('ElDialog')[0]!;
+        if (close === 'footer') {
+          const button = fixture.view
+            .findAll('ElButton')
+            .find((entry) => textContent(entry) === i18n.global.t('common.close'))!;
+          await trigger(button, 'onClick');
+        } else {
+          await trigger(dialog, close === 'close' ? 'onClose' : 'onUpdate:modelValue', false);
+        }
+        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        const reopened = fixture.open(0);
+        fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
+        await a;
+        await flushComponent();
+        expect(fixture.text()).not.toContain('Closed payload');
+        fixture.pending[1]!.resolve(detail(0, 'Reopened payload'));
+        await reopened;
+        await flushComponent();
+        expect(fixture.text()).toContain('Reopened payload');
+      } finally {
+        fixture.view.unmount();
+      }
+    }
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'does not restore closed details or report a late %s',
+    async (outcome) => {
+      const fixture = detailFixture();
+      try {
+        await flushComponent();
+        const pending = fixture.open(0);
+        await flushComponent();
+        await trigger(fixture.view.findAll('ElDialog')[0]!, 'onClose');
+        if (outcome === 'success') fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
+        else fixture.pending[0]!.reject(new Error('Closed failure'));
+        await pending;
+        await flushComponent();
+        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        expect(showMessage).not.toHaveBeenCalled();
+      } finally {
+        fixture.view.unmount();
+      }
+    }
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'ignores a detail %s after the page unmounts',
+    async (outcome) => {
+      const fixture = detailFixture();
+      await flushComponent();
+      const pending = fixture.open(0);
+      fixture.view.unmount();
+      if (outcome === 'success') fixture.pending[0]!.resolve(detail(0, 'Unmounted payload'));
+      else fixture.pending[0]!.reject(new Error('Unmounted failure'));
+      await pending;
+      await flushComponent();
+      expect(showMessage).not.toHaveBeenCalled();
+      expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+    }
+  );
+
   it.each(['en-US', 'zh-CN'] as const)(
     'renders server pages, localized input modes and fetched detail payloads in %s',
     async (locale) => {

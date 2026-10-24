@@ -59,6 +59,76 @@ describe('Node Workspace watch', () => {
     }
   });
 
+  it('keeps MAIN and CHILD initial snapshots isolated within the same Workspace', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-workspace-session-groups-'));
+    const database = new NodeDatabase(':memory:', 'node-workspace-session-groups');
+    const connector = new NodeConnector({ reconnect: false, database });
+    try {
+      const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+      const main = {
+        ...session('main-session', 'codex'),
+        workspaceId: workspace.id,
+        cwd: root,
+        parentSessionId: null
+      };
+      const child = {
+        ...session('child-session', 'codex'),
+        workspaceId: workspace.id,
+        cwd: root,
+        parentSessionId: 'missing-parent'
+      };
+      const internals = connector as unknown as {
+        discoverWorkspaceSessions: WorkspaceSessionServiceOptions['discover'];
+        send(type: string, payload: unknown): void;
+      };
+      vi.spyOn(internals, 'discoverWorkspaceSessions').mockResolvedValue([main, child]);
+      const send = vi.spyOn(internals, 'send');
+
+      await operation(connector, 'workspace.watch', {
+        workspaceId: workspace.id,
+        watchId: 'main-session-watch',
+        mode: 'initial',
+        topics: { sessions: true, sessionGroup: 'MAIN' }
+      });
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          'watch.event',
+          expect.objectContaining({
+            type: 'watch.workspace.snapshot',
+            topic: 'sessions',
+            payload: expect.objectContaining({
+              sessions: [expect.objectContaining({ id: 'main-session' })],
+              nextCursor: null
+            })
+          })
+        )
+      );
+
+      await operation(connector, 'workspace.watch', {
+        workspaceId: workspace.id,
+        watchId: 'child-session-watch',
+        mode: 'initial',
+        topics: { sessions: true, sessionGroup: 'CHILD' }
+      });
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          'watch.event',
+          expect.objectContaining({
+            type: 'watch.workspace.snapshot',
+            topic: 'sessions',
+            payload: expect.objectContaining({
+              sessions: [expect.objectContaining({ id: 'child-session' })],
+              nextCursor: null
+            })
+          })
+        )
+      );
+    } finally {
+      await connector.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('makes a removed lease inactive before cancelling its queued preparation', () => {
     const state = new WorkspaceDomainState();
     const observed: boolean[] = [];

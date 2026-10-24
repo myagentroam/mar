@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getCurrentInstance, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
+import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 
 const root: WorkspaceFileTreeNode = {
@@ -75,5 +76,6 @@ getCurrentInstance()!.appContext.app.mixin({
         <span>Item {{ index }}</span>
       </button>
     </div>
+    <AgentMarkdown v-if="mounted" :content="'```text\n' + label + '\n```'" />
   </main>
 </template>

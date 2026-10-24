@@ -5,6 +5,10 @@ lastUpdated: 2026-10-24
 
 # Create and Manage Sessions
 
+On supported Nodes, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions created by `marctl` with a parent relationship appear under Child Sessions; sessions without one, including scheduled and externally discovered sessions, appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. Older Nodes retain the mixed list.
+
+Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. From a child session's more menu, choose **Move to Main Sessions**. Confirmation clears only that session's group relationship with its parent, preserving its history, active runs, queue, and its own child relationships. The list stays on Child Sessions after success and the current conversation stays open.
+
 A regular work session must execute in the selected Workspace's valid root or a subdirectory. An independently registered Git worktree uses its own Workspace. Node rejects new execution if the directory disappears, the registered root is replaced, or a link escapes the Workspace; it does not silently switch directories. If queued messages are paused for this reason, restore a valid directory and use **Resume** in the queue. Messages and attachments are retained and can still be removed through the existing queue controls. This check does not make work mode a host filesystem sandbox or change hosted-conversation isolation.
 
 Select **New Session** to prepare an Agent, model, reasoning level, and permission mode before the first message. A session is created only when that message is accepted.

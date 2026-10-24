@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -17,7 +18,8 @@ import {
   workspaceChangePath,
   shortChange,
   changeFileName,
-  changeDirectory
+  changeDirectory,
+  limitChangeRepositories
 } from '../../util/workspace-git.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
@@ -41,6 +43,30 @@ const {
   restoringPath,
   loadChanges
 } = props.service;
+const CHANGE_RENDER_BATCH = 200;
+const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
+const renderedChangeRepositories = computed(() =>
+  limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
+);
+const renderedChangeCount = computed(() =>
+  renderedChangeRepositories.value.reduce(
+    (count, repository) => count + repository.changes.length,
+    0
+  )
+);
+const totalChangeCount = computed(() =>
+  visibleChangeRepositories.value.reduce(
+    (count, repository) => count + repository.changes.length,
+    0
+  )
+);
+const hasMoreChanges = computed(() => renderedChangeCount.value < totalChangeCount.value);
+watch(visibleChangeRepositories, () => {
+  changeRenderLimit.value = CHANGE_RENDER_BATCH;
+});
+function showMoreChanges(): void {
+  changeRenderLimit.value += CHANGE_RENDER_BATCH;
+}
 function worktreeReference(worktree: GitWorktreeSummary): string {
   return (
     worktree.branch ??
@@ -188,7 +214,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </p>
     <ul v-else class="change-list">
-      <template v-for="repository in visibleChangeRepositories" :key="repositoryKey(repository)">
+      <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
             <div class="repository-title-row">
@@ -254,7 +280,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 class="repository-sync-tag"
                 effect="plain"
                 size="small"
-                :title="translate('gitSync.description', repository.tracking)"
+                v-tooltip="translate('gitSync.description', repository.tracking)"
                 :aria-label="translate('gitSync.description', repository.tracking)"
               >
                 <span aria-hidden="true"
@@ -318,8 +344,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </small>
             </span>
           </button>
-          <span v-tooltip="entry.change">{{ shortChange(entry.change) }}</span>
-          <small v-tooltip="entry.state">{{ shortState(entry.state) }}</small>
+          <span v-tooltip="entry.change" class="change-status">{{
+            shortChange(entry.change)
+          }}</span>
+          <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
           <el-button
             v-tooltip="
               entry.state === 'UNTRACKED'
@@ -347,6 +375,9 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         </li>
       </template>
     </ul>
+    <el-button v-if="hasMoreChanges" class="change-load-more" link @click="showMoreChanges">
+      {{ translate('generated.workspaceInspector.loadMore') }}
+    </el-button>
   </section>
 </template>
 
@@ -442,6 +473,11 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   list-style: none;
 }
 
+.change-load-more {
+  width: 100%;
+  margin: 4px 0;
+}
+
 .change-list li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto;
@@ -456,7 +492,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-template-columns: minmax(0, 1fr);
   margin-top: 0.5rem;
   border-top: 1px solid var(--mar-border-default);
-  padding: 0.35rem 0.25rem 0.3rem;
+  padding: 0.35rem 0.25rem 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
@@ -752,15 +788,21 @@ button.changes-refresh-button {
   line-height: 1;
 }
 
-.change-entry > span {
-  font-size: var(--mar-font-size-nano);
+.change-list .change-entry > .change-status {
+  inline-size: 1ch;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
 }
 
 .change-list .change-restore {
   --mar-action-icon-size: 14px;
-  min-width: 1.25rem;
+  min-width: 20px;
   min-height: 18px;
   padding: 0.1rem;
+  font-size: var(--mar-action-icon-size);
 }
 
 :deep(.change-list .change-restore.el-button) {

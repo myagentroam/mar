@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sessionGroupSchema } from './session-group.js';
 
 const identity = z.string().min(1).max(256);
 const timestamp = z.number().int().nonnegative().safe();
@@ -10,6 +11,7 @@ export const notificationTargetSchema = z.discriminatedUnion('targetType', [
       nodeId: identity,
       workspaceId: identity,
       sessionId: identity,
+      sessionGroup: sessionGroupSchema.optional(),
       sessionName: z.string().optional()
     })
     .strict(),

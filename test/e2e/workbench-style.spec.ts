@@ -102,6 +102,25 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(root.locator(selector)).toHaveCSS('border-color', colors.border);
       }
       await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
+      const syncTag = root.locator('.repository-sync-tag');
+      await expect(syncTag).not.toHaveAttribute('title');
+      const description = await syncTag.getAttribute('aria-label');
+      expect(description).toContain('origin/develop');
+      expect(description).toContain('25');
+      if (width >= 768) {
+        await syncTag.scrollIntoViewIfNeeded();
+        // Flush the queued scroll event before hover; scrolling intentionally closes hints.
+        await page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        );
+        await syncTag.hover();
+        const hint = page.locator('.mar-tooltip:visible');
+        await expect(hint).toHaveText(description!);
+        await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath('git-sync-tooltip.png') });
+        await page.mouse.move(0, 0);
+        await expect(hint).toHaveCount(0);
+      }
       await expect(root.locator('.el-tag--warning')).toBeVisible();
       await expect(headings.nth(1).locator('.el-tag--success')).toBeVisible();
       await expect(headings.nth(2).locator('.el-tag--warning')).toBeVisible();
@@ -109,6 +128,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
+      const pathToFileGap = await root.evaluate((heading) => {
+        const path = heading.querySelector('.repository-physical-path')!.getBoundingClientRect();
+        const file = heading
+          .nextElementSibling!.querySelector('.change-file-name')!
+          .getBoundingClientRect();
+        return file.top - path.bottom;
+      });
+      expect(pathToFileGap).toBeGreaterThanOrEqual(4);
+      expect(pathToFileGap).toBeLessThanOrEqual(6);
+      expect(
+        await headings.nth(1).evaluate((heading) => parseFloat(getComputedStyle(heading).marginTop))
+      ).toBeGreaterThan(6);
       for (const heading of await headings.all()) {
         expect(
           await heading.evaluate((element) => element.scrollWidth <= element.clientWidth)

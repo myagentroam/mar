@@ -58,7 +58,9 @@ watch(open, async () => {
     :data-process-id="block.groupId"
     @focusout="nextTick(updateDefault)"
   >
-    <p v-if="block.groupId && block.preview" class="process-summary">{{ block.preview.text }}</p>
+    <p v-if="block.groupId && block.active && block.preview" class="process-summary">
+      {{ block.preview.text }}
+    </p>
     <button
       v-tooltip="statusLabel"
       v-if="block.groupId"

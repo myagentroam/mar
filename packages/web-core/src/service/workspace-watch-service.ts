@@ -12,6 +12,7 @@ interface WorkspaceWatchSnapshot {
 }
 
 interface WatchContext {
+  readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly directory: string;
@@ -30,6 +31,7 @@ export function createWorkspaceWatchService(options: {
   readonly requestTimeoutMs?: number;
   readonly confirmationTimeoutMs?: number;
   readonly enabled?: () => boolean;
+  readonly sessionGroup?: () => import('@myagentroam/protocol').SessionGroup | undefined;
   readonly prepareFiles?: () => boolean;
   readonly workbenchConnectionId?: () => string | undefined;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -67,7 +69,7 @@ export function createWorkspaceWatchService(options: {
       : options.workbenchConnectionId();
 
   function targetKey(value: WatchContext): string {
-    return `${value.connectionId}:${value.nodeId}:${value.workspaceId}:${value.directory}:${value.git ? 'git' : 'directory'}`;
+    return `${value.connectionId}:${value.nodeId}:${value.workspaceId}:${value.directory}:${value.git ? 'git' : 'directory'}:${value.sessionGroup ?? 'ALL'}`;
   }
 
   function eligible(key: string): boolean {
@@ -78,6 +80,7 @@ export function createWorkspaceWatchService(options: {
       options.enabled?.() !== false &&
       options.workspaceTarget.value?.nodeId === current.nodeId &&
       options.workspaceTarget.value?.workspaceId === current.workspaceId &&
+      options.sessionGroup?.() === current.sessionGroup &&
       connectionId() === current.connectionId
     );
   }
@@ -118,6 +121,9 @@ export function createWorkspaceWatchService(options: {
                 ...(options.prepareFiles?.() === true ? { prepareFiles: true } : {}),
                 topics: {
                   sessions: true,
+                  ...(current.sessionGroup === undefined
+                    ? {}
+                    : { sessionGroup: current.sessionGroup }),
                   files: { path: current.directory, limit: 200 },
                   ...(current.git ? { changes: true } : {})
                 }
@@ -161,7 +167,8 @@ export function createWorkspaceWatchService(options: {
     const currentConnectionId = connectionId();
     if (nodeId === undefined || workspace === undefined || currentConnectionId === undefined)
       return;
-    const nextKey = `${currentConnectionId}:${nodeId}:${workspaceId}:${directory}:${workspace.kind === 'GIT_WORKSPACE' ? 'git' : 'directory'}`;
+    const sessionGroup = options.sessionGroup?.();
+    const nextKey = `${currentConnectionId}:${nodeId}:${workspaceId}:${directory}:${workspace.kind === 'GIT_WORKSPACE' ? 'git' : 'directory'}:${sessionGroup ?? 'ALL'}`;
     if (resetFailures && !paused && context !== undefined && targetKey(context) === nextKey) return;
     replaceLocally();
     if (resetFailures) {
@@ -176,7 +183,8 @@ export function createWorkspaceWatchService(options: {
       directory,
       watchId: crypto.randomUUID().replace(/-/g, ''),
       connectionId: currentConnectionId,
-      git: workspace.kind === 'GIT_WORKSPACE'
+      git: workspace.kind === 'GIT_WORKSPACE',
+      ...(sessionGroup === undefined ? {} : { sessionGroup })
     };
     context = next;
     paused = false;
@@ -253,6 +261,7 @@ export function createWorkspaceWatchService(options: {
       event.watchId !== current.watchId ||
       event.nodeId !== current.nodeId ||
       event.workspaceId !== current.workspaceId ||
+      options.sessionGroup?.() !== current.sessionGroup ||
       typeof event.nodeGeneration !== 'string' ||
       (current.nodeGeneration !== undefined && event.nodeGeneration !== current.nodeGeneration)
     )

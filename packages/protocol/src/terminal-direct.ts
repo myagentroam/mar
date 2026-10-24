@@ -24,7 +24,7 @@ export const terminalDirectBrowserMessageSchema = z.discriminatedUnion('type', [
       transportSessionId: id,
       terminalId: resourceId,
       workspaceId: resourceId.optional(),
-      afterSequence: z.number().int().nonnegative(),
+      afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
       readonly: z.boolean(),
       takeover: z.literal(false).optional()
     })
@@ -75,7 +75,7 @@ export const terminalDirectNodeCommandSchema = z.discriminatedUnion('type', [
       nodeGeneration: id,
       terminalId: resourceId,
       workspaceId: resourceId.optional(),
-      afterSequence: z.number().int().nonnegative(),
+      afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
       readonly: z.boolean(),
       takeover: z.literal(false).optional(),
       grant: z.string().min(32).max(4096),
@@ -111,6 +111,6 @@ export const terminalDirectAttachedFrameSchema = z
   .object({
     type: z.literal('ATTACHED'),
     terminalId: resourceId,
-    afterSequence: z.number().int().nonnegative()
+    afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
   })
   .strict();

@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import { translate } from '../../service/locale-preference-service.js';
+import SessionGroupTabs from '../common/SessionGroupTabs.vue';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
 defineProps<{
+  readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
+  readonly groupState: Record<
+    import('@myagentroam/protocol').SessionGroup,
+    { running: number; unread: boolean }
+  >;
   readonly runs: readonly RecentRun[];
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
 }>();
-const emit = defineEmits<{ openRecentRun: [run: RecentRun] }>();
+const emit = defineEmits<{
+  openRecentRun: [run: RecentRun];
+  selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
+}>();
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
   RUNNING: 'workbenchNotificationCenter.runStatus.RUNNING',
@@ -39,6 +48,11 @@ function runStatusType(
     <header v-if="!mobileMode">
       {{ translate('workbenchNotificationCenter.recentSessions') }}
     </header>
+    <SessionGroupTabs
+      :model-value="sessionGroup"
+      :state="groupState"
+      @update:model-value="emit('selectGroup', $event)"
+    />
     <p v-if="runs.length === 0" class="recent-sessions-empty">
       {{ translate('workbenchNotificationCenter.noRecentSessions') }}
     </p>

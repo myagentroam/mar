@@ -11,6 +11,7 @@ import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { ScheduledSessionStore } from './scheduled-session-store.js';
 
 export type PresentedSession = NodeAgentSession & {
+  readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
   readonly control: CodexSessionControl;
   readonly activity: SessionActivityState;
   readonly runtime: {
@@ -47,7 +48,7 @@ export class SessionPresentationService {
         session = {
           ...session,
           sessionPrompt: metadata.sessionPrompt ?? null,
-          parentSessionId: metadata.parentSessionId ?? session.parentSessionId ?? null,
+          parentSessionId: metadata.parentSessionId ?? null,
           pinnedAt: metadata.pinnedAt,
           pinOrder: metadata.pinOrder
         };
@@ -61,6 +62,7 @@ export class SessionPresentationService {
     return {
       ...session,
       parentSessionId: session.parentSessionId ?? null,
+      sessionGroup: sessionGroup(session),
       ...presentation,
       runtime: {
         ...presentation.runtime,
@@ -99,6 +101,12 @@ export class SessionPresentationService {
       });
     });
   }
+}
+
+export function sessionGroup(
+  session: Pick<NodeAgentSession, 'parentSessionId'>
+): import('@myagentroam/protocol').SessionGroup {
+  return session.parentSessionId ? 'CHILD' : 'MAIN';
 }
 
 export function latestSessionActivityAt(current: number, discovered: number): number {

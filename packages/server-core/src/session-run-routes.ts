@@ -454,6 +454,7 @@ export function registerSessionRunRoutes(input: {
       cursor?: string;
       limit?: string;
       query?: string;
+      sessionGroup?: string;
     };
   }>('/api/agent-sessions', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
@@ -467,12 +468,18 @@ export function registerSessionRunRoutes(input: {
         (request.query.workspaceId.length === 0 || request.query.workspaceId.length > 128)) ||
       (request.query.cursor !== undefined && request.query.cursor.length > 512) ||
       (request.query.query !== undefined && request.query.query.trim().length > 160) ||
+      (request.query.sessionGroup !== undefined &&
+        request.query.sessionGroup !== 'MAIN' &&
+        request.query.sessionGroup !== 'CHILD') ||
       (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100))
     )
       return sendError(reply, 400, 'SESSION_INVALID');
     try {
       return reply.send(
         await requestUserNode(nodeControl, admin, request.query.nodeId, 'session.list', {
+          ...(request.query.sessionGroup === undefined
+            ? {}
+            : { sessionGroup: request.query.sessionGroup }),
           ...(request.query.workspaceId === undefined
             ? {}
             : { workspaceId: request.query.workspaceId }),
@@ -519,7 +526,14 @@ export function registerSessionRunRoutes(input: {
 
   app.patch<{
     Params: { sessionId: string };
-    Body: { nodeId?: unknown; customTitle?: unknown; pinned?: unknown; sessionPrompt?: unknown };
+    Body: {
+      nodeId?: unknown;
+      customTitle?: unknown;
+      pinned?: unknown;
+      sessionPrompt?: unknown;
+      clearParent?: unknown;
+      parentSessionId?: unknown;
+    };
   }>('/api/agent-sessions/:sessionId/metadata', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
     const admin = protectedAdmin(database, request, reply);
@@ -528,6 +542,10 @@ export function registerSessionRunRoutes(input: {
     const body = request.body ?? {};
     if (
       !isNonEmptyString(body.nodeId) ||
+      body.parentSessionId !== undefined ||
+      (body.clearParent !== undefined &&
+        (body.clearParent !== true ||
+          Object.keys(body).some((key) => key !== 'nodeId' && key !== 'clearParent'))) ||
       (body.customTitle !== undefined &&
         body.customTitle !== null &&
         typeof body.customTitle !== 'string') ||
@@ -537,7 +555,8 @@ export function registerSessionRunRoutes(input: {
         (typeof body.sessionPrompt !== 'string' || body.sessionPrompt.trim().length > 20_000)) ||
       (body.customTitle === undefined &&
         body.pinned === undefined &&
-        body.sessionPrompt === undefined)
+        body.sessionPrompt === undefined &&
+        body.clearParent === undefined)
     ) {
       return sendError(reply, 400, 'SESSION_INVALID');
     }
@@ -552,6 +571,7 @@ export function registerSessionRunRoutes(input: {
       return reply.send(
         await requestUserNode(nodeControl, admin, body.nodeId, 'session.metadata.update', {
           sessionId: request.params.sessionId,
+          ...(body.clearParent === true ? { clearParent: true } : {}),
           ...(body.customTitle === undefined ? {} : { customTitle: body.customTitle }),
           ...(body.pinned === undefined ? {} : { pinned: body.pinned }),
           ...(body.sessionPrompt === undefined ? {} : { sessionPrompt: body.sessionPrompt })

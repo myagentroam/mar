@@ -102,7 +102,8 @@ export class PromptCompletionService {
     } finally {
       const context = JSON.stringify(analysis);
       try {
-        await this.options.record?.({
+        // Keep persistence on the journal's serial queue, outside the response path.
+        const recording = this.options.record?.({
           schemaVersion: 1,
           startedAt,
           finishedAt: this.now(),
@@ -126,6 +127,9 @@ export class PromptCompletionService {
           output: result?.status === 'ready' ? result.suggestion : null,
           status: failed ? 'failed' : result?.status,
           reason: failed ? failureCode : result?.status === 'skipped' ? result.reason : undefined
+        });
+        void recording?.catch(() => {
+          console.warn('PROMPT_COMPLETION_JOURNAL_WRITE_FAILED');
         });
       } catch {
         console.warn('PROMPT_COMPLETION_JOURNAL_WRITE_FAILED');
