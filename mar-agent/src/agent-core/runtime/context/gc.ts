@@ -328,7 +328,7 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     input.modelId,
     input.contextWindowTokens
   );
-  const previous = input.checkpointCache!.read(input.records, undefined, input.workspace);
+  const previous = input.checkpointCache!.read(input.records);
   if (previous) {
     const minimumUsageGrowth = contextGcMinimumUsageGrowth(input.contextWindowTokens);
     const protectedCandidatesPending = previous.payload.metrics.protectedCandidateTokens > 0;
@@ -796,7 +796,6 @@ function evaluateCandidateSet(
     input.records,
     input.modelId,
     input.contextWindowTokens,
-    input.workspace,
     input.checkpointCache!
   );
   const contextGrowthP75Tokens = percentile75(growthSamples);
@@ -1583,10 +1582,9 @@ function collectContextGrowthSamples(
   records: readonly SessionRecord[],
   modelId: string,
   contextWindowTokens: number,
-  workspace: string,
   checkpointCache: ContextGcCheckpointCache
 ): number[] {
-  const previous = checkpointCache.read(records, undefined, workspace);
+  const previous = checkpointCache.read(records);
   const base = contextGcBaseFromRecords(records);
   const startSequence =
     previous?.record.sequence ?? (base?.type === 'COMPACT' ? base.sequence : base?.firstSequence);

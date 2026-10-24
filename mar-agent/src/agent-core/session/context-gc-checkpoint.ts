@@ -190,25 +190,19 @@ export class ContextGcCheckpointCache {
     | {
         records: readonly SessionRecord[];
         boundarySequence: number;
-        workspace: string | undefined;
         value: ReturnType<typeof latestValidContextGcCheckpoint>;
       }
     | undefined;
 
   read(
     records: readonly SessionRecord[],
-    boundarySequence = records.at(-1)?.sequence ?? 0,
-    workspace?: string
+    boundarySequence = records.at(-1)?.sequence ?? 0
   ): ReturnType<typeof latestValidContextGcCheckpoint> {
     const cached = this.#snapshot;
-    if (
-      cached?.records === records &&
-      cached.boundarySequence === boundarySequence &&
-      cached.workspace === workspace
-    )
+    if (cached?.records === records && cached.boundarySequence === boundarySequence)
       return cached.value;
-    const value = latestValidContextGcCheckpoint(records, boundarySequence, workspace);
-    this.#snapshot = { records, boundarySequence, workspace, value };
+    const value = latestValidContextGcCheckpoint(records, boundarySequence);
+    this.#snapshot = { records, boundarySequence, value };
     return value;
   }
 }
@@ -440,8 +434,7 @@ export function validateContextGcCheckpoint(
 
 export function latestValidContextGcCheckpoint(
   records: readonly SessionRecord[],
-  boundarySequence = records.at(-1)?.sequence ?? 0,
-  _workspace?: string
+  boundarySequence = records.at(-1)?.sequence ?? 0
 ): { readonly record: SessionRecord; readonly payload: ContextGcCheckpointPayload } | undefined {
   const base = contextGcBaseFromRecords(records, boundarySequence);
   if (!base) return undefined;

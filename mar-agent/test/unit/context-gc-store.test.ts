@@ -556,7 +556,99 @@ describe('context GC checkpoint store', () => {
     }
   });
 
-  it('persists cumulative generations and restores the latest checkpoint through the index', async () => {
+  it.each([
+    { path: '/workspace/src/b.ts', valid: true },
+    { path: '/outside/src/b.ts', valid: false }
+  ])(
+    'validates $path against the Session Workspace at Compact-sliced commit',
+    async ({ path, valid }) => {
+      const { store, session } = await createFixture('Workspace validation');
+      try {
+        await store.compact(session.id, {
+          summary: 'A new context base.',
+          modelId: 'coding',
+          contextWindowTokens: 10_000
+        });
+        await store.append(session.id, {
+          type: 'model.context',
+          payload: { role: 'tool_call', callId: 'read', name: 'read', arguments: {} }
+        });
+        const read = await store.append(session.id, {
+          type: 'model.context',
+          payload: {
+            role: 'tool',
+            callId: 'read',
+            content: formatReadContextItem(0, { path, pathTruncated: false }, 'before b')
+          }
+        });
+        const draft = await appendPatchDraft(store, session.id, {
+          callId: 'patch-2',
+          path: 'src/b.ts',
+          contextInputTokens: 8_000,
+          normalRolloutOrdinal: 2
+        });
+        const records = (await store.readExecutionState(session.id)).contextRecords;
+        expect(records[0]?.type).toBe('compact.completed');
+        expect(records.some((record) => record.type === 'session.created')).toBe(false);
+        const evidenceSequence = draft.replacements.find(
+          (replacement) => replacement.kind === 'TOOL_CALL_INPUT'
+        )!.evidenceSequence;
+        const commit = store.commitContextGc(
+          session.id,
+          {
+            ...draft,
+            base: {
+              type: 'COMPACT',
+              sequence: records[0]!.sequence,
+              recordId: records[0]!.recordId
+            },
+            replacements: [
+              {
+                kind: 'READ_OUTPUT_ITEMS',
+                callId: 'read',
+                target: {
+                  sequence: read.sequence,
+                  recordId: read.recordId,
+                  role: 'tool',
+                  callId: 'read'
+                },
+                items: [
+                  {
+                    index: 0,
+                    path,
+                    replacement: contextGcStaleReadReplacement({
+                      path,
+                      content: 'before b',
+                      operation: 'modified'
+                    }),
+                    evidenceSequence
+                  }
+                ],
+                evidenceSequences: [evidenceSequence]
+              }
+            ]
+          },
+          records
+        );
+        if (valid) {
+          await expect(commit).resolves.toMatchObject({ type: 'context.gc.completed' });
+          const restored = await store.readExecutionState(session.id);
+          expect(
+            buildContextProjection(restored.contextRecords).checkpoint?.replacements
+          ).toHaveLength(1);
+        } else {
+          await expect(commit).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+          expect(
+            (await store.read(session.id)).some((record) => record.type === 'context.gc.completed')
+          ).toBe(false);
+        }
+      } finally {
+        await store.close();
+      }
+    }
+  );
+
+  it('restores cumulative generations from records despite obsolete GC index fields', async () => {
     const { home, store, session, draft } = await createFixture('GC');
     const first = await store.commitContextGc(session.id, draft);
     expect(first.payload).not.toHaveProperty('sourceProjectionHash');
@@ -576,24 +668,23 @@ describe('context GC checkpoint store', () => {
         (replacement) => replacement.callId
       )
     ).toEqual(['patch-1', 'patch-2']);
+    const expectedProjection = buildContextProjection(
+      (await store.readExecutionState(session.id)).contextRecords
+    );
     await store.close();
 
-    const index = JSON.parse(
-      await readFile(join(home, '.mar', 'agent', 'sessions', 'index.json'), 'utf8')
-    ) as {
-      sessions: Array<{
-        id: string;
-        resume?: { gcSequence?: number; gcGeneration?: number; gcBaseSequence?: number };
-      }>;
-    };
-    expect(index.sessions.find((item) => item.id === session.id)?.resume).toMatchObject({
-      gcSequence: second.sequence,
-      gcGeneration: 2,
-      gcBaseSequence: 1
+    const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+    const index = JSON.parse(await readFile(indexPath, 'utf8'));
+    Object.assign(index.sessions.find((item: { id: string }) => item.id === session.id).resume, {
+      gcSequence: first.sequence,
+      gcGeneration: 999,
+      gcBaseSequence: second.sequence + 100
     });
+    await writeFile(indexPath, JSON.stringify(index));
 
     const reopened = await JsonlSessionStore.open(home);
     const state = await reopened.readExecutionState(session.id);
+    expect(buildContextProjection(state.contextRecords)).toEqual(expectedProjection);
     expect(buildContextProjection(state.contextRecords).checkpoint).toMatchObject({
       checkpointId: expect.any(String),
       generation: 2
@@ -602,7 +693,17 @@ describe('context GC checkpoint store', () => {
     expect(JSON.stringify(raw)).toContain('*** Update File: src/a.ts');
     expect(JSON.stringify(raw)).toContain('*** Update File: src/b.ts');
     expect(first.sequence).toBeLessThan(second.sequence);
+    await reopened.append(session.id, { type: 'turn.user', payload: { prompt: 'Continue.' } });
     await reopened.close();
+
+    const rewritten = await JsonlSessionStore.open(home);
+    try {
+      const restored = await rewritten.readExecutionState(session.id);
+      expect(buildContextProjection(restored.contextRecords)).toEqual(expectedProjection);
+      expect(restored.contextRecords.at(-1)?.payload).toEqual({ prompt: 'Continue.' });
+    } finally {
+      await rewritten.close();
+    }
   });
 
   it('rejects empty checkpoints and trigger sequences that are not matching usage records', async () => {
@@ -692,24 +793,28 @@ describe('context GC checkpoint store', () => {
     );
     await store.close();
 
-    const index = JSON.parse(
-      await readFile(join(home, '.mar', 'agent', 'sessions', 'index.json'), 'utf8')
-    ) as {
-      sessions: Array<{
-        id: string;
-        resume?: { gcSequence?: number; gcGeneration?: number; gcBaseSequence?: number };
-      }>;
-    };
-    expect(index.sessions.find((item) => item.id === session.id)?.resume).toMatchObject({
-      gcSequence: first.sequence,
-      gcGeneration: 1,
-      gcBaseSequence: 1
-    });
+    const reopened = await JsonlSessionStore.open(home);
+    try {
+      const restored = await reopened.readExecutionState(session.id);
+      expect(buildContextProjection(restored.contextRecords)).toEqual(
+        buildContextProjection(state.contextRecords)
+      );
+      expect(buildContextProjection(restored.contextRecords).checkpoint?.checkpointId).toBe(
+        parseContextGcCheckpoint(first)!.checkpointId
+      );
+    } finally {
+      await reopened.close();
+    }
   });
 
   it('drops the active GC generation when Compact establishes a new context base', async () => {
     const { home, store, session, draft } = await createFixture('Compact');
     await store.commitContextGc(session.id, draft);
+    const items = [{ id: 'resume', step: 'Continue after Compact', status: 'in_progress' }];
+    const todo = await store.append(session.id, {
+      type: 'todo.updated',
+      payload: { revision: 1, items }
+    });
     await store.compact(session.id, {
       summary: 'Continue after Compact.',
       modelId: 'coding',
@@ -725,6 +830,7 @@ describe('context GC checkpoint store', () => {
     const state = await store.readExecutionState(session.id);
     expect(state.contextRecords[0]?.type).toBe('compact.completed');
     expect(buildContextProjection(state.contextRecords).checkpoint).toBeUndefined();
+    expect(state.todo).toEqual({ revision: 1, items });
     await store.close();
 
     const index = JSON.parse(
@@ -732,12 +838,23 @@ describe('context GC checkpoint store', () => {
     ) as {
       sessions: Array<{
         id: string;
-        resume?: { gcSequence?: number; gcGeneration?: number; gcBaseSequence?: number };
+        resume?: { compactSequence?: number; todoSequence?: number; todoRevision: number };
       }>;
     };
     const resume = index.sessions.find((item) => item.id === session.id)?.resume;
-    expect(resume?.gcSequence).toBeUndefined();
-    expect(resume?.gcGeneration).toBeUndefined();
-    expect(resume?.gcBaseSequence).toBeUndefined();
+    expect(resume).toMatchObject({
+      compactSequence: state.contextRecords[0]!.sequence,
+      todoSequence: todo.sequence,
+      todoRevision: 1
+    });
+    const reopened = await JsonlSessionStore.open(home);
+    try {
+      const restored = await reopened.readExecutionState(session.id);
+      expect(restored.todo).toEqual(state.todo);
+      expect(restored.contextRecords).toEqual(state.contextRecords);
+      expect(buildContextProjection(restored.contextRecords).checkpoint).toBeUndefined();
+    } finally {
+      await reopened.close();
+    }
   });
 });

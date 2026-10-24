@@ -33,7 +33,6 @@ const MAX_MODEL_CONTEXT_BYTES = 1024 * 1024;
 
 export function buildContextProjection(
   records: readonly SessionRecord[],
-  workspace?: string,
   checkpointCache?: ContextGcCheckpointCache
 ): ContextProjection {
   let activeModelId: string | undefined;
@@ -60,8 +59,8 @@ export function buildContextProjection(
     if (message) rawEntries.push({ record, message });
   }
   const valid = checkpointCache
-    ? checkpointCache.read(records, undefined, workspace)
-    : latestValidContextGcCheckpoint(records, undefined, workspace);
+    ? checkpointCache.read(records)
+    : latestValidContextGcCheckpoint(records);
   const messages = rawEntries.flatMap((entry) => (entry.message ? [entry.message] : []));
   const sources = rawEntries.flatMap((entry) => (entry.message ? [entry.record] : []));
   const applied = applyContextGcReplacementsToMessages(

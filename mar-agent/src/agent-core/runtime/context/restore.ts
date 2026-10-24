@@ -29,10 +29,9 @@ export async function restoreMessages(
   const outcomes = new Map<string, { isError: boolean; result?: unknown }>();
   const toolOutcomes = new WeakMap<ModelMessage, { isError: boolean; result?: unknown }>();
   const modelProjection = new Map(
-    (
-      options.projection ??
-      buildContextProjection(records, (await store.getSession(sessionId)).workspace)
-    ).entries.map((entry) => [entry.record.recordId, entry.message] as const)
+    (options.projection ?? buildContextProjection(records)).entries.map(
+      (entry) => [entry.record.recordId, entry.message] as const
+    )
   );
   let userMessages: CompactUserInput[] = [];
   let ignoredImages = 0;
