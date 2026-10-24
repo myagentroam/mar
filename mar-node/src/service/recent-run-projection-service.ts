@@ -1,6 +1,10 @@
 import type { NodeAgentSession } from '../database.js';
 import type { NodeAgentRun } from '../runtime-model.js';
-import type { RecentRunProjection, RecentRunProjectionMessage } from '@myagentroam/protocol';
+import {
+  composerVisibleText,
+  type RecentRunProjection,
+  type RecentRunProjectionMessage
+} from '@myagentroam/protocol';
 
 const TERMINAL_TTL_MS = 12 * 60 * 60_000;
 const CLEANUP_INTERVAL_MS = 5 * 60_000;
@@ -104,7 +108,8 @@ function taskKey(userId: number, sessionId: string): string {
 }
 
 function messagePreview(value: string | undefined): string | undefined {
-  const normalized = value?.trim().replace(/\s+/gu, ' ');
+  const normalized =
+    value === undefined ? undefined : composerVisibleText(value).replace(/\s+/gu, ' ');
   return normalized === undefined || normalized.length === 0 ? undefined : normalized.slice(0, 500);
 }
 
