@@ -67,6 +67,39 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    if (new URL(location.href).searchParams.has('information-icons')) {
+      const queried = ref(false);
+      return () =>
+        h('main', {}, [
+          h('section', { 'data-testid': 'information-actions' }, [
+            h(
+              ElButton,
+              {
+                icon: marIcon('info'),
+                loading: queried.value,
+                loadingIcon: marIcon('loading-action'),
+                onClick: () => (queried.value = true)
+              },
+              () => 'Query usage'
+            ),
+            h(ElButton, { icon: marIcon('refresh') }, () => 'Refresh credential'),
+            h(ElButton, { icon: marIcon('key') }, () => 'Sign in again'),
+            h(ElButton, { icon: marIcon('help') }, () => 'Help')
+          ]),
+          h(
+            'section',
+            { class: 'icon-review-grid', 'data-testid': 'information-samples' },
+            [13, 16, 20, 24].flatMap((size) =>
+              (['info', 'help'] as const).map((name) =>
+                h('div', { class: 'icon-review-cell' }, [
+                  h(MarIcon, { name, size }),
+                  h('span', {}, `${name} ${size}px`)
+                ])
+              )
+            )
+          )
+        ]);
+    }
     if (new URL(location.href).searchParams.has('process-icons')) {
       return () =>
         h(

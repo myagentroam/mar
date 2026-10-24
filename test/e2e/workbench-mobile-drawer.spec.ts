@@ -9,6 +9,74 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['daylight', 'midnight']) {
+  test(`Notification delete controls share themed hover and keyboard feedback in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      await page.getByRole('button', { name: 'Open notification center', exact: true }).click();
+      const remove = page
+        .locator('.workbench-notification-list .workbench-notification-delete')
+        .first();
+      await expect(remove).toBeVisible();
+      await remove.evaluate(async (element) => {
+        const panel = element.closest('.workbench-notification-panel')!;
+        await Promise.all(panel.getAnimations().map((animation) => animation.finished));
+      });
+      const tokens = await remove.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.cssText =
+          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-hover);border-color:var(--mar-color-brand)';
+        element.append(probe);
+        const style = getComputedStyle(probe);
+        const colors = {
+          foreground: style.color,
+          surface: style.backgroundColor,
+          focus: style.borderTopColor
+        };
+        probe.remove();
+        return colors;
+      });
+      const normal = await remove.evaluate((element) => ({
+        color: getComputedStyle(element).color,
+        transform: getComputedStyle(element).transform,
+        iconTransform: getComputedStyle(element.querySelector('svg')!).transform
+      }));
+      const bounds = await remove.boundingBox();
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      expect(normal.color).not.toBe(tokens.foreground);
+      await remove.hover();
+      await expect(remove).toHaveCSS('color', tokens.foreground);
+      await expect(remove).toHaveCSS('background-color', tokens.surface);
+      await expect(remove).toHaveCSS('transform', normal.transform);
+      await expect(remove.locator('svg')).toHaveCSS('transform', normal.iconTransform);
+      expect(await remove.boundingBox()).toEqual(bounds);
+      await page.screenshot({
+        path: testInfo.outputPath(`notification-delete-${theme}-${width}.png`)
+      });
+
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Tab');
+      await remove.focus();
+      await expect(remove).toHaveCSS('outline-style', 'solid');
+      await expect(remove).toHaveCSS('outline-width', '2px');
+      await expect(remove).toHaveCSS('outline-color', tokens.focus);
+
+      await remove.evaluate((element: HTMLButtonElement) => {
+        element.disabled = true;
+        element.blur();
+      });
+      await remove.hover();
+      await expect(remove).toHaveCSS('color', normal.color);
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(remove).toHaveCSS('opacity', '0.55');
+      await expect(remove).toHaveCSS('cursor', 'not-allowed');
+    }
+  });
+}
+
 for (const scenario of [
   { width: 320, height: 700, locale: 'en-US', theme: 'daylight' },
   { width: 390, height: 844, locale: 'zh-CN', theme: 'midnight' },
@@ -34,6 +102,7 @@ for (const scenario of [
     await recent.click();
     await expect(panel).toBeVisible();
     await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
+    await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect
       .poll(() => panel.evaluate((element) => element.getBoundingClientRect().x))
@@ -56,6 +125,17 @@ for (const scenario of [
     await notification.click();
     await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(30);
     await expect(panel.locator('.recent-sessions-list')).toHaveCount(0);
+    await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
+    const markAllRead = panel.getByRole('button', {
+      name: scenario.locale === 'zh-CN' ? '全部标记已读' : 'Mark all as read',
+      exact: true
+    });
+    await expect(markAllRead).toBeVisible();
+    await expect(notification.locator('.workbench-notification-badge')).toHaveText('30');
+    await markAllRead.click();
+    await expect(markAllRead).toHaveCount(0);
+    await expect(notification.locator('.workbench-notification-badge')).toHaveCount(0);
+    await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(30);
     expect(await page.evaluate(() => history.length)).toBe(length);
     await panel.locator('.workbench-notification-list > li').last().scrollIntoViewIfNeeded();
     await expect(panel).toBeVisible();
@@ -155,7 +235,8 @@ test('Mobile menu history coalesces rapid reopening and preserves the selected r
   expect(await page.evaluate(() => history.state.foreign)).toBe('keep');
   await settings.click();
   await expect(panel).toBeVisible();
-  await panel.getByRole('button', { name: 'Close sidebar', exact: true }).click();
+  await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
+  await settings.click();
   await expect(panel).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => history.state?.__marMobileMenu)).toBeUndefined();
 });

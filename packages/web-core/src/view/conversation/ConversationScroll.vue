@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
           @click="reload"
         >
           <template v-if="loadingInitial || reloading" #icon>
-            <MarIcon name="loading-action" />
+            <BusyIndicator class="history-busy-indicator read-loading-indicator" />
           </template>
           {{ translate('generated.conversationScroll.reloadConversationHistory') }}
         </el-button>
@@ -133,7 +133,7 @@ onBeforeUnmount(() => {
             @click="loadOlder"
           >
             <template v-if="loadingOlder" #icon>
-              <MarIcon name="loading-action" />
+              <BusyIndicator class="history-busy-indicator read-loading-indicator" />
             </template>
             {{
               (olderAction ?? (olderError ? 'retry' : 'load')) === 'retry'

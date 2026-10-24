@@ -8,7 +8,25 @@ import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import type { WorkspaceFileTreeNode } from '../../src/service/WorkspaceFileTreeService.js';
 
 const previewLoading = ref(true);
+const loadingInitial = ref(true);
+const initialLoadFailed = ref(false);
+const initialRequests = ref(0);
 const loadingOlder = ref(true);
+const olderError = ref<string>();
+const olderRequests = ref(0);
+
+function reloadHistory() {
+  initialRequests.value++;
+  initialLoadFailed.value = false;
+  loadingInitial.value = true;
+}
+
+function loadOlderHistory() {
+  olderRequests.value++;
+  olderError.value = undefined;
+  loadingOlder.value = true;
+}
+
 const root = ref<WorkspaceFileTreeNode>({
   path: '.',
   name: 'project',
@@ -50,30 +68,56 @@ const root = ref<WorkspaceFileTreeNode>({
         <FilePreviewLoading v-if="previewLoading" variant="page" overlay />
       </div>
     </section>
-    <section data-testid="history-initial" class="history-surface">
+    <section
+      data-testid="history-initial"
+      class="history-surface"
+      :data-request-count="initialRequests"
+    >
       <ConversationScroll
         :has-older="false"
-        loading-initial
-        :initial-load-failed="false"
+        :loading-initial="loadingInitial"
+        :initial-load-failed="initialLoadFailed"
         :loading-older="false"
         :has-turns="false"
         following
+        @reload="reloadHistory"
       />
     </section>
-    <section data-testid="history-older" class="history-surface">
+    <button
+      @click="
+        loadingInitial = false;
+        initialLoadFailed = true;
+      "
+    >
+      Fail initial history load
+    </button>
+    <section
+      data-testid="history-older"
+      class="history-surface"
+      :data-request-count="olderRequests"
+    >
       <ConversationScroll
         has-older
         :loading-initial="false"
         :initial-load-failed="false"
         :loading-older="loadingOlder"
+        :older-error="olderError"
         has-turns
         following
-        @load-older="loadingOlder = true"
+        @load-older="loadOlderHistory"
       >
         <p>Existing message remains readable</p>
       </ConversationScroll>
     </section>
     <button @click="loadingOlder = false">Finish history load</button>
+    <button
+      @click="
+        loadingOlder = false;
+        olderError = 'History page failed';
+      "
+    >
+      Fail history load
+    </button>
     <section data-testid="management-append">
       <ManagementPagination
         :page="1"

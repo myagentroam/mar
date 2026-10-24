@@ -44,12 +44,15 @@ const notification = {
     sessionId: 'session'
   }
 };
+let notificationsRead = false;
 const service = createWorkbenchNotificationService(ref('fixture-user'), {
-  request: async <T,>() =>
-    ({
+  request: async <T,>(path: string, init?: RequestInit) => {
+    if (path === '/api/notifications/read-all' && init?.method === 'POST') notificationsRead = true;
+    return {
       notifications: Array.from({ length: 30 }, (_, index) => ({
         ...notification,
-        id: `notification-${index}`
+        id: `notification-${index}`,
+        read: notificationsRead
       })),
       recentRuns: Array.from({ length: 30 }, (_, index) => ({
         nodeId: 'node',
@@ -68,7 +71,8 @@ const service = createWorkbenchNotificationService(ref('fixture-user'), {
         sortAt: 2,
         version: 1
       }))
-    }) as T
+    } as T;
+  }
 });
 void service.load();
 const diagnostics = createWebPerformanceDiagnostics();

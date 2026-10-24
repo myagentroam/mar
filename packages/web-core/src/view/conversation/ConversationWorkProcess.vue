@@ -173,6 +173,9 @@ watch(open, async () => {
   font-weight: 600;
 }
 .process-activity-indicator {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
   color: var(--mar-color-brand-text);
 }
 .process-activity-label {
