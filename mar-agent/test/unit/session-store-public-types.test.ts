@@ -13,7 +13,7 @@ beforeAll(async () => {
   await execute('pnpm', ['build'], { cwd: process.cwd() });
 });
 
-it('allows an external strict NodeNext consumer to implement and inject the Store', async () => {
+it('allows an external strict NodeNext consumer to use execution handles and inject the Store', async () => {
   const root = await mkdtemp(join(tmpdir(), 'mar-store-types-'));
   try {
     const modules = join(root, 'node_modules', '@myagentroam');
@@ -28,6 +28,7 @@ it('allows an external strict NodeNext consumer to implement and inject the Stor
       join(root, 'consumer.mts'),
       [
         "import { createMarAgent, openMarAgentSessionCatalog, type CreateMarAgentOptions, type SessionStore } from '@myagentroam/agent';",
+        "import type { CompactInput, ExecutionHandle, ExecutionResult, MarAgentEvent, MarAgentSession, RunInput } from '@myagentroam/agent';",
         "import type { SessionStoreCompactInput, CompactHistoryMessage, ModelMessage, ModelUsage, ModelInputMetadata, ModelTextBlock, ModelContextualBlock, EnvironmentContextState } from '@myagentroam/agent';",
         "import type { SessionExecutionState, TodoSnapshot, TodoItem, CodeToolCallRecord, CodeObservation } from '@myagentroam/agent';",
         "import type { ContextGcCheckpointDraft, ContextGcBase, ContextGcPlatform, ContextGcEconomicsPolicy, ContextGcMetrics, ContextGcReplacement, ContextGcTarget, ContextGcReadItemReplacement, ContextGcWebToolName, ContextGcSubagentToolName } from '@myagentroam/agent';",
@@ -36,6 +37,21 @@ it('allows an external strict NodeNext consumer to implement and inject the Stor
         '// @ts-expect-error Internal implementation paths remain outside package exports.',
         "import type { ModelRequest } from '@myagentroam/agent/agent-core/model/contracts.js';",
         "import { textSessionStore } from './store.mjs';",
+        'declare const session: MarAgentSession;',
+        "const compactInput: CompactInput = { prompt: 'Preserve progress', async: true };",
+        'const compatibleInput: Partial<RunInput> & { readonly async?: boolean } = compactInput;',
+        'const roundTripInput: CompactInput = compatibleInput;',
+        "const runInput: RunInput = { prompt: 'Continue the task' };",
+        'const partialInput: CompactInput = runInput;',
+        'type CompatibleHandle = AsyncIterable<MarAgentEvent> & { readonly executionId: string; result(): Promise<ExecutionResult>; cancel(): void };',
+        'declare const compatibleHandle: CompatibleHandle;',
+        'const roundTripHandle: ExecutionHandle = compatibleHandle;',
+        'const compactHandle: ExecutionHandle = session.compact(roundTripInput);',
+        'const handle: CompatibleHandle = compactHandle;',
+        'const runHandle: ExecutionHandle = session.run(runInput);',
+        'const planHandle: ExecutionHandle = session.plan(runInput);',
+        '// @ts-expect-error Compact async mode remains boolean.',
+        "const invalidCompactInput: CompactInput = { async: 'true' };",
         "const todoItem: TodoItem = { id: 'verify', step: 'Verify the Store', status: 'pending' };",
         'const todo: TodoSnapshot = { revision: 1, items: [todoItem] };',
         'const state: SessionExecutionState = { automaticTitlePending: false, todo, contextRecords: [] };',
