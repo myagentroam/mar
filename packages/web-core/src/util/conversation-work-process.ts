@@ -5,6 +5,7 @@ import { conversationPayload } from './conversation-history.js';
 import { isTerminalRunStatus } from '../service/run-service.js';
 import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
+  aggregateConversationDisplayItems,
   conversationDisplayItems,
   type ConversationDisplayItem
 } from './conversation-presentation.js';
@@ -205,10 +206,12 @@ export function conversationWorkProcessBlocks(
     group.entries.splice(
       0,
       group.entries.length,
-      ...conversationDisplayItems(items).map((displayItem) => ({
-        turn: turnsByItem.get(displayItem.id)!,
-        displayItem
-      }))
+      ...aggregateConversationDisplayItems(group.entries.map(({ displayItem }) => displayItem)).map(
+        (displayItem) => ({
+          turn: turnsByItem.get(displayItem.id)!,
+          displayItem
+        })
+      )
     );
   }
   return blocks;

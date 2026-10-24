@@ -4,8 +4,8 @@ export interface ReasoningPreview {
   readonly representation: 'summary' | 'visible_thinking' | 'unspecified';
 }
 
-/** Normalize public display text only; never rewrite the underlying reasoning record. */
-export function reasoningPreview(text: string, representation: unknown = 'unspecified'): string {
+/** Select the display line without scanning its prose boundaries. */
+function reasoningPreviewLine(text: string, representation: unknown): string {
   if (representation === 'summary') {
     const heading = [...text.matchAll(/(?:^|\n)[^\S\r\n]*\*\*([^\r\n*]+)\*\*/gu)]
       .at(-1)?.[1]
@@ -20,22 +20,66 @@ export function reasoningPreview(text: string, representation: unknown = 'unspec
   }
 
   const firstLine = text.split(/\r?\n/u).find((line) => line.trim()) ?? '';
-  const line = firstLine
+  return firstLine
     .trim()
     .replace(/^#{1,6}\s+/u, '')
     .replace(/^\*\*([^*]+)\*\*/u, '$1')
     .replace(/\s+/gu, ' ')
     .trim();
-  // Skip inline code and URLs, leaving trailing prose punctuation outside the URL.
-  // Dots only split at prose boundaries, not inside relative paths or version numbers.
-  for (const match of line.matchAll(
-    /(`+).*?\1|(https?:\/\/[^\s<>()，。；：！？、…]*[^\s<>().,;:!?，。；：！？、…])|[，,。；;：！？!?、…]|\.{2,}(?=\s|$)|[.:](?=\s|$)/gu
-  )) {
-    if (match[1] !== undefined || match[2] !== undefined) continue;
-    return line.slice(0, match.index).trim() || line;
+}
+
+function firstReasoningClause(line: string): string {
+  // Index matching code delimiters once. Repeated searches for unmatched openers
+  // would make punctuation-heavy or incomplete streamed text quadratic again.
+  const ticks = [...line.matchAll(/`+/gu)];
+  const closingTicks = new Map<number, number>();
+  const nextByWidth = new Map<number, number>();
+  for (let index = ticks.length - 1; index >= 0; index--) {
+    const tick = ticks[index]!;
+    const width = tick[0].length;
+    const next = nextByWidth.get(width);
+    if (next !== undefined) closingTicks.set(tick.index, next + width);
+    nextByWidth.set(width, tick.index);
+  }
+  const url = /https?:\/\/[^\s<>()，。；：！？、…]*[^\s<>().,;:!?，。；：！？、…]/uy;
+  for (let index = 0; index < line.length;) {
+    const character = line[index]!;
+    if (character === '`') {
+      const close = closingTicks.get(index);
+      if (close !== undefined) {
+        index = close;
+      } else {
+        do index++;
+        while (line[index] === '`');
+      }
+      continue;
+    }
+    if (character === 'h') {
+      url.lastIndex = index;
+      const match = url.exec(line);
+      if (match) {
+        index = url.lastIndex;
+        continue;
+      }
+    }
+    let end = index + 1;
+    if (character === '.') {
+      while (line[end] === '.') end++;
+    }
+    const boundary =
+      '，,。；;：！？!?、…'.includes(character) ||
+      ((character === '.' || character === ':') && (end === line.length || line[end] === ' '));
+    if (boundary) return line.slice(0, index).trim() || line;
+    index = end;
   }
   // Containers own visual truncation; keep the full selected line/clause.
   return line;
+}
+
+/** Normalize public display text only; never rewrite the underlying reasoning record. */
+export function reasoningPreview(text: string, representation: unknown = 'unspecified'): string {
+  const line = reasoningPreviewLine(text, representation);
+  return representation === 'summary' ? line : firstReasoningClause(line);
 }
 
 export function normalizeReasoningPreview(
@@ -43,11 +87,16 @@ export function normalizeReasoningPreview(
   text: string,
   representation: unknown
 ): ReasoningPreview | undefined {
-  const preview = reasoningPreview(text, representation);
-  return preview
+  const line = reasoningPreviewLine(text, representation);
+  let preview: string | undefined;
+  return line
     ? {
         id,
-        text: preview,
+        // Budgeting and preview selection only need identity and representation.
+        // Parse the clause at most once, and only when a view consumes its text.
+        get text() {
+          return (preview ??= representation === 'summary' ? line : firstReasoningClause(line));
+        },
         representation:
           representation === 'summary' || representation === 'visible_thinking'
             ? representation

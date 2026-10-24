@@ -1569,6 +1569,39 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
+  it('keeps long punctuation-heavy thinking responsive without truncating it', () => {
+    const text = `${'.'.repeat(64 * 1024)}x`;
+    const started = performance.now();
+    const preview = reasoningPreview(text, 'visible_thinking');
+    const elapsed = performance.now() - started;
+    expect(preview).toBe(text);
+    // A broad ceiling catches multi-second backtracking, not normal machine variance.
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  it.each([
+    ['Inspect `a,b.c` first. Then continue', 'Inspect `a,b.c` first'],
+    ['Inspect ``a`b,c`` first: next', 'Inspect ``a`b,c`` first'],
+    ['Inspect `unfinished, next', 'Inspect `unfinished'],
+    ['Check https://example.com/a.b?q=x,y. Then continue', 'Check https://example.com/a.b?q=x,y'],
+    ['Check ../src/file.ts and v1.2.3. Next', 'Check ../src/file.ts and v1.2.3'],
+    ['Wait... Next', 'Wait'],
+    ['Wait...x, next', 'Wait...x'],
+    ['检查实现，然后继续', '检查实现'],
+    [', keep the original line', ', keep the original line']
+  ])('preserves thinking clause boundaries for %s', (text, expected) => {
+    expect(reasoningPreview(text, 'visible_thinking')).toBe(expected);
+    expect(reasoningPreview(text, 'unspecified')).toBe(expected);
+  });
+
+  it('handles long unmatched code delimiters without repeated suffix searches', () => {
+    const text = `${'`'.repeat(64 * 1024)}x, next`;
+    const started = performance.now();
+    expect(reasoningPreview(text)).toBe(text.slice(0, text.indexOf(',')));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(reasoningPreview('Inspect ``a`b,c`` then, next')).toBe('Inspect ``a`b,c`` then');
+  });
+
   it('previews explicit summary headings or paragraphs without synthetic truncation', () => {
     const summaryPreview = (text: string) => reasoningPreview(text, 'summary');
     expect(summaryPreview('  First\nsummary  and another thought ')).toBe('First');

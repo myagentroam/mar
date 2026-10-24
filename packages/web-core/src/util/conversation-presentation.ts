@@ -208,6 +208,13 @@ export function conversationDisplayItems(
       }
     ];
   });
+  return aggregateConversationDisplayItems(projected);
+}
+
+/** Reuse single-item projections when combining records across process segments. */
+export function aggregateConversationDisplayItems(
+  projected: readonly ConversationDisplayItem[]
+): readonly ConversationDisplayItem[] {
   const result: (ConversationDisplayItem | undefined)[] = [];
   const anchors = new Map<string, number>();
   let groupId: string | undefined;
