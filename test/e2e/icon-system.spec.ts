@@ -118,11 +118,12 @@ for (const theme of ['dark', 'light']) {
   }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    for (const width of [390, 360, 1280]) {
+    for (const width of [390, 320, 360, 420, 1280]) {
       const mobile = width < 768;
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}icon-system.html?composer-icons=1&theme=${theme}`);
       const attachment = page.locator('.composer-attachment-button .mar-icon');
+      const attachmentButton = page.locator('.composer-attachment-button');
       const copy = page.locator('.conversation-message-action .mar-icon').first();
       const edit = page.getByRole('button', { name: 'Edit', exact: true });
       const send = page.locator('.composer-send-button');
@@ -175,7 +176,9 @@ for (const theme of ['dark', 'light']) {
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
-        for (const graphic of [attachment, copy, edit.locator('.mar-icon')]) {
+        await expect(attachment).toHaveCSS('width', '20px');
+        await expect(attachment).toHaveCSS('height', '20px');
+        for (const graphic of [copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');
         }
@@ -189,6 +192,34 @@ for (const theme of ['dark', 'light']) {
           width
         );
       }
+      const attachmentBox = (await attachmentButton.boundingBox())!;
+      const attachmentGraphic = (await attachment.boundingBox())!;
+      const sendBox = (await send.boundingBox())!;
+      expect(attachmentBox.width).toBe(mobile ? 28 : 26);
+      expect(attachmentBox.height).toBe(attachmentBox.width);
+      const modelBox = (await page.locator('.composer-model-slot').boundingBox())!;
+      expect(modelBox.width).toBeGreaterThan(0);
+      expect(attachmentBox.x + attachmentBox.width).toBeLessThanOrEqual(modelBox.x);
+      expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(sendBox.x);
+      expect(attachmentGraphic.x + attachmentGraphic.width / 2).toBeCloseTo(
+        attachmentBox.x + attachmentBox.width / 2,
+        1
+      );
+      expect(attachmentGraphic.y + attachmentGraphic.height / 2).toBeCloseTo(
+        sendBox.y + sendBox.height / 2,
+        1
+      );
+      await expect(attachmentButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await attachmentButton.focus();
+      await expect(attachmentButton).toBeFocused();
+      await expect(attachmentButton).toHaveCSS('outline-style', 'solid');
+      const [fileChooser] = await Promise.all([
+        page.waitForEvent('filechooser'),
+        attachmentButton.press('Enter')
+      ]);
+      expect(fileChooser.isMultiple()).toBe(true);
+      await fileChooser.setFiles([]);
+      await attachmentButton.evaluate((button) => button.blur());
       await expect(page.getByTestId('status-icon').locator('.mar-icon')).toHaveCSS('width', '11px');
       await expect(
         page.getByRole('button', { name: 'Explicit icon size' }).locator('.mar-icon')
@@ -258,6 +289,59 @@ for (const theme of ['dark', 'light']) {
       await expect(send).not.toHaveCSS('color', readyColors.color);
     }
     expect(errors).toEqual([]);
+  });
+
+  test(`Mobile draft attachment stays reachable beside long configuration: ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 360 },
+      isMobile: true,
+      hasTouch: true
+    });
+    try {
+      const page = await context.newPage();
+      for (const width of [320, 390, 420]) {
+        await page.setViewportSize({ width, height: 360 });
+        await page.goto(
+          `${fixture.url}icon-system.html?composer-icons=1&draft-session=1&empty-draft=1&theme=${theme}`
+        );
+        const attachment = page.locator('.composer-attachment-button');
+        const runner = page.locator('.composer-runner-slot');
+        const model = page.locator('.composer-model-slot');
+        const access = page.locator('.composer-access-slot');
+        const send = page.locator('.composer-send-button');
+        await expect(runner).toBeVisible();
+        await expect(send).toBeDisabled();
+        let rightEdge = 0;
+        for (const control of [attachment, runner, model, access, send]) {
+          const box = (await control.boundingBox())!;
+          expect(box.width).toBeGreaterThan(0);
+          expect(box.x).toBeGreaterThanOrEqual(rightEdge);
+          expect(box.y).toBeGreaterThanOrEqual(0);
+          expect(box.y + box.height).toBeLessThanOrEqual(360);
+          rightEdge = box.x + box.width;
+        }
+        expect(rightEdge).toBeLessThanOrEqual(width);
+        const [fileChooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          attachment.tap()
+        ]);
+        expect(fileChooser.isMultiple()).toBe(true);
+        await fileChooser.setFiles([]);
+        await expect(page.getByTestId('sends')).toHaveText('0');
+        await model.tap();
+        const modelOption = page.getByRole('option', { name: 'GPT-6-Luna Xhigh', exact: true });
+        await expect(modelOption).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(modelOption).toBeHidden();
+        await attachment.focus();
+        await attachment.evaluate((button) => button.blur());
+        await page.screenshot({ path: testInfo.outputPath(`draft-attachment-${width}.png`) });
+      }
+    } finally {
+      await context.close();
+    }
   });
 }
 

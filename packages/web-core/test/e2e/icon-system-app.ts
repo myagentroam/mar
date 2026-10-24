@@ -132,6 +132,8 @@ const app = createApp({
       const sends = ref(0);
       const stops = ref(0);
       const pending = ref(false);
+      const draftSessionOpen = new URL(location.href).searchParams.has('draft-session');
+      const modelLabel = draftSessionOpen ? 'GPT-6-Luna Xhigh' : 'Test model';
       return () =>
         h('main', {}, [
           h(ConversationTimeline, {
@@ -177,16 +179,16 @@ const app = createApp({
             },
             [
               h(ComposerToolbar, {
-                draftSessionOpen: false,
-                runner: 'MAR_AGENT',
-                runnerOptions: [],
+                draftSessionOpen,
+                runner: 'mar-agent',
+                runnerOptions: [{ value: 'mar-agent', label: 'MAR Agent' }],
                 runnerLoading: false,
                 runnerLabel: 'MAR Agent',
                 modelEffortSelection: 'model:test',
-                modelEffortLabel: 'Test model',
+                modelEffortLabel: modelLabel,
                 selectedModel: 'test',
                 selectedEffort: 'high',
-                models: [{ id: 'test', label: 'Test model', supportedEfforts: ['high'] }],
+                models: [{ id: 'test', label: modelLabel, supportedEfforts: ['high'] }],
                 efforts: ['high'],
                 access: 'auto',
                 accessLabel: 'Auto',
@@ -194,7 +196,7 @@ const app = createApp({
                 configurationDisabled: false,
                 accessDisabled: false,
                 fastEnabled: false,
-                contextUsage: { percentage: 18.4 },
+                contextUsage: draftSessionOpen ? null : { percentage: 18.4 },
                 contextUsageLabel: 'Context usage',
                 canCompactContext: true,
                 mobileViewport: innerWidth < 768,

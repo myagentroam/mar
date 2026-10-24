@@ -571,6 +571,13 @@ function selectFiles(event: Event): void {
     grid-column: 1;
     grid-row: 1;
     justify-self: start;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .composer-attachment-button :deep(.mar-icon) {
+    font-size: 20px;
   }
 }
 
