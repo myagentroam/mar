@@ -56,7 +56,7 @@ async function openFile(page: Page, path: string): Promise<void> {
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.workspace-file-tab.is-active')).toContainText(path);
   await expect(
-    page.getByRole('dialog', { name: `${path} 文件预览` }).locator('.cm-content')
+    page.getByRole('region', { name: `${path} 文件预览` }).locator('.cm-content')
   ).toBeVisible();
 }
 
@@ -68,7 +68,9 @@ for (const shortcut of ['Escape', 'Alt+Shift+w']) {
     await openFile(page, 'first.ts');
     await openFile(page, 'second.ts');
     const tabs = page.getByRole('tablist', { name: '文件预览标签' });
-    const editor = page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-content');
+    const editor = page
+      .getByRole('region', { name: 'second.ts 文件预览', exact: true })
+      .locator('.cm-content');
     await editor.click();
     await page.keyboard.press('Alt+w');
     await expect(tabs.getByRole('tab')).toHaveCount(1);
@@ -78,7 +80,9 @@ for (const shortcut of ['Escape', 'Alt+Shift+w']) {
     await openFile(page, 'second.ts');
     await editor.click();
     await page.keyboard.press('Control+f');
-    const search = page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-search');
+    const search = page
+      .getByRole('region', { name: 'second.ts 文件预览', exact: true })
+      .locator('.cm-search');
     await expect(search).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(search).toHaveCount(0);
@@ -90,24 +94,50 @@ for (const shortcut of ['Escape', 'Alt+Shift+w']) {
   });
 }
 
-test('Escape closes only the topmost Markdown settings dialog, leaving the file window open', async ({
-  page
-}) => {
-  await prepareFiles(page);
-  await openFile(page, 'README.md');
-  const preview = page.getByRole('dialog', { name: 'README.md 文件预览' });
-  await preview.getByRole('button', { name: 'Markdown 预览设置' }).click();
-  const settings = page.getByRole('dialog', { name: 'Markdown 预览设置', exact: true });
-  await expect(settings).toBeVisible();
-  await settings.getByRole('textbox').focus();
-  await page.keyboard.press('Escape');
-  await expect(settings).toBeHidden();
-  await expect(preview).toBeVisible();
-  await expect(page.locator('.workspace-file-tabs')).toHaveCount(1);
-  await preview.locator('.cm-content').click();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-});
+for (const width of [1280, 390]) {
+  test(`Escape closes only the topmost Markdown settings dialog, leaving the file window open at ${width}px`, async ({
+    page
+  }) => {
+    await prepareFiles(page);
+    await page.setViewportSize({ width, height: 844 });
+    await openFile(page, 'README.md');
+    const preview = page.getByRole('dialog', { name: 'README.md 文件预览' });
+    const previewState = await page.evaluate(() => history.state);
+    const settingsButton = preview.getByRole('button', { name: 'Markdown 预览设置' });
+    const settings = page.getByRole('dialog', { name: 'Markdown 预览设置', exact: true });
+    await settingsButton.click();
+    await expect(settings).toBeVisible();
+    await expect(settings.locator('.el-dialog__header')).toBeVisible();
+    await expect(settings.locator('.el-dialog__headerbtn')).toBeVisible();
+    await expect(settings.locator('.el-dialog__body')).toHaveCSS('display', 'block');
+    await settings.locator('.el-dialog__headerbtn').click();
+    await expect(settings).toHaveCount(0);
+    await expect(preview).toBeVisible();
+    await expect(settingsButton).toBeFocused();
+    await expect.poll(() => page.evaluate(() => history.state)).toEqual(previewState);
+
+    await settingsButton.click();
+    await settings.getByRole('textbox').focus();
+    await page.keyboard.press('Escape');
+    await expect(settings).toHaveCount(0);
+    await expect(preview).toBeVisible();
+    await expect(settingsButton).toBeFocused();
+    await expect.poll(() => page.evaluate(() => history.state)).toEqual(previewState);
+    if (width === 390) {
+      await settingsButton.click();
+      await expect(settings).toBeVisible();
+      await page.goBack();
+      await expect(settings).toHaveCount(0);
+      await expect(preview).toBeVisible();
+      await expect(settingsButton).toBeFocused();
+      await expect.poll(() => page.evaluate(() => history.state)).toEqual(previewState);
+    }
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(1);
+    await preview.locator('.cm-content').click();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+  });
+}
 
 test('Mobile Back confirms all files, preserves cancelled windows, and can close on the next attempt', async ({
   page
@@ -115,10 +145,13 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const initialHistoryLength = await page.evaluate(() => history.length);
+  const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
   await openFile(page, 'second.ts');
   expect(await page.evaluate(() => history.length)).toBe(initialHistoryLength + 1);
-  const editor = page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-content');
+  const editor = page
+    .getByRole('region', { name: 'second.ts 文件预览', exact: true })
+    .locator('.cm-content');
   await editor.click();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText('// dirty');
@@ -134,18 +167,14 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
   await confirm.locator('.el-button--primary').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
   await expect(page.locator('.el-overlay-message-box')).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => history.state?.__marFilePreviewWindow))
-    .toBeUndefined();
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
   await expect(page.locator('.workspace-tab')).toHaveCount(1);
 
   await openFile(page, 'first.ts');
   expect(await page.evaluate(() => history.length)).toBe(initialHistoryLength + 1);
   await page.keyboard.press('Alt+w');
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => history.state?.__marFilePreviewWindow))
-    .toBeUndefined();
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
 });
 
 test('Reopening a mobile file window ignores stale Back cleanup from its predecessor', async ({
@@ -154,8 +183,8 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const initialHistoryLength = await page.evaluate(() => history.length);
+  const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
-  const owner = await page.evaluate(() => history.state.__marFilePreviewWindow.owner);
   await page.evaluate(async () => {
     document.querySelector<HTMLButtonElement>('.workspace-file-window-close')!.click();
     await Promise.resolve();
@@ -164,24 +193,14 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
       .querySelector<HTMLButtonElement>('.file-tree-row[data-file-path="second.ts"]')!
       .click();
   });
-  await expect
-    .poll(() =>
-      page.evaluate((previous) => {
-        const next = history.state?.__marFilePreviewWindow?.owner;
-        return typeof next === 'string' && next !== previous;
-      }, owner)
-    )
-    .toBe(true);
   await expect(page.locator('.workspace-file-tab.is-active')).toContainText('second.ts');
   await expect(
     page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-content')
   ).toBeVisible();
   expect(await page.evaluate(() => history.length)).toBe(initialHistoryLength + 1);
-  await page.keyboard.press('Alt+w');
+  await page.goBack();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => history.state?.__marFilePreviewWindow))
-    .toBeUndefined();
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
 });
 
 for (const rendered of [false, true]) {

@@ -1,6 +1,7 @@
 import { MarAgentError } from '../../error.js';
 import type { ModelMessage } from '../../model/contracts.js';
-import { compactSummaryFromCheckpoint, type SessionRecord } from '../../session/store/index.js';
+import { compactSummaryFromCheckpoint } from '../../session/store/execution-state.js';
+import type { SessionRecord } from '../../session/store/contracts.js';
 
 export const SMART_COMPACTION_MARKER =
   '<mar_runtime>\n  <smart_compaction>For this message only, smart_compact may be considered at a clear transition into sustained new work, when the previous phase is largely complete and its details have low continuation value.</smart_compaction>\n</mar_runtime>';

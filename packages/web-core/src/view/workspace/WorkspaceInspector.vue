@@ -2093,6 +2093,7 @@ onBeforeUnmount(() => filePreviews.reset());
       v-if="workspaceFileTabs.length > 0"
       ref="workspaceFileTabsRef"
       :tabs="workspaceFileTabs"
+      :presentation="standaloneFileMode ? 'window' : 'overlay'"
       :active-tab-id="activeWorkspaceFileTabId"
       :can-go-back="canGoFileBack"
       :can-go-forward="canGoFileForward"
@@ -2315,7 +2316,7 @@ onBeforeUnmount(() => filePreviews.reset());
 .inspector-tabs {
   display: flex;
   flex-shrink: 0;
-  gap: 0.2rem;
+  gap: 0.1rem;
   overflow-x: auto;
   overflow-y: hidden;
   margin: 0.45rem 0 0;
@@ -2341,14 +2342,14 @@ onBeforeUnmount(() => filePreviews.reset());
   border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-tertiary);
-  padding: 0.3rem 0.55rem;
-  font-size: var(--mar-font-size-body);
+  padding: 0.2rem 0.25rem;
+  font-size: calc(var(--mar-font-size-body) - 1px);
   font-weight: 500;
 }
 
 @media (min-width: 768px) {
   .inspector-tabs button {
-    font-size: calc(var(--mar-font-size-body) - 1px);
+    font-size: var(--mar-font-size-meta);
   }
 }
 

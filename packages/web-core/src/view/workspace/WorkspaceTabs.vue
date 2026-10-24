@@ -801,6 +801,7 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab .tab-close,
 .workspace-tab .tab-pin {
+  --mar-action-icon-size: 14px;
   position: absolute;
   right: 3px;
   display: inline-grid;

@@ -140,6 +140,107 @@ function recoveryFixture(
   };
 }
 
+describe('Workspace session unread queries', () => {
+  it('isolates session identities and excludes read, expired, local and hosted notifications', () => {
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never);
+    const target = notification('target').target;
+    state.notifications.value = [
+      { ...notification('read', 'read-only'), source: 'server', read: true },
+      { ...notification('expired', 'expired-only'), source: 'server', expiresAt: Date.now() },
+      { ...hostedNotification('hosted', 'hosted-only'), source: 'server' },
+      {
+        ...notification('local'),
+        source: 'local',
+        kind: 'upload',
+        target: { nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'local-only' }
+      },
+      { ...notification('match'), source: 'server' },
+      {
+        ...notification('scoped'),
+        source: 'server',
+        target: { ...target, nodeId: 'node:one', workspaceId: 'workspace' }
+      }
+    ];
+    expect(state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+    for (const id of ['read-only', 'expired-only', 'local-only', 'hosted-only', 'missing']) {
+      expect(state.hasUnreadSession('node-1', 'workspace-1', id)).toBe(false);
+    }
+    expect(state.hasUnreadSession('node-2', 'workspace-1', 'session-1')).toBe(false);
+    expect(state.hasUnreadSession('node-1', 'workspace-2', 'session-1')).toBe(false);
+    expect(state.hasUnreadSession('node:one', 'workspace', 'session-1')).toBe(true);
+    expect(state.hasUnreadSession('node', 'one:workspace', 'session-1')).toBe(false);
+  });
+
+  it.each([false, true])(
+    'keeps a session unread until its last unread notification expires without a refresh: reversed=%s',
+    (reversed) => {
+      vi.useFakeTimers();
+      const now = 1_800_000_000_000;
+      vi.setSystemTime(now);
+      const state = createWorkbenchNotificationService({ value: 'admin' } as never);
+      const entries: WorkbenchNotification[] = [
+        { ...notification('short'), source: 'server', expiresAt: now + 10 },
+        { ...notification('long'), source: 'server', expiresAt: now + 20 },
+        { ...notification('already-read'), source: 'server', read: true, expiresAt: now + 30 }
+      ];
+      state.notifications.value = reversed ? entries.reverse() : entries;
+      expect(state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+      vi.setSystemTime(now + 10);
+      expect(state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+      vi.setSystemTime(now + 20);
+      expect(state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(false);
+    }
+  );
+
+  it('reacts to appended and removed entries and authoritative read, refresh and disposal', async () => {
+    const f = recoveryFixture([notification('initial')]);
+    await f.state.load();
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+    f.state.notifications.value.push({
+      ...notification('appended', 'session-2'),
+      source: 'server'
+    });
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(true);
+    f.state.notifications.value.pop();
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false);
+    await f.state.markSessionRead('node-1', 'workspace-1', 'session-1');
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(false);
+    f.server.entries = [notification('replacement', 'session-2')];
+    await f.state.load();
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(false);
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(true);
+    f.state.dispose();
+    expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false);
+    expect(f.request.mock.calls.filter(([path]) => path === '/api/notifications')).toHaveLength(3);
+  });
+
+  it.each([false, true])(
+    'does not rescan unchanged notification records for each visible session: allRead=%s',
+    (allRead) => {
+      const state = createWorkbenchNotificationService({ value: 'admin' } as never);
+      let recordReads = 0;
+      state.notifications.value = Array.from({ length: 300 }, (_, index) => ({
+        ...notification(`notification-${index}`, `session-${index % 150}`),
+        source: 'server' as const,
+        get read() {
+          recordReads += 1;
+          return allRead || index !== 299;
+        }
+      }));
+      expect(state.hasUnreadSession('node-1', 'workspace-1', 'session-149')).toBe(!allRead);
+      const initialReads = recordReads;
+      for (let round = 0; round < 3; round += 1) {
+        for (let index = 0; index < 150; index += 1) {
+          expect(state.hasUnreadSession('node-1', 'workspace-1', `session-${index}`)).toBe(
+            !allRead && index === 149
+          );
+        }
+      }
+      expect(recordReads).toBe(initialReads);
+    }
+  );
+});
+
 describe('expired notification ID cleanup', () => {
   it('reclaims expired IDs while preserving IDs whose server expiry is still in the future', () => {
     const now = 10_000;

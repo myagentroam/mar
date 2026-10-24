@@ -9,6 +9,54 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Reasoning previews share normalized content and native ellipsis in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const thinkingPreview = `Inspecting ../workspace ${'workspace '.repeat(20)}https://example.com/search?q=one,two&next=2 changes`;
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1`);
+      const process = page.locator('[data-process-id="preview-process"]');
+      const preview = process.locator('.process-summary');
+      const heading = process.locator('.process-heading');
+      await expect(preview).toHaveText(thinkingPreview);
+      await expect(heading).toHaveAttribute('aria-expanded', 'false');
+      await heading.click();
+      const thinking = process.locator('.reasoning-group').first();
+      const subtitle = thinking.locator('.reasoning-subtitle');
+      await expect(subtitle).toHaveText(thinkingPreview);
+      for (const element of [preview, subtitle]) {
+        await expect(element).toHaveCSS('text-overflow', 'ellipsis');
+        await expect(element).toHaveCSS('white-space', 'nowrap');
+        expect(await element.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      }
+      await page.screenshot({
+        path: testInfo.outputPath(`reasoning-preview-${width}.png`),
+        animations: 'disabled'
+      });
+      await thinking.locator('summary').click();
+      await expect(thinking.locator('p')).toContainText('Full thinking detail');
+      await expect(thinking.locator('p')).toContainText('Second thinking line');
+      await expect(subtitle).toHaveCount(0);
+      await thinking.locator('summary').click();
+      await page.getByTestId('publish-reasoning-summary').click();
+      await expect(preview).toHaveText('Public summary: inspect files');
+      await expect(subtitle).toHaveText(thinkingPreview);
+      const summary = process.locator('.reasoning-group').last();
+      await expect(summary.locator('.reasoning-subtitle')).toHaveText(
+        'Public summary: inspect files'
+      );
+      await summary.locator('summary').click();
+      await expect(summary.locator('p')).toContainText('Full summary detail');
+      await heading.click();
+      await expect(heading).toHaveAttribute('aria-expanded', 'false');
+      await expect(preview).toHaveText('Public summary: inspect files');
+      await expect(process.locator('.reasoning-group')).toHaveCount(0);
+    }
+  });
+}
+
 test('Touch conversation details reveal status and unavailable change reasons', async ({
   browser
 }) => {

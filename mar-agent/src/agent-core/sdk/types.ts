@@ -98,10 +98,12 @@ export interface MarAgent {
     readonly defaultModelId?: string;
   }): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
-  /** Cancels active executions, then closes SDK-owned providers, the Host and the Session store. */
+  /** Joins executions/reconfiguration, closes owned resources, and releases borrowed Store leases. */
   dispose(): Promise<void>;
 }
 export interface CreateMarAgentOptions {
+  /** Ready-to-use borrowed Store. The caller closes it after all Agent/Catalog users finish. */
+  sessionStore?: import('../session/store/contracts.js').SessionStore;
   mode: 'normal' | 'node';
   host: MarAgentHost;
   models: readonly MarAgentModelConfiguration[];

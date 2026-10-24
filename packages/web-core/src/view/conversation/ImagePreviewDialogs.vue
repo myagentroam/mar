@@ -54,7 +54,6 @@ watch(
     append-to-body
     align-center
     class="attachment-preview-dialog"
-    width="min(960px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:attachmentOpen', $event)"
     :close-icon="marIcon('close')"
@@ -80,7 +79,6 @@ watch(
     append-to-body
     align-center
     class="attachment-preview-dialog"
-    width="min(960px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:conversationOpen', $event)"
     :close-icon="marIcon('close')"
@@ -105,17 +103,19 @@ watch(
 
 <style scoped>
 :global(.attachment-preview-dialog.el-dialog) {
+  --preview-left: max(16px, env(safe-area-inset-left, 0px));
+  --preview-right: max(16px, env(safe-area-inset-right, 0px));
+  --preview-top: max(16px, env(safe-area-inset-top, 0px));
+  --preview-bottom: max(16px, env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
-  max-width: calc(
-    100vw - max(32px, 2 * env(safe-area-inset-left, 0px), 2 * env(safe-area-inset-right, 0px))
-  );
-  height: min(
-    760px,
-    calc(
-      100dvh - max(32px, 2 * env(safe-area-inset-top, 0px), 2 * env(safe-area-inset-bottom, 0px))
-    )
-  );
+  box-sizing: border-box;
+  width: min(960px, calc(100vw - var(--preview-left) - var(--preview-right)));
+  height: min(760px, calc(100dvh - var(--preview-top) - var(--preview-bottom)));
+  margin: auto;
+  left: calc((var(--preview-left) - var(--preview-right)) / 2);
+  top: calc((var(--preview-top) - var(--preview-bottom)) / 2);
+  background: var(--mar-control-bg-color-overlay);
 }
 :global(.attachment-preview-dialog .el-dialog__header) {
   min-width: 0;
@@ -142,10 +142,24 @@ watch(
 
 .attachment-preview-image {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+@media (max-width: 767px) {
+  :global(.attachment-preview-dialog.el-dialog) {
+    width: 100%;
+    height: 100dvh;
+    margin: 0;
+    left: 0;
+    top: 0;
+    border: 0;
+    border-radius: 0;
+    padding: calc(1rem + env(safe-area-inset-top, 0px)) calc(1rem + env(safe-area-inset-right, 0px))
+      calc(1rem + env(safe-area-inset-bottom, 0px)) calc(1rem + env(safe-area-inset-left, 0px));
+  }
 }
 </style>

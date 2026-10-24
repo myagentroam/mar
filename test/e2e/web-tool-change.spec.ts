@@ -168,6 +168,9 @@ test('immutable tool changes show colored statistics, isolated tabs and retry wi
   await entries.nth(0).getByRole('button').click();
   const added = page.getByRole('dialog', { name: 'added.txt 本次修改' });
   await expect(added).toBeVisible();
+  const readError = page.getByRole('alert').filter({ hasText: 'TOOL_RESOURCE_UNAVAILABLE' });
+  await expect(readError).toBeVisible();
+  await readError.getByRole('button', { name: '关闭', exact: true }).click();
   failRead = false;
   await expect(added.getByRole('button', { name: '打开源文件', exact: true })).toBeEnabled();
   await added.getByRole('button', { name: /重试/ }).click();

@@ -26,6 +26,7 @@ import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
 import { conversationItemLabel } from '../../src/util/conversation-presentation.js';
+import { conversationUiEnUS, conversationUiZhCN } from '../../src/i18n/conversation-ui.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
@@ -720,6 +721,43 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(managed).toContain('aria-label="Session activity"');
     expect(idle).not.toContain('session-activity');
   });
+
+  it.each(['workspace', 'hosted'] as const)(
+    'shows the %s welcome only for a ready empty conversation',
+    async (emptyPrompt) => {
+      const props = {
+        emptyPrompt,
+        hasOlder: false,
+        loadingInitial: false,
+        initialLoadFailed: false,
+        loadingOlder: false,
+        hasTurns: false,
+        following: true
+      };
+      for (const locale of ['en-US', 'zh-CN'] as const) {
+        localePreferenceService().setLocale(locale);
+        const { title, description } = (
+          locale === 'en-US' ? conversationUiEnUS : conversationUiZhCN
+        ).conversationEmpty[emptyPrompt];
+        const html = await render(ConversationScroll, props);
+        expect(html).toContain(title);
+        expect(html).toContain(description);
+        for (const state of [
+          { hasTurns: true },
+          { hasOlder: true },
+          { loadingInitial: true },
+          { initialLoadFailed: true },
+          { loadingOlder: true },
+          { olderError: 'Earlier messages could not be loaded' },
+          { emptyPrompt: undefined }
+        ]) {
+          const hidden = await render(ConversationScroll, { ...props, ...state });
+          expect(hidden).not.toContain(title);
+          expect(hidden).not.toContain(description);
+        }
+      }
+    }
+  );
 
   it('renders initial history loading and retry states without exposing older-history controls', async () => {
     const loading = await render(ConversationScroll, {
@@ -1578,9 +1616,37 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(html).toContain('data-process-id="process-reasoning"');
-    expect(html).toContain('Public reasoning content marker.');
+    expect(html).toContain('Public reasoning content marker');
     expect(html).not.toContain('reasoning-progress');
   });
+
+  it.each(['summary', 'visible_thinking', 'unspecified'])(
+    'shows %s previews above the process and in its own collapsed reasoning row',
+    async (representation) => {
+      const text =
+        representation === 'summary'
+          ? '**Inspect files**\nFull summary detail'
+          : 'Inspect files: full thinking detail\n\nLater paragraph';
+      const reasoning = {
+        ...conversationItem('preview', 'reasoning', { representation, sections: [{ text }] }),
+        processGroup: { id: 'preview-process', isStart: true as const }
+      };
+      const props = {
+        ...timelineProps,
+        synchronized: true,
+        runs: [{ id: 'run-1', status: 'RUNNING' }],
+        turns: [conversationTurn([reasoning], { status: 'RUNNING' })]
+      };
+      const html = await render(ConversationTimeline, props);
+      expect(html).toMatch(/class="process-summary"[^>]*>Inspect files<\/p>/u);
+      expect(html).toMatch(/class="reasoning-subtitle"[^>]*>Inspect files<\/span>/u);
+      expect(html).not.toContain('full thinking detail');
+      expect(html).not.toContain('Full summary detail');
+      const closed = await render(ConversationTimeline, { ...props, runs: [] });
+      expect(closed).toMatch(/class="process-summary"[^>]*>Inspect files<\/p>/u);
+      expect(closed).not.toContain('reasoning-subtitle');
+    }
+  );
 
   it('renders approval details and gates approval decisions on the supplied Node readiness', async () => {
     const approval = conversationItem(

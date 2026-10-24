@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-24
 ---
 
 # Create and Manage Sessions
@@ -12,6 +12,8 @@ Select **New Session** to prepare an Agent, model, reasoning level, and permissi
 The session list initially loads up to 30 sessions. Scrolling near the bottom automatically loads up to 30 more; search results continue in the same way. New sessions remain visible in the current list. A small ring marks the pending page. A failure preserves the loaded sessions and pauses automatic loading; select **Retry** at the bottom to continue.
 
 A conversation turn can contain several collapsible **Work processes**. Public reasoning text, tool calls, and file operations appear in their actual order; Agent replies, approvals, and questions remain outside these groups. The active process opens by default and collapses when finished; your manual expansion or collapse takes precedence. Missing public reasoning does not create an empty card, and reasoning text is not an execution status. File details still open in the existing dialog.
+
+A reasoning preview appears above each process status row and in collapsed reasoning rows. Public summaries take priority; without one, the preview uses the first clause of the corresponding reasoning record’s first non-empty line. Long previews use a single-line ellipsis according to the available width. Expand reasoning to read the full original text; a preview does not indicate execution status.
 
 At the top of the conversation, load earlier messages or select **Retry** after a failure without clearing the messages already loaded. **Beginning of conversation** marks the end of history. **Sending** means the message is being submitted, not that the Agent has started. Activity comes from Node; when no specific action is available, the display says **Running** without inventing a reasoning summary. Run duration uses its start and completion times, including waits and continuation within that Run. Missing reliable timestamps hide the duration; a new Run after a Node restart starts a new clock.
 

@@ -490,12 +490,14 @@ for (const mobile of [false, true]) {
       const time = item.locator('time');
       const timeBox = (await time.boundingBox())!;
       expect(timeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
-      const section = panel.locator('.workbench-notification-section');
+      const section = mobile
+        ? page.locator('.notification-fixture-drawer')
+        : panel.locator('.workbench-notification-section');
       await section.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
       await expect(time).toBeInViewport();
-      const box = (await panel.boundingBox())!;
+      const box = (await (mobile ? section : panel).boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
       expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
@@ -531,7 +533,7 @@ test('Mobile first touch executes the action and the notification stays within t
     await page.locator('.workbench-notification-center button').first().tap();
     const panel = page.locator('.workbench-notification-panel');
     await expect(panel).toBeVisible();
-    const box = await panel.boundingBox();
+    const box = await page.locator('.notification-fixture-drawer').boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
     expect(box!.y + box!.height).toBeLessThanOrEqual(700);

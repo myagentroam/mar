@@ -821,6 +821,7 @@ function rawContentUrl(
   <WorkspaceFileTabs
     v-else
     ref="standaloneFileTabs"
+    :presentation="props.share?.embedded ? 'overlay' : 'window'"
     :tabs="standaloneTabs"
     :active-tab-id="activeStandaloneTabId"
     :can-close-unmounted-tab="canCloseUnmountedTab"

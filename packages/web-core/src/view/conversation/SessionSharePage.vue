@@ -89,13 +89,8 @@ onBeforeUnmount(() => {
 
 <template>
   <template v-if="session">
-    <SessionShareConversation
-      v-if="!standalone"
-      v-show="!previewIntent"
-      :access="access"
-      @open-file="openFile"
-    />
-    <section v-if="previewIntent" class="share-preview">
+    <SessionShareConversation v-if="!standalone" :access="access" @open-file="openFile" />
+    <section v-if="previewIntent" class="share-preview" :class="{ 'is-embedded': !standalone }">
       <StandaloneFilePreviewPage
         :key="previewVersion"
         :share="{ access, intent: previewIntent, embedded: !standalone }"
@@ -199,6 +194,11 @@ p {
   z-index: 40;
   background: var(--el-bg-color);
   overflow: auto;
+}
+.share-preview.is-embedded {
+  position: static;
+  background: transparent;
+  overflow: visible;
 }
 @media (max-width: 767px) {
   .share-entry-panel {

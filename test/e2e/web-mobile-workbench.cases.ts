@@ -746,7 +746,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
     'font-size',
-    '13px'
+    '12px'
   );
   await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
     'font-weight',

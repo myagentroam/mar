@@ -526,59 +526,10 @@ function selectFiles(event: Event): void {
 @media (max-width: 767px) {
   .composer-send-button,
   .composer-stop-button {
-    position: relative;
     width: 36px;
     min-width: 36px;
     height: 36px;
     min-height: 36px;
-    border-color: transparent;
-    background: transparent;
-  }
-
-  .composer-send-button::before,
-  .composer-stop-button::before {
-    position: absolute;
-    inset: 4px;
-    border: 1px solid var(--mar-color-brand);
-    border-radius: 50%;
-    background: var(--mar-color-brand);
-    content: '';
-  }
-
-  .composer-stop-button {
-    color: var(--mar-color-danger-text);
-  }
-
-  .composer-stop-button::before {
-    border-color: var(--mar-color-danger-text);
-    background: var(--mar-bg-panel);
-  }
-
-  .composer-send-button:not(:disabled):hover::before {
-    border-color: var(--mar-color-brand-hover);
-    background: var(--mar-color-brand-hover);
-  }
-
-  .composer-stop-button:not(:disabled):hover::before {
-    background: var(--mar-color-danger-bg);
-  }
-
-  .composer-send-button:disabled,
-  .composer-stop-button:disabled {
-    border-color: transparent;
-    background: transparent;
-  }
-
-  .composer-send-button:disabled:not([aria-busy='true'])::before,
-  .composer-stop-button:disabled::before {
-    border-color: var(--mar-border-default);
-    background: var(--mar-fill-soft);
-  }
-
-  .composer-send-button :deep(.mar-icon),
-  .composer-stop-button :deep(.mar-icon) {
-    position: relative;
-    z-index: 1;
   }
 }
 
@@ -620,6 +571,13 @@ function selectFiles(event: Event): void {
     grid-column: 1;
     grid-row: 1;
     justify-self: start;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .composer-attachment-button :deep(.mar-icon) {
+    font-size: 20px;
   }
 }
 

@@ -506,3 +506,89 @@ test('Mobile image, guarded details, prompt and alert return through only the to
     await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
   }
 });
+
+for (const source of ['conversation', 'attachment']) {
+  for (const shape of ['small', 'landscape', 'portrait']) {
+    test(`Image previews fit without upscaling ${source} ${shape} and preserve mobile return`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.goto(
+        `${fixture.url}workbench-mobile-drawer.html?image=${shape}${source === 'attachment' ? '&attachment=1' : ''}`
+      );
+      const initialState = await page.evaluate(() => history.state);
+      await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Sample image', exact: true });
+      const surface = dialog.locator('.attachment-preview-dialog');
+      await surface.evaluate((el: HTMLElement) =>
+        el.style.setProperty('--mar-control-bg-color-overlay', '#173b4a')
+      );
+      await expect(surface).toHaveCSS('background-color', 'rgb(23, 59, 74)');
+      const image = dialog.getByRole('img', { name: 'Sample image', exact: true });
+      await expect(image).toBeVisible();
+      await expect
+        .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+        .toBeGreaterThan(0);
+      await expect(surface).toHaveCSS('width', '960px');
+      await expect(surface).toHaveCSS('height', '760px');
+      await expect.poll(async () => Math.round((await surface.boundingBox())!.y)).toBe(160);
+      const bounds = (await surface.boundingBox())!;
+      expect(bounds.x).toBeCloseTo(480, 0);
+      expect(bounds.y).toBeCloseTo(160, 0);
+
+      const assertImageFits = async () => {
+        const sizes = await image.evaluate((el) => {
+          const img = el as HTMLImageElement;
+          const body = img.parentElement!;
+          const css = getComputedStyle(body);
+          const width =
+            body.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+          const height =
+            body.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom);
+          const bounds = img.getBoundingClientRect();
+          return {
+            width,
+            height,
+            displayedWidth: bounds.width,
+            displayedHeight: bounds.height,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight
+          };
+        });
+        const scale = Math.min(
+          1,
+          sizes.width / sizes.naturalWidth,
+          sizes.height / sizes.naturalHeight
+        );
+        expect(sizes.displayedWidth).toBeCloseTo(sizes.naturalWidth * scale, 0);
+        expect(sizes.displayedHeight).toBeCloseTo(sizes.naturalHeight * scale, 0);
+      };
+      await assertImageFits();
+      const handle = await image.elementHandle();
+      await page.setViewportSize({ width: 390, height: 760 });
+      await expect(surface).toHaveCSS('width', '390px');
+      await expect(surface).toHaveCSS('height', '760px');
+      await expect(surface).toHaveCSS('border-radius', '0px');
+      expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
+      await assertImageFits();
+      if (source === 'conversation' && shape === 'portrait') {
+        await page.screenshot({ path: testInfo.outputPath('mobile-image-preview.png') });
+      }
+      await page.goBack();
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
+      await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
+      if (source === 'conversation' && shape === 'small') {
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
+        await expect(dialog).toBeVisible();
+        await dialog.click({ position: { x: 8, y: 8 } });
+        await expect(dialog).toHaveCount(0);
+      }
+    });
+  }
+}

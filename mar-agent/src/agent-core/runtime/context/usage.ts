@@ -4,7 +4,7 @@ import {
   type MarAgentReasoningEffort
 } from '../../model/configuration.js';
 import type { ModelMessage } from '../../model/contracts.js';
-import { compactSummaryFromCheckpoint } from '../../session/store/index.js';
+import { compactSummaryFromCheckpoint } from '../../session/store/execution-state.js';
 import { estimatedRequestTokens } from './request-budget.js';
 export interface AuthoritativeModelUsage {
   readonly contextInputTokens: number;

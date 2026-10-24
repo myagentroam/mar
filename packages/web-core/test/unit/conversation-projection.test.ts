@@ -3,10 +3,7 @@ import { createConversationProjectionService } from '../../src/service/Conversat
 import { createWorkbenchConversationSnapshotService } from '../../src/service/WorkbenchConversationSnapshotService.js';
 import type { ConversationTurn } from '../../src/model/workbench.js';
 import { MAX_CONVERSATION_ITEM_TEXT_CHARACTERS } from '../../src/util/conversation-history.js';
-import {
-  conversationDisplayItems,
-  reasoningPreview
-} from '../../src/util/conversation-presentation.js';
+import { conversationDisplayItems } from '../../src/util/conversation-presentation.js';
 
 function turn(status = 'RUNNING'): ConversationTurn {
   return {
@@ -762,7 +759,11 @@ describe('Web Conversation Projection State', () => {
     const group = conversationDisplayItems(turns.value[0]!.items)[0];
     expect(group?.type).toBe('reasoning_group');
     if (group?.type === 'reasoning_group') {
-      expect(reasoningPreview(group.text)).toBe('Second segment');
+      expect(group.preview).toEqual({
+        id: 'reasoning-1',
+        text: 'Second segment',
+        representation: 'summary'
+      });
     }
     controller.mergeItem(
       'run-1',

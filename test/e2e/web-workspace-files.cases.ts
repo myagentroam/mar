@@ -176,7 +176,7 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   await expect(workspaceName).toHaveCSS('font-size', '13px');
   await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
     'font-size',
-    '13px'
+    '12px'
   );
   await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
     'font-weight',
@@ -370,7 +370,7 @@ test('Unknown-extension binaries use bounded detection and offer download withou
   await popup.goto(
     '/console?standaloneFile=1&nodeId=node-1&workspaceId=workspace-1&path=archive.zip&rawContent=1'
   );
-  const standalonePreview = popup.getByRole('dialog', { name: 'archive.zip 文件预览' });
+  const standalonePreview = popup.getByRole('region', { name: 'archive.zip 文件预览' });
   await expect(standalonePreview).toBeVisible();
   await expect(
     standalonePreview.getByText('此文件类型暂不支持浏览器预览；你仍可使用右上角按钮下载文件。')
@@ -413,11 +413,11 @@ test('Supported files open a loading preview shell before asynchronously reading
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('treeitem', { name: 'main.ts', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await expect(preview).toBeVisible();
-  await expect(preview.getByText('正在加载预览…')).toBeVisible();
+  await expect(preview.getByRole('status', { name: '正在加载中…' })).toBeVisible();
   releaseRead?.();
   await expect(preview.locator('.cm-content')).toContainText('export const answer = 42;');
 });
@@ -1144,7 +1144,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('treeitem', { name: 'main.ts', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await expect(preview.locator('.file-preview-eyebrow')).toContainText('正在编辑');
@@ -1236,7 +1236,11 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await editor.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '粘贴' }).click();
   await expect(editor).toContainText('// pasted from menu');
-  await expect(preview.getByRole('button', { name: '关闭预览' })).toHaveCount(0);
+  await expect(
+    preview
+      .getByRole('region', { name: 'src/main.ts 文件预览', exact: true })
+      .getByRole('button', { name: '关闭预览' })
+  ).toHaveCount(0);
   const closeWindow = page.getByRole('button', { name: '关闭文件窗口', exact: true });
   await closeWindow.click();
   await expect(page.locator('.el-message-box')).toContainText('未保存的修改');

@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import type { SessionStore, SessionRecordInput, SessionStoreCompactInput } from './contracts.js';
 import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError } from '../../error.js';
 import { cloneCoreJson, type CoreCheckpoint, type CoreJsonValue } from '../../extensions/data.js';
-import type { ModelMessage, ModelUsage } from '../../model/contracts.js';
-import type { EnvironmentContextState } from '../../runtime/context/contracts.js';
 import { acquireFileLock } from '../../storage/file-lock.js';
 import { todoItemsFromSnapshot, type TodoSnapshot } from '../../tools/agent/todo.js';
 import {
@@ -104,7 +103,6 @@ import {
   type HistoryPagePositions
 } from './records.js';
 import type {
-  CompactHistoryMessage,
   RestoredSessionInputImage,
   SessionExecutionState,
   SessionIndex,
@@ -114,14 +112,6 @@ import type {
   SessionMeta,
   SessionRecord
 } from './types.js';
-
-interface SessionRecordInput {
-  type: string;
-  payload: unknown;
-  executionId?: string;
-  turnId?: string;
-  timestamp?: string;
-}
 
 interface SessionWriterLease extends SessionCurrentState {
   owner: object | undefined;
@@ -155,7 +145,7 @@ const MAX_CONTEXTUAL_WORLD_STATE_BYTES = 8 * 1024 * 1024;
 const CONTEXTUAL_WORLD_STATE_FILE = 'context-world-state.json';
 
 /** SDK-owned JSONL history with per-HOME in-process sharing and cross-process file locks. */
-export class JsonlSessionStore {
+export class JsonlSessionStore implements SessionStore {
   static readonly #instances = new Map<string, SharedStore>();
   static readonly #opening = new Map<string, Promise<SharedStore>>();
   readonly #shared: SharedStore;
@@ -1502,21 +1492,7 @@ export class JsonlSessionStore {
   }
   async compact(
     sessionId: string,
-    input: {
-      summary: string;
-      replacementHistory?: readonly CompactHistoryMessage[];
-      retainedModelContext?: readonly ModelMessage[];
-      pendingInputs?: readonly SessionRecord[];
-      snapshotRecordId?: string;
-      snapshotMessageCount?: number;
-      environment?: EnvironmentContextState;
-      automatic?: boolean;
-      modelId?: string;
-      contextWindowTokens?: number;
-      usage?: ModelUsage;
-      executionId?: string;
-      turnId?: string;
-    },
+    input: SessionStoreCompactInput,
     options: { readonly signal?: AbortSignal } = {}
   ): Promise<SessionRecord> {
     if (!input.summary.trim())

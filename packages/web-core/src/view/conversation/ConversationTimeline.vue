@@ -56,7 +56,6 @@ import {
   conversationErrorPresentation,
   planSteps,
   taskListItems,
-  reasoningPreview,
   approvalDetail,
   approvalStatusLabel,
   approvalToolLabel,
@@ -599,12 +598,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               <ConversationRecordIcon kind="reasoning" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel('reasoning') }}</strong>
               <span
-                v-if="
-                  !reasoningDisclosure[displayItem.id] &&
-                  !displayItem.items.some((item) => item.id === block.summary?.id)
-                "
+                v-if="!reasoningDisclosure[displayItem.id] && displayItem.preview"
                 class="reasoning-subtitle"
-                >{{ reasoningPreview(displayItem.text) }}</span
+                >{{ displayItem.preview.text }}</span
               >
             </summary>
             <p v-if="reasoningDisclosure[displayItem.id]">{{ displayItem.text }}</p>

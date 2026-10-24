@@ -1,8 +1,9 @@
 import { MarAgentError } from '../error.js';
-import type { JsonlSessionStore, SessionSource } from '../session/store/index.js';
+import type { SessionStore } from '../session/store/contracts.js';
+import type { SessionSource } from '../session/types.js';
 import type { SubagentSessionControllerBackend } from '../subagent/session-controller.js';
 export function createSubagentBackend(
-  store: JsonlSessionStore,
+  store: SessionStore,
   workspace: string
 ): SubagentSessionControllerBackend {
   return {

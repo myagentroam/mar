@@ -284,6 +284,80 @@ describe('mobile temporary-layer history', () => {
     expect(browser.history.queuedTraversals).toBe(0);
   });
 
+  it('finishes parent cleanup when it is released during its child cleanup', () => {
+    const routeState = { page: 'workbench', workspaceId: 'w-17' };
+    const browser = installFakeBrowser(routeState);
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const closeParent = vi.fn();
+    const closeChild = vi.fn();
+    const releaseParent = coordinator.register(closeParent);
+    const releaseChild = coordinator.register(closeChild);
+
+    releaseChild();
+    expect(browser.history.queuedTraversals).toBe(1);
+    releaseParent();
+    expect(browser.history.queuedTraversals).toBe(1);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.queuedTraversals).toBe(1);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual(routeState);
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(browser.popstateListenerCount()).toBe(0);
+    expect(closeParent).not.toHaveBeenCalled();
+    expect(closeChild).not.toHaveBeenCalled();
+  });
+
+  it('keeps a reopened preview independent of a released parent and child', () => {
+    const routeState = { page: 'workbench', workspaceId: 'w-17' };
+    const browser = installFakeBrowser(routeState);
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const releaseParent = coordinator.register(vi.fn());
+    const key = markerKey(browser.history.state, routeState);
+    const releaseChild = coordinator.register(vi.fn());
+    releaseChild();
+    releaseParent();
+    const closeNew = vi.fn();
+    const releaseNew = coordinator.register(closeNew);
+
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toMatchObject(routeState);
+    expect(browser.history.state[key]).toBeDefined();
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(closeNew).not.toHaveBeenCalled();
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeNew).toHaveBeenCalledOnce();
+    releaseNew();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual(routeState);
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(browser.popstateListenerCount()).toBe(0);
+  });
+
+  it('preserves current route updates while released parent and child entries drain', () => {
+    const browser = installFakeBrowser({ route: 'old' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const releaseParent = coordinator.register(vi.fn());
+    const releaseChild = coordinator.register(vi.fn());
+    releaseChild();
+    releaseParent();
+    const url = 'https://console.example/new?filter=active';
+    browser.history.replaceState(
+      { ...browser.history.state, route: 'new', filter: 'active' },
+      '',
+      url
+    );
+    coordinator.captureRoute();
+
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual({ route: 'new', filter: 'active' });
+    expect(browser.history.currentUrl).toBe(url);
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(browser.popstateListenerCount()).toBe(0);
+  });
+
   it('isolates a reopened layer from a pending pop belonging to its previous instance', async () => {
     const routeState = { page: 'workbench', workspaceId: 'w-17' };
     const browser = installFakeBrowser(routeState);

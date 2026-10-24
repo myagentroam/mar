@@ -28,6 +28,8 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
   }
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
+const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const previewText = `Inspecting ../workspace ${'workspace '.repeat(20)}https://example.com/search?q=one,two&next=2 changes`;
 const items: ConversationItem[] = [
   {
     id: 'user',
@@ -99,9 +101,49 @@ const items: ConversationItem[] = [
     payload: { subagentOperation: 'START', subagentId: 'child', prompt: 'Review the change' }
   }
 ];
-const turns: ConversationTurn[] = [
-  { id: 'turn', sessionId: 'session', runId: 'run', status: 'SUCCEEDED', items }
-];
+const turns = ref<ConversationTurn[]>([
+  {
+    id: 'turn',
+    sessionId: 'session',
+    runId: 'run',
+    status: 'SUCCEEDED',
+    items: previewFixture
+      ? [
+          {
+            id: 'thinking',
+            kind: 'reasoning',
+            status: 'COMPLETED',
+            processGroup: { id: 'preview-process', isStart: true },
+            payload: {
+              representation: 'visible_thinking',
+              sections: [{ text: `## ${previewText}: Full thinking detail\nSecond thinking line` }]
+            }
+          }
+        ]
+      : items
+  }
+]);
+function publishSummary() {
+  const turn = turns.value[0]!;
+  turns.value = [
+    {
+      ...turn,
+      items: [
+        ...turn.items,
+        {
+          id: 'summary',
+          kind: 'reasoning',
+          status: 'COMPLETED',
+          processGroup: { id: 'preview-process' },
+          payload: {
+            representation: 'summary',
+            sections: [{ text: '**Public summary: inspect files**\nFull summary detail' }]
+          }
+        }
+      ]
+    }
+  ];
+}
 </script>
 
 <template>
@@ -183,6 +225,9 @@ const turns: ConversationTurn[] = [
       :rewind-enabled="false"
       :rollback-enabled="false"
     />
+    <button v-if="previewFixture" data-testid="publish-reasoning-summary" @click="publishSummary">
+      Publish summary
+    </button>
     <button data-testid="toggle-following" @click="following = !following">Toggle following</button>
     <section class="scroll-sample">
       <ConversationScroll

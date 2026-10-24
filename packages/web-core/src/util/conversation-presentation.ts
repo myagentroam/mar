@@ -1,4 +1,10 @@
 export { userInputQuestions } from './conversation-user-input.js';
+export { reasoningPreview } from './conversation-reasoning.js';
+import {
+  normalizeReasoningPreview,
+  selectReasoningPreview,
+  type ReasoningPreview
+} from './conversation-reasoning.js';
 import { fileChangeDiffSchema } from '@myagentroam/protocol';
 import { conversationPayload } from './conversation-history.js';
 import type { Approval, ConversationItem } from '../model/workbench.js';
@@ -23,6 +29,7 @@ export type ConversationDisplayItem =
       readonly id: string;
       readonly items: readonly ConversationItem[];
       readonly text: string;
+      readonly preview: ReasoningPreview | undefined;
       readonly completed: boolean;
     }
   | {
@@ -182,8 +189,12 @@ export function conversationDisplayItems(
       return [];
     const type = groupType(item);
     if (type === 'reasoning_group') {
-      const text = reasoningSections(conversationPayload(item.payload) ?? {}).join('\n\n');
-      return text.trim() ? [{ type, id: item.id, items: [item], text, completed: true }] : [];
+      const payload = conversationPayload(item.payload) ?? {};
+      const text = reasoningSections(payload).join('\n\n');
+      const preview = normalizeReasoningPreview(item.id, text, payload.representation);
+      return text.trim()
+        ? [{ type, id: item.id, items: [item], text, preview, completed: true }]
+        : [];
     }
     if (type !== undefined) return [{ type, id: item.id, items: [item] }];
     return [
@@ -237,7 +248,12 @@ export function conversationDisplayItems(
       const members = [...previous.items, ...entry.items];
       const merged =
         previous.type === 'reasoning_group' && entry.type === 'reasoning_group'
-          ? { ...previous, items: members, text: `${previous.text}\n\n${entry.text}` }
+          ? {
+              ...previous,
+              items: members,
+              text: `${previous.text}\n\n${entry.text}`,
+              preview: selectReasoningPreview(previous.preview, entry.preview)
+            }
           : { ...previous, items: members };
       result[index] = undefined;
       anchors.set(key, result.length);
@@ -256,19 +272,6 @@ export function reasoningDisclosureOpen(
 ): boolean {
   if (previousTurnActive === undefined) return false;
   return currentOpen ?? false;
-}
-
-export function reasoningPreview(text: string): string {
-  // GPT reasoning summaries may append Markdown bold headings; show the latest one.
-  const heading = [...text.matchAll(/(?:^|\n)[^\S\r\n]*\*\*([^\r\n*]+)\*\*/gu)].at(-1)?.[1]?.trim();
-  const latestParagraph =
-    text
-      .trim()
-      .split(/\n\s*\n/u)
-      .at(-1) ?? '';
-  const firstLine = latestParagraph.split(/\r?\n/u).find((line) => line.trim()) ?? '';
-  // Keep the full first line; the subtitle container owns visual truncation.
-  return (heading || firstLine).replace(/\s+/g, ' ').trim();
 }
 
 export function conversationFileChangeEntries(

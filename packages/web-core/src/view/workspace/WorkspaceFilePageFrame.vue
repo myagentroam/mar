@@ -12,6 +12,7 @@ const props = withDefaults(
     readonly sourceLabel?: string | undefined;
     readonly loading?: boolean;
     readonly fullscreen?: boolean;
+    readonly contained?: boolean;
     readonly mobileActionsLabel?: string | undefined;
     readonly mobileActionsLayout?: 'compact' | 'wrap' | 'stacked';
   }>(),
@@ -23,7 +24,7 @@ const root = ref<HTMLElement>();
 const mobileActionsExpanded = ref(true);
 const slots = useSlots();
 const focus = createMobileSurfaceFocusService({
-  isOpen: () => props.fullscreen === true,
+  isOpen: () => props.fullscreen === true && !props.contained,
   regions: () => [root.value]
 });
 onBeforeUnmount(focus.dispose);
@@ -39,10 +40,10 @@ defineExpose({ root });
   <section
     ref="root"
     class="workspace-file-page-frame"
-    role="dialog"
-    :aria-modal="props.fullscreen || undefined"
+    :role="props.fullscreen && !props.contained ? 'dialog' : 'region'"
+    :aria-modal="(props.fullscreen && !props.contained) || undefined"
     tabindex="-1"
-    :class="{ 'is-loading': props.loading, 'is-fullscreen': props.fullscreen }"
+    :class="{ 'is-loading': props.loading, 'is-fullscreen': props.fullscreen && !props.contained }"
     :aria-busy="props.loading || undefined"
   >
     <header class="file-preview-header workspace-file-page-frame-header">
@@ -122,6 +123,7 @@ defineExpose({ root });
 
 .workspace-file-page-frame-title {
   min-width: 0;
+  flex: 1;
 }
 
 .workspace-file-page-frame-header {
@@ -136,7 +138,7 @@ defineExpose({ root });
 
 .workspace-file-page-frame-title > h2 {
   overflow: hidden;
-  max-width: min(68vw, 860px);
+  max-width: 100%;
   margin: 0;
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-body);

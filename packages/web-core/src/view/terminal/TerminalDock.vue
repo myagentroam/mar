@@ -571,6 +571,7 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab-close {
+  --mar-action-icon-size: 14px;
   position: absolute;
   right: 3px;
   display: inline-grid;

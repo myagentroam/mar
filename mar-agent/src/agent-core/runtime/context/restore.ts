@@ -1,20 +1,20 @@
 import { MarAgentError } from '../../error.js';
+import type { SessionStore } from '../../session/store/contracts.js';
 import { appliedInputRecord, pendingDeferredInputs } from '../../session/deferred-input.js';
 import type { ModelMessage } from '../../model/contracts.js';
 import {
   compactSummaryFromCheckpoint,
   replacementHistoryFromCheckpoint,
-  inputMetadataFromRecord,
-  type CompactUserInput,
-  type JsonlSessionStore
-} from '../../session/store/index.js';
+  inputMetadataFromRecord
+} from '../../session/store/execution-state.js';
+import type { CompactUserInput } from '../../session/store/contracts.js';
 import { compactedHistoryMessages, continuationMessage } from '../compaction/history.js';
 import { restoreCompactTail } from '../compaction/retained-context.js';
 import type { EnvironmentContextState } from './contracts.js';
 import { environmentContextUpdate, restoreEnvironmentState } from './environment.js';
 import { buildContextProjection, type ContextProjection } from './projection.js';
 export async function restoreMessages(
-  store: JsonlSessionStore,
+  store: SessionStore,
   sessionId: string,
   records: readonly import('../../session/store/index.js').SessionRecord[],
   options: {
@@ -64,7 +64,7 @@ export async function restoreMessages(
       const content = typeof payload.modelText === 'string' ? payload.modelText : payload.prompt;
       const metadata = inputMetadataFromRecord(inputRecord);
       userMessages.push({ content, metadata });
-      let images = [] as Awaited<ReturnType<JsonlSessionStore['readInputImages']>>;
+      let images = [] as Awaited<ReturnType<SessionStore['readInputImages']>>;
       if (options.includeImages)
         try {
           images = await store.readInputImages(sessionId, payload.images);

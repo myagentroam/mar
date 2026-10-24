@@ -1163,6 +1163,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-more-button {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;

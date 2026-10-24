@@ -90,6 +90,7 @@ export const commonMessages = {
     toolPresentation: conversationUiEnUS.toolPresentation,
     conversationProcess: conversationUiEnUS.conversationProcess,
     conversationActivity: conversationUiEnUS.conversationActivity,
+    conversationEmpty: conversationUiEnUS.conversationEmpty,
     presentation: {
       ...conversationUiEnUS.presentation,
       ...hostedConversationsEnUS.presentation
@@ -210,6 +211,7 @@ export const commonMessages = {
     toolPresentation: conversationUiZhCN.toolPresentation,
     conversationProcess: conversationUiZhCN.conversationProcess,
     conversationActivity: conversationUiZhCN.conversationActivity,
+    conversationEmpty: conversationUiZhCN.conversationEmpty,
     presentation: {
       ...conversationUiZhCN.presentation,
       ...hostedConversationsZhCN.presentation

@@ -6,6 +6,8 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
+import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
+import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
 
@@ -40,6 +42,33 @@ const content = longContent
   : 'Original content';
 createApp({
   setup: () => () => {
+    const image = query.get('image');
+    if (image) {
+      const [width, height] =
+        image === 'landscape' ? [1600, 900] : image === 'portrait' ? [200, 2000] : [40, 40];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="steelblue"/></svg>`;
+      return h(
+        FilePreviewSurface,
+        { overlay: true, label: 'File image preview' },
+        {
+          default: () =>
+            h(WorkspaceFormatFilePage, {
+              file: {
+                path: 'sample.svg',
+                encoding: 'base64',
+                content: '',
+                size: svg.length,
+                truncated: false
+              },
+              contentUrl: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+              kind: 'image',
+              downloading: false,
+              fullscreen: true,
+              contained: true
+            })
+        }
+      );
+    }
     const textMode = query.get('text');
     if (textMode === 'code' || textMode === 'fallback')
       return withActions(

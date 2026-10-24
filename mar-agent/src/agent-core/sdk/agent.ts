@@ -15,7 +15,8 @@ import { AnthropicMessagesAdapter } from '../model/anthropic-messages.js';
 import { type MarAgentModelConfiguration } from '../model/configuration.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import { OpenAiResponsesAdapter } from '../model/openai-responses.js';
-import { JsonlSessionStore } from '../session/store/index.js';
+import { JsonlSessionStore } from '../session/store/jsonl-store.js';
+import type { SessionStore } from '../session/store/contracts.js';
 import type {
   CreateMarAgentOptions,
   CreateSessionInput,
@@ -48,7 +49,11 @@ export async function createMarAgentWithAdapter(
   const description = negotiateHost(await options.host.describe());
   if (description.mode !== options.mode)
     throw new MarAgentError('MAR_AGENT_HOST_INCOMPATIBLE', 'Host mode does not match Agent mode.');
-  const store = await JsonlSessionStore.open(description.homeDirectory);
+  if (options.sessionStore === null)
+    throw new MarAgentError('MAR_AGENT_SESSION_STORE_INVALID', 'Session store must not be null.');
+  const ownsStore = options.sessionStore === undefined;
+  const store: SessionStore =
+    options.sessionStore ?? (await JsonlSessionStore.open(description.homeDirectory));
   const active = new Map<string, AbortController>();
   const activeExecutionAdapters = new Set<ModelAdapter>();
   const executionResults = new Map<string, Promise<ExecutionResult>>();
@@ -89,7 +94,7 @@ export async function createMarAgentWithAdapter(
     }
     return pending;
   };
-  let reconfiguring = false;
+  let reconfiguration: Promise<void> | undefined;
   const createAdapter = (
     modelId: string,
     configuredModels: ReadonlyMap<string, ResolvedModelConfiguration> = models
@@ -245,7 +250,7 @@ export async function createMarAgentWithAdapter(
     assertSessionAdmission,
     assertCanStart: (sessionId) => {
       assertSessionAdmission(sessionId);
-      if (reconfiguring)
+      if (reconfiguration)
         throw new MarAgentError(
           'MAR_AGENT_EXECUTION_ACTIVE',
           'Models are being reconfigured for the next execution.'
@@ -254,18 +259,28 @@ export async function createMarAgentWithAdapter(
   });
   return {
     extensionDiagnostics: () => extensions.diagnostics(),
-    createSession: async (input: CreateSessionInput) =>
-      openSession((await store.createSession(input)).id, input.workspace),
+    createSession: async (input: CreateSessionInput) => {
+      assertSessionAdmission();
+      return openSession((await store.createSession(input)).id, input.workspace);
+    },
     openSession: (id) => openSession(id),
-    listSessions: (input) => store.list(input),
-    getSession: (id) => store.getSession(id),
-    setSessionTitle: (id, title, input) =>
-      store.updateTitle(
+    listSessions: async (input) => {
+      assertSessionAdmission();
+      return store.list(input);
+    },
+    getSession: async (id) => {
+      assertSessionAdmission();
+      return store.getSession(id);
+    },
+    setSessionTitle: async (id, title, input) => {
+      assertSessionAdmission();
+      return store.updateTitle(
         id,
         title,
         { ...input, automatic: input?.automatic ?? false },
         sessionWriterOwner
-      ),
+      );
+    },
     clearSession: (id) =>
       trackSessionLifecycle(id, 'clear', async () => {
         const runtime = sessionRuntimes.get(id);
@@ -305,7 +320,7 @@ export async function createMarAgentWithAdapter(
     },
     reconfigureModels: async (input) => {
       if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
-      if (reconfiguring)
+      if (reconfiguration)
         throw new MarAgentError(
           'MAR_AGENT_EXECUTION_ACTIVE',
           'Models are already being reconfigured for the next execution.'
@@ -328,7 +343,10 @@ export async function createMarAgentWithAdapter(
       const inactiveRuntimes = [...sessionRuntimes].flatMap(([sessionId, runtime]) =>
         activeSessions.has(sessionId) ? [] : [runtime]
       );
-      reconfiguring = true;
+      const completion = Promise.withResolvers<void>();
+      reconfiguration = completion.promise;
+      void completion.promise.catch(() => undefined);
+      let interruptedByDisposal = false;
       try {
         const reconfigurationCommits = new Map<ModelAdapter, () => void>();
         for (const runtime of inactiveRuntimes)
@@ -348,7 +366,10 @@ export async function createMarAgentWithAdapter(
             if (!retainedAdapters.has(adapter)) runtime.adapters.delete(modelId);
         }
         await closeModelAdapters(adapters);
-        if (disposed) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
+        if (disposed) {
+          interruptedByDisposal = true;
+          throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
+        }
         for (const commit of reconfigurationCommits.values()) commit();
         models = next.models;
         defaultModelId = next.defaultModelId;
@@ -367,12 +388,16 @@ export async function createMarAgentWithAdapter(
           (provider) => !liveProviders.has(provider)
         );
         const providerCloseResults = await Promise.allSettled(
-          obsoleteProviders.map((provider) => provider.close())
+          obsoleteProviders.map(async (provider) => provider.close())
         );
         for (const [index, result] of providerCloseResults.entries())
           if (result.status === 'fulfilled') credentialProviders.delete(obsoleteProviders[index]!);
+      } catch (error) {
+        if (!interruptedByDisposal) completion.reject(error);
+        throw error;
       } finally {
-        reconfiguring = false;
+        completion.resolve();
+        if (reconfiguration === completion.promise) reconfiguration = undefined;
       }
     },
     deleteSession: (id) =>
@@ -416,6 +441,7 @@ export async function createMarAgentWithAdapter(
       const extensionDisposal = extensions.dispose();
       void extensionDisposal.catch(() => undefined);
       const runtimes = [...sessionRuntimes.values()];
+      const pendingReconfiguration = reconfiguration;
       disposal = completeAgentCleanup([
         async () => {
           const results = await Promise.allSettled(
@@ -428,10 +454,12 @@ export async function createMarAgentWithAdapter(
         ...runtimes.map((runtime) => () => runtime.inputs?.retire()),
         ...runtimes.map((runtime) => () => runtime.subagents?.dispose()),
         () => Promise.allSettled([...executionResults.values()]),
+        () => pendingReconfiguration,
         () => closeModelAdapters(runtimes.flatMap((runtime) => [...runtime.adapters.values()])),
-        ...[...credentialProviders].map((provider) => () => provider.close()),
+        () =>
+          completeAgentCleanup([...credentialProviders].map((provider) => () => provider.close())),
         () => options.host.dispose(),
-        () => store.close()
+        () => (ownsStore ? store.close() : undefined)
       ]);
       return disposal;
     }

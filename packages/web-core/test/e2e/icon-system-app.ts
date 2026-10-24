@@ -9,6 +9,8 @@ import { iconShapes, type MarIconName } from '../../src/util/icon-shapes.js';
 import { marIcon } from '../../src/util/mar-icons.js';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
+import { changeKey } from '../../src/service/WorkspaceGitService.js';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
@@ -17,6 +19,7 @@ import ConversationWorkProcess from '../../src/view/conversation/ConversationWor
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
+import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import type { PersonalUsageOverview, UsageTotals } from '@myagentroam/protocol';
@@ -67,6 +70,67 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    if (new URL(location.href).searchParams.has('git-change-icons')) {
+      const entry = {
+        repositoryPath: '',
+        repositoryName: 'MyAgentRoam',
+        source: 'ROOT' as const,
+        path: 'src/workspace.ts',
+        state: 'UNSTAGED' as const,
+        change: 'MODIFIED',
+        diffAvailable: true
+      };
+      const restoringPath = ref<string>();
+      const service = {
+        repositories: ref([
+          {
+            repositoryPath: '',
+            repositoryName: 'MyAgentRoam',
+            source: 'ROOT',
+            current: true,
+            branch: 'develop',
+            locked: false,
+            prunable: false,
+            changes: [entry, { ...entry, path: 'src/other.ts' }]
+          }
+        ]),
+        worktrees: ref([]),
+        worktreesTruncated: ref(false),
+        discoveryErrors: ref([]),
+        changesRefreshing: ref(false),
+        restoringPath,
+        loadChanges: async () => undefined
+      };
+      return () =>
+        h('main', {}, [
+          h(WorkspaceGitChanges, { service: service as never, target: undefined }),
+          h(
+            ElButton,
+            { onClick: () => (restoringPath.value = changeKey(entry)) },
+            () => 'Show restore loading'
+          )
+        ]);
+    }
+    if (new URL(location.href).searchParams.has('attachment-icons')) {
+      const attachments = ref([
+        {
+          id: 'attachment',
+          file: new File(['notes'], 'notes.txt', { type: 'text/plain' }),
+          previewUrl: null,
+          nodeId: 'host',
+          workspaceId: 'project',
+          receivedBytes: 5,
+          status: 'COMPLETED' as const
+        }
+      ]);
+      return () =>
+        h(ComposerAttachments, {
+          attachments: attachments.value,
+          onRemoveAttachment: (id: string) => {
+            attachments.value = attachments.value.filter((attachment) => attachment.id !== id);
+          }
+        });
+    }
     if (new URL(location.href).searchParams.has('information-icons')) {
       const queried = ref(false);
       return () =>
@@ -132,6 +196,8 @@ const app = createApp({
       const sends = ref(0);
       const stops = ref(0);
       const pending = ref(false);
+      const draftSessionOpen = new URL(location.href).searchParams.has('draft-session');
+      const modelLabel = draftSessionOpen ? 'GPT-6-Luna Xhigh' : 'Test model';
       return () =>
         h('main', {}, [
           h(ConversationTimeline, {
@@ -177,16 +243,16 @@ const app = createApp({
             },
             [
               h(ComposerToolbar, {
-                draftSessionOpen: false,
-                runner: 'MAR_AGENT',
-                runnerOptions: [],
+                draftSessionOpen,
+                runner: 'mar-agent',
+                runnerOptions: [{ value: 'mar-agent', label: 'MAR Agent' }],
                 runnerLoading: false,
                 runnerLabel: 'MAR Agent',
                 modelEffortSelection: 'model:test',
-                modelEffortLabel: 'Test model',
+                modelEffortLabel: modelLabel,
                 selectedModel: 'test',
                 selectedEffort: 'high',
-                models: [{ id: 'test', label: 'Test model', supportedEfforts: ['high'] }],
+                models: [{ id: 'test', label: modelLabel, supportedEfforts: ['high'] }],
                 efforts: ['high'],
                 access: 'auto',
                 accessLabel: 'Auto',
@@ -194,7 +260,7 @@ const app = createApp({
                 configurationDisabled: false,
                 accessDisabled: false,
                 fastEnabled: false,
-                contextUsage: { percentage: 18.4 },
+                contextUsage: draftSessionOpen ? null : { percentage: 18.4 },
                 contextUsageLabel: 'Context usage',
                 canCompactContext: true,
                 mobileViewport: innerWidth < 768,
@@ -426,9 +492,12 @@ const app = createApp({
           ]),
           h('section', { 'data-testid': 'sessions' }, [
             h(WorkspaceSessionList, {
-              sessions: [],
+              sessions: new URL(location.href).searchParams.has('session-icons')
+                ? [{ id: 'session', workspaceId: 'project', runner: 'MAR_AGENT' }]
+                : [],
               selectedSessionId: undefined,
               mobileViewport: innerWidth < 768,
+              active: true,
               canLoadMore: false,
               loadingMore: false,
               watchStatus: 'ready',
@@ -437,7 +506,7 @@ const app = createApp({
               workspaceKind: 'GIT_WORKSPACE',
               workspaceKindLabel: 'Git',
               workspaceBranch: 'develop',
-              title: () => '',
+              title: () => 'Fixture session',
               runnerIcon: () => '',
               activity: () => '',
               activityLabel: () => '',
@@ -446,7 +515,7 @@ const app = createApp({
               relativeActivity: () => '',
               nodeId: 'host',
               workspaceId: 'project',
-              skillSupported: false,
+              skillSupported: new URL(location.href).searchParams.has('more-icons'),
               mcpSupported: false,
               cleanupSessionsSupported: false,
               searchSupported: true,

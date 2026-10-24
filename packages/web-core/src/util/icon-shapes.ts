@@ -43,7 +43,7 @@ export const iconShapes = {
   plus: '<path d="M12 4.5v15M4.5 12h15" />',
   close: '<path d="m6 6 12 12M18 6 6 18" />',
   check: '<path d="m4.5 12 5 5 10-10" />',
-  more: '<circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.25" fill="currentColor" stroke="none"/>',
+  more: '<circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/>',
   edit: '<path d="m14.5 4.5 5 5M4 20l1-5 11-11a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3L9 19l-5 1Z" />',
   delete:
     '<path d="M4 6.5h16m-11 0v-2h6v2M6 7l1 12a2 2 0 0 0 2 1.5h6a2 2 0 0 0 2-1.5l1-12M10 10.5v6m4-6v6" />',
@@ -80,7 +80,7 @@ export const iconShapes = {
     '<path d="M12 3.5V14m-4.5-4.5 4.5 4.5 4.5-4.5M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5"/>',
   attachment:
     '<path d="m8.5 12.5 6-6a3.5 3.5 0 0 1 5 5l-8 8a5 5 0 0 1-7-7L12.5 4m-4 8.5a1.5 1.5 0 0 0 2.1 2.1l6-6" />',
-  send: '<path d="M20.75 3.25 3.25 9.5l6.5 3.75 3.75 7.5 7.25-17.5Z"/><path d="m9.75 13.25 11-10"/>',
+  send: '<path d="M18.75 6.25 2.75 11l6 3.5 4 6.5Z"/><path d="m8.75 14.5 10-8.25"/>',
   stop: '<rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor" stroke="none"/>',
   queue:
     '<path d="M8 5h12M8 12h12M8 19h8" /><circle cx="3.5" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="19" r="0.9" fill="currentColor" stroke="none"/>',

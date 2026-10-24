@@ -9,6 +9,59 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const shape of ['small', 'landscape', 'portrait']) {
+  test(`File image previews fit their stable surface without upscaling: ${shape}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1920, height: 1200 });
+    await page.goto(`${fixture.url}file-editor-layout.html?image=${shape}`);
+    const surface = page.locator('.file-preview-surface');
+    await surface.evaluate((el: HTMLElement) =>
+      el.style.setProperty('--mar-control-bg-color-overlay', '#173b4a')
+    );
+    await expect(surface).toHaveCSS('background-color', 'rgb(23, 59, 74)');
+    const image = surface.getByRole('img', { name: 'sample.svg', exact: true });
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBeGreaterThan(0);
+    const handle = await image.elementHandle();
+    for (const mobile of [false, true]) {
+      if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+      await expect(surface).toHaveCSS('width', mobile ? '390px' : '1440px');
+      await expect(surface).toHaveCSS('height', mobile ? '844px' : '960px');
+      const size = await image.evaluate((el: HTMLImageElement) => {
+        const area = el.parentElement!;
+        const css = getComputedStyle(area);
+        const bounds = el.getBoundingClientRect();
+        return {
+          width: bounds.width,
+          height: bounds.height,
+          naturalWidth: el.naturalWidth,
+          naturalHeight: el.naturalHeight,
+          availableWidth:
+            area.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight),
+          availableHeight:
+            area.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom)
+        };
+      });
+      const scale = Math.min(
+        1,
+        size.availableWidth / size.naturalWidth,
+        size.availableHeight / size.naturalHeight
+      );
+      expect(size.width).toBeCloseTo(size.naturalWidth * scale, 0);
+      expect(size.height).toBeCloseTo(size.naturalHeight * scale, 0);
+      expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
+      await expect(
+        surface.getByRole('button', { name: 'Close preview', exact: true })
+      ).toBeVisible();
+    }
+    if (shape === 'portrait')
+      await page.screenshot({ path: testInfo.outputPath('mobile-file-image-preview.png') });
+  });
+}
+
 for (const theme of ['light', 'dark']) {
   test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
     page

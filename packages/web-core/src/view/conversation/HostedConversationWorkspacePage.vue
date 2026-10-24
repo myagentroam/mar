@@ -46,6 +46,7 @@ import HostedConversationEntryPage from '../../view/conversation/HostedConversat
 import ImagePreviewDialogs from './ImagePreviewDialogs.vue';
 import WorkspaceTextFilePage from '../workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../workspace/WorkspaceFormatFilePage.vue';
+import FilePreviewSurface from '../workspace/FilePreviewSurface.vue';
 
 const props = defineProps<{
   readonly connected?: boolean;
@@ -268,6 +269,7 @@ const conversationImages = createConversationImageService(props.workspace.select
     return `/api/nodes/${encodeURIComponent(nodeId)}/hosted-conversations/${encodeURIComponent(conversationId)}/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(imageSelector)}`;
   }
 });
+const filePage = ref<{ focus(): void }>();
 const filePreview = createHostedConversationFilePreviewService({
   source: props.workspace,
   onError: (error) => showMessage(hostedErrorMessage(error), 'error', error)
@@ -1193,6 +1195,7 @@ onBeforeUnmount(() => {
           "
           :has-turns="timelineTurns.length > 0"
           :following="conversationScrollService.following.value"
+          :empty-prompt="interactionReady && !workspace.snapshot.value.run ? 'hosted' : undefined"
           @scroll-element="setConversationScrollElement"
           @scroll="handleConversationScroll"
           @load-older="loadOlderConversationHistory"
@@ -1360,41 +1363,56 @@ onBeforeUnmount(() => {
         @update:conversation-open="conversationImages.previewOpen.value = $event"
         @clear-conversation="conversationImages.preview.value = undefined"
       />
-      <WorkspaceTextFilePage
-        v-if="
-          filePreview.visible.value &&
-          filePreview.content.value &&
-          filePreview.kind.value === 'text'
+      <FilePreviewSurface
+        v-if="filePreview.visible.value && filePreview.content.value"
+        :overlay="true"
+        :label="
+          translate('generated.filePreviewDialog.filePreview', {
+            value0: filePreview.content.value.path
+          })
         "
-        :downloading="filePreview.downloading.value"
-        :file="filePreview.content.value"
-        :fullscreen="true"
-        :kind="filePreview.kind.value"
-        :markdown="
-          filePreview.content.value.encoding === 'utf-8' &&
-          isMarkdownFile(filePreview.content.value.path)
-        "
-        :render-markdown="true"
-        :markdown-resource-url="markdownResourceUrl"
-        :target-line="filePreview.targetLine.value"
-        :target-column="filePreview.targetColumn.value"
-        :write-enabled="false"
-        @close="filePreview.close"
-        @download="filePreview.download"
-        @open-markdown-file="
-          (path, external) => openLinkedFile(path, undefined, undefined, external)
-        "
-      />
-      <WorkspaceFormatFilePage
-        v-else-if="filePreview.visible.value && filePreview.content.value"
-        :content-url="filePreview.contentUrl.value"
-        :downloading="filePreview.downloading.value"
-        :file="filePreview.content.value"
-        :fullscreen="true"
-        :kind="filePreview.kind.value"
-        @close="filePreview.close"
-        @download="filePreview.download"
-      />
+        @focus="filePage?.focus()"
+      >
+        <WorkspaceTextFilePage
+          ref="filePage"
+          v-if="
+            filePreview.visible.value &&
+            filePreview.content.value &&
+            filePreview.kind.value === 'text'
+          "
+          :downloading="filePreview.downloading.value"
+          :file="filePreview.content.value"
+          :fullscreen="true"
+          :contained="true"
+          :kind="filePreview.kind.value"
+          :markdown="
+            filePreview.content.value.encoding === 'utf-8' &&
+            isMarkdownFile(filePreview.content.value.path)
+          "
+          :render-markdown="true"
+          :markdown-resource-url="markdownResourceUrl"
+          :target-line="filePreview.targetLine.value"
+          :target-column="filePreview.targetColumn.value"
+          :write-enabled="false"
+          @close="filePreview.close"
+          @download="filePreview.download"
+          @open-markdown-file="
+            (path, external) => openLinkedFile(path, undefined, undefined, external)
+          "
+        />
+        <WorkspaceFormatFilePage
+          ref="filePage"
+          v-else-if="filePreview.visible.value && filePreview.content.value"
+          :content-url="filePreview.contentUrl.value"
+          :downloading="filePreview.downloading.value"
+          :file="filePreview.content.value"
+          :fullscreen="true"
+          :contained="true"
+          :kind="filePreview.kind.value"
+          @close="filePreview.close"
+          @download="filePreview.download"
+        />
+      </FilePreviewSurface>
     </Teleport>
   </section>
 </template>
@@ -1659,6 +1677,7 @@ onBeforeUnmount(() => {
 }
 
 .history-more-button {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;
@@ -1931,6 +1950,7 @@ onBeforeUnmount(() => {
 }
 
 .file-delete {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 26px;
   height: 26px;

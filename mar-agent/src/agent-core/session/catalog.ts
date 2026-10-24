@@ -2,7 +2,8 @@ import { MarAgentError } from '../error.js';
 import type { MarAgentImageMetadata } from '../runtime/contracts.js';
 import type { MarAgentEvent } from '../runtime/events.js';
 import { publicHostedToolEvents } from '../runtime/event-projection.js';
-import { JsonlSessionStore } from './store/index.js';
+import { JsonlSessionStore } from './store/jsonl-store.js';
+import type { SessionStore } from './store/contracts.js';
 import type { SessionListInput, SessionSource } from './types.js';
 
 const MAX_INPUT_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -103,15 +104,44 @@ export interface MarAgentSessionCatalog {
   close(): Promise<void>;
 }
 
-export async function openMarAgentSessionCatalog(input: {
-  homeDirectory: string;
-}): Promise<MarAgentSessionCatalog> {
-  const store = await JsonlSessionStore.open(input.homeDirectory);
+export type OpenMarAgentSessionCatalogInput =
+  | { homeDirectory: string; sessionStore?: never }
+  | { sessionStore: SessionStore; homeDirectory?: never };
+
+export async function openMarAgentSessionCatalog(
+  input: OpenMarAgentSessionCatalogInput
+): Promise<MarAgentSessionCatalog> {
+  const borrowed = input.sessionStore !== undefined;
+  if (
+    input.sessionStore === null ||
+    borrowed === (input.homeDirectory !== undefined) ||
+    (!borrowed && (typeof input.homeDirectory !== 'string' || !input.homeDirectory))
+  )
+    throw new MarAgentError(
+      'MAR_AGENT_SESSION_STORE_INVALID',
+      'Specify exactly one Session store or home directory.'
+    );
+  const store: SessionStore =
+    input.sessionStore ?? (await JsonlSessionStore.open(input.homeDirectory!));
+  let closure: Promise<void> | undefined;
+  const assertOpen = () => {
+    if (closure) throw new MarAgentError('MAR_AGENT_DISPOSED', 'Session catalog is closed.');
+  };
   return {
-    list: (options) => store.list(options),
-    firstUserMessagePreview: (sessionId) => store.firstUserMessagePreview(sessionId),
-    executionConfiguration: (sessionId) => store.executionConfiguration(sessionId),
+    list: async (options) => {
+      assertOpen();
+      return store.list(options);
+    },
+    firstUserMessagePreview: async (sessionId) => {
+      assertOpen();
+      return store.firstUserMessagePreview(sessionId);
+    },
+    executionConfiguration: async (sessionId) => {
+      assertOpen();
+      return store.executionConfiguration(sessionId);
+    },
     history: async (sessionId, options = {}) => {
+      assertOpen();
       const beforeSequence = parseCursor(options.cursor);
       const page = await store.readPage(sessionId, {
         ...(options.limit === undefined ? {} : { limit: options.limit }),
@@ -176,6 +206,7 @@ export async function openMarAgentSessionCatalog(input: {
       };
     },
     readImage: async (sessionId, input) => {
+      assertOpen();
       const image = await store.readInputImage(sessionId, input);
       return image === undefined
         ? undefined
@@ -186,8 +217,12 @@ export async function openMarAgentSessionCatalog(input: {
             dataBase64: image.dataBase64
           };
     },
-    readToolResultResource: (sessionId, input) => store.readToolResultResource(sessionId, input),
+    readToolResultResource: async (sessionId, input) => {
+      assertOpen();
+      return store.readToolResultResource(sessionId, input);
+    },
     contextUsage: async (sessionId) => {
+      assertOpen();
       const page = await store.readPage(sessionId, { limit: 1000 });
       for (const record of page.records.toReversed()) {
         if (!isMarAgentEvent(record.payload)) continue;
@@ -206,13 +241,26 @@ export async function openMarAgentSessionCatalog(input: {
       return undefined;
     },
     fork: async (sessionId, options) => {
+      assertOpen();
       const session = await store.forkSession(sessionId, options);
       return { ...session, source: session.source ?? { type: 'user' } };
     },
-    rollback: (sessionId, options) => store.rollbackSession(sessionId, options),
-    clear: (sessionId) => store.clearSession(sessionId),
-    delete: (sessionId) => store.delete(sessionId),
-    close: () => store.close()
+    rollback: async (sessionId, options) => {
+      assertOpen();
+      return store.rollbackSession(sessionId, options);
+    },
+    clear: async (sessionId) => {
+      assertOpen();
+      return store.clearSession(sessionId);
+    },
+    delete: async (sessionId) => {
+      assertOpen();
+      return store.delete(sessionId);
+    },
+    close: () => {
+      closure ??= Promise.resolve().then(() => (borrowed ? undefined : store.close()));
+      return closure;
+    }
   };
 }
 

@@ -586,6 +586,7 @@ const emit = defineEmits<{
   font-variant-numeric: tabular-nums;
 }
 .workbench-notification-panel .workbench-notification-delete {
+  --mar-action-icon-size: 14px;
   display: grid;
   min-width: 24px;
   min-height: 24px;

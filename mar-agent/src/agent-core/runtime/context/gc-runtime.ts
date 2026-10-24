@@ -8,12 +8,12 @@ import {
   type ContextGcCheckpointPayload,
   type ContextGcPlatform
 } from '../../session/context-gc-checkpoint.js';
-import { JsonlSessionStore, type SessionRecord } from '../../session/store/index.js';
+import type { SessionStore, SessionRecord } from '../../session/store/contracts.js';
 import { CONTEXT_GC_POLICY, contextGcEligibleUsage, inspectContextGc } from './gc.js';
 import { buildContextProjection, type ContextProjection } from './projection.js';
 
 export interface ContextGcRuntimeInput {
-  readonly store: JsonlSessionStore;
+  readonly store: SessionStore;
   readonly sessionId: string;
   readonly records?: readonly SessionRecord[];
   readonly system: string;
@@ -241,7 +241,7 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
 }
 
 async function matchingCheckpointWasPersisted(
-  store: JsonlSessionStore,
+  store: SessionStore,
   sessionId: string,
   draft: ContextGcCheckpointDraft,
   workspace: string,

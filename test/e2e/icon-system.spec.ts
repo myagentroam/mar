@@ -9,6 +9,164 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['dark', 'light']) {
+  test(`Git change restore icons stay compact on mobile in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`${fixture.url}icon-system.html?git-change-icons=1&theme=${theme}`);
+    const restore = page.locator('.change-restore').first();
+    const glyph = restore.locator('[data-mar-icon="undo"]');
+    await expect(glyph).toBeVisible();
+    const desktopBounds = await glyph.boundingBox();
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(glyph).toHaveCSS('width', '14px');
+      await expect(glyph).toHaveCSS('height', '14px');
+      await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+      await expect(page.locator('.changes-refresh-button svg')).toHaveCSS('width', '18px');
+      const bounds = (await restore.boundingBox())!;
+      expect(bounds.width).toBeGreaterThanOrEqual(20);
+      expect(bounds.height).toBeGreaterThanOrEqual(18);
+      await restore.focus();
+      await expect(restore).toBeFocused();
+      await restore.hover();
+      await expect(glyph).toHaveCSS('width', '14px');
+      await page.locator('.current-changes').screenshot({
+        path: testInfo.outputPath(`git-change-icons-${theme}-${width}.png`)
+      });
+    }
+
+    await page.getByRole('button', { name: 'Show restore loading', exact: true }).click();
+    await expect(restore).toBeDisabled();
+    await expect(restore.locator('[data-mar-icon="loading-action"]')).toHaveCSS('width', '14px');
+    await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+    await expect(page.locator('.change-restore').nth(1)).toBeDisabled();
+    await expect(page.locator('.change-restore').nth(1).locator('svg')).toHaveCSS('width', '14px');
+
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await expect(restore.locator('svg')).toHaveCSS('width', `${desktopBounds!.width}px`);
+  });
+}
+
+for (const theme of ['dark', 'light']) {
+  for (const [name, path, selector] of [
+    ['resource tree', 'icon-system.html', '.tree-more-button'],
+    ['session rows', 'icon-system.html?session-icons=1', '.session-more-button'],
+    ['file tree', 'file-tree.html', 'button.file-tree-more'],
+    ['workspace tabs', 'workspace-tabs.html?locale=en-US&layout=dynamic', '.tab-close, .tab-pin'],
+    ['file tabs', 'file-tabs.html', '.workspace-file-tab-close'],
+    ['attachments', 'icon-system.html?attachment-icons=1', '.composer-attachment-remove'],
+    ['notifications', 'visual-alignment.html?mobile=1', '.workbench-notification-delete']
+  ] as const) {
+    test(`Compact secondary icons in ${name} preserve mobile controls in ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`${fixture.url}${path}`);
+      if (name === 'file tree') {
+        await page.getByRole('button', { name: 'Toggle mobile', exact: true }).click();
+      }
+      if (name === 'session rows') await page.locator('.session-link').focus();
+      if (name === 'notifications') await page.locator('.workbench-notification-trigger').click();
+      const controls = page.locator(selector);
+      await expect(controls.first()).toBeVisible();
+      await page.locator('html').evaluate((element, selectedTheme) => {
+        element.dataset.theme = selectedTheme === 'light' ? 'daylight' : 'vscode-dark-2026';
+        element.classList.toggle('dark', selectedTheme === 'dark');
+      }, theme);
+      for (const width of [320, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        for (const control of await controls.all()) {
+          await expect(control.locator('svg')).toHaveCSS('width', '14px');
+          await expect(control.locator('svg')).toHaveCSS('height', '14px');
+          const bounds = (await control.boundingBox())!;
+          expect(bounds.width).toBeGreaterThanOrEqual(20);
+          expect(bounds.height).toBeGreaterThanOrEqual(18);
+        }
+        await controls.first().focus();
+        await expect(controls.first()).toBeFocused();
+        await controls.first().hover();
+        await expect(controls.first().locator('svg')).toHaveCSS('width', '14px');
+      }
+      if (name === 'resource tree') {
+        await expect(page.locator('.session-search-button svg')).toHaveCSS('width', '18px');
+        await expect(page.locator('.node-expand-button svg')).toHaveCSS('width', '12px');
+        await expect(page.locator('.tree-node [data-mar-icon="node"]')).toHaveCSS('width', '16px');
+      }
+      if (name === 'file tabs') {
+        await expect(page.locator('.workspace-file-window-close svg')).toHaveCSS('width', '18px');
+        await expect(controls.first()).toHaveCSS('width', '36px');
+        await expect(controls.first()).toHaveCSS('height', '36px');
+      }
+      await page.screenshot({ path: testInfo.outputPath(`compact-${name}-${theme}.png`) });
+      if (name === 'attachments' || name === 'notifications') {
+        await controls.first().click();
+        await expect(controls).toHaveCount(0);
+      }
+    });
+  }
+}
+
+for (const dpr of [1, 2, 3]) {
+  test.describe(`More action dots DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const theme of ['dark', 'light']) {
+      test(`remain legible without enlarging controls in ${theme}`, async ({ page }, testInfo) => {
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${fixture.url}icon-system.html?more-icons=1&theme=${theme}`);
+          const trigger = page.locator('.workspace-more-button');
+          const graphic = trigger.locator('[data-mar-icon="more"]');
+          const sample = page.locator('.icon-review-cell [data-mar-icon="more"]');
+          await expect(graphic).toBeVisible();
+          await trigger.hover();
+          await page.locator('.new-session-form').screenshot({
+            path: testInfo.outputPath(`more-${theme}-${width}.png`)
+          });
+          for (const icon of [graphic, sample]) {
+            const dots = await icon.evaluate((element) => {
+              const svg = element as SVGSVGElement;
+              return Array.from(svg.querySelectorAll('circle'), (circle) => ({
+                x: circle.cx.baseVal.value,
+                y: circle.cy.baseVal.value,
+                diameter: (circle.r.baseVal.value * 2) / svg.viewBox.baseVal.width,
+                fill: getComputedStyle(circle).fill,
+                color: getComputedStyle(svg).color
+              }));
+            });
+            expect(dots).toHaveLength(3);
+            for (const dot of dots) {
+              // Preserve visible dot weight at small sizes, rather than scaling the control.
+              expect(dot.diameter).toBeGreaterThanOrEqual(0.15);
+              expect(dot.diameter).toBeLessThanOrEqual(0.2);
+              expect(dot.y).toBe(12);
+              expect(dot.fill).toBe(dot.color);
+            }
+            expect(dots[0].diameter).toBe(dots[1].diameter);
+            expect(dots[1].diameter).toBe(dots[2].diameter);
+            expect(dots[1].x).toBe(12);
+            expect(dots[1].x - dots[0].x).toBe(dots[2].x - dots[1].x);
+            expect(dots[1].x - dots[0].x - dots[0].diameter * 24).toBeGreaterThan(2);
+          }
+          const before = await trigger.boundingBox();
+          await trigger.focus();
+          await expect(trigger).toBeFocused();
+          await trigger.hover();
+          expect((await trigger.boundingBox())!.width).toBe(before!.width);
+          expect((await trigger.boundingBox())!.height).toBe(before!.height);
+          await trigger.press('Enter');
+          await expect(page.getByRole('menu')).toBeVisible();
+          await expect(page.getByRole('menuitem')).toBeFocused();
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('menu')).toBeHidden();
+        }
+      });
+    }
+  });
+}
+
 for (const dpr of [1, 2, 3]) {
   test.describe(`Information symbols DPR ${dpr}`, () => {
     test.use({ deviceScaleFactor: dpr });
@@ -118,11 +276,12 @@ for (const theme of ['dark', 'light']) {
   }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    for (const width of [390, 360, 1280]) {
+    for (const width of [390, 320, 360, 420, 1280]) {
       const mobile = width < 768;
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}icon-system.html?composer-icons=1&theme=${theme}`);
       const attachment = page.locator('.composer-attachment-button .mar-icon');
+      const attachmentButton = page.locator('.composer-attachment-button');
       const copy = page.locator('.conversation-message-action .mar-icon').first();
       const edit = page.getByRole('button', { name: 'Edit', exact: true });
       const send = page.locator('.composer-send-button');
@@ -147,10 +306,21 @@ for (const theme of ['dark', 'light']) {
         const nose = outline.getPointAtLength(0);
         const bounds = svg.getBBox();
         const stroke = parseFloat(getComputedStyle(svg).strokeWidth);
+        const radius =
+          Math.max(
+            ...Array.from(paths).flatMap((path) =>
+              Array.from({ length: 65 }, (_, index) => {
+                const point = path.getPointAtLength((path.getTotalLength() * index) / 64);
+                return Math.hypot(point.x - 12, point.y - 12);
+              })
+            )
+          ) +
+          stroke / 2;
         return {
           dx: end.x - start.x,
           dy: end.y - start.y,
           join: Math.hypot(end.x - nose.x, end.y - nose.y),
+          radius,
           min: Math.min(bounds.x, bounds.y) - stroke / 2,
           max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2
         };
@@ -159,10 +329,14 @@ for (const theme of ['dark', 'light']) {
       expect(plane.dx).toBeGreaterThan(5);
       expect(plane.dy).toBeLessThan(-5);
       expect(plane.join).toBeLessThan(0.01);
+      // Keep the painted plane inside a circular keyline, not only the square viewBox.
+      expect(plane.radius).toBeLessThanOrEqual(11.25);
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
-        for (const graphic of [attachment, copy, edit.locator('.mar-icon')]) {
+        await expect(attachment).toHaveCSS('width', '20px');
+        await expect(attachment).toHaveCSS('height', '20px');
+        for (const graphic of [copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');
         }
@@ -176,6 +350,34 @@ for (const theme of ['dark', 'light']) {
           width
         );
       }
+      const attachmentBox = (await attachmentButton.boundingBox())!;
+      const attachmentGraphic = (await attachment.boundingBox())!;
+      const sendBox = (await send.boundingBox())!;
+      expect(attachmentBox.width).toBe(mobile ? 28 : 26);
+      expect(attachmentBox.height).toBe(attachmentBox.width);
+      const modelBox = (await page.locator('.composer-model-slot').boundingBox())!;
+      expect(modelBox.width).toBeGreaterThan(0);
+      expect(attachmentBox.x + attachmentBox.width).toBeLessThanOrEqual(modelBox.x);
+      expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(sendBox.x);
+      expect(attachmentGraphic.x + attachmentGraphic.width / 2).toBeCloseTo(
+        attachmentBox.x + attachmentBox.width / 2,
+        1
+      );
+      expect(attachmentGraphic.y + attachmentGraphic.height / 2).toBeCloseTo(
+        sendBox.y + sendBox.height / 2,
+        1
+      );
+      await expect(attachmentButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await attachmentButton.focus();
+      await expect(attachmentButton).toBeFocused();
+      await expect(attachmentButton).toHaveCSS('outline-style', 'solid');
+      const [fileChooser] = await Promise.all([
+        page.waitForEvent('filechooser'),
+        attachmentButton.press('Enter')
+      ]);
+      expect(fileChooser.isMultiple()).toBe(true);
+      await fileChooser.setFiles([]);
+      await attachmentButton.evaluate((button) => button.blur());
       await expect(page.getByTestId('status-icon').locator('.mar-icon')).toHaveCSS('width', '11px');
       await expect(
         page.getByRole('button', { name: 'Explicit icon size' }).locator('.mar-icon')
@@ -245,6 +447,59 @@ for (const theme of ['dark', 'light']) {
       await expect(send).not.toHaveCSS('color', readyColors.color);
     }
     expect(errors).toEqual([]);
+  });
+
+  test(`Mobile draft attachment stays reachable beside long configuration: ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 360 },
+      isMobile: true,
+      hasTouch: true
+    });
+    try {
+      const page = await context.newPage();
+      for (const width of [320, 390, 420]) {
+        await page.setViewportSize({ width, height: 360 });
+        await page.goto(
+          `${fixture.url}icon-system.html?composer-icons=1&draft-session=1&empty-draft=1&theme=${theme}`
+        );
+        const attachment = page.locator('.composer-attachment-button');
+        const runner = page.locator('.composer-runner-slot');
+        const model = page.locator('.composer-model-slot');
+        const access = page.locator('.composer-access-slot');
+        const send = page.locator('.composer-send-button');
+        await expect(runner).toBeVisible();
+        await expect(send).toBeDisabled();
+        let rightEdge = 0;
+        for (const control of [attachment, runner, model, access, send]) {
+          const box = (await control.boundingBox())!;
+          expect(box.width).toBeGreaterThan(0);
+          expect(box.x).toBeGreaterThanOrEqual(rightEdge);
+          expect(box.y).toBeGreaterThanOrEqual(0);
+          expect(box.y + box.height).toBeLessThanOrEqual(360);
+          rightEdge = box.x + box.width;
+        }
+        expect(rightEdge).toBeLessThanOrEqual(width);
+        const [fileChooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          attachment.tap()
+        ]);
+        expect(fileChooser.isMultiple()).toBe(true);
+        await fileChooser.setFiles([]);
+        await expect(page.getByTestId('sends')).toHaveText('0');
+        await model.tap();
+        const modelOption = page.getByRole('option', { name: 'GPT-6-Luna Xhigh', exact: true });
+        await expect(modelOption).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(modelOption).toBeHidden();
+        await attachment.focus();
+        await attachment.evaluate((button) => button.blur());
+        await page.screenshot({ path: testInfo.outputPath(`draft-attachment-${width}.png`) });
+      }
+    } finally {
+      await context.close();
+    }
   });
 }
 
@@ -432,6 +687,9 @@ test('Terminal close icons preserve accessible names and close only the selected
   const close = page.getByRole('button', { name: 'Close terminal 1', exact: true });
   await expect(close).toBeVisible();
   await expect(close.locator('svg[data-mar-icon="close"][aria-hidden="true"]')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(close.locator('svg')).toHaveCSS('width', '14px');
+  await expect(page.locator('.terminal-tab-add svg')).toHaveCSS('width', '18px');
   await close.focus();
   await page.keyboard.press('Enter');
   await expect(close).toHaveCount(0);
@@ -609,6 +867,7 @@ for (const theme of ['dark', 'light'])
       });
       expect(buttonGap).toBeGreaterThanOrEqual(5);
       await create.focus();
+      await expect(create).toBeFocused();
       await create.press('Enter');
       await expect(page.getByTestId('created')).toHaveText('1');
       const search = page.locator('.session-search input');

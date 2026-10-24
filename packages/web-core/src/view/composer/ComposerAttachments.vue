@@ -161,6 +161,7 @@ const emit = defineEmits<{
 }
 
 .composer-attachment-remove {
+  --mar-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   min-width: 24px;

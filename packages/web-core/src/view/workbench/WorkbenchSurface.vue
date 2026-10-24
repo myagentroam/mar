@@ -420,6 +420,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :older-error="page.olderHistoryError"
                 :has-turns="page.conversationTurns.length > 0"
                 :following="page.followConversation"
+                :empty-prompt="page.draftSessionOpen ? 'workspace' : undefined"
                 @scroll-element="page.conversationScroll = $event"
                 @scroll="page.onComposerScroll"
                 @load-older="page.loadOlderConversationTurns"
@@ -1023,6 +1024,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     position: relative;
     height: 0;
     min-height: 0;
+    border-bottom: 0;
     grid-template-rows: minmax(0, 1fr);
     grid-template-columns: 1fr;
     flex: 1 1 auto;

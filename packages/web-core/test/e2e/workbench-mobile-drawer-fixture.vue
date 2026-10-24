@@ -14,6 +14,7 @@ import { createMobileMenuHistoryService } from '../../src/service/MobileMenuHist
 import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
+import type { ComposerAttachment } from '../../src/model/workbench.js';
 import { translate } from '../../src/service/LocalePreferenceService.js';
 
 const navigation = createWorkbenchNavigationService({
@@ -89,9 +90,23 @@ const quickOpen = ref(false);
 const detailsOpen = ref(false);
 const imageOpen = ref(false);
 const draft = ref('Keep this draft');
+const previewQuery = new URLSearchParams(location.search);
+const attachmentPreview = previewQuery.has('attachment');
+const imageSize = previewQuery.get('image');
+const [imageWidth, imageHeight] =
+  imageSize === 'landscape' ? [1600, 900] : imageSize === 'portrait' ? [200, 2000] : [40, 40];
 const image = {
   name: 'Sample image',
-  url: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect width="40" height="40" fill="blue"/%3E%3C/svg%3E'
+  url: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${imageWidth}" height="${imageHeight}"><rect width="100%" height="100%" fill="blue"/></svg>`)}`
+};
+const imageAttachment: ComposerAttachment = {
+  id: 'preview-image',
+  file: new File([], image.name, { type: 'image/svg+xml' }),
+  previewUrl: image.url,
+  nodeId: 'node',
+  workspaceId: 'workspace',
+  receivedBytes: 0,
+  status: 'COMPLETED'
 };
 async function closeDetails(done: () => void): Promise<void> {
   try {
@@ -195,10 +210,12 @@ onBeforeUnmount(() => {
       <input v-model="draft" aria-label="Draft" />
     </el-dialog>
     <ImagePreviewDialogs
-      :attachment-open="false"
-      :attachment="undefined"
+      :attachment-open="attachmentPreview && imageOpen"
+      :attachment="attachmentPreview ? imageAttachment : undefined"
       :conversation="image"
-      v-model:conversation-open="imageOpen"
+      :conversation-open="!attachmentPreview && imageOpen"
+      @update:attachment-open="imageOpen = $event"
+      @update:conversation-open="imageOpen = $event"
     />
     <QuickOpenDialog
       v-if="quickOpen"

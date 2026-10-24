@@ -743,6 +743,7 @@ button.changes-refresh-button {
 }
 
 .change-list .change-restore {
+  --mar-action-icon-size: 14px;
   min-width: 1.25rem;
   min-height: 18px;
   padding: 0.1rem;

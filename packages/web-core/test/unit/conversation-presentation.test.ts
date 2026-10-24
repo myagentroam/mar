@@ -1569,35 +1569,34 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
-  it('Preview the latest heading or paragraph first line without synthetic truncation', () => {
-    expect(reasoningPreview('  First\nsummary  and another thought ')).toBe('First');
-    expect(reasoningPreview('\n\n First\t summary  \r\nFurther reasoning\r\n')).toBe(
-      'First summary'
-    );
-    expect(reasoningPreview('Old paragraph\r\n\r\n Latest summary\r\nFurther detail')).toBe(
+  it('previews explicit summary headings or paragraphs without synthetic truncation', () => {
+    const summaryPreview = (text: string) => reasoningPreview(text, 'summary');
+    expect(summaryPreview('  First\nsummary  and another thought ')).toBe('First');
+    expect(summaryPreview('\n\n First\t summary  \r\nFurther reasoning\r\n')).toBe('First summary');
+    expect(summaryPreview('Old paragraph\r\n\r\n Latest summary\r\nFurther detail')).toBe(
       'Latest summary'
     );
-    expect(reasoningPreview('  **Checking the implementation**\n\nFurther reasoning')).toBe(
+    expect(summaryPreview('  **Checking the implementation**\n\nFurther reasoning')).toBe(
       'Checking the implementation'
     );
-    expect(reasoningPreview('**检查实现**\n正文继续')).toBe('检查实现');
-    expect(reasoningPreview('** ** further reasoning')).toBe('** ** further reasoning');
-    expect(reasoningPreview('**unfinished reasoning')).toBe('**unfinished reasoning');
-    expect(reasoningPreview('Intro **emphasis** remains')).toBe('Intro **emphasis** remains');
-    expect(reasoningPreview('First summary\n\nthen detailed thinking')).toBe(
+    expect(summaryPreview('**检查实现**\n正文继续')).toBe('检查实现');
+    expect(summaryPreview('** ** further reasoning')).toBe('** ** further reasoning');
+    expect(summaryPreview('**unfinished reasoning')).toBe('**unfinished reasoning');
+    expect(summaryPreview('Intro **emphasis** remains')).toBe('Intro **emphasis** remains');
+    expect(summaryPreview('First summary\n\nthen detailed thinking')).toBe(
       'then detailed thinking'
     );
     expect(
-      reasoningPreview('**Inspecting source and logs**\n\n**Checking service logs**\n\nMore detail')
+      summaryPreview('**Inspecting source and logs**\n\n**Checking service logs**\n\nMore detail')
     ).toBe('Checking service logs');
     const longSummary = `${'word '.repeat(30)}following`;
-    expect(reasoningPreview(`${longSummary}\nHidden detail`)).toBe(longSummary);
-    expect(reasoningPreview(`**${longSummary}**\n\nFurther reasoning`)).toBe(longSummary);
-    expect(reasoningPreview('思'.repeat(81))).toBe('思'.repeat(81));
-    expect(reasoningPreview('🧠'.repeat(81))).toBe('🧠'.repeat(81));
-    expect(reasoningPreview('Narrowing the search...')).toBe('Narrowing the search...');
-    expect(reasoningPreview('Checking the context…')).toBe('Checking the context…');
-    expect(reasoningPreview(' ')).toBe('');
+    expect(summaryPreview(`${longSummary}\nHidden detail`)).toBe(longSummary);
+    expect(summaryPreview(`**${longSummary}**\n\nFurther reasoning`)).toBe(longSummary);
+    expect(summaryPreview('思'.repeat(81))).toBe('思'.repeat(81));
+    expect(summaryPreview('🧠'.repeat(81))).toBe('🧠'.repeat(81));
+    expect(summaryPreview('Narrowing the search...')).toBe('Narrowing the search...');
+    expect(summaryPreview('Checking the context…')).toBe('Checking the context…');
+    expect(summaryPreview(' ')).toBe('');
   });
 
   it('Prefer an ordinary tool name over its native target title', () => {
