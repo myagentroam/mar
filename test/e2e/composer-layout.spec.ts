@@ -42,7 +42,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
         expect(style.radius).toBe('50%');
         expect(style.width).toBe(style.height);
-        expect(style.width).toBe(width < 768 ? 36 : 24);
+        expect(style.width).toBe(width < 768 ? 28 : 24);
         if (width >= 768) {
           const buttonBox = (await button.boundingBox())!;
           const toolbarBox = (await page.locator('.composer-toolbar').boundingBox())!;
