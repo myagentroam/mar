@@ -50,7 +50,7 @@ test('Touch conversation details reveal status and unavailable change reasons', 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}`);
@@ -73,7 +73,25 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       });
       await expect(page.locator('.process-activity.is-active')).toHaveCSS('color', tokens.text);
       await expect(page.locator('.process-activity.is-active')).toHaveCSS('font-weight', '600');
-      await expect(page.locator('.process-activity-indicator')).toHaveCSS('color', tokens.brand);
+      const processIndicator = page.locator('.process-activity-indicator');
+      await expect(processIndicator).toHaveCSS('color', tokens.brand);
+      await expect(processIndicator).toHaveCSS('width', '10px');
+      await expect(processIndicator).toHaveCSS('height', '10px');
+      // Fractional borders snap to device pixels; keep the stroke visible and below 2px.
+      const strokeWidth = await processIndicator.evaluate((element) =>
+        parseFloat(getComputedStyle(element).borderTopWidth)
+      );
+      expect(strokeWidth).toBeGreaterThan(0);
+      expect(strokeWidth).toBeLessThan(2);
+      await expect(processIndicator).toHaveCSS('animation-duration', '1.2s');
+      await expect(processIndicator).toHaveCSS('animation-name', 'busy-indicator-spin');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(processIndicator).toHaveCSS('animation-name', 'none');
+      await page
+        .locator('.process-heading')
+        .filter({ has: processIndicator })
+        .screenshot({ path: testInfo.outputPath(`process-running-${width}.png`) });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
       await expect(page.locator('.composer-busy-indicator')).toHaveCSS('width', '10px');
       await expect(page.locator('.composer-busy-indicator')).toHaveCSS('height', '10px');
       await expect(page.locator('.composer')).toHaveCSS('background-color', tokens.canvas);
