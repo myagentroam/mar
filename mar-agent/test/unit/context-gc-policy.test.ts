@@ -293,6 +293,147 @@ function addWebResult(fixture: ReturnType<typeof records>, id: string, content: 
 }
 
 describe('context GC checkpoint eligibility across planner, runtime and store', () => {
+  it.each([
+    { label: 'large protected output', output: 'pending '.repeat(1_600) },
+    { label: 'small positive protected output', output: 'pending '.repeat(400) }
+  ])('keeps mixed-candidate retry metadata at low growth: $label', async ({ output }) => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-mixed-retry-'));
+    const store = await JsonlSessionStore.open(home);
+    const cacheEconomics = vi.spyOn(gcTokens, 'contextGcCacheImpact');
+    try {
+      const session = await store.createSession({ workspace: '/workspace' });
+      const fixture = records();
+      addPatchCandidate(fixture);
+      addTerminalExec(fixture, 'mature-output', 'verification '.repeat(1_000));
+      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+      let copied = 1;
+      const appendNewRecords = async () => {
+        for (const record of fixture.values.slice(copied))
+          await store.append(session.id, {
+            type: record.type,
+            payload: record.payload,
+            executionId: record.executionId,
+            turnId: record.turnId
+          });
+        copied = fixture.values.length;
+        return (await store.readExecutionState(session.id)).contextRecords;
+      };
+      const initialRecords = await appendNewRecords();
+      const first = plan(initialRecords, { contextInputTokens: 6_000, cacheReadTokens: 0 });
+      expect(first!.metrics.protectedCandidateTokens).toBeGreaterThan(0);
+      await store.commitContextGc(session.id, first!.draft, initialRecords);
+      const commit = vi.spyOn(store, 'commitContextGc');
+      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+      addTerminalExec(fixture, 'pending-output', output);
+      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+      const mixedRecords = await appendNewRecords();
+      const inspect = (values: readonly SessionRecord[]) => {
+        const projection = buildContextProjection(values, '/workspace');
+        return inspectContextGc({
+          records: values,
+          messages: projection.entries.map((entry) => entry.message),
+          messageSources: projection.entries.map((entry) => entry.record),
+          system: 'System.',
+          tools: [],
+          modelId: 'coding',
+          modelProtocol: 'OPENAI_RESPONSES',
+          contextWindowTokens: 10_000,
+          usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+          workspace: '/workspace',
+          platform: 'linux',
+          activeProcessIds: new Set()
+        });
+      };
+      // One output is six rollouts old and passes combined economics; the other
+      // is only two rollouts old. Draft admission must not erase its retry hint.
+      cacheEconomics.mockClear();
+      expect.soft(inspect(mixedRecords)).toEqual({ retryAfterRollouts: 4 });
+      expect(cacheEconomics).toHaveBeenCalled();
+      expect(
+        cacheEconomics.mock.calls.some(([, , after]) =>
+          after.some(
+            (message) =>
+              message.callId === 'mature-output' &&
+              message.role === 'tool' &&
+              JSON.parse(message.content).contextGcFormatVersion === 3
+          )
+        )
+      ).toBe(true);
+
+      const getActiveProcessIds = vi.fn(async () => new Set<string>());
+      const runtime = new ContextGcRuntime();
+      const input = {
+        store,
+        sessionId: session.id,
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        modelProtocol: 'OPENAI_RESPONSES',
+        contextWindowTokens: 10_000,
+        usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+        workspace: '/workspace',
+        platform: 'linux' as const,
+        getActiveProcessIds
+      };
+      expect(await runtime.run(input)).toBe(false);
+      expect(getActiveProcessIds).toHaveBeenCalledTimes(1);
+      expect(commit).not.toHaveBeenCalled();
+
+      // Keep the same warm Runtime: clearing pending state would incorrectly
+      // suppress these evaluations until its ordinary six-rollout discovery.
+      for (const remaining of [2, 0]) {
+        cacheEconomics.mockClear();
+        for (let index = 0; index < 2; index++) {
+          successfulRollout(fixture.add, 6_000);
+          await appendNewRecords();
+          expect(await runtime.run(input)).toBe(false);
+        }
+        expect(getActiveProcessIds).toHaveBeenCalledTimes(remaining === 2 ? 2 : 3);
+        expect(cacheEconomics).toHaveBeenCalled();
+        const current = (await store.readExecutionState(session.id)).contextRecords;
+        expect(inspect(current)).toEqual(remaining > 0 ? { retryAfterRollouts: remaining } : {});
+      }
+      expect(
+        cacheEconomics.mock.calls.some(([, , after]) =>
+          after.some(
+            (message) =>
+              message.callId === 'pending-output' &&
+              message.role === 'tool' &&
+              JSON.parse(message.content).contextGcFormatVersion === 3
+          )
+        )
+      ).toBe(true);
+      expect(commit).not.toHaveBeenCalled();
+      expect(
+        (await store.read(session.id)).filter((record) => record.type === 'context.gc.completed')
+      ).toHaveLength(1);
+
+      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 8_000);
+      await appendNewRecords();
+      runtime.reset();
+      const result = await runtime.run({
+        ...input,
+        usage: { contextInputTokens: 8_000, cacheReadTokens: 0 }
+      });
+      expect(result && result.projection.checkpoint?.generation).toBe(2);
+      expect(
+        result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
+      ).toBeGreaterThan(0);
+      for (const callId of ['mature-output', 'pending-output'])
+        expect(
+          result &&
+            result.projection.checkpoint!.replacements.some(
+              (replacement) => replacement.kind === 'EXEC_OUTPUT' && replacement.callId === callId
+            )
+        ).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(1);
+    } finally {
+      cacheEconomics.mockRestore();
+      await store.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
   it.each([true, false])(
     'evaluates low-growth terminal candidates without committing: protected at checkpoint=%s',
     async (pending) => {

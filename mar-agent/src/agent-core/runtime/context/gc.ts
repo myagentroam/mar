@@ -439,6 +439,11 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
   const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
   const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
   const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
+  const protectedCandidateTokens =
+    deterministicProtectedTokens +
+    exec.protectedTokens +
+    codeMode.protectedTokens +
+    web.protectedTokens;
   const combined = evaluateCandidateSet(
     input,
     existing,
@@ -449,15 +454,11 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
       usageRatio,
       usageRecord,
       normalRolloutOrdinal,
-      protectedCandidateTokens:
-        deterministicProtectedTokens +
-        exec.protectedTokens +
-        codeMode.protectedTokens +
-        web.protectedTokens
+      protectedCandidateTokens
     }
   );
-  if (combined?.economics.passes) {
-    const plan = checkpointEligible ? finalizePlan(input, combined) : undefined;
+  if (combined?.economics.passes && checkpointEligible) {
+    const plan = finalizePlan(input, combined);
     return plan ? { plan } : {};
   }
   const retryAfterRollouts = Math.min(
@@ -467,11 +468,12 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     codeMode.retryAfterRollouts,
     web.retryAfterRollouts
   );
-  return deterministicProtectedTokens +
-    exec.protectedTokens +
-    codeMode.protectedTokens +
-    web.protectedTokens >=
-    contextGcMinimumReclaimedTokens(contextUsageTokens, input.contextWindowTokens) &&
+  // A worthwhile mixed set retains every positive protected candidate's retry
+  // hint even when the checkpoint interval prevents a durable draft.
+  return protectedCandidateTokens > 0 &&
+    (combined?.economics.passes ||
+      protectedCandidateTokens >=
+        contextGcMinimumReclaimedTokens(contextUsageTokens, input.contextWindowTokens)) &&
     Number.isFinite(retryAfterRollouts)
     ? { retryAfterRollouts }
     : {};
