@@ -8,8 +8,8 @@ import {
 import {
   ContextGcCheckpointCache,
   contextGcBaseFromRecords,
+  contextGcCheckpointIntervalEligible,
   contextGcLogicalPathKey,
-  contextGcMinimumUsageGrowth,
   contextGcTargetKey,
   normalizeContextGcReplacements,
   type ContextGcCheckpointDraft,
@@ -329,18 +329,20 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     input.contextWindowTokens
   );
   const previous = input.checkpointCache!.read(input.records, undefined, input.workspace);
-  if (previous) {
-    const minimumUsageGrowth = contextGcMinimumUsageGrowth(input.contextWindowTokens);
-    const protectedCandidatesPending = previous.payload.metrics.protectedCandidateTokens > 0;
-    const rolloutGrowth = normalRolloutOrdinal - previous.payload.trigger.normalRolloutOrdinal;
-    if (
-      rolloutGrowth < 2 ||
-      (!protectedCandidatesPending &&
-        rolloutGrowth < CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-        contextUsageTokens - previous.payload.trigger.contextInputTokens < minimumUsageGrowth)
+  if (
+    !contextGcCheckpointIntervalEligible(
+      {
+        usageSequence: usageRecord.sequence,
+        contextInputTokens: contextUsageTokens,
+        contextWindowTokens: input.contextWindowTokens,
+        normalRolloutOrdinal,
+        modelId: input.modelId,
+        platform: input.platform
+      },
+      previous?.payload.trigger
     )
-      return {};
-  }
+  )
+    return {};
   if (input.messages.length !== input.messageSources.length) return {};
   const groups = buildToolGroups(input.records, input.messages, input.messageSources);
   const existing = previous?.payload.replacements ?? [];

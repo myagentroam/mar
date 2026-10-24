@@ -1,5 +1,8 @@
 import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import type { ModelMessage, ModelUsage } from '../../src/agent-core/model/contracts.js';
 import {
   contextGcAppliedCompactCreditCostUnits,
@@ -22,6 +25,8 @@ import {
 import { contextGcMessageTokens } from '../../src/agent-core/runtime/context/gc-tokens.js';
 import { validateContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
 import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { ContextGcRuntime } from '../../src/agent-core/runtime/context/gc-runtime.js';
 
 function records() {
   let sequence = 0;
@@ -192,21 +197,22 @@ function addTerminalExec(fixture: ReturnType<typeof records>, id: string, stdout
   });
 }
 
-function addPatchCandidate(fixture: ReturnType<typeof records>) {
+function addPatchCandidate(fixture: ReturnType<typeof records>, id = 'source') {
+  const path = 'src/a.ts';
   modelContext(fixture.add, {
     role: 'tool_call',
     content: '',
-    callId: 'read-source',
+    callId: `read-${id}`,
     name: 'read',
-    arguments: { reads: [{ path: 'src/a.ts' }] }
+    arguments: { reads: [{ path }] }
   });
   modelContext(fixture.add, {
     role: 'tool',
-    callId: 'read-source',
+    callId: `read-${id}`,
     content: formatReadContextItem(
       0,
       {
-        path: 'src/a.ts',
+        path,
         encoding: 'utf-8',
         newline: 'lf',
         startLine: 1,
@@ -219,7 +225,7 @@ function addPatchCandidate(fixture: ReturnType<typeof records>) {
   });
   const patch = [
     '*** Begin Patch',
-    '*** Update File: src/a.ts',
+    `*** Update File: ${path}`,
     '@@',
     '-alpha',
     '+beta',
@@ -228,7 +234,7 @@ function addPatchCandidate(fixture: ReturnType<typeof records>) {
   modelContext(fixture.add, {
     role: 'tool_call',
     content: '',
-    callId: 'patch-source',
+    callId: `patch-${id}`,
     name: 'apply_patch',
     arguments: patch,
     inputMode: 'freeform'
@@ -236,12 +242,12 @@ function addPatchCandidate(fixture: ReturnType<typeof records>) {
   fixture.add('tool.completed', {
     type: 'tool.completed',
     toolName: 'apply_patch',
-    callId: 'patch-source',
+    callId: `patch-${id}`,
     summary: 'applied',
     data: {
       files: [
         {
-          path: 'src/a.ts',
+          path,
           operation: 'modified',
           addedLines: 1,
           deletedLines: 1
@@ -252,11 +258,11 @@ function addPatchCandidate(fixture: ReturnType<typeof records>) {
   });
   modelContext(fixture.add, {
     role: 'tool',
-    callId: 'patch-source',
+    callId: `patch-${id}`,
     content: JSON.stringify({
       files: [
         {
-          path: 'src/a.ts',
+          path,
           operation: 'modified',
           addedLines: 1,
           deletedLines: 1
@@ -284,6 +290,175 @@ function addWebResult(fixture: ReturnType<typeof records>, id: string, content: 
   });
   modelContext(fixture.add, { role: 'tool', callId: id, content });
 }
+
+describe('context GC checkpoint eligibility across planner, runtime and store', () => {
+  it.each([
+    { label: 'both thresholds exactly met', rollouts: 2, usage: 8_000, allowed: true },
+    {
+      label: 'growth only with a just-matured candidate',
+      rollouts: 1,
+      usage: 8_000,
+      allowed: false
+    },
+    { label: 'interval only one token below growth', rollouts: 2, usage: 7_999, allowed: false },
+    { label: 'six rollouts without growth', rollouts: 6, usage: 6_000, allowed: false },
+    {
+      label: 'six rollouts without protected candidates or growth',
+      rollouts: 6,
+      usage: 6_000,
+      protected: false,
+      allowed: false
+    },
+    { label: 'candidate still protected', rollouts: 0, usage: 8_000, allowed: false },
+    { label: 'model scope changed', rollouts: 2, usage: 6_000, modelId: 'other', allowed: true },
+    { label: 'window scope changed', rollouts: 2, usage: 6_000, window: 12_000, allowed: true },
+    {
+      label: 'model scope changed without protected candidates',
+      rollouts: 2,
+      usage: 6_000,
+      modelId: 'other',
+      protected: false,
+      allowed: true
+    },
+    {
+      label: 'window scope changed without protected candidates',
+      rollouts: 2,
+      usage: 6_000,
+      window: 12_000,
+      protected: false,
+      allowed: true
+    }
+  ])(
+    '$label',
+    async ({
+      rollouts,
+      usage,
+      allowed,
+      modelId = 'coding',
+      window = 10_000,
+      protected: pending = true
+    }) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-eligibility-'));
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const session = await store.createSession({
+          workspace: '/workspace',
+          title: 'GC eligibility'
+        });
+        const fixture = records();
+        addPatchCandidate(fixture);
+        successfulRollout(fixture.add, 6_000);
+        if (pending) addPatchCandidate(fixture, 'second');
+        successfulRollout(fixture.add, 6_000);
+        let copied = 1;
+        const appendNewRecords = async () => {
+          for (const record of fixture.values.slice(copied))
+            await store.append(session.id, {
+              type: record.type,
+              payload: record.payload,
+              executionId: record.executionId,
+              turnId: record.turnId
+            });
+          copied = fixture.values.length;
+          return (await store.readExecutionState(session.id)).contextRecords;
+        };
+        const initialRecords = await appendNewRecords();
+        const first = plan(initialRecords, { contextInputTokens: 6_000 });
+        expect(first).toBeDefined();
+        expect(first!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
+        expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
+        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(2);
+        expect(first!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(false);
+        await store.commitContextGc(session.id, first!.draft, initialRecords);
+
+        if (!pending) addPatchCandidate(fixture, 'second');
+        if (modelId !== 'coding' || window !== 10_000)
+          fixture.add('execution.header', {
+            modelId,
+            contextWindowTokens: window,
+            mode: 'run'
+          });
+        for (let index = 0; index < rollouts; index++) successfulRollout(fixture.add, usage);
+        // A fresh usage alone cannot advance either the interval or candidate age.
+        if (rollouts === 0)
+          fixture.add('usage.updated', { type: 'usage.updated', contextInputTokens: usage });
+        const currentRecords = await appendNewRecords();
+        const overrides = { modelId, contextWindowTokens: window };
+        const selected = plan(currentRecords, { contextInputTokens: usage }, overrides);
+        expect(selected !== undefined).toBe(allowed);
+        if (allowed) {
+          expect(selected!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
+          expect(selected!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(true);
+        } else if (rollouts > 0) {
+          // Removing only the prior checkpoint proves economics and candidate maturity
+          // would pass. Store must still reject a direct attempt to bypass the planner.
+          const bypass = plan(
+            currentRecords.filter((record) => record.type !== 'context.gc.completed'),
+            { contextInputTokens: usage },
+            overrides
+          );
+          expect(bypass).toBeDefined();
+          expect(bypass!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
+          const rejected = store.commitContextGc(session.id, bypass!.draft, currentRecords);
+          await expect(rejected).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+          await expect(rejected).rejects.toThrow(
+            'Context GC checkpoint interval validation failed.'
+          );
+        }
+
+        const commit = vi.spyOn(store, 'commitContextGc');
+        const runtime = new ContextGcRuntime();
+        const input = {
+          store,
+          sessionId: session.id,
+          system: 'System.',
+          tools: [],
+          modelId,
+          modelProtocol: 'OPENAI_RESPONSES',
+          contextWindowTokens: window,
+          usage: { contextInputTokens: usage },
+          workspace: '/workspace',
+          platform: 'linux' as const,
+          activeProcessIds: new Set<string>()
+        };
+        const result = await runtime.run(input);
+        expect(result !== false).toBe(allowed);
+        if (allowed) {
+          expect(result && result.projection.checkpoint?.generation).toBe(2);
+          expect(result && result.projection.checkpoint?.trigger).toEqual(selected!.draft.trigger);
+          expect(commit).toHaveBeenCalledTimes(1);
+
+          // The newly committed scope becomes the next interval/growth baseline.
+          addPatchCandidate(fixture, 'third');
+          for (let index = 0; index < 2; index++) successfulRollout(fixture.add, usage);
+          const nextRecords = await appendNewRecords();
+          expect(plan(nextRecords, { contextInputTokens: usage }, overrides)).toBeUndefined();
+          const bypass = plan(
+            nextRecords.filter((record) => record.type !== 'context.gc.completed'),
+            { contextInputTokens: usage },
+            overrides
+          );
+          expect(bypass).toBeDefined();
+          await expect(
+            store.commitContextGc(session.id, bypass!.draft, nextRecords)
+          ).rejects.toThrow('Context GC checkpoint interval validation failed.');
+          expect(await runtime.run(input)).toBe(false);
+        } else {
+          // Warm scheduling calls do not constitute durable normal rollouts.
+          for (let index = 0; index < 8; index++) expect(await runtime.run(input)).toBe(false);
+          expect(commit).not.toHaveBeenCalled();
+        }
+        const persisted = await store.read(session.id);
+        expect(persisted.filter((record) => record.type === 'context.gc.completed')).toHaveLength(
+          allowed ? 2 : 1
+        );
+      } finally {
+        await store.close();
+        await rm(home, { recursive: true, force: true });
+      }
+    }
+  );
+});
 
 describe('context GC high-water policy', () => {
   it('keeps short exec input intact and long input recoverable without model-visible hashes', () => {

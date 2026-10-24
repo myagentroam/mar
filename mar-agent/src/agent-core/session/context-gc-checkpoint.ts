@@ -217,6 +217,24 @@ export function contextGcMinimumUsageGrowth(contextWindowTokens: number): number
   return Math.max(2_000, Math.floor(contextWindowTokens * 0.05));
 }
 
+/** Compare adjacent checkpoint triggers only within the same model/window scope. */
+export function contextGcCheckpointIntervalEligible(
+  trigger: ContextGcCheckpointDraft['trigger'],
+  previous?: ContextGcCheckpointDraft['trigger']
+): boolean {
+  if (
+    !previous ||
+    trigger.modelId !== previous.modelId ||
+    trigger.contextWindowTokens !== previous.contextWindowTokens
+  )
+    return true;
+  return (
+    trigger.normalRolloutOrdinal - previous.normalRolloutOrdinal >= 2 &&
+    trigger.contextInputTokens - previous.contextInputTokens >=
+      contextGcMinimumUsageGrowth(trigger.contextWindowTokens)
+  );
+}
+
 export function contextGcLogicalPathKey(
   path: string,
   workspace: string,

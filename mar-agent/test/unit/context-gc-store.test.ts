@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
 import {
+  contextGcCheckpointIntervalEligible,
   normalizeContextGcReplacements,
   parseContextGcCheckpoint,
   type ContextGcCheckpointDraft,
@@ -240,6 +241,32 @@ async function createFixture(title: string) {
 }
 
 describe('context GC checkpoint store', () => {
+  it.each([
+    { window: 10_000, growth: 1_999, rollouts: 2, allowed: false },
+    { window: 10_000, growth: 2_000, rollouts: 2, allowed: true },
+    { window: 100_000, growth: 4_999, rollouts: 2, allowed: false },
+    { window: 100_000, growth: 5_000, rollouts: 2, allowed: true },
+    { window: 100_000, growth: 5_000, rollouts: 1, allowed: false }
+  ])(
+    'requires both trigger thresholds: $window/$growth/$rollouts',
+    ({ window, growth, rollouts, allowed }) => {
+      const previous: ContextGcCheckpointDraft['trigger'] = {
+        usageSequence: 100,
+        contextInputTokens: 60_000,
+        contextWindowTokens: window,
+        normalRolloutOrdinal: 10,
+        modelId: 'coding',
+        platform: 'linux'
+      };
+      const trigger = {
+        ...previous,
+        normalRolloutOrdinal: previous.normalRolloutOrdinal + rollouts,
+        contextInputTokens: previous.contextInputTokens + growth
+      };
+      expect(contextGcCheckpointIntervalEligible(trigger, previous)).toBe(allowed);
+    }
+  );
+
   it('rejects unknown replacement and target fields', async () => {
     const { store, draft } = await createFixture('Unknown checkpoint fields');
     try {

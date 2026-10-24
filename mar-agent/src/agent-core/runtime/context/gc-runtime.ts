@@ -156,6 +156,11 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
         checkpointTrigger: previous.payload.trigger,
         protectedCandidatesPending: previous.payload.metrics.protectedCandidateTokens > 0
       };
+    }
+    if (
+      previous?.payload.trigger.modelId === input.modelId &&
+      previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
+    ) {
       const rolloutGrowth = records.filter(
         (record) =>
           record.sequence > previous.record.sequence &&
