@@ -3,9 +3,9 @@ import { translate } from '../service/LocalePreferenceService.js';
 import { toolPresentation } from './tool-presentation.js';
 import { conversationPayload } from './conversation-history.js';
 import { isTerminalRunStatus } from '../service/RunService.js';
+import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
   conversationDisplayItems,
-  reasoningPreview,
   type ConversationDisplayItem
 } from './conversation-presentation.js';
 
@@ -25,7 +25,7 @@ export interface ConversationProcessBlock {
   latestWork?: ConversationItem;
   status?:
     'running' | 'executing' | 'stopping' | 'completed' | 'stopped' | 'incomplete' | 'history';
-  summary?: { id: string; text: string };
+  preview?: ReasoningPreview;
   readonly footerTurnId?: string;
 }
 
@@ -71,12 +71,9 @@ export function conversationWorkProcessBlocks(
         if (turn.runId != null) group.runId = turn.runId;
         if (item.processGroup.isStart) group.partial = false;
         if (['PENDING', 'IN_PROGRESS'].includes(item.status)) activeMembers.add(key);
-        if (
-          displayItem.type === 'reasoning_group' &&
-          conversationPayload(item.payload)?.representation === 'summary'
-        ) {
-          const text = reasoningPreview(displayItem.text);
-          if (text) group.summary = { id: displayItem.id, text };
+        if (displayItem.type === 'reasoning_group') {
+          const preview = selectReasoningPreview(group.preview, displayItem.preview);
+          if (preview) group.preview = preview;
         }
       } else {
         const payload = conversationPayload(item.payload);
@@ -242,8 +239,8 @@ export function nextConversationRenderItemCount(
       if (group) {
         const open = processOpen(group.id);
         cost = (open ?? group.active) ? 1 : 0;
-        // Summaries remain outside the collapsed body, including during history backfill.
-        if (group.summary?.id === item.id) cost = 1;
+        // Previews remain outside the collapsed body, including during history backfill.
+        if (group.preview?.id === item.id) cost = 1;
         if (open === undefined && !introduced.has(group.id)) cost++;
       }
       if (work + cost > budget) return renderedCount + added;

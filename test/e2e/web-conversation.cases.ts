@@ -1465,7 +1465,9 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   await expect(heading).toHaveAttribute('aria-expanded', 'true');
   await expect(heading).not.toContainText('工作过程');
   await expect(heading).not.toContainText('条记录');
-  await expect(processes.first().locator('.reasoning-subtitle')).toHaveCount(0);
+  await expect(processes.first().locator('.reasoning-subtitle')).toHaveText(
+    'Inspecting patch ordering'
+  );
   await expect(page.locator('.composer-working')).not.toContainText('已运行');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   expect(

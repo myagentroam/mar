@@ -37,28 +37,31 @@ describe('Visible history render budget', () => {
     ).toBe(300);
   });
 
-  it('budgets visible summaries as well as process headings', () => {
-    const turns = [
-      turn(
-        Array.from({ length: 10 }, (_, index) => [
-          item(`summary-${index}`, 'reasoning', {
-            processGroup: { id: `g${index}`, isStart: true },
-            payload: { representation: 'summary', sections: [{ text: 'Visible summary' }] }
-          }),
-          ...commands(`g${index}`, 10)
-        ]).flat()
-      )
-    ];
-    expect(
-      nextConversationRenderItemCount(
-        turns,
-        0,
-        conversationWorkProcessBlocks(turns),
-        () => undefined,
-        8
-      )
-    ).toBe(44);
-  });
+  it.each(['summary', 'visible_thinking', 'unspecified'])(
+    'budgets visible %s previews as well as process headings',
+    (representation) => {
+      const turns = [
+        turn(
+          Array.from({ length: 10 }, (_, index) => [
+            item(`summary-${index}`, 'reasoning', {
+              processGroup: { id: `g${index}`, isStart: true },
+              payload: { representation, sections: [{ text: 'Visible preview' }] }
+            }),
+            ...commands(`g${index}`, 10)
+          ]).flat()
+        )
+      ];
+      expect(
+        nextConversationRenderItemCount(
+          turns,
+          0,
+          conversationWorkProcessBlocks(turns),
+          () => undefined,
+          8
+        )
+      ).toBe(44);
+    }
+  );
 
   it('uses actual manual/focus disclosure state instead of terminal status', () => {
     const turns = [turn(commands('group', 50))];
@@ -70,29 +73,32 @@ describe('Visible history render budget', () => {
     expect(nextConversationRenderItemCount(turns, 10, active, () => false, 8)).toBe(50);
   });
 
-  it('budgets newly backfilled summaries of already mounted folded processes', () => {
-    const summaries = Array.from({ length: 10 }, (_, index) =>
-      item(`summary-${index}`, 'reasoning', {
-        processGroup: { id: `g${index}`, isStart: true },
-        payload: { representation: 'summary', sections: [{ text: 'Visible summary' }] }
-      })
-    );
-    const turns = [
-      turn([
-        ...summaries,
-        ...Array.from({ length: 10 }, (_, index) => commands(`g${index}`, 1)).flat()
-      ])
-    ];
-    expect(
-      nextConversationRenderItemCount(
-        turns,
-        10,
-        conversationWorkProcessBlocks(turns),
-        () => false,
-        8
-      )
-    ).toBe(18);
-  });
+  it.each(['summary', 'visible_thinking', 'unspecified'])(
+    'budgets newly backfilled %s previews of already mounted folded processes',
+    (representation) => {
+      const summaries = Array.from({ length: 10 }, (_, index) =>
+        item(`summary-${index}`, 'reasoning', {
+          processGroup: { id: `g${index}`, isStart: true },
+          payload: { representation, sections: [{ text: 'Visible preview' }] }
+        })
+      );
+      const turns = [
+        turn([
+          ...summaries,
+          ...Array.from({ length: 10 }, (_, index) => commands(`g${index}`, 1)).flat()
+        ])
+      ];
+      expect(
+        nextConversationRenderItemCount(
+          turns,
+          10,
+          conversationWorkProcessBlocks(turns),
+          () => false,
+          8
+        )
+      ).toBe(18);
+    }
+  );
 
   it('preserves the raw-item budget for ordinary visible records', () => {
     const turns = [
@@ -258,7 +264,7 @@ function processBlock(blocks: ReturnType<typeof conversationWorkProcessBlocks>, 
 }
 
 describe('Conversation work process blocks', () => {
-  it('promotes only a real public summary and never synthesizes one from thinking', () => {
+  it('prefers explicit summaries and falls back to thinking without changing representation', () => {
     const blocks = conversationWorkProcessBlocks(
       [
         turn([
@@ -280,7 +286,11 @@ describe('Conversation work process blocks', () => {
       ],
       [{ id: runId, status: 'RUNNING' }]
     );
-    expect(blocks[0]?.summary).toEqual({ id: 'summary', text: 'Inspect files' });
+    expect(blocks[0]?.preview).toEqual({
+      id: 'summary',
+      text: 'Inspect files',
+      representation: 'summary'
+    });
     expect(blocks[0]?.status).toBe('running');
     expect(blocks[0]?.entries).toHaveLength(2);
     const withoutSummary = conversationWorkProcessBlocks([
@@ -294,7 +304,55 @@ describe('Conversation work process blocks', () => {
         })
       ])
     ]);
-    expect(withoutSummary[0]?.summary).toBeUndefined();
+    expect(withoutSummary[0]?.preview).toEqual({
+      id: 'thinking',
+      text: 'Visible thinking',
+      representation: 'visible_thinking'
+    });
+  });
+
+  it('selects the latest valid preview per process across segments without borrowing other summaries', () => {
+    const thought = (
+      id: string,
+      groupId: string,
+      text: string,
+      representation = 'visible_thinking'
+    ) =>
+      item(id, 'reasoning', {
+        processGroup: { id: groupId },
+        payload: { representation, sections: [{ text }] }
+      });
+    const blocks = conversationWorkProcessBlocks([
+      turn([
+        thought('old', 'first', 'Old thought: details'),
+        thought('other-summary', 'other', '**Other summary**', 'summary')
+      ]),
+      turn(
+        [
+          thought('latest', 'first', 'Latest thought: details\n\nLater paragraph'),
+          thought('empty-summary', 'first', ' \n\t', 'summary'),
+          thought('empty', 'empty', ' ')
+        ],
+        { id: 'segment-2' }
+      )
+    ]);
+    expect(processBlock(blocks, 'first').preview).toEqual({
+      id: 'latest',
+      text: 'Latest thought',
+      representation: 'visible_thinking'
+    });
+    expect(processBlock(blocks, 'other').preview).toEqual({
+      id: 'other-summary',
+      text: 'Other summary',
+      representation: 'summary'
+    });
+    expect(blocks.some((block) => block.groupId === 'empty')).toBe(false);
+    const entries = processBlock(blocks, 'first').entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.displayItem).toMatchObject({
+      preview: { id: 'latest', text: 'Latest thought' },
+      text: 'Old thought: details\n\nLatest thought: details\n\nLater paragraph'
+    });
   });
 
   it.each([

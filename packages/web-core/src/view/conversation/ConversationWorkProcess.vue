@@ -58,7 +58,7 @@ watch(open, async () => {
     :data-process-id="block.groupId"
     @focusout="nextTick(updateDefault)"
   >
-    <p v-if="block.groupId && block.summary" class="process-summary">{{ block.summary.text }}</p>
+    <p v-if="block.groupId && block.preview" class="process-summary">{{ block.preview.text }}</p>
     <button
       v-tooltip="statusLabel"
       v-if="block.groupId"
@@ -158,7 +158,9 @@ watch(open, async () => {
   color: var(--mar-conversation-text);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .process-activity {
   display: inline-flex;
