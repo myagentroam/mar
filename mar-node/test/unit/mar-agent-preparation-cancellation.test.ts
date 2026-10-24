@@ -673,7 +673,6 @@ it('does not use the uncontrolled-cancellation fallback while the Runner is prep
     inspectWorkspace: vi.fn(),
     handleNodeRequest: vi.fn(),
     handleRuntimeCredentialResponse: () => false,
-    reconcileRuns: vi.fn(),
     runners: f.runners,
     deliverSessionChannelMessage: vi.fn(),
     completeUncontrolledCancellation,

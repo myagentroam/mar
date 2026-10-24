@@ -1455,12 +1455,6 @@ export class NodeRuntimeState {
   private assertSessionHistoryMutable(sessionId: string): void {
     if (this.sessionHistoryMutations.has(sessionId)) throw new Error('SESSION_ACTIVE');
   }
-  reconcileRun(id: string, active: boolean): void {
-    // There is no cross-restart run recovery: this process-local state is
-    // discarded on restart and cannot be reconciled from SQLite.
-    void id;
-    void active;
-  }
 
   private replaceSession(id: string, patch: Partial<NodeAgentSession>): NodeAgentSession {
     const value = this.requireSession(id);
