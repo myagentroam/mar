@@ -70,7 +70,12 @@ for (const [path, content] of [
     await popup.goto(
       `/console?standaloneFile=1&nodeId=node-1&workspaceId=workspace-1&path=${encodeURIComponent(path)}`
     );
-    const standalone = popup.getByRole('dialog', { name: `${path} 文件预览` });
+    const standalone = popup.getByRole('region', { name: `${path} 文件预览` });
+    await expect(popup.locator('.file-preview-surface')).toHaveCount(0);
+    await expect(popup.locator('.workspace-file-tabs')).toHaveCSS(
+      'width',
+      `${popup.viewportSize()!.width}px`
+    );
     await expect(standalone.locator('.cm-content')).toHaveText(content, { useInnerText: true });
     await expect(standalone.getByText('正在加载预览…')).toBeHidden();
     expect(reads).toEqual([...expectedReads, ...expectedReads]);
@@ -113,7 +118,7 @@ for (const [label, content, declaredSize] of [
     await page.goto(
       `/console?standaloneFile=1&source=hosted&nodeId=node-1&workspaceId=conversation-1&conversationId=conversation-1&fileId=file-1&path=output/result.mts&mimeType=application%2Foctet-stream&size=${declaredSize}`
     );
-    const preview = page.getByRole('dialog', { name: 'output/result.mts 文件预览' });
+    const preview = page.getByRole('region', { name: 'output/result.mts 文件预览' });
     await expect(preview.locator('.cm-content')).toHaveText(content, { useInnerText: true });
     await expect(preview.getByText('正在加载预览…')).toBeHidden();
     expect(reads).toEqual([

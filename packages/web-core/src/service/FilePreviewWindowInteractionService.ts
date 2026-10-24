@@ -6,6 +6,7 @@ import { createMobileLayerHistoryService } from './MobileLayerHistoryService.js'
 
 interface FilePreviewWindowInteractionOptions {
   isOpen(): boolean;
+  root?(): HTMLElement | undefined;
   closeWindow(): boolean | Promise<boolean>;
   closeTab(): boolean | Promise<boolean>;
 }
@@ -22,9 +23,13 @@ export function createFilePreviewWindowInteractionService(
   });
   const frameBindings = new Map<HTMLIFrameElement, () => void>();
 
+  function isOwnOverlay(element: Element): boolean {
+    return element === options.root?.()?.closest('.el-overlay-dialog');
+  }
+
   function hasOverlay(): boolean {
     return [...document.querySelectorAll('.el-overlay-message-box, .el-overlay-dialog')].some(
-      (overlay) => overlay.getClientRects().length > 0
+      (overlay) => !isOwnOverlay(overlay) && overlay.getClientRects().length > 0
     );
   }
 
@@ -66,7 +71,9 @@ export function createFilePreviewWindowInteractionService(
       event.composedPath().some((target) => {
         const element = target as Element;
         return (
-          element.nodeType === 1 && element.matches('.el-overlay-message-box, .el-overlay-dialog')
+          element.nodeType === 1 &&
+          element.matches('.el-overlay-message-box, .el-overlay-dialog') &&
+          !isOwnOverlay(element)
         );
       }) ||
       hasOverlay()

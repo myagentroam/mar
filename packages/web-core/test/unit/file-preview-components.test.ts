@@ -292,12 +292,21 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     for (const component of [WorkspaceFilePage, WorkspaceFormatFilePage]) {
       const embedded = await render(component, base);
       expectUnifiedButtonHints(embedded);
+      expect(embedded).toContain('role="region"');
+      expect(embedded).not.toContain('aria-modal="true"');
       expect(embedded).not.toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
       const standalone = await render(component, { ...base, fullscreen: true });
       expectUnifiedButtonHints(standalone);
       expect(standalone).toContain(
+        `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
+      );
+      const contained = await render(component, { ...base, fullscreen: true, contained: true });
+      expect(contained).toContain('role="region"');
+      expect(contained).not.toContain('aria-modal="true"');
+      expect(contained).not.toContain('is-fullscreen');
+      expect(contained).toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
     }
@@ -558,7 +567,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       writeEnabled: false
     });
 
-    expect(html).toContain('role="dialog"');
+    expect(html).toContain('role="region"');
+    expect(html).not.toContain('aria-modal="true"');
     expect(html).toContain(`aria-description="notes/&lt;draft&gt;.txt"`);
     expect(html).toContain(i18n.global.t('fileEditor.readOnly'));
     expect(html).toContain('693.19 KB');

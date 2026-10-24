@@ -650,6 +650,7 @@ defineExpose({
     ref="diffRoot"
     tabindex="-1"
     @keydown="onKeydown"
+    :role="embedded ? 'region' : 'dialog'"
     :aria-modal="embedded ? undefined : true"
     :class="{ 'has-inline-find': findOpen, 'is-embedded': embedded }"
     :file-name="path.split('/').at(-1) ?? path"

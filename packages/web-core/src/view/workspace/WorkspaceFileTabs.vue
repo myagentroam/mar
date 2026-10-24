@@ -3,7 +3,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
-import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
+import FilePreviewSurface from './FilePreviewSurface.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 
@@ -21,6 +21,7 @@ export interface WorkspaceFilePageHandle {
 
 const props = defineProps<{
   readonly tabs: readonly WorkspaceFileTab[];
+  readonly presentation?: 'overlay' | 'window';
   readonly activeTabId?: number | undefined;
   readonly canGoBack?: boolean;
   readonly canGoForward?: boolean;
@@ -42,9 +43,18 @@ const closing = ref(false);
 const activeTab = computed(
   () => props.tabs.find((tab) => tab.id === props.activeTabId) ?? props.tabs.at(-1)
 );
+const previewLabel = computed(() => {
+  const tab = activeTab.value;
+  if (tab?.kind === 'TOOL_CHANGE_DIFF')
+    return `${tab.path} ${translate('presentation.thisChange')}`;
+  if (tab?.kind === 'WORKTREE_DIFF' || tab?.kind === 'HISTORY_DIFF')
+    return `${tab.path} ${translate('common.gitDiff')}`;
+  return translate('generated.filePreviewDialog.filePreview', { value0: tab?.path ?? '' });
+});
 let unregisterShortcut: (() => void) | undefined;
 const windowInteraction = createFilePreviewWindowInteractionService({
   isOpen: () => props.tabs.length > 0,
+  root: () => root.value,
   closeWindow: requestCloseAll,
   closeTab: () => (activeTab.value === undefined ? false : requestClose(activeTab.value.id))
 });
@@ -197,28 +207,30 @@ function focusPage(id: number): void {
   pageHandles.get(id)?.focus();
 }
 
+function focusActivePage(): void {
+  const handle = activeTab.value && pageHandles.get(activeTab.value.id);
+  if (handle) handle.focus();
+  else root.value?.focus();
+}
+
 onMounted(() => {
-  document.documentElement.classList.add('file-preview-open');
-  document.body.classList.add('file-preview-open');
+  if (props.presentation === 'window') {
+    document.documentElement.classList.add('file-preview-open');
+    document.body.classList.add('file-preview-open');
+  }
   windowInteraction.mount();
   unregisterShortcut = consoleKeyboardShortcutService.register({
     priority: 100,
     handle: handleShortcut
   });
 });
-const fileFocus = createMobileSurfaceFocusService({
-  isOpen: () => props.tabs.length > 0,
-  regions: () => [root.value],
-  close: () => {
-    void requestCloseAll();
-  }
-});
 onBeforeUnmount(() => {
-  fileFocus.dispose();
   unregisterShortcut?.();
   windowInteraction.dispose();
-  document.documentElement.classList.remove('file-preview-open');
-  document.body.classList.remove('file-preview-open');
+  if (props.presentation === 'window') {
+    document.documentElement.classList.remove('file-preview-open');
+    document.body.classList.remove('file-preview-open');
+  }
 });
 defineExpose({
   requestClose,
@@ -231,88 +243,98 @@ defineExpose({
 </script>
 
 <template>
-  <section
+  <FilePreviewSurface
     v-if="props.tabs.length > 0"
-    ref="root"
-    class="workspace-file-tabs"
-    tabindex="-1"
-    role="dialog"
-    aria-modal="true"
-    :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
+    :overlay="props.presentation !== 'window'"
+    :label="previewLabel"
+    @focus="focusActivePage"
   >
-    <header class="workspace-file-tab-header">
-      <nav
-        class="workspace-file-tab-list"
-        role="tablist"
-        :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
-      >
-        <div
-          v-for="tab in props.tabs"
-          :key="tab.id"
-          class="workspace-file-tab"
-          :class="{ 'is-active': tab.id === activeTab?.id }"
+    <section
+      ref="root"
+      class="workspace-file-tabs"
+      :class="{ 'is-window': props.presentation === 'window' }"
+      tabindex="-1"
+      :role="props.presentation === 'window' ? 'region' : undefined"
+      :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
+    >
+      <header class="workspace-file-tab-header">
+        <nav
+          class="workspace-file-tab-list"
+          role="tablist"
+          :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
         >
-          <button
-            v-tooltip="tab.path"
-            class="workspace-file-tab-activate"
-            :aria-description="tab.path"
-            role="tab"
-            :aria-selected="tab.id === activeTab?.id"
-            :tabindex="tab.id === activeTab?.id ? 0 : -1"
-            type="button"
-            @click="activate(tab.id)"
-            @keydown="onTabKeydown($event, tab.id)"
+          <div
+            v-for="tab in props.tabs"
+            :key="tab.id"
+            class="workspace-file-tab"
+            :class="{ 'is-active': tab.id === activeTab?.id }"
           >
-            <span>{{ tab.fileName }}</span>
-          </button>
-          <button
-            v-tooltip="translate('generated.filePreviewDialog.closePreview')"
-            class="icon-button utility-control workspace-file-tab-close"
-            type="button"
-            :disabled="closing"
-            :aria-label="translate('generated.filePreviewDialog.closePreview')"
-            @click="close($event, tab.id)"
-          >
-            <MarIcon name="close" />
-          </button>
-        </div>
-      </nav>
-      <button
-        v-tooltip="translate('filePreviewDialog.closeFileWindow')"
-        class="icon-button utility-control workspace-file-window-close"
-        type="button"
-        :disabled="closing"
-        :aria-label="translate('filePreviewDialog.closeFileWindow')"
-        @click="requestCloseAll"
-      >
-        <MarIcon name="close" />
-      </button>
-    </header>
-    <div class="workspace-file-tab-content">
-      <template v-for="tab in props.tabs" :key="tab.id">
-        <slot
-          :tab="tab"
-          :active="tab.id === activeTab?.id"
-          :register-page-handle="(handle: unknown) => registerPageHandle(tab.id, handle)"
-          :request-close="() => requestClose(tab.id)"
-        />
-      </template>
-    </div>
-  </section>
+            <button
+              v-tooltip="tab.path"
+              class="workspace-file-tab-activate"
+              :aria-description="tab.path"
+              role="tab"
+              :aria-selected="tab.id === activeTab?.id"
+              :tabindex="tab.id === activeTab?.id ? 0 : -1"
+              type="button"
+              @click="activate(tab.id)"
+              @keydown="onTabKeydown($event, tab.id)"
+            >
+              <span>{{ tab.fileName }}</span>
+            </button>
+            <button
+              v-tooltip="translate('generated.filePreviewDialog.closePreview')"
+              class="icon-button utility-control workspace-file-tab-close"
+              type="button"
+              :disabled="closing"
+              :aria-label="translate('generated.filePreviewDialog.closePreview')"
+              @click="close($event, tab.id)"
+            >
+              <MarIcon name="close" />
+            </button>
+          </div>
+        </nav>
+        <button
+          v-tooltip="translate('filePreviewDialog.closeFileWindow')"
+          class="icon-button utility-control workspace-file-window-close"
+          type="button"
+          :disabled="closing"
+          :aria-label="translate('filePreviewDialog.closeFileWindow')"
+          @click="requestCloseAll"
+        >
+          <MarIcon name="close" />
+        </button>
+      </header>
+      <div class="workspace-file-tab-content">
+        <template v-for="tab in props.tabs" :key="tab.id">
+          <slot
+            :tab="tab"
+            :active="tab.id === activeTab?.id"
+            :register-page-handle="(handle: unknown) => registerPageHandle(tab.id, handle)"
+            :request-close="() => requestClose(tab.id)"
+          />
+        </template>
+      </div>
+    </section>
+  </FilePreviewSurface>
 </template>
 
 <style scoped>
 .workspace-file-tabs {
-  position: fixed;
-  z-index: 50;
-  inset: 0;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow: hidden;
   background: var(--mar-bg-page);
   color: var(--mar-text-primary);
+}
+
+.workspace-file-tabs.is-window {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
 }
 
 .workspace-file-tab-header {

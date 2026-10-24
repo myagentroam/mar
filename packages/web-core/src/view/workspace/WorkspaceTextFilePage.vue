@@ -76,6 +76,7 @@ const props = withDefaults(
     readonly kind: FilePreviewKind;
     readonly loading?: boolean;
     readonly fullscreen?: boolean;
+    readonly contained?: boolean;
     readonly downloading: boolean;
     readonly targetLine: number | undefined;
     readonly targetColumn?: number | undefined;
@@ -550,6 +551,7 @@ async function closeFullscreenPreview(): Promise<boolean> {
 
 const windowInteraction = createFilePreviewWindowInteractionService({
   isOpen: () => props.fullscreen === true && props.active !== false,
+  root: () => previewRoot.value?.root,
   closeWindow: closeFullscreenPreview,
   closeTab: closeFullscreenPreview
 });
@@ -659,8 +661,7 @@ defineExpose({
     :path="file.path"
     :loading="loading"
     :fullscreen="fullscreen"
-    role="dialog"
-    :aria-modal="active !== false || undefined"
+    :contained="contained"
     :aria-hidden="active === false || undefined"
     :inert="active === false"
     :aria-label="translate('generated.filePreviewDialog.filePreview', { value0: file.path })"

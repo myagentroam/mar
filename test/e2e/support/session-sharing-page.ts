@@ -1,7 +1,11 @@
 import type { Page } from '@playwright/test';
 import { json } from './web-console-api.js';
 
-export async function mockSharedConversation(page: Page, locale: string): Promise<void> {
+export async function mockSharedConversation(
+  page: Page,
+  locale: string,
+  assistantText?: string
+): Promise<void> {
   await page.addInitScript((language) => {
     localStorage.setItem('mar.locale.v2', language);
     localStorage.setItem(
@@ -70,7 +74,7 @@ export async function mockSharedConversation(page: Page, locale: string): Promis
     const watch = route.request().postDataJSON();
     await json(route, { nodeGeneration: 'share-generation' });
     await page.evaluate(
-      ({ watch, session }) => {
+      ({ watch, session, assistantText }) => {
         const Socket = window.WebSocket as typeof WebSocket & { current: EventTarget };
         Socket.current.dispatchEvent(
           new MessageEvent('message', {
@@ -100,7 +104,36 @@ export async function mockSharedConversation(page: Page, locale: string): Promis
                     }
                   ],
                   unit: 'SEGMENT',
-                  segments: [],
+                  segments: assistantText
+                    ? [
+                        {
+                          id: 'turn-1:segment:0',
+                          sessionId: session.id,
+                          turnId: 'turn-1',
+                          runId: 'run-1',
+                          index: 0,
+                          status: 'RUNNING',
+                          startedAt: 1,
+                          completedAt: null,
+                          items: [
+                            {
+                              id: 'preview-message',
+                              sessionId: session.id,
+                              turnId: 'turn-1',
+                              runId: 'run-1',
+                              parentItemId: null,
+                              sourceSequence: null,
+                              revision: 1,
+                              kind: 'assistant_message',
+                              status: 'IN_PROGRESS',
+                              startedAt: 1,
+                              completedAt: null,
+                              payload: { text: assistantText, format: 'markdown', model: null }
+                            }
+                          ]
+                        }
+                      ]
+                    : [],
                   nextCursor: null
                 }
               }
@@ -108,7 +141,7 @@ export async function mockSharedConversation(page: Page, locale: string): Promis
           })
         );
       },
-      { watch, session }
+      { watch, session, assistantText }
     );
   });
 }

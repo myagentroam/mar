@@ -125,11 +125,13 @@ export function createMobileLayerHistoryCoordinator() {
     return () => {
       if (!layer.active) return;
       layer.active = false;
-      if (layer.entered && marker() !== layer.id) {
+      if (layer.entered && marker() !== layer.id && !(releasing && releaseParent === layer.id)) {
         // Non-top owners cannot prune history beneath a child. Once released,
         // their markers are ordinary expired state, not future cleanup orders.
         layers.splice(layers.indexOf(layer), 1);
       }
+      // A child already being released will reach this parent next. Retain it
+      // until that in-flight cleanup can finish both released owners in order.
       sync();
     };
   }

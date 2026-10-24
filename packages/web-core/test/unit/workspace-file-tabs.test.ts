@@ -262,12 +262,25 @@ describe('Code navigation targets', () => {
 });
 
 describe('File preview window interaction', () => {
-  function fixture(mobile = false, deferredBack = false) {
+  function fixture(mobile = false, deferredBack = false, hasOwnOverlay = false) {
     type Listener = (event: KeyboardEvent | PopStateEvent) => void;
     const listeners = new Map<string, Set<Listener>>();
     const traversals: (() => void)[] = [];
     let active = true;
     let overlay = false;
+    const ownOverlayElement = {
+      nodeType: 1,
+      matches: (selector: string) => selector.includes('.el-overlay-dialog'),
+      getClientRects: () => (hasOwnOverlay ? [{}] : [])
+    } as unknown as Element;
+    const childOverlayElement = {
+      nodeType: 1,
+      matches: (selector: string) => selector.includes('.el-overlay-dialog'),
+      getClientRects: () => (overlay ? [{}] : [])
+    } as unknown as Element;
+    const root = {
+      closest: (selector: string) => (selector === '.el-overlay-dialog' ? ownOverlayElement : null)
+    } as unknown as HTMLElement;
     const closeWindow = vi.fn(async () => true);
     const closeTab = vi.fn(async () => true);
     const originalState = { route: 'console' };
@@ -297,7 +310,7 @@ describe('File preview window interaction', () => {
       })
     };
     vi.stubGlobal('document', {
-      querySelectorAll: () => [{ getClientRects: () => (overlay ? [{}] : []) }]
+      querySelectorAll: () => [ownOverlayElement, childOverlayElement]
     });
     vi.stubGlobal('window', {
       history,
@@ -320,6 +333,7 @@ describe('File preview window interaction', () => {
     });
     const service = createFilePreviewWindowInteractionService({
       isOpen: () => active,
+      root: () => (hasOwnOverlay ? root : undefined),
       closeWindow,
       closeTab
     });
@@ -334,6 +348,8 @@ describe('File preview window interaction', () => {
       service,
       closeWindow,
       closeTab,
+      ownOverlayElement,
+      childOverlayElement,
       history,
       entries,
       originalState,
@@ -439,6 +455,31 @@ describe('File preview window interaction', () => {
     expect(f.service.handleShortcut(event)).toBe('IGNORED');
     f.hideOverlay();
     f.service.handleEscape(event);
+    expect(f.closeWindow).not.toHaveBeenCalled();
+    f.service.handleEscape(keyEvent('Escape'));
+    expect(f.closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('ignores its own overlay while preserving child-dialog Escape isolation', async () => {
+    const f = fixture(false, false, true);
+    const ownEscape = keyEvent('Escape', {
+      composedPath: () => [f.ownOverlayElement] as unknown as EventTarget[]
+    });
+    expect(f.service.isEscapeBlocked(ownEscape)).toBe(false);
+    expect(f.service.handleShortcut(keyEvent('w', { altKey: true }))).toBe('HANDLED');
+    expect(f.closeTab).toHaveBeenCalledOnce();
+    await Promise.resolve();
+
+    f.showOverlay();
+    const childEscape = keyEvent('Escape', {
+      composedPath: () => [f.childOverlayElement] as unknown as EventTarget[]
+    });
+    expect(f.service.isEscapeBlocked(childEscape)).toBe(true);
+    f.service.handleEscape(childEscape);
+    expect(f.closeWindow).not.toHaveBeenCalled();
+
+    f.hideOverlay();
+    f.service.handleEscape(childEscape);
     expect(f.closeWindow).not.toHaveBeenCalled();
     f.service.handleEscape(keyEvent('Escape'));
     expect(f.closeWindow).toHaveBeenCalledOnce();
@@ -690,6 +731,7 @@ describe('Workspace file tabs frame', () => {
               { ...worktree('src/main.ts'), id: 1, identity: 'one' },
               { ...worktree('src/diff.ts'), kind: 'WORKTREE_DIFF', id: 2, identity: 'two' }
             ],
+            presentation: 'window',
             activeTabId: 2
           },
           { default: () => h('p', 'page') }

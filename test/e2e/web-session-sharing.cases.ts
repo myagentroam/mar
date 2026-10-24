@@ -2,6 +2,49 @@ import { expect, test } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 import { mockSharedConversation } from './support/session-sharing-page.js';
 
+test('Shared file previews keep the conversation visible and reuse its Watch', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockSharedConversation(page, 'en-US', '[Preview report](output/report.txt)');
+  let watches = 0;
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname.endsWith('/participants-test/watch')
+    )
+      watches += 1;
+  });
+  await page.route('**/api/session-shares/participants-test/files/read?*', (route) =>
+    json(route, {
+      file: {
+        path: 'output/report.txt',
+        encoding: 'utf-8',
+        content: 'Shared preview content',
+        size: 22,
+        truncated: false,
+        nextOffset: null
+      }
+    })
+  );
+  await page.goto('/share/participants-test');
+  const heading = page.locator('.share-heading h1');
+  await expect(heading).toHaveText('Shared session');
+  const link = page.getByRole('link', { name: 'Preview report', exact: true });
+  await expect(link).toBeVisible();
+  expect(watches).toBe(1);
+  await link.click();
+  const preview = page.getByRole('dialog', { name: 'output/report.txt file preview', exact: true });
+  await expect(preview.locator('.cm-content')).toHaveText('Shared preview content');
+  await expect(preview.locator('.file-preview-surface')).toHaveCSS('width', '1440px');
+  await expect(heading).toBeVisible();
+  await expect(page.locator('.share-preview')).toHaveCSS('position', 'static');
+  await expect(preview.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
+  await expect(heading).toBeVisible();
+  expect(page.isClosed()).toBe(false);
+  expect(watches).toBe(1);
+});
+
 test('Share browser identity synchronizes an already open tab', async ({ page }) => {
   await mockSharedConversation(page, 'en-US');
   await page.goto('/share/participants-test');

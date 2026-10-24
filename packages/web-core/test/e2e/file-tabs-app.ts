@@ -3,72 +3,142 @@ import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
+import { consoleKeyboardShortcutService } from '../../src/service/ConsoleKeyboardShortcutService.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
-const tabs = ref<WorkspaceFileTab[]>(
-  Array.from({ length: 12 }, (_, index) => ({
+const query = new URLSearchParams(window.location.search);
+const presentation = query.get('presentation') === 'window' ? 'window' : 'overlay';
+const previewKind = query.get('kind') as WorkspaceFileTab['kind'] | null;
+document.documentElement.dataset.fileTabsBaseHistoryState = JSON.stringify(
+  window.history.state ?? null
+);
+document.documentElement.dataset.fileTabsBaseHistoryLength = String(window.history.length);
+document.documentElement.dataset.fileTabsCloseAllowed = 'true';
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
+
+function createPageHandle() {
+  return {
+    focus: () => {},
+    openFind: () => false,
+    selectAll: () => false,
+    toggleEdit: () => 'UNAVAILABLE' as const,
+    canClose: async () => document.documentElement.dataset.fileTabsCloseAllowed !== 'false'
+  };
+}
+
+const pageHandles = new Map<number, ReturnType<typeof createPageHandle>>();
+
+function pageHandleFor(id: number): ReturnType<typeof createPageHandle> {
+  let handle = pageHandles.get(id);
+  if (handle === undefined) {
+    handle = createPageHandle();
+    pageHandles.set(id, handle);
+  }
+  return handle;
+}
+
+function createTabs(): WorkspaceFileTab[] {
+  return Array.from({ length: 12 }, (_, index) => ({
     id: index + 1,
     identity: String(index),
-    kind: 'WORKTREE_TEXT',
+    kind: previewKind ?? 'WORKTREE_TEXT',
     nodeId: 'node',
     workspaceId: 'workspace',
     path: `/workspace/file-${index + 1}.txt`,
     fileName: `Long project file-${index + 1}.txt`,
     repositoryPath: '',
     worktreePath: ''
-  }))
-);
+  }));
+}
+
+const tabs = ref<WorkspaceFileTab[]>(createTabs());
 const active = ref(1);
 const loading = ref(true);
 createTooltipApp({
   render: () =>
-    tabs.value.length
-      ? h(
-          Tabs,
-          {
-            tabs: tabs.value,
-            activeTabId: active.value,
-            onActivate: (id: number) => {
-              active.value = id;
+    h('div', [
+      h(
+        'button',
+        { id: 'file-tabs-background-action', type: 'button' },
+        'Workspace background action'
+      ),
+      tabs.value.length
+        ? h(
+            Tabs,
+            {
+              tabs: tabs.value,
+              presentation,
+              activeTabId: active.value,
+              onActivate: (id: number) => {
+                active.value = id;
+              },
+              onClose: (id: number) => {
+                tabs.value = tabs.value.filter((tab) => tab.id !== id);
+                pageHandles.delete(id);
+                if (active.value === id) active.value = tabs.value[0]?.id ?? 0;
+              },
+              onCloseAll: () => {
+                tabs.value = [];
+                pageHandles.clear();
+              }
             },
-            onClose: (id: number) => {
-              tabs.value = tabs.value.filter((tab) => tab.id !== id);
-            },
-            onCloseAll: () => {
-              tabs.value = [];
+            {
+              default: ({
+                tab,
+                active: isActive,
+                registerPageHandle
+              }: {
+                tab: WorkspaceFileTab;
+                active: boolean;
+                registerPageHandle(handle: unknown): void;
+              }) => {
+                registerPageHandle(pageHandleFor(tab.id));
+                return h(
+                  Frame,
+                  {
+                    fileName: tab.fileName,
+                    path: tab.path,
+                    style: isActive ? undefined : 'display: none',
+                    loading: loading.value
+                  },
+                  {
+                    default: () => h('p', `Content of ${tab.fileName}`),
+                    'primary-actions': () =>
+                      h(
+                        'button',
+                        {
+                          onClick: () => {
+                            loading.value = false;
+                          }
+                        },
+                        'Finish loading'
+                      )
+                  }
+                );
+              }
             }
-          },
-          {
-            default: ({ tab, active }: { tab: WorkspaceFileTab; active: boolean }) =>
-              h(
-                Frame,
-                {
-                  fileName: tab.fileName,
-                  path: tab.path,
-                  style: active ? undefined : 'display: none',
-                  loading: loading.value
-                },
-                {
-                  default: () => h('p', `Content of ${tab.fileName}`),
-                  'primary-actions': () =>
-                    h(
-                      'button',
-                      {
-                        onClick: () => {
-                          loading.value = false;
-                        }
-                      },
-                      'Finish loading'
-                    )
+          )
+        : h('div', [
+            h('p', 'Files closed'),
+            h(
+              'button',
+              {
+                id: 'reopen-file-tabs',
+                type: 'button',
+                onClick: () => {
+                  tabs.value = createTabs();
+                  active.value = 1;
+                  loading.value = true;
                 }
-              )
-          }
-        )
-      : h('p', 'Files closed')
+              },
+              'Reopen file previews'
+            )
+          ])
+    ])
 })
   .use(i18n)
   .use(ElementPlus)
