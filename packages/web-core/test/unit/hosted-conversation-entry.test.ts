@@ -199,6 +199,174 @@ describe('Web Hosted Conversation Portal', () => {
     expect(new Set(clientRequestIds)).toHaveLength(3);
   });
 
+  it.each(['pending', 'unknown'] as const)(
+    'applies a late catalog refresh without clearing a newer %s creation intent',
+    async (outcome) => {
+      const catalog = deferred<unknown>();
+      const creation = deferred<void>();
+      const clientRequestIds: string[] = [];
+      const service = createHostedConversationEntryService(async (path, init) => {
+        if (path === '/api/conversation-templates') return catalog.promise as never;
+        clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+        if (clientRequestIds.length === 1) {
+          await creation.promise;
+          throw new TypeError('Failed to fetch');
+        }
+        return snapshot as never;
+      });
+      service.setTemplates([template]);
+
+      const refresh = service.loadTemplates();
+      const attempt = expect(service.create()).rejects.toThrow('Failed to fetch');
+      if (outcome === 'unknown') {
+        creation.resolve(undefined);
+        await attempt;
+      }
+      catalog.resolve({ templates: [{ ...template, name: 'Updated catalog name' }] });
+      await refresh;
+      if (outcome === 'pending') {
+        creation.resolve(undefined);
+        await attempt;
+      }
+
+      expect(service.templates.value[0]?.name).toBe('Updated catalog name');
+      expect(clientRequestIds).toHaveLength(1);
+      await service.create();
+      expect(clientRequestIds).toHaveLength(2);
+      expect(clientRequestIds[1]).toBe(clientRequestIds[0]);
+    }
+  );
+
+  it('keeps an explicit retry identity when a previously started refresh resolves later', async () => {
+    const catalog = deferred<unknown>();
+    const clientRequestIds: string[] = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path === '/api/conversation-templates') return catalog.promise as never;
+      clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template]);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    const refresh = service.loadTemplates();
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    catalog.resolve({ templates: [template] });
+    await refresh;
+    expect(clientRequestIds).toHaveLength(2);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    expect(new Set(clientRequestIds)).toHaveLength(1);
+  });
+
+  it('ends the old unknown creation intent when a normal catalog refresh completes first', async () => {
+    const clientRequestIds: string[] = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path === '/api/conversation-templates') return { templates: [template] } as never;
+      clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template]);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    await service.loadTemplates();
+    expect(clientRequestIds).toHaveLength(1);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    expect(new Set(clientRequestIds)).toHaveLength(2);
+  });
+
+  it('preserves an unknown creation identity when refreshing the catalog fails', async () => {
+    const clientRequestIds: string[] = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path !== '/api/conversation-templates')
+        clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template]);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    await expect(service.loadTemplates()).rejects.toThrow('Failed to fetch');
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    expect(clientRequestIds).toHaveLength(2);
+    expect(clientRequestIds[1]).toBe(clientRequestIds[0]);
+  });
+
+  it('does not let an older refresh clear the newer template selection and creation identity', async () => {
+    const catalog = deferred<unknown>();
+    const secondTemplate = { ...template, id: 'template-2', name: 'Implementation' };
+    const bodies: Array<{ templateId: string; clientRequestId: string }> = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path === '/api/conversation-templates') return catalog.promise as never;
+      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template, secondTemplate]);
+    service.selectTemplate(template.id);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    const refresh = service.loadTemplates();
+    service.selectTemplate(secondTemplate.id);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    catalog.resolve({ templates: [template, secondTemplate] });
+    await refresh;
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+    expect(service.selectedTemplateId.value).toBe(secondTemplate.id);
+    expect(bodies).toHaveLength(3);
+    expect(bodies[1]!.clientRequestId).not.toBe(bodies[0]!.clientRequestId);
+    expect(bodies[2]).toEqual(bodies[1]);
+  });
+
+  it('uses a new identity for an explicit creation after an acknowledged creation', async () => {
+    const clientRequestIds: string[] = [];
+    const service = createHostedConversationEntryService(async (_path, init) => {
+      clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      return snapshot as never;
+    });
+    service.setTemplates([template]);
+    await service.create();
+    expect(clientRequestIds).toHaveLength(1);
+    await service.create();
+    expect(clientRequestIds).toHaveLength(2);
+    expect(clientRequestIds[1]).not.toBe(clientRequestIds[0]);
+  });
+
+  it('ends the previous template intent when a late catalog changes the selection', async () => {
+    const catalog = deferred<unknown>();
+    const secondTemplate = { ...template, id: 'template-2', name: 'Implementation' };
+    const bodies: Array<{ templateId: string; clientRequestId: string }> = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path === '/api/conversation-templates') return catalog.promise as never;
+      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template]);
+    const refresh = service.loadTemplates();
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    catalog.resolve({ templates: [secondTemplate] });
+    await refresh;
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+    expect(bodies.map((body) => body.templateId)).toEqual([template.id, secondTemplate.id]);
+    expect(bodies[1]!.clientRequestId).not.toBe(bodies[0]!.clientRequestId);
+  });
+
+  it('does not let an older creation acknowledgement clear a newer unknown intent', async () => {
+    const acknowledgement = deferred<unknown>();
+    const secondTemplate = { ...template, id: 'template-2', name: 'Implementation' };
+    const clientRequestIds: string[] = [];
+    const service = createHostedConversationEntryService(async (_path, init) => {
+      clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      if (clientRequestIds.length === 1) return acknowledgement.promise as never;
+      throw new TypeError('Failed to fetch');
+    });
+    service.setTemplates([template, secondTemplate]);
+    service.selectTemplate(template.id);
+    const first = service.create();
+    service.selectTemplate(secondTemplate.id);
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    acknowledgement.resolve(snapshot);
+    await first;
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+    expect(clientRequestIds[1]).not.toBe(clientRequestIds[0]);
+    expect(clientRequestIds[2]).toBe(clientRequestIds[1]);
+  });
+
   it('Do not let an older template response overwrite a newer list or selection intent', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();

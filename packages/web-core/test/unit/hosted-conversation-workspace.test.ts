@@ -1626,6 +1626,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const response = deferred<unknown>();
     const workspace = service(async () => response.promise as never);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    workspace.watchReady.value = true;
     const operation = workspace.sendMessage({
       prompt: 'Continue.',
       attachmentIds: [],
@@ -1873,6 +1874,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       throw new Error('NETWORK_FAILED');
     });
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    workspace.watchReady.value = true;
 
     await expect(
       workspace.sendMessage({
@@ -1889,6 +1891,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const response = deferred<unknown>();
     const workspace = service(async () => response.promise as never);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    workspace.watchReady.value = true;
 
     const operation = workspace.sendMessage({
       prompt: 'Continue.',

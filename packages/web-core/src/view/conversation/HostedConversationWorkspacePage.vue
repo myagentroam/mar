@@ -43,6 +43,7 @@ import type { FileChangeEntry } from '../../util/conversation-presentation.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import HostedConversationComposer from '../../view/conversation/HostedConversationComposer.vue';
 import HostedConversationEntryPage from '../../view/conversation/HostedConversationEntryPage.vue';
+import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import ImagePreviewDialogs from './ImagePreviewDialogs.vue';
 import WorkspaceTextFilePage from '../workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../workspace/WorkspaceFormatFilePage.vue';
@@ -173,6 +174,12 @@ const actionMenuVisible = ref(false);
 const hoveredConversationKey = ref<string>();
 const focusedConversationKey = ref<string>();
 const draftingNewConversation = ref(false);
+const entry = createHostedConversationEntryService(props.request, {
+  submission: {
+    workspace: props.workspace,
+    select: (snapshot) => props.selectConversation(snapshot.conversation, snapshot)
+  }
+});
 const mobileFilesOpen = defineModel<boolean>('mobileFilesOpen', { default: false });
 const filesDragging = ref(false);
 const uploadingDroppedFiles = ref(false);
@@ -386,6 +393,7 @@ async function loadDirectory(): Promise<void> {
     const initial = props.workspace.conversations.value[0];
     if (initial !== undefined) await openConversation(initial, false);
     else {
+      entry.resume();
       draftingNewConversation.value = true;
     }
   } catch (error) {
@@ -407,6 +415,7 @@ async function openConversation(
   if (openingConversationKey.value === key) return;
   const sequence = ++openingConversationSequence;
   openingConversationKey.value = key;
+  entry.suspend();
   draftingNewConversation.value = false;
   if (closePanels) closeMobilePanels();
   try {
@@ -420,18 +429,10 @@ async function openConversation(
 }
 
 function beginNewConversation(): void {
+  entry.resume();
   draftingNewConversation.value = true;
   props.clearConversation();
   closeMobilePanels();
-}
-
-async function createConversation(snapshot: HostedConversationSnapshot): Promise<void> {
-  closeMobilePanels();
-  try {
-    await props.selectConversation(snapshot.conversation, snapshot);
-  } finally {
-    void loadDirectory().catch(() => undefined);
-  }
 }
 
 function firstMessageStarted(): void {
@@ -526,6 +527,7 @@ async function deleteConversation(conversation: HostedConversationSummary): Prom
       props.workspace.selectedConversationId.value === undefined
     ) {
       props.clearConversation();
+      entry.resume();
       draftingNewConversation.value = true;
       closeMobilePanels();
     }
@@ -912,6 +914,7 @@ const mobileFocus = createMobileSurfaceFocusService({
   close: closeMobilePanels
 });
 onBeforeUnmount(mobileFocus.dispose);
+onBeforeUnmount(entry.dispose);
 
 onMounted(initialize);
 onBeforeUnmount(() => {
@@ -1178,7 +1181,7 @@ onBeforeUnmount(() => {
           :workspace="workspace"
           :mobile-viewport="mobileViewport"
           :connected="connected"
-          :create-conversation="createConversation"
+          :entry="entry"
           @started="firstMessageStarted"
         />
       </section>
