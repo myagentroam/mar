@@ -437,7 +437,7 @@ test('uses the original dark palette with distinct surfaces and readable button 
   ).toBeGreaterThanOrEqual(4.5);
   expect(dark['--mar-color-accent']).toBe('#5edcec');
   expect(dark['--mar-control-color-success']).toBe('#62d6a4');
-  expect(dark['--mar-text-primary']).toBe('#e8eef8');
+  expect(dark['--mar-text-primary']).toBe('#d3dbe7');
   expect(dark['--mar-text-secondary']).toBe('#9fb0c7');
   expect(dark['--mar-text-muted']).toBe('#8799b1');
   for (const surface of [
