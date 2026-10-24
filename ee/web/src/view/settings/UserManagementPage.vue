@@ -8,7 +8,8 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import type { ButtonInstance, FormInstance, FormItemRule, FormRules } from 'element-plus';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
@@ -29,13 +30,82 @@ const props = defineProps<{
 const sortBy = ref<string>();
 const sortOrder = ref<'asc' | 'desc'>();
 const createOpen = ref(false);
+const createTrigger = ref<ButtonInstance>();
 const userDetail = ref<ManagedUser>();
-const credentialResult = ref<{
-  readonly titleKey: string;
-  readonly username: string;
-  readonly password: string;
-}>();
+const credentialResults = ref<
+  {
+    readonly titleKey: string;
+    readonly username: string;
+    readonly password: string;
+  }[]
+>([]);
+const credentialResult = computed(() => credentialResults.value[0]);
+const credentialSequence = ref(0);
+function dismissCredentialResult(): void {
+  credentialResults.value.shift();
+  credentialSequence.value += 1;
+}
 const form = ref({ username: '', email: '', nickname: '' });
+const createForm = ref<FormInstance>();
+const creating = ref(false);
+let createGeneration = 0;
+let disposed = false;
+watch(
+  createOpen,
+  () => {
+    createGeneration += 1;
+    creating.value = false;
+    createForm.value?.clearValidate();
+    form.value = { username: '', email: '', nickname: '' };
+  },
+  { flush: 'sync' }
+);
+function restoreCreateFocus(): void {
+  void nextTick(() => {
+    if (!disposed && !createOpen.value && credentialResult.value === undefined)
+      createTrigger.value?.ref?.focus();
+  });
+}
+const trimText = (value: string) => value.trim();
+function maxLengthRule(max: number): FormItemRule {
+  return {
+    validator: (_rule, value: string, callback) => {
+      // Match the server's UTF-16 length, including supplementary Unicode characters.
+      callback(
+        value.trim().length > max
+          ? new Error(translate('generated.userManagementPage.textTooLong', { max }))
+          : undefined
+      );
+    },
+    trigger: 'blur'
+  };
+}
+const createRules = computed<FormRules>(() => ({
+  username: [
+    {
+      required: true,
+      transform: trimText,
+      message: translate('generated.userManagementPage.usernameRequired'),
+      trigger: 'blur'
+    },
+    maxLengthRule(80)
+  ],
+  email: [
+    maxLengthRule(254),
+    {
+      validator: (_rule, value: string, callback) => {
+        const email = value.trim();
+        callback(
+          email && !email.includes('@')
+            ? new Error(translate('generated.userManagementPage.emailInvalid'))
+            : undefined
+        );
+      },
+      trigger: 'blur'
+    }
+  ],
+  nickname: [maxLengthRule(80)]
+}));
 const usersPage = createUserManagementService<ManagedUser>({
   request: props.request,
   endpoint: '/api/management/users',
@@ -46,7 +116,6 @@ const pageReady = ref(false);
 watch(usersPage.result, (result) => {
   if (result !== undefined) pageReady.value = true;
 });
-const canCreate = () => form.value.username.trim().length > 0;
 const formatTime = (value: number) => managementDateTime(value);
 function openUserDetail(user: ManagedUser): void {
   userDetail.value = user;
@@ -62,22 +131,33 @@ function changeSort(input: { readonly prop?: string; readonly order?: string | n
   void usersPage.load(true);
 }
 async function create(): Promise<void> {
-  if (!canCreate()) return;
+  if (!createOpen.value || creating.value || createForm.value === undefined || disposed) return;
+  const generation = createGeneration;
+  const isCurrent = () => !disposed && createOpen.value && generation === createGeneration;
+  const draft = {
+    username: form.value.username.trim(),
+    email: form.value.email.trim(),
+    nickname: form.value.nickname.trim()
+  };
+  creating.value = true;
   try {
-    const username = form.value.username.trim();
+    const valid = await createForm.value.validate().catch(() => false);
+    if (!valid || !isCurrent()) return;
     const result = await props.request<{ temporaryPassword: string }>('/api/management/users', {
       method: 'POST',
-      body: JSON.stringify(form.value)
+      body: JSON.stringify(draft)
     });
-    credentialResult.value = {
+    if (disposed) return;
+    // Closing a form does not cancel a committed write or discard its one-time credentials.
+    credentialResults.value.push({
       titleKey: 'generated.userManagementPage.userCreated',
-      username,
+      username: draft.username,
       password: result.temporaryPassword
-    };
-    form.value = { username: '', email: '', nickname: '' };
-    createOpen.value = false;
+    });
+    if (isCurrent()) createOpen.value = false;
     await load();
   } catch (error) {
+    if (!isCurrent()) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -85,6 +165,8 @@ async function create(): Promise<void> {
       'error',
       error
     );
+  } finally {
+    if (isCurrent()) creating.value = false;
   }
 }
 async function reset(user: ManagedUser): Promise<void> {
@@ -93,11 +175,11 @@ async function reset(user: ManagedUser): Promise<void> {
       `/api/management/users/${user.id}/reset-password`,
       { method: 'POST' }
     );
-    credentialResult.value = {
+    credentialResults.value.push({
       titleKey: 'generated.userManagementPage.passwordReset',
       username: user.username,
       password: result.temporaryPassword
-    };
+    });
   } catch (error) {
     showMessage(
       error instanceof Error
@@ -178,7 +260,11 @@ onMounted(() => {
   usersPage.start();
   void load();
 });
-onUnmounted(() => usersPage.dispose());
+onUnmounted(() => {
+  disposed = true;
+  createGeneration += 1;
+  usersPage.dispose();
+});
 </script>
 <template>
   <section
@@ -187,7 +273,7 @@ onUnmounted(() => usersPage.dispose());
     class="management-page"
   >
     <div class="table-actions">
-      <el-button type="primary" @click="createOpen = true">{{
+      <el-button ref="createTrigger" type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
       }}</el-button>
     </div>
@@ -249,24 +335,43 @@ onUnmounted(() => usersPage.dispose());
       @load-more="usersPage.loadMore"
     />
     <el-dialog
+      v-if="createOpen"
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-model="createOpen"
+      @close="createOpen = false"
+      @close-auto-focus="restoreCreateFocus"
       :title="translate('generated.userManagementPage.createUser2')"
-      width="420"
+      width="min(420px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
-      ><el-form label-position="top"
-        ><el-form-item :label="translate('generated.userManagementPage.username2')" required
-          ><el-input v-model="form.username" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.email2')"
-          ><el-input v-model="form.email" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.nickname2')"
-          ><el-input v-model="form.nickname" /></el-form-item></el-form
+      ><el-form
+        ref="createForm"
+        :model="form"
+        :rules="createRules"
+        label-position="top"
+        @submit.prevent="create"
+        ><el-form-item prop="username" :label="translate('generated.userManagementPage.username2')"
+          ><el-input
+            v-model="form.username"
+            :disabled="creating"
+            :placeholder="translate('generated.userManagementPage.username2')" /></el-form-item
+        ><el-form-item prop="email" :label="translate('generated.userManagementPage.email2')"
+          ><el-input
+            v-model="form.email"
+            :disabled="creating"
+            :placeholder="translate('generated.userManagementPage.email2')" /></el-form-item
+        ><el-form-item prop="nickname" :label="translate('generated.userManagementPage.nickname2')"
+          ><el-input
+            v-model="form.nickname"
+            :disabled="creating"
+            :placeholder="
+              translate('generated.userManagementPage.nickname2')
+            " /></el-form-item></el-form
       ><template #footer
         ><el-button @click="createOpen = false">{{
           translate('generated.userManagementPage.cancel3')
         }}</el-button
-        ><el-button type="primary" :disabled="!canCreate()" @click="create">{{
+        ><el-button type="primary" :loading="creating" @click="create">{{
           translate('generated.userManagementPage.createUser3')
         }}</el-button></template
       ></el-dialog
@@ -274,11 +379,14 @@ onUnmounted(() => usersPage.dispose());
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
+      v-if="credentialResult !== undefined"
+      :key="credentialSequence"
       :model-value="credentialResult !== undefined"
       :title="credentialResult === undefined ? '' : translate(credentialResult.titleKey)"
       width="420"
       class="credential-result-dialog"
-      @close="credentialResult = undefined"
+      @close="dismissCredentialResult"
+      @close-auto-focus="restoreCreateFocus"
       :close-icon="marIcon('close')"
       ><el-alert
         :title="
