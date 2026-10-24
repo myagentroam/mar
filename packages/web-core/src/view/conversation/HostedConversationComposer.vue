@@ -455,6 +455,8 @@ function hostedErrorMessage(error: unknown): string {
   switch (errorCode(error)) {
     case 'HOSTED_CONVERSATION_DRAFT_PAUSED':
       return translate('hostedConversations.firstMessagePaused');
+    case 'HOSTED_CONVERSATION_DRAFT_DISPOSED':
+      return translate('hostedConversations.firstMessageDisposed');
     case 'HOSTED_CONVERSATION_WATCH_NOT_READY':
       return translate('hostedConversations.firstMessageWatchRequired');
     case 'HOSTED_CONVERSATION_TEMPLATE_REQUIRED':

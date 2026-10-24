@@ -329,7 +329,7 @@ describe('Hosted first message ownership', () => {
       if (stage === 'create') f.setCreateGate(gate.promise);
       else f.setUploadGate(gate.promise);
       const operation = expect(f.entry.submit()).rejects.toThrow(
-        'HOSTED_CONVERSATION_DRAFT_PAUSED'
+        'HOSTED_CONVERSATION_DRAFT_DISPOSED'
       );
       await vi.waitFor(() =>
         expect(
@@ -342,6 +342,7 @@ describe('Hosted first message ownership', () => {
       f.workspace.selectConversation('n', 'history');
       gate.resolve();
       await operation;
+      expect(f.entry.attachments.value).toEqual([]);
       expect(f.workspace.selectedConversationId.value).toBe('history');
       expect(f.writes.every((w) => !w.signal?.aborted)).toBe(true);
       expect(f.writes.some((w) => w.path.endsWith('/cancel') || w.path.endsWith('/messages'))).toBe(

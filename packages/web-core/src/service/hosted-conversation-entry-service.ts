@@ -90,6 +90,7 @@ export function createHostedConversationEntryService(
   }
 
   function requireActive(expectedGeneration: number): void {
+    if (disposed) throw new Error('HOSTED_CONVERSATION_DRAFT_DISPOSED');
     if (!active || generation !== expectedGeneration)
       throw new Error('HOSTED_CONVERSATION_DRAFT_PAUSED');
   }

@@ -298,7 +298,8 @@ for (const stage of ['create', 'upload'] as const) {
     await expect(page.locator('.hosted-workspace')).toHaveCount(0);
     const route = page.url();
     pending.release();
-    await expect(page.locator('.el-message')).toContainText('草稿已保留');
+    await expect(page.locator('.el-message')).toContainText('已提交的创建或上传不会撤销');
+    await expect(page.locator('.el-message')).not.toContainText('草稿已保留');
     expect(page.url()).toBe(route);
     expect(f.messages()).toHaveLength(0);
     expect(f.requests.some((request) => request.path.endsWith('/cancel'))).toBe(false);
