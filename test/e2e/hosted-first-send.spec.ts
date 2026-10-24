@@ -82,12 +82,19 @@ function gate() {
 
 async function openDraft(
   page: Page,
-  options: { failWatch?: boolean; createGate?: Promise<void>; uploadGate?: Promise<void> } = {}
+  options: {
+    failWatch?: boolean;
+    createGate?: Promise<void>;
+    uploadGate?: Promise<void>;
+    failFirstCreate?: boolean;
+    beforeSend?: () => Promise<void>;
+  } = {}
 ) {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   const requests: { path: string; body: Record<string, unknown> }[] = [];
   let createFinished = false;
   let failWatch = options.failWatch === true;
+  let failCreate = options.failFirstCreate === true;
   let receivedBytes = 0;
   let uploadSize = 0;
   const upload = (completed = false) => ({
@@ -145,6 +152,11 @@ async function openDraft(
       );
     } else if (path.endsWith('/hosted-conversations') && method === 'POST') {
       await options.createGate;
+      if (failCreate) {
+        failCreate = false;
+        await route.abort('failed');
+        return;
+      }
       createFinished = true;
       await json(route, created);
     } else if (path.endsWith('/uploads/preflight')) {
@@ -187,6 +199,7 @@ async function openDraft(
   await expect(page.locator('.conversation-create-panel .hosted-attachments')).toContainText(
     'original.txt'
   );
+  await options.beforeSend?.();
   const send = composer.locator('.hosted-send-button');
   await send.click();
   return {
@@ -199,6 +212,53 @@ async function openDraft(
     writes: () => requests.filter((request) => !request.path.endsWith('/watch'))
   };
 }
+
+test('Hosted first send locks the simplified template selector while creating and preserves the draft after an unknown result', async ({
+  page
+}) => {
+  const pending = gate();
+  const selector = page.locator('.hosted-template-select').getByRole('combobox');
+  const alternate = { ...template, id: 'template-2', name: 'Alternate template' };
+  const f = await openDraft(page, {
+    createGate: pending.promise,
+    failFirstCreate: true,
+    beforeSend: async () => {
+      await page.route('**/api/conversation-templates', (route) =>
+        json(route, { templates: [template, alternate] })
+      );
+      await expect(selector).toBeEnabled();
+      await selector.click();
+      await page.getByRole('option', { name: alternate.name, exact: true }).click();
+      await expect(page.locator('.hosted-template-select')).toContainText(alternate.name);
+      await selector.click();
+      await page.getByRole('option', { name: template.name, exact: true }).click();
+      await expect(page.locator('.hosted-template-select')).toContainText(template.name);
+    }
+  });
+  await expect.poll(() => f.writes().length).toBe(1);
+  await expect(selector).toBeDisabled();
+  await expect(f.send).toBeDisabled();
+  pending.release();
+  await expect(page.locator('.el-message')).toBeVisible();
+  await expect(selector).toBeEnabled();
+  await expect(f.send).toBeEnabled();
+  await expect(page.locator('.conversation-create-panel textarea')).toHaveValue(
+    'Original first message'
+  );
+  await expect(page.locator('.conversation-create-panel .hosted-attachments')).toContainText(
+    'original.txt'
+  );
+  expect(f.writes()).toHaveLength(1);
+  await f.send.click();
+  await expect.poll(() => f.messages().length).toBe(1);
+  const creations = f.writes().filter((request) => request.path.endsWith('/hosted-conversations'));
+  expect(creations).toHaveLength(2);
+  expect(creations[1]!.body).toEqual(creations[0]!.body);
+  expect(f.messages()[0]!.body).toMatchObject({
+    prompt: 'Original first message',
+    attachmentIds: ['original-file']
+  });
+});
 
 test('Hosted first send retains attachment bytes after initial Watch failure and explicit recovery retry', async ({
   page
