@@ -98,7 +98,7 @@ export const iconShapes = {
   tool: '<path d="M14 4a5.5 5.5 0 0 0-5.5 7.5l-5 5a2.5 2.5 0 0 0 3.5 3.5l5-5A5.5 5.5 0 0 0 20 9.5L16.5 12 12 7.5 14 4Z" />',
   refresh: '<path d="M20 9a8 8 0 0 0-13.5-3L4 8m0-4v4h4m-4 7a8 8 0 0 0 13.5 3L20 16m0 4v-4h-4" />',
   retry: '<path d="M4 9a8 8 0 1 1 .5 7M4 4v5h5" />',
-  undo: '<path d="m8.75 3.5-4.5 4.5 4.5 4.5M4.25 8h9a6.25 6.25 0 0 1 0 12.5"/>',
+  undo: '<path d="M4 12a8 8 0 1 0 2.34-5.66L4.5 8.5"/><path d="M4.5 4.5v4h4"/>',
   success: '<circle cx="12" cy="12" r="8.5"/><path d="m7.5 12 3 3 6-6" />',
   error: '<circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6m0-6-6 6" />',
   warning:

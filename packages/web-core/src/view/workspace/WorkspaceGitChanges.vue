@@ -318,8 +318,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </small>
             </span>
           </button>
-          <span v-tooltip="entry.change">{{ shortChange(entry.change) }}</span>
-          <small v-tooltip="entry.state">{{ shortState(entry.state) }}</small>
+          <span v-tooltip="entry.change" class="change-status">{{
+            shortChange(entry.change)
+          }}</span>
+          <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
           <el-button
             v-tooltip="
               entry.state === 'UNTRACKED'
@@ -752,15 +754,21 @@ button.changes-refresh-button {
   line-height: 1;
 }
 
-.change-entry > span {
-  font-size: var(--mar-font-size-nano);
+.change-list .change-entry > .change-status {
+  inline-size: 1ch;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
 }
 
 .change-list .change-restore {
   --mar-action-icon-size: 14px;
-  min-width: 1.25rem;
+  min-width: 20px;
   min-height: 18px;
   padding: 0.1rem;
+  font-size: var(--mar-action-icon-size);
 }
 
 :deep(.change-list .change-restore.el-button) {
