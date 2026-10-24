@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
   ChangeEntry,
+  ChangeRepository,
   HistoryCommit,
   HistoryFile,
   HistoryRef
@@ -9,6 +10,7 @@ import type { ScopedHttpService } from '../../src/service/scoped-http-service.js
 import { changeKey, createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
 import type { WorkspaceFileOperationTarget } from '../../src/service/workspace-file-operation-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
+import { limitChangeRepositories } from '../../src/util/workspace-git.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -90,6 +92,49 @@ function requestUrl(path: string): URL {
 }
 
 describe('Workspace Git service', () => {
+  it('limits rendered changes across repository boundaries without dropping later batches', () => {
+    const repository = (repositoryPath: string, count: number): ChangeRepository => ({
+      repositoryPath,
+      repositoryName: repositoryPath || 'root',
+      source: 'ROOT',
+      current: true,
+      branch: 'main',
+      locked: false,
+      prunable: false,
+      changes: Array.from({ length: count }, (_, index) => ({
+        repositoryPath,
+        repositoryName: repositoryPath,
+        source: 'ROOT',
+        path: `${repositoryPath}/${index}.txt`,
+        state: 'UNTRACKED',
+        change: 'ADDED',
+        diffAvailable: true
+      }))
+    });
+    const repositories = [repository('', 2), repository('sub', 3), repository('empty', 0)];
+
+    expect(
+      limitChangeRepositories(repositories, 3).map((entry) => [
+        entry.repositoryPath,
+        entry.changes.length
+      ])
+    ).toEqual([
+      ['', 2],
+      ['sub', 1],
+      ['empty', 0]
+    ]);
+    expect(
+      limitChangeRepositories(repositories, 6).map((entry) => [
+        entry.repositoryPath,
+        entry.changes.length
+      ])
+    ).toEqual([
+      ['', 2],
+      ['sub', 3],
+      ['empty', 0]
+    ]);
+  });
+
   it('uses the initial Watch snapshot without an extra changes GET when opening history', async () => {
     const snapshot = {
       workspace: {

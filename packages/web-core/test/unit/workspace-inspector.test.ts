@@ -464,7 +464,15 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
           branch: 'main',
           locked: false,
           prunable: false,
-          changes: []
+          changes: Array.from({ length: 450 }, (_, index) => ({
+            repositoryPath: '',
+            repositoryName: 'project',
+            source: 'ROOT',
+            path: `src/file-${index}.ts`,
+            state: 'UNSTAGED',
+            change: 'MODIFIED',
+            diffAvailable: true
+          }))
         }
       ]),
       worktrees: ref([
@@ -498,6 +506,8 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(html).toContain('feature/test');
     expect(html).toContain(i18n.global.t('gitWorktrees.title'));
     expect(html).toContain(i18n.global.t('gitWorktrees.clean'));
+    expect(html.match(/class="change-entry"/gu)).toHaveLength(200);
+    expect(html).toContain(i18n.global.t('generated.workspaceInspector.loadMore'));
   });
 
   it.each([false, true])(

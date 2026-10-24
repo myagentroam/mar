@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -17,7 +18,8 @@ import {
   workspaceChangePath,
   shortChange,
   changeFileName,
-  changeDirectory
+  changeDirectory,
+  limitChangeRepositories
 } from '../../util/workspace-git.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
@@ -41,6 +43,30 @@ const {
   restoringPath,
   loadChanges
 } = props.service;
+const CHANGE_RENDER_BATCH = 200;
+const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
+const renderedChangeRepositories = computed(() =>
+  limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
+);
+const renderedChangeCount = computed(() =>
+  renderedChangeRepositories.value.reduce(
+    (count, repository) => count + repository.changes.length,
+    0
+  )
+);
+const totalChangeCount = computed(() =>
+  visibleChangeRepositories.value.reduce(
+    (count, repository) => count + repository.changes.length,
+    0
+  )
+);
+const hasMoreChanges = computed(() => renderedChangeCount.value < totalChangeCount.value);
+watch(visibleChangeRepositories, () => {
+  changeRenderLimit.value = CHANGE_RENDER_BATCH;
+});
+function showMoreChanges(): void {
+  changeRenderLimit.value += CHANGE_RENDER_BATCH;
+}
 function worktreeReference(worktree: GitWorktreeSummary): string {
   return (
     worktree.branch ??
@@ -188,7 +214,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </p>
     <ul v-else class="change-list">
-      <template v-for="repository in visibleChangeRepositories" :key="repositoryKey(repository)">
+      <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
             <div class="repository-title-row">
@@ -349,6 +375,9 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         </li>
       </template>
     </ul>
+    <el-button v-if="hasMoreChanges" class="change-load-more" link @click="showMoreChanges">
+      {{ translate('generated.workspaceInspector.loadMore') }}
+    </el-button>
   </section>
 </template>
 
@@ -442,6 +471,11 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.change-load-more {
+  width: 100%;
+  margin: 4px 0;
 }
 
 .change-list li {
