@@ -5,12 +5,69 @@ import {
   directTransferDescriptorSchema,
   nodeCapabilitiesSchema,
   nodeWorkbenchCapabilitiesSchema,
+  terminalDirectAttachedFrameSchema,
   terminalDirectBrowserMessageSchema,
   terminalDirectNodeCommandSchema,
   terminalDirectOpenFrameSchema
 } from '../../src/index.js';
 
 describe('workspace direct transfer protocol', () => {
+  describe.each([
+    {
+      name: 'browser prepare',
+      schema: terminalDirectBrowserMessageSchema,
+      frame: {
+        type: 'terminal.direct.prepare',
+        requestId: 'request-001',
+        nodeId: 'node-1',
+        nodeGeneration: 'generation-001',
+        transportSessionId: 'transport-001',
+        terminalId: 'terminal-1',
+        readonly: false
+      }
+    },
+    {
+      name: 'Node prepare',
+      schema: terminalDirectNodeCommandSchema,
+      frame: {
+        type: 'terminal.direct.prepare',
+        directSessionId: 'terminal-session-01',
+        transportSessionId: 'transport-001',
+        workbenchConnectionId: 'connection-001',
+        nodeGeneration: 'generation-001',
+        terminalId: 'terminal-1',
+        readonly: false,
+        grant: 'a'.repeat(32),
+        browserFingerprint: `sha-256 ${'AA:'.repeat(31)}AA`,
+        nodeFingerprint: `sha-256 ${'BB:'.repeat(31)}BB`,
+        openExpiresAt: 2_000_000,
+        expiresAt: 2_000_000
+      }
+    },
+    {
+      name: 'ATTACHED',
+      schema: terminalDirectAttachedFrameSchema,
+      frame: { type: 'ATTACHED', terminalId: 'terminal-1' }
+    }
+  ])('$name replay cursor', ({ schema, frame }) => {
+    it.each([0, 42, Number.MAX_SAFE_INTEGER])('preserves safe integer %s', (afterSequence) => {
+      expect(schema.parse({ ...frame, afterSequence })).toEqual({ ...frame, afterSequence });
+    });
+
+    it.each([Number.MAX_SAFE_INTEGER + 1, -1, 0.5, NaN, Infinity, -Infinity, '1', null, undefined])(
+      'rejects invalid cursor %s',
+      (afterSequence) => {
+        const result = schema.safeParse({ ...frame, afterSequence });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues).toEqual(
+            expect.arrayContaining([expect.objectContaining({ path: ['afterSequence'] })])
+          );
+        }
+      }
+    );
+  });
+
   it('retains explicit root Git download targets but never accepts them for uploads', () => {
     const resource = {
       kind: 'WORKSPACE_FILE',
