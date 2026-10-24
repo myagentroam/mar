@@ -26,7 +26,25 @@ async function fixture() {
   homes.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
-  return { home, workspace, host: () => new LocalAgentHost({ homeDirectory: home, workspace }) };
+  return {
+    home,
+    workspace,
+    host: () => {
+      const host = new LocalAgentHost({ homeDirectory: home, workspace });
+      const describe = host.describe.bind(host);
+      host.describe = async () => ({
+        ...(await describe()),
+        capabilities: [
+          'workspace.read',
+          'workspace.patch',
+          'process.manage',
+          'user-input.request',
+          'event.publish'
+        ]
+      });
+      return host;
+    }
+  };
 }
 const model: MarAgentModelConfiguration = {
   id: 'test',
@@ -47,7 +65,7 @@ const model: MarAgentModelConfiguration = {
   responsesTransport: { transport: 'HTTP', httpVersion: '1.1' }
 };
 
-it('runs and restores through a non-JSONL Store using the public SDK and Catalog', async () => {
+it('runs and restores through an injected Store without a Host storage capability', async () => {
   const { home, workspace, host } = await fixture();
   const backend = textSessionStore();
   const requests: unknown[] = [];

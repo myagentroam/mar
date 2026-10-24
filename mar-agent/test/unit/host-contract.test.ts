@@ -4,7 +4,8 @@ import {
   MarAgentError,
   negotiateHost,
   selectExecutionShell,
-  type HostDescription
+  type HostDescription,
+  type MarAgentHostCapability
 } from '../../src/index.js';
 
 const capabilities = [
@@ -12,11 +13,13 @@ const capabilities = [
   'workspace.patch',
   'process.manage',
   'user-input.request',
-  'event.publish',
-  'session.store'
+  'event.publish'
 ] as const;
 
-const host = (apiVersion: string, values = capabilities): HostDescription => ({
+const host = (
+  apiVersion: string,
+  values: readonly MarAgentHostCapability[] = capabilities
+): HostDescription => ({
   apiVersion,
   mode: 'normal',
   homeDirectory: '/tmp/mar-home',
@@ -36,8 +39,22 @@ describe('host negotiation', () => {
     expect(negotiateHost(host('1.7')).apiVersion).toBe('1.7');
   });
 
+  it('ignores unknown optional capabilities', () => {
+    const description = host('1.0', [...capabilities, 'future.optional' as MarAgentHostCapability]);
+    expect(negotiateHost(description)).toBe(description);
+  });
+
   it('rejects another major or missing required capability', () => {
-    for (const description of [host('2.0'), host('0.9'), host('1.0', capabilities.slice(1))]) {
+    for (const description of [
+      host('2.0'),
+      host('0.9'),
+      ...capabilities.map((required) =>
+        host(
+          '1.0',
+          capabilities.filter((capability) => capability !== required)
+        )
+      )
+    ]) {
       try {
         negotiateHost(description);
         expect.fail('expected incompatible host');

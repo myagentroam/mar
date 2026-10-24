@@ -25,10 +25,7 @@ export type MarAgentHostCapability =
   | 'process.manage'
   | 'code.execute'
   | 'user-input.request'
-  | 'event.publish'
-  | 'session.store'
-  | 'mcp.tools'
-  | 'image.read';
+  | 'event.publish';
 
 export interface HostDescription {
   apiVersion: string;
@@ -47,8 +44,7 @@ const requiredCapabilities: readonly MarAgentHostCapability[] = [
   'workspace.patch',
   'process.manage',
   'user-input.request',
-  'event.publish',
-  'session.store'
+  'event.publish'
 ];
 
 export function negotiateHost(description: HostDescription): HostDescription {
@@ -87,7 +83,7 @@ export interface HostSessionResourceSnapshot {
     cwd: string;
   }[];
 }
-/** The Host owns workspace/tool effects; the SDK owns JSONL storage beneath its supplied HOME. */
+/** The Host owns workspace/tool effects; SessionStore is injected or defaults to SDK-owned JSONL. */
 export interface MarAgentHost {
   /** Independent model consumption facts, including child and auxiliary calls. */
   modelUsage?: import('../model/usage-observer.js').ModelUsageObserver | undefined;
