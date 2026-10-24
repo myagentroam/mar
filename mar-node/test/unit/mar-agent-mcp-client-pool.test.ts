@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { LocalAgentHost } from '../../../mar-agent/src/index.js';
 import type { LocalProcessSpawnRequest } from '../../../mar-agent/src/index.js';
 import { directLocalProcessExecutor } from '../../../mar-agent/src/agent-core/host/local-process-executor.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MarAgentMcpClientCache,
   MarAgentMcpClientPool
@@ -22,6 +22,215 @@ const server = (environment: Readonly<Record<string, string>> = {}) => ({
   command: process.execPath,
   args: [fileURLToPath(new URL('../support/mar-agent-mcp-server.mjs', import.meta.url))],
   environment
+});
+
+describe('MCP cache acquisition', () => {
+  const mockConnections = () => {
+    const pools: MarAgentMcpClientPool[] = [];
+    const connect = vi.spyOn(MarAgentMcpClientPool, 'connect').mockImplementation(async () => {
+      const pool = new MarAgentMcpClientPool();
+      vi.spyOn(pool, 'close').mockResolvedValue(undefined);
+      pools.push(pool);
+      return pool;
+    });
+    return { connect, pools };
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('shares one cold pool until all leases release and idle expiry', async () => {
+    vi.useFakeTimers();
+    const { connect, pools } = mockConnections();
+    const cache = new MarAgentMcpClientCache({ idleTtlMs: 50 });
+    try {
+      const [first, second] = await Promise.all([
+        cache.acquire([server()], process.cwd(), {
+          authorizationScope: 'actor-a',
+          owner: { sessionId: 'first-session', executionId: 'first-run' }
+        }),
+        cache.acquire([server()], process.cwd(), {
+          authorizationScope: 'actor-a',
+          owner: { sessionId: 'second-session', executionId: 'second-run' }
+        })
+      ]);
+      expect(connect).toHaveBeenCalledTimes(1);
+      expect(first.pool).toBe(second.pool);
+      await first.release();
+      await first.release();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(first.pool.close).not.toHaveBeenCalled();
+      await second.release();
+      await vi.advanceTimersByTimeAsync(49);
+      expect(first.pool.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(first.pool.close).toHaveBeenCalledTimes(1);
+      await cache.close();
+      expect(pools.every((pool) => vi.mocked(pool.close).mock.calls.length === 1)).toBe(true);
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it('closes a shared cold pool once while leases are still active', async () => {
+    const { connect, pools } = mockConnections();
+    const cache = new MarAgentMcpClientCache({ maxEntries: 1 });
+    try {
+      const [first, second] = await Promise.all([
+        cache.acquire([server()], process.cwd()),
+        cache.acquire([server()], process.cwd())
+      ]);
+      expect(connect).toHaveBeenCalledTimes(1);
+      expect(first.pool).toBe(second.pool);
+      await cache.close();
+      await first.release();
+      await second.release();
+      await cache.close();
+      expect(pools).toHaveLength(1);
+      expect(first.pool.close).toHaveBeenCalledTimes(1);
+      await expect(cache.acquire([server()], process.cwd())).rejects.toThrow(
+        'MAR_AGENT_MCP_CACHE_CLOSED'
+      );
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it.each([false, true])(
+    'joins the same key created while idle eviction waits (close rejects: %s)',
+    async (rejectClose) => {
+      const { connect } = mockConnections();
+      const cache = new MarAgentMcpClientCache({ maxEntries: 1 });
+      const closing = Promise.withResolvers<void>();
+      try {
+        const idle = await cache.acquire([server({ TOKEN: 'old' })], process.cwd());
+        vi.mocked(idle.pool.close).mockReturnValue(closing.promise);
+        await idle.release();
+        const waiting = cache.acquire([server({ TOKEN: 'new' })], process.cwd());
+        const second = await cache.acquire([server({ TOKEN: 'new' })], process.cwd());
+        if (rejectClose) closing.reject(new Error('fixture close failure'));
+        else closing.resolve();
+        const first = await waiting;
+        expect(connect).toHaveBeenCalledTimes(2);
+        expect(first.pool).toBe(second.pool);
+        expect(idle.pool.close).toHaveBeenCalledTimes(1);
+        await first.release();
+        expect(second.pool.close).not.toHaveBeenCalled();
+        await second.release();
+        await cache.close();
+        expect(second.pool.close).toHaveBeenCalledTimes(1);
+      } finally {
+        closing.resolve();
+        await cache.close();
+      }
+    }
+  );
+
+  it('keeps active entries and uses single-use pools when capacity is exhausted', async () => {
+    const { connect } = mockConnections();
+    const cache = new MarAgentMcpClientCache({ maxEntries: 1 });
+    try {
+      const active = await cache.acquire([server({ TOKEN: 'active' })], process.cwd());
+      const [first, second] = await Promise.all([
+        cache.acquire([server({ TOKEN: 'overflow' })], process.cwd()),
+        cache.acquire([server({ TOKEN: 'overflow' })], process.cwd())
+      ]);
+      expect(connect).toHaveBeenCalledTimes(3);
+      expect(first.pool).not.toBe(second.pool);
+      await first.release();
+      await first.release();
+      await second.release();
+      expect(first.pool.close).toHaveBeenCalledTimes(1);
+      expect(second.pool.close).toHaveBeenCalledTimes(1);
+      expect(active.pool.close).not.toHaveBeenCalled();
+      await active.release();
+      await cache.close();
+      expect(active.pool.close).toHaveBeenCalledTimes(1);
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it('isolates concurrent cwd, resolved configuration, caller policy and authorization scopes', async () => {
+    const { connect, pools } = mockConnections();
+    const cache = new MarAgentMcpClientCache();
+    const cwd = process.cwd();
+    try {
+      const leases = await Promise.all([
+        cache.acquire([server({ TOKEN: 'one' })], cwd, { authorizationScope: 'actor-a' }),
+        cache.acquire([server({ TOKEN: 'one' })], cwd, { authorizationScope: 'actor-a' }),
+        cache.acquire([server({ TOKEN: 'two' })], cwd, { authorizationScope: 'actor-a' }),
+        cache.acquire([server({ TOKEN: 'one' })], join(cwd, 'other'), {
+          authorizationScope: 'actor-a'
+        }),
+        cache.acquire([server({ TOKEN: 'one' })], cwd, { authorizationScope: 'actor-b' }),
+        cache.acquire(
+          [{ ...server({ TOKEN: 'one' }), allowedToolCallers: { echo: ['direct'] } }],
+          cwd,
+          { authorizationScope: 'actor-a' }
+        )
+      ]);
+      expect(connect).toHaveBeenCalledTimes(5);
+      expect(leases[0]!.pool).toBe(leases[1]!.pool);
+      expect(new Set(leases.slice(1).map((lease) => lease.pool)).size).toBe(5);
+      await Promise.all(leases.map((lease) => lease.release()));
+      await cache.close();
+      for (const pool of pools) expect(pool.close).toHaveBeenCalledTimes(1);
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it('does not cache non-reusable pools or allow reusable sandbox processes', async () => {
+    const { connect } = mockConnections();
+    const cache = new MarAgentMcpClientCache();
+    try {
+      await expect(
+        cache.acquire([server()], process.cwd(), { processExecutor: directLocalProcessExecutor })
+      ).rejects.toThrow('MAR_AGENT_MCP_SANDBOX_REUSE_INVALID');
+      expect(connect).not.toHaveBeenCalled();
+      const [first, second] = await Promise.all([
+        cache.acquire([server()], process.cwd(), { reusable: false }),
+        cache.acquire([server()], process.cwd(), { reusable: false })
+      ]);
+      expect(first.pool).not.toBe(second.pool);
+      await first.release();
+      await first.release();
+      expect(first.pool.close).toHaveBeenCalledTimes(1);
+      expect(second.pool.close).not.toHaveBeenCalled();
+      await second.release();
+      expect(second.pool.close).toHaveBeenCalledTimes(1);
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it('shares a failed connection and permits a fresh acquire after rejection', async () => {
+    const { connect } = mockConnections();
+    const failure = new Error('fixture connection failure');
+    connect.mockRejectedValueOnce(failure);
+    const cache = new MarAgentMcpClientCache();
+    try {
+      const results = await Promise.allSettled([
+        cache.acquire([server()], process.cwd()),
+        cache.acquire([server()], process.cwd())
+      ]);
+      expect(results).toEqual([
+        { status: 'rejected', reason: failure },
+        { status: 'rejected', reason: failure }
+      ]);
+      expect(connect).toHaveBeenCalledTimes(1);
+      const retry = await cache.acquire([server()], process.cwd());
+      expect(connect).toHaveBeenCalledTimes(2);
+      await retry.release();
+      await cache.close();
+      expect(retry.pool.close).toHaveBeenCalledTimes(1);
+    } finally {
+      await cache.close();
+    }
+  });
 });
 
 describe('MAR Agent MCP client pool', () => {

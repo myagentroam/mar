@@ -77,19 +77,22 @@ export class MarAgentMcpClientCache {
     let entry = this.#entries.get(key);
     if (entry === undefined) {
       await this.#evictIdleEntry();
-      if (this.#entries.size >= this.#maxEntries) {
-        const pool = await MarAgentMcpClientPool.connect(servers, cwd, options);
-        return singleUseLease(pool);
+      entry = this.#entries.get(key);
+      if (entry === undefined) {
+        if (this.#entries.size >= this.#maxEntries) {
+          const pool = await MarAgentMcpClientPool.connect(servers, cwd, options);
+          return singleUseLease(pool);
+        }
+        entry = {
+          promise: MarAgentMcpClientPool.connect(servers, cwd, options),
+          references: 0,
+          lastReleasedAt: 0
+        };
+        this.#entries.set(key, entry);
+        entry.promise.catch(() => {
+          if (this.#entries.get(key) === entry) this.#entries.delete(key);
+        });
       }
-      entry = {
-        promise: MarAgentMcpClientPool.connect(servers, cwd, options),
-        references: 0,
-        lastReleasedAt: 0
-      };
-      this.#entries.set(key, entry);
-      entry.promise.catch(() => {
-        if (this.#entries.get(key) === entry) this.#entries.delete(key);
-      });
     }
     if (entry.timer !== undefined) {
       clearTimeout(entry.timer);
