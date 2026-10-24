@@ -229,9 +229,8 @@ function usagePercentageLabel(value: number): string {
                 disabled: usageDisabledReason(entry.runner) === ''
               }"
               v-if="entry.runner !== 'opencode'"
-              class="runner-usage-link"
+              class="runner-usage-link utility-control"
               link
-              type="primary"
               :loading="usageLoading === entry.runner"
               :disabled="usageDisabledReason(entry.runner) !== ''"
               @click="emit('usage', entry.runner)"

@@ -424,6 +424,30 @@ html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-disabled-text-color: var(--mar-control-disabled-on-accent);
 }
 
+/* Keep ordinary actions neutral without flattening semantic buttons or local overrides. */
+html.console-ui
+  :where(
+    .el-button:not(
+      .el-button--primary,
+      .el-button--success,
+      .el-button--warning,
+      .el-button--danger,
+      .el-button--info,
+      a[href],
+      .utility-control
+    )
+  ) {
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-hover-link-text-color: var(--mar-text-primary);
+  --el-button-hover-bg-color: var(--mar-fill-row-hover);
+  --el-button-hover-border-color: var(--mar-border-medium);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-active-color: var(--mar-text-primary);
+  --el-button-active-bg-color: var(--mar-fill-selection);
+  --el-button-active-border-color: var(--mar-border-medium);
+  --el-button-outline-color: var(--mar-color-brand);
+}
+
 html.console-ui .el-button--primary.is-link,
 html.console-ui .el-button--primary.is-text,
 html.console-ui .el-link--primary {

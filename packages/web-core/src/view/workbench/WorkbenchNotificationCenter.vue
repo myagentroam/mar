@@ -220,14 +220,14 @@ const emit = defineEmits<{
             <strong v-if="!mobileMode || autoPreview">{{
               translate('generated.workbenchNotificationCenter.notifications')
             }}</strong>
-            <button
+            <el-button
               v-if="service.unreadCount.value > 0"
-              class="workbench-notification-mark-all"
-              type="button"
+              class="workbench-notification-mark-all utility-control"
+              link
               @click="service.markAllRead()"
             >
               {{ translate('generated.workbenchNotificationCenter.markAllRead') }}
-            </button>
+            </el-button>
           </header>
           <div class="workbench-notification-section">
             <section
@@ -258,9 +258,10 @@ const emit = defineEmits<{
                   <progress :value="task.receivedBytes" :max="Math.max(task.size, 1)" />
                 </div>
                 <div class="workbench-notification-upload-actions">
-                  <button
+                  <el-button
                     v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
-                    type="button"
+                    class="utility-control"
+                    link
                     @click="emit('retryUpload', task)"
                   >
                     {{
@@ -268,7 +269,7 @@ const emit = defineEmits<{
                         ? translate('generated.workbenchNotificationCenter.resume')
                         : translate('generated.workbenchNotificationCenter.retry')
                     }}
-                  </button>
+                  </el-button>
                   <button
                     v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                     type="button"
@@ -282,9 +283,14 @@ const emit = defineEmits<{
                   >
                     <MarIcon name="delete" />
                   </button>
-                  <button v-else type="button" @click="emit('cancelUpload', task)">
+                  <el-button
+                    v-else
+                    class="utility-control"
+                    link
+                    @click="emit('cancelUpload', task)"
+                  >
                     {{ translate('generated.workbenchNotificationCenter.cancel') }}
-                  </button>
+                  </el-button>
                 </div>
               </div>
             </section>
@@ -447,13 +453,13 @@ const emit = defineEmits<{
   flex: none;
   font-size: var(--mar-font-size-meta);
 }
-.workbench-notification-panel button {
+.workbench-notification-panel button:not(.el-button) {
   font: inherit;
 }
-.workbench-notification-panel button:not(.icon-button) {
+.workbench-notification-panel button:not(.icon-button, .utility-control, .el-button) {
   border: 0;
   background: transparent;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   cursor: pointer;
 }
 .workbench-notification-upload-list,

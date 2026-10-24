@@ -1013,7 +1013,7 @@ onUnmounted(() => pagination.dispose());
         }}</el-link
       >
       <template #footer
-        ><el-button type="primary" @click="registrationToken = ''">{{
+        ><el-button @click="registrationToken = ''">{{
           translate('generated.resourceSharingPage.close2')
         }}</el-button></template
       ></el-dialog

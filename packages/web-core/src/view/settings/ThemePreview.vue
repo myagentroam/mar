@@ -292,9 +292,14 @@ input::placeholder {
   cursor: pointer;
 }
 .preview-button:hover:not(:disabled) {
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  border-color: var(--el-color-primary-light-7);
+  color: var(--mar-text-primary);
+  background: var(--mar-fill-row-hover);
+  border-color: var(--mar-border-medium);
+}
+.preview-button:not(.primary):active:not(:disabled) {
+  color: var(--mar-text-primary);
+  background: var(--mar-fill-selection);
+  border-color: var(--mar-border-medium);
 }
 .preview-button.primary {
   color: var(--mar-color-on-accent);

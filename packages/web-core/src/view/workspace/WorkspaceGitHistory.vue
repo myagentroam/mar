@@ -775,14 +775,9 @@ button.history-refresh {
 
 .history-load-more {
   justify-self: center;
-  color: var(--mar-color-brand-text);
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
   text-decoration: none;
-}
-
-.history-load-more:hover {
-  text-decoration: underline;
 }
 
 .history-load-more[aria-disabled='true'] {

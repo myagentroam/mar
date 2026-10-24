@@ -473,6 +473,7 @@ onBeforeUnmount(() => {
           <small v-else class="attachment-error" role="alert">{{ attachment.error }}</small>
           <button
             v-if="attachment.status === 'FAILED'"
+            class="utility-control"
             type="button"
             :disabled="composerReadonly"
             :aria-label="
@@ -486,6 +487,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
+            class="utility-control"
             :aria-label="
               translate('hostedConversations.removeAttachment', {
                 name: attachment.name
@@ -655,8 +657,6 @@ onBeforeUnmount(() => {
 
 .hosted-attachments button {
   border: 0;
-  background: transparent;
-  color: var(--mar-text-tertiary);
   cursor: pointer;
 }
 

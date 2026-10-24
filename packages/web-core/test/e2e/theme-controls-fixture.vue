@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
+import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
@@ -46,6 +47,7 @@ function saveFeedbackDialog(): void {
       <el-option label="One" value="one" />
     </el-select>
     <el-button>Sample default</el-button>
+    <el-button disabled>Sample disabled default</el-button>
     <el-button type="primary">Sample primary</el-button>
     <el-button type="primary" disabled>Sample disabled primary</el-button>
     <el-button type="primary" link>Sample link</el-button>
@@ -53,6 +55,7 @@ function saveFeedbackDialog(): void {
     <el-button link>Sample neutral action</el-button>
     <el-button link disabled>Sample disabled neutral action</el-button>
     <el-button link type="danger">Sample dangerous action</el-button>
+    <ChatGPTManageUsageButton />
     <el-link type="primary">Sample anchor</el-link>
     <el-table :data="[{ name: 'First' }, { name: 'Second' }]">
       <el-table-column prop="name" label="Name" />

@@ -208,7 +208,7 @@ function closeStandaloneFileWindow(): void {
       >
         <template v-if="page.standaloneFileError">
           <p>{{ t('generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour') }}</p>
-          <el-button type="primary" @click="closeStandaloneFileWindow">
+          <el-button @click="closeStandaloneFileWindow">
             {{ t('generated.filePreviewDialog.closePreview') }}
           </el-button>
         </template>

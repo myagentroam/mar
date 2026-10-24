@@ -110,7 +110,6 @@ onBeforeUnmount(() => {
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
           link
-          type="primary"
           size="small"
           native-type="button"
           :aria-disabled="loadingInitial || reloading"
@@ -140,7 +139,6 @@ onBeforeUnmount(() => {
             v-if="!loadingOlder || olderAction !== undefined"
             class="conversation-load-older"
             link
-            type="primary"
             size="small"
             native-type="button"
             :aria-disabled="loadingOlder"

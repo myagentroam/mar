@@ -2412,6 +2412,7 @@ onBeforeUnmount(() => filePreviews.reset());
   border: 0;
   border-radius: var(--mar-radius-selection);
   background: transparent;
+  color: var(--mar-text-primary);
   padding: 0.35rem 0.25rem;
   text-align: left;
   cursor: pointer;
@@ -2419,7 +2420,12 @@ onBeforeUnmount(() => filePreviews.reset());
 
 .content-search-results button:hover,
 .content-search-results button:focus-visible {
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-fill-row-hover);
+}
+
+.content-search-results button:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
 }
 
 .content-search-results strong,

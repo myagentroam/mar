@@ -49,8 +49,8 @@ const blocked = computed(
       </div>
       <div class="notification-channel-actions">
         <el-button
+          class="utility-control"
           link
-          type="primary"
           :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
           :disabled="blocked"
@@ -75,8 +75,8 @@ const blocked = computed(
             service.enabled.value &&
             ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
           "
+          class="utility-control"
           link
-          type="primary"
           :icon="marIcon('notification')"
           @click="service.enablePush()"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button

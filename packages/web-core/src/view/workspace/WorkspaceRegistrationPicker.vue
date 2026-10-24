@@ -201,6 +201,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           <div class="workspace-picker-toolbar-actions">
             <el-button
               v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
+              class="utility-control"
               :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
               :icon="marIcon('refresh')"
               :disabled="loadingDirectory"

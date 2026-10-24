@@ -350,7 +350,13 @@ const resourceDetailsFixture = {
           nodeOpen: open.value,
           workspaceOpen: false,
           usageOpen: false,
-          node: { id: 'node', label: 'Fixture Node', connected: true, manageable: true },
+          node: {
+            id: 'node',
+            label: 'Fixture Node',
+            connected: true,
+            manageable: true,
+            capabilities: { codex: { available: true } }
+          },
           nodeRefreshable: true,
           usageDisabledReason: () => '',
           request: async () => ({ secrets: [] }),

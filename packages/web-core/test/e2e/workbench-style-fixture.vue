@@ -12,6 +12,7 @@ import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 const composerFixture = new URL(location.href).searchParams.has('composer');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
+const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
@@ -215,8 +216,8 @@ if (composerFixture) {
     </section>
     <section aria-label="Inspector fixture">
       <WorkspaceInspector
-        :node-id="undefined"
-        :workspace-id="undefined"
+        :node-id="contentSearchFixture ? 'node' : undefined"
+        :workspace-id="contentSearchFixture ? 'workspace' : undefined"
         workspace-name="Workspace"
         workspace-kind="GIT_WORKSPACE"
         csrf-token="fixture"

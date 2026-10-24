@@ -367,7 +367,8 @@ onBeforeUnmount(() => {
       </div>
       <el-button
         :icon="marIcon('refresh')"
-        circle
+        class="utility-control"
+        text
         :loading="loading"
         :disabled="!available || previewing || executing"
         :aria-label="translate('conversationHostingMaintenance.refresh')"

@@ -9,6 +9,67 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Content search uses neutral row feedback without losing match emphasis in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.route('**/api/workspaces/workspace/**', (route) =>
+      route.fulfill({
+        json: route.request().url().includes('/content/search')
+          ? {
+              search: {
+                matches: [
+                  { path: 'src/main.ts', line: 2, column: 7, preview: 'const needle = true;' }
+                ],
+                truncated: false
+              }
+            }
+          : { files: { entries: [], nextCursor: null } }
+      })
+    );
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      await inspector
+        .locator('.inspector-tabs button')
+        .filter({ hasText: /^Search$/ })
+        .click();
+      const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
+      await input.fill('needle');
+      await input.press('Enter');
+      const result = inspector.locator('.content-search-results button');
+      await expect(result).toHaveCount(1);
+      await expect(result.locator('mark')).toHaveText('needle');
+      const colors = await result.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const resolved = {
+          primary: color('--mar-text-primary'),
+          hover: color('--mar-fill-row-hover'),
+          focus: color('--mar-color-brand'),
+          match: getComputedStyle(element.querySelector('mark')!).backgroundColor
+        };
+        probe.remove();
+        return resolved;
+      });
+      await result.hover();
+      await expect(result).toHaveCSS('background-color', colors.hover);
+      await expect(result).toHaveCSS('color', colors.primary);
+      await expect(result.locator('mark')).toHaveCSS('background-color', colors.match);
+      await result.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(result).toBeFocused();
+      await expect(result).toHaveCSS('outline-color', colors.focus);
+      await expect(result).toHaveCSS('outline-style', 'solid');
+      await page.screenshot({ path: testInfo.outputPath(`content-search-${width}.png`) });
+    }
+  });
+
   for (const locale of ['en-US', 'zh-CN']) {
     for (const viewportWidth of [1280, 390]) {
       test(`Inspector tabs fit panel widths in ${theme} (${locale}) at ${viewportWidth}px`, async ({

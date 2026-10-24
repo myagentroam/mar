@@ -2320,7 +2320,7 @@ onBeforeUnmount(() => {
             translate('marAgentModels.cancel')
           }}</el-button>
         </template>
-        <el-button v-else type="primary" @click="loginAttemptDialog = false">{{
+        <el-button v-else @click="loginAttemptDialog = false">{{
           translate('marAgentModels.close')
         }}</el-button>
       </template>
@@ -2715,7 +2715,7 @@ onBeforeUnmount(() => {
         />
       </el-table>
       <template #footer>
-        <el-button type="primary" @click="importResultDialog = false">{{
+        <el-button @click="importResultDialog = false">{{
           translate('marAgentModels.close')
         }}</el-button>
       </template>
