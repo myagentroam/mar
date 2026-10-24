@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -114,6 +118,8 @@ function usagePercentageLabel(value: number): string {
 
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="nodeOpen"
     :model-value="nodeOpen"
     class="node-details-dialog"
@@ -272,6 +278,8 @@ function usagePercentageLabel(value: number): string {
     </template>
   </el-dialog>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="workspaceOpen"
     :model-value="workspaceOpen"
     class="node-details-dialog"
@@ -362,6 +370,8 @@ function usagePercentageLabel(value: number): string {
     </template>
   </el-dialog>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="usageOpen"
     :model-value="usageOpen"
     class="runner-usage-dialog"

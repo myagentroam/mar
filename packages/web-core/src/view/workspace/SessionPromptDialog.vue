@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -65,6 +69,8 @@ async function save(): Promise<void> {
 
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
     :title="translate('generated.sessionPrompt.title')"
     width="min(640px, calc(100vw - 32px))"

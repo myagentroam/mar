@@ -2,7 +2,7 @@ import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from './MessageBoxService.js';
 import type {
   AgentRun,
   ComposerSkillToken,

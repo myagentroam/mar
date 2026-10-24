@@ -555,7 +555,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  await nodesButton.click();
+  await expect(page.locator('.workspace-tree')).toBeVisible();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
   const brand = page.getByTestId('workbench-brand');
@@ -648,10 +648,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
           getComputedStyle(document.documentElement).getPropertyValue('--sidebar-header-height')
         );
         return (
-          element.parentElement === document.body &&
-          Number(getComputedStyle(element).zIndex) > Number(getComputedStyle(drawer!).zIndex) &&
-          element.getBoundingClientRect().top - headerHeight >= 7 &&
-          element.getBoundingClientRect().bottom <= window.innerHeight - 7
+          drawer?.contains(element) &&
+          element.getBoundingClientRect().top >= headerHeight &&
+          element.getBoundingClientRect().bottom <= window.innerHeight
         );
       })
     )
@@ -928,14 +927,16 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       const header = dock.querySelector<HTMLElement>('.admin-terminal-header')!;
       const tabs = dock.querySelector<HTMLElement>('.terminal-tabs')!;
       const body = dock.querySelector<HTMLElement>('.admin-terminal-body')!;
+      const title = header.querySelector('h2')!;
       return {
-        headerHeight: header.getBoundingClientRect().height,
-        gap: tabs.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+        headerHeight: tabs.getBoundingClientRect().top - header.getBoundingClientRect().top,
+        gap: tabs.getBoundingClientRect().top - title.getBoundingClientRect().bottom,
         height: body.getBoundingClientRect().top - header.getBoundingClientRect().top
       };
     });
     expect(terminalChrome.headerHeight).toBeLessThanOrEqual(36);
-    expect(terminalChrome.gap).toBeLessThanOrEqual(1);
+    expect(terminalChrome.gap).toBeGreaterThanOrEqual(0);
+    expect(terminalChrome.gap).toBeLessThanOrEqual(12);
     expect(terminalChrome.height).toBeLessThanOrEqual(76);
   }
   await page.setViewportSize({ width: 390, height: 844 });

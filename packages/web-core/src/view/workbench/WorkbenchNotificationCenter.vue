@@ -17,6 +17,7 @@ const props = defineProps<{
   readonly triggerLabel?: string;
   readonly mobileMode?: boolean;
   readonly mobileOpen?: boolean;
+  readonly mobilePresented?: boolean;
   readonly mobilePanelTarget?: HTMLElement | undefined;
 }>();
 
@@ -204,7 +205,10 @@ const emit = defineEmits<{
     >
       <Transition name="workbench-notification-panel">
         <aside
-          v-if="open && (!mobileMode || autoPreview || mobilePanelTarget)"
+          v-if="
+            (mobileMode && !autoPreview ? (mobilePresented ?? open) : open) &&
+            (!mobileMode || autoPreview || mobilePanelTarget)
+          "
           ref="panel"
           :class="[
             'workbench-notification-panel',
@@ -268,7 +272,7 @@ const emit = defineEmits<{
                   <button
                     v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                     type="button"
-                    class="icon-button workbench-notification-delete"
+                    class="icon-button utility-control workbench-notification-delete"
                     :aria-label="
                       translate('generated.workbenchNotificationCenter.delete', {
                         value0: task.name
@@ -309,7 +313,7 @@ const emit = defineEmits<{
                   }}</time>
                 </button>
                 <button
-                  class="icon-button workbench-notification-delete"
+                  class="icon-button utility-control workbench-notification-delete"
                   :aria-label="
                     translate('generated.workbenchNotificationCenter.deleteNotification', {
                       value0: notification.title
@@ -461,9 +465,15 @@ const emit = defineEmits<{
 .workbench-notification-section {
   min-height: 0;
   max-height: min(calc(6 * 44px), 35dvh);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+@media (min-width: 768px) {
+  .workbench-notification-section {
+    max-height: min(24rem, 55dvh);
+  }
 }
 .workbench-notification-section .workbench-notification-upload-list,
 .workbench-notification-section .workbench-notification-list {

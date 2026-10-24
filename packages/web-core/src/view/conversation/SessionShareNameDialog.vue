@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { ref } from 'vue';
 import { channelDisplayNameSchema } from '@myagentroam/protocol';
@@ -27,6 +31,8 @@ async function submit(): Promise<void> {
 </script>
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
     :title="translate(editing ? 'sessionShare.editName' : 'sessionShare.setName')"
     width="min(420px, calc(100vw - 32px))"

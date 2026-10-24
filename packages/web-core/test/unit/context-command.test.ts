@@ -7,7 +7,9 @@ import { createWorkbenchContextCommandService } from '../../src/service/Workbenc
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 beforeEach(() => {
-  vi.mocked(ElMessageBox.confirm).mockReset();
+  vi.mocked(ElMessageBox.confirm)
+    .mockReset()
+    .mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
 });
 
 function fixture() {

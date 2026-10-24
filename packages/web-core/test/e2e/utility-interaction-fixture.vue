@@ -1,0 +1,172 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
+import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
+import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
+import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
+import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import type { RunnerCommand, Session, WorkspaceQueueItem } from '../../src/model/workbench.js';
+
+const disabled = ref(false);
+const events = ref<string[]>([]);
+const record = (event: string) => events.value.push(event);
+const session: Session = {
+  id: 'session-1234567890-long-context',
+  workspaceId: 'workspace',
+  runner: 'mar-agent',
+  externalSessionId: 'native-session'
+};
+const items: WorkspaceQueueItem[] = [
+  {
+    queueItemId: 'queue-one',
+    sessionId: session.id,
+    workspaceId: 'workspace',
+    runner: 'mar-agent',
+    clientMessageId: 'message-one',
+    sessionTitle: 'Review',
+    content: 'Review the pending change',
+    createdAt: 1
+  }
+];
+const commands: RunnerCommand[] = ['first', 'second'].map((id) => ({
+  id,
+  runner: 'mar-agent',
+  label: id,
+  description: `${id} command description`,
+  inputHint: '',
+  source: 'MAR_RUNTIME',
+  interaction: 'RUNNER_TEXT',
+  available: true,
+  reasonCode: null
+}));
+const entries = [
+  { name: 'first.ts', path: '/workspace/first.ts', kind: 'FILE' as const },
+  { name: 'second.ts', path: '/workspace/second.ts', kind: 'FILE' as const }
+];
+const request = async <T,>(): Promise<T> => ({}) as T;
+</script>
+
+<template>
+  <main class="utility-fixture">
+    <button data-testid="disable" @click="disabled = !disabled">Toggle disabled</button>
+    <output data-testid="events">{{ events.join('|') }}</output>
+    <section>
+      <button
+        class="icon-button utility-control"
+        data-testid="native"
+        :disabled="disabled"
+        @click="record('native')"
+      >
+        N
+      </button>
+      <el-button class="utility-control" data-testid="element" link :disabled="disabled"
+        >Utility</el-button
+      >
+    </section>
+    <WorkspaceSessionList
+      :sessions="[]"
+      :selected-session-id="undefined"
+      :mobile-viewport="false"
+      :can-load-more="false"
+      :loading-more="false"
+      watch-status="ready"
+      :node-ready="!disabled"
+      :loading="false"
+      workspace-kind="DIRECTORY"
+      workspace-kind-label="Workspace"
+      :workspace-branch="undefined"
+      :title="() => 'Session'"
+      :runner-icon="() => ''"
+      :activity="() => 'IDLE'"
+      :activity-label="() => 'Idle'"
+      :activity-date-time="() => undefined"
+      :activity-title="() => undefined"
+      :relative-activity="() => ''"
+      node-id="node"
+      workspace-id="workspace"
+      :skill-supported="false"
+      :mcp-supported="false"
+      :cleanup-sessions-supported="true"
+      :search-supported="true"
+      search-query=""
+      :searching="false"
+      :refreshing="false"
+      :workspace-manageable="true"
+      :request="request"
+      :has-unread="() => false"
+      @refresh="record('refresh')"
+    />
+    <ConversationHeader
+      :session="session"
+      runner="mar-agent"
+      :files-ready="true"
+      :terminal-ready="true"
+      :content-search-ready="false"
+      :runner-icon="() => ''"
+      :session-title="() => 'Review'"
+      :activity="() => 'IDLE'"
+      :activity-label="() => 'Idle'"
+      @open-surface="record(`surface:${$event}`)"
+    />
+    <ComposerQueue
+      :items="items"
+      :paused="false"
+      :loading="disabled"
+      :editing-queue-item-id="undefined"
+      editing-content=""
+      :goal="undefined"
+      @edit="record('edit')"
+      @execute="record('execute')"
+      @delete-item="record('delete')"
+    />
+    <!-- Keep controlled selection stable to distinguish hover from active during parent updates. -->
+    <section class="picker-host" data-testid="commands">
+      <ComposerCommandPicker
+        :open="true"
+        :commands="commands"
+        :skills="[]"
+        :quick-prompts="[]"
+        :quick-prompts-loading="false"
+        :quick-prompts-failed="false"
+        picker-kind="runner"
+        :skills-enabled="false"
+        :skills-loading="false"
+        :skills-failed="false"
+        :active-index="0"
+        :loading="false"
+        :failed="false"
+        @activate="record(`command-active:${$event}`)"
+        @select="record(`command:${$event.id}`)"
+      />
+    </section>
+    <section class="picker-host" data-testid="files">
+      <ComposerFileReferencePicker
+        :open="true"
+        :entries="entries"
+        :active-index="0"
+        :loading="false"
+        query="file"
+        @activate="record(`file-active:${$event}`)"
+        @select="record(`file:${$event.name}`)"
+      />
+    </section>
+  </main>
+</template>
+
+<style scoped>
+.utility-fixture {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  max-width: 720px;
+}
+.utility-fixture > * {
+  min-width: 0;
+}
+.picker-host {
+  position: relative;
+}
+.picker-host :deep(.command-picker) {
+  position: static;
+}
+</style>

@@ -568,6 +568,7 @@ export function createSessionOpener(services: SessionServices) {
         const operation = emitTail.then(async () => {
           assertLive?.();
           const persistent = eventForPersistence(full);
+          let committedTerminal = false;
           if (persistent !== undefined && releaseSession !== undefined) {
             const stored = await store.append(sessionId, {
               type: full.type,
@@ -580,7 +581,7 @@ export function createSessionOpener(services: SessionServices) {
               full.type === 'execution.failed' ||
               full.type === 'execution.cancelled'
             )
-              persistedTerminal = true;
+              committedTerminal = persistedTerminal = true;
             if (full.type === 'message.completed') {
               const message = liveModelMessages.findLast(
                 (item) => item.role === 'assistant' && item.content === full.text
@@ -590,7 +591,33 @@ export function createSessionOpener(services: SessionServices) {
           }
           queue.push(full);
           compactRequests.publish(full);
-          if (internal.publishHostEvents !== false) await host.emit(full);
+          if (internal.publishHostEvents !== false) {
+            try {
+              await host.emit(full);
+            } catch (error) {
+              if (!committedTerminal) throw error;
+              // Host observation cannot rewrite a terminal already committed to the Store.
+              try {
+                // Host errors may contain private data; publish only SDK-owned facts.
+                process.emitWarning(
+                  new MarAgentError(
+                    'MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED',
+                    `Host publication of ${full.type} failed for Execution ${executionId}.`,
+                    {
+                      details: {
+                        sessionId,
+                        executionId,
+                        eventId: full.eventId,
+                        eventType: full.type
+                      }
+                    }
+                  )
+                );
+              } catch {
+                // A diagnostic sink must not change the committed outcome either.
+              }
+            }
+          }
         });
         emitTail = operation.catch(() => undefined);
         return operation;

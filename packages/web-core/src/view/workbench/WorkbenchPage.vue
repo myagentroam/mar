@@ -184,20 +184,15 @@ function closeStandaloneFileWindow(): void {
         @cancel-upload="page.cancelWorkspaceUpload"
         @remove-upload="page.deleteWorkspaceUpload"
       />
-      <button
-        v-if="page.mobileViewport && page.mobileSidebarOpen"
-        class="sidebar-scrim"
-        :aria-label="t('workbench.closeSidebar')"
-        type="button"
-        @click="page.closeMobileSidebar"
-      ></button>
-      <button
-        v-if="page.mobileViewport && page.mobileWorkspaceSurface !== 'conversation'"
-        class="workspace-surface-scrim"
-        :aria-label="t('workbench.closeWorkspaceTools')"
-        type="button"
-        @click="page.closeMobileWorkspaceSurface"
-      ></button>
+      <Transition name="workspace-scrim">
+        <button
+          v-if="page.mobileViewport && page.mobileWorkspaceSurface !== 'conversation'"
+          class="workspace-surface-scrim"
+          :aria-label="t('workbench.closeWorkspaceTools')"
+          type="button"
+          @click="page.closeMobileWorkspaceSurface"
+        ></button>
+      </Transition>
       <slot name="surface">
         <WorkbenchSurface
           :page="page"
@@ -349,6 +344,21 @@ function closeStandaloneFileWindow(): void {
     border: 0;
     background: var(--mar-overlay-scrim);
     cursor: pointer;
+  }
+}
+</style>
+
+<style scoped>
+.workspace-surface-scrim {
+  transition: opacity var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+}
+.workspace-scrim-enter-from,
+.workspace-scrim-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-surface-scrim {
+    transition: none;
   }
 }
 </style>

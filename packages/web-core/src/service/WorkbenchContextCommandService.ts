@@ -1,7 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from './MessageBoxService.js';
 import type { ComputedRef, Ref } from 'vue';
 import type { RunnerCommand, Session } from '../model/workbench.js';
 import { translate } from './LocalePreferenceService.js';

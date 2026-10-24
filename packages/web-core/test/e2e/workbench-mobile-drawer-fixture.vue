@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue';
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../src/service/MobileDialogReturnService.js';
+import { ElMessageBox } from '../../src/service/MessageBoxService.js';
+import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import { createWorkbenchNavigationService } from '../../src/service/WorkbenchNavigationService.js';
+import { captureMobileLayerRoute } from '../../src/service/MobileLayerHistoryService.js';
 import { createMobileMenuHistoryService } from '../../src/service/MobileMenuHistoryService.js';
 import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
@@ -20,6 +27,7 @@ function syncRoute(): void {
   const url = new URL(location.href);
   url.searchParams.set('view', navigation.view.value);
   history.replaceState(history.state, '', url);
+  captureMobileLayerRoute();
 }
 const menuHistory = createMobileMenuHistoryService({
   isOpen: () => navigation.mobileViewport.value && navigation.mobileSidebarOpen.value,
@@ -78,6 +86,29 @@ void service.load();
 const diagnostics = createWebPerformanceDiagnostics();
 const opened = ref('');
 const quickOpen = ref(false);
+const detailsOpen = ref(false);
+const imageOpen = ref(false);
+const draft = ref('Keep this draft');
+const image = {
+  name: 'Sample image',
+  url: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect width="40" height="40" fill="blue"/%3E%3C/svg%3E'
+};
+async function closeDetails(done: () => void): Promise<void> {
+  try {
+    await ElMessageBox.confirm('Discard draft?', 'Confirm discard');
+    done();
+  } catch {
+    /* Cancellation retains the draft. */
+  }
+}
+async function messageBox(variant: 'alert' | 'prompt'): Promise<void> {
+  try {
+    await ElMessageBox[variant]('Message', 'Notice');
+    opened.value = 'confirmed';
+  } catch {
+    opened.value = 'cancelled';
+  }
+}
 function selectView(view: WorkbenchView): void {
   const collapse =
     navigation.view.value === view &&
@@ -143,19 +174,34 @@ onBeforeUnmount(() => {
       @open-recent-run="opened = $event.sessionId"
       @open-notification="opened = $event.id"
     />
-    <button
-      v-if="navigation.mobileViewport.value && navigation.mobileSidebarOpen.value"
-      class="sidebar-scrim"
-      aria-label="Close menu"
-      @click="navigation.closeMobileSidebar"
-    />
     <section class="fixture-workspace">
       <input aria-label="Background input" />
       <button type="button" @click="preview">Preview notification</button>
       <button type="button" @click="quickOpen = true">Open quick open</button>
+      <button type="button" @click="detailsOpen = true">Open guarded details</button>
+      <button type="button" @click="imageOpen = true">Open image preview</button>
+      <button type="button" @click="messageBox('alert')">Open alert</button>
+      <button type="button" @click="messageBox('prompt')">Open prompt</button>
       <output aria-label="Opened target">{{ opened }}</output>
     </section>
+    <el-dialog
+      v-if="detailsOpen"
+      v-model="detailsOpen"
+      title="Guarded details"
+      :before-close="closeDetails"
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
+    >
+      <input v-model="draft" aria-label="Draft" />
+    </el-dialog>
+    <ImagePreviewDialogs
+      :attachment-open="false"
+      :attachment="undefined"
+      :conversation="image"
+      v-model:conversation-open="imageOpen"
+    />
     <QuickOpenDialog
+      v-if="quickOpen"
       :open="quickOpen"
       :node-id="undefined"
       :workspace-id="undefined"

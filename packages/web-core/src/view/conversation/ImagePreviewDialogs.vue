@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, watch } from 'vue';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -42,6 +46,8 @@ watch(
 
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="attachmentOpen"
     :model-value="attachmentOpen"
     :title="attachmentTitle"
@@ -66,6 +72,8 @@ watch(
     />
   </el-dialog>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="conversationOpen"
     :model-value="conversationOpen"
     :title="conversationTitle"

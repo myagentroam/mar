@@ -3,7 +3,7 @@ import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,

@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { FormInstance, FormRules } from 'element-plus';
 import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
@@ -257,6 +261,8 @@ onMounted(() => {
       </el-table-column>
     </el-table>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationOpen"
       v-model="organizationOpen"
       :title="
@@ -300,6 +306,8 @@ onMounted(() => {
       ></el-dialog
     >
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationDetail !== undefined"
       :model-value="true"
       :title="translate('generated.organizationUserManagementPage.organizationDetails')"

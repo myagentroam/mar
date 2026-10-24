@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { computed, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import { iconThemes } from '../../icon-themes/index.js';
@@ -252,6 +256,8 @@ async function confirmLogout(): Promise<void> {
         >
       </div>
       <el-dialog
+        @vue:mounted="mountMobileDialogReturn"
+        @vue:before-unmount="unmountMobileDialogReturn"
         v-if="passwordDialogOpen"
         v-model="passwordDialogOpen"
         :title="translate('generated.settingsContent.changePassword2')"

@@ -9,6 +9,58 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const scenario of [
+  { width: 1280, height: 900, locale: 'en-US', theme: 'daylight' },
+  { width: 1440, height: 900, locale: 'zh-CN', theme: 'midnight' },
+  { width: 1280, height: 320, locale: 'en-US', theme: 'daylight' },
+  { width: 1280, height: 160, locale: 'en-US', theme: 'midnight' }
+] as const) {
+  test(`Desktop notifications show more entries without clipping at ${scenario.width}x${scenario.height} (${scenario.locale})`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize(scenario);
+    await page.goto(
+      `${fixture.url}workbench-mobile-drawer.html?locale=${scenario.locale}&theme=${scenario.theme}`
+    );
+    await page
+      .getByRole('button', {
+        name: scenario.locale === 'zh-CN' ? '打开通知中心' : 'Open notification center',
+        exact: true
+      })
+      .click();
+    const panel = page.locator('.workbench-notification-panel');
+    const section = panel.locator('.workbench-notification-section');
+    const entries = panel.locator('.workbench-notification-list > li');
+    await expect(entries).toHaveCount(30);
+    await panel.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const bounds = (await panel.boundingBox())!;
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(scenario.height - 4);
+    await expect(section).toHaveCSS('overflow-y', 'auto');
+    if (scenario.height === 900) {
+      const visibleEntries = await section.evaluate((element) => {
+        const viewport = element.getBoundingClientRect();
+        return [...element.querySelectorAll('.workbench-notification-list > li')].filter(
+          (entry) => {
+            const bounds = entry.getBoundingClientRect();
+            return bounds.top >= viewport.top - 1 && bounds.bottom <= viewport.bottom + 1;
+          }
+        ).length;
+      });
+      expect(visibleEntries).toBeGreaterThanOrEqual(5);
+      await panel.screenshot({ path: testInfo.outputPath('notification-height.png') });
+    }
+    await section.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const last = (await entries.last().boundingBox())!;
+    const viewport = (await section.boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1);
+  });
+}
+
 for (const theme of ['daylight', 'midnight']) {
   test(`Notification delete controls share themed hover and keyboard feedback in ${theme}`, async ({
     page
@@ -22,13 +74,21 @@ for (const theme of ['daylight', 'midnight']) {
         .first();
       await expect(remove).toBeVisible();
       await remove.evaluate(async (element) => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
         const panel = element.closest('.workbench-notification-panel')!;
-        await Promise.all(panel.getAnimations().map((animation) => animation.finished));
+        await Promise.all(
+          [
+            ...(panel.closest('.workspace-tree')?.getAnimations() ?? []),
+            ...panel.getAnimations()
+          ].map((animation) => animation.finished)
+        );
       });
       const tokens = await remove.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.cssText =
-          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-hover);border-color:var(--mar-color-brand)';
+          'position:absolute;color:var(--mar-text-primary);background:transparent;border-color:var(--mar-color-brand)';
         element.append(probe);
         const style = getComputedStyle(probe);
         const colors = {
@@ -63,6 +123,9 @@ for (const theme of ['daylight', 'midnight']) {
       await expect(remove).toHaveCSS('outline-style', 'solid');
       await expect(remove).toHaveCSS('outline-width', '2px');
       await expect(remove).toHaveCSS('outline-color', tokens.focus);
+      await expect(remove).toHaveCSS('outline-offset', '2px');
+      await expect(remove).toHaveCSS('color', tokens.foreground);
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
       await remove.evaluate((element: HTMLButtonElement) => {
         element.disabled = true;
@@ -108,18 +171,20 @@ for (const scenario of [
       .poll(() => panel.evaluate((element) => element.getBoundingClientRect().x))
       .toBeCloseTo(0, 0);
     const bounds = (await panel.boundingBox())!;
-    expect(bounds.width).toBe(Math.min(300, scenario.width - 48));
+    expect(bounds.width).toBeCloseTo(Math.min(300, scenario.width - 48), 3);
     expect(bounds.y).toBeGreaterThanOrEqual(44);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(scenario.height + 1);
     await page.screenshot({ path: testInfo.outputPath('recent-menu.png') });
     await recent.click();
     await expect(panel).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => history.state?.__marMobileMenu)).toBeUndefined();
+    await expect
+      .poll(() => page.evaluate(() => history.state?.__marTemporaryLayer))
+      .toBeUndefined();
 
     await recent.click();
     await expect(panel).toBeVisible();
     await expect
-      .poll(() => page.evaluate(() => Boolean(history.state?.__marMobileMenu)))
+      .poll(() => page.evaluate(() => Boolean(history.state?.__marTemporaryLayer)))
       .toBe(true);
     const length = await page.evaluate(() => history.length);
     await notification.click();
@@ -158,9 +223,7 @@ for (const scenario of [
     }
     await notification.click();
     await expect(panel).toBeVisible();
-    await page
-      .getByRole('button', { name: 'Close menu', exact: true })
-      .click({ position: { x: scenario.width - 10, y: 10 } });
+    await page.locator('.sidebar-scrim').click({ position: { x: scenario.width - 10, y: 10 } });
     await expect(panel).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
@@ -194,7 +257,7 @@ test('Mobile menus preserve shared tokens, reduced motion, focus and transient p
   await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(31);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(panel).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => history.state?.__marMobileMenu)).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => history.state?.__marTemporaryLayer)).toBeUndefined();
   await page.getByRole('button', { name: 'Recent Sessions', exact: true }).click();
   await expect(page.locator('.recent-sessions-popover:visible')).toBeVisible();
   await expect(page.locator('.recent-sessions-popover .recent-sessions-list > li')).toHaveCount(30);
@@ -210,7 +273,9 @@ test('Mobile menu history coalesces rapid reopening and preserves the selected r
   const panel = page.locator('.workspace-tree.mobile-open');
   await recent.click();
   await expect(panel).toBeVisible();
-  await expect.poll(() => page.evaluate(() => Boolean(history.state?.__marMobileMenu))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(history.state?.__marTemporaryLayer)))
+    .toBe(true);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
@@ -221,7 +286,9 @@ test('Mobile menu history coalesces rapid reopening and preserves the selected r
       })
   );
   await expect(panel).toBeVisible();
-  await expect.poll(() => page.evaluate(() => Boolean(history.state?.__marMobileMenu))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(history.state?.__marTemporaryLayer)))
+    .toBe(true);
   expect(await page.evaluate(() => history.state.foreign)).toBe('keep');
   const length = await page.evaluate(() => history.length);
   const settings = page.locator('.nav-menu-button:has([data-mar-icon="settings"])');
@@ -238,10 +305,10 @@ test('Mobile menu history coalesces rapid reopening and preserves the selected r
   await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
   await settings.click();
   await expect(panel).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => history.state?.__marMobileMenu)).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => history.state?.__marTemporaryLayer)).toBeUndefined();
 });
 
-test('Reopening a menu after browser Forward reuses its inactive history entry', async ({
+test('Forward does not revive a menu and reopening owns a new temporary entry', async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 700 });
@@ -251,7 +318,9 @@ test('Reopening a menu after browser Forward reuses its inactive history entry',
   const route = page.url();
   await recent.click();
   await expect(panel).toBeVisible();
-  await expect.poll(() => page.evaluate(() => Boolean(history.state?.__marMobileMenu))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(history.state?.__marTemporaryLayer)))
+    .toBe(true);
   const length = await page.evaluate(() => history.length);
   await page.goBack();
   await expect(panel).toHaveCount(0);
@@ -259,7 +328,7 @@ test('Reopening a menu after browser Forward reuses its inactive history entry',
   await expect(panel).toHaveCount(0);
   await recent.click();
   await expect(panel).toBeVisible();
-  expect(await page.evaluate(() => history.length)).toBe(length);
+  expect(await page.evaluate(() => history.length)).toBe(length + 1);
   await page.goBack();
   await expect(panel).toHaveCount(0);
   await expect(page).toHaveURL(route);
@@ -273,7 +342,7 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.el-overlay-dialog')).toHaveCount(1);
+  await expect(page.locator('.el-overlay-dialog')).toHaveCount(0);
   await expect(page.locator('.el-overlay-dialog')).not.toBeVisible();
   const notification = page.getByRole('button', { name: 'Open notification center', exact: true });
   const menu = page.locator('.workspace-tree.mobile-open');
@@ -294,4 +363,146 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
+});
+
+test('Mobile menus animate in Chat, preserve their leaving content and isolate scroll and focus', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+  await page.locator('.nav-menu-button:has([data-mar-icon="conversation"])').click();
+  const notifications = page.getByRole('button', { name: 'Open notification center', exact: true });
+  await page.evaluate(() => {
+    (window as Window & { menuTransitions?: string[] }).menuTransitions = [];
+    document.addEventListener('transitionrun', (event) => {
+      if ((event.target as Element).matches('.workspace-tree'))
+        (window as Window & { menuTransitions: string[] }).menuTransitions.push(event.propertyName);
+    });
+  });
+  await notifications.click();
+  const drawer = page.locator('.workspace-tree');
+  await expect(drawer).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as Window & { menuTransitions: string[] }).menuTransitions.includes('transform')
+      )
+    )
+    .toBe(true);
+  await drawer.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    element.scrollTop = element.scrollHeight;
+  });
+  await page.getByRole('button', { name: 'Recent Sessions', exact: true }).click();
+  await expect.poll(() => drawer.evaluate((element) => element.scrollTop)).toBe(0);
+  for (let index = 0; index < 45; index++) {
+    await page.keyboard.press('Tab');
+    expect(
+      await page.evaluate(() =>
+        Boolean(document.activeElement?.closest('.workspace-tree, .activity-rail'))
+      )
+    ).toBe(true);
+  }
+  // Closing and observing in one browser task proves the content is retained
+  // before the leave transition ends, rather than testing only the final state.
+  const leaving = await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('.recent-sessions-trigger')!.click();
+    return new Promise<{ title: string | null; entries: number; scrim: boolean }>((resolve) => {
+      requestAnimationFrame(() =>
+        resolve({
+          title: document.querySelector('.mobile-menu-header')?.textContent ?? null,
+          entries: document.querySelectorAll('.recent-sessions-list > li').length,
+          scrim: document.querySelector('.sidebar-scrim') !== null
+        })
+      );
+    });
+  });
+  expect(leaving.title).toContain('Recent Sessions');
+  expect(leaving.entries).toBe(30);
+  expect(leaving.scrim).toBe(true);
+  await expect(drawer).not.toBeVisible();
+
+  for (const [label, entry] of [
+    ['Settings', 'Account'],
+    ['Admin', 'System']
+  ] as const) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await expect(drawer.getByRole('button', { name: entry, exact: true })).toBeVisible();
+    const leavingNavigation = await page.evaluate((name) => {
+      const trigger = [...document.querySelectorAll<HTMLButtonElement>('.nav-menu-button')].find(
+        (button) => button.getAttribute('aria-label') === name
+      );
+      trigger!.click();
+      return new Promise<{ active: boolean; entries: string[] }>((resolve) => {
+        requestAnimationFrame(() =>
+          resolve({
+            active: document
+              .querySelector('.workspace-tree')!
+              .classList.contains('mobile-menu-leave-active'),
+            entries: [...document.querySelectorAll('.settings-nav button')].map(
+              (button) => button.textContent?.trim() ?? ''
+            )
+          })
+        );
+      });
+    }, label);
+    expect(leavingNavigation.active).toBe(true);
+    expect(leavingNavigation.entries).toContain(entry);
+    await expect(drawer).not.toBeVisible();
+  }
+});
+
+test('Closing a mobile menu does not refocus a background editor', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+  const input = page.getByRole('textbox', { name: 'Background input', exact: true });
+  await input.focus();
+  await page.getByRole('button', { name: 'Recent Sessions', exact: true }).evaluate((element) => {
+    // A touch activation or shortcut need not focus the menu trigger first.
+    element.click();
+  });
+  const drawer = page.locator('.workspace-tree.mobile-open');
+  await expect(drawer).toBeFocused();
+  await page.goBack();
+  await expect(drawer).toHaveCount(0);
+  await expect(input).not.toBeFocused();
+  await expect(page.locator('.activity-rail button').first()).toBeFocused();
+});
+
+test('Mobile image, guarded details, prompt and alert return through only the top layer', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+  const initialState = await page.evaluate(() => history.state);
+  await page.getByRole('button', { name: 'Open image preview', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
+
+  await page.getByRole('button', { name: 'Open guarded details', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Draft', exact: true }).fill('Keep edited draft');
+  await page.goBack();
+  const confirmation = page.getByRole('dialog', { name: 'Confirm discard', exact: true });
+  await expect(confirmation).toBeVisible();
+  await page.goBack();
+  await expect(confirmation).not.toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Draft', exact: true })).toHaveValue(
+    'Keep edited draft'
+  );
+  await page.goBack();
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Draft', exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
+
+  for (const type of ['prompt', 'alert']) {
+    await page.getByRole('button', { name: `Open ${type}`, exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Notice', exact: true })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole('dialog', { name: 'Notice', exact: true })).not.toBeVisible();
+    await expect(page.getByLabel('Opened target')).toHaveText('cancelled');
+    await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
+  }
 });

@@ -137,6 +137,30 @@ for (const theme of ['dark', 'light']) {
         expect((await graphic.boundingBox())!.width).toBeCloseTo(expectedPrimary, 1);
         expect((await action.boundingBox())!.width).toBe(mobile ? 36 : 26);
       }
+      const plane = await send.locator('[data-mar-icon="send"]').evaluate((element) => {
+        const svg = element as SVGSVGElement;
+        const paths = svg.querySelectorAll('path');
+        const outline = paths[0];
+        const crease = paths[paths.length - 1];
+        const start = crease.getPointAtLength(0);
+        const end = crease.getPointAtLength(crease.getTotalLength());
+        const nose = outline.getPointAtLength(0);
+        const bounds = svg.getBBox();
+        const stroke = parseFloat(getComputedStyle(svg).strokeWidth);
+        return {
+          dx: end.x - start.x,
+          dy: end.y - start.y,
+          join: Math.hypot(end.x - nose.x, end.y - nose.y),
+          min: Math.min(bounds.x, bounds.y) - stroke / 2,
+          max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2
+        };
+      });
+      // The crease reaches the upper-right nose; it is not a floating bar in a play triangle.
+      expect(plane.dx).toBeGreaterThan(5);
+      expect(plane.dy).toBeLessThan(-5);
+      expect(plane.join).toBeLessThan(0.01);
+      expect(plane.min).toBeGreaterThan(0);
+      expect(plane.max).toBeLessThan(24);
       if (mobile) {
         for (const graphic of [attachment, copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
@@ -158,6 +182,11 @@ for (const theme of ['dark', 'light']) {
       ).toHaveCSS('width', '24px');
       if (width === 390) {
         await page.screenshot({ path: testInfo.outputPath(`mobile-icons-${theme}.png`) });
+      }
+      if (width === 1280) {
+        await page.screenshot({
+          path: testInfo.outputPath(`send-ready-${theme}-desktop.png`)
+        });
       }
       await stop.click();
       await expect(page.getByTestId('stops')).toHaveText('1');
@@ -444,15 +473,18 @@ test('Terminal headers keep multiple shell profiles reachable on narrow screens'
       const bounds = await page.locator('.admin-terminal-header').evaluate((header) => {
         const headerBox = header.getBoundingClientRect();
         const selectBox = header.querySelector('.el-select')!.getBoundingClientRect();
+        const tabsBox = header.querySelector('.terminal-tabs')!.getBoundingClientRect();
         return {
-          height: headerBox.height,
+          height: tabsBox.top - headerBox.top,
           left: selectBox.left - headerBox.left,
-          right: headerBox.right - selectBox.right
+          right: headerBox.right - selectBox.right,
+          tabsGap: tabsBox.top - selectBox.bottom
         };
       });
       expect(bounds.height).toBeLessThanOrEqual(72);
       expect(bounds.left).toBeGreaterThanOrEqual(0);
       expect(bounds.right).toBeGreaterThanOrEqual(0);
+      expect(bounds.tabsGap).toBeGreaterThanOrEqual(0);
       await page.locator('.terminal-profile .el-select').click();
       await page.getByRole('option', { name: 'Other shell', exact: true }).click();
       await page.getByRole('button', { name: 'New terminal', exact: true }).click();

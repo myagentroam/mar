@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
@@ -466,6 +470,8 @@ onUnmounted(() => pagination.dispose());
       @load-more="loadMore"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="selected !== undefined"
       :model-value="selected !== undefined"
       :title="translate('generated.auditManagementPage.auditDetails')"

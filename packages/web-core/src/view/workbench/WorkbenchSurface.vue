@@ -3,6 +3,11 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
+import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
@@ -139,6 +144,22 @@ const workspaceImageResourceUrl = computed(() => {
 
 props.page.setComposerInputFocus((cursor) => composer.value?.focusAt(cursor));
 onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
+const mobileToolsFocus = createMobileSurfaceFocusService({
+  isOpen: () => props.page.mobileViewport && props.page.mobileWorkspaceSurface !== 'conversation',
+  regions: () => [
+    document.querySelector<HTMLElement>(
+      props.page.mobileWorkspaceSurface === 'sessions'
+        ? '.workspace-grid.mobile-surface-sessions .conversation-sidebar'
+        : props.page.mobileWorkspaceSurface === 'terminal'
+          ? '.terminal-dock.mobile-active'
+          : '.workspace-grid.mobile-surface-inspector .inspector-column'
+    ),
+    document.querySelector<HTMLElement>('.activity-rail')
+  ],
+  close: () => props.page.closeMobileWorkspaceSurface(),
+  terminal: () => props.page.mobileWorkspaceSurface === 'terminal'
+});
+onBeforeUnmount(mobileToolsFocus.dispose);
 </script>
 
 <template>
@@ -153,6 +174,8 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
     ]"
   >
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="page.workspaceRegistrationNodeId !== undefined"
       :model-value="true"
       :title="translate('generated.workbenchSurface.registerWorkspace')"
@@ -626,6 +649,8 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
           <aside
             ref="inspectorElement"
             class="inspector-column"
+            tabindex="-1"
+            :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'inspector'"
             :aria-label="translate('generated.workbenchSurface.readOnlyInspector')"
           >
             <PanelResizeHandle
@@ -693,6 +718,8 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
           v-for="tab in page.workspaceTabs"
           :key="tab.id"
           v-show="tab.id === page.activeWorkspaceTabId && page.terminalReady"
+          tabindex="-1"
+          :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'terminal'"
           :class="[
             'terminal-dock',
             { 'mobile-active': page.mobileWorkspaceSurface === 'terminal' }
@@ -743,6 +770,7 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
       :request="page.request"
       :mobile-viewport="page.mobileViewport"
       :mobile-history-open="page.hostedConversationMobileHistoryOpen"
+      v-model:mobile-files-open="page.hostedConversationMobileFilesOpen"
       :sidebar-collapsed="page.sidebarCollapsed"
       :select-conversation="page.selectHostedConversation"
       :route-target="page.hostedConversationRoute"
@@ -1219,5 +1247,18 @@ onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
 <style scoped>
 :global(.workspace-selection-hint .el-button) {
   vertical-align: baseline;
+}
+</style>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .workspace-grid .conversation-sidebar,
+  .workspace-grid.mobile-surface-sessions .conversation-sidebar,
+  .workspace-grid .inspector-column,
+  .workspace-grid.mobile-surface-inspector .inspector-column,
+  .terminal-dock,
+  .terminal-dock.mobile-active {
+    transition: none;
+  }
 }
 </style>

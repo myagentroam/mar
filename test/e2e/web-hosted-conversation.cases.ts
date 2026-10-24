@@ -1706,6 +1706,8 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     0
   );
   await page.getByRole('button', { name: '对话', exact: true }).click();
+  await expect(history).toBeHidden();
+  await page.getByRole('button', { name: '对话', exact: true }).click();
   await expect(history).toBeVisible();
   await expect(page.locator('.history-refresh-button')).toBeEnabled();
   await expect(history).toBeVisible();
@@ -1714,7 +1716,13 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await workNavigation.click();
   const standardDrawer = page.locator('.workspace-tree');
   const standardScrim = page.locator('.sidebar-scrim');
+  await expect(standardDrawer).toBeHidden();
+  await workNavigation.click();
   await expect(standardDrawer).toBeVisible();
+  await standardDrawer.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
+  await expect(standardDrawer).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   await expect(standardScrim).toBeVisible();
   const standardDrawerStyle = await standardDrawer.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -1741,7 +1749,13 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     };
   });
   await conversationNavigation.click();
+  await expect(history).toBeHidden();
+  await conversationNavigation.click();
   await expect(history).toBeVisible();
+  await history.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
+  await expect(history).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   const hostedScrim = page.locator('.hosted-conversation-scrim');
   await expect(hostedScrim).toBeVisible();
   const hostedDrawerStyle = await history.evaluate((element) => {
@@ -1976,7 +1990,13 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(page.getByRole('alert')).toHaveCount(0);
   for (const menu of ['工作', '管理', '设置']) {
     await page.getByRole('button', { name: menu, exact: true }).click();
+    if (menu === '工作') {
+      await expect(page.locator('.workspace-tree')).toBeHidden();
+      await page.getByRole('button', { name: menu, exact: true }).click();
+    }
     await expect(page.locator('.workspace-tree')).toBeVisible();
+    await page.getByRole('button', { name: '对话', exact: true }).click();
+    await expect(history).toBeHidden();
     await page.getByRole('button', { name: '对话', exact: true }).click();
     await expect(history.locator('.history-empty-text')).toBeVisible();
     await expect(history).toBeVisible();

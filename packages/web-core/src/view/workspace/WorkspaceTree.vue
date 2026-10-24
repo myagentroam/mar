@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, ref } from 'vue';
@@ -802,6 +806,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   </template>
   <p v-else class="tree-empty">{{ translate('generated.workspaceTree.noNodes') }}</p>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="workspaceGroupMoveDialogVisible"
     v-model="workspaceGroupMoveDialogVisible"
     :title="translate('generated.workspaceTree.moveWorkspaceToGroup')"

@@ -1,11 +1,15 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   managementUrlValues,
@@ -846,6 +850,8 @@ onUnmounted(() => pagination.dispose());
       @load-more="pagination.loadMore"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editing !== undefined"
       :model-value="editing !== undefined"
       :title="
@@ -922,6 +928,8 @@ onUnmounted(() => pagination.dispose());
       @upgrade="details && pushUpgrade(details)"
       @cancel-upgrade="details && cancelUpgrade(details)"
     /><el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="registrationOpen"
       v-model="registrationOpen"
       :title="translate('generated.resourceSharingPage.registerNode2')"
@@ -967,6 +975,8 @@ onUnmounted(() => pagination.dispose());
       </template>
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="registrationToken"
       :model-value="true"
       :title="translate('generated.resourceSharingPage.registrationTokenCreated')"

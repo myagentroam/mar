@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -319,6 +323,8 @@ function submitSessionSearch(): void {
 
 <template>
   <aside
+    tabindex="-1"
+    :inert="mobileViewport && !active"
     class="conversation-sidebar"
     :aria-label="translate('generated.workspaceSessionList.workspaceSessions')"
   >
@@ -659,6 +665,8 @@ function submitSessionSearch(): void {
       {{ translate('generated.workspaceSessionList.syncingOpenCodeCodexAndClaudeCodeSessions') }}
     </p>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="skillDialogOpen"
       v-model="skillDialogOpen"
       :title="translate('generated.workspaceSessionList.currentSkills')"
@@ -697,6 +705,8 @@ function submitSessionSearch(): void {
       </div>
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="mcpDialogOpen"
       v-model="mcpDialogOpen"
       :title="translate('generated.workspaceSessionList.loadedMCP2')"
@@ -904,8 +914,6 @@ function submitSessionSearch(): void {
   place-items: center;
   border: 0;
   border-radius: 6px;
-  background: transparent;
-  color: var(--mar-text-secondary);
   font: inherit;
   padding: 0;
   cursor: pointer;
@@ -915,14 +923,6 @@ function submitSessionSearch(): void {
 .new-session-form .workspace-more-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.session-search .session-search-button:hover:not(:disabled),
-.session-search .session-search-button:focus-visible,
-.new-session-form .workspace-more-button:hover:not(:disabled),
-.new-session-form .workspace-more-button:focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand-text);
 }
 
 .new-session-form .new-session-button {

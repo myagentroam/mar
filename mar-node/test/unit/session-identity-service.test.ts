@@ -8,6 +8,8 @@ import type { CodexAppServerClient } from '../../src/codex-app-server.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CommandStateStore } from '../../src/runner-command-engine.js';
+import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
+import { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { SessionIdentityService } from '../../src/service/session-identity-service.js';
 import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
 import { capabilities, codexProfileClientFactory } from './support/codex-connector.js';
@@ -344,6 +346,7 @@ describe('Bootstrap Session identity retirement', () => {
     const lifecycle = new SessionLifecycleService({
       runtime,
       identity,
+      runners: new RunnerRegistry([new ClaudeCodeRunner()]),
       execute,
       interceptedSessionId: () => undefined,
       present: (session: unknown) => session

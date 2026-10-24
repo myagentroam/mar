@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
@@ -422,6 +426,9 @@ function occurrenceStatus(status: string): string {
 
 <template>
   <el-dialog
+    v-if="open"
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-model="open"
     :title="translate('generated.scheduledSession.title')"
     width="min(560px, calc(100vw - 32px))"

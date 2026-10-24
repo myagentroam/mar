@@ -3,9 +3,13 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
@@ -437,6 +441,8 @@ function message(error: unknown): string {
       @load-more="pagination.loadMore"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="secretDetailsOpen && secretDetails"
       v-model="secretDetailsOpen"
       :title="secretDetails.name"
@@ -464,6 +470,8 @@ function message(error: unknown): string {
       </template>
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
       v-model="dialogOpen"
       :title="

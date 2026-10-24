@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import {
   type BuiltinTheme,
   type CustomTheme,
@@ -406,6 +411,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       </aside>
     </div>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="expandedPreview"
       v-model="expandedPreview"
       :title="t('customThemes.preview')"

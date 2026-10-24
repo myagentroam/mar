@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -109,6 +113,8 @@ async function sendTest(): Promise<void> {
     {{ translate('generated.systemConfigurationPage.mailTemplateView') }}
   </el-button>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="viewerOpen"
     v-model="viewerOpen"
     append-to-body
@@ -192,6 +198,8 @@ async function sendTest(): Promise<void> {
     </template>
   </el-dialog>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="testOpen"
     v-model="testOpen"
     append-to-body

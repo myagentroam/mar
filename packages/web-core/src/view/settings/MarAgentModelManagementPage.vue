@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
@@ -1789,6 +1793,8 @@ onBeforeUnmount(() => {
     </el-tabs>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialog"
       v-model="dialog"
       :title="
@@ -2005,6 +2011,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="modelTestDialog && modelTestModel"
       v-model="modelTestDialog"
       :title="translate('marAgentModels.modelTestTitle')"
@@ -2105,6 +2113,8 @@ onBeforeUnmount(() => {
 
     <slot name="model-extensions" :refresh="refreshModels" />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentialDialog"
       v-model="credentialDialog"
       :title="
@@ -2224,6 +2234,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="loginAttemptDialog && loginAttempt"
       v-model="loginAttemptDialog"
       :title="
@@ -2315,6 +2327,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="modelDetailOpen && selectedModelDetail"
       v-model="modelDetailOpen"
       :title="translate('marAgentModels.details')"
@@ -2389,6 +2403,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentialDetailOpen"
       v-model="credentialDetailOpen"
       :title="translate('marAgentModels.codexCredentialDetails')"
@@ -2582,6 +2598,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="catalogDialog"
       v-model="catalogDialog"
       :title="translate('marAgentModels.codexCatalogTitle')"
@@ -2673,6 +2691,8 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="importResultDialog"
       v-model="importResultDialog"
       :title="translate('marAgentModels.codexImportResultTitle')"

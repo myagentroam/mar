@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type {
   FileNavigationRequest,
@@ -2212,6 +2216,8 @@ onBeforeUnmount(() => filePreviews.reset());
     </WorkspaceFileTabs>
   </Teleport>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="uploadDialogOpen"
     v-model="uploadDialogOpen"
     class="upload-confirm-dialog"

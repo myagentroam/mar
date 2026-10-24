@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import {
   computed,
   defineAsyncComponent,
@@ -1061,6 +1065,8 @@ defineExpose({
       @reload="reloadContent"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="settingsOpen"
       v-model="settingsOpen"
       :title="translate('markdownPreview.settings')"

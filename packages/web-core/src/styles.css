@@ -860,10 +860,10 @@ pre {
   --el-button-disabled-bg-color: transparent;
   --el-button-disabled-border-color: transparent;
   --el-button-text-color: var(--mar-text-secondary);
-  --el-button-hover-text-color: var(--mar-color-brand-text);
-  --el-button-hover-link-text-color: var(--mar-color-brand-text);
-  --el-button-active-text-color: var(--mar-color-brand-text);
-  --el-button-active-color: var(--mar-color-brand-text);
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-hover-link-text-color: var(--mar-text-primary);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-active-color: var(--mar-text-primary);
   --el-button-outline-color: var(--mar-color-brand);
   --el-fill-color-light: transparent;
   --el-fill-color: transparent;
@@ -881,11 +881,12 @@ pre {
 }
 
 .utility-control:hover:not(:disabled),
+.utility-control:active:not(:disabled),
 .utility-control:focus-visible:not(:disabled),
 .utility-control.is-active:not(:disabled),
 .utility-control[aria-expanded='true']:not(:disabled) {
   background: transparent;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .utility-control:focus-visible {

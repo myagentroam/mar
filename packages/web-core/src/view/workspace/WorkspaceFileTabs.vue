@@ -3,6 +3,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 
@@ -205,7 +206,15 @@ onMounted(() => {
     handle: handleShortcut
   });
 });
+const fileFocus = createMobileSurfaceFocusService({
+  isOpen: () => props.tabs.length > 0,
+  regions: () => [root.value],
+  close: () => {
+    void requestCloseAll();
+  }
+});
 onBeforeUnmount(() => {
+  fileFocus.dispose();
   unregisterShortcut?.();
   windowInteraction.dispose();
   document.documentElement.classList.remove('file-preview-open');
@@ -222,7 +231,15 @@ defineExpose({
 </script>
 
 <template>
-  <section v-if="props.tabs.length > 0" ref="root" class="workspace-file-tabs">
+  <section
+    v-if="props.tabs.length > 0"
+    ref="root"
+    class="workspace-file-tabs"
+    tabindex="-1"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
+  >
     <header class="workspace-file-tab-header">
       <nav
         class="workspace-file-tab-list"
@@ -250,7 +267,7 @@ defineExpose({
           </button>
           <button
             v-tooltip="translate('generated.filePreviewDialog.closePreview')"
-            class="workspace-file-tab-close"
+            class="icon-button utility-control workspace-file-tab-close"
             type="button"
             :disabled="closing"
             :aria-label="translate('generated.filePreviewDialog.closePreview')"
@@ -262,7 +279,7 @@ defineExpose({
       </nav>
       <button
         v-tooltip="translate('filePreviewDialog.closeFileWindow')"
-        class="workspace-file-window-close"
+        class="icon-button utility-control workspace-file-window-close"
         type="button"
         :disabled="closing"
         :aria-label="translate('filePreviewDialog.closeFileWindow')"
@@ -374,8 +391,6 @@ defineExpose({
   place-items: center;
   border: 0;
   border-radius: 3px;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
   font-size: 13px;
 }
@@ -385,17 +400,8 @@ defineExpose({
   margin-inline: 0.25rem;
 }
 
-.workspace-file-tab-close:hover,
-.workspace-file-tab-close:focus-visible,
-.workspace-file-window-close:hover,
-.workspace-file-window-close:focus-visible {
-  background: transparent;
-  color: var(--mar-color-brand-text);
-}
-
 .workspace-file-tab-close:focus-visible,
 .workspace-file-window-close:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 

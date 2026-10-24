@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import {
   formatGitRemoteUrl,
   gitCredentialInputSchema,
@@ -300,6 +305,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       </template>
     </div>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && detail"
       v-model="detailOpen"
       :title="t('personalGit.detail')"
@@ -350,6 +357,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       </template>
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
       v-model="dialogOpen"
       :title="t(editing ? 'personalGit.editCredential' : 'personalGit.add')"

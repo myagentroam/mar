@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/LocalePreferenceService';
 import {
   createSystemConfigurationService,
@@ -358,6 +363,8 @@ onMounted(() => {
       </el-table-column>
     </el-table>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="smtpDialogOpen"
       v-model="smtpDialogOpen"
       :title="translate('generated.systemConfigurationPage.smtp')"

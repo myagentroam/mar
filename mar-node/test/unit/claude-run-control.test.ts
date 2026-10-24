@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
 import { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
+import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import { ClaudeChannelGate } from '../../src/claude-channel.js';
 import {
@@ -16,6 +20,19 @@ import {
   capabilities,
   eventually
 } from './support/claude-connector.js';
+
+const temporaryWorkspaces: string[] = [];
+
+function temporaryWorkspace(): string {
+  const directory = mkdtempSync(join(tmpdir(), 'mar-claude-run-control-'));
+  temporaryWorkspaces.push(directory);
+  return directory;
+}
+
+afterEach(() => {
+  for (const directory of temporaryWorkspaces.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
 
 describe('Claude Run queue, Channel, and lifecycle', () => {
   it('releases SDK requests, timers and active handles through an idempotent Runner stop', async () => {
@@ -71,7 +88,7 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
   it('routes external Channel input through the message coordinator and assigns it to the continuous Run of the requesting user', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-channel-continuous-run');
     const workspace = database.saveWorkspace({
-      path: '/workspace-channel-continuous-run',
+      path: temporaryWorkspace(),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -141,7 +158,7 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
     vi.useFakeTimers();
     const database = new NodeDatabase(':memory:', 'node-claude-concurrent-message-dispatch');
     const workspace = database.saveWorkspace({
-      path: '/workspace-concurrent-message-dispatch',
+      path: temporaryWorkspace(),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -199,7 +216,7 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
   it('assigns a QueueItem to a new Run when the previous Run ends during message preparation', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-queue-preparing-race');
     const workspace = database.saveWorkspace({
-      path: '/workspace-queue-preparing-race',
+      path: temporaryWorkspace(),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -255,7 +272,7 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
   it('shares Runner preparation failure across duplicate requests and settles the accepted Run', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-queue-preparation-failure');
     const workspace = database.saveWorkspace({
-      path: '/workspace-queue-preparation-failure',
+      path: temporaryWorkspace(),
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -347,24 +364,22 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
   it('interrupts the current Execution for immediate QueueItem execution while preserving the Run and Working start', async () => {
     const database = new NodeDatabase(':memory:', 'node-claude-queue-execute');
     const workspace = database.saveWorkspace({
-      path: '/workspace-queue-execute',
+      path: temporaryWorkspace(),
       kind: 'DIRECTORY',
       gitSummary: null
     });
     const connector = new NodeConnector({
       reconnect: false,
       database,
-      capabilities: capabilities()
+      capabilities: capabilities(),
+      claudeClient: new ClaudeAgentSdkAdapter(bindings(() => pendingStream()))
     });
     const interrupt = vi.fn(async () => undefined);
     const internals = connector as unknown as {
-      runtime: {
-        createAgentSession(input: Record<string, unknown>): { readonly id: string };
-        createMessageRun(input: Record<string, unknown>): { readonly run: { readonly id: string } };
-        createExecution(runId: string): { readonly id: string };
-        transitionRun(id: string, status: 'STARTING' | 'RUNNING'): unknown;
-        getRun(id: string): { readonly status: string } | undefined;
-        sessionQueue(sessionId: string): { readonly itemIds: readonly string[] };
+      runtime: NodeRuntimeState;
+      continuousRunCoordinator: {
+        dispatch(sessionId: string): Promise<void>;
+        schedule(sessionId: string): void;
       };
       claudeClient: {
         execution: {
@@ -393,6 +408,8 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
     const execution = internals.runtime.createExecution(active.id);
     internals.runtime.transitionRun(active.id, 'STARTING');
     internals.runtime.transitionRun(active.id, 'RUNNING');
+    const startedAt = internals.runtime.getRun(active.id)!.startedAt;
+    vi.spyOn(internals.continuousRunCoordinator, 'schedule').mockImplementation(() => undefined);
     internals.claudeClient.execution.runs.set(execution.id, {
       handle: { interrupt, cancel: () => undefined },
       marSessionId: session.id,
@@ -411,9 +428,22 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
         queueItemId: queued.queueItemId
       })
     ).resolves.toMatchObject({ delivery: 'ACCEPTED', run: { id: active.id } });
-    expect(internals.runtime.getRun(active.id)).toBeDefined();
-    expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([]);
+    expect(internals.runtime.getRun(active.id)).toMatchObject({ status: 'RUNNING', startedAt });
+    expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([queued.queueItemId]);
     expect(interrupt).toHaveBeenCalledOnce();
+    // Replacement is claimed only after the old Execution has actually settled.
+    internals.runtime.appendRunEvent({
+      runId: execution.id,
+      sequence: internals.runtime.lastRunSequence(active.id) + 1,
+      eventType: 'run.completed',
+      payload: {},
+      status: 'INTERRUPTED'
+    });
+    await internals.continuousRunCoordinator.dispatch(session.id);
+    expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([]);
+    expect(internals.runtime.currentExecutionId(active.id)).toBeDefined();
+    expect(internals.runtime.currentExecutionId(active.id)).not.toBe(execution.id);
+    expect(internals.runtime.getRun(active.id)).toMatchObject({ status: 'RUNNING', startedAt });
     connector.stop();
   });
 

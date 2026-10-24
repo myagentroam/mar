@@ -19,6 +19,7 @@ const props = defineProps<{
   readonly service: Pick<WorkbenchNotificationService, 'recentRuns' | 'load'>;
   readonly mobileMode: boolean;
   readonly mobileOpen?: boolean;
+  readonly mobilePresented?: boolean;
   readonly mobilePanelTarget?: HTMLElement | undefined;
 }>();
 const emit = defineEmits<{
@@ -126,7 +127,10 @@ function runTime(run: RecentRun): string {
         </button></span
       >
     </span>
-    <Teleport v-if="mobileMode && open && mobilePanelTarget" :to="mobilePanelTarget">
+    <Teleport
+      v-if="mobileMode && (mobilePresented ?? open) && mobilePanelTarget"
+      :to="mobilePanelTarget"
+    >
       <WorkbenchRecentSessionList
         :runs="service.recentRuns.value"
         :mobile-mode="true"

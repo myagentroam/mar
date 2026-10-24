@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -8,7 +9,7 @@ import type {
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createConversationImageService } from '../../service/ConversationImageService.js';
 import { createConversationScrollService } from '../../service/ConversationScrollService.js';
@@ -170,7 +171,7 @@ const actionMenuVisible = ref(false);
 const hoveredConversationKey = ref<string>();
 const focusedConversationKey = ref<string>();
 const draftingNewConversation = ref(false);
-const mobileFilesOpen = ref(false);
+const mobileFilesOpen = defineModel<boolean>('mobileFilesOpen', { default: false });
 const filesDragging = ref(false);
 const uploadingDroppedFiles = ref(false);
 const relatedFilesInput = ref<HTMLInputElement>();
@@ -895,6 +896,16 @@ watch(
   }
 );
 
+const mobileFocus = createMobileSurfaceFocusService({
+  isOpen: () => props.mobileViewport && (props.mobileHistoryOpen || mobileFilesOpen.value),
+  regions: () => [
+    document.getElementById(props.mobileHistoryOpen ? 'hosted-pane-history' : 'hosted-pane-files'),
+    document.querySelector<HTMLElement>('.activity-rail')
+  ],
+  close: closeMobilePanels
+});
+onBeforeUnmount(mobileFocus.dispose);
+
 onMounted(initialize);
 onBeforeUnmount(() => {
   historyAppendObserver?.disconnect();
@@ -905,23 +916,26 @@ onBeforeUnmount(() => {
 
 <template>
   <section :class="['hosted-workspace', { 'history-collapsed': sidebarCollapsed }]">
-    <button
-      v-if="mobileViewport && (mobileHistoryOpen || mobileFilesOpen)"
-      class="hosted-conversation-scrim"
-      type="button"
-      :aria-label="
-        mobileHistoryOpen
-          ? translate('hostedConversations.closeHistory')
-          : translate('hostedConversations.closeFiles')
-      "
-      @click="closeMobilePanels"
-    ></button>
+    <Transition name="mobile-surface-scrim">
+      <button
+        v-if="mobileViewport && (mobileHistoryOpen || mobileFilesOpen)"
+        class="hosted-conversation-scrim"
+        type="button"
+        :aria-label="
+          mobileHistoryOpen
+            ? translate('hostedConversations.closeHistory')
+            : translate('hostedConversations.closeFiles')
+        "
+        @click="closeMobilePanels"
+      ></button>
+    </Transition>
 
     <aside
       id="hosted-pane-history"
+      tabindex="-1"
       class="hosted-conversation-history"
       :class="{ 'mobile-open': mobileViewport && mobileHistoryOpen }"
-      :inert="!mobileViewport && sidebarCollapsed"
+      :inert="mobileViewport ? !mobileHistoryOpen : sidebarCollapsed"
       :aria-label="translate('hostedConversations.historyTitle')"
     >
       <header class="sidebar-heading session-heading history-header">
@@ -1115,7 +1129,11 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <main id="hosted-pane-conversation" class="hosted-conversation-main">
+    <main
+      id="hosted-pane-conversation"
+      class="hosted-conversation-main"
+      :inert="mobileViewport && (mobileHistoryOpen || mobileFilesOpen)"
+    >
       <button
         v-tooltip="translate('hostedConversations.mobileFiles')"
         v-if="mobileViewport"
@@ -1219,6 +1237,8 @@ onBeforeUnmount(() => {
 
     <aside
       id="hosted-pane-files"
+      tabindex="-1"
+      :inert="mobileViewport && !mobileFilesOpen"
       class="hosted-conversation-files"
       :class="{
         'mobile-open': mobileViewport && mobileFilesOpen,
@@ -2053,6 +2073,25 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .hosted-conversation-history,
   .hosted-conversation-files {
+    transition: none;
+  }
+}
+</style>
+
+<style scoped>
+@media (max-width: 767px) {
+  .hosted-conversation-scrim {
+    transition: opacity var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+  .mobile-surface-scrim-enter-from,
+  .mobile-surface-scrim-leave-to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hosted-conversation-history,
+  .hosted-conversation-files,
+  .hosted-conversation-scrim {
     transition: none;
   }
 }

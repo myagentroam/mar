@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/SessionShareManagementService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -104,6 +109,8 @@ async function copyRecord(id: string): Promise<void> {
 
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
     :title="translate('sessionShare.title')"
     width="min(1000px, calc(100vw - 32px))"

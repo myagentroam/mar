@@ -407,7 +407,7 @@ for (const scheme of ['Light', 'Dark']) {
       const palette = await page.locator('html').evaluate((element) => {
         const style = getComputedStyle(element);
         return {
-          utility: style.getPropertyValue('--mar-color-brand-text').trim(),
+          utility: style.getPropertyValue('--mar-text-primary').trim(),
           link: style.getPropertyValue('--mar-control-link-hover').trim()
         };
       });
@@ -451,6 +451,19 @@ for (const scheme of ['Light', 'Dark']) {
         animations: 'disabled'
       });
       await page.keyboard.press('Escape');
+      await page.locator('html').evaluate((element) => {
+        element.style.setProperty('--mar-text-primary', '#d9e2d0');
+        element.style.setProperty('--mar-color-brand-text', '#8a4fc7');
+      });
+      for (const control of [help, more]) {
+        await control.hover();
+        await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
+        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await page.mouse.move(0, 0);
+        await control.focus();
+        await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
+        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      }
     }
   );
 }
