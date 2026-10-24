@@ -422,7 +422,7 @@ defineExpose({ reveal });
               />
               <span v-else class="tree-chevron"></span>
               <span
-                v-if="row.node.loading"
+                v-if="row.node.loading && !row.node.loaded"
                 class="tree-kind"
                 role="status"
                 :aria-label="translate('generated.workspaceFileTree.loading')"
@@ -513,20 +513,18 @@ defineExpose({ reveal });
             </el-dropdown>
             <span v-else class="file-tree-more" aria-hidden="true"></span>
           </div>
-          <button
+          <el-button
             v-else
-            class="file-tree-load-more"
-            type="button"
-            :disabled="disabled || row.node.loading"
+            class="file-tree-load-more utility-control"
+            link
+            :loading="row.node.loading"
+            :loading-icon="marIcon('loading-action')"
+            :disabled="disabled"
             :style="{ '--tree-depth': row.depth }"
             @click="emit('loadMore', row.node)"
           >
-            {{
-              row.node.loading
-                ? translate('generated.workspaceFileTree.loading')
-                : translate('generated.workspaceFileTree.loadMore')
-            }}
-          </button>
+            {{ translate('generated.workspaceFileTree.loadMore') }}
+          </el-button>
         </template>
       </div>
     </div>
@@ -694,9 +692,13 @@ defineExpose({ reveal });
   text-overflow: ellipsis;
 }
 
-.file-tree-load-more {
+.file-tree-load-more.el-button {
+  display: flex;
+  justify-content: flex-start;
+  min-height: var(--mar-compact-row-size);
+  height: var(--mar-compact-row-size);
+  margin: 0;
   padding: 4px 6px 4px calc(34px + var(--tree-depth) * 8px);
-  color: var(--mar-color-brand-text);
-  cursor: pointer;
+  font-weight: 400;
 }
 </style>

@@ -30,6 +30,67 @@ async function expectReadIndicator(indicator: Locator, size: number) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`File tree Load more uses neutral text and an in-button loading star: ${theme}`, async ({
+    page
+  }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}visual-alignment.html?loading-feedback=1&theme=${theme}`);
+      const tree = page.getByTestId('file-tree-more');
+      const buttons = tree.getByRole('button', { name: 'Load more', exact: true });
+      await expect(buttons).toHaveCount(2);
+      const button = buttons.last();
+      await button.scrollIntoViewIfNeeded();
+      await page.mouse.move(0, 0);
+      const palette = await button.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.parentElement!.append(probe);
+        probe.style.color = 'var(--mar-text-secondary)';
+        const secondary = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-text-primary)';
+        const primary = getComputedStyle(probe).color;
+        probe.remove();
+        return { secondary, primary };
+      });
+      await expect(button).toHaveCSS('color', palette.secondary);
+      await expect(button).toHaveCSS('font-weight', '400');
+      await expect(button.locator('[data-mar-icon]')).toHaveCount(0);
+      const height = (await button.boundingBox())!.height;
+      expect((await button.boundingBox())!.x).toBe((await buttons.first().boundingBox())!.x);
+      await button.hover();
+      await expect(button).toHaveCSS('color', palette.primary);
+      await button.press('Enter');
+      await expect(tree).toHaveAttribute('data-request-count', '1');
+      await expect(button).toBeDisabled();
+      await expect(button).toHaveText('Load more');
+      const star = button.locator('[data-mar-icon="loading-action"]');
+      await expect(star).toBeVisible();
+      await expect(star).toHaveCSS(
+        'color',
+        await button.evaluate((el) => getComputedStyle(el).color)
+      );
+      await expect(button.locator('.el-icon.is-loading')).toBeVisible();
+      expect((await button.boundingBox())!.height).toBe(height);
+      await expect(tree.getByText('README.md', { exact: true })).toBeVisible();
+      await button.dispatchEvent('click');
+      await expect(tree).toHaveAttribute('data-request-count', '1');
+      await page.getByRole('button', { name: 'Finish file page', exact: true }).click();
+      await expect(button).toBeEnabled();
+      await expect(star).toHaveCount(0);
+      await buttons.first().press('Enter');
+      await expect(tree).toHaveAttribute('data-request-count', '2');
+      await expect(buttons.first()).toBeDisabled();
+      await expect(tree.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
+      await expect(tree.getByRole('status')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Finish file page', exact: true }).click();
+      await page.getByRole('button', { name: 'Toggle file tree disabled', exact: true }).click();
+      await expect(button).toBeDisabled();
+      await expect(star).toHaveCount(0);
+      await button.dispatchEvent('click');
+      await expect(tree).toHaveAttribute('data-request-count', '2');
+    }
+  });
+
   test(`Read loading shares theme colors and distinguishes resource rows: ${theme}`, async ({
     page
   }, testInfo) => {

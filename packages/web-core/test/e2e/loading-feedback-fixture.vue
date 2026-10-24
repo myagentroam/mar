@@ -52,6 +52,29 @@ const root = ref<WorkspaceFileTreeNode>({
     }
   ]
 });
+const moreRequests = ref(0);
+const treeDisabled = ref(false);
+const moreRoot = ref<WorkspaceFileTreeNode>({
+  ...root.value,
+  nextCursor: 'next-page',
+  children: [
+    {
+      ...root.value.children[0]!,
+      path: 'README.md',
+      name: 'README.md',
+      kind: 'FILE',
+      loaded: true,
+      loading: false
+    },
+    {
+      ...root.value.children[0]!,
+      expanded: true,
+      loaded: true,
+      loading: false,
+      nextCursor: 'nested-next-page'
+    }
+  ]
+});
 </script>
 
 <template>
@@ -148,6 +171,29 @@ const root = ref<WorkspaceFileTreeNode>({
       Finish directory load
     </button>
     <p class="runtime-status">Running <BusyIndicator data-testid="runtime-indicator" /></p>
+    <section data-testid="file-tree-more" class="tree-surface" :data-request-count="moreRequests">
+      <WorkspaceFileTree
+        :root="moreRoot"
+        filter=""
+        :selected-path="undefined"
+        :disabled="treeDisabled"
+        :mutations-enabled="false"
+        :mobile-viewport="false"
+        @load-more="
+          moreRequests++;
+          $event.loading = true;
+        "
+      />
+    </section>
+    <button
+      @click="
+        moreRoot.loading = false;
+        moreRoot.children.forEach((node) => (node.loading = false));
+      "
+    >
+      Finish file page
+    </button>
+    <button @click="treeDisabled = !treeDisabled">Toggle file tree disabled</button>
   </main>
 </template>
 
