@@ -1118,6 +1118,7 @@ export function createHostedConversationWorkspaceService(
     readonly deliveryIntent?: 'REPLACE_CURRENT';
   }): Promise<NonNullable<HostedConversationSnapshot['run']>> {
     const context = requireSelectedContext();
+    if (!watchReady.value) throw new Error('HOSTED_CONVERSATION_WATCH_NOT_READY');
     const finishSubmission = messageSubmission.begin(
       hostedConversationSubmissionContext(context.nodeId, context.conversationId)
     );
@@ -1587,6 +1588,7 @@ export function createHostedConversationWorkspaceService(
     loadMoreConversations,
     projectActivityMessage,
     conversationIsRunning,
+    rememberConversation: upsertConversation,
     selectConversation,
     clearSelectedConversation,
     beginSelectedConversationWatch,

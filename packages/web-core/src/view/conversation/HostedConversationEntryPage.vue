@@ -2,8 +2,7 @@
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { onMounted, ref } from 'vue';
-import type { HostedConversationSnapshot } from '@myagentroam/protocol';
-import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
+import type { HostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import type { createHostedConversationWorkspaceService } from '../../service/hosted-conversation-workspace-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -14,13 +13,13 @@ const props = defineProps<{
   readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
   readonly mobileViewport: boolean;
   readonly connected?: boolean;
-  readonly createConversation: (snapshot: HostedConversationSnapshot) => Promise<void>;
+  readonly entry: HostedConversationEntryService;
 }>();
 const emit = defineEmits<{
   started: [];
 }>();
 
-const service = createHostedConversationEntryService(props.request);
+const service = props.entry;
 const loading = ref(false);
 const loaded = ref(false);
 let loadSequence = 0;
@@ -44,26 +43,13 @@ async function load(): Promise<void> {
   }
 }
 
-async function createConversation(): Promise<boolean> {
-  try {
-    const snapshot = await service.create();
-    await props.createConversation(snapshot);
-    return true;
-  } catch (error) {
-    showMessage(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed'),
-      'error',
-      error
-    );
-    return false;
-  }
-}
-
 function refreshTemplatesOnOpen(visible: boolean): void {
   if (visible && !loading.value) void load();
 }
 
-onMounted(load);
+onMounted(() => {
+  if (service.templates.value.length === 0) void load();
+});
 </script>
 
 <template>
@@ -86,7 +72,6 @@ onMounted(load);
         readonly-reason=""
         draft
         :entry="service"
-        :create-conversation="createConversation"
         :reload-templates="refreshTemplatesOnOpen"
         @started="emit('started')"
       />

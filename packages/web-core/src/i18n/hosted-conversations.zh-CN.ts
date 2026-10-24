@@ -109,6 +109,8 @@ export const hostedConversationsZhCN = {
     uploadProgress: '上传 {value}%',
     uploaded: '已上传',
     uploadAfterCreate: '待上传',
+    firstMessagePaused: '首条消息草稿已保留。返回“新建对话”后可继续发送。',
+    firstMessageWatchRequired: '等待对话连接恢复后，请再次发送草稿。',
     retryAttachment: '重试',
     retryAttachmentNamed: '重新上传附件“{name}”',
     removeAttachment: '移除附件“{name}”',

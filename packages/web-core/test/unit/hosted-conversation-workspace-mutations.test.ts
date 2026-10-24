@@ -108,6 +108,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
 
+    workspace.watchReady.value = true;
     await workspace.sendMessage({
       prompt: 'Continue.',
       attachmentIds: ['file-1'],
@@ -180,6 +181,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       nodeAppVersion: 'unknown'
     } as never);
 
+    workspace.watchReady.value = true;
     await workspace.sendMessage({
       prompt: 'Replace the active Run.',
       attachmentIds: [],

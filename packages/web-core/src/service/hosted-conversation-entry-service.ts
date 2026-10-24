@@ -2,9 +2,30 @@ import {
   hostedConversationSnapshotSchema,
   conversationTemplateSummarySchema,
   type ConversationTemplateSummary,
-  type HostedConversationSnapshot
+  type HostedConversationSnapshot,
+  type HostedConversationUpload
 } from '@myagentroam/protocol';
-import { ref, type Ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
+import type { createHostedConversationWorkspaceService } from './hosted-conversation-workspace-service.js';
+import { errorCode } from '../util/api-error.js';
+
+export interface HostedAttachment {
+  readonly id: string;
+  readonly file: File;
+  readonly previewUrl: string | null;
+  name: string;
+  clientRequestId: string;
+  readonly controller: AbortController;
+  fileId?: string;
+  receivedBytes: number;
+  status: 'PENDING' | 'UPLOADING' | 'COMPLETED' | 'FAILED';
+  error?: string;
+}
+
+interface FirstMessageSubmission {
+  readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
+  readonly select: (snapshot: HostedConversationSnapshot) => Promise<void>;
+}
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -14,15 +35,30 @@ const TEMPLATE_PREFERENCE_STORAGE_KEY = 'mar.hosted-conversations.last-template-
 export interface HostedConversationEntryService {
   readonly templates: Ref<readonly ConversationTemplateSummary[]>;
   readonly selectedTemplateId: Ref<string | undefined>;
+  readonly prompt: Ref<string>;
+  readonly attachments: Ref<HostedAttachment[]>;
+  readonly submitting: Ref<boolean>;
+  readonly target: Ref<HostedConversationSnapshot | undefined>;
+  readonly writable: Readonly<Ref<boolean>>;
   loadTemplates(): Promise<void>;
   setTemplates(templates: readonly ConversationTemplateSummary[]): void;
   selectTemplate(templateId: string): void;
   create(clientRequestId?: string): Promise<HostedConversationSnapshot>;
+  addFiles(files: Iterable<File>): void;
+  removeAttachment(id: string): void;
+  retryAttachment(id: string): Promise<void>;
+  submit(): Promise<boolean>;
+  suspend(): void;
+  resume(): void;
+  dispose(): void;
 }
 
 export function createHostedConversationEntryService(
   request: Request,
-  options: { readonly storage?: PreferenceStorage } = {}
+  options: {
+    readonly storage?: PreferenceStorage;
+    readonly submission?: FirstMessageSubmission;
+  } = {}
 ): HostedConversationEntryService {
   const templates = ref<readonly ConversationTemplateSummary[]>([]);
   const selectedTemplateId = ref<string>();
@@ -31,6 +67,200 @@ export function createHostedConversationEntryService(
   let preferredTemplateId = readPreferredTemplateId(storage);
   let creationClientRequestId: string | undefined;
   let templateLoadSequence = 0;
+  const prompt = ref('');
+  const attachments = ref<HostedAttachment[]>([]);
+  const submitting = ref(false);
+  const target = ref<HostedConversationSnapshot>();
+  let active = true;
+  let generation = 0;
+  let disposed = false;
+  let messageIntent: { readonly fingerprint: string; readonly clientMessageId: string } | undefined;
+  const writable = computed(() => {
+    const workspace = options.submission?.workspace;
+    return target.value === undefined || !sameTarget() || workspace?.watchReady.value === true;
+  });
+
+  function sameTarget(): boolean {
+    const workspace = options.submission?.workspace;
+    return (
+      target.value !== undefined &&
+      workspace?.selectedNodeId.value === target.value.conversation.nodeId &&
+      workspace.selectedConversationId.value === target.value.conversation.id
+    );
+  }
+
+  function requireActive(expectedGeneration: number): void {
+    if (!active || generation !== expectedGeneration)
+      throw new Error('HOSTED_CONVERSATION_DRAFT_PAUSED');
+  }
+
+  function requireReady(): void {
+    if (!sameTarget() || options.submission?.workspace.watchReady.value !== true)
+      throw new Error('HOSTED_CONVERSATION_WATCH_NOT_READY');
+  }
+
+  function addFiles(files: Iterable<File>): void {
+    if (submitting.value || disposed) return;
+    for (const file of files) {
+      if (attachments.value.length >= 32) break;
+      attachments.value.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        clientRequestId: crypto.randomUUID(),
+        controller: new AbortController(),
+        receivedBytes: 0,
+        status: 'PENDING'
+      });
+    }
+  }
+
+  function releaseAttachments(): void {
+    for (const attachment of attachments.value)
+      if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
+    attachments.value = [];
+  }
+
+  function removeAttachment(id: string): void {
+    if (submitting.value) return;
+    const attachment = attachments.value.find((candidate) => candidate.id === id);
+    attachment?.controller.abort();
+    if (attachment?.previewUrl != null) URL.revokeObjectURL(attachment.previewUrl);
+    attachments.value = attachments.value.filter((candidate) => candidate.id !== id);
+  }
+
+  async function uploadAttachment(attachment: HostedAttachment): Promise<void> {
+    const workspace = options.submission!.workspace;
+    requireReady();
+    if (
+      attachment.status === 'FAILED' &&
+      attachment.error !== undefined &&
+      /^[A-Z][A-Z0-9_]+$/u.test(attachment.error)
+    )
+      attachment.clientRequestId = crypto.randomUUID();
+    attachment.status = 'UPLOADING';
+    const progress = (upload: HostedConversationUpload): void => {
+      attachment.receivedBytes = upload.receivedBytes;
+      attachment.name = upload.name;
+      if (upload.file !== undefined) attachment.fileId = upload.file.id;
+    };
+    try {
+      const result = await workspace.uploadFile(
+        attachment.file,
+        attachment.clientRequestId,
+        progress,
+        attachment.controller.signal
+      );
+      progress(result);
+      attachment.status = 'COMPLETED';
+      delete attachment.error;
+    } catch (error) {
+      attachment.status = 'FAILED';
+      attachment.error =
+        errorCode(error) ??
+        (error instanceof Error ? error.message : 'HOSTED_CONVERSATION_UPLOAD_FAILED');
+      throw error;
+    }
+  }
+
+  async function retryAttachment(id: string): Promise<void> {
+    if (submitting.value || disposed) return;
+    const attachment = attachments.value.find((candidate) => candidate.id === id);
+    if (attachment?.status !== 'FAILED') return;
+    const submission = options.submission;
+    if (target.value === undefined || submission === undefined) return;
+    const expectedGeneration = generation;
+    submitting.value = true;
+    try {
+      requireActive(expectedGeneration);
+      if (!sameTarget()) await submission.select(target.value);
+      requireActive(expectedGeneration);
+      await uploadAttachment(attachment);
+    } finally {
+      submitting.value = false;
+      if (disposed) releaseAttachments();
+    }
+  }
+
+  async function submit(): Promise<boolean> {
+    if (
+      submitting.value ||
+      disposed ||
+      (prompt.value.trim() === '' && attachments.value.length === 0)
+    )
+      return false;
+    const submission = options.submission;
+    if (submission === undefined) throw new Error('HOSTED_CONVERSATION_REQUIRED');
+    const expectedGeneration = generation;
+    requireActive(expectedGeneration);
+    submitting.value = true;
+    let submittedIntent: typeof messageIntent;
+    try {
+      if (target.value === undefined) {
+        target.value = await create();
+        submission.workspace.rememberConversation(target.value.conversation);
+      }
+      requireActive(expectedGeneration);
+      if (!sameTarget()) await submission.select(target.value);
+      requireActive(expectedGeneration);
+      requireReady();
+      for (const attachment of attachments.value) {
+        if (attachment.status !== 'COMPLETED') {
+          requireActive(expectedGeneration);
+          await uploadAttachment(attachment);
+        }
+      }
+      requireActive(expectedGeneration);
+      requireReady();
+      const current = submission.workspace.snapshot.value!;
+      if (current.models.length === 0) throw new Error('HOSTED_CONVERSATION_MODEL_REQUIRED');
+      const input = {
+        prompt: prompt.value,
+        attachmentIds: attachments.value.flatMap((attachment) =>
+          attachment.fileId === undefined ? [] : [attachment.fileId]
+        ),
+        modelId: current.conversation.modelId
+      };
+      const fingerprint = JSON.stringify(input);
+      if (messageIntent?.fingerprint !== fingerprint)
+        messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
+      submittedIntent = messageIntent;
+      await submission.workspace.sendMessage({
+        ...input,
+        clientMessageId: submittedIntent.clientMessageId
+      });
+      prompt.value = '';
+      releaseAttachments();
+      messageIntent = undefined;
+      target.value = undefined;
+      return active && expectedGeneration === generation;
+    } catch (error) {
+      if (
+        submittedIntent !== undefined &&
+        messageIntent === submittedIntent &&
+        errorCode(error) !== undefined
+      )
+        messageIntent = undefined;
+      throw error;
+    } finally {
+      submitting.value = false;
+      if (disposed) releaseAttachments();
+    }
+  }
+
+  function suspend(): void {
+    active = false;
+    generation += 1;
+  }
+  function resume(): void {
+    if (!disposed) active = true;
+  }
+  function dispose(): void {
+    suspend();
+    disposed = true;
+    if (!submitting.value) releaseAttachments();
+  }
 
   function resetCreationIntent(): void {
     creationClientRequestId = undefined;
@@ -92,10 +322,22 @@ export function createHostedConversationEntryService(
   return {
     templates,
     selectedTemplateId,
+    prompt,
+    attachments,
+    submitting,
+    target,
+    writable,
     loadTemplates,
     setTemplates,
     selectTemplate,
-    create
+    create,
+    addFiles,
+    removeAttachment,
+    retryAttachment,
+    submit,
+    suspend,
+    resume,
+    dispose
   };
 }
 
