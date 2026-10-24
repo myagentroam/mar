@@ -10,6 +10,64 @@ test.afterAll(async () => {
 });
 
 for (const dpr of [1, 2, 3]) {
+  test.describe(`More action dots DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const theme of ['dark', 'light']) {
+      test(`remain legible without enlarging controls in ${theme}`, async ({ page }, testInfo) => {
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${fixture.url}icon-system.html?more-icons=1&theme=${theme}`);
+          const trigger = page.locator('.workspace-more-button');
+          const graphic = trigger.locator('[data-mar-icon="more"]');
+          const sample = page.locator('.icon-review-cell [data-mar-icon="more"]');
+          await expect(graphic).toBeVisible();
+          await trigger.hover();
+          await page.locator('.new-session-form').screenshot({
+            path: testInfo.outputPath(`more-${theme}-${width}.png`)
+          });
+          for (const icon of [graphic, sample]) {
+            const dots = await icon.evaluate((element) => {
+              const svg = element as SVGSVGElement;
+              return Array.from(svg.querySelectorAll('circle'), (circle) => ({
+                x: circle.cx.baseVal.value,
+                y: circle.cy.baseVal.value,
+                diameter: (circle.r.baseVal.value * 2) / svg.viewBox.baseVal.width,
+                fill: getComputedStyle(circle).fill,
+                color: getComputedStyle(svg).color
+              }));
+            });
+            expect(dots).toHaveLength(3);
+            for (const dot of dots) {
+              // Preserve visible dot weight at small sizes, rather than scaling the control.
+              expect(dot.diameter).toBeGreaterThanOrEqual(0.15);
+              expect(dot.diameter).toBeLessThanOrEqual(0.2);
+              expect(dot.y).toBe(12);
+              expect(dot.fill).toBe(dot.color);
+            }
+            expect(dots[0].diameter).toBe(dots[1].diameter);
+            expect(dots[1].diameter).toBe(dots[2].diameter);
+            expect(dots[1].x).toBe(12);
+            expect(dots[1].x - dots[0].x).toBe(dots[2].x - dots[1].x);
+            expect(dots[1].x - dots[0].x - dots[0].diameter * 24).toBeGreaterThan(2);
+          }
+          const before = await trigger.boundingBox();
+          await trigger.focus();
+          await expect(trigger).toBeFocused();
+          await trigger.hover();
+          expect((await trigger.boundingBox())!.width).toBe(before!.width);
+          expect((await trigger.boundingBox())!.height).toBe(before!.height);
+          await trigger.press('Enter');
+          await expect(page.getByRole('menu')).toBeVisible();
+          await expect(page.getByRole('menuitem')).toBeFocused();
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('menu')).toBeHidden();
+        }
+      });
+    }
+  });
+}
+
+for (const dpr of [1, 2, 3]) {
   test.describe(`Information symbols DPR ${dpr}`, () => {
     test.use({ deviceScaleFactor: dpr });
     for (const theme of ['dark', 'light']) {

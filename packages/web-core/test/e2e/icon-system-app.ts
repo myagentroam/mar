@@ -449,7 +449,7 @@ const app = createApp({
               relativeActivity: () => '',
               nodeId: 'host',
               workspaceId: 'project',
-              skillSupported: false,
+              skillSupported: new URL(location.href).searchParams.has('more-icons'),
               mcpSupported: false,
               cleanupSessionsSupported: false,
               searchSupported: true,

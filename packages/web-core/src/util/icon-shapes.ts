@@ -43,7 +43,7 @@ export const iconShapes = {
   plus: '<path d="M12 4.5v15M4.5 12h15" />',
   close: '<path d="m6 6 12 12M18 6 6 18" />',
   check: '<path d="m4.5 12 5 5 10-10" />',
-  more: '<circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.25" fill="currentColor" stroke="none"/>',
+  more: '<circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/>',
   edit: '<path d="m14.5 4.5 5 5M4 20l1-5 11-11a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3L9 19l-5 1Z" />',
   delete:
     '<path d="M4 6.5h16m-11 0v-2h6v2M6 7l1 12a2 2 0 0 0 2 1.5h6a2 2 0 0 0 2-1.5l1-12M10 10.5v6m4-6v6" />',
