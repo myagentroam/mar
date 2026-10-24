@@ -25,7 +25,12 @@ export const toolResultResourcePageSchema = z
       .int()
       .min(0)
       .max(16 * 1024 * 1024),
-    content: z.string().max(256 * 1024),
+    content: z
+      .string()
+      .max(256 * 1024)
+      .refine((value) => new TextEncoder().encode(value).byteLength <= 256 * 1024, {
+        message: 'Content must not exceed 256 KiB in UTF-8 bytes'
+      }),
     nextCursor: z.string().min(1).max(1024).optional()
   })
   .strict();
