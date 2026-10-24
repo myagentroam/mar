@@ -104,6 +104,11 @@ export class RunnerRegistry {
     return false;
   }
 
+  migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const runner of this.runners.values())
+      runner.migrateSessionIdentity(previousId, nativeSessionId);
+  }
+
   decideApproval(input: RunnerApprovalDecision): boolean {
     let handled = false;
     for (const runner of this.runners.values()) handled = runner.decideApproval(input) || handled;

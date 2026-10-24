@@ -68,6 +68,11 @@ it.each(['completed', 'failed', 'interrupted'] as const)(
         __marctlOrigin: origin
       })) as { session: { id: string }; run: { id: string } };
       await eventually(() => startTurn.mock.calls.length === 1);
+      expect(started.session.id).toBe('thread-origin');
+      expect(node.runtime.getAgentSession(started.session.id)?.externalSessionId).toBe(
+        'thread-origin'
+      );
+      expect(node.runtime.conversationTurnForRun(started.run.id)?.sessionId).toBe('thread-origin');
       expect(readOrigin(startTurn.mock.calls[0]![1])).toEqual([origin]);
       expect(composerVisibleText(startTurn.mock.calls[0]![1])).toBe('Build feature');
       const firstMessage = node.runtime

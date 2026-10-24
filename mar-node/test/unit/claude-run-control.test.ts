@@ -528,6 +528,8 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
         bindings(() => resultThenPendingStream(() => (closed += 1)))
       )
     });
+    const runner = (connector as unknown as { claudeClient: ClaudeCodeRunner }).claudeClient;
+    const migrate = vi.spyOn(runner, 'migrateSessionIdentity');
     attachSocket(connector);
     const runtime = (
       connector as unknown as {
@@ -535,6 +537,8 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
           createAgentSession(input: Record<string, unknown>): { id: string };
           createMessageRun(input: Record<string, unknown>): { run: { id: string } };
           getRun(id: string): { status: string } | undefined;
+          findMessageSubmission(sessionId: string, clientMessageId: string): unknown;
+          getAgentSession(id: string): { id: string; externalSessionId: string | null } | undefined;
           activeWorkspaceLeaseCount(): number;
         };
       }
@@ -560,6 +564,15 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
       })
     );
     await eventually(() => runtime.getRun(run.id) === undefined);
+    expect(migrate).toHaveBeenCalledExactlyOnceWith(session.id, 'native-1');
+    expect(runtime.getAgentSession('native-1')).toMatchObject({
+      id: 'native-1',
+      externalSessionId: 'native-1'
+    });
+    expect(runtime.findMessageSubmission('native-1', 'result-with-open-channel')).toMatchObject({
+      run: { id: run.id, sessionId: 'native-1', status: 'SUCCEEDED' }
+    });
+    expect(runner.execution.runs.size).toBe(0);
     expect(runtime.getRun(run.id)).toBeUndefined();
     expect(runtime.activeWorkspaceLeaseCount()).toBe(0);
     expect(closed).toBe(1);

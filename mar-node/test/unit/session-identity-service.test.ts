@@ -184,6 +184,7 @@ describe('Bootstrap Session identity retirement', () => {
         identity.promote(bootstrap.id, target);
         persist.mockClear();
         hooks.migrateCommands.mockClear();
+        hooks.migrateRunnerState.mockClear();
       }
       if (scenario === 'command-conflict') {
         commands.set(bootstrap.id, command);
@@ -209,11 +210,58 @@ describe('Bootstrap Session identity retirement', () => {
       expect(persist).not.toHaveBeenCalled();
       expect(hooks.migrateCommands).not.toHaveBeenCalled();
       expect(database.getSessionRecord(target)?.metadata.customTitle).toBe('Keep me');
+      expect(hooks.migrateRunnerState).not.toHaveBeenCalled();
       if (scenario === 'runtime-conflict' || scenario === 'successful-alias')
         expect(runtime.getAgentSession(target)?.id).toBe(target);
       if (scenario === 'command-conflict') expect(commands.get(target, 'plan')).toEqual(command);
     }
   );
+
+  it('publishes only after Runtime and every synchronous state migration have completed', () => {
+    const { runtime, bootstrap, identity, hooks, persist, emitSession, onRunChanged } = fixture();
+    runtime.createMessageRun({
+      sessionId: bootstrap.id,
+      clientMessageId: 'first',
+      content: 'hello'
+    });
+    const timeline: string[] = [];
+    persist.mockImplementation(() => {
+      timeline.push('persist');
+    });
+    for (const name of [
+      'migrateGoal',
+      'migrateCommands',
+      'migrateQueue',
+      'migrateRunnerState'
+    ] as const) {
+      hooks[name].mockImplementation(() => {
+        expect(runtime.getAgentSession(bootstrap.id)?.id).toBe('native-ordered');
+        expect(runtime.getAgentSession('native-ordered')).toBeDefined();
+        timeline.push(name);
+      });
+    }
+    for (const emit of [
+      onRunChanged,
+      emitSession,
+      hooks.emitRun,
+      hooks.emitQueue,
+      hooks.emitTurn
+    ]) {
+      emit.mockImplementation(() => {
+        timeline.push('publish');
+      });
+    }
+    identity.promote(bootstrap.id, 'native-ordered');
+    expect(timeline.slice(0, 5)).toEqual([
+      'persist',
+      'migrateGoal',
+      'migrateCommands',
+      'migrateQueue',
+      'migrateRunnerState'
+    ]);
+    expect(timeline.slice(5)).not.toHaveLength(0);
+    expect(timeline.slice(5).every((step) => step === 'publish')).toBe(true);
+  });
 
   it('rejects a generic identity waiter without retiring its ordinary Session', async () => {
     const { runtime, bootstrap, identity, persist, releaseAttachments } = fixture();

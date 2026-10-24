@@ -106,6 +106,17 @@ export class CodexRunner extends AbstractRunner<'codex'> {
 
   private readonly client: CodexAppServerClient;
 
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [turnId, managed] of this.execution.managedTurns) {
+      if (managed.sessionId === previousId)
+        this.execution.managedTurns.set(turnId, { ...managed, sessionId: nativeSessionId });
+    }
+    for (const [runId, managed] of this.execution.runs) {
+      if (managed.sessionId === previousId)
+        this.execution.runs.set(runId, { ...managed, sessionId: nativeSessionId });
+    }
+  }
+
   profile(capabilities: NodeCapabilities): RunnerProfile {
     const base = declaredRunnerProfiles({
       codexAvailable: capabilities.codex.available,

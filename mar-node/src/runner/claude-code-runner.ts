@@ -52,6 +52,13 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
     super();
   }
 
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [runId, managed] of this.execution.runs) {
+      if (managed.marSessionId === previousId)
+        this.execution.runs.set(runId, { ...managed, marSessionId: nativeSessionId });
+    }
+  }
+
   profile(capabilities: NodeCapabilities): RunnerProfile {
     return declaredRunnerProfiles({
       codexAvailable: capabilities.codex.available,
