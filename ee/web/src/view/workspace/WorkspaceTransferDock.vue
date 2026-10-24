@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import type { WorkspaceUploadTask } from '@/service/WorkspaceUploadService';
-import { translate } from '@/service/LocalePreferenceService';
+import type { WorkspaceUploadTask } from '@/service/workspace-upload-service';
+import { translate } from '@/service/locale-preference-service';
 
 defineProps<{
   readonly tasks: readonly WorkspaceUploadTask[];

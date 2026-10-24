@@ -4,11 +4,11 @@ import { computed } from 'vue';
 import type { ConversationHostingCapability } from '@myagentroam/protocol';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
 import CoreDialogs from './NodeDetailsDialogs.vue';
-import type { NodeDetailsProps, NodeDetailsHostingState } from '../../model/NodeDetails.js';
-export type { NodeDetailsHostingState } from '../../model/NodeDetails.js';
-import type { RunnerUsageName } from '../../service/RunnerUsageService.js';
+import type { NodeDetailsProps, NodeDetailsHostingState } from '../../model/node-details.js';
+export type { NodeDetailsHostingState } from '../../model/node-details.js';
+import type { RunnerUsageName } from '../../service/runner-usage-service.js';
 import ConversationHostingMaintenanceCard from './ConversationHostingMaintenanceCard.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 export type {
   NodeDetailsData,
   NodeDetailsRunnerCapability,

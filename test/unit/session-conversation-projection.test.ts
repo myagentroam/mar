@@ -6,8 +6,8 @@ import { RunDomainState } from '../../mar-node/src/service/run-domain-state.js';
 import { RunEventService } from '../../mar-node/src/service/run-event-service.js';
 import { NodeRunEventBridge } from '../../mar-node/src/service/node-run-event-bridge.js';
 import { conversationSegments } from '../../mar-node/src/service/conversation-segment-service.js';
-import { createConversationProjectionService } from '../../packages/web-core/src/service/ConversationProjectionService.js';
-import { createWorkbenchEventProjectionService } from '../../packages/web-core/src/service/WorkbenchEventProjectionService.js';
+import { createConversationProjectionService } from '../../packages/web-core/src/service/conversation-projection-service.js';
+import { createWorkbenchEventProjectionService } from '../../packages/web-core/src/service/workbench-event-projection-service.js';
 import {
   isConversationSegment,
   segmentPageAsTurnPage

@@ -7,7 +7,7 @@ import {
   reconcileOptimisticConversationTurns,
   limitConversationHistory
 } from '../../src/util/conversation-history.js';
-import { createWorkbenchConversationPagingService } from '../../src/service/WorkbenchConversationPagingService.js';
+import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type { ConversationTurn, ConversationTurnPage } from '../../src/model/workbench.js';
 

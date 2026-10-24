@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   readFilePreview,
   readFilePreviewObject
-} from '../../src/service/FilePreviewReadService.js';
+} from '../../src/service/file-preview-read-service.js';
 import {
   binaryFilePreviewKind,
   canUseCodeEditor,

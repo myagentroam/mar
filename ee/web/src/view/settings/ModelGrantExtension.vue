@@ -15,8 +15,8 @@ import {
   organizationCascaderOptions,
   organizationDisplayLabel,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/enterprise-management-service';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;

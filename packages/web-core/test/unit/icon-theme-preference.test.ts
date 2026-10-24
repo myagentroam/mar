@@ -4,7 +4,7 @@ import {
   createIconThemePreferenceService,
   ICON_THEME_STORAGE_KEY,
   parseStoredIconThemePreference
-} from '../../src/service/IconThemePreferenceService.js';
+} from '../../src/service/icon-theme-preference-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 

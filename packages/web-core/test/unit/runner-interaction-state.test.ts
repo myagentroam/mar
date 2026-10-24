@@ -6,9 +6,9 @@ import {
   quickPromptAtCursor,
   removeSlashCommandAtCursor,
   replaceQuickPromptAtCursor
-} from '../../src/service/RunnerInteractionService.js';
+} from '../../src/service/runner-interaction-service.js';
 import { composerZhCN } from '../../src/i18n/composer.js';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const command = {
   id: 'compact',

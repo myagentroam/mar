@@ -2,31 +2,31 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 
 import { ref, watch } from 'vue';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
-import { runnerUsageWindowLabel, type RunnerUsageName } from '../../service/RunnerUsageService';
+import { runnerUsageWindowLabel, type RunnerUsageName } from '../../service/runner-usage-service';
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
 import NodeRuntimeEnvironment from './NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from './WorkspaceGitSettings.vue';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 import { runnerLabel, workspaceKindLabel } from '../../util/workbench-presentation';
-import { createComputerUseEnablementService } from '../../service/ComputerUseEnablementService.js';
+import { createComputerUseEnablementService } from '../../service/computer-use-enablement-service.js';
 import { errorMessage } from '../../util/workbench-presentation';
 
-import type { NodeDetailsData, NodeDetailsProps } from '../../model/NodeDetails.js';
+import type { NodeDetailsData, NodeDetailsProps } from '../../model/node-details.js';
 export type {
   NodeDetailsData,
   NodeDetailsProps,
   NodeDetailsRunnerCapability,
   NodeDetailsUpgradeState,
   WorkspaceDetailsData
-} from '../../model/NodeDetails.js';
+} from '../../model/node-details.js';
 const props = defineProps<NodeDetailsProps>();
 
 const emit = defineEmits<{

@@ -2,21 +2,21 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type {
   FileNavigationRequest,
   WorkspaceNavigationTarget as NavigationTarget
 } from '../../model/workspace-navigation.js';
-import { createWorkspaceCodeNavigationService } from '../../service/WorkspaceCodeNavigationService.js';
+import { createWorkspaceCodeNavigationService } from '../../service/workspace-code-navigation-service.js';
 import {
   createWorkspaceContentSearchService,
   type WorkspaceContentMatch as ContentMatch
-} from '../../service/WorkspaceContentSearchService.js';
+} from '../../service/workspace-content-search-service.js';
 import {
   computed,
   nextTick,
@@ -27,8 +27,8 @@ import {
   type Ref,
   watch
 } from 'vue';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import { PromptPredictionAttentionService } from '../../service/PromptPredictionAttentionService.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { PromptPredictionAttentionService } from '../../service/prompt-prediction-attention-service.js';
 import {
   createWorkspaceFileTreeService,
   type WorkspaceFileTreeEntry,
@@ -36,12 +36,12 @@ import {
   type WorkspaceFileTreePage,
   type WorkspaceFileTreeSnapshot,
   type WorkspaceFileTreeWorkspace
-} from '../../service/WorkspaceFileTreeService.js';
-import { createWorkspaceFileTabService } from '../../service/WorkspaceFileTabService.js';
+} from '../../service/workspace-file-tree-service.js';
+import { createWorkspaceFileTabService } from '../../service/workspace-file-tab-service.js';
 import {
   createWorkspaceFileNavigationHistoryService,
   type FileNavigationPosition
-} from '../../service/WorkspaceFileNavigationHistoryService.js';
+} from '../../service/workspace-file-navigation-history-service.js';
 import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import type { DirtyTextDraft } from './WorkspaceTextFilePage.vue';
@@ -52,16 +52,16 @@ import WorkspaceGitHistory from './WorkspaceGitHistory.vue';
 import {
   createWorkspaceGitService,
   type WorkspaceGitSnapshot
-} from '../../service/WorkspaceGitService.js';
+} from '../../service/workspace-git-service.js';
 import {
   createWorkspaceFileOperationService,
   filePageWorkspace,
   isFilePage,
   type WorkspaceFileOperationTarget
-} from '../../service/WorkspaceFileOperationService.js';
+} from '../../service/workspace-file-operation-service.js';
 import type { ChangeEntry, HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
 import { workspaceChangePath, changeFileName } from '../../util/workspace-git.js';
-import { loadToolChangeDiff } from '../../service/ToolChangeReviewService.js';
+import { loadToolChangeDiff } from '../../service/tool-change-review-service.js';
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { createTrailingTask } from '../../util/trailing-task.js';
@@ -78,13 +78,13 @@ import {
 import {
   createWorkspaceFilePreviewService,
   workspaceFilePreviewUrl
-} from '../../service/WorkspaceFilePreviewService.js';
+} from '../../service/workspace-file-preview-service.js';
 import type {
   WorkspaceFilePreviewContent,
   WorkspaceFilePreviewTarget
 } from '../../model/workspace-file-preview.js';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createStandaloneFileWindowService } from '../../service/StandaloneFileWindowService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
 import type {
   WorkspaceFileOpenIntent,
   WorkspaceFileTab,

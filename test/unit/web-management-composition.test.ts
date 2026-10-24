@@ -5,11 +5,11 @@ import { renderToString } from 'vue/server-renderer';
 import {
   createManagementComposition,
   type ManagementPageDefinition
-} from '../../ee/web/src/service/ManagementComposition.js';
+} from '../../ee/web/src/service/management-composition.js';
 import { createCommonManagementPages } from '../../ee/web/src/composition/common-management.js';
-import { createCommonManagementPages as createPublicManagementPages } from '../../packages/web-core/src/service/CommonManagementPages.js';
+import { createCommonManagementPages as createPublicManagementPages } from '../../packages/web-core/src/service/common-management-pages.js';
 import { createEnterpriseManagementComposition } from '../../ee/web/src/composition/enterprise-management.js';
-import type { AdminState } from '../../ee/web/src/service/AdminAuthService.js';
+import type { AdminState } from '../../ee/web/src/service/admin-auth-service.js';
 
 // This suite exercises catalogue composition, not the Vue loading presentation.
 vi.mock('../../packages/web-core/src/view/common/LoadingPanel.vue', () => ({ default: {} }));

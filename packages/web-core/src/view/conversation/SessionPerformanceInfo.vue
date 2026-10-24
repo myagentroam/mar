@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { RunPerformance } from '@myagentroam/protocol';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{ readonly performance: RunPerformance | undefined }>();

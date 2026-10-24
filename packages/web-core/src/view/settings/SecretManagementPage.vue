@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 
 defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;

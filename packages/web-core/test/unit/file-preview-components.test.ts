@@ -15,7 +15,7 @@ import {
   i18n,
   localePreferenceService,
   translate
-} from '../../src/service/LocalePreferenceService.js';
+} from '../../src/service/locale-preference-service.js';
 import WorkspaceFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
@@ -678,7 +678,7 @@ describe('public file preview preferences', () => {
     vi.resetModules();
 
     const { fileEditorPreferenceService, parseFileEditorDefaultMode } =
-      await import('../../src/service/FileEditorPreferenceService.js');
+      await import('../../src/service/file-editor-preference-service.js');
     expect(parseFileEditorDefaultMode('read-only')).toBe('read-only');
     expect(parseFileEditorDefaultMode('unexpected')).toBe('edit');
 
@@ -692,7 +692,7 @@ describe('public file preview preferences', () => {
 
     vi.resetModules();
     const { fileEditorPreferenceService: restoredEditorPreferenceService } =
-      await import('../../src/service/FileEditorPreferenceService.js');
+      await import('../../src/service/file-editor-preference-service.js');
     expect(restoredEditorPreferenceService().mode.value).toBe('read-only');
   });
 
@@ -701,7 +701,7 @@ describe('public file preview preferences', () => {
     vi.resetModules();
 
     const { createMarkdownPreviewPreferenceService } =
-      await import('../../src/service/MarkdownPreviewPreferenceService.js');
+      await import('../../src/service/markdown-preview-preference-service.js');
     const service = createMarkdownPreviewPreferenceService();
     expect(service.preference.value).toEqual({
       watermarkEnabled: false,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAdminAuthService } from '../../ee/web/src/service/AdminAuthService.js';
-import { localePreferenceService } from '../../ee/web/src/service/LocalePreferenceService.js';
+import { createAdminAuthService } from '../../ee/web/src/service/admin-auth-service.js';
+import { localePreferenceService } from '../../ee/web/src/service/locale-preference-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => localePreferenceService().setLocale('zh-CN'));

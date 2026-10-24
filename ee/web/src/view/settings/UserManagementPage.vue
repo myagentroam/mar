@@ -10,9 +10,9 @@ import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
-import { createUserManagementService } from '@/service/UserManagementService';
+import { createUserManagementService } from '@/service/user-management-service';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 
 interface ManagedUser {

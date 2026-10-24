@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
 
 type RuntimeCommand = {

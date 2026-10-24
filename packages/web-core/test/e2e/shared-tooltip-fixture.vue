@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getCurrentInstance, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
-import type { WorkspaceFileTreeNode } from '../../src/service/WorkspaceFileTreeService.js';
+import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 
 const root: WorkspaceFileTreeNode = {
   path: '.',

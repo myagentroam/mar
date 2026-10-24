@@ -1,9 +1,9 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchApprovalService } from '../../src/service/WorkbenchApprovalService.js';
-import { createWorkspaceQueueService } from '../../src/service/WorkspaceQueueService.js';
+import { createWorkbenchApprovalService } from '../../src/service/workbench-approval-service.js';
+import { createWorkspaceQueueService } from '../../src/service/workspace-queue-service.js';
 import { ApiError } from '../../src/util/api-error.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 
 describe('Workbench Run Actions', () => {
   afterEach(() => vi.useRealTimers());

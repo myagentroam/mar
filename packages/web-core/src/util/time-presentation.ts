@@ -1,4 +1,4 @@
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 
 export function formatDateTime(value: number, timeZone?: string): string {
   const date = new Date(value);

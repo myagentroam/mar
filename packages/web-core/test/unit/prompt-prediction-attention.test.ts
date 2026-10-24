@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PromptPredictionAttentionService } from '../../src/service/PromptPredictionAttentionService.js';
+import { PromptPredictionAttentionService } from '../../src/service/prompt-prediction-attention-service.js';
 
 describe('Page-local prediction attention', () => {
   it('deduplicates, bounds and expires observations without renewing them on reads', () => {

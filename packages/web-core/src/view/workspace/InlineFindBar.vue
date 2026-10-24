@@ -2,7 +2,7 @@
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { nextTick, onMounted, ref } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 defineProps<{
   readonly modelValue: string;

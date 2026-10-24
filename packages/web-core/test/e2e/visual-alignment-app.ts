@@ -1,5 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
-import type { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
+import type { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
 import { tableTooltipOptions } from '../../src/util/tooltip.js';
@@ -15,15 +15,15 @@ import ConversationScroll from '../../src/view/conversation/ConversationScroll.v
 import LoadingFeedbackFixture from './loading-feedback-fixture.vue';
 import UtilityInteractionFixture from './utility-interaction-fixture.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
-import { createWorkbenchContextCommandService } from '../../src/service/WorkbenchContextCommandService.js';
+import { createWorkbenchContextCommandService } from '../../src/service/workbench-context-command-service.js';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
-import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
 const mobileNotificationsOpen = ref(false);

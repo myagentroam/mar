@@ -6,7 +6,7 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import ModelPage from '../../src/view/settings/MarAgentModelManagementPage.vue';
 import ImagePage from '../../src/view/settings/ImageGenerationManagement.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import { codexUsageTokenCountLabel } from '../../src/util/workbench-presentation.js';
 

@@ -2,7 +2,7 @@
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import ConversationImageThumbnail from '../conversation/ConversationImageThumbnail.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 defineProps<{
   files: readonly ComposerAttachmentFile[];
   imageResourceUrl?: ((path: string) => string) | undefined;

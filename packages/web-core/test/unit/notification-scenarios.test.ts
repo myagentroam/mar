@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { ServerNotification } from '@myagentroam/protocol';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 const record = (id: string): ServerNotification => ({

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { skillErrorMessage } from '../../src/util/skill-errors.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
-import { createSkillCenterService } from '../../src/service/SkillCenterService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
+import { createSkillCenterService } from '../../src/service/skill-center-service.js';
 
 const candidate = {
   id: 'candidate',

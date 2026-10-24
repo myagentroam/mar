@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkspaceCodeNavigationService } from '../../src/service/WorkspaceCodeNavigationService.js';
+import { createWorkspaceCodeNavigationService } from '../../src/service/workspace-code-navigation-service.js';
 
 function deferred() {
   let resolve!: (value: unknown) => void;

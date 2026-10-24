@@ -5,7 +5,7 @@ import {
   matchesWorkspaceDisplayFilter,
   visibleWorkspaceFileTreeRows,
   type WorkspaceFileTreePage
-} from '../../src/service/WorkspaceFileTreeService.js';
+} from '../../src/service/workspace-file-tree-service.js';
 
 describe('Workspace file tree state', () => {
   it.each([false, true])(

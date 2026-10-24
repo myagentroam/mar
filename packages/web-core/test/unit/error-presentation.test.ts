@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
 import { errorMessage, filePreviewErrorMessage } from '../../src/util/error-presentation.js';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 afterEach(() => localePreferenceService().setLocale('en-US'));
 

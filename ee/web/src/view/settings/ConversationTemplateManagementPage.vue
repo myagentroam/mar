@@ -17,15 +17,15 @@ import {
   type AdminConversationTemplateSummary,
   type ConversationTemplateGrant,
   type ConversationTemplateRequestContext
-} from '@/service/ConversationTemplateService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/conversation-template-service';
+import { translate } from '@/service/locale-preference-service';
 import { errorCode } from '@/util/api-error';
 import { errorMessage } from '@/util/workbench-presentation';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
+} from '@/service/enterprise-management-service';
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly writable: boolean;

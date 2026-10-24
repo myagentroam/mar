@@ -1,5 +1,5 @@
 import type { ConversationTurn } from '../model/workbench.js';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 
 export const MAX_CONVERSATION_HISTORY_BYTES = 8 * 1024 * 1024;
 export const MAX_CONVERSATION_ITEM_TEXT_CHARACTERS = 64 * 1024;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createConversationScrollService } from '../../src/service/ConversationScrollService';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service';
 
 function scrollElement(values: {
   readonly scrollHeight: number;

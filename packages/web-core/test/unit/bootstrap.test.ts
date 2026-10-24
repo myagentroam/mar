@@ -3,12 +3,12 @@ import { createApp } from 'vue';
 import ElementPlus from 'element-plus';
 import { bootstrapConsole } from '../../src/bootstrap.js';
 import AppShell from '../../src/App.vue';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { tooltipPlugin } from '../../src/directive/tooltip.js';
 import {
   createManagementComposition,
   MANAGEMENT_COMPOSITION_KEY
-} from '../../src/service/ManagementComposition.js';
+} from '../../src/service/management-composition.js';
 
 vi.mock('vue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue')>()),

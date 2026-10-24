@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSessionShareAccessService } from '../../src/service/SessionShareAccessService.js';
-import { createSessionShareManagementService } from '../../src/service/SessionShareManagementService.js';
-import { createSessionShareClientService } from '../../src/service/SessionShareClientService.js';
-import { createSessionShareConversationService } from '../../src/service/SessionShareConversationService.js';
+import { createSessionShareAccessService } from '../../src/service/session-share-access-service.js';
+import { createSessionShareManagementService } from '../../src/service/session-share-management-service.js';
+import { createSessionShareClientService } from '../../src/service/session-share-client-service.js';
+import { createSessionShareConversationService } from '../../src/service/session-share-conversation-service.js';
 import {
   createStandaloneFileWindowService,
   standaloneFileOpenIntent
-} from '../../src/service/StandaloneFileWindowService.js';
+} from '../../src/service/standalone-file-window-service.js';
 
 const share = {
   id: 'share-one',

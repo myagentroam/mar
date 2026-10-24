@@ -1,8 +1,8 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick, ref as vueRef, shallowRef } from 'vue';
-import { createRunnerProfileService } from '../../src/service/RunnerProfileService.js';
-import { localePreferenceService, translate } from '../../src/service/LocalePreferenceService.js';
+import { createRunnerProfileService } from '../../src/service/runner-profile-service.js';
+import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 import { localizedRunnerCommandState } from '../../src/util/runner-presentation.js';
 import type { RunnerProfile } from '../../src/model/workbench.js';
 

@@ -12,9 +12,9 @@ import {
   textContent,
   trigger
 } from './support/component-renderer.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { AuthenticationContextChangedError } from '../../src/service/WorkbenchHttpService.js';
+import { AuthenticationContextChangedError } from '../../src/service/workbench-http-service.js';
 
 const originalLocale = i18n.global.locale.value;
 beforeEach(() => vi.stubGlobal('HTMLElement', class {}));
@@ -224,7 +224,7 @@ describe('Public environment secret management', () => {
       for (const file of [
         'view/settings/EnvironmentSecretManager.vue',
         'view/settings/SecretManagementPage.vue',
-        'service/EnvironmentSecretService.ts'
+        'service/environment-secret-service.ts'
       ]) {
         const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), 'utf8');
         for (const match of source.matchAll(/translate\(\s*['"]([^'"]+)['"]/gu)) {

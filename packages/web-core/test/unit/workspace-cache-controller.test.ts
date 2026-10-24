@@ -11,10 +11,10 @@ import type {
 import {
   createWorkbenchWorkspaceCacheController,
   type WorkspaceInspectorHandle
-} from '../../src/service/WorkbenchWorkspaceCacheController.js';
-import type { SessionContextUsage } from '../../src/service/ConversationStateService.js';
-import { createWorkspaceSessionPagingService } from '../../src/service/WorkspaceSessionPagingService.js';
-import { createWorkspaceViewCacheService } from '../../src/service/WorkspaceViewCacheService.js';
+} from '../../src/service/workbench-workspace-cache-controller.js';
+import type { SessionContextUsage } from '../../src/service/conversation-state-service.js';
+import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 
 function nativeSession(id = 'session-1'): Session {
   return {

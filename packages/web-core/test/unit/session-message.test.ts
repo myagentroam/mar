@@ -6,14 +6,14 @@ import {
   createWorkbenchSessionMessageService,
   resolveDeliveryIntent,
   resolveSessionWorkspaceId
-} from '../../src/service/WorkbenchSessionMessageService.js';
+} from '../../src/service/workbench-session-message-service.js';
 import {
   createWorkbenchSubmissionService,
   sessionSubmissionContext
-} from '../../src/service/WorkbenchSubmissionService.js';
+} from '../../src/service/workbench-submission-service.js';
 import { ApiError } from '../../src/util/api-error.js';
-import { createRunnerInteractionService } from '../../src/service/RunnerInteractionService.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
+import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 

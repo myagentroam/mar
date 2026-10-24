@@ -1,9 +1,9 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref, type Ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchPageInteractionService } from '../../src/service/WorkbenchPageInteractionService.js';
-import { createConsoleKeyboardShortcutService } from '../../src/service/ConsoleKeyboardShortcutService.js';
-import type { WorkspaceInspectorHandle } from '../../src/service/WorkbenchSurfaceStateService.js';
+import { createWorkbenchPageInteractionService } from '../../src/service/workbench-page-interaction-service.js';
+import { createConsoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
+import type { WorkspaceInspectorHandle } from '../../src/service/workbench-surface-state-service.js';
 import type { NodeSummary, WorkspaceTab } from '../../src/model/workbench.js';
 
 function fixture() {

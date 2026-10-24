@@ -10,9 +10,12 @@ import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { FormInstance, FormRules } from 'element-plus';
-import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/ManagementUrlService';
-import { translate } from '@/service/LocalePreferenceService';
+import {
+  organizationPath,
+  type OrganizationSummary
+} from '@/service/enterprise-management-service';
+import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
 
 interface Organization extends OrganizationSummary {

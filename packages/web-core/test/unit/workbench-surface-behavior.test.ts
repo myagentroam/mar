@@ -4,7 +4,7 @@ import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
 
 const lifetime = vi.hoisted(() => ({ mounted: 0, unmounted: 0 }));
-vi.mock('../../src/service/ManagementComposition.js', async () => {
+vi.mock('../../src/service/management-composition.js', async () => {
   const { defineComponent, h } = await import('vue');
   const component = defineComponent({
     emits: ['extensionChanged'],

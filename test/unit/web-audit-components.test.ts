@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Audit from '../../ee/web/src/view/settings/AuditManagementPage.vue?unit-render';
-import { i18n } from '../../ee/web/src/service/LocalePreferenceService.js';
+import { i18n } from '../../ee/web/src/service/locale-preference-service.js';
 import {
   renderComponent,
   flushComponent,

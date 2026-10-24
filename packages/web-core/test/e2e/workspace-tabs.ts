@@ -5,7 +5,7 @@ import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import type { WorkspaceTab } from '../../src/model/workbench.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const activeTabId = ref('node-1:workspace-1');
 const connected = ref(true);

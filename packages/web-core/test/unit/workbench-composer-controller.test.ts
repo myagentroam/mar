@@ -1,7 +1,7 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ref as reactiveRef } from 'vue';
-import { createWorkbenchComposerController } from '../../src/service/WorkbenchComposerController.js';
+import { createWorkbenchComposerController } from '../../src/service/workbench-composer-controller.js';
 import type {
   RunnerDefaultConfiguration,
   RunnerProfile,

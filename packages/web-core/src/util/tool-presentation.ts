@@ -1,5 +1,5 @@
 import type { ToolPresentation } from '@myagentroam/protocol';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 import { formatDateTime } from './time-presentation.js';
 
 export function toolPresentation(payload: unknown): ToolPresentation | undefined {

@@ -18,8 +18,8 @@ import {
 import { activePlanContinuation } from '../../src/util/conversation-domain';
 import type { ConversationItem } from '../../src/model/workbench';
 import { conversationUiEnUS, conversationUiZhCN } from '../../src/i18n/conversation-ui';
-import { localePreferenceService, translate } from '../../src/service/LocalePreferenceService';
-import { contextUsageAfterCompaction } from '../../src/service/ConversationStateService';
+import { localePreferenceService, translate } from '../../src/service/locale-preference-service';
+import { contextUsageAfterCompaction } from '../../src/service/conversation-state-service';
 import { ApiError } from '../../src/util/api-error';
 import { errorMessage } from '../../src/util/error-presentation';
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchLiveService } from '../../src/service/WorkbenchLiveService.js';
+import { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
 
 function memoryStorage() {
   const values = new Map<string, string>();

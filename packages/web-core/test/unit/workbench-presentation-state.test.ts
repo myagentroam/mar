@@ -3,11 +3,11 @@ import { computed, ref } from 'vue';
 import {
   createWorkbenchPresentationStateService,
   sessionHasActiveGoal
-} from '../../src/service/WorkbenchPresentationStateService';
-import { createComposerConfigurationService } from '../../src/service/ComposerConfigurationService';
-import { createRunService } from '../../src/service/RunService';
-import type { SessionContextUsage } from '../../src/service/ConversationStateService';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService';
+} from '../../src/service/workbench-presentation-state-service';
+import { createComposerConfigurationService } from '../../src/service/composer-configuration-service';
+import { createRunService } from '../../src/service/run-service';
+import type { SessionContextUsage } from '../../src/service/conversation-state-service';
+import { localePreferenceService } from '../../src/service/locale-preference-service';
 import type {
   RunnerCommand,
   RunnerProfile,
@@ -15,7 +15,7 @@ import type {
   WorkspaceQueue
 } from '../../src/model/workbench';
 
-vi.mock('../../src/service/WorkbenchClockService', () => ({
+vi.mock('../../src/service/workbench-clock-service', () => ({
   createWorkbenchClockService: () => ({
     working: ref(false),
     workingNow: ref(0),

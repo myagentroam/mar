@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import {
   createToolChangeReviewService,
   loadToolChangeDiff,
   toolChangeOpenIntent
-} from '../../src/service/ToolChangeReviewService.js';
+} from '../../src/service/tool-change-review-service.js';
 import { conversationFileChangeEntries } from '../../src/util/conversation-presentation.js';
 import {
   workspaceFileTabIdentity,

@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import { createTerminalService } from '../../service/TerminalService.js';
-import type { createTerminalDirectClient } from '../../service/TerminalDirectClient.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { createTerminalService } from '../../service/terminal-service.js';
+import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 
 const props = defineProps<{
   readonly terminalId: string;

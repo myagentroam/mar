@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { MANAGEMENT_PAGE_SIZE } from '../../service/ManagementPaginationService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { MANAGEMENT_PAGE_SIZE } from '../../service/management-pagination-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 
 const props = withDefaults(

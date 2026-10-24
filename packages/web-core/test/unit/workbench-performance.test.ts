@@ -1,8 +1,8 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchPerformanceService } from '../../src/service/WorkbenchPerformanceService.js';
-import { createWorkbenchSessionWatchController } from '../../src/service/WorkbenchSessionWatchController.js';
+import { createWorkbenchPerformanceService } from '../../src/service/workbench-performance-service.js';
+import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
 import type { Session } from '../../src/model/workbench.js';
 
 function fixture() {

@@ -8,8 +8,8 @@ import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(location.search);

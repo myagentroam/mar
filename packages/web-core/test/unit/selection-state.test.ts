@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkbenchSelectionStateService } from '../../src/service/WorkbenchSelectionStateService.js';
+import { createWorkbenchSelectionStateService } from '../../src/service/workbench-selection-state-service.js';
 
 describe('Public Workbench Selection State', () => {
   it('Keeps selection state independent per composition', () => {

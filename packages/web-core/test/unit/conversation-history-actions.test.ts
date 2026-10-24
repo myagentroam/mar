@@ -10,7 +10,7 @@ import {
 } from 'vue';
 import { expect, it, vi } from 'vitest';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 
 it.each(['initial', 'older'] as const)(
   'retains and guards manual %s history actions until settlement',

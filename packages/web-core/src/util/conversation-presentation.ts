@@ -8,7 +8,7 @@ import {
 import { fileChangeDiffSchema } from '@myagentroam/protocol';
 import { conversationPayload } from './conversation-history.js';
 import type { Approval, ConversationItem } from '../model/workbench.js';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,

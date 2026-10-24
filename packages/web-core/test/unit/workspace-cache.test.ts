@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkspaceViewCacheService } from '../../src/service/WorkspaceViewCacheService.js';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 
 describe('Web Workspace View Cache', () => {
   it('Keeps distinct Turns of a continuous Run and updates older cached units in place', () => {

@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchLayoutService } from '../../src/service/WorkbenchLayoutService.js';
+import { createWorkbenchLayoutService } from '../../src/service/workbench-layout-service.js';
 import type { WorkspaceTab } from '../../src/model/workbench.js';
 
 afterEach(() => vi.unstubAllGlobals());

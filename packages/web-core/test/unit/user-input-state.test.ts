@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createConversationUserInputService,
   userInputOtherAnswerId
-} from '../../src/service/ConversationUserInputService.js';
+} from '../../src/service/conversation-user-input-service.js';
 import { userInputQuestions } from '../../src/util/conversation-user-input.js';
 
 describe('Web Conversation user input state', () => {

@@ -2,14 +2,14 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
@@ -30,11 +30,11 @@ import {
   type ConversationTemplateMcpOption,
   type ConversationTemplateModelOption,
   type ConversationTemplateRequestContext
-} from '../../service/ConversationTemplateService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/conversation-template-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 import { errorMessage, fileSizeLabel } from '../../util/workbench-presentation.js';
-import { createManagementPageService } from '../../service/ManagementPageService.js';
+import { createManagementPageService } from '../../service/management-page-service.js';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 
 interface DraftForm {

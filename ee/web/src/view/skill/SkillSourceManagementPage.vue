@@ -2,9 +2,9 @@
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/SkillSourceManagementPage.vue';
-import { createSkillCatalogSubmissions } from '@/service/SkillCenterService';
-import { createCatalogOwnershipService } from '@/service/CatalogOwnershipService';
-import { translate } from '@/service/LocalePreferenceService';
+import { createSkillCatalogSubmissions } from '@/service/skill-center-service';
+import { createCatalogOwnershipService } from '@/service/catalog-ownership-service';
+import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   edition: 'COMMUNITY' | 'ENTERPRISE';

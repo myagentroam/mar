@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,
   type InstalledSkillCard
-} from '../../service/SkillCenterService.js';
+} from '../../service/skill-center-service.js';
 import { skillErrorMessage } from '../../util/skill-errors.js';
 import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue';
 import McpCenterPanel from './McpCenterPanel.vue';
 import ManagementPagination from '../settings/ManagementPagination.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 
 const props = defineProps<{

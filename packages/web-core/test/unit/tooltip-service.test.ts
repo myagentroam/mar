@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TooltipService } from '../../src/service/TooltipService.js';
+import { TooltipService } from '../../src/service/tooltip-service.js';
 import { tableTooltipOptions } from '../../src/util/tooltip.js';
 
 // These Node fakes exercise coordinator decisions, not browser layout or tooltip rendering.

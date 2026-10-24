@@ -2,19 +2,22 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 import { errorCode } from '../../util/api-error';
 import { errorMessage as displayErrorMessage } from '../../util/workbench-presentation';
-import { createCatalogPageService, readCatalogReferences } from '../../service/CatalogPageService';
+import {
+  createCatalogPageService,
+  readCatalogReferences
+} from '../../service/catalog-page-service';
 import ManagementPagination from '../settings/ManagementPagination.vue';
 
 interface Source {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page' | 'region' }>(), {
   overlay: false,

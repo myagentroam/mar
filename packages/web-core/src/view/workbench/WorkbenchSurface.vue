@@ -6,8 +6,8 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
@@ -22,7 +22,7 @@ import {
 } from 'vue';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
-import type { createWorkbenchPageController } from '../../service/WorkbenchPageController.js';
+import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
 import {
   errorMessage,
   hostedConversationTitle,
@@ -47,10 +47,10 @@ import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
 import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
 import HostedConversationWorkspacePage from '../../view/conversation/HostedConversationWorkspacePage.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { useManagementComposition } from '../../service/ManagementComposition.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { useManagementComposition } from '../../service/management-composition.js';
 import PanelResizeHandle from './PanelResizeHandle.vue';
-import { WORKBENCH_PANEL_LIMITS } from '../../service/WorkbenchLayoutService.js';
+import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 
 const loadingComponent = {
   render: () =>

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { ApiError } from '../../src/util/api-error.js';
-import { createHostedConversationFilePreviewService } from '../../src/service/HostedConversationFilePreviewService.js';
+import { createHostedConversationFilePreviewService } from '../../src/service/hosted-conversation-file-preview-service.js';
 import {
   createHostedConversationWorkspaceService,
   hostedConversationFileForPath,
   type HostedConversationRequest
-} from '../../src/service/HostedConversationWorkspaceService.js';
+} from '../../src/service/hosted-conversation-workspace-service.js';
 
 const conversation = {
   id: 'conversation-1',

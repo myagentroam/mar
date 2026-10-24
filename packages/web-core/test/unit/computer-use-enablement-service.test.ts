@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createComputerUseEnablementService } from '../../src/service/ComputerUseEnablementService.js';
+import { createComputerUseEnablementService } from '../../src/service/computer-use-enablement-service.js';
 
 const capability = {
   apiVersion: 1 as const,

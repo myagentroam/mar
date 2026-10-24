@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue';
-import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 
 const props = withDefaults(

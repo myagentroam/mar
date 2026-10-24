@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 
 import { useI18n } from 'vue-i18n';
-import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
+import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{

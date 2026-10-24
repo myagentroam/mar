@@ -13,9 +13,12 @@ import {
   organizationCascaderOptions,
   organizationDisplayLabel,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
-import type { EnterpriseResourceRow, ResourceOwnerUser } from '@/service/ResourceOwnershipService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/enterprise-management-service';
+import type {
+  EnterpriseResourceRow,
+  ResourceOwnerUser
+} from '@/service/resource-ownership-service';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;

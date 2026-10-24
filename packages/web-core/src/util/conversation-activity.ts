@@ -1,6 +1,6 @@
 import type { AgentRun, ConversationItem, ConversationTurn } from '../model/workbench.js';
-import { translate } from '../service/LocalePreferenceService.js';
-import { isTerminalRunStatus } from '../service/RunService.js';
+import { translate } from '../service/locale-preference-service.js';
+import { isTerminalRunStatus } from '../service/run-service.js';
 import { conversationPayload } from './conversation-history.js';
 import { preciseElapsedDurationLabel } from './time-presentation.js';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkspaceContentSearchService } from '../../src/service/WorkspaceContentSearchService.js';
+import { createWorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
 
 function deferred() {
   let resolve!: (value: unknown) => void;

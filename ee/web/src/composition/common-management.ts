@@ -1,8 +1,8 @@
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 import { translate } from '@myagentroam/web-core/locale';
 import { defineAsyncComponent, h, type Component } from 'vue';
-import type { AdminState } from '../service/AdminAuthService.js';
-import type { ManagementPageDefinition } from '../service/ManagementComposition.js';
+import type { AdminState } from '../service/admin-auth-service.js';
+import type { ManagementPageDefinition } from '../service/management-composition.js';
 import {
   createCommonManagementPages as createSharedPages,
   type CommonManagementSection

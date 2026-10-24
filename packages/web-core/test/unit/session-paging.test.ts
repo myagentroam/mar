@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkspaceSessionPagingService } from '../../src/service/WorkspaceSessionPagingService.js';
+import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 
 describe('Web Workspace Session Paging State', () => {
   it('Initialization, page appends, and Node cleanup preserve Tab boundaries', () => {

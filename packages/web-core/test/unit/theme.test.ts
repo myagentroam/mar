@@ -6,7 +6,7 @@ import {
   createThemePreferenceService,
   parseStoredThemePreference,
   THEME_STORAGE_KEY
-} from '../../src/service/ThemePreferenceService';
+} from '../../src/service/theme-preference-service';
 
 it('defines every shared font role and Element Plus status shade consumed by components', () => {
   const css = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');

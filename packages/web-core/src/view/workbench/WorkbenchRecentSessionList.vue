@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { translate } from '../../service/LocalePreferenceService.js';
-import type { RecentRun } from '../../service/WorkbenchNotificationService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
 defineProps<{

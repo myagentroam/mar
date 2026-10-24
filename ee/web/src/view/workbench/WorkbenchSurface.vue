@@ -3,10 +3,10 @@ import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 
 import { defineAsyncComponent, h, type ShallowUnwrapRef } from 'vue';
-import type { createWorkbenchPageController } from '@/service/WorkbenchPageController';
+import type { createWorkbenchPageController } from '@/service/workbench-page-controller';
 import CoreSurface from '@myagentroam/web-core/WorkbenchSurface.vue';
 import WorkspaceRegistrationPicker from '@/view/workspace/WorkspaceRegistrationPicker.vue';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 
 const loadingComponent = {
   render: () =>

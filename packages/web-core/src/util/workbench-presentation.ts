@@ -16,7 +16,7 @@ import { runnerLabel } from './runner-presentation.js';
 export { runnerLabel } from './runner-presentation.js';
 import { codexUsageLargeTokenFormat } from '../i18n/model-management.js';
 import type { NodeSummary, Session, Workspace } from '../model/workbench.js';
-import { currentLocale, translate } from '../service/LocalePreferenceService.js';
+import { currentLocale, translate } from '../service/locale-preference-service.js';
 import { isKnownSessionActivityAt } from './session-list.js';
 
 /** Native Session IDs keep `:` as their safe Server-routable separator. */

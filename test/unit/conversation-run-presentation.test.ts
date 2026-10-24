@@ -3,13 +3,13 @@ import type { MarAgentEvent } from '../../mar-agent/src/index.js';
 import { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
 import { conversationTurnSchema, workbenchEventSchema } from '../../packages/protocol/src/index.js';
-import { createRunService } from '../../packages/web-core/src/service/RunService.js';
+import { createRunService } from '../../packages/web-core/src/service/run-service.js';
 import { conversationDisplayItems } from '../../packages/web-core/src/util/conversation-presentation.js';
 import {
   conversationActivityLabel,
   runDuration
 } from '../../packages/web-core/src/util/conversation-activity.js';
-import { translate } from '../../packages/web-core/src/service/LocalePreferenceService.js';
+import { translate } from '../../packages/web-core/src/service/locale-preference-service.js';
 import type { AgentRun } from '../../packages/web-core/src/model/workbench.js';
 
 describe('MAR public callbacks through Node and Web presentation', () => {

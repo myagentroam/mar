@@ -7,8 +7,8 @@ import {
   workspaceFileTreeWindow,
   type WorkspaceFileTreeNode,
   type WorkspaceFileTreeVisibleRow
-} from '../../service/WorkspaceFileTreeService.js';
-import { localePreferenceService, translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/workspace-file-tree-service.js';
+import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import FileTypeIcon from './FileTypeIcon.vue';
 
 const props = defineProps<{

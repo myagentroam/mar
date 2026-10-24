@@ -2,25 +2,25 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, ref, watch } from 'vue';
-import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
+import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import { iconThemes } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
 import type { SettingsSection } from '../../model/settings.js';
-import { iconThemePreferenceService } from '../../service/IconThemePreferenceService.js';
+import { iconThemePreferenceService } from '../../service/icon-theme-preference-service.js';
 import {
   fileEditorPreferenceService,
   type FileEditorDefaultMode
-} from '../../service/FileEditorPreferenceService.js';
+} from '../../service/file-editor-preference-service.js';
 import {
   themePreferenceService,
   type ThemePreference
-} from '../../service/ThemePreferenceService.js';
+} from '../../service/theme-preference-service.js';
 import { analyzeCustomTheme } from '../../util/custom-theme.js';
 import ThemeSettings from './ThemeSettings.vue';
 import {
@@ -29,7 +29,7 @@ import {
   SUPPORTED_LOCALES,
   translate,
   type AppLocale
-} from '../../service/LocalePreferenceService.js';
+} from '../../service/locale-preference-service.js';
 import { useI18n } from 'vue-i18n';
 import logoIcon from '../../assets/logo-icon.png';
 import QuickPromptSettings from './QuickPromptSettings.vue';
@@ -38,7 +38,7 @@ import PromptCompletionPreferences from './PromptCompletionPreferences.vue';
 import PersonalGitSettings from './PersonalGitSettings.vue';
 import PersonalUsageSettings from './PersonalUsageSettings.vue';
 import SystemNotificationControl from './SystemNotificationControl.vue';
-import type { WorkbenchNotificationService } from '../../service/WorkbenchNotificationService.js';
+import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
 import type { QuickPrompt } from '../../model/workbench.js';
 
 const documentationAvailable = useDocumentationAvailability();

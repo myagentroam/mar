@@ -7,11 +7,11 @@ import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue?unit-render';
 import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
-import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 
-vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const originalLocale = i18n.global.locale.value;
 

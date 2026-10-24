@@ -5,14 +5,14 @@ import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
 import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
 import {
   mergeWorkspaceWatchSnapshot,
   type WorkspaceWatchSnapshot
-} from '../../src/service/WorkspaceRuntimeStateService.js';
+} from '../../src/service/workspace-runtime-state-service.js';
 
 type FakeView = {
   readonly props: Record<string, unknown>;

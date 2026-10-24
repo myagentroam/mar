@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, ref } from 'vue';
 import type { AgentRun, Session, WorkspaceTarget } from '../../src/model/workbench.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
-import { createWorkbenchSessionMessageService } from '../../src/service/WorkbenchSessionMessageService.js';
-import { createWorkbenchSubmissionService } from '../../src/service/WorkbenchSubmissionService.js';
-import { createWorkbenchViewWatchService } from '../../src/service/WorkbenchViewWatchService.js';
-import { createHostedConversationWatchCoordinator } from '../../src/service/HostedConversationWatchCoordinator.js';
-import { createHostedConversationWorkspaceService } from '../../src/service/HostedConversationWorkspaceService.js';
-import { createWorkbenchSessionWatchController } from '../../src/service/WorkbenchSessionWatchController.js';
-import { createWorkspaceWatchService } from '../../src/service/WorkspaceWatchService.js';
+import { createWorkbenchSessionMessageService } from '../../src/service/workbench-session-message-service.js';
+import { createWorkbenchSubmissionService } from '../../src/service/workbench-submission-service.js';
+import { createWorkbenchViewWatchService } from '../../src/service/workbench-view-watch-service.js';
+import { createHostedConversationWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
+import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
+import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
+import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 

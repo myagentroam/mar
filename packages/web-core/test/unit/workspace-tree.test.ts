@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkspaceTreeService } from '../../src/service/WorkspaceTreeService.js';
+import { createWorkspaceTreeService } from '../../src/service/workspace-tree-service.js';
 import type { NodeSummary } from '../../src/model/workbench.js';
 
 function workspace(id: string) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMarkdownPreviewPreference } from '../../src/service/MarkdownPreviewPreferenceService.js';
+import { parseMarkdownPreviewPreference } from '../../src/service/markdown-preview-preference-service.js';
 import {
   isExternalMarkdownImageUrl,
   resolveMarkdownWorkspacePath

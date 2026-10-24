@@ -3,12 +3,12 @@ import {
   conversationHostingMaintenanceAvailability,
   createConversationHostingMaintenanceService,
   sameConversationHostingMaintenanceContext
-} from '../../ee/web/src/service/ConversationHostingMaintenanceService.js';
+} from '../../ee/web/src/service/conversation-hosting-maintenance-service.js';
 import {
   conversationHostingDisablementAvailability,
   conversationHostingEnablementAvailability,
   createConversationHostingEnablementService
-} from '../../ee/web/src/service/ConversationHostingEnablementService.js';
+} from '../../ee/web/src/service/conversation-hosting-enablement-service.js';
 
 describe('Web conversation hosting maintenance service', () => {
   it('gates one-way enablement on organization ownership, Linux, connection, and current state', () => {

@@ -2,12 +2,12 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
@@ -16,10 +16,10 @@ import {
   type SkillSourceCard,
   type SkillSourceInput,
   type SkillFavoriteInput
-} from '../../service/SkillCenterService';
+} from '../../service/skill-center-service';
 import { skillErrorMessage } from '../../util/skill-errors';
 import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 
 import ManagementPagination from '../settings/ManagementPagination.vue';
 

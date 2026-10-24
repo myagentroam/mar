@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{ readonly pasteEnabled: boolean }>();
 const emit = defineEmits<{ copy: []; paste: []; reload: [] }>();

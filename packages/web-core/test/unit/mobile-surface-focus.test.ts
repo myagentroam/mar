@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRenderer, h, nextTick, onBeforeUnmount } from 'vue';
-import { createMobileSurfaceFocusService } from '../../src/service/MobileSurfaceFocusService.js';
+import { createMobileSurfaceFocusService } from '../../src/service/mobile-surface-focus-service.js';
 
 const apps: { unmount(): void }[] = [];
 afterEach(() => {

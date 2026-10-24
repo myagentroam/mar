@@ -1,6 +1,6 @@
 import { defineAsyncComponent } from 'vue';
 import { bootstrapConsole } from '@myagentroam/web-core/bootstrap';
-import './service/LocalePreferenceService';
+import './service/locale-preference-service';
 import './styles.css';
 import { createEnterpriseManagementComposition } from './composition/enterprise-management';
 

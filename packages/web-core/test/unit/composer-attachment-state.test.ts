@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { createComposerAttachmentService } from '../../src/service/ComposerAttachmentService.js';
-import { createComposerAttachmentDragTracker } from '../../src/service/ComposerAttachmentDragTracker.js';
+import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
+import { createComposerAttachmentDragTracker } from '../../src/service/composer-attachment-drag-tracker.js';
 
 function file(name: string, size: number, type = 'text/plain'): File {
   return { name, size, type } as File;

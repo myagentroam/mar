@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchSelectionPersistenceService } from '../../src/service/WorkbenchSelectionPersistenceService.js';
+import { createWorkbenchSelectionPersistenceService } from '../../src/service/workbench-selection-persistence-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 
 function setup(sessionId: string | undefined = 'saved') {

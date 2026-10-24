@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage } from 'element-plus';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import type { QuickPrompt } from '../../src/model/workbench.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn(), success: vi.fn() } }));
 

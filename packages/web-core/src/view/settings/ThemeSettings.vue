@@ -2,21 +2,21 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import {
   type BuiltinTheme,
   type CustomTheme,
   type ThemePreference
 } from '../../model/custom-theme.js';
-import { themePreferenceService } from '../../service/ThemePreferenceService.js';
+import { themePreferenceService } from '../../service/theme-preference-service.js';
 import { analyzeCustomTheme, createThemeSource } from '../../util/custom-theme.js';
 import ThemePreview from './ThemePreview.vue';
 import ThemeTokenHelp from './ThemeTokenHelp.vue';

@@ -10,7 +10,7 @@ import ElementPlus, {
 } from 'element-plus';
 import SkillPage from '../../src/view/skill/SkillSourceManagementPage.vue?unit-render';
 import McpPage from '../../src/view/skill/McpSourceManagementPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import {
   flushComponent,

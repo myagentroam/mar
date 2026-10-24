@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TerminalDirectError } from '../../src/service/TerminalDirectClient.js';
-import { createTerminalService } from '../../src/service/TerminalService.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
+import { TerminalDirectError } from '../../src/service/terminal-direct-client.js';
+import { createTerminalService } from '../../src/service/terminal-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 
 class Socket extends EventTarget {
   static readonly OPEN = 1;

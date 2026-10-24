@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type {
   ConversationHostingCleanupPreview,
   ConversationHostingCleanupResult,
@@ -16,8 +16,8 @@ import {
   conversationHostingMaintenanceAvailability,
   createConversationHostingMaintenanceService,
   sameConversationHostingMaintenanceContext
-} from '../../service/ConversationHostingMaintenanceService.js';
-import { currentLocale, translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/conversation-hosting-maintenance-service.js';
+import { currentLocale, translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/workbench-presentation.js';
 
 const props = defineProps<{

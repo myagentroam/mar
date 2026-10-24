@@ -6,8 +6,8 @@ import type { WorkspaceDirectoryListing } from '@myagentroam/web-core/workspace-
 import {
   organizationDisplayLabel,
   type OrganizationSummary
-} from '@/service/EnterpriseManagementService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/enterprise-management-service';
+import { translate } from '@/service/locale-preference-service';
 defineOptions({ inheritAttrs: false });
 const props = defineProps<{
   readonly modelValue: readonly string[];

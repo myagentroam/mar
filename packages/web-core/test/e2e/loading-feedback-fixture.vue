@@ -5,7 +5,7 @@ import ConversationScroll from '../../src/view/conversation/ConversationScroll.v
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
-import type { WorkspaceFileTreeNode } from '../../src/service/WorkspaceFileTreeService.js';
+import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 
 const previewLoading = ref(true);
 const loadingInitial = ref(true);

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { nextTick, ref, watch } from 'vue';
-import type { FileReferenceEntry } from '../../service/FileReferenceService.js';
+import type { FileReferenceEntry } from '../../service/file-reference-service.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 
 const props = defineProps<{

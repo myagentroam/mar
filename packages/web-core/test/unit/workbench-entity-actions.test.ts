@@ -3,8 +3,8 @@ import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dialogs = vi.hoisted(() => ({ prompt: vi.fn(), confirm: vi.fn() }));
 vi.mock('element-plus', () => ({ ElMessageBox: dialogs }));
-import { createWorkbenchEntityService } from '../../src/service/WorkbenchEntityService.js';
-import { createWorkbenchEntityController } from '../../src/service/WorkbenchEntityController.js';
+import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
+import { createWorkbenchEntityController } from '../../src/service/workbench-entity-controller.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type { NodeSummary, Session } from '../../src/model/workbench.js';
 

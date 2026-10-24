@@ -2,7 +2,7 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -14,9 +14,9 @@ import {
   type QuickOpenCandidate,
   type QuickOpenSessionCandidate,
   type QuickOpenSourceStatus
-} from '../../service/QuickOpenService.js';
-import { createScopedHttpService } from '../../service/ScopedHttpService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+} from '../../service/quick-open-service.js';
+import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { supportsNodeFeature } from '../../util/node-features.js';
 import { errorMessage } from '../../util/error-presentation.js';

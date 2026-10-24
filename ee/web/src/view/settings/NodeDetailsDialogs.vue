@@ -3,8 +3,8 @@ import { computed } from 'vue';
 import type { ComputerUseCapability, ConversationHostingCapability } from '@myagentroam/protocol';
 import CoreDialogs from '@myagentroam/web-core/HostingNodeDetailsDialogs.vue';
 import type { NodeDetailsProps } from '@myagentroam/web-core/node-details';
-import type { RunnerUsageName } from '@/service/RunnerUsageService';
-import { translate } from '@/service/LocalePreferenceService';
+import type { RunnerUsageName } from '@/service/runner-usage-service';
+import { translate } from '@/service/locale-preference-service';
 export type {
   NodeDetailsData,
   NodeDetailsRunnerCapability,

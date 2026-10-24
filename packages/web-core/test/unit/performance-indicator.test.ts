@@ -2,8 +2,8 @@ import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { ElButton, ElIcon, ID_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndicator.vue';
 import { installPerformanceObserver } from './support/performance-observer-fixture.js';
 

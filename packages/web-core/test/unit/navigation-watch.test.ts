@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchNavigationWatchService } from '../../src/service/WorkbenchNavigationWatchService.js';
+import { createWorkbenchNavigationWatchService } from '../../src/service/workbench-navigation-watch-service.js';
 
 function fixture() {
   let surface: 'workbench' | 'extension' | 'other' = 'workbench';

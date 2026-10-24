@@ -2,9 +2,9 @@ import { createTooltipApp as createApp } from '../../../packages/web-core/test/e
 import { reactive, ref } from 'vue';
 import { ElButton } from '../../../packages/web-core/test/support/element-plus-button.js';
 import '../../../packages/web-core/src/styles.css';
-import { localePreferenceService } from '../../../packages/web-core/src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../../packages/web-core/src/service/locale-preference-service.js';
 import ConversationComposer from '../../../packages/web-core/src/view/composer/ConversationComposer.vue';
-import type { CompletionDraft } from '../../../packages/web-core/src/service/PromptCompletionService.js';
+import type { CompletionDraft } from '../../../packages/web-core/src/service/prompt-completion-service.js';
 
 localePreferenceService().setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'

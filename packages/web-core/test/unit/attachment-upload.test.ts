@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createComposerAttachmentService } from '../../src/service/ComposerAttachmentService.js';
+import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
 
 class FakeXHR {
   static replies: Array<{ status: number; body: object }> = [];

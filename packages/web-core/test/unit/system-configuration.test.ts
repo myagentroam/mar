@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSystemConfigurationService } from '../../src/service/SystemConfigurationService.js';
+import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
 
 describe('Shared system configuration transactions', () => {
   it('defaults Web Push off and updates only the selected administrator switch', async () => {

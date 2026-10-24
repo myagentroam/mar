@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
 import {
   conversationDisplayItems,

@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
 import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
 import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import {
   flushComponent,
   renderComponent,
@@ -12,7 +12,7 @@ import {
   trigger
 } from './support/component-renderer.js';
 
-vi.mock('../../src/service/MessageFeedbackService.js', () => ({ showMessage: vi.fn() }));
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const messages = commonMessages['en-US'].generated.resourceSharingPage;
 const common = commonMessages['en-US'].common;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchSessionHistoryMutationService } from '../../src/service/WorkbenchSessionHistoryMutationService.js';
-import { createWorkbenchSubmissionService } from '../../src/service/WorkbenchSubmissionService.js';
+import { createWorkbenchSessionHistoryMutationService } from '../../src/service/workbench-session-history-mutation-service.js';
+import { createWorkbenchSubmissionService } from '../../src/service/workbench-submission-service.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
 
 const source: Session = { id: 'source', workspaceId: 'workspace', runner: 'codex' };

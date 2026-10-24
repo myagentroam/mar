@@ -3,7 +3,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { proxyRefs, watch } from 'vue';
 import EnterpriseLoginExtension from '@/view/auth/EnterpriseLoginExtension.vue';
-import { createWorkbenchPageController } from '@/service/WorkbenchPageController';
+import { createWorkbenchPageController } from '@/service/workbench-page-controller';
 import { oauthErrorMessage } from '@/util/oauth-callback';
 import WorkbenchSurface from '@/view/workbench/WorkbenchSurface.vue';
 import { useI18n } from 'vue-i18n';

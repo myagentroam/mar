@@ -1,8 +1,8 @@
 import type { AgentRun, ConversationItem, ConversationTurn } from '../model/workbench.js';
-import { translate } from '../service/LocalePreferenceService.js';
+import { translate } from '../service/locale-preference-service.js';
 import { toolPresentation } from './tool-presentation.js';
 import { conversationPayload } from './conversation-history.js';
-import { isTerminalRunStatus } from '../service/RunService.js';
+import { isTerminalRunStatus } from '../service/run-service.js';
 import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
   conversationDisplayItems,

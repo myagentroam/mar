@@ -4,8 +4,8 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Page from '../../src/view/settings/SystemConfigurationPage.vue?unit-render';
-import { createSystemConfigurationService } from '../../src/service/SystemConfigurationService.js';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import {
   flushComponent,
@@ -21,7 +21,7 @@ afterEach(() => {
 describe('Public system configuration page', () => {
   it('has no audit or enterprise policy in the default catalog or page', () => {
     for (const file of [
-      'service/SystemConfigurationService.ts',
+      'service/system-configuration-service.ts',
       'view/settings/SystemConfigurationPage.vue'
     ]) {
       expect(readFileSync(new URL(`../../src/${file}`, import.meta.url), 'utf8')).not.toMatch(

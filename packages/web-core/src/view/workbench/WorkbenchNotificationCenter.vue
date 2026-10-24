@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fileSizeLabel } from '../../util/file-presentation.js';
-import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.js';
+import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type {
   WorkbenchNotification,
   WorkbenchNotificationService
-} from '../../service/WorkbenchNotificationService.js';
+} from '../../service/workbench-notification-service.js';
 
 const props = defineProps<{
   readonly service: WorkbenchNotificationService;

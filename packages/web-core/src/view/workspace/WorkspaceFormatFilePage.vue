@@ -2,8 +2,8 @@
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import { type FilePreviewKind } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';

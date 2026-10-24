@@ -3,15 +3,15 @@ import { createRenderer, createSSRApp, h, ssrContextKey, type Component } from '
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
-import type { WorkspaceFileTreeNode } from '../../src/service/WorkspaceFileTreeService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import {
   quickOpenScore,
   sortQuickOpenCandidates,
   type QuickOpenCandidate
-} from '../../src/service/QuickOpenService.js';
+} from '../../src/service/quick-open-service.js';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
@@ -106,8 +106,8 @@ async function renderFileTypeIcon(
   vi.resetModules();
   const { default: FileTypeIcon } = await import('../../src/view/workspace/FileTypeIcon.vue');
   const { iconThemePreferenceService } =
-    await import('../../src/service/IconThemePreferenceService.js');
-  const { themePreferenceService } = await import('../../src/service/ThemePreferenceService.js');
+    await import('../../src/service/icon-theme-preference-service.js');
+  const { themePreferenceService } = await import('../../src/service/theme-preference-service.js');
   iconThemePreferenceService().setTheme(iconTheme);
   themePreferenceService().setTheme(surfaceTheme);
   return render(FileTypeIcon, { name: 'unrecognized.fixture' });
@@ -272,7 +272,7 @@ describe('public file navigation components', () => {
       vi.resetModules();
 
       const { iconThemePreferenceService } =
-        await import('../../src/service/IconThemePreferenceService.js');
+        await import('../../src/service/icon-theme-preference-service.js');
 
       expect(browser.getItem).not.toHaveBeenCalled();
 

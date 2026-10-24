@@ -4,7 +4,7 @@ import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue?unit
 import {
   createManagementComposition,
   MANAGEMENT_COMPOSITION_KEY
-} from '../../src/service/ManagementComposition.js';
+} from '../../src/service/management-composition.js';
 import { renderComponent, textContent } from './support/component-renderer.js';
 
 vi.mock('../../src/view/workbench/WorkbenchHeader.vue?unit-render', () => ({

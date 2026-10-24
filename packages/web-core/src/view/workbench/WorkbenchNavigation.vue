@@ -1,33 +1,33 @@
 <script setup lang="ts" generic="ManagementSection extends string">
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
+import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
-import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
+import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import {
   localizedDocsPath,
   translate,
   localePreferenceService
-} from '../../service/LocalePreferenceService.js';
+} from '../../service/locale-preference-service.js';
 import type {
   WorkbenchNotificationService,
   WorkbenchNotification
-} from '../../service/WorkbenchNotificationService.js';
-import type { WorkspaceUploadTask } from '../../service/WorkspaceUploadService.js';
-import type { RecentRun } from '../../service/WorkbenchNotificationService.js';
+} from '../../service/workbench-notification-service.js';
+import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
+import type { RecentRun } from '../../service/workbench-notification-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import WorkbenchNotificationCenter from './WorkbenchNotificationCenter.vue';
 import WorkbenchRecentSessions from './WorkbenchRecentSessions.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
-import type { createWebPerformanceDiagnostics } from '../../service/WebPerformanceDiagnosticService.js';
+import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
-import { WORKBENCH_PANEL_LIMITS } from '../../service/WorkbenchLayoutService.js';
+import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
-import type { MobileUtilityPanel } from '../../service/WorkbenchNavigationService.js';
+import type { MobileUtilityPanel } from '../../service/workbench-navigation-service.js';
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;

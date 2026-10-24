@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { QuickPrompt, RunnerCommand } from '../../model/workbench.js';
-import type { EffectiveWorkspaceSkill } from '../../service/EffectiveWorkspaceSkillService.js';
+import type { EffectiveWorkspaceSkill } from '../../service/effective-workspace-skill-service.js';
 
 const props = defineProps<{
   readonly open: boolean;

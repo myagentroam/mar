@@ -6,10 +6,10 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
@@ -18,14 +18,14 @@ import {
   environmentSecretValueError,
   type EnvironmentSecretSummary,
   type EnvironmentSecretInput
-} from '../../service/EnvironmentSecretService';
+} from '../../service/environment-secret-service';
 import {
   managementUrlValues,
   replaceManagementUrlValues
-} from '../../service/ManagementUrlService';
-import { translate } from '../../service/LocalePreferenceService';
+} from '../../service/management-url-service';
+import { translate } from '../../service/locale-preference-service';
 import { errorMessage } from '../../util/workbench-presentation';
-import { createManagementPageService } from '../../service/ManagementPageService';
+import { createManagementPageService } from '../../service/management-page-service';
 import ManagementPagination from './ManagementPagination.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
 

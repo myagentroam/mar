@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CorePage from '@myagentroam/web-core/McpCenterPanel.vue';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   nodes: readonly {

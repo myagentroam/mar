@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, nextTick, type Component, type VNode } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { clearMessages, showMessage } from '../../src/service/MessageFeedbackService.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
-import { AuthenticationContextChangedError } from '../../src/service/WorkbenchHttpService.js';
+import { clearMessages, showMessage } from '../../src/service/message-feedback-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
+import { AuthenticationContextChangedError } from '../../src/service/workbench-http-service.js';
 
 const feedback = vi.hoisted(() => {
   const handlers = {

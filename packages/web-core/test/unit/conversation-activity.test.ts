@@ -8,7 +8,7 @@ import {
   conversationElapsedLabel,
   runDuration
 } from '../../src/util/conversation-activity';
-import { translate } from '../../src/service/LocalePreferenceService';
+import { translate } from '../../src/service/locale-preference-service';
 
 const run: AgentRun = {
   id: 'run',

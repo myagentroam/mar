@@ -12,7 +12,7 @@ import {
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { serializeComposerTag } from '@myagentroam/protocol';
 import type { WorkspaceQueueItem } from '../../src/model/workbench.js';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
-import type { WorkbenchNotificationService } from '../../service/WorkbenchNotificationService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{
   readonly service: WorkbenchNotificationService['systemNotifications'];

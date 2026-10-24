@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { runInNewContext } from 'node:vm';
 import { MessageChannel } from 'node:worker_threads';
 import { directDownloadServiceWorkerPlugin } from '../../scripts/direct-download-service-worker.js';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 
 import type { ServerNotification as WorkbenchNotification } from '@myagentroam/protocol';
 

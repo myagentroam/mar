@@ -3,7 +3,7 @@ import { effectScope, nextTick } from 'vue';
 import {
   createResourceOwnershipService,
   type EnterpriseResourceRow
-} from '../../ee/web/src/service/ResourceOwnershipService.js';
+} from '../../ee/web/src/service/resource-ownership-service.js';
 
 const personal: EnterpriseResourceRow = {
   key: 'node-1',

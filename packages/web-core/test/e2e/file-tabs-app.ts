@@ -3,9 +3,9 @@ import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
-import { consoleKeyboardShortcutService } from '../../src/service/ConsoleKeyboardShortcutService.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 

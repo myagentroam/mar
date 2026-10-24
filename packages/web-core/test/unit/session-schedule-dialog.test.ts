@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus';
 import SessionScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue';
 import RenderedScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue?unit-render';
 import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn(), success: vi.fn() } }));
 const originalLocale = localePreferenceService().locale.value;

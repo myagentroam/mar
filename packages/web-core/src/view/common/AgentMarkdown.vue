@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { computed, onBeforeUnmount } from 'vue';
 import { marIconSvg } from '../../util/icon-shapes.js';
@@ -9,7 +9,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import 'highlight.js/styles/github.css';
-import { localePreferenceService, translate } from '../../service/LocalePreferenceService.js';
+import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 
 const props = defineProps<{

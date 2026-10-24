@@ -2,14 +2,14 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
@@ -39,10 +39,10 @@ import {
   modelProtocolChoice,
   modelSupportsNodeTransport,
   type CodexImportDraft
-} from '../../service/CodexCredentialManagementService';
-import { translate } from '../../service/LocalePreferenceService';
-import { createManagementOrderState } from '../../service/ManagementOrderState';
-import { runnerUsageWindowLabel } from '../../service/RunnerUsageService';
+} from '../../service/codex-credential-management-service';
+import { translate } from '../../service/locale-preference-service';
+import { createManagementOrderState } from '../../service/management-order-state';
+import { runnerUsageWindowLabel } from '../../service/runner-usage-service';
 import { errorCode } from '../../util/api-error';
 import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-presentation';
 import ImageGenerationManagement from './ImageGenerationManagement.vue';

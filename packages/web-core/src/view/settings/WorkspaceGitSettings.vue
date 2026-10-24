@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { onUnmounted, ref, watch } from 'vue';
 
-import { PersonalGitService } from '../../service/PersonalGitService.js';
-import { translate as t } from '../../service/LocalePreferenceService.js';
+import { PersonalGitService } from '../../service/personal-git-service.js';
+import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 
 const props = defineProps<{

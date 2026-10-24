@@ -2,7 +2,7 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { AgentRun, CachedSessionDetail, ConversationTurn } from '../../src/model/workbench.js';
-import { createWorkbenchConversationRealtimeService } from '../../src/service/WorkbenchConversationRealtimeService.js';
+import { createWorkbenchConversationRealtimeService } from '../../src/service/workbench-conversation-realtime-service.js';
 
 function fixture() {
   const segment = (id: string, segmentIndex: number): ConversationTurn => ({

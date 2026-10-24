@@ -3,7 +3,7 @@ import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
-import { showMessage } from '../../src/service/MessageFeedbackService.js';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 const value = ref('');
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {

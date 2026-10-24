@@ -1,8 +1,8 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
-import { createRunService } from '../../src/service/RunService.js';
-import { createWorkbenchRunControlService } from '../../src/service/WorkbenchRunControlService.js';
+import { createRunService } from '../../src/service/run-service.js';
+import { createWorkbenchRunControlService } from '../../src/service/workbench-run-control-service.js';
 
 describe('Shared Run interrupt control', () => {
   it('does not show Goal-exit feedback when a stop succeeds and applies the Run state', async () => {

@@ -2,17 +2,17 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
 import type { SessionShareTarget } from '@myagentroam/protocol';
-import { createSessionShareManagementService } from '../../service/SessionShareManagementService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { createSessionShareManagementService } from '../../service/session-share-management-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 const props = defineProps<{

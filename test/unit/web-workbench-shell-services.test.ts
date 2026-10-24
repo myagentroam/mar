@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchLayoutService } from '../../ee/web/src/service/WorkbenchLayoutService';
-import { createWorkbenchRouteService } from '../../ee/web/src/service/WorkbenchRouteService';
-import { createSessionSnapshotRefreshService } from '../../ee/web/src/service/SessionSnapshotRefreshService';
+import { createWorkbenchLayoutService } from '../../ee/web/src/service/workbench-layout-service';
+import { createWorkbenchRouteService } from '../../ee/web/src/service/workbench-route-service';
+import { createSessionSnapshotRefreshService } from '../../ee/web/src/service/session-snapshot-refresh-service';
 
 function memoryStorage() {
   const values = new Map<string, string>();

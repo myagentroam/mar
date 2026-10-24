@@ -7,7 +7,7 @@ import {
   type NotificationTarget,
   type RecentRun,
   type WorkbenchNotification
-} from '../../src/service/WorkbenchNotificationService';
+} from '../../src/service/workbench-notification-service';
 import {
   activeRecentRunStatus,
   elapsedDurationLabel,

@@ -2,7 +2,7 @@ import { h, reactive } from 'vue';
 import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
-import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 

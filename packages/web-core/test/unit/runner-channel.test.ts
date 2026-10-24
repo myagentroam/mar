@@ -2,8 +2,8 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { computed, ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type { Session } from '../../src/model/workbench.js';
-import { createWorkbenchRunnerChannelService } from '../../src/service/WorkbenchRunnerChannelService.js';
-import { translate } from '../../src/service/LocalePreferenceService.js';
+import { createWorkbenchRunnerChannelService } from '../../src/service/workbench-runner-channel-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 
 function fixture(runner: Session['runner'] = 'claude-code') {
   const request = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(async () => ({

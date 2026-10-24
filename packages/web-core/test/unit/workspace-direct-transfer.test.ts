@@ -1,18 +1,18 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkspaceDirectDownloadStream } from '../../src/service/WorkspaceDirectDownloadStreamService.js';
+import { createWorkspaceDirectDownloadStream } from '../../src/service/workspace-direct-download-stream-service.js';
 import {
   directFileContentRevision,
   readWorkspaceDirectFileRange
-} from '../../src/service/WorkspaceDirectFileReadService.js';
+} from '../../src/service/workspace-direct-file-read-service.js';
 import {
   createWorkspaceDirectObjectUrlSink,
   revokeWorkspaceDirectObjectUrl
-} from '../../src/service/WorkspaceDirectObjectUrlService.js';
+} from '../../src/service/workspace-direct-object-url-service.js';
 import {
   classifySelectedCandidatePair,
   createWorkspaceDirectTransferService
-} from '../../src/service/WorkspaceDirectTransferService.js';
+} from '../../src/service/workspace-direct-transfer-service.js';
 
 class FakeDataChannel extends EventTarget {
   readyState = 'open' as RTCDataChannelState;

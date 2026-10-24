@@ -8,7 +8,7 @@ import {
   conversationTemplateErrorMessageKey,
   conversationTemplateMiBToBytes,
   reconcileConversationTemplateModelSelection
-} from '../../src/service/ConversationTemplateService.js';
+} from '../../src/service/conversation-template-service.js';
 
 const summary = {
   id: 'template-1',

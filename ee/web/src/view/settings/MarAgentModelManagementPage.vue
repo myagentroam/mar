@@ -5,8 +5,8 @@ import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import type { NodeSummary } from '@/model/workbench';
 import CorePage from '@myagentroam/web-core/MarAgentModelManagementPage.vue';
 import ModelGrantExtension from './ModelGrantExtension.vue';
-import { createModelCredentialOwnershipService } from '@/service/ModelCredentialOwnershipService';
-import { translate } from '@/service/LocalePreferenceService';
+import { createModelCredentialOwnershipService } from '@/service/model-credential-ownership-service';
+import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   writable: boolean;

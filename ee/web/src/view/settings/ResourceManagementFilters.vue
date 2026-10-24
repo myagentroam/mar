@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { marIcon } from '@myagentroam/web-core/icons';
-import type { OrganizationCascaderOption } from '@/service/EnterpriseManagementService';
-import { translate } from '@/service/LocalePreferenceService';
+import type { OrganizationCascaderOption } from '@/service/enterprise-management-service';
+import { translate } from '@/service/locale-preference-service';
 
 defineProps<{
   resourceType: 'NODE' | 'WORKSPACE';

@@ -5,9 +5,9 @@ import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
 import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
-import { i18n } from '../../src/service/LocalePreferenceService.js';
+import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { DOCUMENTATION_AVAILABLE_KEY } from '../../src/service/DocumentationAvailability.js';
+import { DOCUMENTATION_AVAILABLE_KEY } from '../../src/service/documentation-availability.js';
 import {
   flushComponent,
   renderComponent,

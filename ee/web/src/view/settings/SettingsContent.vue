@@ -5,9 +5,12 @@ import { marIcon } from '@myagentroam/web-core/icons';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
-import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';
+import {
+  organizationPath,
+  type OrganizationSummary
+} from '@/service/enterprise-management-service';
 import { oauthErrorMessage } from '@/util/oauth-callback';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 import SharedSettingsContent from '@myagentroam/web-core/SettingsContent.vue';
 defineOptions({ inheritAttrs: false });
 const props = defineProps<{

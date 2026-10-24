@@ -2,17 +2,17 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+} from '../../service/mobile-dialog-return-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
 import { type FormInstance, type FormRules } from 'element-plus';
-import { translate } from '../../service/LocalePreferenceService';
+import { translate } from '../../service/locale-preference-service';
 import {
   createMailTemplateManagementService,
   type MailTemplate
-} from '../../service/MailTemplateManagementService';
+} from '../../service/mail-template-management-service';
 import { errorMessage } from '../../util/workbench-presentation';
 
 const props = defineProps<{

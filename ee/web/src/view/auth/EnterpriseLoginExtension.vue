@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { currentLocale } from '@/service/LocalePreferenceService';
+import { currentLocale } from '@/service/locale-preference-service';
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
 }>();

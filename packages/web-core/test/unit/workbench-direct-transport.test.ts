@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeWorkbenchManifest } from '../../src/model/workbench.js';
-import { createWorkbenchDirectTransportCoordinator } from '../../src/service/WorkbenchDirectTransportCoordinator.js';
-import { createTerminalDirectClient } from '../../src/service/TerminalDirectClient.js';
+import { createWorkbenchDirectTransportCoordinator } from '../../src/service/workbench-direct-transport-coordinator.js';
+import { createTerminalDirectClient } from '../../src/service/terminal-direct-client.js';
 
 const clients = vi.hoisted(() => ({
   workspace: {
@@ -21,10 +21,10 @@ const clients = vi.hoisted(() => ({
   },
   terminal: { invalidate: vi.fn(), handle: vi.fn(), attach: vi.fn() }
 }));
-vi.mock('../../src/service/WorkspaceDirectTransferService.js', () => ({
+vi.mock('../../src/service/workspace-direct-transfer-service.js', () => ({
   createWorkspaceDirectTransferService: vi.fn(() => clients.workspace)
 }));
-vi.mock('../../src/service/TerminalDirectClient.js', () => ({
+vi.mock('../../src/service/terminal-direct-client.js', () => ({
   createTerminalDirectClient: vi.fn(() => clients.terminal)
 }));
 

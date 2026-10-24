@@ -4,11 +4,11 @@ import { composerEnUS, composerZhCN } from '../../src/i18n/composer.js';
 import { notificationsEnUS, notificationsZhCN } from '../../src/i18n/notifications.js';
 import { errorPresentationEnUS, errorPresentationZhCN } from '../../src/i18n/error-presentation.js';
 import { workspaceFileSha256 } from '../../src/util/workspace-file-checksum.js';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import {
   createWorkspaceUploadService,
   parseStoredWorkspaceUploads
-} from '../../src/service/WorkspaceUploadService';
+} from '../../src/service/workspace-upload-service';
 
 afterEach(() => {
   vi.restoreAllMocks();

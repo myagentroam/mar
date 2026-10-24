@@ -9,7 +9,7 @@ import {
   sessionActivityDateTime,
   sessionActivityTitle
 } from '../../src/util/workbench-presentation';
-import { restorableWorkspaceSessions } from '../../src/service/WorkbenchPresentationStateService';
+import { restorableWorkspaceSessions } from '../../src/service/workbench-presentation-state-service';
 
 describe('Web session list', () => {
   it('shows thirty sessions per page by default', () => {

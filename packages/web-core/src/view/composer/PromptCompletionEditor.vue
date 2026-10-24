@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import {
   computed,
@@ -17,8 +17,8 @@ import {
   PromptCompletionService,
   type CompletionDraft,
   type CompletionTrigger
-} from '../../service/PromptCompletionService';
-import { translate } from '../../service/LocalePreferenceService';
+} from '../../service/prompt-completion-service';
+import { translate } from '../../service/locale-preference-service';
 import { errorMessage } from '../../util/error-presentation.js';
 
 const props = defineProps<{

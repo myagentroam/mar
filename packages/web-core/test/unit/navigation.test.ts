@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchNavigationService } from '../../src/service/WorkbenchNavigationService.js';
+import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import { transitionMobileWorkbenchLayout } from '../../src/util/mobile-workbench.js';
 
 afterEach(() => vi.unstubAllGlobals());

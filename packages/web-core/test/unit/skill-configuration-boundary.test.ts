@@ -20,7 +20,7 @@ describe('public Skill and MCP configuration', () => {
       expect(source).not.toMatch(/@\/|ORGANIZATION|ENTERPRISE|\/api\/organizations/u);
     }
     const service = readFileSync(
-      new URL('../../src/service/SkillCenterService.ts', import.meta.url),
+      new URL('../../src/service/skill-center-service.ts', import.meta.url),
       'utf8'
     );
     expect(service).not.toMatch(/organizationId|ORGANIZATION|ENTERPRISE|\/api\/organizations/u);

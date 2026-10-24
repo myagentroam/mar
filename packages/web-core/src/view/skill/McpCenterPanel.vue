@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { createMcpCenterService, type McpCatalogCard } from '../../service/McpCenterService.js';
+import { createMcpCenterService, type McpCatalogCard } from '../../service/mcp-center-service.js';
 
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
-import { currentLocale, translate } from '../../service/LocalePreferenceService.js';
+import { currentLocale, translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 import { errorMessage as displayErrorMessage } from '../../util/workbench-presentation.js';
 import ManagementPagination from '../settings/ManagementPagination.vue';

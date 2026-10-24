@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { computed } from 'vue';
 import type { ConversationTemplateSummary } from '@myagentroam/protocol';
-import { listAvailableConversationTemplates } from '../../src/service/HostedConversationEntryService.js';
+import { listAvailableConversationTemplates } from '../../src/service/hosted-conversation-entry-service.js';
 import {
   hostedConversationsEnUS,
   hostedConversationsZhCN
 } from '../../src/i18n/hosted-conversations.js';
 import { commonMessages } from '../../src/i18n/messages.js';
-import { localePreferenceService } from '../../src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { hostedConversationTitle } from '../../src/util/hosted-conversation-presentation.js';
 
 const template: ConversationTemplateSummary = {
@@ -111,7 +111,7 @@ describe('Public Hosted Conversation Boundaries', () => {
 
   it('keeps HostedConversation file flows outside the Workspace direct-transfer client', () => {
     const serviceSource = readFileSync(
-      new URL('../../src/service/HostedConversationWorkspaceService.ts', import.meta.url),
+      new URL('../../src/service/hosted-conversation-workspace-service.ts', import.meta.url),
       'utf8'
     );
     const pageSource = readFileSync(

@@ -10,8 +10,8 @@ import SessionPerformanceInfo from '../../src/view/conversation/SessionPerforman
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
 import ThemePreview from '../../src/view/settings/ThemePreview.vue';
-import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
-import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 
 const following = ref(false);
 const input = ref('Review the result');

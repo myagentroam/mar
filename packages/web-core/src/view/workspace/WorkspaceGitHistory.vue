@@ -5,8 +5,8 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
-import type { WorkspaceGitService } from '../../service/WorkspaceGitService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import {
   buildGitHistoryGraph,
   gitGraphNodeX,

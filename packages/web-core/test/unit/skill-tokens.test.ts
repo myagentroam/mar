@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createEffectiveWorkspaceSkillService } from '../../src/service/EffectiveWorkspaceSkillService.js';
+import { createEffectiveWorkspaceSkillService } from '../../src/service/effective-workspace-skill-service.js';
 import {
   createComposerSkillTokenService,
   serializeComposerMessage,
   hasUnavailableSkillToken,
   normalizeComposerSkillTokens
-} from '../../src/service/ComposerSkillTokenService.js';
+} from '../../src/service/composer-skill-token-service.js';
 
 const skill = {
   name: 'read-code',

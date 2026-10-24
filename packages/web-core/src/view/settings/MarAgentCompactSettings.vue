@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
@@ -9,8 +9,8 @@ import {
   type MarAgentCompactConfiguration,
   type MarAgentModelSummary
 } from '@myagentroam/protocol';
-import { createMarAgentCompactService } from '../../service/MarAgentCompactService';
-import { translate } from '../../service/LocalePreferenceService';
+import { createMarAgentCompactService } from '../../service/mar-agent-compact-service';
+import { translate } from '../../service/locale-preference-service';
 import { errorMessage } from '../../util/workbench-presentation';
 
 const props = defineProps<{

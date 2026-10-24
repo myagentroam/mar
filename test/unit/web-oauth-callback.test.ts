@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { oauthErrorMessage } from '../../ee/web/src/util/oauth-callback.js';
-import { localePreferenceService } from '../../ee/web/src/service/LocalePreferenceService.js';
+import { localePreferenceService } from '../../ee/web/src/service/locale-preference-service.js';
 
 describe('Web OAuth callback messages', () => {
   it('Known error codes map to specific messages and unknown codes retain a generic fallback', () => {

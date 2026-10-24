@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { type FormInstance, type FormRules } from 'element-plus';
 import type { HostedConversationSnapshot } from '@myagentroam/protocol';
-import { createHostedConversationEntryService } from '../../service/HostedConversationEntryService.js';
-import { translate } from '../../service/LocalePreferenceService.js';
+import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
+import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 
 const props = defineProps<{

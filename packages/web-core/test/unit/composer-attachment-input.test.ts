@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createComposerAttachmentInputService } from '../../src/service/ComposerAttachmentInputService.js';
+import { createComposerAttachmentInputService } from '../../src/service/composer-attachment-input-service.js';
 
 function clipboardEvent(options: {
   readonly files?: readonly File[];

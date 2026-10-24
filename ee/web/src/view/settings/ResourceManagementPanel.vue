@@ -8,9 +8,9 @@ import ResourceGrantExtension from './ResourceGrantExtension.vue';
 import {
   createResourceOwnershipService,
   type EnterpriseResourceRow
-} from '@/service/ResourceOwnershipService';
-import { createResourceHostingService } from '@/service/ResourceHostingService';
-import { translate } from '@/service/LocalePreferenceService';
+} from '@/service/resource-ownership-service';
+import { createResourceHostingService } from '@/service/resource-hosting-service';
+import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   writable: boolean;

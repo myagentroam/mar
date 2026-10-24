@@ -2,14 +2,14 @@
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
-} from '../../service/MobileDialogReturnService.js';
+} from '../../service/mobile-dialog-return-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import { showMessage } from '../../service/MessageFeedbackService.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { ElMessageBox } from '../../service/message-box-service.js';
 import {
   computed,
   defineAsyncComponent,
@@ -20,10 +20,10 @@ import {
   ref,
   watch
 } from 'vue';
-import { translate } from '../../service/LocalePreferenceService.js';
-import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
-import { markdownPreviewPreferenceService } from '../../service/MarkdownPreviewPreferenceService.js';
-import { fileEditorPreferenceService } from '../../service/FileEditorPreferenceService.js';
+import { translate } from '../../service/locale-preference-service.js';
+import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
+import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
+import { fileEditorPreferenceService } from '../../service/file-editor-preference-service.js';
 import { createMobilePreviewPinchZoom } from '../../util/mobile-preview-pinch-zoom.js';
 import { errorCode } from '../../util/api-error.js';
 import {

@@ -8,10 +8,10 @@ import type {
   WorkspaceTab,
   WorkspaceTarget
 } from '../../src/model/workbench.js';
-import type { WorkbenchWorkspaceTreeControllerOptions } from '../../src/service/WorkbenchWorkspaceTreeController.js';
-import { createWorkbenchWorkspaceTreeController } from '../../src/service/WorkbenchWorkspaceTreeController.js';
-import { createWorkspaceTabService } from '../../src/service/WorkspaceTabService.js';
-import { createWorkspaceTreeService } from '../../src/service/WorkspaceTreeService.js';
+import type { WorkbenchWorkspaceTreeControllerOptions } from '../../src/service/workbench-workspace-tree-controller.js';
+import { createWorkbenchWorkspaceTreeController } from '../../src/service/workbench-workspace-tree-controller.js';
+import { createWorkspaceTabService } from '../../src/service/workspace-tab-service.js';
+import { createWorkspaceTreeService } from '../../src/service/workspace-tree-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() } }));
 

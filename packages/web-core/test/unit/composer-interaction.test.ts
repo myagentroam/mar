@@ -1,8 +1,8 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchComposerInteractionController } from '../../src/service/WorkbenchComposerInteractionController.js';
-import { createRunnerInteractionService } from '../../src/service/RunnerInteractionService.js';
-import { createFileReferenceService } from '../../src/service/FileReferenceService.js';
+import { createWorkbenchComposerInteractionController } from '../../src/service/workbench-composer-interaction-controller.js';
+import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { createFileReferenceService } from '../../src/service/file-reference-service.js';
 
 function fixture() {
   const input = ref('');

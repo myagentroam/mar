@@ -3,7 +3,7 @@ import {
   TOOLTIP_SERVICE_KEY,
   TooltipService,
   type TooltipValue
-} from '../service/TooltipService.js';
+} from '../service/tooltip-service.js';
 
 export const tooltipPlugin: Plugin = {
   install(app) {

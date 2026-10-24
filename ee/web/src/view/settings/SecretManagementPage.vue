@@ -3,10 +3,10 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { onMounted, ref } from 'vue';
 
-import type { OrganizationSummary } from '@/service/EnterpriseManagementService';
+import type { OrganizationSummary } from '@/service/enterprise-management-service';
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
 import CorePage from '@myagentroam/web-core/SecretManagementPage.vue';
-import { translate } from '@/service/LocalePreferenceService';
+import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@/util/workbench-presentation';
 
 const props = defineProps<{

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ElTooltip, useZIndex } from 'element-plus';
-import { TOOLTIP_SERVICE_KEY } from '../../service/TooltipService.js';
+import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 import { tableTooltipOptions } from '../../util/tooltip.js';
 
 const service = inject(TOOLTIP_SERVICE_KEY)!;
