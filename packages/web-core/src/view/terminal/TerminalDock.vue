@@ -2,7 +2,7 @@
 import type { MessageType } from '../../model/message-feedback.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -57,6 +57,8 @@ const hasOpened = ref(false);
 const autoCreateAttempted = ref(false);
 const refreshing = ref(false);
 let refreshRevision = 0;
+let contextRevision = 0;
+let released = false;
 let focusRequested = false;
 const terminals = ref<TerminalSummary[]>([]);
 const activeTerminalId = ref<string>();
@@ -136,8 +138,8 @@ async function toggleTerminal(): Promise<void> {
   await focusActiveTerminal();
 }
 async function focusSelectedTerminalIfReady(): Promise<void> {
-  if (!focusRequested || !expanded.value || !props.active || !props.visible) return;
   await nextTick();
+  if (released || !focusRequested || !expanded.value || !props.active || !props.visible) return;
   const terminalId = activeTerminalId.value;
   const terminalView = terminalId === undefined ? undefined : terminalViews.get(terminalId);
   if (terminalView === undefined) return;
@@ -146,7 +148,8 @@ async function focusSelectedTerminalIfReady(): Promise<void> {
 }
 async function refreshContext(): Promise<void> {
   // Manifest is briefly cleared during Node switches; do not unmount this tab's xterm in that loading state.
-  if (!props.active || props.nodeId === undefined || props.capability === undefined) return;
+  if (released || !props.active || props.nodeId === undefined || props.capability === undefined)
+    return;
   const revision = ++refreshRevision;
   if (!canUseTerminal.value) {
     terminals.value = [];
@@ -184,10 +187,18 @@ async function refreshContext(): Promise<void> {
   }
 }
 async function openTerminal(): Promise<void> {
-  if (!canUseTerminal.value || props.nodeId === undefined || creating.value) return;
+  if (
+    released ||
+    !props.active ||
+    !canUseTerminal.value ||
+    props.nodeId === undefined ||
+    creating.value
+  )
+    return;
   autoCreateAttempted.value = true;
   const nodeId = props.nodeId;
   const workspaceId = props.workspaceId;
+  const revision = contextRevision;
   creating.value = true;
   try {
     const result = await http.request<{ terminal: TerminalSummary }>('/api/terminals', {
@@ -200,11 +211,15 @@ async function openTerminal(): Promise<void> {
         cols: 100
       })
     });
-    if (!props.active || nodeId !== props.nodeId || workspaceId !== props.workspaceId) return;
+    if (released || revision !== contextRevision) {
+      await releaseTerminals(nodeId, [result.terminal]);
+      return;
+    }
+    // A cached Workspace Dock still owns the result while another tab is in front.
     insertOpenedTerminal(result.terminal);
     selectTerminal(result.terminal.id);
   } catch (error) {
-    if (!props.active || nodeId !== props.nodeId || workspaceId !== props.workspaceId) return;
+    if (released || revision !== contextRevision || !props.active) return;
     emit(
       'notice',
       translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) }),
@@ -218,6 +233,8 @@ async function openTerminal(): Promise<void> {
 }
 async function ensureTerminalForExpandedDock(): Promise<void> {
   if (
+    released ||
+    !props.active ||
     !expanded.value ||
     !props.visible ||
     refreshing.value ||
@@ -273,8 +290,10 @@ function message(error: unknown): string {
 watch(
   () => [props.nodeId, props.workspaceId] as const,
   () => {
+    contextRevision += 1;
     autoCreateAttempted.value = false;
-  }
+  },
+  { flush: 'sync' }
 );
 watch(
   () => props.capability?.profiles,
@@ -322,34 +341,46 @@ watch(
   { immediate: true }
 );
 
+async function releaseTerminals(
+  nodeId: string | undefined,
+  owned: readonly TerminalSummary[]
+): Promise<void> {
+  const results = await Promise.allSettled(
+    owned.map((terminal) =>
+      http.request(`/api/terminals/${encodeURIComponent(terminal.id)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ nodeId })
+      })
+    )
+  );
+  const failed = results.filter((result) => result.status === 'rejected');
+  const firstFailure = failed[0];
+  if (firstFailure !== undefined)
+    emit(
+      'notice',
+      translate('generated.terminalDock.unableToReleaseTerminals', {
+        value0: failed.length,
+        value1: message(firstFailure.reason)
+      }),
+      'error'
+    );
+}
+
 async function release(): Promise<void> {
+  if (released) return;
+  released = true;
   refreshRevision += 1;
   expanded.value = false;
+  focusRequested = false;
   try {
-    const results = await Promise.allSettled(
-      terminals.value.map((terminal) =>
-        http.request(`/api/terminals/${encodeURIComponent(terminal.id)}`, {
-          method: 'DELETE',
-          body: JSON.stringify({ nodeId: props.nodeId })
-        })
-      )
-    );
-    const failed = results.filter((result) => result.status === 'rejected');
-    const firstFailure = failed[0];
-    if (firstFailure !== undefined)
-      emit(
-        'notice',
-        translate('generated.terminalDock.unableToReleaseTerminals', {
-          value0: failed.length,
-          value1: message(firstFailure.reason)
-        }),
-        'error'
-      );
+    await releaseTerminals(props.nodeId, terminals.value);
   } finally {
     terminals.value = [];
     activeTerminalId.value = undefined;
   }
 }
+
+onBeforeUnmount(() => void release());
 
 defineExpose({ release, toggle: toggleTerminal });
 </script>
