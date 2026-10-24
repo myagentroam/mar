@@ -117,9 +117,9 @@ describe('Node hosted conversation store', () => {
         templateId: 'template-1',
         templateName: 'Research',
         activeVersionId: 'version-1',
-        pendingVersionId: null,
         title: 'Research chat',
-        pinnedAt: null,
+        titleSource: 'CUSTOM',
+        pinnedAt: 1_500,
         status: 'ACTIVE',
         modelId: 'model-1',
         createdAt: 1_000,
@@ -128,7 +128,6 @@ describe('Node hosted conversation store', () => {
         userStorageKey,
         conversationStorageKey,
         templateDeleted: false,
-        recoverableUntil: null,
         quota: { usedBytes: 10, maxBytes: 1_000_000 }
       })
     );
@@ -137,7 +136,7 @@ describe('Node hosted conversation store', () => {
     expect(
       fixture.database.raw
         .prepare(
-          'SELECT id,user_storage_key,conversation_storage_key,session_id,status FROM hosted_conversations'
+          'SELECT id,user_storage_key,conversation_storage_key,session_id,status,title_source,pinned_at,used_bytes FROM hosted_conversations'
         )
         .get()
     ).toEqual({
@@ -145,11 +144,18 @@ describe('Node hosted conversation store', () => {
       user_storage_key: userStorageKey,
       conversation_storage_key: conversationStorageKey,
       session_id: 'session-1',
-      status: 'ACTIVE'
+      status: 'ACTIVE',
+      title_source: 'CUSTOM',
+      pinned_at: 1_500,
+      used_bytes: 0
     });
-    expect(JSON.parse(await readFile(environment.paths.manifestPath, 'utf8'))).not.toHaveProperty(
-      'pendingVersionId'
-    );
+    const correctedManifest = await readFile(environment.paths.manifestPath, 'utf8');
+    expect(JSON.parse(correctedManifest)).toMatchObject({
+      title: 'Research chat',
+      titleSource: 'CUSTOM',
+      pinnedAt: 1_500,
+      quota: { usedBytes: 0, maxBytes: 1_000_000 }
+    });
 
     fixture.store.createMessage({
       conversationId: 'conversation-1',
@@ -177,6 +183,8 @@ describe('Node hosted conversation store', () => {
       client_message_id: 'message-1'
     });
     expect(fixture.database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(await readFile(environment.paths.manifestPath, 'utf8')).toBe(correctedManifest);
+    fixture.database.close();
   });
 
   it('rejects messages whose parent conversation does not exist', async () => {
@@ -342,45 +350,56 @@ describe('Node hosted conversation store', () => {
     restartedDatabase.close();
   });
 
-  it('upgrades legacy manifests with pinned metadata and preserves their existing title as CUSTOM', async () => {
+  it.each([
+    { name: 'pendingVersionId', changes: { pendingVersionId: null } },
+    { name: 'recoverableUntil', changes: { recoverableUntil: null } },
+    { name: 'UPGRADE_PENDING', changes: { status: 'UPGRADE_PENDING' } },
+    { name: 'UPGRADE_FAILED', changes: { status: 'UPGRADE_FAILED' } },
+    { name: 'RECOVERABLE_DELETED', changes: { status: 'RECOVERABLE_DELETED' } },
+    { name: 'DELETING', changes: { status: 'DELETING' } },
+    { name: 'missing pinnedAt', changes: { pinnedAt: undefined } }
+  ])('rejects $name without converting the manifest or changing SQLite', async ({ changes }) => {
     const fixture = await storeFixture();
-    seedVersion(fixture.database);
-    const environment = await fixture.store.prepareConversationEnvironment(42, 'conversation-1');
-    await writeFile(
-      environment.paths.manifestPath,
-      JSON.stringify({
-        id: 'conversation-1',
-        nodeId: 'node-1',
-        sessionId: 'session-1',
-        templateId: 'template-1',
-        templateName: 'Research',
-        activeVersionId: 'version-1',
-        pendingVersionId: null,
-        title: 'Research chat',
-        status: 'ACTIVE',
-        modelId: 'model-1',
-        createdAt: 1_000,
-        updatedAt: 2_000,
-        lastActivityAt: 2_000,
-        userStorageKey: environment.userStorageKey,
-        conversationStorageKey: environment.conversationStorageKey,
-        templateDeleted: false,
-        recoverableUntil: null,
-        quota: { usedBytes: 0, maxBytes: 1_000_000 }
-      })
-    );
+    try {
+      seedVersion(fixture.database);
+      const { prepared, conversation } = await createActiveConversation(fixture, 'conversation-1');
+      const indexed = fixture.database.raw.prepare('SELECT * FROM hosted_conversations').all();
+      const stored = JSON.stringify({ ...conversation, ...changes });
+      await writeFile(prepared.paths.manifestPath, stored);
 
-    await fixture.store.rebuildConversationIndex();
+      await expect(fixture.store.rebuildConversationIndex()).rejects.toThrow(
+        'HOSTED_CONVERSATION_STORAGE_INVALID'
+      );
 
-    expect(
-      fixture.database.raw
-        .prepare('SELECT title_source,pinned_at FROM hosted_conversations WHERE id=?')
-        .get('conversation-1')
-    ).toEqual({ title_source: 'CUSTOM', pinned_at: null });
-    expect(JSON.parse(await readFile(environment.paths.manifestPath, 'utf8'))).toMatchObject({
-      titleSource: 'CUSTOM',
-      pinnedAt: null
-    });
+      expect(await readFile(prepared.paths.manifestPath, 'utf8')).toBe(stored);
+      expect(fixture.database.raw.prepare('SELECT * FROM hosted_conversations').all()).toEqual(
+        indexed
+      );
+    } finally {
+      fixture.database.close();
+    }
+  });
+
+  it('uses the Schema titleSource default without rewriting a valid stored manifest', async () => {
+    const fixture = await storeFixture();
+    try {
+      seedVersion(fixture.database);
+      const { prepared, conversation } = await createActiveConversation(fixture, 'conversation-1');
+      const stored = JSON.stringify({ ...conversation, titleSource: undefined });
+      await writeFile(prepared.paths.manifestPath, stored);
+
+      await fixture.store.rebuildConversationIndex();
+
+      expect(fixture.store.requireConversation(42, conversation.id)).toMatchObject({
+        title: conversation.title,
+        titleSource: 'CUSTOM',
+        pinnedAt: null,
+        status: 'ACTIVE'
+      });
+      expect(await readFile(prepared.paths.manifestPath, 'utf8')).toBe(stored);
+    } finally {
+      fixture.database.close();
+    }
   });
 
   it('rejects a symlinked conversation directory instead of indexing content outside the store', async () => {

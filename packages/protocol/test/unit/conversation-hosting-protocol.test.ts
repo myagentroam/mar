@@ -637,6 +637,29 @@ describe('conversation hosting protocol', () => {
     ).toBe(false);
   });
 
+  it.each([
+    { name: 'pendingVersionId', changes: { pendingVersionId: null } },
+    { name: 'recoverableUntil', changes: { recoverableUntil: null } },
+    { name: 'UPGRADE_PENDING', changes: { status: 'UPGRADE_PENDING' } },
+    { name: 'UPGRADE_FAILED', changes: { status: 'UPGRADE_FAILED' } },
+    { name: 'RECOVERABLE_DELETED', changes: { status: 'RECOVERABLE_DELETED' } },
+    { name: 'DELETING', changes: { status: 'DELETING' } },
+    { name: 'missing pinnedAt', changes: { pinnedAt: undefined } }
+  ])('rejects manifest $name independently of other invalid fields', ({ changes }) => {
+    const manifest = {
+      ...conversationSummary,
+      userStorageKey: 'user_XY12abc',
+      conversationStorageKey: 'conversation_ZZ34def',
+      titleSource: 'AUTO',
+      templateDeleted: false,
+      quota: { usedBytes: 1024, maxBytes: 100_000_000 }
+    };
+    expect(hostedConversationManifestSchema.safeParse(manifest).success).toBe(true);
+    expect(hostedConversationManifestSchema.safeParse({ ...manifest, ...changes }).success).toBe(
+      false
+    );
+  });
+
   it('models hosted manifests and related files without physical paths', () => {
     expect(conversationTemplateSummarySchema.parse(templateSummary)).toMatchObject({
       currentVersionId: 'version-2'
@@ -688,35 +711,6 @@ describe('conversation hosting protocol', () => {
         titleSource: 'DEFAULT'
       })
     ).toMatchObject({ title: conversationSummary.title, titleSource: 'DEFAULT' });
-    expect(
-      hostedConversationManifestSchema.safeParse({
-        ...conversationSummary,
-        status: 'UPGRADE_PENDING',
-        pendingVersionId: 'version-3',
-        userStorageKey: 'user_XY12abc',
-        conversationStorageKey: 'conversation_ZZ34def',
-        titleSource: 'AUTO',
-        templateDeleted: true,
-        quota: {
-          usedBytes: 1024,
-          maxBytes: 100_000_000
-        }
-      }).success
-    ).toBe(false);
-    expect(
-      hostedConversationManifestSchema.safeParse({
-        ...conversationSummary,
-        userStorageKey: 'user_XY12abc',
-        conversationStorageKey: 'conversation_ZZ34def',
-        titleSource: 'AUTO',
-        templateDeleted: false,
-        recoverableUntil: 30,
-        quota: {
-          usedBytes: 1024,
-          maxBytes: 100_000_000
-        }
-      }).success
-    ).toBe(false);
     expect(
       conversationFileProjectionSchema.parse({
         id: 'file-1',

@@ -985,13 +985,10 @@ export class HostedConversationStore {
         const paths = conversationPaths(directory);
         await this.assertConversationLayout(paths);
         let manifest: HostedConversationManifest;
-        let manifestNeedsUpgrade = false;
         try {
-          const stored = storedHostedConversationManifest(
+          manifest = hostedConversationManifestSchema.parse(
             JSON.parse(await readFile(paths.manifestPath, 'utf8'))
           );
-          manifest = stored.manifest;
-          manifestNeedsUpgrade = stored.upgraded;
         } catch {
           throw new Error('HOSTED_CONVERSATION_STORAGE_INVALID');
         }
@@ -1012,8 +1009,7 @@ export class HostedConversationStore {
                 ...manifest,
                 quota: { ...manifest.quota, usedBytes }
               });
-        if (manifestNeedsUpgrade || next !== manifest)
-          await this.writeManifest(paths.manifestPath, next);
+        if (next !== manifest) await this.writeManifest(paths.manifestPath, next);
         rebuilt.push({ manifest: next, files });
       }
     }
@@ -1685,43 +1681,6 @@ function conversationPaths(conversationDirectory: string): HostedConversationPat
     templateBindingDirectory: join(runtimeDirectory, 'template-binding'),
     fileIndexDirectory: join(runtimeDirectory, 'file-index'),
     quotaDirectory: join(runtimeDirectory, 'quota')
-  };
-}
-
-function storedHostedConversationManifest(input: unknown): {
-  readonly manifest: HostedConversationManifest;
-  readonly upgraded: boolean;
-} {
-  const stored: Record<string, unknown> =
-    typeof input === 'object' && input !== null && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {};
-  const withoutLegacyMetadata = { ...stored };
-  delete withoutLegacyMetadata['recoverableUntil'];
-  delete withoutLegacyMetadata['pendingVersionId'];
-  const missingPinnedAt = !('pinnedAt' in stored);
-  const missingTitleSource = !('titleSource' in stored);
-  const legacyUpgradeStatus =
-    stored.status === 'UPGRADE_PENDING' || stored.status === 'UPGRADE_FAILED';
-  const hasPendingVersion = 'pendingVersionId' in stored;
-  const upgraded =
-    missingPinnedAt ||
-    missingTitleSource ||
-    'recoverableUntil' in stored ||
-    hasPendingVersion ||
-    legacyUpgradeStatus;
-  return {
-    manifest: hostedConversationManifestSchema.parse(
-      upgraded
-        ? {
-            ...withoutLegacyMetadata,
-            ...(missingPinnedAt ? { pinnedAt: null } : {}),
-            ...(missingTitleSource ? { titleSource: 'CUSTOM' } : {}),
-            ...(legacyUpgradeStatus ? { status: 'ACTIVE' } : {})
-          }
-        : input
-    ),
-    upgraded
   };
 }
 
