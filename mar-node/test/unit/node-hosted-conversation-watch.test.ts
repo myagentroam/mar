@@ -349,6 +349,65 @@ describe('Node hosted conversation watch', () => {
     ).resolves.toEqual({ deletedConversationId: conversationId });
   });
 
+  it('lists draft model options and honors an allowed model when creating', async () => {
+    const fixture = await watchFixture();
+    await seedUpgradeVersion(fixture.database, fixture.store, {
+      allowedModels: [
+        { modelId: 'model-one', name: 'Model One' },
+        { modelId: 'model-two', name: 'Model Two' }
+      ],
+      defaultModelId: 'model-one'
+    });
+    const template = {
+      id: 'template-1',
+      nodeId: 'node-1',
+      name: 'Research',
+      description: 'Research template',
+      status: 'ACTIVE',
+      currentVersionId: 'version-2',
+      available: true,
+      createdAt: 1_000,
+      updatedAt: 1_500
+    };
+    const operations = fixture.service.operations();
+
+    await expect(
+      operations['conversation.hosted.model-options']!({
+        templateId: template.id,
+        __requestUserId: 7,
+        __template: template,
+        __marAgentModels: [model, modelTwo]
+      })
+    ).resolves.toMatchObject({
+      models: [{ id: 'model-1' }, { id: 'model-2' }],
+      defaultModelId: 'model-1'
+    });
+    await expect(
+      operations['conversation.hosted.create']!({
+        templateId: template.id,
+        clientRequestId: 'create-selected-model',
+        modelId: 'model-2',
+        __requestUserId: 7,
+        __template: template,
+        __marAgentModels: [model, modelTwo]
+      })
+    ).resolves.toMatchObject({ conversation: { modelId: 'model-2' } });
+    expect(fixture.runtime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModelId: 'model-2' })
+    );
+    await expect(
+      operations['conversation.hosted.create']!({
+        templateId: template.id,
+        clientRequestId: 'create-disallowed-model',
+        modelId: 'model-3',
+        __requestUserId: 7,
+        __template: template,
+        __marAgentModels: [model, modelTwo]
+      })
+    ).rejects.toThrow('HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE');
+    expect(fixture.runtime.createSession).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the latest available template version for snapshot model range', async () => {
     const fixture = await watchFixture();
     const conversationId = await createConversation(fixture);

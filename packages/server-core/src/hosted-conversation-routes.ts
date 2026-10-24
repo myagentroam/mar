@@ -20,6 +20,7 @@ import {
   hostedConversationListPageSchema,
   hostedConversationMessageInputSchema,
   hostedConversationMetadataUpdateInputSchema,
+  hostedConversationModelOptionsSchema,
   hostedConversationRollbackInputSchema,
   hostedConversationSnapshotSchema,
   hostedConversationUnwatchInputSchema,
@@ -151,6 +152,65 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
     nodeControl,
     authorizeHostedConversation
   );
+  const prepareTemplateRuntime = async (
+    actor: CurrentUserSession,
+    nodeId: string,
+    templateId: string,
+    selectedModelId?: string
+  ) => {
+    const template = await templates.requireForCreate(actor.userId, templateId);
+    if (template.nodeId !== nodeId) throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
+    const templateRuntime =
+      marAgentRuntimeModels === undefined
+        ? undefined
+        : await templates.runtimeContext(actor.userId, templateId);
+    if (
+      templateRuntime !== undefined &&
+      (templateRuntime.template.id !== template.id || templateRuntime.nodeId !== nodeId)
+    )
+      throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
+    const runtime = await hostedRuntimeModels({
+      userId: actor.userId,
+      nodeId,
+      ...(templateRuntime === undefined ? {} : { workspaceId: templateRuntime.workspaceId }),
+      models,
+      ...(marAgentRuntimeModels === undefined ? {} : { marAgentRuntimeModels }),
+      ...(selectedModelId === undefined ? {} : { selectedModelId })
+    });
+    return { template, runtime };
+  };
+
+  app.get<{
+    Params: { nodeId: string; templateId: string };
+  }>(
+    '/api/nodes/:nodeId/conversation-templates/:templateId/model-options',
+    async (request, reply) => {
+      const actor = protectedAdmin(database, request, reply);
+      if (actor === undefined) return;
+      reply.header('cache-control', 'private, no-store');
+      try {
+        const { template, runtime } = await prepareTemplateRuntime(
+          actor,
+          request.params.nodeId,
+          request.params.templateId
+        );
+        const result = await requestHostedConversationNode(
+          nodeControl,
+          actor,
+          request.params.nodeId,
+          'conversation.hosted.model-options',
+          {
+            templateId: request.params.templateId,
+            __template: template,
+            ...hostedRuntimePayload(runtime)
+          }
+        );
+        return reply.send(hostedConversationModelOptionsSchema.parse(result));
+      } catch (error) {
+        return databaseError(reply, error);
+      }
+    }
+  );
 
   app.get<{
     Querystring: { limit?: string; cursor?: string };
@@ -194,26 +254,12 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
     if (actor === undefined) return;
     try {
       const data = parsePublic(hostedConversationCreateInputSchema, request.body);
-      const template = await templates.requireForCreate(actor.userId, data.templateId);
-      if (template.nodeId !== request.params.nodeId)
-        throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
-      const templateRuntime =
-        marAgentRuntimeModels === undefined
-          ? undefined
-          : await templates.runtimeContext(actor.userId, data.templateId);
-      if (
-        templateRuntime !== undefined &&
-        (templateRuntime.template.id !== template.id ||
-          templateRuntime.nodeId !== request.params.nodeId)
-      )
-        throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
-      const runtime = await hostedRuntimeModels({
-        userId: actor.userId,
-        nodeId: request.params.nodeId,
-        ...(templateRuntime === undefined ? {} : { workspaceId: templateRuntime.workspaceId }),
-        models,
-        ...(marAgentRuntimeModels === undefined ? {} : { marAgentRuntimeModels })
-      });
+      const { template, runtime } = await prepareTemplateRuntime(
+        actor,
+        request.params.nodeId,
+        data.templateId,
+        data.modelId
+      );
       const result = await requestHostedConversationNode(
         nodeControl,
         actor,

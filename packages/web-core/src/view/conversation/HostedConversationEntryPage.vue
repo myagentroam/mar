@@ -23,6 +23,7 @@ const service = props.entry;
 const loading = ref(false);
 const loaded = ref(false);
 let loadSequence = 0;
+let modelLoadSequence = 0;
 
 async function load(): Promise<void> {
   const sequence = ++loadSequence;
@@ -31,6 +32,7 @@ async function load(): Promise<void> {
     await service.loadTemplates();
     if (sequence !== loadSequence) return;
     loaded.value = true;
+    await loadModels();
   } catch (error) {
     if (sequence !== loadSequence) return;
     showMessage(
@@ -43,12 +45,30 @@ async function load(): Promise<void> {
   }
 }
 
+async function loadModels(): Promise<void> {
+  const sequence = ++modelLoadSequence;
+  try {
+    await service.loadModelOptions();
+  } catch (error) {
+    if (sequence !== modelLoadSequence) return;
+    showMessage(
+      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed'),
+      'error',
+      error
+    );
+  }
+}
 function refreshTemplatesOnOpen(visible: boolean): void {
   if (visible && !loading.value) void load();
 }
 
+function refreshModelsOnOpen(visible: boolean): void {
+  if (visible) void loadModels();
+}
+
 onMounted(() => {
   if (service.templates.value.length === 0) void load();
+  else if (!service.modelOptionsLoaded.value) void loadModels();
 });
 </script>
 
@@ -73,6 +93,7 @@ onMounted(() => {
         draft
         :entry="service"
         :reload-templates="refreshTemplatesOnOpen"
+        :reload-models="refreshModelsOnOpen"
         @started="emit('started')"
       />
     </div>

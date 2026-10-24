@@ -2820,10 +2820,38 @@ export type HostedConversationSnapshot = z.infer<typeof hostedConversationSnapsh
 export const hostedConversationCreateInputSchema = z
   .object({
     templateId: protocolIdSchema,
-    clientRequestId: protocolIdSchema
+    clientRequestId: protocolIdSchema,
+    modelId: protocolIdSchema.optional()
   })
   .strict();
 export type HostedConversationCreateInput = z.infer<typeof hostedConversationCreateInputSchema>;
+
+export const hostedConversationModelOptionsInputSchema = z
+  .object({ templateId: protocolIdSchema })
+  .strict();
+
+export const hostedConversationModelOptionsSchema = z
+  .object({
+    models: z.array(marAgentNodeModelSummarySchema),
+    defaultModelId: protocolIdSchema.nullable()
+  })
+  .strict()
+  .superRefine((options, context) => {
+    uniqueProtocolIds(
+      options.models.map((model) => model.id),
+      context,
+      ['models']
+    );
+    if (options.models.length === 0 && options.defaultModelId !== null)
+      context.addIssue({ code: 'custom', path: ['defaultModelId'] });
+    if (
+      options.models.length > 0 &&
+      (options.defaultModelId === null ||
+        !options.models.some((model) => model.id === options.defaultModelId))
+    )
+      context.addIssue({ code: 'custom', path: ['defaultModelId'] });
+  });
+export type HostedConversationModelOptions = z.infer<typeof hostedConversationModelOptionsSchema>;
 
 export const hostedConversationListInputSchema = z
   .object({
@@ -3595,6 +3623,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'computer.use.enable',
   'computer.use.disable',
   'conversation.hosted.list',
+  'conversation.hosted.model-options',
   'conversation.hosted.create',
   'conversation.hosted.get',
   'conversation.hosted.history',

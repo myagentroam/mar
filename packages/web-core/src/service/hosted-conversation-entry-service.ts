@@ -1,11 +1,13 @@
 import {
+  hostedConversationModelOptionsSchema,
   hostedConversationSnapshotSchema,
   conversationTemplateSummarySchema,
   type ConversationTemplateSummary,
+  type HostedConversationModelOptions,
   type HostedConversationSnapshot,
   type HostedConversationUpload
 } from '@myagentroam/protocol';
-import { computed, ref, type Ref } from 'vue';
+import { computed, ref, shallowRef, type Ref } from 'vue';
 import type { createHostedConversationWorkspaceService } from './hosted-conversation-workspace-service.js';
 import { errorCode } from '../util/api-error.js';
 
@@ -35,14 +37,19 @@ const TEMPLATE_PREFERENCE_STORAGE_KEY = 'mar.hosted-conversations.last-template-
 export interface HostedConversationEntryService {
   readonly templates: Ref<readonly ConversationTemplateSummary[]>;
   readonly selectedTemplateId: Ref<string | undefined>;
+  readonly models: Ref<HostedConversationModelOptions['models']>;
+  readonly modelOptionsLoaded: Ref<boolean>;
+  readonly selectedModelId: Ref<string | undefined>;
   readonly prompt: Ref<string>;
   readonly attachments: Ref<HostedAttachment[]>;
   readonly submitting: Ref<boolean>;
   readonly target: Ref<HostedConversationSnapshot | undefined>;
   readonly writable: Readonly<Ref<boolean>>;
   loadTemplates(): Promise<void>;
+  loadModelOptions(): Promise<void>;
   setTemplates(templates: readonly ConversationTemplateSummary[]): void;
   selectTemplate(templateId: string): void;
+  selectModel(modelId: string): void;
   create(clientRequestId?: string): Promise<HostedConversationSnapshot>;
   addFiles(files: Iterable<File>): void;
   removeAttachment(id: string): void;
@@ -66,8 +73,20 @@ export function createHostedConversationEntryService(
     options.storage ?? (typeof localStorage === 'undefined' ? undefined : localStorage);
   let preferredTemplateId = readPreferredTemplateId(storage);
   let creationClientRequestId: string | undefined;
+  let creationModelId: string | undefined;
   let creationIntentRevision = 0;
   let templateLoadSequence = 0;
+  let modelLoadSequence = 0;
+  const models = shallowRef<HostedConversationModelOptions['models']>([]);
+  const modelOptionsLoaded = ref(false);
+  const selectedModelId = ref<string>();
+
+  function resetModelOptions(): void {
+    modelLoadSequence += 1;
+    models.value = [];
+    modelOptionsLoaded.value = false;
+    selectedModelId.value = undefined;
+  }
   const prompt = ref('');
   const attachments = ref<HostedAttachment[]>([]);
   const submitting = ref(false);
@@ -266,6 +285,7 @@ export function createHostedConversationEntryService(
 
   function resetCreationIntent(): void {
     creationClientRequestId = undefined;
+    creationModelId = undefined;
     creationIntentRevision += 1;
   }
 
@@ -298,17 +318,60 @@ export function createHostedConversationEntryService(
     if (
       selectedTemplateId.value !== currentTemplateId ||
       creationIntentRevision === creationRevision
-    )
+    ) {
       resetCreationIntent();
+      resetModelOptions();
+    }
+  }
+
+  async function loadModelOptions(): Promise<void> {
+    const templateId = selectedTemplateId.value;
+    const template = templates.value.find((candidate) => candidate.id === templateId);
+    if (templateId === undefined || template === undefined) {
+      resetModelOptions();
+      return;
+    }
+    const sequence = ++modelLoadSequence;
+    modelOptionsLoaded.value = false;
+    try {
+      const result = hostedConversationModelOptionsSchema.safeParse(
+        await request<unknown>(
+          `/api/nodes/${encodeURIComponent(template.nodeId)}/conversation-templates/${encodeURIComponent(templateId)}/model-options`
+        )
+      );
+      if (!result.success) throw new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
+      const response = result.data;
+      if (sequence !== modelLoadSequence || selectedTemplateId.value !== templateId) return;
+      const currentModelId = selectedModelId.value;
+      const nextModelId = response.models.some((model) => model.id === currentModelId)
+        ? currentModelId
+        : (response.defaultModelId ?? undefined);
+      if (currentModelId !== undefined && nextModelId !== currentModelId) resetCreationIntent();
+      models.value = response.models;
+      selectedModelId.value = nextModelId;
+      modelOptionsLoaded.value = true;
+    } catch (error) {
+      if (sequence === modelLoadSequence && selectedTemplateId.value === templateId) throw error;
+    }
   }
 
   function selectTemplate(templateId: string): void {
     if (!templates.value.some((template) => template.id === templateId))
       throw new Error('HOSTED_CONVERSATION_TEMPLATE_NOT_AVAILABLE');
-    if (selectedTemplateId.value !== templateId) resetCreationIntent();
+    if (selectedTemplateId.value !== templateId) {
+      resetCreationIntent();
+      resetModelOptions();
+    }
     selectedTemplateId.value = templateId;
     preferredTemplateId = templateId;
     persistPreferredTemplateId(storage, templateId);
+  }
+
+  function selectModel(modelId: string): void {
+    if (!models.value.some((model) => model.id === modelId))
+      throw new Error('HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE');
+    if (selectedModelId.value !== modelId) resetCreationIntent();
+    selectedModelId.value = modelId;
   }
 
   async function create(clientRequestId?: string): Promise<HostedConversationSnapshot> {
@@ -317,13 +380,20 @@ export function createHostedConversationEntryService(
     const template = templates.value.find((candidate) => candidate.id === templateId);
     if (template === undefined || !template.available)
       throw new Error('HOSTED_CONVERSATION_TEMPLATE_NOT_AVAILABLE');
-    creationClientRequestId ??= clientRequestId ?? crypto.randomUUID();
+    if (creationClientRequestId === undefined) {
+      creationClientRequestId = clientRequestId ?? crypto.randomUUID();
+      creationModelId = selectedModelId.value;
+    }
     const creationRevision = ++creationIntentRevision;
     const response = await request<unknown>(
       `/api/nodes/${encodeURIComponent(template.nodeId)}/hosted-conversations`,
       {
         method: 'POST',
-        body: JSON.stringify({ templateId, clientRequestId: creationClientRequestId })
+        body: JSON.stringify({
+          templateId,
+          clientRequestId: creationClientRequestId,
+          modelId: creationModelId
+        })
       }
     );
     try {
@@ -338,14 +408,19 @@ export function createHostedConversationEntryService(
   return {
     templates,
     selectedTemplateId,
+    models,
+    modelOptionsLoaded,
+    selectedModelId,
     prompt,
     attachments,
     submitting,
     target,
     writable,
     loadTemplates,
+    loadModelOptions,
     setTemplates,
     selectTemplate,
+    selectModel,
     create,
     addFiles,
     removeAttachment,

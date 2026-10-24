@@ -35,6 +35,7 @@ const props = defineProps<{
   readonly draft?: boolean;
   readonly entry?: ReturnType<typeof createHostedConversationEntryService>;
   readonly reloadTemplates?: (visible: boolean) => void;
+  readonly reloadModels?: (visible: boolean) => void;
 }>();
 const emit = defineEmits<{
   started: [];
@@ -152,9 +153,20 @@ const workingLabel = computed(() =>
 const elapsedLabel = computed(() =>
   props.readonly ? '' : conversationElapsedLabel(workingStartedAt.value, workingNow.value)
 );
-const models = computed(() => snapshot.value?.models ?? []);
-const selectedModelId = computed(() => snapshot.value?.conversation.modelId ?? '');
-const modelUnavailable = computed(() => snapshot.value !== undefined && models.value.length === 0);
+const models = computed(
+  () => snapshot.value?.models ?? (props.draft ? (props.entry?.models.value ?? []) : [])
+);
+const selectedModelId = computed(
+  () =>
+    snapshot.value?.conversation.modelId ??
+    (props.draft ? (props.entry?.selectedModelId.value ?? '') : '')
+);
+const modelUnavailable = computed(
+  () =>
+    (snapshot.value !== undefined ||
+      (props.draft === true && props.entry?.modelOptionsLoaded.value === true)) &&
+    models.value.length === 0
+);
 const modelSelectionDisabled = computed(
   () =>
     props.readonly ||
@@ -162,15 +174,24 @@ const modelSelectionDisabled = computed(
     submitting.value ||
     activeRun.value !== undefined ||
     configurationUpdating.value ||
-    modelUnavailable.value
+    modelUnavailable.value ||
+    (props.draft === true &&
+      snapshot.value === undefined &&
+      props.entry?.modelOptionsLoaded.value !== true)
 );
 const selectedModelLabel = computed(
   () =>
-    models.value.find((model) => model.id === selectedModelId.value)?.name ?? selectedModelId.value
+    models.value.find((model) => model.id === selectedModelId.value)?.name ??
+    (selectedModelId.value || translate('hostedConversations.model'))
 );
 const templateName = computed(() => snapshot.value?.conversation.templateName ?? '');
 const draftTemplates = computed(() => props.entry?.templates.value ?? []);
 const draftTemplateId = computed(() => props.entry?.selectedTemplateId.value ?? '');
+const draftTemplateLabel = computed(
+  () =>
+    draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
+    translate('hostedConversations.templatePlaceholder')
+);
 const templateSelectionDisabled = computed(() => props.readonly || submitting.value);
 const loadedTemplateLabel = computed(() =>
   templateName.value === ''
@@ -319,6 +340,7 @@ function messageFingerprint(): string {
 function selectTemplate(templateId: string): void {
   props.entry?.selectTemplate(templateId);
   messageIntent = undefined;
+  props.reloadModels?.(true);
 }
 
 function refreshDraftTemplates(visible: boolean): void {
@@ -421,6 +443,15 @@ function onKeydown(event: KeyboardEvent): void {
 
 async function updateModel(modelId: string): Promise<void> {
   if (modelSelectionDisabled.value || modelId === selectedModelId.value) return;
+  if (props.draft === true && snapshot.value === undefined) {
+    try {
+      props.entry?.selectModel(modelId);
+      messageIntent = undefined;
+    } catch (error) {
+      showMessage(hostedErrorMessage(error), 'error', error);
+    }
+    return;
+  }
   configurationUpdating.value = true;
   try {
     await props.workspace.updateConfiguration({ modelId });
@@ -494,6 +525,7 @@ onBeforeUnmount(() => {
 <template>
   <ConversationComposer
     ref="composer"
+    :class="{ 'hosted-draft-composer': draft }"
     v-model:input="input"
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
@@ -596,7 +628,47 @@ onBeforeUnmount(() => {
         >
           <MarIcon name="attachment" />
         </button>
-        <div v-if="snapshot" class="hosted-model-slot">
+        <el-dropdown
+          v-if="draft && !snapshot"
+          class="hosted-template-menu hosted-model-menu"
+          :disabled="templateSelectionDisabled"
+          trigger="click"
+          @command="selectTemplate(String($event))"
+          @visible-change="refreshDraftTemplates"
+        >
+          <button
+            v-tooltip="draftTemplateLabel"
+            class="hosted-template-trigger hosted-model-trigger"
+            type="button"
+            :disabled="templateSelectionDisabled"
+            :aria-label="translate('hostedConversations.chooseTemplate')"
+            :aria-description="draftTemplateLabel"
+          >
+            <span>{{ draftTemplateLabel }}</span>
+            <MarIcon name="chevron-down" aria-hidden="true" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="template in draftTemplates"
+                :key="template.id"
+                :command="template.id"
+                :disabled="!template.available"
+                :class="{ 'is-selected': template.id === draftTemplateId }"
+              >
+                {{ template.name }}
+              </el-dropdown-item>
+              <el-dropdown-item v-if="draftTemplates.length === 0" disabled>
+                {{ translate('hostedConversations.noTemplates') }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <div
+          v-if="snapshot || (draft && draftTemplateId)"
+          class="hosted-model-slot"
+          :class="{ 'draft-model-slot': draft && !snapshot }"
+        >
           <el-dropdown
             class="hosted-model-menu"
             :disabled="modelSelectionDisabled"
@@ -628,29 +700,6 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <el-select
-          v-if="draft && !snapshot"
-          class="hosted-template-select"
-          :model-value="draftTemplateId"
-          :disabled="templateSelectionDisabled"
-          :placeholder="translate('hostedConversations.templatePlaceholder')"
-          :suffix-icon="marIcon('chevron-down')"
-          :aria-label="translate('hostedConversations.chooseTemplate')"
-          filterable
-          @change="selectTemplate(String($event))"
-          @visible-change="refreshDraftTemplates"
-        >
-          <el-option
-            v-for="template in draftTemplates"
-            :key="template.id"
-            :label="template.name"
-            :value="template.id"
-            :disabled="!template.available"
-          />
-          <template #empty>
-            {{ translate('hostedConversations.noTemplates') }}
-          </template>
-        </el-select>
         <span
           v-tooltip="loadedTemplateLabel"
           v-if="templateName"
@@ -702,6 +751,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.hosted-draft-composer :deep(.composer) {
+  background: transparent;
+}
+
 .composer-submitting {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
@@ -821,11 +874,6 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
-.hosted-template-select {
-  width: 240px;
-  max-width: 100%;
-}
-
 .hosted-model-trigger,
 .hosted-template-name {
   min-height: var(--mar-compact-control-size);
@@ -937,9 +985,17 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
   }
 
-  .hosted-template-select {
+  .hosted-template-menu {
     width: 100%;
-    grid-column: 2 / 4;
+    grid-column: 2;
+  }
+
+  .hosted-template-trigger {
+    width: 100%;
+  }
+
+  .draft-model-slot {
+    grid-column: 3;
   }
 
   .hosted-send-button,

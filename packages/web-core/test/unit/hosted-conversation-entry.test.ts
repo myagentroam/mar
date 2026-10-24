@@ -46,6 +46,30 @@ const snapshot = {
   snapshotSequence: 0
 };
 
+function modelSummary(id: string, name: string) {
+  return {
+    id,
+    name,
+    protocol: 'OPENAI_RESPONSES' as const,
+    baseUrl: 'https://models.example.test/v1',
+    modelId: 'gpt-5.6-sol',
+    contextWindowTokens: 100000,
+    maxOutputTokens: 8192,
+    inputCapabilities: ['TEXT'],
+    outputCapabilities: ['TEXT'],
+    reasoningEfforts: ['high'],
+    defaultReasoningEffort: 'high' as const,
+    titleGeneration: false,
+    codeMode: false,
+    conversationModel: true,
+    hostedWebSearch: false,
+    responsesPreviousResponseId: false,
+    enabled: true,
+    sortOrder: 0,
+    apiKeyConfigured: true
+  };
+}
+
 function deferred<T>(): {
   readonly promise: Promise<T>;
   resolve(value: T): void;
@@ -95,6 +119,97 @@ describe('Web Hosted Conversation Portal', () => {
         }
       }
     ]);
+  });
+
+  it('Loads the selected template models and creates with the chosen configuration', async () => {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      recordRequest(requests, path, init);
+      if (path.endsWith('/model-options')) {
+        return {
+          models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+          defaultModelId: 'model-1'
+        } as never;
+      }
+      return snapshot as never;
+    });
+    service.setTemplates([template]);
+
+    await service.loadModelOptions();
+    expect(service.modelOptionsLoaded.value).toBe(true);
+    expect(service.selectedModelId.value).toBe('model-1');
+    service.selectModel('model-2');
+    await service.create('request-1');
+
+    expect(requests[0]?.path).toBe(
+      '/api/nodes/node-1/conversation-templates/template-1/model-options'
+    );
+    expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({
+      templateId: template.id,
+      clientRequestId: 'request-1',
+      modelId: 'model-2'
+    });
+  });
+
+  it('Ignores model options returned for a previously selected template', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    let requestCount = 0;
+    const service = createHostedConversationEntryService(async () => {
+      requestCount += 1;
+      return (requestCount === 1 ? first.promise : second.promise) as never;
+    });
+    const secondTemplate = { ...template, id: 'template-2', name: 'Implementation' };
+    service.setTemplates([template, secondTemplate]);
+    service.selectTemplate(template.id);
+
+    const firstLoad = service.loadModelOptions();
+    service.selectTemplate(secondTemplate.id);
+    const secondLoad = service.loadModelOptions();
+    second.resolve({ models: [modelSummary('model-2', 'Model Two')], defaultModelId: 'model-2' });
+    await secondLoad;
+    first.resolve({ models: [modelSummary('model-1', 'Model One')], defaultModelId: 'model-1' });
+    await firstLoad;
+
+    expect(service.selectedTemplateId.value).toBe(secondTemplate.id);
+    expect(service.models.value.map((model) => model.id)).toEqual(['model-2']);
+    expect(service.selectedModelId.value).toBe('model-2');
+  });
+
+  it('Keeps the selected model and creation identity across a late model refresh', async () => {
+    const refreshed = deferred<unknown>();
+    let refreshModels = false;
+    const bodies: Array<{ clientRequestId: string; modelId: string }> = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path.endsWith('/model-options')) {
+        if (refreshModels) return refreshed.promise as never;
+        return {
+          models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+          defaultModelId: 'model-1'
+        } as never;
+      }
+      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+      if (bodies.length === 1) throw new TypeError('Failed to fetch');
+      return snapshot as never;
+    });
+    service.setTemplates([template]);
+    await service.loadModelOptions();
+    service.selectModel('model-2');
+
+    refreshModels = true;
+    const refresh = service.loadModelOptions();
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+    refreshed.resolve({
+      models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+      defaultModelId: 'model-1'
+    });
+    await refresh;
+    await service.create();
+
+    expect(service.selectedModelId.value).toBe('model-2');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toEqual(bodies[1]);
+    expect(bodies[0]?.modelId).toBe('model-2');
   });
 
   it('Remember the recent template locally and restore it only while it remains in the current list', () => {
