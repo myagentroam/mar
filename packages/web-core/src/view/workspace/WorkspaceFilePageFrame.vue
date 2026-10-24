@@ -214,11 +214,11 @@ defineExpose({ root });
 
   .workspace-file-page-frame-title > small {
     grid-row: 2;
-    grid-column: 1 / -1;
+    grid-column: 1;
   }
 
   .workspace-file-page-frame-title :deep(.file-preview-eyebrow) {
-    grid-area: 1 / 2;
+    grid-area: 1 / 2 / 3 / 3;
     margin-bottom: 0;
     white-space: nowrap;
   }

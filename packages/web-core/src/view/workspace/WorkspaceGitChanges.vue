@@ -22,6 +22,7 @@ import {
 import { errorMessage } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
 import FileTypeIcon from './FileTypeIcon.vue';
+import { usesRawFilePreview } from '../../util/file-preview.js';
 
 const props = defineProps<{
   readonly service: WorkspaceGitService;
@@ -283,7 +284,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             class="change-path"
             type="button"
             :aria-label="
-              entry.diffAvailable
+              entry.diffAvailable && !usesRawFilePreview(entry.path)
                 ? translate('generated.workspaceInspector.viewDiffFor', {
                     value0: workspaceChangePath(entry)
                   })

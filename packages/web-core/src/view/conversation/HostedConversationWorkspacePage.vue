@@ -422,16 +422,18 @@ function beginNewConversation(): void {
   closeMobilePanels();
 }
 
-async function created(snapshot: HostedConversationSnapshot): Promise<void> {
-  draftingNewConversation.value = false;
+async function createConversation(snapshot: HostedConversationSnapshot): Promise<void> {
   closeMobilePanels();
   try {
     await props.selectConversation(snapshot.conversation, snapshot);
-  } catch (error) {
-    showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
     void loadDirectory().catch(() => undefined);
   }
+}
+
+function firstMessageStarted(): void {
+  draftingNewConversation.value = false;
+  closeMobilePanels();
 }
 
 async function editConversationTitle(conversation: HostedConversationSummary): Promise<void> {
@@ -1168,7 +1170,14 @@ onBeforeUnmount(() => {
         v-if="draftingNewConversation || selectedSummary === undefined"
         class="conversation-draft"
       >
-        <HostedConversationEntryPage :request="request" @created="created" />
+        <HostedConversationEntryPage
+          :request="request"
+          :workspace="workspace"
+          :mobile-viewport="mobileViewport"
+          :connected="connected"
+          :create-conversation="createConversation"
+          @started="firstMessageStarted"
+        />
       </section>
       <section
         v-else-if="workspace.snapshot.value === undefined"
@@ -1256,96 +1265,102 @@ onBeforeUnmount(() => {
       <header class="pane-header files-header">
         <h2>{{ translate('hostedConversations.filesTitle') }}</h2>
       </header>
-      <input
-        ref="relatedFilesInput"
-        class="related-files-input"
-        type="file"
-        multiple
-        :disabled="!filesWritable || uploadingDroppedFiles"
-        @change="handleRelatedFilesSelected"
-      />
-      <button
-        class="files-drop-target"
-        :class="{ active: filesDragging, disabled: !filesWritable }"
-        :aria-disabled="!filesWritable"
-        type="button"
-        :disabled="!filesWritable || uploadingDroppedFiles"
-        @click="chooseRelatedFiles"
-      >
-        <MarIcon name="upload" />
-        <span>
-          {{
-            filesDragging
-              ? translate('hostedConversations.filesDropNow')
-              : translate('hostedConversations.filesDropHint')
-          }}
-        </span>
-      </button>
-      <div v-loading="uploadingDroppedFiles" class="files-list">
-        <section v-for="group in filesByCategory" :key="group.category">
-          <h3>{{ categoryLabel(group.category) }}</h3>
-          <p v-if="group.files.length === 0">{{ translate('hostedConversations.noFiles') }}</p>
-          <div
-            v-for="row in group.rows"
-            :key="`${group.category}:${row.node.kind}:${row.node.path}`"
-            class="file-row"
-            :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
-            :style="{ '--file-depth': row.depth }"
-          >
-            <span
-              v-tooltip="row.node.path"
-              v-if="row.node.kind === 'DIRECTORY'"
-              class="mar-tooltip-control"
-              ><button
-                class="file-directory"
-                type="button"
-                :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
-                :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
-                @click="toggleFileDirectory(group.category, row.node.path)"
-              >
-                <MarIcon
-                  name="chevron-right"
-                  class="file-directory-chevron"
-                  :class="{
-                    expanded: fileDirectoryExpanded(group.category, row.node.path)
-                  }"
-                />
-                <MarIcon name="folder-open" class="file-directory-kind" />
-                <span>{{ row.node.name }}</span>
-              </button></span
+      <template v-if="selectedSummary !== undefined">
+        <input
+          ref="relatedFilesInput"
+          class="related-files-input"
+          type="file"
+          multiple
+          :disabled="!filesWritable || uploadingDroppedFiles"
+          @change="handleRelatedFilesSelected"
+        />
+        <button
+          class="files-drop-target"
+          :class="{ active: filesDragging, disabled: !filesWritable }"
+          :aria-disabled="!filesWritable"
+          type="button"
+          :disabled="!filesWritable || uploadingDroppedFiles"
+          @click="chooseRelatedFiles"
+        >
+          <MarIcon name="upload" />
+          <span>
+            {{
+              filesDragging
+                ? translate('hostedConversations.filesDropNow')
+                : translate('hostedConversations.filesDropHint')
+            }}
+          </span>
+        </button>
+        <div v-loading="uploadingDroppedFiles" class="files-list">
+          <section v-for="group in filesByCategory" :key="group.category">
+            <h3>{{ categoryLabel(group.category) }}</h3>
+            <p v-if="group.files.length === 0">{{ translate('hostedConversations.noFiles') }}</p>
+            <div
+              v-for="row in group.rows"
+              :key="`${group.category}:${row.node.kind}:${row.node.path}`"
+              class="file-row"
+              :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
+              :style="{ '--file-depth': row.depth }"
             >
-            <template v-else>
-              <button
-                v-tooltip="row.node.file.relativePath"
-                :aria-label="row.node.file.relativePath"
-                class="file-open"
-                type="button"
-                @click="filePreview.openFile(row.node.file)"
+              <span
+                v-tooltip="row.node.path"
+                v-if="row.node.kind === 'DIRECTORY'"
+                class="mar-tooltip-control"
+                ><button
+                  class="file-directory"
+                  type="button"
+                  :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
+                  :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
+                  @click="toggleFileDirectory(group.category, row.node.path)"
+                >
+                  <MarIcon
+                    name="chevron-right"
+                    class="file-directory-chevron"
+                    :class="{
+                      expanded: fileDirectoryExpanded(group.category, row.node.path)
+                    }"
+                  />
+                  <MarIcon name="folder-open" class="file-directory-kind" />
+                  <span>{{ row.node.name }}</span>
+                </button></span
               >
-                <span>{{ row.node.file.displayName }}</span>
-                <small>{{ fileSizeLabel(row.node.file.size) }}</small>
-              </button>
-              <button
-                v-tooltip="
-                  translate('hostedConversations.fileDeleteNamed', {
-                    name: row.node.file.displayName
-                  })
-                "
-                class="file-delete"
-                type="button"
-                :disabled="!filesWritable || deletingFileId !== undefined"
-                :aria-label="
-                  translate('hostedConversations.fileDeleteNamed', {
-                    name: row.node.file.displayName
-                  })
-                "
-                @click="deleteProjectedFile(row.node.file)"
-              >
-                <MarIcon name="delete" />
-              </button>
-            </template>
-          </div>
-        </section>
+              <template v-else>
+                <button
+                  v-tooltip="row.node.file.relativePath"
+                  :aria-label="row.node.file.relativePath"
+                  class="file-open"
+                  type="button"
+                  @click="filePreview.openFile(row.node.file)"
+                >
+                  <span>{{ row.node.file.displayName }}</span>
+                  <small>{{ fileSizeLabel(row.node.file.size) }}</small>
+                </button>
+                <button
+                  v-tooltip="
+                    translate('hostedConversations.fileDeleteNamed', {
+                      name: row.node.file.displayName
+                    })
+                  "
+                  class="file-delete"
+                  type="button"
+                  :disabled="!filesWritable || deletingFileId !== undefined"
+                  :aria-label="
+                    translate('hostedConversations.fileDeleteNamed', {
+                      name: row.node.file.displayName
+                    })
+                  "
+                  @click="deleteProjectedFile(row.node.file)"
+                >
+                  <MarIcon name="delete" />
+                </button>
+              </template>
+            </div>
+          </section>
+        </div>
+      </template>
+      <div v-else class="files-draft-empty">
+        <MarIcon name="folder-open" aria-hidden="true" />
+        <p>{{ translate('hostedConversations.filesAvailableAfterCreate') }}</p>
       </div>
     </aside>
 
@@ -1785,6 +1800,27 @@ onBeforeUnmount(() => {
 
 .related-files-input {
   display: none;
+}
+
+.files-draft-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  color: var(--mar-text-tertiary);
+  text-align: center;
+}
+
+.files-draft-empty > .mar-icon {
+  color: var(--mar-text-faint);
+  font-size: 24px;
+}
+
+.files-draft-empty p {
+  max-width: 220px;
+  margin: 0;
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.6;
 }
 
 .files-drop-target {

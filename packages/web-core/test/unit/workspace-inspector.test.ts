@@ -9,6 +9,7 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
 import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
+import { standaloneFileOpenIntent } from '../../src/service/standalone-file-window-service.js';
 import {
   mergeWorkspaceWatchSnapshot,
   type WorkspaceWatchSnapshot
@@ -295,7 +296,7 @@ type InspectorApi = {
     column?: number,
     repositoryPath?: string
   ): Promise<void>;
-  openWorkspaceFileTab(intent: Record<string, unknown>): void;
+  openWorkspaceFileTab(intent: Record<string, unknown>): Promise<void>;
   openFile(path: string, line?: number, column?: number): Promise<void>;
   openChanges(): void;
   openSearch(): void;
@@ -828,6 +829,161 @@ it('does not replay retained Changes metadata after the Workspace becomes a dire
     app.unmount();
   }
 });
+
+it.each([
+  ['photo.png', 'image'],
+  ['diagram.svg', 'image'],
+  ['manual.pdf', 'pdf'],
+  ['report.docx', 'document'],
+  ['table.xlsx', 'spreadsheet'],
+  ['slides.pptx', 'presentation'],
+  ['clip.mp4', 'video'],
+  ['sound.mp3', 'audio']
+] as const)('opens Git file %s directly in its %s preview', async (path, kind) => {
+  const commit = 'b'.repeat(40);
+  fetchRequest.mockResolvedValue({
+    ok: true,
+    status: 206,
+    headers: new Headers({ 'content-range': 'bytes 0-0/20' }),
+    arrayBuffer: async () => new Uint8Array([0]).buffer
+  });
+  for (const history of [false, true]) {
+    const { app, inspector } = mountInspector({ workspaceKind: 'GIT_WORKSPACE' });
+    try {
+      const parameters = new URLSearchParams({
+        standaloneFile: '1',
+        fileTabKind: history ? 'HISTORY_DIFF' : 'WORKTREE_DIFF',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        path,
+        repositoryPath: 'packages/media',
+        gitFile: '1',
+        worktreePath: '',
+        ...(history ? { commit, refs: 'refs/heads/main' } : {})
+      });
+      const intent = standaloneFileOpenIntent(`/console?${parameters}`)?.tab;
+      expect(intent).toBeDefined();
+      await inspector.value!.openWorkspaceFileTab(intent!);
+      await nextTick();
+      expect(latestTabs()!.props.tabs).toMatchObject([
+        {
+          kind: history ? 'HISTORY_TEXT' : 'WORKTREE_PREVIEW',
+          path,
+          repositoryPath: 'packages/media',
+          ...(history ? { commit } : { gitFile: true })
+        }
+      ]);
+      const preview = latestFormatPage(path)!;
+      expect(preview.props.kind).toBe(kind);
+      expect(preview.props.loading).toBe(false);
+      const url = new URL(String(preview.props.contentUrl), 'http://test.local');
+      expect(url.pathname).toBe(
+        `/api/workspaces/workspace-1${history ? `/git/commits/${commit}` : ''}/files/content`
+      );
+      expect(url.searchParams.get('repositoryPath')).toBe('packages/media');
+      expect(url.searchParams.get('path')).toBe(path);
+      if (history) expect(url.searchParams.getAll('refs')).toEqual(['refs/heads/main']);
+      if (history && path === 'photo.png') {
+        inspector.value!.restore(inspector.value!.snapshot());
+        await vi.waitFor(() =>
+          expect(latestFormatPage(path)?.props.contentUrl).toBe(url.pathname + url.search)
+        );
+        expect(latestTabs()!.props.tabs).toHaveLength(1);
+      }
+    } finally {
+      app.unmount();
+    }
+  }
+});
+
+it('preserves historical text locations when opening and restoring file tabs', async () => {
+  const body = new TextEncoder().encode('first\nsecond\nthird\n');
+  fetchRequest.mockResolvedValue({
+    ok: true,
+    status: 206,
+    headers: new Headers({ 'content-range': `bytes 0-${body.length - 1}/${body.length}` }),
+    arrayBuffer: async () => body.buffer
+  });
+  const { app, inspector } = mountInspector({ workspaceKind: 'GIT_WORKSPACE' });
+  try {
+    await inspector.value!.openWorkspaceFileTab({
+      kind: 'HISTORY_TEXT',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      path: 'src/history.ts',
+      repositoryPath: '',
+      worktreePath: '',
+      commit: 'b'.repeat(40),
+      targetLine: 3,
+      targetColumn: 2
+    });
+    await nextTick();
+    expect(latestTextPage('src/history.ts')?.props).toMatchObject({
+      targetLine: 3,
+      targetColumn: 2
+    });
+    expect(latestTabs()!.props.tabs).toMatchObject([{ targetLine: 3, targetColumn: 2 }]);
+    inspector.value!.restore(inspector.value!.snapshot());
+    await vi.waitFor(() =>
+      expect(latestTextPage('src/history.ts')?.props).toMatchObject({
+        targetLine: 3,
+        targetColumn: 2
+      })
+    );
+  } finally {
+    app.unmount();
+  }
+});
+
+it('keeps a Git media preview scoped to its linked worktree', async () => {
+  const { app, inspector } = mountInspector({ workspaceKind: 'GIT_WORKSPACE' });
+  try {
+    await inspector.value!.openWorkspaceFileTab({
+      kind: 'WORKTREE_DIFF',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      path: 'assets/photo.png',
+      repositoryPath: '',
+      worktreePath: '/repo/linked'
+    });
+    await nextTick();
+    expect(latestTabs()!.props.tabs).toMatchObject([
+      { kind: 'WORKTREE_PREVIEW', worktreePath: '/repo/linked', path: 'assets/photo.png' }
+    ]);
+    const url = new URL(
+      String(latestFormatPage('assets/photo.png')?.props.contentUrl),
+      'http://test.local'
+    );
+    expect(url.searchParams.get('worktreePath')).toBe('/repo/linked');
+    expect(url.searchParams.has('repositoryPath')).toBe(false);
+  } finally {
+    app.unmount();
+  }
+});
+
+it.each(['WORKTREE_DIFF', 'HISTORY_DIFF'] as const)(
+  'keeps text files in their %s tab without reading a format preview',
+  async (kind) => {
+    const { app, inspector } = mountInspector({ workspaceKind: 'GIT_WORKSPACE' });
+    try {
+      await inspector.value!.openWorkspaceFileTab({
+        kind,
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        path: 'notes.md',
+        repositoryPath: '',
+        worktreePath: '',
+        ...(kind === 'HISTORY_DIFF' ? { commit: 'b'.repeat(40), refs: [] } : {})
+      });
+      await nextTick();
+      expect(latestTabs()!.props.tabs).toMatchObject([{ kind, path: 'notes.md' }]);
+      expect(latestFormatPage('notes.md')).toBeUndefined();
+      expect(fetchRequest).not.toHaveBeenCalled();
+    } finally {
+      app.unmount();
+    }
+  }
+);
 
 it.each([
   ['clip.mp4', false],

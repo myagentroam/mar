@@ -73,6 +73,7 @@ import {
   isHtmlFile,
   isMarkdownFile,
   shouldReadTextFilePreview,
+  usesRawFilePreview,
   type FilePreviewKind
 } from '../../util/file-preview.js';
 import {
@@ -805,7 +806,18 @@ function openWorkspaceFile(
   );
 }
 
-function openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): void {
+async function openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void> {
+  if (
+    intent.kind === 'HISTORY_TEXT' ||
+    (intent.kind === 'HISTORY_DIFF' && usesRawFilePreview(intent.path))
+  ) {
+    await openHistoryText(intent);
+    return;
+  }
+  if (intent.kind === 'WORKTREE_DIFF' && usesRawFilePreview(intent.path)) {
+    await openWorktreeDiffText(intent);
+    return;
+  }
   const source = currentFilePosition();
   const tab = workspaceFileTabService.open(intent);
   recordFileNavigation(source, tab.id, intent.targetLine, intent.targetColumn);
@@ -1483,7 +1495,7 @@ function downloadDiffContent(diff: unknown, path: string): void {
   URL.revokeObjectURL(blobUrl);
 }
 
-async function openWorktreeDiffText(tab: WorkspaceFileTab): Promise<void> {
+async function openWorktreeDiffText(tab: WorkspaceFileOpenIntent): Promise<void> {
   if (tab.kind !== 'WORKTREE_DIFF') return;
   const source = currentFilePosition();
   const repositoryPath = tab.gitFile
@@ -1529,8 +1541,13 @@ async function previewDiffFile(tab: WorkspaceFileTab, diff: unknown): Promise<vo
   await openHistoryText(tab, diff);
 }
 
-async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<void> {
-  if (tab.kind !== 'HISTORY_DIFF' || tab.commit === undefined || !ready.value) return;
+async function openHistoryText(tab: WorkspaceFileOpenIntent, diff?: unknown): Promise<void> {
+  if (
+    (tab.kind !== 'HISTORY_DIFF' && tab.kind !== 'HISTORY_TEXT') ||
+    tab.commit === undefined ||
+    !ready.value
+  )
+    return;
   const source = currentFilePosition();
   const historyTab = workspaceFileTabService.open({
     kind: 'HISTORY_TEXT',
@@ -1540,13 +1557,17 @@ async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<v
     repositoryPath: tab.repositoryPath,
     worktreePath: '',
     commit: tab.commit,
-    refs: tab.refs ?? []
+    refs: tab.refs ?? [],
+    ...(tab.targetLine === undefined ? {} : { targetLine: tab.targetLine }),
+    ...(tab.targetColumn === undefined ? {} : { targetColumn: tab.targetColumn })
   });
-  recordFileNavigation(source, historyTab.id);
+  recordFileNavigation(source, historyTab.id, tab.targetLine, tab.targetColumn);
   const preview =
     filePageFrames.value.find((frame) => frame.id === historyTab.id) ??
     createPreviewFrame(historyTab.id);
   codeNavigation.clear(preview.id);
+  preview.targetLine.value = tab.targetLine;
+  preview.targetColumn.value = tab.targetColumn;
   if (!filePageFrames.value.includes(preview))
     filePageFrames.value = [...filePageFrames.value, preview];
   await filePreviews.open(
@@ -1557,7 +1578,7 @@ async function openHistoryText(tab: WorkspaceFileTab, diff?: unknown): Promise<v
       path: tab.path,
       history: { commit: tab.commit, repositoryPath: tab.repositoryPath, refs: tab.refs ?? [] }
     },
-    { textPreview: diff === undefined || !isBinaryDiff(diff) }
+    { textPreview: !isBinaryDiff(diff) && shouldReadTextFilePreview(tab.path) }
   );
 }
 
@@ -1665,9 +1686,7 @@ function changeDiffIntent(entry: ChangeEntry): WorkspaceFileOpenIntent {
 
 async function openChangeDiff(entry: ChangeEntry): Promise<void> {
   if (!ready.value || base.value === undefined || !entry.diffAvailable) return;
-  const source = currentFilePosition();
-  const tab = workspaceFileTabService.open(changeDiffIntent(entry));
-  recordFileNavigation(source, tab.id);
+  await openWorkspaceFileTab(changeDiffIntent(entry));
 }
 
 function refreshFiles(): void {

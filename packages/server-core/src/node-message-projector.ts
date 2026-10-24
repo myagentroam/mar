@@ -22,7 +22,6 @@ const PROJECTED_TYPES = new Set([
   'approval.request',
   'session.external-id',
   'session.channel.ready',
-  'lease.reconcile',
   'recent-runs'
 ]);
 
@@ -49,9 +48,6 @@ export class NodeMessageProjector {
         return;
       case 'session.channel.ready':
         this.channelReady(socket, envelope);
-        return;
-      case 'lease.reconcile':
-        this.lease(socket, envelope);
         return;
       case 'recent-runs':
         void this.options.recentRuns?.(nodeId, envelope.payload).catch(() => false);
@@ -128,13 +124,6 @@ export class NodeMessageProjector {
       return;
     }
     this.options.relay.publish(event);
-  }
-
-  private lease(socket: WebSocket, envelope: NodeEnvelope): void {
-    const payload = envelope.payload as { runId?: unknown; known?: unknown };
-    if (typeof payload.runId !== 'string' || typeof payload.known !== 'boolean')
-      return this.options.sendInvalid(socket, envelope.id);
-    this.options.send(socket, 'ack', { type: 'lease.reconcile' }, envelope.id);
   }
 
   private approval(socket: WebSocket, envelope: NodeEnvelope): void {

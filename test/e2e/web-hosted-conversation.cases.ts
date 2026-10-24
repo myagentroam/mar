@@ -652,11 +652,60 @@ test('Hosted conversation entry aligns compact controls across languages and vie
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const createdSnapshot = {
+    ...snapshot,
+    turns: [],
+    conversation: {
+      ...conversation,
+      id: 'conversation-created',
+      sessionId: 'session-created',
+      title: 'New conversation',
+      titleSource: 'DEFAULT' as const
+    }
+  };
+  let created = false;
+  const createBodies: Array<Record<string, unknown>> = [];
+  const messageBodies: Array<Record<string, unknown>> = [];
   await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
-    json(route, { items: [], nextCursor: null })
+    json(route, {
+      items: created ? [createdSnapshot.conversation] : [],
+      nextCursor: null
+    })
   );
   await page.route('**/api/conversation-templates', (route) =>
     json(route, { templates: [snapshot.template] })
+  );
+  await page.route('**/api/nodes/node-1/hosted-conversations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    createBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    created = true;
+    await json(route, createdSnapshot);
+  });
+  await page.route(
+    '**/api/nodes/node-1/hosted-conversations/conversation-created/messages',
+    async (route) => {
+      messageBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+      await json(route, {
+        conversation: createdSnapshot.conversation,
+        run: { id: 'run-created', status: 'RUNNING', startedAt: 3, completedAt: null }
+      });
+    }
+  );
+  await page.route(
+    '**/api/nodes/node-1/hosted-conversations/conversation-created/watch',
+    async (route) => {
+      if (route.request().method() === 'POST')
+        await fulfillMockHostedConversationWatch(
+          page,
+          route,
+          createdSnapshot.conversation.id,
+          createdSnapshot
+        );
+      else await json(route, {});
+    }
   );
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -666,10 +715,14 @@ test('Hosted conversation entry aligns compact controls across languages and vie
     await page.evaluate((value) => localStorage.setItem('mar.locale.v2', value), locale);
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', locale);
-    const templateControl = page.locator('.template-selection-row .el-select');
-    const startButton = page.locator('.create-conversation-button');
+    const templateControl = page.locator('.hosted-template-trigger');
+    const composer = page.locator('.conversation-create-panel');
+    const sendButton = page.locator('.hosted-send-button');
     await expect(templateControl).toBeVisible();
-    await expect(startButton).toBeEnabled();
+    await expect(templateControl).toContainText(snapshot.template.name);
+    await expect(sendButton).toBeDisabled();
+    await expect(page.locator('.create-conversation-button')).toHaveCount(0);
+    await expect(page.locator('.template-selection-row')).toHaveCount(0);
 
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
@@ -680,20 +733,27 @@ test('Hosted conversation entry aligns compact controls across languages and vie
         );
         await expect(page.locator('.hosted-conversation-files')).toHaveCSS('visibility', 'hidden');
       }
-      const [templateBox, buttonBox] = await Promise.all([
+      const [templateBox, sendBox, composerBox, mainBox] = await Promise.all([
         templateControl.boundingBox(),
-        startButton.boundingBox()
+        sendButton.boundingBox(),
+        composer.boundingBox(),
+        page.locator('#hosted-pane-conversation').boundingBox()
       ]);
       expect(templateBox).not.toBeNull();
-      expect(buttonBox).not.toBeNull();
-      expect(Math.abs(templateBox!.x - buttonBox!.x)).toBeLessThanOrEqual(1);
-      expect(buttonBox!.y).toBeGreaterThanOrEqual(templateBox!.y + templateBox!.height);
+      expect(sendBox).not.toBeNull();
+      expect(composerBox).not.toBeNull();
+      expect(mainBox).not.toBeNull();
+      const templateLabelBox = await templateControl.locator('span').first().boundingBox();
+      expect(templateLabelBox!.width).toBeGreaterThan(10);
       expect(templateBox!.x + templateBox!.width).toBeLessThanOrEqual(width);
+      expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(width);
+      expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(
+        mainBox!.y + mainBox!.height + 1
+      );
       if (width >= 768) {
-        expect(templateBox!.width).toBeLessThanOrEqual(240);
-        expect(buttonBox!.width).toBeLessThan(templateBox!.width);
-      } else {
-        expect(Math.abs(templateBox!.width - buttonBox!.width)).toBeLessThanOrEqual(1);
+        expect(composerBox!.width).toBeLessThanOrEqual(800);
+        await expect(page.locator('.files-draft-empty')).toBeVisible();
+        await expect(page.locator('.files-drop-target')).toHaveCount(0);
       }
       await page.screenshot({
         path: testInfo.outputPath(`entry-${locale}-${width}.png`),
@@ -701,6 +761,17 @@ test('Hosted conversation entry aligns compact controls across languages and vie
       });
     }
   }
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.locator('.conversation-create-panel textarea').fill('First message');
+  await page.locator('.hosted-send-button').click();
+  await expect(page.getByText('First message', { exact: true })).toBeVisible();
+  await expect(page.locator('.files-drop-target')).toBeVisible();
+  await expect(page.locator('.files-draft-empty')).toHaveCount(0);
+  expect(createBodies).toHaveLength(1);
+  expect(createBodies[0]).toMatchObject({ templateId: snapshot.template.id });
+  expect(messageBodies).toHaveLength(1);
+  expect(messageBodies[0]).toMatchObject({ prompt: 'First message', attachmentIds: [] });
 });
 
 test('Standalone chat reuses scrolling, Composer, and mobile history through one Hosted Watch', async ({
@@ -1905,58 +1976,18 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await historyCreateButton.click();
   await expect(breadcrumb).toContainText('新建对话');
   await expect(page.getByRole('dialog', { name: '新建对话' })).toHaveCount(0);
-  const templateSelect = page.getByRole('combobox', { name: '加载模板' });
-  const startConversationButton = page
-    .locator('#hosted-pane-conversation')
-    .getByRole('button', { name: '开始对话' });
+  const templateSelect = page.locator('.hosted-template-trigger');
   await expect(templateSelect).toBeVisible();
-  await expect(startConversationButton).toBeVisible();
-  await expect(page.locator('.conversation-create-panel')).toHaveCSS('border-top-width', '0px');
-  const createHeadingIcon = page.locator('.conversation-create-icon');
-  await expect(createHeadingIcon).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(createHeadingIcon).toHaveCSS('border-top-width', '0px');
-  const [historyCreateIcon, startConversationIcon] = await Promise.all([
-    historyCreateButton.locator('svg').evaluate((element) => element.innerHTML),
-    startConversationButton.locator('svg').evaluate((element) => element.innerHTML)
-  ]);
-  expect(startConversationIcon).toBe(historyCreateIcon);
-  await expect(page.getByText('加载模板：', { exact: true })).toBeVisible();
-  await expect(page.locator('.template-selection-row')).toHaveClass(/is-no-asterisk/);
-  await expect(page.getByRole('button', { name: '刷新模板' })).toHaveCount(0);
-  await expect(page.locator('.selected-template-summary')).toHaveCount(0);
+  await expect(page.locator('.create-conversation-button')).toHaveCount(0);
+  await expect(page.locator('.hosted-send-button')).toBeDisabled();
+  await expect(page.locator('.files-draft-empty')).toBeVisible();
+  await expect(page.locator('.files-drop-target')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: '加载模板' })).toHaveCount(0);
   await templateSelect.click();
   await expect.poll(() => templateDirectoryRequests).toBeGreaterThanOrEqual(2);
-  await expect(page.locator('.template-selection-row .el-select__wrapper')).toHaveCSS(
-    'box-shadow',
-    'none'
-  );
-  await expect(page.getByRole('option', { name: '战略调研', exact: true })).toBeVisible();
-  await page.getByRole('option', { name: '战略调研', exact: true }).click();
-  const [entryPaneBox, createPanelBox, selectBox, createButtonBox] = await Promise.all([
-    page.locator('#hosted-pane-conversation').boundingBox(),
-    page.locator('.conversation-create-panel').boundingBox(),
-    templateSelect.boundingBox(),
-    startConversationButton.boundingBox()
-  ]);
-  expect(createPanelBox?.width ?? 0).toBeLessThanOrEqual(400);
-  expect(createPanelBox?.height ?? 0).toBeLessThanOrEqual(190);
-  expect(
-    Math.abs(
-      (createPanelBox?.x ?? 0) +
-        (createPanelBox?.width ?? 0) / 2 -
-        ((entryPaneBox?.x ?? 0) + (entryPaneBox?.width ?? 0) / 2)
-    )
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(
-      (createPanelBox?.y ?? 0) +
-        (createPanelBox?.height ?? 0) / 2 -
-        ((entryPaneBox?.y ?? 0) + (entryPaneBox?.height ?? 0) / 2)
-    )
-  ).toBeLessThanOrEqual(1);
-  expect(selectBox?.width ?? 0).toBeLessThan((entryPaneBox?.width ?? 0) * 0.7);
-  expect(createButtonBox?.width ?? 0).toBeLessThan(selectBox?.width ?? 0);
-  await expect(startConversationButton).toBeEnabled();
+  await expect(page.getByRole('menuitem', { name: '战略调研', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: '战略调研', exact: true }).click();
+  await expect(templateSelect).toContainText('战略调研');
 
   const selectedConversationRow = history
     .locator('.history-list article')

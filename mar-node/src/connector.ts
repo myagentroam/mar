@@ -1418,7 +1418,6 @@ export class NodeConnector {
       handleMailNotificationResponse: (envelope) => this.mailNotificationControl.handle(envelope),
       handleDirectTransfer: (envelope) => this.handleDirectTransfer(envelope),
       handleTerminalDirect: (envelope) => this.handleTerminalDirect(envelope),
-      reconcileRuns: (envelope) => this.runEventBridge.reconcile(envelope),
       runners: this.runners,
       deliverSessionChannelMessage: (envelope) => this.runnerChannelMessages.handle(envelope),
       completeUncontrolledCancellation: (runId) => {
@@ -1453,8 +1452,6 @@ export class NodeConnector {
         if (session) this.modelUsage.bindInherited(runId, session.id, session.runner);
       },
       modelUsage: (runId, payload) => this.modelUsage.record(runId, payload),
-      runtime: this.runtime,
-      state: this.runState,
       events: this.runEventService,
       emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
       queues: this.workspaceQueueWorkbenchService,
@@ -2021,7 +2018,6 @@ export class NodeConnector {
     this.nativeSessionProjectionService.discoverWorkspace(workspaceId, onRunnerDiscovered);
   private readonly invalidateWorkspaceWatchTopics = (workspaceId: string): void =>
     this.workspaceCoordinator.invalidate(workspaceId);
-  private readonly reconcilePersistedRuns = (): void => undefined;
   private readonly startCapabilityRefresh = (): void =>
     this.connectionLifecycle.startCapabilityRefresh();
   private readonly refreshCapabilities = (): Promise<void> =>

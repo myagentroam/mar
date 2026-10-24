@@ -1,11 +1,11 @@
 ---
 title: 查看 Git Changes 与 Diff
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-24
 ---
 
 # 查看 Git Changes 与 Diff
 
-在 Git 工作区中，“Git Changes”把当前根仓库、已初始化的子模块和全部 linked worktree 扁平列为同级分组，并列出各自尚未提交的文件改动。点击文件默认显示代码 Diff；聊天中的文件更改同样默认进入 Diff，只有无法生成 Diff 时才回退到普通文件预览。
+在 Git 工作区中，“Git Changes”把当前根仓库、已初始化的子模块和全部 linked worktree 扁平列为同级分组，并列出各自尚未提交的文件改动。文本文件默认显示代码 Diff，支持的图片、音视频、PDF 和 Office 格式直接预览对应工作树中的文件；聊天中的文件更改仍默认进入 Diff，只有无法生成 Diff 时才回退到普通文件预览。
 
 工作区是仓库子目录时，默认使用所属仓库，列表路径相对各自的仓库根，可能包括 Workspace 外的文件。Git 当前文件预览和下载使用该仓库目标并保持只读，不会把同名路径当作 Workspace 文件保存；还原则作用于列表中对应的仓库文件。需要普通编辑时，从 Files 打开 Workspace 内的文件。可在工作区详情关闭“使用父级 Git 仓库”，普通 Files 和会话不受影响。
 
@@ -18,7 +18,7 @@ lastUpdated: 2026-10-22
 ## 步骤
 
 1. 打开右侧“Git Changes”。根仓库、已初始化的子模块和 linked worktree 使用同一组列表，并以“根仓库”“子模块”“工作树”“当前”等标签区分。每个 linked worktree 都会显示它在 Node 上的完整物理绝对路径；分支、detached HEAD、locked、可清理或无法读取状态显示在同一分组标题中。没有改动的可用分组会显示“暂无未提交的更改”。
-2. 选择任一分组中的文本文件，在统一文件 Tab 条中阅读新增、删除和修改行；按住 Ctrl（macOS 为 Command）点击文件会通过标准文件预览/编辑器链路在独立窗口打开同一种 Diff Tab。可使用 Diff 工具栏跳到前后文件或前后差异位置。Working Tree Diff 中按住 Ctrl/Cmd 点击可识别的代码符号或导入路径可跳到受控定义；删除行不提供跳转。按 Ctrl/Cmd+E 打开对应工作树文本 Tab 并切换编辑，History Diff 则只打开该 commit 的只读文本 Tab。linked worktree 文件的 Diff、普通预览和非文本预览都读取该工作树中的真实文件，而不是当前 Workspace 中的同名路径。图片、PDF、Office 和媒体等非文本文件不进行代码比较，点击“打开文件预览”查看对应工作树当前版本；Git 历史中的非文本变更则查看该次提交后的版本。
+2. 选择任一分组中的文本文件，在统一文件 Tab 条中阅读新增、删除和修改行；按住 Ctrl（macOS 为 Command）点击文件会通过标准文件预览/编辑器链路在独立窗口打开相同内容。可使用 Diff 工具栏跳到前后文件或前后差异位置。Working Tree Diff 中按住 Ctrl/Cmd 点击可识别的代码符号或导入路径可跳到受控定义；删除行不提供跳转。按 Ctrl/Cmd+E 打开对应工作树文本 Tab 并切换编辑，History Diff 则只打开该 commit 的只读文本 Tab。linked worktree 文件的 Diff、普通预览和非文本预览都读取该工作树中的真实文件，而不是当前 Workspace 中的同名路径。支持的图片、PDF、Office 和媒体格式直接打开预览，不需要再点击“打开文件预览”；Git Changes 读取对应工作树当前版本，Git History 读取选定提交中的版本。未知二进制和不支持的格式仍保留文件说明与降级入口。
 3. 确认要丢弃改动时，点击文件行的还原操作并在确认框中再次确认；未跟踪文件的对应操作是删除，无法恢复。
 4. 使用刷新重新读取全部分组的当前 Git 状态。需要浏览当前 Workspace 的普通目录时，从“文件”页签打开；linked worktree 不会加入该文件树。
 

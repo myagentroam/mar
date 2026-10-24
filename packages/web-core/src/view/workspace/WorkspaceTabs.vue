@@ -783,10 +783,10 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab-unread {
   flex: none;
-  border: 1px solid var(--mar-border-subtle);
+  border: 1px solid var(--mar-border-medium);
   border-radius: var(--mar-radius-marker);
   background: transparent;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
   font-weight: 500;
   line-height: 1;

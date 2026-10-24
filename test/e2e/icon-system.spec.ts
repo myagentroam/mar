@@ -361,6 +361,45 @@ for (const theme of ['dark', 'light']) {
 }
 
 for (const theme of ['dark', 'light']) {
+  test(`Workspace unread badges stay legible across viewports: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const locale of ['en-US', 'zh-CN']) {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto(`${fixture.url}workspace-tabs.html?locale=${locale}`);
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme === 'light' ? 'daylight' : 'vscode-dark-2026'
+        );
+        const tabs = page.locator('.workspace-tab');
+        const badge = tabs.first().locator('.workspace-tab-unread');
+        await expect(badge).toHaveText(locale === 'en-US' ? 'Unread' : '未读');
+        const colors = await badge.evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          probe.style.color = 'var(--mar-text-primary)';
+          const text = getComputedStyle(probe).color;
+          probe.style.color = 'var(--mar-border-medium)';
+          const border = getComputedStyle(probe).color;
+          probe.remove();
+          return { text, border };
+        });
+        for (const tab of [tabs.first(), tabs.nth(1)]) {
+          await tab.getByRole('tab').click();
+          await expect(badge).toHaveCSS('color', colors.text);
+          await expect(badge).toHaveCSS('border-top-color', colors.border);
+          await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        }
+        if (locale === 'en-US') {
+          await tabs.first().screenshot({
+            path: testInfo.outputPath(`unread-${theme}-${width}.png`)
+          });
+        }
+      }
+    }
+  });
+
   test(`Mobile action icons keep their visual hierarchy without scaling text or status: ${theme}`, async ({
     page
   }, testInfo) => {
@@ -379,12 +418,12 @@ for (const theme of ['dark', 'light']) {
       const rootFontSize = await page.evaluate(() =>
         parseFloat(getComputedStyle(document.documentElement).fontSize)
       );
-      const expectedPrimary = mobile ? 20 : 0.92 * rootFontSize;
+      const expectedPrimary = mobile ? 18 : 0.92 * rootFontSize;
       for (const action of [send, stop]) {
         const graphic = action.locator('.mar-icon');
         await expect(graphic).toBeVisible();
         expect((await graphic.boundingBox())!.width).toBeCloseTo(expectedPrimary, 1);
-        expect((await action.boundingBox())!.width).toBe(mobile ? 36 : 26);
+        expect((await action.boundingBox())!.width).toBe(mobile ? 28 : 24);
       }
       const plane = await send.locator('[data-mar-icon="send"]').evaluate((element) => {
         const svg = element as SVGSVGElement;
@@ -424,8 +463,8 @@ for (const theme of ['dark', 'light']) {
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
-        await expect(attachment).toHaveCSS('width', '20px');
-        await expect(attachment).toHaveCSS('height', '20px');
+        await expect(attachment).toHaveCSS('width', '18px');
+        await expect(attachment).toHaveCSS('height', '18px');
         for (const graphic of [copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');

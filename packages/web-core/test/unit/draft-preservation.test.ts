@@ -207,7 +207,7 @@ describe('file save draft preservation', () => {
   });
 });
 
-function attachment(id: string, status: 'UPLOADING' | 'COMPLETED' = 'COMPLETED') {
+function attachment(id: string, status: 'PENDING' | 'UPLOADING' | 'COMPLETED' = 'COMPLETED') {
   return {
     id,
     name: `${id}.png`,
@@ -223,9 +223,13 @@ function attachment(id: string, status: 'UPLOADING' | 'COMPLETED' = 'COMPLETED')
 
 interface HostedBindings {
   readonly input: Ref<string>;
-  readonly attachments: Ref<ReturnType<typeof attachment>[]>;
+  readonly attachments: Ref<
+    Array<Omit<ReturnType<typeof attachment>, 'fileId'> & { fileId?: string | undefined }>
+  >;
   readonly composerReadonly: Ref<boolean>;
   send(): Promise<void>;
+  retryAttachment(id: string): void;
+  refreshDraftTemplates(visible: boolean): void;
 }
 
 function hostedFixture() {
@@ -367,5 +371,199 @@ describe('hosted message draft preservation', () => {
     );
     responses[1]!.resolve();
     await retry;
+  });
+
+  it('creates once, uploads draft attachments, and sends the first message in order', async () => {
+    const gate = createWorkbenchSubmissionService();
+    const created = deferred<boolean>();
+    const order: string[] = [];
+    const snapshot = shallowRef<
+      | {
+          conversation: {
+            id: string;
+            nodeId: string;
+            sessionId: string;
+            modelId: string;
+            templateName: string;
+          };
+          run: null;
+          models: Array<{ id: string; name: string }>;
+        }
+      | undefined
+    >();
+    const createConversation = vi.fn(async () => {
+      order.push('create');
+      const result = await created.promise;
+      snapshot.value = {
+        conversation: {
+          id: 'conversation-1',
+          nodeId: 'node-1',
+          sessionId: 'session-1',
+          modelId: 'model-1',
+          templateName: 'Template'
+        },
+        run: null,
+        models: [{ id: 'model-1', name: 'Model' }]
+      };
+      return result;
+    });
+    const uploadFile = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('UPLOAD_FAILED'))
+      .mockImplementation(async () => {
+        order.push('upload');
+        return { receivedBytes: 5, file: { id: 'file-first' } };
+      });
+    const sendMessage = vi.fn(async () => {
+      order.push('send');
+      const finish = gate.begin(hostedConversationSubmissionContext('node-1', 'conversation-1'));
+      finish?.();
+    });
+    const composer = mountBindings<HostedBindings>(HostedConversationComposer, {
+      workspace: {
+        snapshot,
+        messageSubmitting: gate.pending,
+        messageSubmissionContext: gate.context,
+        turns: shallowRef([]),
+        uploadFile,
+        sendMessage
+      },
+      mobileViewport: false,
+      readonly: false,
+      readonlyReason: '',
+      draft: true,
+      entry: {
+        templates: shallowRef([{ id: 'template-1', name: 'Template', available: true }]),
+        selectedTemplateId: shallowRef('template-1'),
+        selectTemplate: vi.fn()
+      },
+      createConversation
+    });
+    composer.input.value = 'submitted';
+    composer.attachments.value = [{ ...attachment('first', 'PENDING'), fileId: undefined }];
+    await nextTick();
+
+    const first = composer.send();
+    await composer.send();
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(uploadFile).not.toHaveBeenCalled();
+    created.resolve(true);
+    await first;
+
+    expect(order).toEqual(['create']);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(composer.input.value).toBe('submitted');
+    expect(composer.attachments.value[0]?.status).toBe('FAILED');
+    await composer.send();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    composer.retryAttachment('first');
+    await nextTick();
+    await nextTick();
+    await nextTick();
+    await composer.send();
+
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['create', 'upload', 'send']);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: 'submitted', attachmentIds: ['file-first'] })
+    );
+    expect(composer.input.value).toBe('');
+    expect(composer.attachments.value).toEqual([]);
+  });
+
+  it('requires a template before creating a draft conversation', async () => {
+    const gate = createWorkbenchSubmissionService();
+    const createConversation = vi.fn(async () => true);
+    const reloadTemplates = vi.fn();
+    const composer = mountBindings<HostedBindings>(HostedConversationComposer, {
+      workspace: {
+        snapshot: shallowRef(),
+        messageSubmitting: gate.pending,
+        messageSubmissionContext: gate.context,
+        turns: shallowRef([])
+      },
+      mobileViewport: false,
+      readonly: false,
+      readonlyReason: '',
+      draft: true,
+      entry: {
+        templates: shallowRef([{ id: 'template-1', name: 'Template', available: true }]),
+        selectedTemplateId: shallowRef(),
+        selectTemplate: vi.fn()
+      },
+      createConversation,
+      reloadTemplates
+    });
+    composer.input.value = 'submitted';
+    await nextTick();
+
+    await composer.send();
+
+    expect(createConversation).not.toHaveBeenCalled();
+    expect(composer.input.value).toBe('submitted');
+    composer.refreshDraftTemplates(false);
+    composer.refreshDraftTemplates(true);
+    expect(reloadTemplates).toHaveBeenCalledOnce();
+    expect(reloadTemplates).toHaveBeenCalledWith(true);
+  });
+
+  it('does not send the first message when the created conversation has no model', async () => {
+    const gate = createWorkbenchSubmissionService();
+    const snapshot = shallowRef<
+      | {
+          conversation: {
+            id: string;
+            nodeId: string;
+            sessionId: string;
+            modelId: string;
+            templateName: string;
+          };
+          run: null;
+          models: [];
+        }
+      | undefined
+    >();
+    const sendMessage = vi.fn();
+    const composer = mountBindings<HostedBindings>(HostedConversationComposer, {
+      workspace: {
+        snapshot,
+        messageSubmitting: gate.pending,
+        messageSubmissionContext: gate.context,
+        turns: shallowRef([]),
+        sendMessage
+      },
+      mobileViewport: false,
+      readonly: false,
+      readonlyReason: '',
+      draft: true,
+      entry: {
+        templates: shallowRef([{ id: 'template-1', name: 'Template', available: true }]),
+        selectedTemplateId: shallowRef('template-1'),
+        selectTemplate: vi.fn()
+      },
+      createConversation: async () => {
+        snapshot.value = {
+          conversation: {
+            id: 'conversation-1',
+            nodeId: 'node-1',
+            sessionId: 'session-1',
+            modelId: '',
+            templateName: 'Template'
+          },
+          run: null,
+          models: []
+        };
+        return true;
+      }
+    });
+    composer.input.value = 'submitted';
+    await nextTick();
+
+    await composer.send();
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(composer.input.value).toBe('submitted');
+    expect(composer.composerReadonly.value).toBe(false);
   });
 });

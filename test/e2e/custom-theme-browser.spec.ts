@@ -9,7 +9,9 @@ async function componentAliases(): Promise<Record<string, string>> {
     new URL('../../packages/web-core/src/styles.css', import.meta.url),
     'utf8'
   );
-  const bridge = css.slice(0, css.indexOf('}'));
+  const bridgeStart = css.indexOf(':root,\nhtml.console-ui,\n.theme-preview {');
+  expect(bridgeStart).toBeGreaterThanOrEqual(0);
+  const bridge = css.slice(bridgeStart, css.indexOf('}', bridgeStart));
   const registered = new Set<string>(CUSTOM_THEME_TOKENS);
   const aliases = Object.fromEntries(
     [...bridge.matchAll(/(--el-[\w-]+):\s*var\((--mar-[\w-]+)\);/gu)]
@@ -242,10 +244,17 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   await expect(
     page.getByRole('button', { name: 'Theme color reference', exact: true })
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /New (dark|light) theme/ })).toHaveCount(0);
-  await expect(page.getByRole('columnheader', { name: 'Base theme', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Save theme', exact: true })).toHaveCount(0);
+  const themeSettings = page.locator('.theme-settings');
+  await expect(themeSettings.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+  await expect(themeSettings.getByRole('button', { name: /New (dark|light) theme/ })).toHaveCount(
+    0
+  );
+  await expect(
+    themeSettings.getByRole('columnheader', { name: 'Base theme', exact: true })
+  ).toHaveCount(0);
+  await expect(themeSettings.getByRole('button', { name: 'Save theme', exact: true })).toHaveCount(
+    0
+  );
   await rows
     .nth(1)
     .getByRole('button', { name: /^Inspect /u })
@@ -481,7 +490,7 @@ for (const scheme of ['Light', 'Dark']) {
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
       const colors =
         scheme === 'Light'
-          ? ['rgb(79, 96, 115)', 'rgb(245, 247, 250)', 'rgb(199, 209, 221)']
+          ? ['rgb(82, 98, 122)', 'rgb(243, 246, 251)', 'rgb(203, 214, 228)']
           : ['rgb(159, 176, 199)', 'rgb(22, 29, 40)', 'rgb(39, 49, 66)'];
       async function expectColors(expected: string[]): Promise<void> {
         for (const tag of [git, branch]) {
@@ -994,8 +1003,8 @@ for (const scheme of ['Light', 'Dark']) {
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
-      const conversationText = scheme === 'Dark' ? 'rgb(208, 215, 226)' : 'rgb(32, 43, 59)';
-      const conversationMuted = scheme === 'Dark' ? 'rgb(159, 176, 199)' : 'rgb(79, 96, 115)';
+      const conversationText = scheme === 'Dark' ? 'rgb(208, 215, 226)' : 'rgb(23, 32, 51)';
+      const conversationMuted = scheme === 'Dark' ? 'rgb(159, 176, 199)' : 'rgb(82, 98, 122)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -1030,14 +1039,14 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(36, 95, 168)'
+        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(9, 105, 232)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(24, 75, 139)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(5, 84, 184)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS('border-top-color', hoverColor);
       await expect(primary).toHaveCSS('color', 'rgb(255, 255, 255)');
@@ -1053,17 +1062,17 @@ for (const scheme of ['Light', 'Dark']) {
       ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(236, 240, 244)'
+        scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(237, 243, 250)'
       );
       await controls.locator('.el-table__body tr').first().hover();
       await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(228, 234, 241)'
+        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(229, 237, 246)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(24, 71, 128)'
+        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(4, 74, 159)'
       );
       const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
       const disabledNeutral = controls.getByRole('button', {
@@ -1078,7 +1087,7 @@ for (const scheme of ['Light', 'Dark']) {
         (element) => getComputedStyle(element).color
       );
       expect(neutralColor).not.toBe(dangerColor);
-      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(36, 89, 148)');
+      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(7, 95, 199)');
       await expect(disabledNeutral).toBeDisabled();
       for (const action of [neutral, disabledNeutral, danger]) {
         await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -1212,7 +1221,7 @@ for (const scheme of ['Light', 'Dark']) {
         await page.setViewportSize({ width, height: 900 });
         const mobile = width < 768;
         const expected = {
-          '--sidebar-header-height': mobile ? '46px' : '68px',
+          '--sidebar-header-height': mobile ? '46px' : '44px',
           '--mar-brand-logo-size': mobile ? '32px' : '35px',
           '--mar-font-size-body': mobile ? '13px' : '14px',
           '--el-component-size-small': mobile ? '24px' : '26px',

@@ -16,7 +16,6 @@ interface NodeControlMessageServiceOptions {
   readonly handleMailNotificationResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleDirectTransfer?: (envelope: NodeEnvelope) => boolean;
   readonly handleTerminalDirect?: (envelope: NodeEnvelope) => boolean;
-  readonly reconcileRuns: (envelope: NodeEnvelope) => void;
   readonly runners: RunnerRegistry;
   readonly deliverSessionChannelMessage: (envelope: NodeEnvelope) => void;
   readonly completeUncontrolledCancellation: (runId: string) => void;
@@ -73,10 +72,6 @@ export class NodeControlMessageService {
       return;
     }
     if (envelope.type === 'ack') return;
-    if (envelope.type === 'runs.reconcile') {
-      this.options.reconcileRuns(envelope);
-      return;
-    }
     if (envelope.type === 'run.approval.decision') {
       this.decideApproval(envelope);
       return;
@@ -98,10 +93,6 @@ export class NodeControlMessageService {
     }
     if (envelope.type === 'run.cancel' || envelope.type === 'run.interrupt') {
       this.cancelRun(envelope);
-      return;
-    }
-    if (envelope.type === 'lease.reconcile') {
-      this.options.send('ack', { type: envelope.type }, envelope.id);
       return;
     }
     if (envelope.type !== 'error')

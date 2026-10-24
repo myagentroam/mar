@@ -170,11 +170,15 @@ defineExpose({
     </template>
     <main class="file-preview-content">
       <template v-if="!loading">
+        <p v-if="rendererError" class="empty">
+          {{ translate('generated.filePreviewDialog.previewFailedDownloadInstead') }}
+        </p>
         <img
-          v-if="kind === 'image' && contentUrl"
+          v-else-if="kind === 'image' && contentUrl"
           class="file-binary-preview"
           :src="contentUrl"
           :alt="file.path"
+          @error="rendererFailed"
         />
         <video
           v-else-if="kind === 'video' && contentUrl"
@@ -182,6 +186,7 @@ defineExpose({
           :src="contentUrl"
           controls
           preload="metadata"
+          @error="rendererFailed"
         />
         <audio
           v-else-if="kind === 'audio' && contentUrl"
@@ -189,19 +194,15 @@ defineExpose({
           :src="contentUrl"
           controls
           preload="metadata"
+          @error="rendererFailed"
         />
         <div v-else-if="kind === 'pdf' && contentUrl" class="file-pdf-preview">
-          <p v-if="rendererError" class="empty">
-            {{ translate('generated.filePreviewDialog.previewFailedDownloadInstead') }}
-          </p>
-          <template v-else>
-            <PdfFilePreview
-              :src="contentUrl"
-              @rendered="rendererLoading = false"
-              @error="rendererFailed"
-            />
-            <FilePreviewLoading v-if="rendererLoading" overlay />
-          </template>
+          <PdfFilePreview
+            :src="contentUrl"
+            @rendered="rendererLoading = false"
+            @error="rendererFailed"
+          />
+          <FilePreviewLoading v-if="rendererLoading" overlay />
         </div>
         <div
           v-else-if="
@@ -213,33 +214,28 @@ defineExpose({
             'is-presentation': kind === 'presentation'
           }"
         >
-          <p v-if="rendererError" class="empty">
-            {{ translate('generated.filePreviewDialog.previewFailedDownloadInstead') }}
-          </p>
-          <template v-else>
-            <VueOfficeDocx
-              v-if="kind === 'document'"
-              class="file-document-renderer"
-              :src="contentUrl"
-              @rendered="rendererLoading = false"
-              @error="rendererFailed"
-            />
-            <VueOfficeExcel
-              v-else-if="kind === 'spreadsheet'"
-              class="file-spreadsheet-renderer"
-              :src="contentUrl"
-              @rendered="rendererLoading = false"
-              @error="rendererFailed"
-            />
-            <VueOfficePptx
-              v-else
-              class="file-presentation-renderer"
-              :src="contentUrl"
-              @rendered="rendererLoading = false"
-              @error="rendererFailed"
-            />
-            <FilePreviewLoading v-if="rendererLoading" overlay />
-          </template>
+          <VueOfficeDocx
+            v-if="kind === 'document'"
+            class="file-document-renderer"
+            :src="contentUrl"
+            @rendered="rendererLoading = false"
+            @error="rendererFailed"
+          />
+          <VueOfficeExcel
+            v-else-if="kind === 'spreadsheet'"
+            class="file-spreadsheet-renderer"
+            :src="contentUrl"
+            @rendered="rendererLoading = false"
+            @error="rendererFailed"
+          />
+          <VueOfficePptx
+            v-else
+            class="file-presentation-renderer"
+            :src="contentUrl"
+            @rendered="rendererLoading = false"
+            @error="rendererFailed"
+          />
+          <FilePreviewLoading v-if="rendererLoading" overlay />
         </div>
         <p v-else class="empty">
           {{ translate('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn') }}

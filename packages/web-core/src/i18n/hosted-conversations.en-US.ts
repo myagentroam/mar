@@ -16,7 +16,7 @@ export const hostedConversationsEnUS = {
     chooseTemplate: 'Load template',
     chooseTemplateLabel: 'Load template:',
     chooseTemplateHint:
-      'Choosing a template is required. This browser remembers the most recently selected template.',
+      'Choose a template, then send a message or attachment to start the conversation.',
     singleTemplatePreselected: 'Only template preselected',
     noTemplates: 'No conversation templates are currently available.',
     noTemplateSelected: 'No template selected',
@@ -24,7 +24,7 @@ export const hostedConversationsEnUS = {
     templatePlaceholder: 'Choose a conversation template',
     templateRequired: 'Choose a conversation template.',
     explicitConfirmation:
-      'The conversation is created only after you select “Start chat”; it is never created or inherited silently.',
+      'The conversation is created only when you send the first message; it is never created or inherited silently.',
     create: 'New chat',
     start: 'Start chat',
     created: 'Conversation created.',
@@ -55,6 +55,8 @@ export const hostedConversationsEnUS = {
     loadingConversation: 'Loading conversation…',
     filesTitle: 'Related files',
     closeFiles: 'Close related files',
+    filesAvailableAfterCreate:
+      'Send your first message to upload files and view conversation outputs here.',
     noFiles: 'No files',
     filesDropHint: 'Drop files here or click to choose files to upload.',
     filesDropNow: 'Release to upload files',
@@ -115,6 +117,7 @@ export const hostedConversationsEnUS = {
       'Related files could not be synchronized. Reopen the conversation later, and contact an administrator if the problem continues.',
     uploadProgress: 'Uploading {value}%',
     uploaded: 'Uploaded',
+    uploadAfterCreate: 'Ready to upload',
     retryAttachment: 'Retry',
     retryAttachmentNamed: 'Upload attachment “{name}” again',
     removeAttachment: 'Remove attachment “{name}”',

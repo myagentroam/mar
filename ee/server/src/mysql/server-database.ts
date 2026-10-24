@@ -136,8 +136,21 @@ export class MysqlServerDatabase {
   }
 
   async close(): Promise<void> {
-    if (this.auditRaw !== this.raw) await this.auditRaw.end();
-    await this.raw.end();
+    const pools = this.auditRaw === this.raw ? [this.raw] : [this.auditRaw, this.raw];
+    const errors: unknown[] = [];
+    for (const pool of pools) {
+      try {
+        await pool.end();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Failed to close MySQL database pools', {
+        cause: errors[0]
+      });
+    }
   }
 
   async getAdmin(): Promise<{ id: number; passwordHash: string; mustChangePassword: boolean }> {
