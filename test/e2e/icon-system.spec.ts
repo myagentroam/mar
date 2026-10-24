@@ -10,6 +10,153 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['dark', 'light']) {
+  test(`Process disclosure uses a transparent SVG instead of an unmasked square: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}icon-system.html?process-icons=1&theme=${theme}`);
+      for (const active of [false, true]) {
+        const process = page.locator(`[data-process-id="process-${active}"]`);
+        const heading = process.locator('.process-heading');
+        const icon = heading.locator('.process-chevron');
+        await expect(icon).toHaveAttribute('data-mar-icon', 'chevron-right');
+        await expect(icon).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(icon).toHaveAttribute('fill', 'none');
+        await expect(icon).toHaveAttribute('aria-hidden', 'true');
+        await expect(heading).toHaveAttribute('aria-expanded', String(active));
+        await icon.click();
+        await expect(heading).toHaveAttribute('aria-expanded', String(!active));
+        await expect(process.locator('.process-body')).toHaveAttribute(
+          'aria-hidden',
+          String(active)
+        );
+        await expect
+          .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+          .toBe(active ? 'none' : 'matrix(0, 1, -1, 0, 0, 0)');
+        await heading.focus();
+        await heading.press('Enter');
+        await expect(heading).toHaveAttribute('aria-expanded', String(active));
+        await heading.press('Space');
+        await expect(heading).toHaveAttribute('aria-expanded', String(!active));
+      }
+      if (width === 390)
+        await page.screenshot({ path: testInfo.outputPath(`process-icons-${theme}.png`) });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(page.locator('.process-chevron').first()).toHaveCSS('transition-duration', '0s');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    }
+  });
+}
+
+for (const theme of ['dark', 'light']) {
+  test(`Mobile action icons keep their visual hierarchy without scaling text or status: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    for (const width of [390, 360, 1280]) {
+      const mobile = width < 768;
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}icon-system.html?composer-icons=1&theme=${theme}`);
+      const attachment = page.locator('.composer-attachment-button .mar-icon');
+      const copy = page.locator('.conversation-message-action .mar-icon').first();
+      const edit = page.getByRole('button', { name: 'Edit', exact: true });
+      const send = page.locator('.composer-send-button');
+      const stop = page.locator('.composer-stop-button');
+      const rootFontSize = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      const expectedPrimary = mobile ? 20 : 0.92 * rootFontSize;
+      for (const action of [send, stop]) {
+        const graphic = action.locator('.mar-icon');
+        await expect(graphic).toBeVisible();
+        expect((await graphic.boundingBox())!.width).toBeCloseTo(expectedPrimary, 1);
+        expect((await action.boundingBox())!.width).toBe(mobile ? 36 : 26);
+      }
+      if (mobile) {
+        for (const graphic of [attachment, copy, edit.locator('.mar-icon')]) {
+          await expect(graphic).toHaveCSS('width', '18px');
+          await expect(graphic).toHaveCSS('height', '18px');
+        }
+        await expect(edit.locator('.el-icon')).toHaveCSS('width', '18px');
+        await expect(edit).toHaveCSS('font-size', '12px');
+        await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
+          'width',
+          '18px'
+        );
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width
+        );
+      }
+      await expect(page.getByTestId('status-icon').locator('.mar-icon')).toHaveCSS('width', '11px');
+      await expect(
+        page.getByRole('button', { name: 'Explicit icon size' }).locator('.mar-icon')
+      ).toHaveCSS('width', '24px');
+      if (width === 390) {
+        await page.screenshot({ path: testInfo.outputPath(`mobile-icons-${theme}.png`) });
+      }
+      await stop.click();
+      await expect(page.getByTestId('stops')).toHaveText('1');
+      const readyColors = await send.evaluate((button) => {
+        const style = getComputedStyle(button);
+        const circle = getComputedStyle(button, '::before');
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          border: style.borderTopColor,
+          circleBackground: circle.backgroundColor,
+          circleBorder: circle.borderTopColor
+        };
+      });
+      await send.focus();
+      await send.press('Enter');
+      await expect(page.getByTestId('sends')).toHaveText('1');
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute('aria-busy', 'true');
+      const pending = send.locator('[data-mar-icon="loading-action"]');
+      await expect(pending).toHaveCSS('animation-duration', '1s');
+      await expect(send).toHaveCSS('color', readyColors.color);
+      await expect(send).toHaveCSS('background-color', readyColors.background);
+      await expect(send).toHaveCSS('border-top-color', readyColors.border);
+      await expect(send).toHaveCSS('cursor', 'progress');
+      expect(
+        await send.evaluate((button) => {
+          const circle = getComputedStyle(button, '::before');
+          return { background: circle.backgroundColor, border: circle.borderTopColor };
+        })
+      ).toEqual({ background: readyColors.circleBackground, border: readyColors.circleBorder });
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('sends')).toHaveText('1');
+      // Rotation changes the painted bounds, not the icon's layout size.
+      const pendingSize = await pending.evaluate((graphic) => {
+        const style = getComputedStyle(graphic);
+        return { width: parseFloat(style.width), height: parseFloat(style.height) };
+      });
+      expect(pendingSize.width).toBeCloseTo(expectedPrimary, 1);
+      expect(pendingSize.height).toBeCloseTo(expectedPrimary, 1);
+      if (width !== 360) {
+        await page.screenshot({
+          path: testInfo.outputPath(`sending-${theme}-${mobile ? 'mobile' : 'desktop'}.png`)
+        });
+      }
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(pending).toHaveCSS('animation-name', 'none');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.goto(
+        `${fixture.url}icon-system.html?composer-icons=1&empty-draft=1&theme=${theme}`
+      );
+      await expect(send).toBeDisabled();
+      await expect(send).not.toHaveAttribute('aria-busy', 'true');
+      await expect(send.locator('[data-mar-icon="send"]')).toBeVisible();
+      await expect(send).toHaveCSS('cursor', 'not-allowed');
+      await expect(send).not.toHaveCSS('color', readyColors.color);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const theme of ['dark', 'light']) {
   test(`Navigation hints show themed arrows without capturing adjacent actions: ${theme}`, async ({
     page
   }) => {
@@ -62,6 +209,17 @@ for (const mobile of [false, true]) {
       const bounds = await trigger.boundingBox();
       const entry = await page.locator('.recent-sessions-entry').boundingBox();
       const graphic = await icon.boundingBox();
+      expect(graphic!.width).toBe(22);
+      await expect(page.locator('.nav-menu-button [data-mar-icon="workspace"]')).toHaveCSS(
+        'width',
+        '22px'
+      );
+      if (mobile) {
+        await expect(page.locator('.workbench-notification-trigger .mar-icon')).toHaveCSS(
+          'width',
+          '22px'
+        );
+      }
       expect(bounds!.width).toBeGreaterThanOrEqual(entry!.width - 4);
       expect(
         Math.abs(graphic!.x + graphic!.width / 2 - entry!.x - entry!.width / 2)
@@ -186,6 +344,88 @@ test('Terminal close icons preserve accessible names and close only the selected
   await page.keyboard.press('Enter');
   await expect(close).toHaveCount(0);
   expect(closed).toEqual(['/api/terminals/fixture-terminal']);
+});
+
+test('Terminal headers keep multiple shell profiles reachable on narrow screens', async ({
+  page
+}) => {
+  const openedProfiles: string[] = [];
+  await page.route('**/api/terminals**', async (route) => {
+    if (route.request().method() === 'POST') {
+      const profileId = route.request().postDataJSON().profileId as string;
+      openedProfiles.push(profileId);
+      await route.fulfill({
+        json: {
+          terminal: {
+            id: `fixture-terminal-${openedProfiles.length}`,
+            workspaceId: 'project',
+            profileId,
+            state: 'RUNNING',
+            latestSequence: 0
+          }
+        }
+      });
+    } else {
+      await route.fulfill({ json: { terminals: [] } });
+    }
+  });
+  for (const theme of ['light', 'dark']) {
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}icon-system.html?terminal=1&multipleProfiles=1&theme=${theme}`
+      );
+      await expect(page.getByRole('tab', { name: 'Terminal 1', exact: true })).toBeVisible();
+      const profile = page.getByRole('combobox');
+      await expect(profile).toBeVisible();
+      const bounds = await page.locator('.admin-terminal-header').evaluate((header) => {
+        const headerBox = header.getBoundingClientRect();
+        const selectBox = header.querySelector('.el-select')!.getBoundingClientRect();
+        return {
+          height: headerBox.height,
+          left: selectBox.left - headerBox.left,
+          right: headerBox.right - selectBox.right
+        };
+      });
+      expect(bounds.height).toBeLessThanOrEqual(72);
+      expect(bounds.left).toBeGreaterThanOrEqual(0);
+      expect(bounds.right).toBeGreaterThanOrEqual(0);
+      await page.locator('.terminal-profile .el-select').click();
+      await page.getByRole('option', { name: 'Other shell', exact: true }).click();
+      await page.getByRole('button', { name: 'New terminal', exact: true }).click();
+      await expect(page.getByRole('tab', { name: 'Terminal 2', exact: true })).toBeVisible();
+      expect(openedProfiles.at(-1)).toBe('other-shell');
+    }
+  }
+});
+
+test('Touch usage counts reveal exact values and cache details without requiring focus', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}icon-system.html?usage=1&touch-details=1`);
+    const overview = page.locator('.overview-cell').first();
+    const input = overview.locator('.usage-count').nth(0);
+    const cache = overview.locator('.usage-count').nth(1);
+    const hint = page.locator('[role="tooltip"]:visible');
+    await expect(input).not.toContainText('1,234,567');
+    await input.tap();
+    await expect(hint).toHaveText('1,234,567');
+    await cache.tap();
+    await expect(hint).toContainText('Cache read tokens: 345,678');
+    await expect(hint).toContainText('Cache write tokens: 2,345');
+    await expect(hint).toHaveCount(1);
+    await overview.locator('h3').tap();
+    await expect(hint).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
 });
 
 test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {

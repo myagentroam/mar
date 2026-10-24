@@ -1,11 +1,13 @@
 ---
 title: Context, Compact, and Plan
-lastUpdated: 2026-10-16
+lastUpdated: 2026-10-24
 ---
 
 # Context, Compact, and Plan
 
 When an Agent reports context usage, Composer shows used and maximum tokens. Use `/compact` only when offered and no run is active; compaction is performed by the Agent and becomes part of its session history.
+
+Tap context usage on a touchscreen to open the compact confirmation with full usage details. Compact runs only after confirmation. While compaction is unavailable, including during a run, tapping still shows full usage and the unavailable notice.
 
 MAR Agent also supports Smart Compaction: when valid context usage is already large, the main model may request background compaction before sustained new work if prior details have low continuation value. This community capability is automatic, requires no extra setting, and does not replace fixed capacity protection. The task can continue during background generation; existing compaction status items show its lifecycle without exposing the internal summary. Temporary questions and unresolved work are not reasons to compact. Usage may remain unknown after compaction until a foreground request reports a new measurement. See [MAR Agent](../runners/mar-agent.md#dedicated-compact-model) for thresholds and limits.
 

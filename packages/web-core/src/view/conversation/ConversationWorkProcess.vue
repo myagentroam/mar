@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
+import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import {
   conversationProcessLabel,
@@ -66,7 +67,7 @@ watch(open, async () => {
       :aria-expanded="open"
       @click="manualOpen = !open"
     >
-      <span class="process-chevron" :class="{ 'is-open': open }" aria-hidden="true" />
+      <MarIcon name="chevron-right" class="process-chevron" :class="{ 'is-open': open }" />
       <span
         class="process-meta process-activity"
         :class="{ 'is-active': block.active && synchronized }"
@@ -137,8 +138,6 @@ watch(open, async () => {
   width: 1em;
   height: 1em;
   flex: none;
-  background: currentColor;
-  mask: var(--conversation-chevron) center / contain no-repeat;
   transition: transform var(--el-transition-duration-fast);
 }
 .process-chevron.is-open {

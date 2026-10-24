@@ -9,6 +9,86 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['light', 'dark']) {
+  test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
+    page
+  }, testInfo) => {
+    for (const mode of ['text=code&draft=1', 'diff=HISTORY']) {
+      let desktopStyle: unknown;
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto(`${fixture.url}file-editor-layout.html?${mode}&theme=${theme}`);
+        const toolbar = page.locator(
+          width === 390
+            ? '.workspace-file-mobile-actions'
+            : mode.startsWith('text')
+              ? '.file-preview-desktop-actions'
+              : '.diff-preview-toolbar'
+        );
+        const find = toolbar.getByRole('button', {
+          name: mode.startsWith('text') ? 'Find in file' : 'Previous change',
+          exact: true
+        });
+        await expect(find).toBeVisible();
+        const radius = await find.evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
+        );
+        await expect(find).toHaveCSS('border-radius', radius);
+        const normal = await find.evaluate((element) => {
+          const css = getComputedStyle(element);
+          return { color: css.color, background: css.backgroundColor, border: css.borderColor };
+        });
+        let saveStates: unknown;
+        if (mode.startsWith('text')) {
+          await toolbar.getByRole('button', { name: 'Edit file', exact: true }).click();
+          const save = toolbar.getByRole('button', { name: 'Save', exact: true });
+          await expect(save).toBeEnabled();
+          await expect(save).toHaveCSS('border-radius', radius);
+          const enabled = await save.evaluate(
+            (element) => getComputedStyle(element).backgroundColor
+          );
+          await save.click();
+          await expect(save).toBeDisabled();
+          saveStates = {
+            enabled,
+            disabled: await save.evaluate(async (element) => {
+              await Promise.all(element.getAnimations().map((animation) => animation.finished));
+              return getComputedStyle(element).backgroundColor;
+            })
+          };
+        }
+        if (width === 1280) desktopStyle = { normal, saveStates };
+        else {
+          expect({ normal, saveStates }).toEqual(desktopStyle);
+          await expect(find).toHaveCSS('width', '36px');
+          await expect(find).toHaveCSS('height', '36px');
+          await page.screenshot({
+            path: testInfo.outputPath(
+              `toolbar-${theme}-${mode.startsWith('text') ? 'text' : 'diff'}.png`
+            )
+          });
+          const toggle = toolbar.locator('.workspace-file-mobile-actions-toggle');
+          await expect(toggle).toHaveCSS('border-radius', radius);
+          await toggle.click();
+          await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+          await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+            'inert',
+            ''
+          );
+          await page.keyboard.press('Tab');
+          await toggle.focus();
+          await expect(toggle).toHaveCSS('border-radius', radius);
+          await expect(toggle).toHaveCSS('outline-style', 'solid');
+          await expect(toggle).toHaveCSS('outline-width', '2px');
+          await page.keyboard.press('Enter');
+          await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+          await expect(find).toBeVisible();
+        }
+      }
+    }
+  });
+}
+
 test('Restored drafts render immediately and preserve their original revision on save', async ({
   page
 }) => {

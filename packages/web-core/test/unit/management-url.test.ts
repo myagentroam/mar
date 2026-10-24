@@ -17,16 +17,17 @@ describe('management filter URL state', () => {
 
   it('updates only selected filters and preserves navigation, hash and other namespaces', () => {
     const replaceState = vi.fn();
+    const historyState = { __marMobileMenu: 'menu-existing', unrelated: 'keep' };
     vi.stubGlobal('window', {
       location: {
         href: 'https://example.test/console?view=management&nodes.status=online&nodes.keyword=old&skills.keyword=tools#details'
       },
-      history: { replaceState }
+      history: { replaceState, state: historyState }
     });
     replaceManagementUrlValues('nodes', { status: undefined, keyword: 'café & /', page: 0 });
     expect(replaceState).toHaveBeenCalledOnce();
     const [state, title, target] = replaceState.mock.calls[0]!;
-    expect(state).toBeNull();
+    expect(state).toBe(historyState);
     expect(title).toBe('');
     const url = new URL(target as string, 'https://example.test');
     expect(url.pathname).toBe('/console');
@@ -43,7 +44,7 @@ describe('management filter URL state', () => {
     const replaceState = vi.fn();
     vi.stubGlobal('window', {
       location: { href: 'https://example.test/console?secrets.keyword=old&view=management' },
-      history: { replaceState }
+      history: { replaceState, state: null }
     });
     replaceManagementUrlValues('secrets', { keyword: '' });
     expect(replaceState).toHaveBeenCalledWith(null, '', '/console?view=management');

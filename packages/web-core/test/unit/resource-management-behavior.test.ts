@@ -96,6 +96,14 @@ describe('Public resource operation behavior', () => {
         view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
       try {
         await flushComponent();
+        const actionRow = view
+          .findAll('div')
+          .find((node) => node.props['class'] === 'row-actions')!;
+        expect(
+          actionRow.children
+            .filter((node) => node.type === 'ElButton')
+            .map((node) => textContent(node).trim())
+        ).toEqual([messages.edit, common.delete]);
         await trigger(button(messages.edit), 'onClick');
         const name = view
           .findAll('ElInput')

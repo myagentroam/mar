@@ -233,7 +233,7 @@ function selectFiles(event: Event): void {
       </div>
     </div>
     <button
-      v-tooltip="{ content: contextHint, placement: 'top' }"
+      v-tooltip="{ content: contextHint, placement: 'top', touch: !canCompactContext }"
       v-if="contextUsage !== undefined && contextUsage !== null"
       class="composer-context-button utility-control"
       type="button"
@@ -501,12 +501,20 @@ function selectFiles(event: Event): void {
   outline-color: var(--mar-color-danger-text);
 }
 
-.composer-send-button:disabled,
+.composer-send-button:disabled:not([aria-busy='true']),
 .composer-stop-button:disabled {
   cursor: not-allowed;
   border-color: var(--mar-border-default);
   background: var(--mar-fill-soft);
   color: var(--mar-text-faint);
+}
+
+.composer-send-button[aria-busy='true'] {
+  cursor: progress;
+}
+
+.composer-send-button[aria-busy='true'] :deep(.mar-icon[data-mar-icon='loading-action']) {
+  animation-duration: 1s;
 }
 
 @media (max-width: 767px) {
@@ -561,7 +569,7 @@ function selectFiles(event: Event): void {
     background: transparent;
   }
 
-  .composer-send-button:disabled::before,
+  .composer-send-button:disabled:not([aria-busy='true'])::before,
   .composer-stop-button:disabled::before {
     border-color: var(--mar-border-default);
     background: var(--mar-fill-soft);
@@ -821,5 +829,12 @@ function selectFiles(event: Event): void {
 :global(.composer-send-button .mar-icon),
 :global(.composer-stop-button .mar-icon) {
   font-size: 0.92rem;
+}
+
+@media (max-width: 767px) {
+  :global(.composer-send-button .mar-icon),
+  :global(.composer-stop-button .mar-icon) {
+    font-size: 20px;
+  }
 }
 </style>

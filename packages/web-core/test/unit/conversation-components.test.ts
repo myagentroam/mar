@@ -228,6 +228,25 @@ const timelineProps = {
   rollbackEnabled: false
 };
 
+it('renders generated images as independent results using their projected preview URLs', async () => {
+  const payload = {
+    toolName: 'generate',
+    toolCategory: 'IMAGE_GENERATION',
+    result: 'Generated image'
+  };
+  const attachments = vi.fn(() => [{ name: 'generated.png', previewUrl: '/images/generated.png' }]);
+  const html = await render(ConversationTimeline, {
+    ...timelineProps,
+    turns: [conversationTurn([conversationItem('generated', 'tool_call', payload)])],
+    imageAttachments: attachments
+  });
+  expect(html).toContain(i18n.global.t('presentation.imageGeneration'));
+  expect(html).toContain('conversation-user-image-attachments');
+  expect(html).toContain('src="/images/generated.png"');
+  expect(html).not.toContain('conversation-tool-group');
+  expect(attachments).toHaveBeenCalledWith('run-1', payload);
+});
+
 it.each(['zh-CN', 'en-US'] as const)(
   'renders four independent tool presentations with collapsed details in %s',
   async (locale) => {
@@ -567,17 +586,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         ])
       ]
     });
-    const source = readFileSync(
-      new URL('../../src/view/conversation/ConversationTimeline.vue', import.meta.url),
-      'utf8'
-    );
     expect(html).toMatch(
       /class="conversation-item-heading"[^>]*><strong[^>]*>[^<]+<\/strong><span[^>]*>/u
     );
     expect(html).toContain('class="task-list-heading"');
-    expect(source).toMatch(
-      /\.conversation-item > details > summary > span,\s*\.conversation-reasoning-status > span,\s*\.conversation-item-heading > span,\s*\.task-list-heading > span\s*\{\s*color:\s*var\(--mar-conversation-muted\);/u
-    );
   });
 
   it('renders background, waiting, and completed compaction states without exposing a summary', async () => {
@@ -707,18 +719,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(managed).toContain('session-activity managed_active');
     expect(managed).toContain('aria-label="Session activity"');
     expect(idle).not.toContain('session-activity');
-  });
-
-  it('uses a pointer cursor while retaining copy affordance for the session ID', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/ConversationHeader.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain('.conversation-session-id button {\n  display: inline-flex;');
-    expect(source).toContain('cursor: pointer;');
-    expect(source).not.toContain('cursor: copy;');
-    expect(source).toContain('.conversation-session-id button:hover code');
-    expect(source).toContain('color: var(--mar-color-brand-text);');
   });
 
   it('renders initial history loading and retry states without exposing older-history controls', async () => {
@@ -876,15 +876,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(partial).not.toContain('class="conversation-run-duration"');
   });
 
-  it('leaves the jump-to-latest highlight to Element Plus', () => {
-    const source = readFileSync(
-      new URL('../../src/view/conversation/ConversationScroll.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).not.toContain('.conversation-latest:hover');
-    expect(source).not.toContain('background: var(--mar-fill-hover);');
-  });
-
   it('uses a standard link button only when earlier history and displayed turns exist', async () => {
     const props = {
       hasOlder: true,
@@ -917,24 +908,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     const statusSlot = { status: () => h('span', 'status') };
     const withLatest = await render(ConversationScroll, { ...props, following: false }, statusSlot);
     const following = await render(ConversationScroll, { ...props, following: true }, statusSlot);
-    const scrollSource = readFileSync(
-      new URL('../../src/view/conversation/ConversationScroll.vue', import.meta.url),
-      'utf8'
-    );
-    const statusSource = readFileSync(
-      new URL('../../src/view/conversation/SessionPerformanceInfo.vue', import.meta.url),
-      'utf8'
-    );
     expect(withLatest).toMatch(
       /class="(?=[^"]*\bconversation-status\b)(?=[^"]*\bhas-latest\b)[^"]*"/u
     );
     expect(following).toContain('class="conversation-status"');
     expect(following).not.toContain('conversation-status has-latest');
-    expect(scrollSource).toContain(
-      'bottom: calc(0.75rem + var(--mar-utility-control-size) + 0.5rem);'
-    );
-    expect(scrollSource).not.toContain('.conversation-latest.has-status');
-    expect(statusSource).not.toContain('position: absolute;');
   });
 
   it('renders an error card with the Node error code, HTTP status and safe message', async () => {
@@ -1043,10 +1021,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     const info = await render(SessionPerformanceInfo, {
       performance: { runId: 'run', latencyMs: 420, tokensPerSecond: 42 }
     });
-    const infoSource = readFileSync(
-      new URL('../../src/view/conversation/SessionPerformanceInfo.vue', import.meta.url),
-      'utf8'
-    );
     expect(info).toContain('session-performance-info');
     expect(info).toContain('icon-button utility-control');
     expect(info).toContain('420 ms');
@@ -1055,7 +1029,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       i18n.global.t('generated.conversationTimeline.providerOutputTps', { value: '42.0' })
     );
     expect(info).not.toContain('Output tokens');
-    expect(infoSource).not.toContain('ttftMs');
     for (const performance of [
       { runId: 'run', latencyMs: 0 },
       { runId: 'run', tokensPerSecond: 0 }

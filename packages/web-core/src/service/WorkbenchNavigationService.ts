@@ -5,6 +5,8 @@ import {
   type MobileWorkspaceSurface
 } from '../util/mobile-workbench.js';
 
+export type MobileUtilityPanel = 'recent-sessions' | 'notifications';
+
 export interface WorkbenchNavigationService<
   WorkbenchView extends string,
   SettingsSection extends string,
@@ -17,6 +19,7 @@ export interface WorkbenchNavigationService<
   readonly sidebarCollapsed: Ref<boolean>;
   readonly mobileSidebarOpen: Ref<boolean>;
   readonly mobileWorkspaceSurface: Ref<MobileWorkspaceSurface>;
+  readonly mobileUtilityPanel: Ref<MobileUtilityPanel | undefined>;
   start(): void;
   dispose(): void;
   selectView(view: WorkbenchView): void;
@@ -25,6 +28,7 @@ export interface WorkbenchNavigationService<
   selectManagement(section: ManagementSection): void;
   openMobileWorkspaceSurface(surface: Exclude<MobileWorkspaceSurface, 'conversation'>): void;
   closeMobileWorkspaceSurface(): void;
+  selectMobileUtilityPanel(panel: MobileUtilityPanel | undefined): void;
 }
 
 export function createWorkbenchNavigationService<
@@ -45,6 +49,7 @@ export function createWorkbenchNavigationService<
   const sidebarCollapsed = ref(initialMobileViewport);
   const mobileSidebarOpen = ref(false);
   const mobileWorkspaceSurface = ref<MobileWorkspaceSurface>('conversation');
+  const mobileUtilityPanel = ref<MobileUtilityPanel>();
   let viewportQuery: MediaQueryList | undefined;
 
   function updateViewportMode(nextMobileViewport: boolean, force = false): void {
@@ -58,6 +63,7 @@ export function createWorkbenchNavigationService<
       nextMobileViewport,
       force
     );
+    if (force || nextMobileViewport !== mobileViewport.value) mobileUtilityPanel.value = undefined;
     mobileViewport.value = next.mobileViewport;
     sidebarCollapsed.value = next.sidebarCollapsed;
     mobileSidebarOpen.value = next.mobileSidebarOpen;
@@ -85,10 +91,12 @@ export function createWorkbenchNavigationService<
   }
 
   function closeMobileSidebar(): void {
+    mobileUtilityPanel.value = undefined;
     if (mobileViewport.value) mobileSidebarOpen.value = false;
   }
 
   function selectView(nextView: WorkbenchView): void {
+    mobileUtilityPanel.value = undefined;
     view.value = nextView;
     if (mobileViewport.value) {
       closeMobileWorkspaceSurface();
@@ -112,8 +120,21 @@ export function createWorkbenchNavigationService<
     surface: Exclude<MobileWorkspaceSurface, 'conversation'>
   ): void {
     if (!mobileViewport.value) return;
+    mobileUtilityPanel.value = undefined;
     closeMobileSidebar();
     mobileWorkspaceSurface.value = surface;
+  }
+
+  function selectMobileUtilityPanel(panel: MobileUtilityPanel | undefined): void {
+    if (!mobileViewport.value) return;
+    const hadUtilityPanel = mobileUtilityPanel.value !== undefined;
+    mobileUtilityPanel.value = panel;
+    if (panel === undefined) {
+      if (hadUtilityPanel) closeMobileSidebar();
+      return;
+    }
+    mobileSidebarOpen.value = true;
+    closeMobileWorkspaceSurface();
   }
 
   return {
@@ -124,6 +145,7 @@ export function createWorkbenchNavigationService<
     sidebarCollapsed,
     mobileSidebarOpen,
     mobileWorkspaceSurface,
+    mobileUtilityPanel,
     start,
     dispose,
     selectView,
@@ -131,6 +153,7 @@ export function createWorkbenchNavigationService<
     selectSettings,
     selectManagement,
     openMobileWorkspaceSurface,
-    closeMobileWorkspaceSurface
+    closeMobileWorkspaceSurface,
+    selectMobileUtilityPanel
   };
 }

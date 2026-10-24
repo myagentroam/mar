@@ -1111,6 +1111,14 @@ pre {
   vertical-align: -0.125em;
 }
 
+@media (max-width: 767px) {
+  /* Action glyphs must not shrink with metadata text; status glyphs still inherit it. */
+  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .mar-icon,
+  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .el-icon:has(> .mar-icon) {
+    font-size: 18px;
+  }
+}
+
 .mar-disclosure-summary {
   list-style: none;
 }

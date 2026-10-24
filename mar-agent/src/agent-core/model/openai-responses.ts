@@ -1514,6 +1514,10 @@ async function* webSocketResponseEvents(input: {
         return;
       }
     }
+    // Intentionally treat a close without a terminal model event as retryable EOF,
+    // including close code 1009. Close codes remain diagnostic evidence rather than
+    // a separate model-error classification. The shared attempt budget still bounds
+    // retries; this policy does not shrink the request or guarantee recovery.
     if (!terminal && !input.signal.aborted)
       throw new MarAgentError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',

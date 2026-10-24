@@ -841,10 +841,18 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       await fulfillMockHostedConversationWatch(page, route, conversation.id, snapshot);
     }
   );
+  let olderHistoryReads = 0;
   await page.route(
     /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/history\?limit=10&cursor=hosted-history-older$/,
-    (route) =>
-      json(route, {
+    (route) => {
+      olderHistoryReads += 1;
+      if (olderHistoryReads === 1)
+        return json(
+          route,
+          { code: 'HISTORY_UNAVAILABLE', message: 'Fixture history failure' },
+          503
+        );
+      return json(route, {
         turns: [
           {
             id: 'turn-older',
@@ -880,7 +888,8 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
           }
         ],
         nextCursor: null
-      })
+      });
+    }
   );
   await page.route(
     /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/files\/file-1\?offset=0&limit=(?:4096|524288)$/,
@@ -1146,7 +1155,9 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(historyHeader).toHaveCSS('border-bottom-width', '0px');
   await expect(filesHeader).toHaveCSS('height', '44px');
   await expect(filesHeader.locator('svg')).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('.workbench')).toHaveCSS('transition-duration', '0s');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(workbenchHeader.locator('.el-tag')).toHaveCount(0);
   const collapseSidebarButton = page.getByRole('button', { name: '收起侧栏' });
   await expect(collapseSidebarButton).toBeVisible();
@@ -1192,9 +1203,14 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       return Math.abs(layout.brandWidth - layout.railWidth);
     })
     .toBeLessThanOrEqual(1);
+  // A collapsed partition may retain its one-pixel divider, but no readable history surface.
+  await expect.poll(async () => (await hostedLayout()).historyWidth).toBeLessThanOrEqual(1);
   const collapsedHostedLayout = await hostedLayout();
   expect(collapsedHostedLayout.workbenchLeft).toBeCloseTo(collapsedHostedLayout.railWidth, 0);
-  expect(collapsedHostedLayout.historyWidth).toBe(0);
+  expect(collapsedHostedLayout.historyWidth).toBeLessThanOrEqual(1);
+  await expect(
+    page.locator('.hosted-conversation-history .history-open').first()
+  ).not.toBeInViewport();
   expect(collapsedHostedLayout.mainLeft).toBeCloseTo(collapsedHostedLayout.railWidth, 0);
   expect(collapsedHostedLayout.mainLeft).toBeLessThan(expandedHostedLayout.mainLeft);
   expect(collapsedHostedLayout.filesRight).toBeCloseTo(expandedHostedLayout.filesRight, 0);
@@ -1225,7 +1241,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(history.locator('.history-more-button')).toHaveCount(0);
   await historyRows.first().hover();
   await expect(history.locator('.history-more-button')).toHaveCount(1);
-  await expect(historyRows.first().locator('.history-pin-indicator svg')).toBeVisible();
+  await expect(historyRows.first().locator('.history-pin-indicator')).toBeVisible();
   const historyRefresh = history.locator('.history-refresh-button');
   const diagnostics = page.locator('.web-performance-indicator');
   await diagnostics.hover();
@@ -1239,6 +1255,15 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await historyRefresh.focus();
   await expect(historyRefresh).toHaveCSS('color', utilityHoverColor);
   const selectedHistoryRow = history.locator('.history-list article.selected');
+  const selectionFill = await selectedHistoryRow.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.background = 'var(--mar-fill-selection)';
+    element.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(selectedHistoryRow).toHaveCSS('background-color', selectionFill);
   await selectedHistoryRow.hover();
   const selectedHistoryMore = selectedHistoryRow.locator('.history-more-button');
   await selectedHistoryMore.focus();
@@ -1260,6 +1285,16 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   expect(await selectedHistoryMore.evaluate((element) => element.matches(':hover'))).toBe(false);
   await expect(selectedHistoryMore).toHaveCSS('color', utilityHoverColor);
   await expect(selectedHistoryMore).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.keyboard.press('Escape');
+  await expect(historyMenu).toHaveCount(0);
+  await selectedHistoryRow.dispatchEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    button: 2
+  });
+  await expect(selectedHistoryMore).toHaveAttribute('aria-expanded', 'true');
+  await expect(historyMenu).toBeVisible();
+  await historyMenu.getByRole('menuitem').first().focus();
   await page.keyboard.press('Escape');
   await expect(historyMenu).toHaveCount(0);
   await historyRefresh.focus();
@@ -1310,7 +1345,14 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     element.scrollTop = 0;
     element.dispatchEvent(new Event('scroll'));
   });
+  const retryOlder = conversationScroll.locator('[data-history-action="retry"]');
+  await expect(retryOlder).toBeVisible();
+  await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
+  await expect(retryOlder).toBeEnabled();
+  expect(olderHistoryReads).toBe(1);
+  await retryOlder.click();
   await expect(page.getByText('这是按需加载的更早托管消息。', { exact: true })).toBeVisible();
+  expect(olderHistoryReads).toBe(2);
   await expect(loadEarlier).toHaveCount(0);
   await expect
     .poll(() => conversationScroll.evaluate((element) => element.scrollTop))
@@ -1404,18 +1446,30 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   const filesPane = page.locator('.hosted-conversation-files');
   const projectedFile = filesPane.getByRole('button', { name: /^result\.txt/u });
   await expect(projectedFile).toBeVisible();
-  await expect(filesPane.getByRole('button', { name: /^source\.txt/u })).toHaveCount(0);
+  await expect(
+    filesPane.getByRole('button', { name: 'references/source.txt', exact: true })
+  ).toHaveCount(0);
   await filesPane.getByRole('button', { name: '展开用户上传目录“references”' }).click();
-  await expect(filesPane.getByRole('button', { name: /^source\.txt/u })).toBeVisible();
+  await expect(
+    filesPane.getByRole('button', { name: 'references/source.txt', exact: true })
+  ).toBeVisible();
   await expect(
     filesPane.getByRole('button', { name: '收起用户上传目录“references”' })
   ).toBeVisible();
-  await expect(filesPane.getByRole('button', { name: /^summary\.txt/u })).toHaveCount(0);
+  await expect(
+    filesPane.getByRole('button', { name: 'reports/summary.txt', exact: true })
+  ).toHaveCount(0);
   await filesPane.getByRole('button', { name: '展开输出文件目录“reports”' }).click();
-  await expect(filesPane.getByRole('button', { name: /^summary\.txt/u })).toBeVisible();
-  await expect(filesPane.getByRole('button', { name: /^q1\.txt/u })).toHaveCount(0);
+  await expect(
+    filesPane.getByRole('button', { name: 'reports/summary.txt', exact: true })
+  ).toBeVisible();
+  await expect(
+    filesPane.getByRole('button', { name: 'reports/2026/q1.txt', exact: true })
+  ).toHaveCount(0);
   await filesPane.getByRole('button', { name: '展开输出文件目录“reports/2026”' }).click();
-  await expect(filesPane.getByRole('button', { name: /^q1\.txt/u })).toBeVisible();
+  await expect(
+    filesPane.getByRole('button', { name: 'reports/2026/q1.txt', exact: true })
+  ).toBeVisible();
   await expect(page.locator('.composer-command-picker')).toHaveCount(0);
   await expect(page.locator('.composer-file-reference-picker')).toHaveCount(0);
   await expect(page.locator('.composer-skill-picker')).toHaveCount(0);

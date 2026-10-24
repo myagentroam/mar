@@ -228,7 +228,11 @@ export function createWorkbenchSystemNotificationService(
     if (id === null) return false;
     url.searchParams.delete('notification');
     url.searchParams.delete('notificationAccount');
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`
+    );
     if (account !== username.value) return false;
     await openNotification(id).catch(() => undefined);
     return true;

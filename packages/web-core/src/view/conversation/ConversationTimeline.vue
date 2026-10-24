@@ -883,7 +883,10 @@ function stepDuration(item: ConversationItem): string | undefined {
                   {{ entry.path }}
                 </button>
                 <span
-                  v-tooltip="translate(`presentation.diffUnavailable.${entry.diff.reason}`)"
+                  v-tooltip="{
+                    content: translate(`presentation.diffUnavailable.${entry.diff.reason}`),
+                    touch: true
+                  }"
                   v-if="entry.diff?.status === 'unavailable'"
                   class="conversation-file-change-note"
                   >{{ translate('presentation.diffUnavailableLabel') }}</span

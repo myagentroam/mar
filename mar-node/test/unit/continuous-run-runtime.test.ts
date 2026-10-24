@@ -392,6 +392,138 @@ describe('Node Runtime history boundaries', () => {
 });
 
 describe('Node execution directory admission', () => {
+  it.each([
+    'enqueue',
+    'edit-other',
+    'reorder',
+    'pause',
+    'edit-target',
+    'delete-target',
+    'claim-target',
+    'receiving',
+    'stopped',
+    'duplicate',
+    'directory-error'
+  ] as const)(
+    'revalidates the immediate target rather than unrelated queue changes during %s',
+    async (change) => {
+      const { runtime, session } = fixture();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let stopped = false;
+      let rejectDirectory = change === 'directory-error';
+      const directoryError = Object.assign(new Error('Execution directory is unavailable.'), {
+        code: 'SESSION_EXECUTION_DIRECTORY_INVALID'
+      });
+      const control = vi.fn();
+      const coordinator = new ContinuousRunCoordinator({
+        runtime,
+        control,
+        stopped: () => stopped,
+        resolveExecutionDirectory: async () => {
+          await gate;
+          if (rejectDirectory) throw directoryError;
+          return session.cwd;
+        },
+        emitQueue: vi.fn(),
+        emitConversation: vi.fn(),
+        clearImages: vi.fn(),
+        cleanupAttachments: vi.fn(),
+        migrateAssets: vi.fn(),
+        emitRun: vi.fn(),
+        markInterrupted: vi.fn(),
+        mcps: () => []
+      });
+      const run = runtime.createMessageRun({
+        sessionId: session.id,
+        clientMessageId: 'active',
+        content: 'running'
+      }).run;
+      runtime.createExecution(run.id);
+      const add = (id: string) =>
+        runtime.createQueueItem({
+          sessionId: session.id,
+          clientMessageId: id,
+          content: id
+        }).item;
+      const target = add('target');
+      const other = add('other');
+      coordinator.prepare(target.id, prepared(target.id, session.id));
+      let releaseReceiving: (() => void) | undefined;
+      try {
+        const result = Promise.resolve(coordinator.executeQueueItem(target.id));
+        const duplicate =
+          change === 'duplicate' || change === 'directory-error'
+            ? Promise.resolve(coordinator.executeQueueItem(target.id))
+            : undefined;
+        const added = change === 'enqueue' ? add('new') : undefined;
+        if (change === 'edit-other') runtime.updateQueueItem(other.id, 'updated');
+        if (change === 'reorder')
+          runtime.reorderSessionQueue(session.id, runtime.sessionQueue(session.id).version, [
+            other.id,
+            target.id
+          ]);
+        if (change === 'pause') runtime.pauseSessionQueue(session.id);
+        if (change === 'edit-target') {
+          runtime.updateQueueItem(target.id, 'updated');
+          coordinator.updatePreparedInput(target.id, 'updated');
+        }
+        if (change === 'delete-target') coordinator.deleteQueueItem(target.id);
+        if (change === 'claim-target') runtime.claimNextQueueItem(session.id);
+        if (change === 'receiving') releaseReceiving = runtime.reserveQueueItem(target.id);
+        if (change === 'stopped') stopped = true;
+        release();
+        if (change === 'directory-error') {
+          await expect(result).rejects.toBe(directoryError);
+          await expect(duplicate).rejects.toBe(directoryError);
+          expect(control).not.toHaveBeenCalled();
+          expect(runtime.sessionQueue(session.id).paused).toBe(true);
+          rejectDirectory = false;
+          await expect(coordinator.executeQueueItem(target.id)).resolves.toMatchObject({
+            run: { id: run.id },
+            delivery: 'ACCEPTED'
+          });
+          expect(control).toHaveBeenCalledOnce();
+          expect(runtime.sessionQueue(session.id).paused).toBe(false);
+        } else if (['edit-target', 'delete-target', 'claim-target', 'stopped'].includes(change)) {
+          await expect(result).rejects.toThrow('QUEUE_ITEM_INVALID');
+          expect(control).not.toHaveBeenCalled();
+          if (change === 'edit-target') {
+            await expect(coordinator.executeQueueItem(target.id)).resolves.toMatchObject({
+              run: { id: run.id },
+              delivery: 'ACCEPTED'
+            });
+            expect(control).toHaveBeenCalledOnce();
+          }
+        } else if (change === 'receiving') {
+          await expect(result).rejects.toThrow('QUEUE_ITEM_RECEIVING');
+          expect(control).not.toHaveBeenCalled();
+        } else {
+          await expect(result).resolves.toMatchObject({
+            run: { id: run.id },
+            delivery: 'ACCEPTED'
+          });
+          if (duplicate)
+            await expect(duplicate).resolves.toMatchObject({
+              run: { id: run.id },
+              delivery: 'ACCEPTED'
+            });
+          expect(control).toHaveBeenCalledOnce();
+          expect(runtime.sessionQueue(session.id)).toMatchObject({
+            paused: false,
+            itemIds: added ? [target.id, other.id, added.id] : [target.id, other.id]
+          });
+        }
+      } finally {
+        release();
+        releaseReceiving?.();
+        coordinator.clear();
+      }
+    }
+  );
+
   it('dispatches edited input when successful settle directory validation becomes stale', async () => {
     const { runtime, session } = fixture();
     let release!: () => void;

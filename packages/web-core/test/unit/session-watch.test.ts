@@ -849,7 +849,7 @@ describe('Web Session Watch Lifecycle', () => {
       openSession: vi.fn()
     });
 
-    const firstInitial = controller.beginSelectedSessionWatch('session-1');
+    const firstInitial = controller.beginSelectedSessionWatch('session-1')?.catch((error) => error);
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     expect(controller.hasInitialSessionSnapshot('session-1')).toBe(false);
     const firstWatchId = JSON.parse(String(requests[0]?.body)).watchId as string;
@@ -889,7 +889,8 @@ describe('Web Session Watch Lifecycle', () => {
     expect(controller.hasInitialSessionSnapshot('session-1')).toBe(true);
     resolveRequests[0]?.({ nodeGeneration: 'test-generation' });
 
-    await Promise.all([firstInitial, replacementInitial]);
+    expect(await firstInitial).toMatchObject({ code: 'WATCH_CANCELLED' });
+    await replacementInitial;
     expect(applySnapshot).toHaveBeenCalledOnce();
     expect(controller.hasInitialSessionSnapshot('session-1')).toBe(true);
     controller.stopSelectedSessionWatch();
@@ -938,7 +939,8 @@ describe('Session Watch failure phases', () => {
         await Promise.resolve();
         if (mode.startsWith('cancel')) controller.stopSelectedSessionWatch();
         else await vi.advanceTimersByTimeAsync(10_000);
-        if (mode.startsWith('cancel')) expect(await result).toBeUndefined();
+        if (mode.startsWith('cancel'))
+          expect(await result).toMatchObject({ code: 'WATCH_CANCELLED' });
         else
           expect(await result).toMatchObject({
             code: acknowledged ? 'SESSION_WATCH_SNAPSHOT_TIMEOUT' : 'WATCH_REQUEST_TIMEOUT'

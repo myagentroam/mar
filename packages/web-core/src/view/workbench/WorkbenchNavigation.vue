@@ -1,10 +1,11 @@
 <script setup lang="ts" generic="ManagementSection extends string">
 import { marIcon } from '../../util/mar-icons.js';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/DocumentationAvailability.js';
 import {
   localizedDocsPath,
+  translate,
   localePreferenceService
 } from '../../service/LocalePreferenceService.js';
 import type {
@@ -25,12 +26,15 @@ import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbe
 
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
+import type { MobileUtilityPanel } from '../../service/WorkbenchNavigationService.js';
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
 const treeElement = ref<HTMLElement>();
+const mobilePanelTarget = ref<HTMLElement>();
+let menuTrigger: HTMLElement | undefined;
 
-defineProps<{
+const props = defineProps<{
   readonly webVersion: string;
   readonly view: WorkbenchView;
   readonly navigationItems: readonly { readonly id: WorkbenchView; readonly label: string }[];
@@ -50,6 +54,8 @@ defineProps<{
   readonly workspaceLabel: (workspace: Workspace) => string;
   readonly workspaces: (nodeId: string) => readonly Workspace[];
   readonly mobileViewport: boolean;
+  readonly mobileUtilityPanel?: MobileUtilityPanel | undefined;
+  readonly mobileHistoryOpen?: boolean;
   readonly notificationService: WorkbenchNotificationService;
   readonly performanceDiagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;
   readonly uploads: readonly WorkspaceUploadTask[];
@@ -61,6 +67,8 @@ const emit = defineEmits<{
   moveNode: [nodeId: string, targetIndex: number];
   moveWorkspace: [nodeId: string, workspaceId: string, direction: -1 | 1];
   selectNavigation: [view: WorkbenchView];
+  selectMobileUtilityPanel: [panel: MobileUtilityPanel | undefined];
+  closeMobileSidebar: [];
   selectSettings: [section: SettingsSection];
   selectManagement: [section: ManagementSection];
   toggleNode: [nodeId: string];
@@ -83,6 +91,68 @@ const emit = defineEmits<{
   cancelUpload: [task: WorkspaceUploadTask];
   removeUpload: [task: WorkspaceUploadTask];
 }>();
+
+function setMobileUtilityPanel(panel: MobileUtilityPanel, open: boolean): void {
+  if (open || props.mobileUtilityPanel === panel)
+    emit('selectMobileUtilityPanel', open ? panel : undefined);
+}
+
+const menuLabel = computed(() =>
+  translate(
+    props.mobileUtilityPanel === 'recent-sessions'
+      ? 'workbenchNotificationCenter.recentSessions'
+      : props.mobileUtilityPanel === 'notifications'
+        ? 'generated.workbenchNotificationCenter.notifications'
+        : props.view === 'settings'
+          ? 'navigation.settingsCategories'
+          : props.view === 'management'
+            ? 'navigation.managementCategories'
+            : 'navigation.nodeWorkspace'
+  )
+);
+
+watch(
+  [
+    () => props.mobileViewport && props.mobileSidebarOpen,
+    () => props.mobileUtilityPanel ?? props.view
+  ],
+  async ([open], [wasOpen]) => {
+    if (open) {
+      if (
+        document.activeElement instanceof HTMLElement &&
+        !treeElement.value?.contains(document.activeElement)
+      )
+        menuTrigger = document.activeElement;
+      await nextTick();
+      if (props.mobileSidebarOpen) treeElement.value?.focus({ preventScroll: true });
+    } else if (wasOpen && treeElement.value?.contains(document.activeElement)) {
+      menuTrigger?.focus({ preventScroll: true });
+    }
+  }
+);
+
+function closeMenuOnEscape(event: KeyboardEvent): void {
+  if (
+    event.key !== 'Escape' ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    !props.mobileViewport ||
+    !props.mobileSidebarOpen
+  )
+    return;
+  const modalSelector = '.el-overlay-dialog, .el-overlay-message-box';
+  if (
+    event
+      .composedPath()
+      .some((target) => target instanceof Element && target.matches(modalSelector)) ||
+    [...document.querySelectorAll(modalSelector)].some((modal) => modal.getClientRects().length > 0)
+  )
+    return;
+  event.preventDefault();
+  emit('closeMobileSidebar');
+}
+onMounted(() => window.addEventListener('keydown', closeMenuOnEscape));
+onBeforeUnmount(() => window.removeEventListener('keydown', closeMenuOnEscape));
 
 const forwardOpenWorkspace = (nodeId: string, workspaceId: string) =>
   emit('openWorkspace', nodeId, workspaceId);
@@ -167,6 +237,14 @@ function openBlankMenu(event: MouseEvent): void {
           ]"
           :aria-label="item.label"
           :aria-current="view === item.id ? 'page' : undefined"
+          :aria-expanded="
+            mobileViewport
+              ? view === item.id &&
+                (item.id === 'conversations'
+                  ? mobileHistoryOpen === true
+                  : mobileSidebarOpen && mobileUtilityPanel === undefined)
+              : undefined
+          "
           type="button"
           @click="emit('selectNavigation', item.id)"
         >
@@ -185,6 +263,9 @@ function openBlankMenu(event: MouseEvent): void {
           v-if="item.id === 'conversations'"
           :service="notificationService"
           :mobile-mode="mobileViewport"
+          :mobile-open="mobileUtilityPanel === 'recent-sessions'"
+          :mobile-panel-target="mobilePanelTarget"
+          @update:mobile-open="setMobileUtilityPanel('recent-sessions', $event)"
           @open-recent-run="emit('openRecentRun', $event)"
         />
       </template>
@@ -209,6 +290,9 @@ function openBlankMenu(event: MouseEvent): void {
         :uploads="uploads"
         :status-label="uploadStatusLabel"
         :mobile-mode="mobileViewport"
+        :mobile-open="mobileUtilityPanel === 'notifications'"
+        :mobile-panel-target="mobilePanelTarget"
+        @update:mobile-open="setMobileUtilityPanel('notifications', $event)"
         @open-notification="emit('openNotification', $event)"
         @retry-upload="emit('retryUpload', $event)"
         @cancel-upload="emit('cancelUpload', $event)"
@@ -218,96 +302,110 @@ function openBlankMenu(event: MouseEvent): void {
     <WebPerformanceIndicator v-if="!mobileViewport" :diagnostics="performanceDiagnostics" />
   </aside>
   <aside
-    v-if="view === 'nodes'"
+    v-if="view !== 'conversations' || mobileUtilityPanel !== undefined"
     ref="treeElement"
     :class="['workspace-tree', { collapsed: sidebarCollapsed, 'mobile-open': mobileSidebarOpen }]"
-    :aria-label="$t('navigation.nodeWorkspace')"
-    @contextmenu="openBlankMenu"
+    :aria-label="menuLabel"
+    tabindex="-1"
+    @contextmenu="view === 'nodes' && mobileUtilityPanel === undefined && openBlankMenu($event)"
   >
-    <el-dropdown
-      trigger="click"
-      class="workspace-tree-blank-menu"
-      :style="blankMenuPosition"
-      @command="emit('refreshWorkspaceTree')"
-    >
-      <button ref="blankMenuButton" type="button" tabindex="-1" aria-hidden="true" />
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
-            $t('generated.workspaceTree.refreshWorkspaces')
-          }}</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-    <WorkspaceTree
-      v-if="sidebarContentVisible"
-      :nodes="nodes"
-      :expanded-node-ids="expandedNodeIds"
-      :workspace-target="workspaceTarget"
-      :dragging-workspace="draggingWorkspace"
-      :mobile-viewport="mobileViewport"
-      :loading="loading"
-      :node-label="nodeLabel"
-      :workspace-label="workspaceLabel"
-      :workspaces="workspaces"
-      @move-node="forwardNodeMove"
-      @move-workspace="forwardWorkspaceMove"
-      @toggle-node="emit('toggleNode', $event)"
-      @refresh-node-workspaces="emit('refreshNodeWorkspaces', $event)"
-      @add-workspace="emit('addWorkspace', $event)"
-      @open-node-details="emit('openNodeDetails', $event)"
-      @open-workspace="forwardOpenWorkspace"
-      @start-workspace-drag="forwardWorkspaceDrag"
-      @end-workspace-drag="emit('endWorkspaceDrag')"
-      @reorder-workspace="forwardWorkspaceTarget"
-      @move-workspace-to-group="forwardWorkspaceGroupTarget"
-      @move-workspace-group="forwardWorkspaceGroupMove"
-      @remove-workspace="forwardWorkspaceRemoval"
-      @open-workspace-details="forwardWorkspaceDetails"
-      @rename-workspace="forwardWorkspaceRename"
+    <header v-if="mobileViewport" class="mobile-menu-header">
+      <strong>{{ menuLabel }}</strong>
+      <button
+        v-tooltip="$t('workbench.closeSidebar')"
+        class="icon-button"
+        type="button"
+        :aria-label="$t('workbench.closeSidebar')"
+        @click="emit('closeMobileSidebar')"
+      >
+        <MarIcon name="close" />
+      </button>
+    </header>
+    <div
+      v-show="mobileUtilityPanel !== undefined"
+      ref="mobilePanelTarget"
+      class="mobile-menu-content"
     />
-  </aside>
-  <aside
-    v-else-if="view === 'settings' || view === 'management'"
-    :class="['workspace-tree', { collapsed: sidebarCollapsed, 'mobile-open': mobileSidebarOpen }]"
-    :aria-label="
-      view === 'settings'
-        ? $t('navigation.settingsCategories')
-        : $t('navigation.managementCategories')
-    "
-  >
-    <nav
-      v-if="sidebarContentVisible && view === 'settings'"
-      class="settings-nav"
-      :aria-label="$t('navigation.settingsMenu')"
-    >
-      <button
-        v-for="item in settingsItems"
-        :key="item.id"
-        :class="{ active: settingsSection === item.id }"
-        :aria-current="settingsSection === item.id ? 'page' : undefined"
-        type="button"
-        @click="emit('selectSettings', item.id)"
+    <template v-if="mobileUtilityPanel === undefined && view === 'nodes'">
+      <el-dropdown
+        trigger="click"
+        class="workspace-tree-blank-menu"
+        :style="blankMenuPosition"
+        @command="emit('refreshWorkspaceTree')"
       >
-        {{ item.label }}
-      </button>
-    </nav>
-    <nav
-      v-else-if="sidebarContentVisible"
-      class="settings-nav"
-      :aria-label="$t('navigation.managementMenu')"
-    >
-      <button
-        v-for="item in managementItems"
-        :key="item.id"
-        :class="{ active: managementSection === item.id }"
-        :aria-current="managementSection === item.id ? 'page' : undefined"
-        type="button"
-        @click="emit('selectManagement', item.id)"
+        <button ref="blankMenuButton" type="button" tabindex="-1" aria-hidden="true" />
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
+              $t('generated.workspaceTree.refreshWorkspaces')
+            }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <WorkspaceTree
+        v-if="sidebarContentVisible"
+        :nodes="nodes"
+        :expanded-node-ids="expandedNodeIds"
+        :workspace-target="workspaceTarget"
+        :dragging-workspace="draggingWorkspace"
+        :mobile-viewport="mobileViewport"
+        :loading="loading"
+        :node-label="nodeLabel"
+        :workspace-label="workspaceLabel"
+        :workspaces="workspaces"
+        @move-node="forwardNodeMove"
+        @move-workspace="forwardWorkspaceMove"
+        @toggle-node="emit('toggleNode', $event)"
+        @refresh-node-workspaces="emit('refreshNodeWorkspaces', $event)"
+        @add-workspace="emit('addWorkspace', $event)"
+        @open-node-details="emit('openNodeDetails', $event)"
+        @open-workspace="forwardOpenWorkspace"
+        @start-workspace-drag="forwardWorkspaceDrag"
+        @end-workspace-drag="emit('endWorkspaceDrag')"
+        @reorder-workspace="forwardWorkspaceTarget"
+        @move-workspace-to-group="forwardWorkspaceGroupTarget"
+        @move-workspace-group="forwardWorkspaceGroupMove"
+        @remove-workspace="forwardWorkspaceRemoval"
+        @open-workspace-details="forwardWorkspaceDetails"
+        @rename-workspace="forwardWorkspaceRename"
+      />
+    </template>
+    <template v-else-if="mobileUtilityPanel === undefined">
+      <nav
+        v-if="sidebarContentVisible && view === 'settings'"
+        :key="view"
+        class="settings-nav"
+        :aria-label="$t('navigation.settingsMenu')"
       >
-        {{ item.label }}
-      </button>
-    </nav>
+        <button
+          v-for="item in settingsItems"
+          :key="item.id"
+          :class="{ active: settingsSection === item.id }"
+          :aria-current="settingsSection === item.id ? 'page' : undefined"
+          type="button"
+          @click="emit('selectSettings', item.id)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
+      <nav
+        v-else-if="sidebarContentVisible"
+        :key="view"
+        class="settings-nav"
+        :aria-label="$t('navigation.managementMenu')"
+      >
+        <button
+          v-for="item in managementItems"
+          :key="item.id"
+          :class="{ active: managementSection === item.id }"
+          :aria-current="managementSection === item.id ? 'page' : undefined"
+          type="button"
+          @click="emit('selectManagement', item.id)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
+    </template>
   </aside>
   <PanelResizeHandle
     v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
@@ -522,6 +620,29 @@ function openBlankMenu(event: MouseEvent): void {
   background: var(--mar-bg-panel);
 }
 
+.mobile-menu-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-panel);
+  font-size: var(--mar-font-size-meta);
+}
+.mobile-menu-header strong {
+  font-weight: 500;
+}
+.mobile-menu-content {
+  min-width: 0;
+}
+.workspace-tree:focus {
+  outline: none;
+}
+
 @media (min-width: 768px) {
   .workbench-brand {
     transition:
@@ -731,19 +852,19 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail nav .nav-menu-button .nav-item-content {
-    min-height: 18px;
-    grid-template-rows: 18px;
+    min-height: 22px;
+    grid-template-rows: 22px;
     align-content: center;
     gap: 2px;
   }
 
   .activity-rail nav .nav-menu-button .mar-icon {
     display: grid;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     place-items: center;
-    font-size: 1.125rem;
-    line-height: 18px;
+    font-size: 22px;
+    line-height: 22px;
   }
 
   .activity-rail nav .nav-menu-button .rail-label {
@@ -828,10 +949,26 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .mobile-menu-content > :deep(*),
+  .workspace-tree.mobile-open .settings-nav {
+    animation: mobile-menu-content-in var(--mar-motion-duration-collapse)
+      var(--mar-motion-easing-collapse);
+  }
   .activity-rail nav button {
     transition:
       background-color var(--mar-motion-duration-collapse) ease,
       color var(--mar-motion-duration-collapse) ease;
+  }
+}
+
+@keyframes mobile-menu-content-in {
+  from {
+    opacity: 0.65;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>

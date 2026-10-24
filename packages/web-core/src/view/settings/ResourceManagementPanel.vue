@@ -760,7 +760,8 @@ onUnmounted(() => pagination.dispose());
             : translate('generated.resourceSharingPage.workspaceName')
         "
         sortable="custom"
-        min-width="180" />
+        min-width="180"
+      />
       <el-table-column
         v-if="resourceType === 'WORKSPACE'"
         :label="translate('generated.resourceSharingPage.node')"
@@ -820,6 +821,7 @@ onUnmounted(() => pagination.dispose());
             <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
               translate('generated.resourceSharingPage.edit')
             }}</el-button>
+            <slot name="resource-actions" :resource="row" />
             <el-button
               link
               type="danger"
@@ -828,8 +830,10 @@ onUnmounted(() => pagination.dispose());
               @click="removeResource(row)"
               >{{ translate('common.delete') }}</el-button
             >
-            <slot name="resource-actions" :resource="row" /></div></template></el-table-column
-    ></el-table>
+          </div></template
+        ></el-table-column
+      ></el-table
+    >
     <ManagementPagination
       :total="pagination.total.value"
       :has-more="pagination.hasMore.value"

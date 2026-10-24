@@ -32,7 +32,11 @@ export function createWorkbenchRouteService(options: WorkbenchRouteServiceOption
       url.searchParams.delete('skill');
       url.searchParams.delete('node');
       url.searchParams.delete('conversation');
-      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}${url.hash}`
+      );
       return;
     }
     url.searchParams.set('view', options.view.value);
@@ -54,7 +58,11 @@ export function createWorkbenchRouteService(options: WorkbenchRouteServiceOption
       url.searchParams.delete('node');
       url.searchParams.delete('conversation');
     }
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`
+    );
   }
 
   return { restore, restoreSession, sync, hostedConversationRoute };

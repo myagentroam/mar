@@ -63,6 +63,54 @@ function report(status = 'expected', platform = 'linux') {
   };
 }
 
+test('standalone browser fixtures require explicit files and do not select service projects', () => {
+  const file = 'test/e2e/file-tabs-rendering.spec.ts';
+  assert.deepEqual(e2eOptions(['--fixtures', file]), {
+    mode: 'fixtures',
+    list: false,
+    arguments: [file, '--project=chromium']
+  });
+  assert.equal(e2eOptions(['--fixtures', file, '--project', 'firefox']).mode, 'fixtures');
+  assert.throws(() => e2eOptions(['--fixtures']), /E2E_FIXTURE_SELECTION_REQUIRED/);
+  assert.throws(
+    () => e2eOptions(['--fixtures', '--grep', 'File tabs']),
+    /E2E_FIXTURE_SELECTION_REQUIRED/
+  );
+  for (const mode of ['--smoke', '--integration'])
+    assert.throws(() => e2eOptions(['--fixtures', mode, file]), /E2E_MODE_INVALID/);
+  assert.throws(
+    () => e2eOptions(['--fixtures', file, '--project=integration']),
+    /E2E_PROJECT_SELECTION_INVALID/
+  );
+});
+
+test('standalone fixture configuration needs no database, license or implicit application origin', () => {
+  const root = resolve(import.meta.dirname, '../..');
+  const runId = `fixture-policy-${randomUUID()}`;
+  const env = { ...process.env };
+  for (const name of Object.keys(env))
+    if (name.startsWith('MAR_TEST_') || name.startsWith('MAR_E2E_')) delete env[name];
+  const output = execFileSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      "import config from './playwright.config.mts'; console.log(JSON.stringify({servers:config.webServer,origin:config.use.baseURL ?? null}));"
+    ],
+    {
+      cwd: root,
+      env: { ...env, MAR_E2E_MODE: 'fixtures', MAR_TEST_RUN_ID: runId },
+      encoding: 'utf8',
+      timeout: 30_000
+    }
+  );
+  assert.deepEqual(JSON.parse(output), { servers: [], origin: null });
+  assert.equal(existsSync(resolve(root, `test/runs/playwright-license-${runId}.json`)), false);
+  assert.equal(existsSync(resolve(root, `test/runs/playwright-license-host-${runId}.txt`)), false);
+});
+
 test('smoke requires every fixed journey once and rejects skipped, flaky, missing and failed runs', () => {
   assert.doesNotThrow(() => assertSmokeReport(report(), 'linux'));
   for (const status of ['skipped', 'flaky', 'unexpected'])

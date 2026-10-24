@@ -632,8 +632,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   ]);
   expect(documentationContentGeometry).toEqual(nodesContentGeometry);
   expect(nodesContentGeometry.iconCenterY).toBe(nodesContentGeometry.contentCenterY);
-  expect(nodesContentGeometry.iconWidth).toBe(18);
-  expect(nodesContentGeometry.iconHeight).toBe(18);
+  expect(nodesContentGeometry.iconWidth).toBe(22);
+  expect(nodesContentGeometry.iconHeight).toBe(22);
   expect(
     (notificationGeometry?.y ?? Infinity) + (notificationGeometry?.height ?? 0)
   ).toBeLessThanOrEqual((brandGeometryBox?.y ?? 0) + (brandGeometryBox?.height ?? 0));
@@ -923,6 +923,20 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
         height: viewport.height / 2
       });
     await expect(page.locator('.admin-terminal-body')).toBeVisible();
+    await expect(terminalDock.locator('.admin-terminal-actions')).toHaveCount(0);
+    const terminalChrome = await terminalDock.evaluate((dock) => {
+      const header = dock.querySelector<HTMLElement>('.admin-terminal-header')!;
+      const tabs = dock.querySelector<HTMLElement>('.terminal-tabs')!;
+      const body = dock.querySelector<HTMLElement>('.admin-terminal-body')!;
+      return {
+        headerHeight: header.getBoundingClientRect().height,
+        gap: tabs.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+        height: body.getBoundingClientRect().top - header.getBoundingClientRect().top
+      };
+    });
+    expect(terminalChrome.headerHeight).toBeLessThanOrEqual(36);
+    expect(terminalChrome.gap).toBeLessThanOrEqual(1);
+    expect(terminalChrome.height).toBeLessThanOrEqual(76);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);

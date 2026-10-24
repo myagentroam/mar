@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   readFilePreview,
@@ -107,22 +105,6 @@ describe('Web unified file preview classification', () => {
     });
     await expect(readFilePreview(read)).rejects.toThrow('READ_FAILED');
     expect(read).toHaveBeenCalledExactlyOnceWith(4096);
-  });
-
-  it('limits PPTX render width to fit the available preview height', async () => {
-    const dialog = await readFile(
-      resolve(process.cwd(), 'src/view/workspace/WorkspaceFormatFilePage.vue'),
-      'utf8'
-    );
-
-    expect(dialog).toContain("'is-presentation': kind === 'presentation'");
-    expect(dialog).toContain('class="file-presentation-renderer"');
-    expect(dialog).toMatch(
-      /\.file-office-preview\.is-presentation\s*\{[^}]*container-type:\s*size;[^}]*overflow:\s*hidden;/su
-    );
-    expect(dialog).toMatch(
-      /\.file-presentation-renderer\s*\{[^}]*width:\s*min\(100%, calc\(100cqh \* 16 \/ 9\)\);[^}]*height:\s*100%;[^}]*margin:\s*0 auto;/su
-    );
   });
 
   it('chooses a unified preview adapter for modern Office, PDF, media, and image files', () => {

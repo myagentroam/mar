@@ -475,6 +475,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   align-items: center;
   gap: 0.45rem;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--mar-text-primary);
   padding: 0.5rem 0.65rem;
@@ -482,11 +483,16 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   cursor: pointer;
 }
 
-.workspace-directory-list > li > button:first-child:hover:not(:disabled),
+.workspace-directory-list > li > button:first-child:hover:not(:disabled) {
+  background: var(--mar-fill-row-hover);
+}
+
 .workspace-directory-list > li > button:first-child.selected,
-.workspace-directory-list > li.pending-directory > button:first-child {
-  background: var(--mar-color-brand-selected);
-  color: var(--mar-color-brand-text);
+.workspace-directory-list > li > button:first-child.selected:hover:not(:disabled),
+.workspace-directory-list > li.pending-directory > button:first-child,
+.workspace-directory-list > li.pending-directory > button:first-child:hover:not(:disabled) {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 .workspace-directory-list > li > button:first-child:disabled {

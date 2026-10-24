@@ -358,7 +358,7 @@ defineExpose({ release, toggle: toggleTerminal });
   <section class="admin-terminal" :aria-label="translate('common.adminTerminal')">
     <header class="admin-terminal-header">
       <h2>{{ contextLabel }}</h2>
-      <div class="admin-terminal-actions">
+      <div v-if="profiles.length > 1 || !mobileMode" class="admin-terminal-actions">
         <label v-if="profiles.length > 1" class="terminal-profile">
           {{ translate('generated.terminalDock.terminalProfile') }}
           <el-select
@@ -597,23 +597,15 @@ defineExpose({ release, toggle: toggleTerminal });
   }
 
   .admin-terminal-header {
-    min-height: 0;
+    min-height: 32px;
     flex: none;
-    margin-bottom: 0.45rem;
-    padding: 0.7rem 0.7rem 0;
+    flex-wrap: wrap;
+    padding: 0.25rem 0.7rem;
   }
-}
 
-@media (max-width: 460px) {
-  .admin-terminal-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 460px) {
   .admin-terminal-actions {
-    justify-content: start;
+    min-width: 0;
+    max-width: 100%;
   }
 }
 </style>

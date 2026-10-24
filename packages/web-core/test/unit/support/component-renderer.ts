@@ -15,6 +15,7 @@ export interface TestElement {
   type: string;
   text: string;
   props: Record<string, unknown>;
+  style: Record<string, string>;
   parent: TestElement | null;
   children: TestElement[];
   addEventListener(): void;
@@ -26,6 +27,7 @@ function element(type: string, text = ''): TestElement {
     type,
     text,
     props: {},
+    style: {},
     parent: null,
     children: [],
     addEventListener() {},

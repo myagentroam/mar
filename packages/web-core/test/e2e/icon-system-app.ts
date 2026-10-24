@@ -1,6 +1,6 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
-import ElementPlus, { ElDatePicker, ElInputNumber } from 'element-plus';
+import ElementPlus, { ElButton, ElDatePicker, ElInputNumber } from 'element-plus';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -13,8 +13,10 @@ import MailTemplateManagement from '../../src/view/settings/MailTemplateManageme
 import PersonalUsageSettings from '../../src/view/settings/PersonalUsageSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
+import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import { createWorkbenchNotificationService } from '../../src/service/WorkbenchNotificationService.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/WebPerformanceDiagnosticService.js';
 import type { PersonalUsageOverview, UsageTotals } from '@myagentroam/protocol';
@@ -65,8 +67,131 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    if (new URL(location.href).searchParams.has('process-icons')) {
+      return () =>
+        h(
+          'main',
+          {},
+          [false, true].map((active) =>
+            h(
+              ConversationWorkProcess,
+              {
+                block: {
+                  id: `process-${active}`,
+                  groupId: `process-${active}`,
+                  entries: [],
+                  partial: false,
+                  sealed: !active,
+                  active,
+                  status: active ? 'executing' : 'completed',
+                  startedAt: 1792771200000,
+                  durationMs: active ? undefined : 360000
+                },
+                synchronized: true,
+                now: 1792771634000
+              },
+              () => h('p', {}, 'Process details')
+            )
+          )
+        );
+    }
+    if (new URL(location.href).searchParams.has('composer-icons')) {
+      const sends = ref(0);
+      const stops = ref(0);
+      const pending = ref(false);
+      return () =>
+        h('main', {}, [
+          h(ConversationTimeline, {
+            turns: [
+              {
+                id: 'turn',
+                sessionId: 'session',
+                runId: 'run',
+                status: 'SUCCEEDED',
+                items: [
+                  {
+                    id: 'reply',
+                    kind: 'assistant_message',
+                    status: 'COMPLETED',
+                    createdAt: 1792771200000,
+                    payload: { text: 'Mobile icon scale review.' }
+                  }
+                ]
+              }
+            ],
+            workspaceRoot: undefined,
+            loading: false,
+            initializing: false,
+            initialRenderVersion: 0,
+            imageAttachments: () => [],
+            userInputQuestions: () => [],
+            userInputAnswer: () => '',
+            userInputSubmitted: () => false,
+            planContinuation: undefined,
+            nodeReady: true,
+            synchronized: true,
+            rewindEnabled: false,
+            rollbackEnabled: false
+          }),
+          h(
+            'form',
+            {
+              onSubmit: (event: Event) => {
+                event.preventDefault();
+                sends.value++;
+                pending.value = true;
+              }
+            },
+            [
+              h(ComposerToolbar, {
+                draftSessionOpen: false,
+                runner: 'MAR_AGENT',
+                runnerOptions: [],
+                runnerLoading: false,
+                runnerLabel: 'MAR Agent',
+                modelEffortSelection: 'model:test',
+                modelEffortLabel: 'Test model',
+                selectedModel: 'test',
+                selectedEffort: 'high',
+                models: [{ id: 'test', label: 'Test model', supportedEfforts: ['high'] }],
+                efforts: ['high'],
+                access: 'auto',
+                accessLabel: 'Auto',
+                accessOptions: [{ id: 'auto', label: 'Auto' }],
+                configurationDisabled: false,
+                accessDisabled: false,
+                fastEnabled: false,
+                contextUsage: { percentage: 18.4 },
+                contextUsageLabel: 'Context usage',
+                canCompactContext: true,
+                mobileViewport: innerWidth < 768,
+                activeRun: undefined,
+                canInterrupt: !new URL(location.href).searchParams.has('empty-draft'),
+                interruptVisible: true,
+                inputHasContent: !new URL(location.href).searchParams.has('empty-draft'),
+                hasSelectedCommand: false,
+                loading: false,
+                submitting: pending.value,
+                attachmentsPending: false,
+                effortLabel: (effort: string) => effort,
+                onStop: () => stops.value++
+              })
+            ]
+          ),
+          h(ElButton, { icon: marIcon('edit'), size: 'small' }, () => 'Edit'),
+          h('span', { 'data-testid': 'status-icon', style: { fontSize: '11px' } }, [
+            h(MarIcon, { name: 'clock' })
+          ]),
+          h('button', { type: 'button', 'aria-label': 'Explicit icon size' }, [
+            h(MarIcon, { name: 'help', size: 24 })
+          ]),
+          h('output', { 'data-testid': 'sends' }, String(sends.value)),
+          h('output', { 'data-testid': 'stops' }, String(stops.value))
+        ]);
+    }
     if (new URL(location.href).searchParams.has('navigation')) {
       const mobile = new URL(location.href).searchParams.has('mobile');
+      const mobileUtilityPanel = ref<'recent-sessions' | 'notifications'>();
       const count = Number(new URL(location.href).searchParams.get('count') ?? 6);
       const now = Date.now();
       const service = createWorkbenchNotificationService(ref('fixture'), {
@@ -118,6 +243,10 @@ const app = createApp({
           workspaceLabel: () => '',
           workspaces: () => [],
           mobileViewport: mobile,
+          mobileUtilityPanel: mobileUtilityPanel.value,
+          onSelectMobileUtilityPanel: (panel: typeof mobileUtilityPanel.value) => {
+            mobileUtilityPanel.value = panel;
+          },
           notificationService: service,
           performanceDiagnostics: diagnostics,
           uploads: [],
@@ -173,6 +302,7 @@ const app = createApp({
         });
     }
     if (new URL(location.href).searchParams.has('terminal')) {
+      const multipleProfiles = new URL(location.href).searchParams.has('multipleProfiles');
       return () =>
         h(TerminalDock, {
           errorMessage: String,
@@ -187,7 +317,12 @@ const app = createApp({
             supportsReplay: false,
             supportsConPty: false,
             supportsTakeover: false,
-            profiles: [{ id: 'shell', label: 'Shell', isDefault: true }]
+            profiles: [
+              { id: 'shell', label: 'Shell', isDefault: true },
+              ...(multipleProfiles
+                ? [{ id: 'other-shell', label: 'Other shell', isDefault: false }]
+                : [])
+            ]
           },
           direct: {
             attach: async ({ onAttached }: { onAttached: () => void }) => {
@@ -202,13 +337,14 @@ const app = createApp({
         });
     }
     if (new URL(location.href).searchParams.has('usage')) {
+      const usageDetails = new URL(location.href).searchParams.has('touch-details');
       const totals: UsageTotals = {
-        inputTokens: '1',
-        outputTokens: '1',
-        totalTokens: '2',
+        inputTokens: usageDetails ? '1234567' : '1',
+        outputTokens: usageDetails ? '23456' : '1',
+        totalTokens: usageDetails ? '1258023' : '2',
         requests: '1',
-        cacheReadTokens: null,
-        cacheWriteTokens: null,
+        cacheReadTokens: usageDetails ? '345678' : null,
+        cacheWriteTokens: usageDetails ? '2345' : null,
         completeRequests: '1',
         partialRequests: '0',
         unknownRequests: '0'

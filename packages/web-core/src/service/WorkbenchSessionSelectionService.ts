@@ -18,7 +18,7 @@ import {
   segmentPageAsTurnPage
 } from '../util/conversation-segments.js';
 import { translate } from './LocalePreferenceService.js';
-import { ApiError } from '../util/api-error.js';
+import { ApiError, errorCode } from '../util/api-error.js';
 
 export interface OpenSessionOptions {
   readonly throwOnFailure?: boolean;
@@ -72,6 +72,7 @@ export interface WorkbenchSessionSelectionOptions {
   readonly sessionPathId: (sessionId: string) => string;
   readonly replaceSession: (previousId: string, next: Session) => void;
   readonly canWatch: (session: Session) => boolean;
+  readonly hasInitialSnapshot: (sessionId: string) => boolean;
   readonly beginWatch: (sessionId: string) => Promise<boolean>;
   readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
   readonly mergeTurns: (page: ConversationTurnPage) => boolean;
@@ -223,6 +224,10 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     } catch (error) {
       if (!isCurrent()) return;
       options.positioning.value = false;
+      if (errorCode(error) === 'WATCH_CANCELLED') {
+        if (openOptions.throwOnFailure) throw error;
+        return;
+      }
       options.initialLoadFailed.value = true;
       if (openOptions.throwOnFailure) throw error;
       options.notice(
@@ -253,7 +258,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     if (options.selectedSessionId.value === sessionId && !options.draftOpen.value) {
       options.closeMobileSurface();
       if (options.loadingInitial.value) return;
-      if (!options.initialLoadFailed.value) {
+      if (!options.initialLoadFailed.value && options.hasInitialSnapshot(sessionId)) {
         await options.markSessionRead(target.nodeId, target.workspaceId, sessionId);
         return;
       }

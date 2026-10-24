@@ -2,6 +2,8 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWorkbenchApprovalService } from '../../src/service/WorkbenchApprovalService.js';
 import { createWorkspaceQueueService } from '../../src/service/WorkspaceQueueService.js';
+import { ApiError } from '../../src/util/api-error.js';
+import { i18n } from '../../src/service/LocalePreferenceService.js';
 
 describe('Workbench Run Actions', () => {
   afterEach(() => vi.useRealTimers());
@@ -223,6 +225,51 @@ describe('Workbench Run Actions', () => {
     expect(queue.value).toEqual({ version: 4, paused: false, items: [first, second] });
     expect(finishEditing).toHaveBeenCalledOnce();
   });
+
+  it.each(['QUEUE_VERSION_CONFLICT', 'NODE_OFFLINE'])(
+    'only describes a reorder error as a version conflict for its stable code (%s)',
+    async (code) => {
+      const failure = new ApiError(code, 'Queue request rejected');
+      const notice = vi.fn();
+      const request = vi.fn(async () => {
+        throw failure;
+      });
+      const queue = {
+        value: {
+          version: 4,
+          paused: false,
+          items: [{ queueItemId: 'first' }, { queueItemId: 'second' }]
+        }
+      };
+      const service = createWorkspaceQueueService({
+        queue: queue as never,
+        currentSessionQueue: queue as never,
+        workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
+        selectedSessionId: { value: 'session-1' } as never,
+        draggingQueueItemId: { value: 'first' } as never,
+        editingContent: { value: '' } as never,
+        request,
+        finishEditing: vi.fn(),
+        notice,
+        errorMessage: () => 'diagnostic detail',
+        beginSubmission: () => () => true,
+        missingQueueItemError: () => false
+      });
+      await service.reorder('second');
+      expect(request).toHaveBeenCalledOnce();
+      expect(notice).toHaveBeenCalledWith(
+        i18n.global.t(
+          code === 'QUEUE_VERSION_CONFLICT'
+            ? 'generated.workspaceQueueService.theQueueOrderChangedTryAgain'
+            : 'generated.workspaceQueueService.unableToReorderTheQueuedMessages',
+          { value0: 'diagnostic detail' }
+        ),
+        'warning',
+        failure
+      );
+      expect(queue.value.version).toBe(4);
+    }
+  );
 
   it('When executing immediately from edit mode, saves the current body before executing the queue item', async () => {
     const item = {

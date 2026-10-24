@@ -118,6 +118,10 @@ export class ContinuousRunCoordinator<TAttachment> {
   private readonly startedExecutions = new Set<string>();
   private readonly scheduledSessions = new Map<string, NodeJS.Timeout>();
   private readonly immediateQueueItems = new Set<string>();
+  private readonly queueExecutionAdmissions = new Map<
+    string,
+    Promise<{ readonly run: NodeAgentRun; readonly delivery: string }>
+  >();
   private readonly steerInFlight = new Map<
     string,
     { readonly sessionId: string; readonly task: Promise<boolean> }
@@ -371,16 +375,22 @@ export class ContinuousRunCoordinator<TAttachment> {
   ):
     | { readonly run: NodeAgentRun; readonly delivery: string }
     | Promise<{ readonly run: NodeAgentRun; readonly delivery: string }> {
+    const inFlight = this.queueExecutionAdmissions.get(itemId);
+    if (inFlight !== undefined) return inFlight;
     const pending = this.preparedInputs.get(itemId);
     if (this.options.resolveExecutionDirectory && pending) {
-      const version = this.options.runtime.sessionQueue(pending.sessionId).version;
-      return this.directoryForInput(itemId, pending, true).then((cwd) => {
-        if (cwd === undefined || !this.inputCurrent(itemId, pending))
-          throw new Error('QUEUE_ITEM_INVALID');
-        if (this.options.runtime.sessionQueue(pending.sessionId).version !== version)
-          throw new Error('QUEUE_VERSION_CONFLICT');
-        return this.executeQueueItemReady(itemId);
-      });
+      const task = this.directoryForInput(itemId, pending, true)
+        .then((cwd) => {
+          if (cwd === undefined || !this.inputCurrent(itemId, pending))
+            throw new Error('QUEUE_ITEM_INVALID');
+          return this.executeQueueItemReady(itemId);
+        })
+        .finally(() => {
+          if (this.queueExecutionAdmissions.get(itemId) === task)
+            this.queueExecutionAdmissions.delete(itemId);
+        });
+      this.queueExecutionAdmissions.set(itemId, task);
+      return task;
     }
     return this.executeQueueItemReady(itemId);
   }
@@ -898,6 +908,7 @@ export class ContinuousRunCoordinator<TAttachment> {
     this.dispatchedExecutions.clear();
     this.startedExecutions.clear();
     this.immediateQueueItems.clear();
+    this.queueExecutionAdmissions.clear();
     for (const timer of this.scheduledSessions.values()) clearTimeout(timer);
     this.scheduledSessions.clear();
   }

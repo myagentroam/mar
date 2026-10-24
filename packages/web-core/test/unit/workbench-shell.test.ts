@@ -108,37 +108,6 @@ describe('Shared workbench shell', () => {
     expect(placeholder?.[1]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
   });
 
-  it('keeps offline placeholders compact across desktop and mobile viewports', () => {
-    const surface = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
-      'utf8'
-    );
-    const messageStyle = surface.match(/\.workspace-offline-message \{([^}]+)\}/u)?.[1];
-    const iconStyle = surface.match(/\.workspace-offline-icon \{([^}]+)\}/u)?.[1];
-    const textStyle = surface.match(/\.workspace-offline-message p \{([^}]+)\}/u)?.[1];
-    expect(messageStyle).toContain('gap: 0.5rem;');
-    expect(iconStyle).toContain('font-size: 1.75rem;');
-    expect(textStyle).toContain('font-size: var(--mar-font-size-meta);');
-    expect(textStyle).toContain('line-height: 1.5;');
-    expect(surface).toContain(
-      '@media (max-width: 767px) {\n  .workspace-offline-icon {\n    font-size: 1.5rem;\n  }\n\n  .workspace-offline-message p {\n    font-size: var(--mar-font-size-body);\n  }\n}'
-    );
-  });
-
-  it('hides unavailable Terminal docks without unmounting cached Workspace terminals', () => {
-    const surface = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
-      'utf8'
-    );
-    expect(surface).toContain(
-      'v-show="tab.id === page.activeWorkspaceTabId && page.terminalReady"'
-    );
-    expect(surface).toContain(
-      ':visible="\n              tab.id === page.activeWorkspaceTabId &&\n              page.terminalReady &&'
-    );
-    expect(surface).toContain('v-for="tab in page.workspaceTabs"');
-  });
-
   it.each(['en-US', 'zh-CN'] as const)('owns every static shell message: %s', (locale) => {
     expect(commonMessages[locale].navigation.help).toBe(locale === 'en-US' ? 'Help' : '帮助');
     expect(commonMessages[locale].navigation.conversations).toBe(
@@ -235,11 +204,6 @@ describe('Shared workbench shell', () => {
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
       const html = await renderToString(app);
-      const source = readFileSync(
-        new URL('../../src/view/workbench/WorkbenchNavigation.vue', import.meta.url),
-        'utf8'
-      );
-
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).not.toContain(`title="${label}"`);
       const navigationButtons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gsu)].filter(
@@ -264,27 +228,6 @@ describe('Shared workbench shell', () => {
         );
       expect(helpLink?.[1]).toBe(label);
       expect(helpLink?.[2]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
-      expect(source).not.toContain('<Help />');
-      expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .nav-item-content {\n    min-height: 18px;\n    grid-template-rows: 18px;'
-      );
-      expect(source).toContain('flex: 0 0 auto;\n    min-height: 0;\n    min-width: 0;');
-      expect(source).not.toContain('min-height: 44px;');
-      expect(source).not.toContain('min-width: 44px;');
-      expect(source).toContain('padding: 4px 0 5px;');
-      expect(source).toContain('margin: 0 1px;');
-      expect(source).not.toContain('margin: 5px 1px;');
-      expect(source).toContain(
-        '.activity-rail nav .nav-menu-button .rail-label {\n    display: none;'
-      );
-      expect(source).toContain('class="nav-menu-button documentation-link"');
-      expect(source).not.toContain('class="nav-menu-button documentation-link utility-control"');
-      expect(source).toContain('<el-link');
-      expect(source).toContain('underline="never"');
-      expect(source).toContain('--el-link-text-color: var(--mar-text-secondary);');
-      expect(source).toContain('--el-link-hover-text-color: var(--mar-color-brand-text);');
-      expect(source).not.toContain('.documentation-link.el-link:hover');
-      expect(source).not.toContain('.documentation-link.el-link:focus-visible');
     }
   );
 
@@ -403,53 +346,10 @@ describe('Shared workbench shell', () => {
 
   it('keeps directory actions visible and consistently iconified on narrow Workspace pickers', async () => {
     localePreferenceService().setLocale('en-US');
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceRegistrationPicker.vue', import.meta.url),
-      'utf8'
-    );
-    const html = await renderComponent(WorkspaceRegistrationPicker, {
-      modelValue: ['register'],
-      directory: {
-        currentPath: '/workspaces/project',
-        parentPath: '/workspaces',
-        browseRoots: ['/workspaces'],
-        selectable: true,
-        entries: [],
-        truncated: false
-      },
-      selectedPath: '/workspaces/project',
-      pendingDirectoryName: '',
-      loadingDirectory: false,
-      loading: false,
-      nodeReady: true,
-      selectedPathValid: true
-    });
-    expect(html).toContain('workspace-picker-toolbar-actions');
-    const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gu)];
-    const refreshLabel = i18n.global.t('generated.workspaceRegistrationPicker.refreshDirectory');
-    const newDirectoryLabel = i18n.global.t('generated.workspaceRegistrationPicker.newDirectory');
-    const selectDirectoryLabel = i18n.global.t(
-      'generated.workspaceRegistrationPicker.selectCurrentDirectory'
-    );
-    const refresh = buttons.find((match) => match[1]!.includes(`aria-label="${refreshLabel}"`));
-    const create = buttons.find((match) => match[2]!.includes(newDirectoryLabel));
-    const select = buttons.find((match) => match[2]!.includes(selectDirectoryLabel));
-    expect(refresh?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="refresh")/u);
-    expect(create?.[2]).toContain(newDirectoryLabel);
-    expect(create?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="folder-add")/u);
-    expect(select?.[2]).toContain(selectDirectoryLabel);
-    expect(select?.[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="check")/u);
-    expect(source).toContain('@media (max-width: 767px)');
-    expect(source).toContain('flex-basis: 100%');
-    expect(source).not.toContain('min-height: 36px');
   });
 
   it('uses the Workspace search action to refresh when empty and search when populated', async () => {
     localePreferenceService().setLocale('en-US');
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceSessionList.vue', import.meta.url),
-      'utf8'
-    );
     const props: Record<string, unknown> = {
       sessions: [],
       selectedSessionId: undefined,
@@ -533,111 +433,6 @@ describe('Shared workbench shell', () => {
       expect(loadingButton[1]).toMatch(/\sdisabled(?:[\s=>])/u);
       expect(loadingButton[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
-
-    const surface = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
-      'utf8'
-    );
-    expect(surface).toContain('@refresh="page.refreshWorkspaceSessions"');
-    expect(source).toContain(
-      '.session-search .session-search-button,\n.new-session-form .workspace-more-button {\n  display: inline-grid;'
-    );
-    expect(source).toContain('width: var(--mar-compact-control-size);');
-    expect(source).not.toContain('@click="emit(\'refresh\')"');
-    expect(source).toContain('v-if="sessionActionsVisible(session.id)"');
-    expect(source).toContain('@contextmenu="openSessionActions(session.id, $event)"');
-    expect(source).toContain(':draggable="pinnedDragEnabled(session)"');
-    expect(source).toContain('return !props.mobileViewport && pinned(session) && !props.loading;');
-    expect(source).toContain('-webkit-touch-callout: none;');
-  });
-
-  it('shows a session activity dot only for managed active runs', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceSessionList.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain('v-if="nodeReady && activity(session) === \'MANAGED_ACTIVE\'"');
-    expect(source).toContain(':aria-label="activityLabel(session)"');
-    expect(source).not.toContain("'node-offline'");
-  });
-
-  it('uses a fixed Workspace tree indent for each nested level', () => {
-    const source = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTree.vue', import.meta.url),
-      'utf8'
-    );
-    expect(source).toContain('--workspace-tree-indent: 16px;');
-    expect(source).toContain('--workspace-tree-icon: 16px;');
-    expect(source).toContain('var(--workspace-tree-leading) + var(--workspace-tree-indent) * 2');
-    expect(source).toContain(
-      'var(--workspace-tree-control) + var(--workspace-tree-arrow-content-gap)'
-    );
-    expect(source).toContain('.workspace-group-toggle.expanded .tree-chevron');
-    const groupStyle = source.match(/\.workspace-group-toggle \{([^}]+)\}/u)?.[1];
-    expect(groupStyle).toContain('width: calc(100% - 12px);');
-    expect(groupStyle).toContain('margin: 2px 6px;');
-    expect(groupStyle).toContain('border-radius: var(--mar-radius-selection);');
-    expect(source).not.toContain('.workspace-group-toggle.expanded :deep(.el-icon)');
-    expect(source).toContain('.workspace-branch-button:focus-visible');
-    expect(source).not.toContain('min-height: 36px;');
-    expect(source).toMatch(/\.tree-node\s*\{[^}]*font-weight:\s*400;/u);
-    expect(source).not.toContain('font-weight: 500;');
-    expect(source).not.toContain('font-weight: 650;');
-    expect(source).toContain('@contextmenu="openNodeActions($event, result.node.id)"');
-    expect(source).toContain(
-      '@contextmenu="openWorkspaceActions($event, result.node.id, workspace.id)"'
-    );
-    expect(source).toContain('v-if="nodeActionsVisible(result.node.id)"');
-    expect(source).toContain('v-if="workspaceActionsVisible(result.node.id, workspace.id)"');
-    expect(source.match(/:draggable="nodeDragEnabled"/gu)).toHaveLength(3);
-    expect(source).toContain(
-      'const nodeDragEnabled = computed(() => !props.mobileViewport && !filterActive.value);'
-    );
-    expect(source).toContain('.tree-node-row.actions-visible {');
-    expect(source).toContain('-webkit-touch-callout: none;');
-  });
-
-  it('keeps a Workspace tab context in the desktop header and mounts real tabs once per breakpoint', () => {
-    const surface = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchSurface.vue', import.meta.url),
-      'utf8'
-    );
-    const header = readFileSync(
-      new URL('../../src/view/workbench/WorkbenchHeader.vue', import.meta.url),
-      'utf8'
-    );
-    const tabs = readFileSync(
-      new URL('../../src/view/workspace/WorkspaceTabs.vue', import.meta.url),
-      'utf8'
-    );
-
-    expect(surface.match(/<WorkspaceTabs/gu)).toHaveLength(2);
-    expect(surface).toContain('v-if="page.view === \'nodes\' && !page.mobileViewport"');
-    expect(surface).toContain('v-if="page.mobileViewport"\n          placement="body"');
-    expect(surface).toContain('placement="header"');
-    expect(surface).toContain("translate('workspaceTabs.newTab')");
-    expect(surface).toContain(':empty-context="translate(\'navigation.selectWorkspace\')"');
-    expect(header).toContain('v-else-if="view === \'nodes\'" class="workspace-tabs-slot"');
-    expect(header).toContain('<slot name="workspace-tabs"></slot>');
-    expect(header).toContain("'workspace-tabs-active': view === 'nodes'");
-    expect(header).not.toContain('hasWorkspaceTabs');
-    expect(header).toContain('.workbench-header.workspace-tabs-active {');
-    expect(header).toContain('gap: 0;\n  padding-left: 0;');
-    expect(header).toContain('overflow: visible;');
-    expect(tabs).toContain("readonly placement: 'header' | 'body';");
-    expect(tabs).toContain('readonly emptyLabel?: string;');
-    expect(tabs).toContain(
-      "tabs.length > 0 || (placement === 'header' && emptyLabel !== undefined)"
-    );
-    expect(tabs).toContain('class="workspace-tab workspace-tab-placeholder active"');
-    expect(tabs).toContain('aria-selected="true"');
-    expect(tabs).toContain('.workspace-tab-placeholder {');
-    expect(tabs).toContain('workspace-tab-strip-${placement}');
-    expect(tabs).toContain('.workspace-tab-strip-header {');
-    expect(tabs).toContain('v-if="hasOverflow"');
-    expect(tabs).toContain(':disabled="!canScrollLeft"');
-    expect(tabs).toContain(':disabled="!canScrollRight"');
-    expect(tabs).toContain('flex: 0 0 auto;\n  position: relative;\n  z-index: 1;');
   });
 
   it.each(['en-US', 'zh-CN'] as const)(

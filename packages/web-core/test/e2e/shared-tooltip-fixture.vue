@@ -65,7 +65,7 @@ getCurrentInstance()!.appContext.app.mixin({
       <button
         v-for="index in count"
         :key="index"
-        v-tooltip="{ content: `${label} ${index}`, disabled }"
+        v-tooltip="{ content: `${label} ${index}`, disabled, touch: index === 1 }"
         :data-row="index"
         aria-describedby="existing-description"
         aria-haspopup="menu"

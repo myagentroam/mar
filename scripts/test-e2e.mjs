@@ -65,7 +65,7 @@ try {
     const buildCode = await run('pnpm', ['--filter', '@myagentroam/web-console', 'build']);
     if (buildCode !== 0 || interrupted) throw new Error('E2E_WEB_BUILD_FAILED');
   }
-  if (!options.list && options.mode !== 'integration') {
+  if (!options.list && !['integration', 'fixtures'].includes(options.mode)) {
     database = resolvePlaywrightTestDatabase(testRunId);
     await createPlaywrightTestDatabase(database);
     databaseCreated = true;

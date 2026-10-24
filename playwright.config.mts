@@ -8,17 +8,19 @@ const mode = process.env.MAR_E2E_MODE ?? 'full';
 const listing = process.env.MAR_E2E_LIST === '1';
 const smoke = mode === 'smoke';
 const integration = mode === 'integration';
+const fixtures = mode === 'fixtures';
 const testRunId = (process.env.MAR_TEST_RUN_ID ?? String(process.pid)).replace(
   /[^a-zA-Z0-9_-]/gu,
   '_'
 );
 process.env.MAR_TEST_RUN_ID = testRunId;
-const testLicense = listing ? undefined : initializePlaywrightTestLicense(testRunId);
+const testLicense = listing || fixtures ? undefined : initializePlaywrightTestLicense(testRunId);
 if (testLicense) {
   process.env.MAR_TEST_LICENSE_KEY_PATH = testLicense.keyPath;
   process.env.MAR_TEST_LICENSE_PUBLIC_KEY = testLicense.publicKey;
 }
-const testDatabase = listing || integration ? undefined : resolvePlaywrightTestDatabase(testRunId);
+const testDatabase =
+  listing || integration || fixtures ? undefined : resolvePlaywrightTestDatabase(testRunId);
 const productionPackageRoot = process.env.MAR_E2E_PRODUCTION_PACKAGE?.trim();
 const portOffset = [...testRunId].reduce(
   (value, character) => (value * 31 + character.charCodeAt(0)) % 800,
@@ -44,7 +46,7 @@ export default defineConfig({
     ['line'],
     ['json', { outputFile: `./test/runs/playwright-results-${testRunId}.json` }]
   ],
-  use: { baseURL: `http://127.0.0.1:${webPort}`, locale: 'zh-CN' },
+  use: { ...(!fixtures ? { baseURL: `http://127.0.0.1:${webPort}` } : {}), locale: 'zh-CN' },
   projects: smoke
     ? [
         {
@@ -71,7 +73,7 @@ export default defineConfig({
           : [])
       ],
   webServer:
-    listing || integration
+    listing || integration || fixtures
       ? []
       : productionPackageRoot !== undefined
         ? [

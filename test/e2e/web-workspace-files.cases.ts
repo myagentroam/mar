@@ -102,6 +102,14 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
       const dialog = page.getByRole('dialog', { name: '快速打开', exact: true });
       const filters = dialog.getByRole('tablist');
       await expect(filters).toBeVisible();
+      const selectedResult = dialog.locator('.quick-open-results li[aria-selected="true"] button');
+      await expect(selectedResult).toHaveCount(1);
+      await expect(selectedResult).toHaveCSS('background-color', reference.background);
+      await expect(selectedResult).toHaveCSS('color', reference.color);
+      await expect(selectedResult).toHaveCSS('border-radius', reference.radius);
+      await expect(selectedResult).toHaveCSS('box-shadow', 'none');
+      await selectedResult.hover();
+      await expect(selectedResult).toHaveCSS('background-color', reference.background);
       for (const filter of await filters.getByRole('tab').all()) {
         await filter.click();
         await expect(filter).toHaveAttribute('aria-selected', 'true');

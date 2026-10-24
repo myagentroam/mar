@@ -38,7 +38,7 @@ describe('Shared workbench routes', () => {
       get location() {
         return url;
       },
-      history: { replaceState }
+      history: { replaceState, state: { __marMobileMenu: 'menu-existing', unrelated: 'keep' } }
     });
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
     const view = ref<'nodes' | 'conversations' | 'settings' | 'management'>('conversations');
@@ -79,5 +79,10 @@ describe('Shared workbench routes', () => {
     service.sync();
     expect(url.pathname + url.search + url.hash).toBe('/console?keep=1#anchor');
     expect(replaceState).toHaveBeenCalledTimes(5);
+    expect(
+      replaceState.mock.calls.every(
+        ([state]) => (state as Record<string, unknown>)?.['__marMobileMenu'] === 'menu-existing'
+      )
+    ).toBe(true);
   });
 });

@@ -543,14 +543,12 @@ function onKeydown(event: KeyboardEvent): void {
   list-style: none;
 }
 .quick-open-results li button:hover {
-  background: color-mix(in srgb, var(--mar-color-brand) 7%, var(--mar-bg-subtle));
+  background: var(--mar-fill-row-hover);
 }
-.quick-open-results li[aria-selected='true'] button {
-  background: var(--mar-color-brand-selected);
-  box-shadow: inset 2px 0 0 var(--mar-color-brand);
-}
+.quick-open-results li[aria-selected='true'] button,
 .quick-open-results li[aria-selected='true'] button:hover {
-  background: color-mix(in srgb, var(--mar-color-brand) 14%, var(--mar-bg-subtle));
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 .quick-open-results button {
   display: grid;
@@ -559,7 +557,7 @@ function onKeydown(event: KeyboardEvent): void {
   align-items: center;
   gap: 0.55rem;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 0.55rem 0.65rem;
   background: transparent;
   color: inherit;
