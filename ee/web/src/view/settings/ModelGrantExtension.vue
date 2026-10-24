@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { type FormInstance, type FormRules } from 'element-plus';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,
@@ -192,6 +197,8 @@ defineExpose({ open: openGrants });
 </script>
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="grantOpen"
     v-model="grantOpen"
     :title="translate('marAgentModels.accessDialogTitle')"

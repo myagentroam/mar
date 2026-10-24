@@ -3,7 +3,7 @@ import { marIcon } from '../../util/mar-icons.js';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { createScopedHttpService } from '../../service/ScopedHttpService.js';
 import type { createSessionShareAccessService } from '../../service/SessionShareAccessService.js';
 import { createSessionShareClientService } from '../../service/SessionShareClientService.js';

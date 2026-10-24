@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -820,6 +825,8 @@ function scopeLabel(scope: string): string {
     </el-tabs>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="sourceDialog"
       v-model="sourceDialog"
       :title="translate('generated.skillSourceManagementPage.addSkillSource2')"
@@ -877,6 +884,8 @@ function scopeLabel(scope: string): string {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="catalogDialog"
       v-model="catalogDialog"
       :title="translate('generated.skillSourceManagementPage.addToCatalog2')"
@@ -935,6 +944,8 @@ function scopeLabel(scope: string): string {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editDialog"
       v-model="editDialog"
       :title="translate('generated.skillSourceManagementPage.editSkillInformation')"

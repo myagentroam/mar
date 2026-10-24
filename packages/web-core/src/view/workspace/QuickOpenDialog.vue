@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -306,6 +310,9 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <el-dialog
+    v-if="open"
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="open"
     :title="translate('generated.quickOpenDialog.quickOpen')"
     width="min(680px, calc(100vw - 32px))"

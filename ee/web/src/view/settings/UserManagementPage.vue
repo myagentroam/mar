@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { translate } from '@/service/LocalePreferenceService';
 import { errorMessage } from '@/util/workbench-presentation';
 import { createUserManagementService } from '@/service/UserManagementService';
@@ -245,6 +249,8 @@ onUnmounted(() => usersPage.dispose());
       @load-more="usersPage.loadMore"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-model="createOpen"
       :title="translate('generated.userManagementPage.createUser2')"
       width="420"
@@ -266,6 +272,8 @@ onUnmounted(() => usersPage.dispose());
       ></el-dialog
     >
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       :model-value="credentialResult !== undefined"
       :title="credentialResult === undefined ? '' : translate(credentialResult.titleKey)"
       width="420"
@@ -303,6 +311,8 @@ onUnmounted(() => usersPage.dispose());
       </p></el-dialog
     >
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
       :model-value="true"
       :title="translate('generated.userManagementPage.userDetails')"

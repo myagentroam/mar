@@ -3,7 +3,7 @@ import { marIcon } from '../util/mar-icons.js';
 import type { GoalExitSummary, WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from './MessageBoxService.js';
 import { createHostedConversationSelectionService } from '@myagentroam/web-core/hosted-selection';
 import { createAdminAuthService } from './AdminAuthService.js';
 import { createRunnerUsageService } from './RunnerUsageService.js';
@@ -31,6 +31,7 @@ import {
 } from '../util/workbench-presentation.js';
 import { createWorkbenchRouteService } from './WorkbenchRouteService.js';
 import { createMobileMenuHistoryService } from './MobileMenuHistoryService.js';
+import { captureMobileLayerRoute } from './MobileLayerHistoryService.js';
 import { createConversationProjectionService } from './ConversationProjectionService.js';
 import { createWorkbenchEntityService } from './WorkbenchEntityService.js';
 import { createWorkbenchEventProjectionService } from './WorkbenchEventProjectionService.js';
@@ -223,9 +224,13 @@ export function createWorkbenchPageController<
     closeMobileWorkspaceSurface
   } = navigationService;
   const hostedConversationMobileHistoryOpen = ref(false);
+  const hostedConversationMobileFilesOpen = ref(false);
 
   watch(mobileViewport, (mobile) => {
-    if (!mobile) hostedConversationMobileHistoryOpen.value = false;
+    if (!mobile) {
+      hostedConversationMobileHistoryOpen.value = false;
+      hostedConversationMobileFilesOpen.value = false;
+    }
   });
 
   const adminState = baseState.admin;
@@ -647,6 +652,7 @@ export function createWorkbenchPageController<
 
   function selectNavigation(nextView: WorkbenchView): void {
     const previousView = view.value;
+    hostedConversationMobileFilesOpen.value = false;
     const collapseSidebar =
       mobileViewport.value &&
       previousView === nextView &&
@@ -686,7 +692,10 @@ export function createWorkbenchPageController<
 
   function selectMobileUtilityPanel(panel: typeof mobileUtilityPanel.value): void {
     if (!mobileViewport.value) return;
-    if (panel !== undefined) closeHostedConversationMobileHistory();
+    if (panel !== undefined) {
+      closeHostedConversationMobileHistory();
+      hostedConversationMobileFilesOpen.value = false;
+    }
     navigationService.selectMobileUtilityPanel(panel);
   }
 
@@ -2244,8 +2253,10 @@ export function createWorkbenchPageController<
         typeof history !== 'undefined'
       ) {
         const nextUrl = new URL(intentUrl, location.href);
-        if (nextUrl.origin === location.origin && nextUrl.pathname === location.pathname)
+        if (nextUrl.origin === location.origin && nextUrl.pathname === location.pathname) {
           history.replaceState(history.state, '', nextUrl);
+          captureMobileLayerRoute();
+        }
       }
     } catch {
       if (pendingStandaloneFileIntent.value === intent)
@@ -2374,10 +2385,15 @@ export function createWorkbenchPageController<
   const mobileMenuHistory = createMobileMenuHistoryService({
     isOpen: () =>
       mobileViewport.value &&
-      (mobileSidebarOpen.value || hostedConversationMobileHistoryOpen.value),
+      (mobileSidebarOpen.value ||
+        hostedConversationMobileHistoryOpen.value ||
+        hostedConversationMobileFilesOpen.value ||
+        mobileWorkspaceSurface.value !== 'conversation'),
     close: () => {
       closeMobileSidebar();
       closeHostedConversationMobileHistory();
+      hostedConversationMobileFilesOpen.value = false;
+      closeMobileWorkspaceSurface();
     },
     syncRoute: syncWorkbenchRoute
   });
@@ -3386,6 +3402,7 @@ export function createWorkbenchPageController<
     formatSessionTime,
     formatUsageTimestamp,
     hostedConversationMobileHistoryOpen,
+    hostedConversationMobileFilesOpen,
     hostedConversationRoute,
     hostedConversationWorkspace,
     implementPlan,

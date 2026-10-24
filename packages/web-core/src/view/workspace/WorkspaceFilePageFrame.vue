@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { computed, ref, useSlots } from 'vue';
+import { computed, onBeforeUnmount, ref, useSlots } from 'vue';
+import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 
@@ -21,6 +22,11 @@ const pathLabel = computed(() => (props.path === props.fileName ? undefined : pr
 const root = ref<HTMLElement>();
 const mobileActionsExpanded = ref(true);
 const slots = useSlots();
+const focus = createMobileSurfaceFocusService({
+  isOpen: () => props.fullscreen === true,
+  regions: () => [root.value]
+});
+onBeforeUnmount(focus.dispose);
 
 function toggleMobileActions(): void {
   mobileActionsExpanded.value = !mobileActionsExpanded.value;
@@ -34,6 +40,7 @@ defineExpose({ root });
     ref="root"
     class="workspace-file-page-frame"
     role="dialog"
+    :aria-modal="props.fullscreen || undefined"
     tabindex="-1"
     :class="{ 'is-loading': props.loading, 'is-fullscreen': props.fullscreen }"
     :aria-busy="props.loading || undefined"

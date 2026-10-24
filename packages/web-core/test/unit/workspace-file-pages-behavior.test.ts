@@ -42,16 +42,19 @@ const tab = (id: number): WorkspaceFileTab => ({
 beforeEach(() => {
   vi.clearAllMocks();
   const classList = { add: vi.fn(), remove: vi.fn() };
+  vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', {
     documentElement: { classList },
     body: { classList },
+    addEventListener() {},
+    removeEventListener() {},
     querySelector: () => null,
     querySelectorAll: () => []
   });
   vi.stubGlobal('window', {
     addEventListener() {},
     removeEventListener() {},
-    matchMedia: () => ({ matches: false })
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   });
 });
 afterEach(() => {
@@ -87,9 +90,13 @@ describe('Workspace file page behavior', () => {
         }
       );
       try {
-        await flushComponent();
         const root = view.findAll('section')[0]!;
-        Object.assign(root, { contains: (target: unknown) => target === root });
+        Object.assign(root, {
+          contains: (target: unknown) => target === root,
+          getClientRects: () => [],
+          querySelectorAll: () => []
+        });
+        await flushComponent();
         for (const control of [true, false]) {
           const event = Object.assign(new Event('keydown', { cancelable: true }), {
             key: 'e',

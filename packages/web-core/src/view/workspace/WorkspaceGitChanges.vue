@@ -2,7 +2,7 @@
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type { PublicError } from '@myagentroam/protocol';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { WorkspaceGitService } from '../../service/WorkspaceGitService.js';

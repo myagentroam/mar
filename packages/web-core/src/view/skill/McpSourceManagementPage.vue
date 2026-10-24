@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/LocalePreferenceService';
@@ -776,6 +781,8 @@ function scopeLabel(scope: string): string {
     </el-tabs>
   </main>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="sourceDialog"
     v-model="sourceDialog"
     :title="translate('generated.mcpSourceManagementPage.addMCPSource2')"
@@ -814,6 +821,8 @@ function scopeLabel(scope: string): string {
     ></el-dialog
   >
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="catalogDialog"
     v-model="catalogDialog"
     :title="translate('generated.mcpSourceManagementPage.addToMCPCenter')"
@@ -866,6 +875,8 @@ function scopeLabel(scope: string): string {
     ></el-dialog
   >
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="editDialog"
     v-model="editDialog"
     :title="translate('generated.mcpSourceManagementPage.editMCPInformation')"

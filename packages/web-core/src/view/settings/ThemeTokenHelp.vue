@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -49,6 +53,8 @@ async function copy(token: string): Promise<void> {
     @click="show"
   />
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="open"
     v-model="open"
     :title="t('customThemes.tokenHelp')"

@@ -1,3 +1,4 @@
+import { captureMobileLayerRoute } from './MobileLayerHistoryService.js';
 export function managementUrlValues(
   namespace: string,
   keys: readonly string[],
@@ -23,4 +24,5 @@ export function replaceManagementUrlValues(
     else url.searchParams.set(`${namespace}.${key}`, String(value));
   }
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  captureMobileLayerRoute();
 }

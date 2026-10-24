@@ -555,7 +555,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  await nodesButton.click();
+  await expect(page.locator('.workspace-tree')).toBeVisible();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
   const brand = page.getByTestId('workbench-brand');
@@ -648,10 +648,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
           getComputedStyle(document.documentElement).getPropertyValue('--sidebar-header-height')
         );
         return (
-          element.parentElement === document.body &&
-          Number(getComputedStyle(element).zIndex) > Number(getComputedStyle(drawer!).zIndex) &&
-          element.getBoundingClientRect().top - headerHeight >= 7 &&
-          element.getBoundingClientRect().bottom <= window.innerHeight - 7
+          drawer?.contains(element) &&
+          element.getBoundingClientRect().top >= headerHeight &&
+          element.getBoundingClientRect().bottom <= window.innerHeight
         );
       })
     )

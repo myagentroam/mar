@@ -5,7 +5,7 @@ import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import type { HostedConversationUpload } from '@myagentroam/protocol';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createComposerAttachmentInputService } from '../../service/ComposerAttachmentInputService.js';
 import { createWorkbenchClockService } from '../../service/WorkbenchClockService.js';

@@ -17,6 +17,7 @@ const props = defineProps<{
   readonly triggerLabel?: string;
   readonly mobileMode?: boolean;
   readonly mobileOpen?: boolean;
+  readonly mobilePresented?: boolean;
   readonly mobilePanelTarget?: HTMLElement | undefined;
 }>();
 
@@ -204,7 +205,10 @@ const emit = defineEmits<{
     >
       <Transition name="workbench-notification-panel">
         <aside
-          v-if="open && (!mobileMode || autoPreview || mobilePanelTarget)"
+          v-if="
+            (mobileMode && !autoPreview ? (mobilePresented ?? open) : open) &&
+            (!mobileMode || autoPreview || mobilePanelTarget)
+          "
           ref="panel"
           :class="[
             'workbench-notification-panel',

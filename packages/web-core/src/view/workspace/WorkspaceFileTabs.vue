@@ -3,6 +3,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/ConsoleKeyboardShortcutService.js';
 import { createFilePreviewWindowInteractionService } from '../../service/FilePreviewWindowInteractionService.js';
+import { createMobileSurfaceFocusService } from '../../service/MobileSurfaceFocusService.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 
@@ -205,7 +206,15 @@ onMounted(() => {
     handle: handleShortcut
   });
 });
+const fileFocus = createMobileSurfaceFocusService({
+  isOpen: () => props.tabs.length > 0,
+  regions: () => [root.value],
+  close: () => {
+    void requestCloseAll();
+  }
+});
 onBeforeUnmount(() => {
+  fileFocus.dispose();
   unregisterShortcut?.();
   windowInteraction.dispose();
   document.documentElement.classList.remove('file-preview-open');
@@ -222,7 +231,15 @@ defineExpose({
 </script>
 
 <template>
-  <section v-if="props.tabs.length > 0" ref="root" class="workspace-file-tabs">
+  <section
+    v-if="props.tabs.length > 0"
+    ref="root"
+    class="workspace-file-tabs"
+    tabindex="-1"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
+  >
     <header class="workspace-file-tab-header">
       <nav
         class="workspace-file-tab-list"

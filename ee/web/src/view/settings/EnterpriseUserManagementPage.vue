@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   organizationCascaderOptions,
@@ -537,6 +541,8 @@ onUnmounted(() => usersPage.dispose());
       @load-more="usersPage.loadMore"
     />
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userOpen"
       v-model="userOpen"
       :title="
@@ -610,6 +616,8 @@ onUnmounted(() => usersPage.dispose());
       ></el-dialog
     >
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentials !== undefined"
       :model-value="credentials !== undefined"
       :title="translate(credentials.titleKey)"
@@ -652,6 +660,8 @@ onUnmounted(() => usersPage.dispose());
       >
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
       :model-value="true"
       :title="translate('generated.organizationUserManagementPage.userDetails')"

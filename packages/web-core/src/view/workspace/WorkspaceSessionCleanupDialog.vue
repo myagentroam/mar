@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
@@ -89,6 +93,9 @@ async function submit(): Promise<void> {
 
 <template>
   <el-dialog
+    v-if="modelValue"
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     class="workspace-session-cleanup-dialog"
     :before-close="requestClose"
     :close-on-click-modal="!loading"

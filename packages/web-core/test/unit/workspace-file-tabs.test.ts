@@ -45,7 +45,18 @@ function mountTabs(
 ) {
   class HostNode {
     constructor(readonly type: string) {}
+    contains() {
+      return false;
+    }
+    getClientRects() {
+      return [];
+    }
+    querySelectorAll() {
+      return [];
+    }
   }
+  vi.stubGlobal('HTMLElement', HostNode);
+  vi.stubGlobal('Node', HostNode);
   const renderer = createRenderer<HostNode, HostNode>({
     patchProp() {},
     insert() {},
@@ -62,13 +73,15 @@ function mountTabs(
   vi.stubGlobal('document', {
     documentElement: { classList },
     body: { classList },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     querySelector: () => null,
     querySelectorAll: () => []
   });
   vi.stubGlobal('window', {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    matchMedia: () => ({ matches: false })
+    matchMedia: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })
   });
   const tabs = ref([1, 2].map((id) => ({ ...worktree(`src/${id}.ts`), id, identity: String(id) })));
   const handles = [1, 2].map(() => ({
@@ -269,6 +282,9 @@ describe('File preview window interaction', () => {
         entries.push(value);
         index += 1;
       }),
+      replaceState: vi.fn((value: unknown) => {
+        entries[index] = value;
+      }),
       back: vi.fn(() => {
         const traverse = () => {
           if (index === 0) return;
@@ -285,7 +301,12 @@ describe('File preview window interaction', () => {
     });
     vi.stubGlobal('window', {
       history,
-      matchMedia: () => ({ matches: mobile }),
+      location: { href: 'http://fixture.test/workspace' },
+      matchMedia: () => ({
+        matches: mobile,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      }),
       addEventListener: (type: string, listener: Listener) => {
         const registered = listeners.get(type) ?? new Set<Listener>();
         registered.add(listener);
@@ -486,7 +507,7 @@ describe('File preview window interaction', () => {
     );
     f.history.back();
     f.history.back();
-    expect(f.closeWindow).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(f.closeWindow).toHaveBeenCalledOnce());
     expect(f.entries).toHaveLength(2);
     resolve(false);
     await Promise.resolve();

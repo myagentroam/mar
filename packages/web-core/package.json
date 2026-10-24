@@ -257,6 +257,8 @@
     "./HostingNodeDetailsDialogs.vue": "./src/view/settings/HostingNodeDetailsDialogs.vue",
     "./hosting-management-messages": "./src/i18n/hosting-management.ts",
     "./management-page": "./src/service/ManagementPageService.ts",
+    "./MobileDialogReturnService": "./src/service/MobileDialogReturnService.ts",
+    "./MessageBoxService": "./src/service/MessageBoxService.ts",
     "./message-feedback": "./src/service/MessageFeedbackService.ts"
   },
   "dependencies": {

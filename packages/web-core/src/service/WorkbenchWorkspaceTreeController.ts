@@ -1,7 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from './MessageBoxService.js';
 import type { Ref } from 'vue';
 import type { NodeSummary, Session, Workspace, WorkspaceTab } from '../model/workbench.js';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';

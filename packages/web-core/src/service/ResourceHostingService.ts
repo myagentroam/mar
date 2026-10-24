@@ -1,7 +1,7 @@
 import { showMessage } from './MessageFeedbackService.js';
 import { marIcon } from '../util/mar-icons.js';
 import { getCurrentScope, onScopeDispose, ref } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from './MessageBoxService.js';
 import type { ResourceRow } from '../model/ResourceManagement.js';
 import type { NodeDetailsHostingState } from '../model/NodeDetails.js';
 import { translate } from './LocalePreferenceService.js';

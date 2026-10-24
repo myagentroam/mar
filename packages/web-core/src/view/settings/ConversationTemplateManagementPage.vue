@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
@@ -855,6 +859,8 @@ onMounted(() => {
     />
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editDialogOpen"
       v-model="editDialogOpen"
       :title="
@@ -1036,6 +1042,8 @@ onMounted(() => {
     </el-dialog>
 
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailDialogOpen && detail"
       v-model="detailDialogOpen"
       :title="detail.template.name"

@@ -211,6 +211,20 @@ describe('Workbench controller composition behavior', () => {
     expect(page.mobileSidebarOpen.value).toBe(true);
   });
 
+  it('replaces hosted related files with global navigation without retaining a hidden tool layer', () => {
+    const { page } = controller();
+    page.mobileViewport.value = true;
+    page.selectNavigation('conversations');
+    page.hostedConversationMobileFilesOpen.value = true;
+    page.selectMobileUtilityPanel('notifications');
+    expect(page.hostedConversationMobileFilesOpen.value).toBe(false);
+    expect(page.mobileUtilityPanel.value).toBe('notifications');
+    page.hostedConversationMobileFilesOpen.value = true;
+    page.selectNavigation('nodes');
+    expect(page.hostedConversationMobileFilesOpen.value).toBe(false);
+    expect(page.mobileSidebarOpen.value).toBe(false);
+  });
+
   it('replaces a mobile utility menu with the active Work resource menu', () => {
     const { page } = controller();
     page.mobileViewport.value = true;

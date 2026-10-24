@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, onBeforeUnmount } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue';
 import type { NodeSummary } from '@/model/workbench';
 import {
@@ -247,6 +251,8 @@ onBeforeUnmount(() => {
     </template>
   </CorePage>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="grantDialogOpen && selectedTemplate"
     v-model="grantDialogOpen"
     :title="translate('conversationTemplates.accessDialogTitle', { name: selectedTemplate.name })"

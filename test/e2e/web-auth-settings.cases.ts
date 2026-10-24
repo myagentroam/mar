@@ -518,6 +518,30 @@ test('Personal password dialog clears drafts and validation on every manual clos
   }
 });
 
+test('Mobile password dialog returns without submitting and reopens without the old draft', async ({
+  page
+}) => {
+  const writes: { url: string; csrf: string | undefined; body: string }[] = [];
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '账户安全', exact: true }).click();
+  const open = page.getByRole('button', { name: '修改密码', exact: true });
+  const dialog = page.getByRole('dialog', { name: '修改密码', exact: true });
+  const url = page.url();
+  await open.click();
+  await dialog.getByRole('textbox', { name: '当前密码', exact: true }).fill('draft-password');
+  await page.goBack();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(url);
+  expect(writes.filter((item) => item.url.includes('/change-password'))).toHaveLength(0);
+  await open.click();
+  await expect(dialog.getByRole('textbox', { name: '当前密码', exact: true })).toHaveValue('');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+});
+
 test('Personal password dialog ignores a previous opening completing after it is reopened', async ({
   page
 }) => {

@@ -2,49 +2,12 @@ import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutResult
 } from './ConsoleKeyboardShortcutService.js';
-import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '../util/mobile-workbench.js';
+import { createMobileLayerHistoryService } from './MobileLayerHistoryService.js';
 
 interface FilePreviewWindowInteractionOptions {
   isOpen(): boolean;
   closeWindow(): boolean | Promise<boolean>;
   closeTab(): boolean | Promise<boolean>;
-}
-
-const HISTORY_KEY = '__marFilePreviewWindow';
-interface HistoryGuard {
-  readonly owner: string;
-  readonly previousState: unknown;
-}
-let historySequence = 0;
-let pendingHistoryRelease: Promise<void> | undefined;
-
-function releaseHistoryEntry(): void {
-  if (pendingHistoryRelease !== undefined) return;
-  let resolve!: () => void;
-  const release = new Promise<void>((done) => {
-    resolve = done;
-  });
-  pendingHistoryRelease = release;
-  const complete = () => {
-    window.removeEventListener('popstate', complete);
-    pendingHistoryRelease = undefined;
-    resolve();
-  };
-  window.addEventListener('popstate', complete);
-  window.history.back();
-}
-
-function historyGuard(state: unknown): HistoryGuard | undefined {
-  if (typeof state !== 'object' || state === null) return undefined;
-  const guard = (state as Record<string, unknown>)[HISTORY_KEY];
-  if (
-    typeof guard !== 'object' ||
-    guard === null ||
-    typeof (guard as HistoryGuard).owner !== 'string' ||
-    !Object.hasOwn(guard, 'previousState')
-  )
-    return undefined;
-  return guard as HistoryGuard;
 }
 
 export function createFilePreviewWindowInteractionService(
@@ -53,8 +16,10 @@ export function createFilePreviewWindowInteractionService(
   let mounted = false;
   let closing = false;
   let unregisterShortcut: (() => void) | undefined;
-  let guard: HistoryGuard | undefined;
-  let guardedState: unknown;
+  const history = createMobileLayerHistoryService({
+    isOpen: options.isOpen,
+    close: () => requestClose(true)
+  });
   const frameBindings = new Map<HTMLIFrameElement, () => void>();
 
   function hasOverlay(): boolean {
@@ -68,7 +33,7 @@ export function createFilePreviewWindowInteractionService(
     closing = true;
     try {
       const closed = await (all ? options.closeWindow() : options.closeTab());
-      if (all && closed && mounted) releaseHistory();
+      if (all && closed && mounted) history.dispose();
     } finally {
       closing = false;
     }
@@ -115,27 +80,6 @@ export function createFilePreviewWindowInteractionService(
     if (!event.repeat) void requestClose(true);
   }
 
-  function onPopState(): void {
-    if (guard === undefined || historyGuard(window.history.state)?.owner === guard.owner) return;
-    if (!options.isOpen()) {
-      releaseHistory();
-      return;
-    }
-    // Restore the guard before asynchronous confirmation, so another Back
-    // cannot leave the page or create a second confirmation.
-    window.history.pushState(guardedState, '');
-    void requestClose(true);
-  }
-
-  function releaseHistory(): void {
-    window.removeEventListener('popstate', onPopState);
-    const ownsEntry =
-      guard !== undefined && historyGuard(window.history.state)?.owner === guard.owner;
-    guard = undefined;
-    guardedState = undefined;
-    if (ownsEntry) releaseHistoryEntry();
-  }
-
   function bindFrame(frame: HTMLIFrameElement): void {
     frameBindings.get(frame)?.();
     frameBindings.delete(frame);
@@ -161,21 +105,6 @@ export function createFilePreviewWindowInteractionService(
     });
   }
 
-  function mountHistoryGuard(): void {
-    if (!mounted || !options.isOpen()) return;
-    const state: unknown = window.history.state;
-    guard = historyGuard(state);
-    if (guard === undefined) {
-      guard = { owner: `${Date.now()}-${++historySequence}`, previousState: state };
-      guardedState = {
-        ...(typeof state === 'object' && state !== null ? state : {}),
-        [HISTORY_KEY]: guard
-      };
-      window.history.pushState(guardedState, '');
-    } else guardedState = state;
-    window.addEventListener('popstate', onPopState);
-  }
-
   function mount(): void {
     if (mounted) return;
     mounted = true;
@@ -185,11 +114,7 @@ export function createFilePreviewWindowInteractionService(
     });
     // Escape runs after the focused editor, find panel and context menu.
     window.addEventListener('keydown', handleEscape);
-    if (!window.matchMedia(MOBILE_WORKBENCH_VIEWPORT_QUERY).matches) return;
-    // A previous window's Back cleanup must finish before this window owns
-    // history; its delayed popstate is not a request to close this window.
-    if (pendingHistoryRelease === undefined) mountHistoryGuard();
-    else void pendingHistoryRelease.then(mountHistoryGuard);
+    history.start();
   }
 
   function dispose(): void {
@@ -200,7 +125,7 @@ export function createFilePreviewWindowInteractionService(
     window.removeEventListener('keydown', handleEscape);
     for (const unbind of frameBindings.values()) unbind();
     frameBindings.clear();
-    releaseHistory();
+    history.dispose();
   }
 
   return { mount, dispose, handleShortcut, handleEscape, isEscapeBlocked, bindFrame };

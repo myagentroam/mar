@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/LocalePreferenceService.js';
 export interface McpDetails {
@@ -21,6 +25,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
 <template>
   <el-dialog
+    v-if="modelValue"
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="modelValue"
     :title="details?.name || translate('generated.mcpDetailsDialog.mCPDetails')"
     width="min(720px, calc(100vw - 32px))"

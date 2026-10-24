@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessageBox, type FormRules, type FormInstance } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { type FormRules, type FormInstance } from 'element-plus';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
@@ -129,6 +134,8 @@ defineExpose({ open: openShare });
 </script>
 <template>
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="shareOpen"
     v-model="shareOpen"
     :title="translate('generated.resourceSharingPage.resourceGrants')"

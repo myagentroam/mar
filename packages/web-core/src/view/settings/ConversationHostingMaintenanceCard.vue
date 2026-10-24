@@ -5,7 +5,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
 import type {
   ConversationHostingCleanupPreview,
   ConversationHostingCleanupResult,

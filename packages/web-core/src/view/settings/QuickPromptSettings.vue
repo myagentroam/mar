@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/LocalePreferenceService.js';
@@ -166,6 +171,8 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       </div>
     </div>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
       :key="editorGeneration"
       :model-value="dialogOpen"

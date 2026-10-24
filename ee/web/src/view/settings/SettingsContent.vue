@@ -2,7 +2,7 @@
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
 import { organizationPath, type OrganizationSummary } from '@/service/EnterpriseManagementService';

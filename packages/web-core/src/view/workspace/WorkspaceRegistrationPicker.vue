@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
@@ -344,6 +348,8 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   </el-collapse>
 
   <el-dialog
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
     v-if="directoryDialogOpen"
     v-model="directoryDialogOpen"
     :title="translate('generated.workspaceRegistrationPicker.newDirectory2')"

@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import { captureMobileLayerRoute } from './MobileLayerHistoryService.js';
 import type { WorkbenchView } from '../util/workbench-route.js';
 import { parseWorkbenchRoute } from '../util/workbench-route.js';
 import {
@@ -37,6 +38,7 @@ export function createWorkbenchRouteService(options: WorkbenchRouteServiceOption
         '',
         `${url.pathname}${url.search}${url.hash}`
       );
+      captureMobileLayerRoute();
       return;
     }
     url.searchParams.set('view', options.view.value);
@@ -63,6 +65,7 @@ export function createWorkbenchRouteService(options: WorkbenchRouteServiceOption
       '',
       `${url.pathname}${url.search}${url.hash}`
     );
+    captureMobileLayerRoute();
   }
 
   return { restore, restoreSession, sync, hostedConversationRoute };

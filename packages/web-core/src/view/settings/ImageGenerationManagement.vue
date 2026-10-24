@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { showMessage } from '../../service/MessageFeedbackService.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
-import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessageBox } from '../../service/MessageBoxService.js';
+import { type FormInstance, type FormRules } from 'element-plus';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
 import { createCodexCredentialManagementService } from '../../service/CodexCredentialManagementService';
@@ -337,6 +342,8 @@ onMounted(load);
       </el-table-column>
     </el-table>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialog"
       v-model="dialog"
       :title="translate('marAgentModels.imageGenerationEdit')"
@@ -425,6 +432,8 @@ onMounted(load);
       >
     </el-dialog>
     <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && selectedDetail"
       v-model="detailOpen"
       :title="translate('marAgentModels.details')"

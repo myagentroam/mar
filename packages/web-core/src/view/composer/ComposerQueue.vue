@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  mountMobileDialogReturn,
+  unmountMobileDialogReturn
+} from '../../service/MobileDialogReturnService.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
@@ -326,6 +330,8 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           </div>
         </div>
         <el-dialog
+          @vue:mounted="mountMobileDialogReturn"
+          @vue:before-unmount="unmountMobileDialogReturn"
           v-if="goalDetailsOpen"
           v-model="goalDetailsOpen"
           class="goal-details-dialog"
