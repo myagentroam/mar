@@ -541,6 +541,10 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     );
   }
 
+  override goalAccess(currentAccess: string | null) {
+    return { access: 'full-access', accessChanged: currentAccess !== 'full-access' };
+  }
+
   override supportsConfiguration(
     configuration: RunnerDefaultConfiguration,
     _workspace?: NodeWorkspace,

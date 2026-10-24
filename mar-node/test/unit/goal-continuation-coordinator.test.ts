@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CommandStateStore } from '../../src/runner-command-engine.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
+import { RunnerRegistry } from '../../src/runner/runner-registry.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { GoalContinuationCoordinator } from '../../src/service/goal-continuation-coordinator.js';
 import type { PreparedExecutionInput } from '../../src/service/continuous-run-coordinator.js';
 
@@ -31,6 +33,7 @@ function fixture() {
     runner: 'mar-agent'
   });
   const goals = new GoalRuntime(() => undefined);
+  const runners = new RunnerRegistry([new MarAgentRunner()]);
   goals.start(session.id, 'Finish the task');
   const commands = new CommandStateStore();
   const emitSession = vi.fn();
@@ -45,6 +48,7 @@ function fixture() {
   };
   const coordinator = new GoalContinuationCoordinator({
     goals,
+    runners: () => runners,
     runtime,
     commands,
     queue: () => queue,

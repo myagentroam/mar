@@ -27,16 +27,6 @@ export interface GoalExitSummary {
 
 export type GoalExecutionDisposition = 'continue' | 'blocked' | 'completed';
 
-export function goalUnrestrictedAccess(
-  runner: 'codex' | 'claude-code' | 'opencode' | 'mar-agent',
-  currentAccess?: string | null
-): string {
-  if (runner === 'mar-agent') return currentAccess ?? 'full-access';
-  if (runner === 'codex') return 'full-access';
-  if (runner === 'claude-code') return 'bypass';
-  return 'auto';
-}
-
 export function publicGoalStartText(objective: string): string {
   return serializeComposerTag('mar_goal_start', { objective: objective.trim() });
 }

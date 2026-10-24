@@ -101,6 +101,18 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     environment?: Readonly<Record<string, string>>
   ): RunnerDefaultConfiguration;
 
+  goalAccess(currentAccess: string | null): {
+    readonly access: string;
+    readonly accessChanged: boolean;
+  } {
+    return { access: 'auto', accessChanged: currentAccess !== 'auto' };
+  }
+
+  /** Restore persisted values only; never normalize fresh configuration input. */
+  restoreStoredAccess(access: string | null, fallbackAccess: string): string {
+    return access !== null && access.trim().length > 0 ? access : fallbackAccess;
+  }
+
   supportsConfiguration(
     configuration: RunnerDefaultConfiguration,
     workspace?: NodeWorkspace,
