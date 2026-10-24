@@ -1294,7 +1294,7 @@ export function createWorkbenchPageController<
     canConnect: () => admin.value.authenticated && !admin.value.mustChangePassword,
     onEvent: (event) => {
       if (workbenchNotificationService.project(event)) return;
-      applyWorkbenchEvent(event);
+      workbenchEventProjection.applyBroadcast(event);
     },
     onNotificationMessage: (message) =>
       workbenchNotificationService.projectServerMessage(message) ||

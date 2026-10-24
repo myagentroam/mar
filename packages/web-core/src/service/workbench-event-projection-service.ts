@@ -222,5 +222,10 @@ export function createWorkbenchEventProjectionService(options: {
     }
   }
 
-  return { apply, updateNodeConnection };
+  function applyBroadcast(event: WorkbenchLiveEvent): void {
+    // Session content enters apply only through the Session Watch receiver.
+    if (event.category === 'node' || event.category === 'workspace') apply(event);
+  }
+
+  return { apply, applyBroadcast, updateNodeConnection };
 }
