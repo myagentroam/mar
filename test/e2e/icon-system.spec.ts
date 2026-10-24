@@ -9,6 +9,69 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const dpr of [1, 2, 3]) {
+  test.describe(`Information symbols DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const theme of ['dark', 'light']) {
+      test(`share optically balanced geometry in ${theme}`, async ({ page }, testInfo) => {
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 600 });
+          await page.goto(`${fixture.url}icon-system.html?information-icons=1&theme=${theme}`);
+          const actions = page.getByTestId('information-actions');
+          const query = actions.getByRole('button', { name: 'Query usage', exact: true });
+          const help = actions.getByRole('button', { name: 'Help', exact: true });
+          const samples = page.getByTestId('information-samples');
+          await expect(query.locator('[data-mar-icon="info"]')).toBeVisible();
+          await expect(help.locator('[data-mar-icon="help"]')).toBeVisible();
+          await page.screenshot({
+            path: testInfo.outputPath(`information-${theme}-${width}.png`)
+          });
+          for (const name of ['info', 'help']) {
+            const graphics = samples.locator(`[data-mar-icon="${name}"]`);
+            await expect(graphics).toHaveCount(4);
+            for (const graphic of await graphics.all()) {
+              const geometry = await graphic.evaluate((element) => {
+                const svg = element as SVGSVGElement;
+                const circle = svg.querySelector('circle')!;
+                const stroke = parseFloat(getComputedStyle(circle).strokeWidth);
+                const diameter = circle.r.baseVal.value * 2 + stroke;
+                const bounds = svg.getBBox();
+                return {
+                  diameter,
+                  cx: circle.cx.baseVal.value,
+                  cy: circle.cy.baseVal.value,
+                  min: Math.min(bounds.x - stroke / 2, bounds.y - stroke / 2),
+                  max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2,
+                  stroke: getComputedStyle(svg).stroke,
+                  color: getComputedStyle(svg).color,
+                  markup: svg.innerHTML
+                };
+              });
+              // Sparse circular symbols need optical overshoot, not a larger CSS box.
+              expect(geometry.diameter).toBeGreaterThanOrEqual(20);
+              expect(geometry.diameter).toBeLessThanOrEqual(21.5);
+              expect(geometry.cx).toBe(12);
+              expect(geometry.cy).toBe(12);
+              expect(geometry.min).toBeGreaterThan(0);
+              expect(geometry.max).toBeLessThan(24);
+              expect(geometry.stroke).toBe(geometry.color);
+              const adapter = actions.locator(`[data-mar-icon="${name}"]`);
+              expect(await adapter.evaluate((svg) => svg.innerHTML)).toBe(geometry.markup);
+              await expect(graphic).toHaveAttribute('aria-hidden', 'true');
+            }
+          }
+          const before = await query.boundingBox();
+          await query.focus();
+          await query.press('Enter');
+          await expect(query).toBeDisabled();
+          await expect(query.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+          expect((await query.boundingBox())!.width).toBeCloseTo(before!.width, 1);
+        }
+      });
+    }
+  });
+}
+
 for (const theme of ['dark', 'light']) {
   test(`Process disclosure uses a transparent SVG instead of an unmasked square: ${theme}`, async ({
     page
