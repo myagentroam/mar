@@ -125,4 +125,55 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.screenshot({ path: testInfo.outputPath(`composer-${width}.png`) });
     }
   });
+
+  for (const width of [390, 420, 767, 768, 1280]) {
+    test.describe(`Workbench Composer at ${width}px in ${theme}`, () => {
+      test.use({
+        viewport: { width, height: 844 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+
+      test('keeps the conversation and Composer aligned without a seam', async ({
+        page
+      }, testInfo) => {
+        await page.goto(`${fixture.url}workbench-style.html?composer=1&theme=${theme}`);
+        const composer = page.locator('.composer');
+        await expect(composer).toBeVisible();
+        await expect(composer).toHaveCSS('position', width < 768 ? 'fixed' : 'relative');
+        await expect(page.locator('.workspace-grid')).toHaveCSS(
+          'border-bottom-width',
+          width < 768 ? '0px' : '1px'
+        );
+        for (const height of [844, 560]) {
+          await page.setViewportSize({ width, height });
+          for (const composerHeight of [313.1875, 379.3125]) {
+            await composer.evaluate((element, value) => {
+              element.style.height = `${value}px`;
+            }, composerHeight);
+            await expect
+              .poll(() =>
+                composer.evaluate((element) => {
+                  const actual = element.getBoundingClientRect();
+                  const reserved = element.closest('.composer-host')!.getBoundingClientRect();
+                  const reading = element
+                    .closest('.conversation-panel')!
+                    .querySelector('.conversation-scroll-region')!
+                    .getBoundingClientRect();
+                  return Math.max(
+                    Math.abs(actual.top - reserved.top),
+                    Math.abs(actual.bottom - reserved.bottom),
+                    Math.abs(actual.top - reading.bottom)
+                  );
+                })
+              )
+              .toBeLessThan(0.02);
+          }
+        }
+        await composer.evaluate((element) => element.style.removeProperty('height'));
+        await page.setViewportSize({ width, height: 844 });
+        await page.screenshot({ path: testInfo.outputPath('workbench-composer.png') });
+      });
+    });
+  }
 }

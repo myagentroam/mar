@@ -9,7 +9,8 @@ import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegis
 import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
-const mobile = window.matchMedia('(max-width: 680px)').matches;
+const composerFixture = new URL(location.href).searchParams.has('composer');
+const mobile = window.matchMedia('(max-width: 767px)').matches;
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
@@ -95,10 +96,61 @@ const surfacePage = {
   },
   mobileWorkspaceSurface: 'conversation'
 };
+if (composerFixture) {
+  Object.assign(surfacePage, {
+    workspaceHost: { connected: true },
+    selectedWorkspace: workspaces[0],
+    visibleWorkspaceSessions: [],
+    workspaceWatchTopicStatus: { sessions: 'ready', files: 'ready', changes: 'ready' },
+    workspaceKindLabel: () => 'Directory',
+    workspaceBranchLabel: () => undefined,
+    workspaceTabLabel: () => 'Workspace',
+    sessionTitle: () => 'Session',
+    runnerBrandIcon: () => '',
+    sessionActivity: () => 'IDLE',
+    sessionActivityLabel: () => 'Idle',
+    request: async <T,>() => ({}) as T,
+    composerSessionOpen: true,
+    composerRunner: 'mar',
+    draftSessionOpen: true,
+    conversationNextCursor: null,
+    conversationTurns: [],
+    conversationRuns: [],
+    displayedConversationTurns: [],
+    followConversation: true,
+    liveConnected: true,
+    sessionInput: '',
+    workPromptCompletion: { enabled: false },
+    composerWorking: true,
+    composerWorkingLabel: 'Running',
+    composerWorkingBusy: true,
+    composerElapsedLabel: '7m 13s',
+    composerSkillTokens: [],
+    composerFileReferences: [],
+    activeCommandStates: [],
+    currentSessionQueue: { items: [], paused: false },
+    newSessionAttachments: [],
+    canUseComposer: true,
+    newSessionRunner: 'mar',
+    composerRunnerOptions: [],
+    composerRunnerLabel: 'MAR Agent',
+    composerModelEffortLabel: 'Model',
+    composerModels: [],
+    composerEfforts: [],
+    newSessionAccess: 'auto',
+    composerAccessLabel: 'Auto',
+    composerAccessOptions: [],
+    contextUsageLabel: '',
+    interruptVisible: true,
+    canInterruptTurn: true,
+    effortLabel: String
+  });
+}
 </script>
 
 <template>
-  <main>
+  <Surface v-if="composerFixture" :page="surfacePage as never" />
+  <main v-else>
     <section aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
     </section>
