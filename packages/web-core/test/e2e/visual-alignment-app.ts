@@ -356,7 +356,11 @@ const resourceDetailsFixture = {
             label: 'Fixture Node',
             connected: true,
             manageable: true,
-            capabilities: { codex: { available: true } }
+            capabilities: {
+              codex: { available: true },
+              claudeCode: { available: true },
+              openCode: { available: true }
+            }
           },
           nodeRefreshable: true,
           usageDisabledReason: () => '',
