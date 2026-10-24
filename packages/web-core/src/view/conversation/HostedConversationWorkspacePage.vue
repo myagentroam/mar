@@ -160,6 +160,7 @@ function retryDirectoryAppend(): void {
   void props.workspace.loadMoreConversations();
 }
 const openingConversationKey = ref<string>();
+let openingConversationSequence = 0;
 const waitingForSnapshot = computed(
   () =>
     props.connected !== false &&
@@ -402,17 +403,19 @@ async function openConversation(
   conversation: HostedConversationSummary,
   closePanels = true
 ): Promise<void> {
-  if (openingConversationKey.value !== undefined) return;
   const key = conversationKey(conversation);
+  if (openingConversationKey.value === key) return;
+  const sequence = ++openingConversationSequence;
   openingConversationKey.value = key;
   draftingNewConversation.value = false;
   if (closePanels) closeMobilePanels();
   try {
     await props.selectConversation(conversation);
   } catch (error) {
-    showMessage(hostedErrorMessage(error), 'error', error);
+    if (sequence === openingConversationSequence)
+      showMessage(hostedErrorMessage(error), 'error', error);
   } finally {
-    if (openingConversationKey.value === key) openingConversationKey.value = undefined;
+    if (sequence === openingConversationSequence) openingConversationKey.value = undefined;
   }
 }
 
