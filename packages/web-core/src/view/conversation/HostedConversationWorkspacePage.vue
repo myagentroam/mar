@@ -1193,6 +1193,7 @@ onBeforeUnmount(() => {
           "
           :has-turns="timelineTurns.length > 0"
           :following="conversationScrollService.following.value"
+          :empty-prompt="interactionReady && !workspace.snapshot.value.run ? 'hosted' : undefined"
           @scroll-element="setConversationScrollElement"
           @scroll="handleConversationScroll"
           @load-older="loadOlderConversationHistory"

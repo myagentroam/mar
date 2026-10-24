@@ -1,4 +1,14 @@
 export const conversationUiEnUS = {
+  conversationEmpty: {
+    workspace: {
+      title: 'What would you like to work on?',
+      description: 'Describe a task, ask a question, or add files to get started.'
+    },
+    hosted: {
+      title: 'How can I help?',
+      description: 'Send a message or add an attachment to start the conversation.'
+    }
+  },
   conversationProcess: {
     namedActivity: '{activity}: {name}',
     activity: {

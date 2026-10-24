@@ -1,4 +1,14 @@
 export const conversationUiZhCN = {
+  conversationEmpty: {
+    workspace: {
+      title: '想从哪里开始？',
+      description: '描述任务、提出问题，或添加文件，开始与 Agent 协作。'
+    },
+    hosted: {
+      title: '有什么可以帮你？',
+      description: '发送消息或添加附件，开始这次对话。'
+    }
+  },
   conversationProcess: {
     namedActivity: '{activity}：{name}',
     activity: {

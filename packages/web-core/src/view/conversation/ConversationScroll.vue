@@ -2,7 +2,7 @@
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/LocalePreferenceService.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
   readonly hasOlder: boolean;
@@ -12,6 +12,7 @@ const props = defineProps<{
   readonly olderError?: string;
   readonly hasTurns: boolean;
   readonly following: boolean;
+  readonly emptyPrompt?: 'workspace' | 'hosted' | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +28,17 @@ const content = ref<HTMLElement>();
 let contentObserver: ResizeObserver | undefined;
 const reloading = ref(false);
 const olderAction = ref<'retry' | 'load'>();
+const showEmptyPrompt = computed(
+  () =>
+    props.emptyPrompt !== undefined &&
+    !props.hasTurns &&
+    !props.hasOlder &&
+    !props.loadingInitial &&
+    !props.initialLoadFailed &&
+    !props.loadingOlder &&
+    !props.olderError &&
+    !reloading.value
+);
 
 watch(
   () => props.loadingInitial,
@@ -80,7 +92,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="conversation-scroll-region">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
-      <div ref="content" class="conversation-scroll-content">
+      <div
+        ref="content"
+        class="conversation-scroll-content"
+        :class="{ 'is-empty': showEmptyPrompt }"
+      >
         <div
           v-if="loadingInitial && !reloading"
           class="conversation-load-older conversation-loading-initial"
@@ -148,6 +164,10 @@ onBeforeUnmount(() => {
         >
           {{ translate('conversationActivity.historyStart') }}
         </p>
+        <section v-if="showEmptyPrompt" class="conversation-empty">
+          <h2>{{ translate(`conversationEmpty.${emptyPrompt}.title`) }}</h2>
+          <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
+        </section>
         <slot />
       </div>
     </div>
@@ -205,6 +225,39 @@ onBeforeUnmount(() => {
 
 .conversation-scroll-content {
   display: flow-root;
+}
+
+.conversation-scroll-content.is-empty {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.conversation-empty {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.conversation-empty h2 {
+  margin: 0;
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-page-title);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.conversation-empty p {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.6;
 }
 
 .conversation-load-older {

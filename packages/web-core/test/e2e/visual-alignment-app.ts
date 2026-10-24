@@ -26,7 +26,9 @@ import { i18n, localePreferenceService } from '../../src/service/LocalePreferenc
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
-localePreferenceService().setLocale('en-US');
+localePreferenceService().setLocale(
+  new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
+);
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );
@@ -118,9 +120,9 @@ const toolbar = {
   contextUsageLabel: '42% used; 42000 of 100000 tokens',
   mobileViewport: mobile,
   activeRun: undefined,
-  canInterrupt: false,
-  interruptVisible: false,
-  inputHasContent: true,
+  canInterrupt: new URLSearchParams(location.search).has('interrupt'),
+  interruptVisible: new URLSearchParams(location.search).has('interrupt'),
+  inputHasContent: !new URLSearchParams(location.search).has('empty-input'),
   hasSelectedCommand: false,
   loading: false,
   attachmentsPending: false,
@@ -178,6 +180,38 @@ const sessionPerformanceFixture = {
         'Hide performance'
       )
     ])
+};
+const emptyConversationFixture = {
+  setup() {
+    const hasTurns = ref(false);
+    const mode = new URLSearchParams(location.search).get('empty-conversation');
+    return () =>
+      h('main', { style: 'display: flex; flex-direction: column; height: 100dvh' }, [
+        h('header', [
+          h('button', { onClick: () => (hasTurns.value = true) }, 'Show first message')
+        ]),
+        h(
+          ConversationScroll,
+          {
+            emptyPrompt: mode === 'workspace' ? 'workspace' : 'hosted',
+            hasOlder: false,
+            loadingInitial: false,
+            initialLoadFailed: false,
+            loadingOlder: false,
+            hasTurns: hasTurns.value,
+            following: true
+          },
+          { default: () => (hasTurns.value ? h('p', 'First message') : null) }
+        ),
+        h(HostedConversationComposer, {
+          workspace: hostedWorkspace,
+          connected: true,
+          mobileViewport: mobile,
+          readonly: false,
+          readonlyReason: ''
+        })
+      ]);
+  }
 };
 const app = createApp({
   setup: () => () =>
@@ -302,17 +336,19 @@ const resourceDetailsFixture = {
       ]);
   }
 };
-(new URLSearchParams(location.search).has('utility-interaction')
-  ? createApp(UtilityInteractionFixture)
-  : new URLSearchParams(location.search).has('resource-details')
-    ? createApp(resourceDetailsFixture)
-    : new URLSearchParams(location.search).has('shared-tooltip')
-      ? createApp(SharedTooltipFixture)
-      : new URLSearchParams(location.search).has('loading-feedback')
-        ? createApp(LoadingFeedbackFixture)
-        : new URLSearchParams(location.search).has('session-performance')
-          ? createApp(sessionPerformanceFixture)
-          : app
+(new URLSearchParams(location.search).has('empty-conversation')
+  ? createApp(emptyConversationFixture)
+  : new URLSearchParams(location.search).has('utility-interaction')
+    ? createApp(UtilityInteractionFixture)
+    : new URLSearchParams(location.search).has('resource-details')
+      ? createApp(resourceDetailsFixture)
+      : new URLSearchParams(location.search).has('shared-tooltip')
+        ? createApp(SharedTooltipFixture)
+        : new URLSearchParams(location.search).has('loading-feedback')
+          ? createApp(LoadingFeedbackFixture)
+          : new URLSearchParams(location.search).has('session-performance')
+            ? createApp(sessionPerformanceFixture)
+            : app
 )
   .use(i18n)
   .use(ElementPlus)

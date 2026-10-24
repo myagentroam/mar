@@ -420,6 +420,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :older-error="page.olderHistoryError"
                 :has-turns="page.conversationTurns.length > 0"
                 :following="page.followConversation"
+                :empty-prompt="page.draftSessionOpen ? 'workspace' : undefined"
                 @scroll-element="page.conversationScroll = $event"
                 @scroll="page.onComposerScroll"
                 @load-older="page.loadOlderConversationTurns"

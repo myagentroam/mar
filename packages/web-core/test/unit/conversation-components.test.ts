@@ -26,6 +26,7 @@ import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
 import { conversationItemLabel } from '../../src/util/conversation-presentation.js';
+import { conversationUiEnUS, conversationUiZhCN } from '../../src/i18n/conversation-ui.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
@@ -720,6 +721,43 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(managed).toContain('aria-label="Session activity"');
     expect(idle).not.toContain('session-activity');
   });
+
+  it.each(['workspace', 'hosted'] as const)(
+    'shows the %s welcome only for a ready empty conversation',
+    async (emptyPrompt) => {
+      const props = {
+        emptyPrompt,
+        hasOlder: false,
+        loadingInitial: false,
+        initialLoadFailed: false,
+        loadingOlder: false,
+        hasTurns: false,
+        following: true
+      };
+      for (const locale of ['en-US', 'zh-CN'] as const) {
+        localePreferenceService().setLocale(locale);
+        const { title, description } = (
+          locale === 'en-US' ? conversationUiEnUS : conversationUiZhCN
+        ).conversationEmpty[emptyPrompt];
+        const html = await render(ConversationScroll, props);
+        expect(html).toContain(title);
+        expect(html).toContain(description);
+        for (const state of [
+          { hasTurns: true },
+          { hasOlder: true },
+          { loadingInitial: true },
+          { initialLoadFailed: true },
+          { loadingOlder: true },
+          { olderError: 'Earlier messages could not be loaded' },
+          { emptyPrompt: undefined }
+        ]) {
+          const hidden = await render(ConversationScroll, { ...props, ...state });
+          expect(hidden).not.toContain(title);
+          expect(hidden).not.toContain(description);
+        }
+      }
+    }
+  );
 
   it('renders initial history loading and retry states without exposing older-history controls', async () => {
     const loading = await render(ConversationScroll, {
