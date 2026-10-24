@@ -319,9 +319,11 @@ export async function createMarAgentWithAdapter(
           failed = true;
           throw error;
         } finally {
-          const releasing = maintenance.release();
-          if (failed) await releasing.catch(() => undefined);
-          else await releasing;
+          try {
+            await maintenance.release();
+          } catch (error) {
+            if (!failed) throw error;
+          }
         }
       }),
     setSystemInstruction: (systemInstruction) => {
@@ -464,9 +466,11 @@ export async function createMarAgentWithAdapter(
           failed = true;
           throw error;
         } finally {
-          const releasing = maintenance.release();
-          if (failed) await releasing.catch(() => undefined);
-          else await releasing;
+          try {
+            await maintenance.release();
+          } catch (error) {
+            if (!failed) throw error;
+          }
         }
       }),
     dispose: () => {
