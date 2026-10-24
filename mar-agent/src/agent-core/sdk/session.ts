@@ -598,18 +598,17 @@ export function createSessionOpener(services: SessionServices) {
               if (!committedTerminal) throw error;
               // Host observation cannot rewrite a terminal already committed to the Store.
               try {
-                const diagnostic = describeMarAgentError(error, 'MAR_AGENT_HOST_EMIT_FAILED');
+                // Host errors may contain private data; publish only SDK-owned facts.
                 process.emitWarning(
                   new MarAgentError(
                     'MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED',
-                    `Host publication of ${full.type} failed for Execution ${executionId}: ${diagnostic.message}`,
+                    `Host publication of ${full.type} failed for Execution ${executionId}.`,
                     {
                       details: {
                         sessionId,
                         executionId,
                         eventId: full.eventId,
-                        eventType: full.type,
-                        code: diagnostic.code
+                        eventType: full.type
                       }
                     }
                   )

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MarAgentError } from '../../src/agent-core/error.js';
 import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
@@ -114,7 +115,7 @@ it.each([
     expect(warning).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED',
-        message: expect.stringContaining('HOST_OFFLINE: Host observation failed.'),
+        message: `MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED: Host publication of execution.${outcome} failed for Execution ${handle.executionId}.`,
         details: expect.objectContaining({
           sessionId: f.session.id,
           executionId: handle.executionId,
@@ -136,6 +137,69 @@ it.each([
     expect(warning).toHaveBeenCalledTimes(1);
     await f.agent.clearSession(f.session.id);
     expect(warmDisposed).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each(['error-with-cause', 'unbounded-code', 'string'] as const)(
+  'diagnoses terminal publication without exposing private Host data (%s)',
+  async (kind) => {
+    const privateMessage = 'Violet canyon forecast: 47 unannounced projects.';
+    const privateCause = 'Cobalt meadow: unpublished acquisition terms.';
+    const externalCode = `EXTERNAL_${'q'.repeat(4096)}`;
+    const failure =
+      kind === 'error-with-cause'
+        ? new Error(privateMessage, { cause: new Error(privateCause) })
+        : kind === 'unbounded-code'
+          ? new MarAgentError(externalCode, privateMessage, {
+              cause: new Error(privateCause),
+              details: { privateText: privateCause }
+            })
+          : privateMessage;
+    const f = await fixture([], answer);
+    const emit = f.host.emit.bind(f.host);
+    vi.spyOn(f.host, 'emit').mockImplementation((event) => {
+      if (event.type === 'execution.completed') return Promise.reject(failure);
+      return emit(event);
+    });
+    const warning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    const handle = f.session.run({ prompt: 'Finish without publishing private Host data.' });
+    const events: MarAgentEvent[] = [];
+    for await (const event of handle) events.push(event);
+    await expect(handle.result()).resolves.toMatchObject({
+      status: 'completed',
+      finalAnswer: 'done'
+    });
+    const terminals = events.filter((event) => terminalTypes.includes(event.type));
+    expect(terminals.map((event) => event.type)).toEqual(['execution.completed']);
+    expect(handle.persistedEvents).toBe(true);
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      expect(
+        (await store.read(f.session.id)).filter(
+          (record) =>
+            record.executionId === handle.executionId && terminalTypes.includes(record.type)
+        )
+      ).toEqual([expect.objectContaining({ type: 'execution.completed', payload: terminals[0] })]);
+    } finally {
+      await store.close();
+    }
+    expect(warning).toHaveBeenCalledTimes(1);
+    const diagnostic = warning.mock.calls[0]![0] as MarAgentError;
+    const output = inspect(warning.mock.calls[0], { depth: null, showHidden: true });
+    expect(output).not.toContain(privateMessage);
+    expect(output).not.toContain(privateCause);
+    expect(output).not.toContain(externalCode.slice(0, 128));
+    expect(diagnostic.code).toBe('MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED');
+    expect(diagnostic.message).toBe(
+      `MAR_AGENT_HOST_EVENT_PUBLICATION_FAILED: Host publication of execution.completed failed for Execution ${handle.executionId}.`
+    );
+    expect(diagnostic.cause).toBeUndefined();
+    expect(diagnostic.details).toEqual({
+      sessionId: f.session.id,
+      executionId: handle.executionId,
+      eventId: terminals[0]!.eventId,
+      eventType: 'execution.completed'
+    });
   }
 );
 
