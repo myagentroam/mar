@@ -217,11 +217,11 @@ describe('Public resource details', () => {
     async (locale) => {
       vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
       i18n.global.locale.value = locale;
-      const request = vi.fn(async <T>() => ({}) as T);
+      const request = vi.fn(async () => ({}));
       const app = createSSRApp({
         render: () =>
           h(Details, {
-            request,
+            request: async <T>() => (await request()) as T,
             nodeOpen: true,
             workspaceOpen: true,
             usageOpen: true,
