@@ -24,6 +24,7 @@ describe('Shared notification center', () => {
         render: () => h(SystemNotificationControl, { service: service.systemNotifications })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html.match(/<h3\b[^>]*>([^<]*)</u)?.[1]).toBe(title);
       expect(html).toContain(
@@ -69,6 +70,7 @@ describe('Shared notification center', () => {
           h(WorkbenchNotificationCenter, { service, uploads: [], statusLabel: () => '' })
       });
       app.use(i18n).use(ElementPlus);
+      app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain(
         commonMessages[locale].generated.workbenchNotificationCenter.openNotificationCenter

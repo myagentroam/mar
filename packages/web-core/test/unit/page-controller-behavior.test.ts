@@ -120,7 +120,7 @@ function controller() {
     initialView: 'nodes',
     initialSettingsSection: 'account',
     initialManagementSection: 'custom-system',
-    opensMobileSidebar: () => false
+    opensMobileSidebar: (view) => view !== 'conversations'
   });
   const management = {
     items: vi.fn(() => [{ id: 'custom-nodes', labelKey: 'navigation.nodeManagement' }])
@@ -147,6 +147,41 @@ function controller() {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('toggles active mobile top menus without changing their selected page', () => {
+    const { page } = controller();
+    page.mobileViewport.value = true;
+    for (const view of ['nodes', 'settings', 'management'] as const) {
+      page.selectNavigation(view);
+      expect(page.view.value).toBe(view);
+      expect(page.mobileSidebarOpen.value).toBe(true);
+      page.selectNavigation(view);
+      expect(page.view.value).toBe(view);
+      expect(page.mobileSidebarOpen.value).toBe(false);
+    }
+    page.selectNavigation('conversations');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
+    page.selectNavigation('conversations');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
+    page.selectNavigation('conversations');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
+  });
+
+  it('replaces hosted history and utility drawers when switching mobile menus', () => {
+    const { page } = controller();
+    page.mobileViewport.value = true;
+    page.selectNavigation('conversations');
+    page.selectMobileUtilityPanel('recent-sessions');
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
+    expect(page.mobileUtilityPanel.value).toBe('recent-sessions');
+    page.selectNavigation('conversations');
+    expect(page.mobileUtilityPanel.value).toBeUndefined();
+    expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
+    page.selectMobileUtilityPanel('notifications');
+    page.selectNavigation('settings');
+    expect(page.mobileUtilityPanel.value).toBeUndefined();
+    expect(page.mobileSidebarOpen.value).toBe(true);
+  });
+
   it('consumes host navigation and version rather than recreating defaults', () => {
     const { page, navigation, management } = controller();
     expect(page.view).toBe(navigation.view);

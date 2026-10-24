@@ -22,5 +22,5 @@ export function replaceManagementUrlValues(
     if (value === undefined || value === '') url.searchParams.delete(`${namespace}.${key}`);
     else url.searchParams.set(`${namespace}.${key}`, String(value));
   }
-  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 }

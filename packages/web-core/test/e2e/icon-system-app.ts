@@ -191,6 +191,7 @@ const app = createApp({
     }
     if (new URL(location.href).searchParams.has('navigation')) {
       const mobile = new URL(location.href).searchParams.has('mobile');
+      const mobileUtilityPanel = ref<'recent-sessions' | 'notifications'>();
       const count = Number(new URL(location.href).searchParams.get('count') ?? 6);
       const now = Date.now();
       const service = createWorkbenchNotificationService(ref('fixture'), {
@@ -242,6 +243,10 @@ const app = createApp({
           workspaceLabel: () => '',
           workspaces: () => [],
           mobileViewport: mobile,
+          mobileUtilityPanel: mobileUtilityPanel.value,
+          onSelectMobileUtilityPanel: (panel: typeof mobileUtilityPanel.value) => {
+            mobileUtilityPanel.value = panel;
+          },
           notificationService: service,
           performanceDiagnostics: diagnostics,
           uploads: [],

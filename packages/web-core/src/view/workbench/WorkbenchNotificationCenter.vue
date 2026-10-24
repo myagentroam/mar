@@ -16,6 +16,8 @@ const props = defineProps<{
   readonly statusLabel: (task: WorkspaceUploadTask) => string;
   readonly triggerLabel?: string;
   readonly mobileMode?: boolean;
+  readonly mobileOpen?: boolean;
+  readonly mobilePanelTarget?: HTMLElement | undefined;
 }>();
 
 const transferTasks = computed(() =>
@@ -35,8 +37,16 @@ const visibleNotifications = computed(() => {
     (notification) => !activeUploadIds.value.has(notification.id)
   );
 });
-const open = ref(false);
 const autoPreview = ref(false);
+const desktopOpen = ref(false);
+const open = computed({
+  get: () =>
+    props.mobileMode && !autoPreview.value ? props.mobileOpen === true : desktopOpen.value,
+  set: (value: boolean) => {
+    if (props.mobileMode && !autoPreview.value) emit('update:mobileOpen', value);
+    else desktopOpen.value = value;
+  }
+});
 const center = ref<HTMLElement>();
 const panel = ref<HTMLElement>();
 let dismissTimer: ReturnType<typeof setTimeout> | undefined;
@@ -67,6 +77,7 @@ watch(
 );
 
 function showTemporarily(): void {
+  if (props.mobileMode && props.mobileOpen) return;
   if (dismissTimer !== undefined) clearTimeout(dismissTimer);
   autoPreview.value = true;
   open.value = true;
@@ -80,6 +91,7 @@ function toggle(): void {
   if (dismissTimer !== undefined) clearTimeout(dismissTimer);
   dismissTimer = undefined;
   if (autoPreview.value) {
+    desktopOpen.value = false;
     autoPreview.value = false;
     open.value = true;
     void props.service.load().catch(() => undefined);
@@ -94,12 +106,16 @@ function remove(id: string): void {
 }
 
 function openNotification(notification: WorkbenchNotification): void {
+  if (dismissTimer !== undefined) clearTimeout(dismissTimer);
+  dismissTimer = undefined;
+  desktopOpen.value = false;
   autoPreview.value = false;
   open.value = false;
   emit('openNotification', notification);
 }
 
 function closeWhenClickOutside(event: PointerEvent): void {
+  if (props.mobileMode && !autoPreview.value) return;
   const target = event.target;
   if (
     !open.value ||
@@ -138,7 +154,18 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onNotificationShortcut, true);
 });
 
+watch(
+  () => props.mobileMode,
+  () => {
+    if (dismissTimer !== undefined) clearTimeout(dismissTimer);
+    dismissTimer = undefined;
+    desktopOpen.value = false;
+    autoPreview.value = false;
+  }
+);
+
 const emit = defineEmits<{
+  'update:mobileOpen': [open: boolean];
   openNotification: [notification: WorkbenchNotification];
   retryUpload: [task: WorkspaceUploadTask];
   cancelUpload: [task: WorkspaceUploadTask];
@@ -171,16 +198,24 @@ const emit = defineEmits<{
         }}</span>
       </button></span
     >
-    <Teleport to="body" :disabled="!mobileMode">
+    <Teleport
+      :to="mobileMode && !autoPreview ? (mobilePanelTarget ?? 'body') : 'body'"
+      :disabled="!mobileMode"
+    >
       <Transition name="workbench-notification-panel">
         <aside
-          v-if="open"
+          v-if="open && (!mobileMode || autoPreview || mobilePanelTarget)"
           ref="panel"
-          :class="['workbench-notification-panel', { 'mobile-mode': mobileMode }]"
+          :class="[
+            'workbench-notification-panel',
+            { 'mobile-mode': mobileMode, 'drawer-mode': mobileMode && !autoPreview }
+          ]"
           :aria-label="translate('generated.workbenchNotificationCenter.notificationCenter')"
         >
-          <header>
-            <strong>{{ translate('generated.workbenchNotificationCenter.notifications') }}</strong>
+          <header v-if="!mobileMode || autoPreview || service.unreadCount.value > 0">
+            <strong v-if="!mobileMode || autoPreview">{{
+              translate('generated.workbenchNotificationCenter.notifications')
+            }}</strong>
             <button
               v-if="service.unreadCount.value > 0"
               class="workbench-notification-mark-all"
@@ -390,6 +425,19 @@ const emit = defineEmits<{
   border-bottom: 1px solid var(--mar-border-default);
   padding: 0.55rem 0.7rem;
   font-size: var(--mar-font-size-meta);
+}
+.workbench-notification-panel.drawer-mode {
+  position: static;
+  width: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.drawer-mode .workbench-notification-section {
+  max-height: none;
+  overflow: visible;
 }
 .workbench-notification-mark-all {
   flex: none;

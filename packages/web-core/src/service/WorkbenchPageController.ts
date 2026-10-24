@@ -30,6 +30,7 @@ import {
   workspaceTabLabel
 } from '../util/workbench-presentation.js';
 import { createWorkbenchRouteService } from './WorkbenchRouteService.js';
+import { createMobileMenuHistoryService } from './MobileMenuHistoryService.js';
 import { createConversationProjectionService } from './ConversationProjectionService.js';
 import { createWorkbenchEntityService } from './WorkbenchEntityService.js';
 import { createWorkbenchEventProjectionService } from './WorkbenchEventProjectionService.js';
@@ -211,6 +212,7 @@ export function createWorkbenchPageController<
     sidebarCollapsed,
     mobileSidebarOpen,
     mobileWorkspaceSurface,
+    mobileUtilityPanel,
     start: startNavigation,
     dispose: disposeNavigation,
     selectView: selectWorkbenchView,
@@ -645,9 +647,20 @@ export function createWorkbenchPageController<
 
   function selectNavigation(nextView: WorkbenchView): void {
     const previousView = view.value;
+    const collapseSidebar =
+      mobileViewport.value &&
+      previousView === nextView &&
+      mobileSidebarOpen.value &&
+      mobileUtilityPanel.value === undefined;
     if (mobileViewport.value && nextView === 'conversations') {
-      hostedConversationMobileHistoryOpen.value = true;
-      if (previousView === nextView) return;
+      const historyWasOpen = hostedConversationMobileHistoryOpen.value;
+      hostedConversationMobileHistoryOpen.value = previousView !== nextView || !historyWasOpen;
+      if (previousView === nextView) {
+        navigationService.selectMobileUtilityPanel(undefined);
+        closeMobileSidebar();
+        closeMobileWorkspaceSurface();
+        return;
+      }
     } else hostedConversationMobileHistoryOpen.value = false;
     if (
       nextView === 'management' &&
@@ -655,6 +668,7 @@ export function createWorkbenchPageController<
     )
       managementSection.value = managementItems.value[0]?.id ?? options.systemManagementSection;
     selectWorkbenchView(nextView);
+    if (collapseSidebar) closeMobileSidebar();
     if (previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations'))
       void workbenchNotificationService.recover().catch(() => undefined);
     navigationWatchService.transition(previousView, nextView);
@@ -662,6 +676,12 @@ export function createWorkbenchPageController<
 
   function closeHostedConversationMobileHistory(): void {
     hostedConversationMobileHistoryOpen.value = false;
+  }
+
+  function selectMobileUtilityPanel(panel: typeof mobileUtilityPanel.value): void {
+    if (!mobileViewport.value) return;
+    if (panel !== undefined) closeHostedConversationMobileHistory();
+    navigationService.selectMobileUtilityPanel(panel);
   }
 
   const locked = computed(() => admin.value.authenticated && admin.value.mustChangePassword);
@@ -2345,6 +2365,16 @@ export function createWorkbenchPageController<
     sync: syncWorkbenchRoute,
     hostedConversationRoute
   } = workbenchRouteService;
+  const mobileMenuHistory = createMobileMenuHistoryService({
+    isOpen: () =>
+      mobileViewport.value &&
+      (mobileSidebarOpen.value || hostedConversationMobileHistoryOpen.value),
+    close: () => {
+      closeMobileSidebar();
+      closeHostedConversationMobileHistory();
+    },
+    syncRoute: syncWorkbenchRoute
+  });
   const restoringHostedConversationRoute = ref(hostedConversationRoute !== undefined);
 
   const {
@@ -3202,12 +3232,18 @@ export function createWorkbenchPageController<
     restoreWorkbenchState,
     restoreWorkbenchEventCursors,
     restoreWorkspaceUploads,
-    startNavigation,
+    startNavigation: () => {
+      startNavigation();
+      mobileMenuHistory.start();
+    },
     handleSessionWatchVisibility,
     onGlobalKeydown,
     refreshAdmin,
     cancelFileReferenceSearch: fileReferenceService.cancelSearch,
-    disposeNavigation,
+    disposeNavigation: () => {
+      mobileMenuHistory.dispose();
+      disposeNavigation();
+    },
     disposeWorkspaceUploads,
     disposeWorkbenchNotifications,
     disposeWebVersionUpdateCheck: () => removeWebVersionFocusListener?.(),
@@ -3368,6 +3404,7 @@ export function createWorkbenchPageController<
     managementSection,
     message,
     mobileSidebarOpen,
+    mobileUtilityPanel,
     mobileViewport,
     mobileWorkspaceSurface,
     movePinnedSession,
@@ -3468,6 +3505,7 @@ export function createWorkbenchPageController<
     setComposerInputFocus: (focus: (cursor: number) => void) => (focusComposerInputAt = focus),
     selectManagementSection,
     selectNavigation,
+    selectMobileUtilityPanel,
     selectRunnerCommand,
     selectComposerSkill,
     selectComposerQuickPrompt,

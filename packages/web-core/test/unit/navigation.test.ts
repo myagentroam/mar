@@ -21,6 +21,43 @@ function setup(mobile = true) {
 }
 
 describe('Public Navigation Layout', () => {
+  it('keeps utility drawers, navigation and Workspace tools mutually exclusive', () => {
+    const { service } = setup();
+    service.selectView('settings');
+    service.selectMobileUtilityPanel('recent-sessions');
+    expect(service.mobileSidebarOpen.value).toBe(true);
+    expect(service.mobileUtilityPanel.value).toBe('recent-sessions');
+    service.selectMobileUtilityPanel('notifications');
+    expect(service.mobileUtilityPanel.value).toBe('notifications');
+    service.openMobileWorkspaceSurface('terminal');
+    expect(service.mobileUtilityPanel.value).toBeUndefined();
+    service.selectMobileUtilityPanel('notifications');
+    expect(service.mobileWorkspaceSurface.value).toBe('conversation');
+    service.selectView('settings');
+    expect(service.mobileUtilityPanel.value).toBeUndefined();
+    expect(service.mobileSidebarOpen.value).toBe(true);
+    service.selectMobileUtilityPanel('recent-sessions');
+    service.selectMobileUtilityPanel(undefined);
+    expect(service.mobileUtilityPanel.value).toBeUndefined();
+    expect(service.mobileSidebarOpen.value).toBe(false);
+  });
+
+  it('clears utility drawers on breakpoint changes and ignores them on desktop', () => {
+    const { service, query } = setup();
+    service.start();
+    service.selectMobileUtilityPanel('notifications');
+    const change = query.addEventListener.mock.calls[0]![1] as (event: {
+      matches: boolean;
+    }) => void;
+    change({ matches: true });
+    expect(service.mobileUtilityPanel.value).toBe('notifications');
+    change({ matches: false });
+    expect(service.mobileUtilityPanel.value).toBeUndefined();
+    service.selectMobileUtilityPanel('recent-sessions');
+    expect(service.mobileUtilityPanel.value).toBeUndefined();
+    service.dispose();
+  });
+
   it('Uses the composed initial state without reading the product URL or enterprise defaults', () => {
     const { service } = setup();
     expect(service.view.value).toBe('nodes');
