@@ -119,6 +119,22 @@ export interface WebPerformanceLongTaskDetail {
   readonly relatedFrames: readonly WebPerformanceFrameDetail[];
 }
 
+export interface WebPerformanceLongAnimationFrameDetail {
+  readonly startTimeMs: number;
+  readonly endTimeMs: number;
+  readonly occurredAt: string;
+  readonly durationMs: number;
+  readonly blockingDurationMs: number;
+  readonly context: WebPerformanceContext;
+  readonly scripts: readonly {
+    readonly functionName: string;
+    readonly sourceURL: string;
+    readonly sourceCharPosition: number;
+    readonly durationMs: number;
+    readonly invoker: string;
+  }[];
+}
+
 export interface WebPerformanceDiagnosticDetail {
   readonly schemaVersion: 1;
   readonly generatedAt: string;
@@ -126,6 +142,8 @@ export interface WebPerformanceDiagnosticDetail {
   readonly context: WebPerformanceContext;
   readonly snapshot: WebPerformanceSnapshot;
   readonly longTasks: readonly WebPerformanceLongTaskDetail[];
+  readonly retainedLongTasks: readonly WebPerformanceLongTaskDetail[];
+  readonly longAnimationFrames: readonly WebPerformanceLongAnimationFrameDetail[];
   readonly interactions: readonly WebPerformanceInteractionDetail[];
   readonly frames: readonly WebPerformanceFrameDetail[];
   readonly browserSamples: readonly WebPerformanceBrowserSampleDetail[];
@@ -145,10 +163,19 @@ interface MemoryPerformance extends Performance {
   readonly memory?: { readonly usedJSHeapSize: number; readonly jsHeapSizeLimit: number };
 }
 
+interface RetainedRecord<T> {
+  readonly capturedAt: number;
+  readonly value: T;
+}
+
 const ACTIVE_RUN_STATUSES = new Set(['STARTING', 'RUNNING', 'CANCELLING']);
 const FRAME_WINDOW_MS = 10_000;
 const RATE_WINDOW_MS = 1_000;
 const STARTUP_GRACE_MS = 5_000;
+const SEVERE_TASK_MS = 500;
+const RETAINED_TASK_WINDOW_MS = 30 * 60_000;
+const RETAINED_TASK_LIMIT = 16;
+const RETAINED_TASK_STORAGE_KEY = 'mar.web-performance.severe.v1';
 
 const emptySnapshot = (): WebPerformanceSnapshot => ({
   connectionState: 'connecting',
@@ -179,6 +206,9 @@ export function createWebPerformanceDiagnostics(
   const longTaskSamples: LongTaskSample[] = [];
   const interactionSamples: InteractionSample[] = [];
   const browserSamples: TimedBrowserMetric[] = [];
+  const retained = loadRetained();
+  const retainedLongTasks = retained.longTasks;
+  const retainedAnimationFrames = retained.longAnimationFrames;
   let browserMetrics: BrowserMetricUpdate = {
     domNodes: 0,
     messageCards: 0,
@@ -190,6 +220,7 @@ export function createWebPerformanceDiagnostics(
   let pingLatencyMs: number | undefined;
   let samplingTimer: ReturnType<typeof setInterval> | undefined;
   let longTaskObserver: PerformanceObserver | undefined;
+  let longAnimationFrameObserver: PerformanceObserver | undefined;
   let longTasksAvailable = false;
   let interactionObserver: PerformanceObserver | undefined;
   let expectedTick = 0;
@@ -201,6 +232,72 @@ export function createWebPerformanceDiagnostics(
 
   function context(): WebPerformanceContext {
     return options.context?.() ?? {};
+  }
+
+  function loadRetained(): {
+    longTasks: RetainedRecord<WebPerformanceLongTaskDetail>[];
+    longAnimationFrames: RetainedRecord<WebPerformanceLongAnimationFrameDetail>[];
+  } {
+    const empty = { longTasks: [], longAnimationFrames: [] };
+    try {
+      if (typeof sessionStorage === 'undefined') return empty;
+      const stored: unknown = JSON.parse(
+        sessionStorage.getItem(RETAINED_TASK_STORAGE_KEY) ?? 'null'
+      );
+      if (typeof stored !== 'object' || stored === null) return empty;
+      const value = stored as Record<string, unknown>;
+      const valid = <T>(input: unknown): RetainedRecord<T>[] =>
+        Array.isArray(input)
+          ? input
+              .filter(
+                (record): record is RetainedRecord<T> =>
+                  typeof record === 'object' &&
+                  record !== null &&
+                  Number.isFinite((record as RetainedRecord<T>).capturedAt) &&
+                  Date.now() - (record as RetainedRecord<T>).capturedAt <=
+                    RETAINED_TASK_WINDOW_MS &&
+                  typeof (record as RetainedRecord<T>).value === 'object' &&
+                  (record as RetainedRecord<T>).value !== null
+              )
+              .slice(-RETAINED_TASK_LIMIT)
+          : [];
+      return {
+        longTasks: valid<WebPerformanceLongTaskDetail>(value.longTasks),
+        longAnimationFrames: valid<WebPerformanceLongAnimationFrameDetail>(
+          value.longAnimationFrames
+        )
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  function persistRetained(): void {
+    try {
+      if (typeof sessionStorage === 'undefined') return;
+      sessionStorage.setItem(
+        RETAINED_TASK_STORAGE_KEY,
+        JSON.stringify({
+          longTasks: retainedLongTasks,
+          longAnimationFrames: retainedAnimationFrames
+        })
+      );
+    } catch {
+      // Storage can be unavailable or full; the in-memory diagnostic remains available.
+    }
+  }
+
+  function retain<T>(records: RetainedRecord<T>[], value: T): void {
+    records.push({ capturedAt: Date.now(), value });
+    if (records.length > RETAINED_TASK_LIMIT)
+      records.splice(0, records.length - RETAINED_TASK_LIMIT);
+    persistRetained();
+  }
+
+  function retainedValues<T>(records: readonly RetainedRecord<T>[]): T[] {
+    return records
+      .filter((record) => Date.now() - record.capturedAt <= RETAINED_TASK_WINDOW_MS)
+      .map((record) => record.value);
   }
 
   function prune(at: number): void {
@@ -435,6 +532,74 @@ export function createWebPerformanceDiagnostics(
     };
   }
 
+  function longTaskDetail(task: LongTaskSample): WebPerformanceLongTaskDetail {
+    const interactions = interactionSamples.map(({ at: startTimeMs, ...sample }) => ({
+      startTimeMs,
+      ...sample
+    }));
+    const frameDetails = frames.map(
+      ({ at: observedAtMs, bytes, durationMs, category, context }) => ({
+        observedAtMs,
+        bytes,
+        durationMs,
+        category,
+        context
+      })
+    );
+    return {
+      name: task.name,
+      startTimeMs: task.at,
+      endTimeMs: task.at + task.durationMs,
+      occurredAt: new Date(performance.timeOrigin + task.at).toISOString(),
+      durationMs: task.durationMs,
+      context: task.context,
+      attribution: task.attribution,
+      relatedInteractions: interactions.filter(
+        (interaction) =>
+          interaction.startTimeMs <= task.at + task.durationMs + 250 &&
+          interaction.startTimeMs + interaction.durationMs >= task.at - 250
+      ),
+      relatedFrames: frameDetails.filter(
+        (frame) =>
+          frame.observedAtMs >= task.at - 250 &&
+          frame.observedAtMs <= task.at + task.durationMs + 250
+      )
+    };
+  }
+
+  function animationFrameScripts(
+    entry: PerformanceEntry
+  ): WebPerformanceLongAnimationFrameDetail['scripts'] {
+    const scripts = (entry as PerformanceEntry & { readonly scripts?: readonly unknown[] }).scripts;
+    if (!Array.isArray(scripts)) return [];
+    return scripts.slice(0, 8).map((script) => {
+      const record = (typeof script === 'object' && script !== null ? script : {}) as Record<
+        string,
+        unknown
+      >;
+      const text = (key: string): string =>
+        typeof record[key] === 'string' ? (record[key] as string).slice(0, 256) : '';
+      let sourceURL = '';
+      try {
+        const url = new URL(
+          text('sourceURL'),
+          typeof location === 'undefined' ? undefined : location.href
+        );
+        sourceURL = `${url.origin}${url.pathname}`;
+      } catch {
+        // Ignore malformed or unavailable script URLs.
+      }
+      return {
+        functionName: text('sourceFunctionName'),
+        sourceURL,
+        sourceCharPosition:
+          typeof record.sourceCharPosition === 'number' ? record.sourceCharPosition : 0,
+        durationMs: typeof record.duration === 'number' ? record.duration : 0,
+        invoker: text('invoker')
+      };
+    });
+  }
+
   function detail(): WebPerformanceDiagnosticDetail {
     const at = now();
     prune(at);
@@ -451,25 +616,7 @@ export function createWebPerformanceDiagnostics(
       startTimeMs,
       ...sample
     }));
-    const longTasks = longTaskSamples.map((task) => ({
-      name: task.name,
-      startTimeMs: task.at,
-      endTimeMs: task.at + task.durationMs,
-      occurredAt: new Date(performance.timeOrigin + task.at).toISOString(),
-      durationMs: task.durationMs,
-      context: task.context,
-      attribution: task.attribution,
-      relatedInteractions: interactionDetails.filter(
-        (interaction) =>
-          interaction.startTimeMs <= task.at + task.durationMs + 250 &&
-          interaction.startTimeMs + interaction.durationMs >= task.at - 250
-      ),
-      relatedFrames: frameDetails.filter(
-        (frame) =>
-          frame.observedAtMs >= task.at - 250 &&
-          frame.observedAtMs <= task.at + task.durationMs + 250
-      )
-    }));
+    const longTasks = longTaskSamples.map(longTaskDetail);
     return {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
@@ -477,6 +624,8 @@ export function createWebPerformanceDiagnostics(
       context: context(),
       snapshot: snapshot.value,
       longTasks,
+      retainedLongTasks: retainedValues(retainedLongTasks),
+      longAnimationFrames: retainedValues(retainedAnimationFrames),
       interactions: interactionDetails,
       frames: frameDetails,
       browserSamples: browserSamples.map(({ at: sampledAtMs, ...sample }) => ({
@@ -507,13 +656,17 @@ export function createWebPerformanceDiagnostics(
           longTaskObserver = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
               if (entry.startTime < startupGraceUntil) continue;
-              longTaskSamples.push({
+              const sample = {
                 at: entry.startTime,
                 durationMs: entry.duration,
                 name: entry.name,
                 context: context(),
                 attribution: longTaskAttribution(entry)
-              });
+              };
+              longTaskSamples.push(sample);
+              if (entry.duration >= SEVERE_TASK_MS) {
+                retain(retainedLongTasks, longTaskDetail(sample));
+              }
             }
           });
           longTaskObserver.observe({ entryTypes: ['longtask'] });
@@ -558,6 +711,28 @@ export function createWebPerformanceDiagnostics(
       } catch {
         interactionObserver = undefined;
       }
+      try {
+        if (PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame')) {
+          longAnimationFrameObserver = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.duration < SEVERE_TASK_MS) continue;
+              const frame = entry as PerformanceEntry & { readonly blockingDuration?: number };
+              retain(retainedAnimationFrames, {
+                startTimeMs: entry.startTime,
+                endTimeMs: entry.startTime + entry.duration,
+                occurredAt: new Date(performance.timeOrigin + entry.startTime).toISOString(),
+                durationMs: entry.duration,
+                blockingDurationMs: frame.blockingDuration ?? 0,
+                context: context(),
+                scripts: animationFrameScripts(entry)
+              });
+            }
+          });
+          longAnimationFrameObserver.observe({ type: 'long-animation-frame' });
+        }
+      } catch {
+        longAnimationFrameObserver = undefined;
+      }
     }
     collectBrowserMetrics(0);
   }
@@ -568,6 +743,8 @@ export function createWebPerformanceDiagnostics(
     longTaskObserver?.disconnect();
     longTaskObserver = undefined;
     longTasksAvailable = false;
+    longAnimationFrameObserver?.disconnect();
+    longAnimationFrameObserver = undefined;
     interactionObserver?.disconnect();
     interactionObserver = undefined;
     frames.length = 0;

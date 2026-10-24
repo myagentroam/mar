@@ -112,6 +112,115 @@ describe('WebPerformanceDiagnosticService', () => {
         diagnostics.dispose();
       }
     });
+
+    it('retains severe Long Tasks beyond the live window and a page reload', () => {
+      const stored = new Map<string, string>();
+      vi.stubGlobal('sessionStorage', {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value)
+      });
+      const observer = installPerformanceObserver();
+      const diagnostics = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      diagnostics.start();
+      vi.advanceTimersByTime(6_000);
+      observer.callbacks.get('longtask')?.([
+        { name: 'severe', startTime: 7_000, duration: 900 } as PerformanceEntry,
+        { name: 'ordinary', startTime: 7_001, duration: 120 } as PerformanceEntry
+      ]);
+      expect(diagnostics.detail().retainedLongTasks.map((task) => task.name)).toEqual(['severe']);
+
+      vi.advanceTimersByTime(11_000);
+      expect(diagnostics.detail().longTasks).toEqual([]);
+      expect(diagnostics.detail().retainedLongTasks.map((task) => task.name)).toEqual(['severe']);
+      diagnostics.dispose();
+
+      const restored = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      expect(restored.detail().retainedLongTasks.map((task) => task.name)).toEqual(['severe']);
+      restored.dispose();
+      vi.advanceTimersByTime(30 * 60_000 + 1);
+      const expired = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      expect(expired.detail().retainedLongTasks).toEqual([]);
+      expired.dispose();
+    });
+
+    it('retains severe animation frames with bounded script attribution and sanitized URLs', () => {
+      const stored = new Map<string, string>();
+      vi.stubGlobal('sessionStorage', {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value)
+      });
+      const observer = installPerformanceObserver({
+        supportedEntryTypes: ['longtask', 'event', 'long-animation-frame']
+      });
+      const diagnostics = createWebPerformanceDiagnostics({
+        now: () => Date.now(),
+        context: () => ({ view: 'nodes', sessionId: 'session-1' })
+      });
+      diagnostics.start();
+      vi.advanceTimersByTime(6_000);
+      observer.callbacks.get('long-animation-frame')?.([
+        {
+          name: 'long-animation-frame',
+          startTime: 7_000,
+          duration: 850,
+          blockingDuration: 600,
+          scripts: Array.from({ length: 12 }, (_, index) => ({
+            sourceFunctionName: `render-${index}`,
+            sourceURL: `https://console.example/assets/index-${index}.js?private=query`,
+            sourceCharPosition: index,
+            duration: 500,
+            invoker: 'requestAnimationFrame'
+          }))
+        } as unknown as PerformanceEntry
+      ]);
+
+      const frames = diagnostics.detail().longAnimationFrames;
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({
+        durationMs: 850,
+        blockingDurationMs: 600,
+        context: { view: 'nodes', sessionId: 'session-1' }
+      });
+      expect(frames[0]?.scripts).toHaveLength(8);
+      expect(frames[0]?.scripts[0]).toEqual({
+        functionName: 'render-0',
+        sourceURL: 'https://console.example/assets/index-0.js',
+        sourceCharPosition: 0,
+        durationMs: 500,
+        invoker: 'requestAnimationFrame'
+      });
+      diagnostics.dispose();
+      const restored = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      expect(restored.detail().longAnimationFrames).toEqual(frames);
+      restored.dispose();
+    });
+
+    it('bounds retained history and tolerates malformed or unavailable storage', () => {
+      vi.stubGlobal('sessionStorage', {
+        getItem: () => '{malformed',
+        setItem: () => {
+          throw new Error('storage unavailable');
+        }
+      });
+      const observer = installPerformanceObserver();
+      const diagnostics = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      diagnostics.start();
+      vi.advanceTimersByTime(6_000);
+      for (let index = 0; index < 20; index += 1) {
+        observer.callbacks.get('longtask')?.([
+          {
+            name: `severe-${index}`,
+            startTime: 7_000 + index * 1_000,
+            duration: 600
+          } as PerformanceEntry
+        ]);
+      }
+      const retained = diagnostics.detail().retainedLongTasks;
+      expect(retained).toHaveLength(16);
+      expect(retained[0]?.name).toBe('severe-4');
+      expect(retained[15]?.name).toBe('severe-19');
+      diagnostics.dispose();
+    });
   });
 
   it('Statistics of real-time throughput and categories by scrolling window', () => {
