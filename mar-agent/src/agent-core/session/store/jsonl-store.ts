@@ -21,7 +21,7 @@ import {
 } from '../../tools/code-mode/state.js';
 import {
   contextGcBaseFromRecords,
-  contextGcMinimumUsageGrowth,
+  contextGcCheckpointIntervalEligible,
   latestValidContextGcCheckpoint,
   normalizeContextGcReplacements,
   sameContextGcBase,
@@ -1420,18 +1420,11 @@ export class JsonlSessionStore implements SessionStore {
           'Context GC planning boundary is invalid.'
         );
       const previous = latestValidContextGcCheckpoint(records, boundarySequence);
-      if (previous) {
-        const minimumUsageGrowth = contextGcMinimumUsageGrowth(draft.trigger.contextWindowTokens);
-        if (
-          draft.trigger.normalRolloutOrdinal - previous.payload.trigger.normalRolloutOrdinal < 2 ||
-          draft.trigger.contextInputTokens - previous.payload.trigger.contextInputTokens <
-            minimumUsageGrowth
-        )
-          throw new MarAgentError(
-            'MAR_AGENT_SESSION_CORRUPT',
-            'Context GC checkpoint interval validation failed.'
-          );
-      }
+      if (!contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger))
+        throw new MarAgentError(
+          'MAR_AGENT_SESSION_CORRUPT',
+          'Context GC checkpoint interval validation failed.'
+        );
       const plannedReplacements = normalizeContextGcReplacements(draft.replacements);
       if (!plannedReplacements || plannedReplacements.length === 0)
         throw new MarAgentError(
