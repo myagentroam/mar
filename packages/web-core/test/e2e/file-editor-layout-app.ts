@@ -15,7 +15,7 @@ localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(location.search);
 themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
 const longContent = query.has('long');
-const handle = ref<{ selectAll(): boolean }>();
+const handle = ref<{ selectAll(): boolean; openFind(): boolean }>();
 const restoreDraft = query.has('draft');
 function withActions(view: ReturnType<typeof h>) {
   return query.has('shortcuts')
@@ -32,6 +32,14 @@ function withActions(view: ReturnType<typeof h>) {
             onClick: () => handle.value?.selectAll()
           },
           'Select preview content'
+        ),
+        h(
+          'button',
+          {
+            style: 'position: fixed; z-index: 100; right: 160px; bottom: 0',
+            onClick: () => handle.value?.openFind()
+          },
+          'Find preview content'
         ),
         view
       ])

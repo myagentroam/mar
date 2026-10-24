@@ -258,7 +258,7 @@ function openBlankMenu(event: MouseEvent): void {
       <el-link
         v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
-        class="nav-menu-button documentation-link"
+        class="nav-menu-button documentation-link utility-control"
         :href="localizedDocsPath(locale, 'getting-started/overview')"
         underline="never"
         target="_blank"
@@ -548,7 +548,7 @@ function openBlankMenu(event: MouseEvent): void {
   align-items: center;
   border-radius: 4px;
   --el-link-text-color: var(--mar-text-secondary);
-  --el-link-hover-text-color: var(--mar-color-brand-text);
+  --el-link-hover-text-color: var(--mar-text-primary);
   padding: 0 8px;
   cursor: pointer;
   font-size: var(--mar-font-size-meta);
@@ -886,10 +886,11 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (max-width: 767px) {
-  .documentation-link:hover,
-  .documentation-link:focus-visible {
-    background: var(--mar-color-brand-subtle);
-    color: var(--mar-color-brand-text);
+  .activity-rail nav .documentation-link:hover,
+  .activity-rail nav .documentation-link:active,
+  .activity-rail nav .documentation-link:focus-visible {
+    background: transparent;
+    color: var(--mar-text-primary);
     text-decoration: none;
   }
 }

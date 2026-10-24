@@ -185,6 +185,21 @@ defineExpose({ root });
   border-radius: var(--mar-radius-control);
 }
 
+.workspace-file-page-frame :deep(.file-toolbar-control) {
+  --el-button-bg-color: var(--mar-bg-panel);
+  --el-button-border-color: var(--mar-border-default);
+  --el-button-text-color: var(--mar-text-secondary);
+  --el-button-hover-bg-color: var(--mar-fill-hover);
+  --el-button-hover-border-color: var(--mar-border-medium);
+  --el-button-hover-text-color: var(--mar-text-primary);
+  --el-button-active-bg-color: var(--mar-fill-selection);
+  --el-button-active-border-color: var(--mar-border-medium);
+  --el-button-active-text-color: var(--mar-text-primary);
+  --el-button-disabled-bg-color: var(--mar-bg-panel);
+  --el-button-disabled-border-color: var(--mar-border-subtle);
+  --el-button-outline-color: var(--mar-color-brand);
+}
+
 @media (min-width: 768px) {
   .workspace-file-page-frame-title {
     display: grid;

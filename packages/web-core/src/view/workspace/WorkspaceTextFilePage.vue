@@ -676,6 +676,7 @@ defineExpose({
     </template>
     <template #primary-actions>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
         circle
@@ -687,6 +688,7 @@ defineExpose({
       </el-button>
       <template v-if="codeEditorEnabled">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('fileEditor.symbols')"
           data-file-symbol-toggle
           circle
@@ -697,6 +699,7 @@ defineExpose({
           <MarIcon name="symbols" />
         </el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           v-if="canWrite"
           circle
@@ -708,11 +711,11 @@ defineExpose({
           <MarIcon name="edit" v-else />
         </el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('common.save')"
           v-if="editing"
           circle
           size="small"
-          type="primary"
           :disabled="!dirty"
           :loading="saving"
           :aria-label="translate('common.save')"
@@ -724,6 +727,7 @@ defineExpose({
       </template>
       <template v-if="html">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('htmlPreview.open')"
           circle
           size="small"
@@ -734,6 +738,7 @@ defineExpose({
       </template>
       <template v-if="markdown && !renderMarkdown">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
           size="small"
@@ -742,6 +747,7 @@ defineExpose({
           ><MarIcon name="view"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
           size="small"
@@ -753,6 +759,7 @@ defineExpose({
     </template>
     <template #secondary-actions>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
@@ -764,12 +771,12 @@ defineExpose({
         <MarIcon name="download" />
       </el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview')"
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
         size="small"
-        type="primary"
         @click="requestClose"
       >
         <MarIcon name="close" />
@@ -777,6 +784,7 @@ defineExpose({
     </template>
     <template #mobile-actions>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
         data-file-symbol-toggle
@@ -787,6 +795,7 @@ defineExpose({
         ><MarIcon name="search"
       /></el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('fileEditor.symbols')"
         v-if="codeEditorEnabled"
         circle
@@ -796,6 +805,7 @@ defineExpose({
         ><MarIcon name="symbols"
       /></el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         v-if="canWrite"
         circle
@@ -805,11 +815,11 @@ defineExpose({
         ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else
       /></el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('common.save')"
         v-if="editing"
         circle
         size="small"
-        type="primary"
         :disabled="!dirty"
         :loading="saving"
         :aria-label="translate('common.save')"
@@ -819,6 +829,7 @@ defineExpose({
       /></el-button>
       <template v-if="html">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('htmlPreview.open')"
           circle
           size="small"
@@ -829,6 +840,7 @@ defineExpose({
       </template>
       <template v-if="markdown && !renderMarkdown">
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
           size="small"
@@ -837,6 +849,7 @@ defineExpose({
           ><MarIcon name="view"
         /></el-button>
         <el-button
+          class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
           size="small"
@@ -846,6 +859,7 @@ defineExpose({
         /></el-button>
       </template>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
         :loading="downloading"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
@@ -857,12 +871,12 @@ defineExpose({
         <MarIcon name="download" />
       </el-button>
       <el-button
+        class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle
         size="small"
-        type="primary"
         @click="requestClose"
       >
         <MarIcon name="close" />
