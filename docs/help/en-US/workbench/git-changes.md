@@ -1,6 +1,6 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-24
 ---
 
 # Git Changes and Diff
@@ -13,7 +13,7 @@ Git Changes shows the current root repository, initialized submodules, and every
 
 On mobile, drag anywhere on the minimap to move through the file. The bottom-right action group uses two rows: file and change navigation above, then find, download, and close below.
 
-Select a text file to open its working-tree Diff in the unified file-tab strip. Ctrl-click (Command-click on macOS) the file to open the same Diff tab in a separate window through the standard file preview/editor flow, then use the previous/next controls and minimap to navigate changes. Ctrl/Cmd-click a recognized code symbol or import path in a Working Tree Diff to request controlled navigation; deleted lines are not navigable. Ctrl/Cmd+E opens the corresponding working-tree text tab for editing, while a History Diff opens only that commit's read-only text tab. Diff, fallback preview, and restore actions in a linked worktree operate on that physical worktree rather than a same-named path in the current Workspace. Images, PDF, Office, media, and other non-text files do not use an unreliable code comparison. Select **Open file preview** to view the file from the corresponding worktree. From Git History, the same action opens the version after the selected commit.
+Select a text file to open its working-tree Diff in the unified file-tab strip. Ctrl-click (Command-click on macOS) the file to open the same content in a separate window through the standard file preview/editor flow, then use the previous/next controls and minimap to navigate changes. Ctrl/Cmd-click a recognized code symbol or import path in a Working Tree Diff to request controlled navigation; deleted lines are not navigable. Ctrl/Cmd+E opens the corresponding working-tree text tab for editing, while a History Diff opens only that commit's read-only text tab. Diff, fallback preview, and restore actions in a linked worktree operate on that physical worktree rather than a same-named path in the current Workspace. Supported images, PDF, Office, and media formats open directly in file preview without an extra **Open file preview** step. Git Changes reads the corresponding worktree version; Git History reads the selected commit, never the current worktree. Unknown binary files and unsupported formats retain file information and fallback actions.
 
 You may revert tracked changes or delete untracked files after confirmation. These actions affect the real Workspace and cannot be undone by MyAgentRoam. Stage, commit, branch, and remote operations remain available through your normal Git tools or terminal.
 

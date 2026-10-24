@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-24
 ---
 
 # Browse, Search, and Manage Files
@@ -41,7 +41,7 @@ In ordinary Work mode, chat file and image links support absolute paths readable
 - Long file name: hover the tree row to confirm its full relative path before moving or deleting it.
 - Read-only preview: old or write-incompatible Nodes, truncated text, Diff, and Git History content remain read-only.
 - Save conflict: an Agent, terminal, or another window changed the file. Discard the local edit, reopen the file, review the latest content, and edit again; the workbench does not force an overwrite.
-- A Diff opens instead of a file: chat file changes and Git Changes open Diff by default. Non-text files provide **Open file preview** instead.
+- A Diff opens instead of a file: chat file changes and Git text changes open Diff by default. Supported images, audio, video, PDF, and Office formats in Git Changes / Git History open directly in a preview of the corresponding worktree or selected commit. Unknown binary files and unsupported formats retain fallback actions.
 - Office preview fails: verify that the file is DOCX, XLSX, or PPTX rather than a legacy file with a renamed extension, then use Download if needed.
 - Dragging has no effect: refresh the tree and confirm the destination is writable and inside the Workspace.
 - A new tab is blocked: allow pop-ups for MyAgentRoam. Executable HTML on the Console origin may use the current account's existing permissions.
