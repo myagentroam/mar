@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
+import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
 import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
@@ -33,8 +34,8 @@ const items = ref<WorkspaceQueueItem[]>([
     createdAt: 1
   }
 ]);
-const editingQueueItemId = ref<string>();
-const editingContent = ref('');
+const queueEditor = createComposerQueueService();
+const { editingQueueItemId, editingContent } = queueEditor;
 const goal = ref<RunnerCommandState | undefined>(
   new URLSearchParams(location.search).has('work-item-editing')
     ? {
@@ -56,14 +57,13 @@ const goal = ref<RunnerCommandState | undefined>(
 );
 function editQueueItem(item: WorkspaceQueueItem) {
   record('edit');
-  editingQueueItemId.value = item.queueItemId;
-  editingContent.value = item.content;
+  queueEditor.startEditing(item);
 }
 function saveQueueItem(id: string) {
   items.value = items.value.map((item) =>
     item.queueItemId === id ? { ...item, content: editingContent.value } : item
   );
-  editingQueueItemId.value = undefined;
+  queueEditor.finishEditing();
 }
 function saveGoal(objective: string) {
   goal.value = { ...goal.value!, goal: { ...goal.value!.goal!, objective } };
@@ -170,6 +170,7 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :editing-content="editingContent"
       :goal="goal"
       @edit="editQueueItem"
+      @cancel-edit="queueEditor.finishEditing"
       @update-content="editingContent = $event"
       @save="saveQueueItem"
       @save-goal="saveGoal"

@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-24
 ---
 
 # Messages and Composer
@@ -22,6 +22,8 @@ During the short sending window, the input stays visible but is temporarily read
 In an existing ordinary session, a timeout or unknown network outcome preserves the draft. Sending the unchanged draft again reuses the original message identity. Within its bounded in-process retention window, Node returns the original acceptance result without executing again, even if that Run has ended. After a Node restart, record eviction, or explicit history clearing/session deletion, a manual retry can still execute twice; check the session history and actual outcome first. This guarantee does not cover the first request that creates a session and is not permanent deduplication.
 
 On desktop, drag a queued message to change its order. On mobile, press and hold a queue item, then choose Move up or Move down.
+
+While editing a queued message, press `Esc` to discard unsaved changes and exit that editor without stopping the run.
 
 When you select **Steer** for a queued message, Node rechecks its actual state: during active work it delivers the message with priority as gentle additional information (steer); when idle it sends normally. It uses the latest saved text without adding another wrapper to an existing steer. The page still shows only the body and resources. Automatic delivery in queue order does not become steer, and special inputs such as Goal activation and automatic Goal continuation retain their existing semantics.
 
@@ -84,13 +86,13 @@ A Goal's wall-clock time starts with its first objective and does not reset on e
 
 ### Steer, update, and exit
 
-| Action        | Effect                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Enter / Send  | Queues the message to run in the order received after the Goal exits and the current turn finishes; it does not steer the active Goal |
-| Ctrl+Enter    | Stops the current execution and sends with priority, preserving other queued messages and the objective                               |
-| Edit → Update | Changes the objective, stops the current execution, and immediately restarts with the revised objective; Cancel discards the edit     |
-| Remove        | Exits Goal and stops automatic continuation, but **does not stop the current execution**                                              |
-| Stop run      | Interrupts the current run and removes the Goal; no separate Remove action is needed                                                  |
+| Action        | Effect                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Enter / Send  | Queues the message to run in the order received after the Goal exits and the current turn finishes; it does not steer the active Goal      |
+| Ctrl+Enter    | Stops the current execution and sends with priority, preserving other queued messages and the objective                                    |
+| Edit → Update | Changes the objective, stops the current execution, and immediately restarts with the revised objective; Cancel or `Esc` discards the edit |
+| Remove        | Exits Goal and stops automatic continuation, but **does not stop the current execution**                                                   |
+| Stop run      | Interrupts the current run and removes the Goal; no separate Remove action is needed                                                       |
 
 Regular queued messages do not run between Goal continuation turns, during continuation preparation, or during failed-execution retry waits. They run after the Goal completes, finally blocks, or is removed, once the current turn finishes. Stopping the run still pauses the queue. To intervene immediately, use `Ctrl+Enter` or a queue item's **Execute now** action; other regular queued messages keep waiting for the Goal to exit.
 

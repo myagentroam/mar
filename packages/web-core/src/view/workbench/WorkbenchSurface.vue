@@ -542,6 +542,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @drag-start="page.draggingQueueItemId = $event"
                     @reorder="page.reorderWorkspaceQueue"
                     @edit="page.composerQueueService.startEditing($event)"
+                    @cancel-edit="page.composerQueueService.finishEditing()"
                     @update-content="page.editingQueueContent = $event"
                     @save="page.saveQueuedMessage"
                     @execute="

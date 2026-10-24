@@ -288,6 +288,7 @@ onBeforeUnmount(() => {
             @drag-start="(id) => (chat.queueEditor.draggingQueueItemId.value = id)"
             @reorder="chat.queueActions.reorder"
             @edit="chat.queueEditor.startEditing"
+            @cancel-edit="chat.queueEditor.finishEditing"
             @update-content="(value) => (editingContent = value)"
             @save="chat.queueActions.save"
             @execute="chat.queueActions.execute"
