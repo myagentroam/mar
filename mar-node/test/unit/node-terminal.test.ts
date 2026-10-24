@@ -86,6 +86,97 @@ function fakeFactory(output: {
 }
 
 describe('Node Admin Terminal', () => {
+  it.each([
+    { afterSequence: undefined, sequences: [2, 3], gap: true },
+    { afterSequence: 0, sequences: [2, 3], gap: true },
+    { afterSequence: 1, sequences: [2, 3], gap: false },
+    { afterSequence: 2, sequences: [3], gap: false },
+    { afterSequence: 3, sequences: [], gap: false },
+    { afterSequence: Number.MAX_SAFE_INTEGER, sequences: [], gap: false }
+  ])(
+    'preserves replay and GAP for safe cursor $afterSequence',
+    async ({ afterSequence, sequences, gap }) => {
+      const holder: { value?: FakePty } = {};
+      const manager = new TerminalManager({
+        platform: 'linux',
+        ptyFactory: fakeFactory(holder),
+        maxReplayBytes: 2,
+        terminate: async () => undefined
+      });
+      try {
+        const terminal = manager.open({ cwd: '/workspace' });
+        holder.value!.emitData('a');
+        holder.value!.emitData('b');
+        holder.value!.emitData('c');
+        const frames = [
+          ...(gap ? [{ type: 'error', terminalId: terminal.id, code: 'TERMINAL_REPLAY_GAP' }] : []),
+          ...sequences.map((sequence) => ({
+            type: 'output',
+            terminalId: terminal.id,
+            sequence,
+            data: sequence === 2 ? 'b' : 'c'
+          }))
+        ];
+        const attachment = manager.authorizeAttach({ terminalId: terminal.id, afterSequence });
+        expect(attachment.latestSequence).toBe(3);
+        expect(attachment.frames).toEqual(frames);
+        expect(
+          manager.synchronizeAttachment({
+            attachmentId: attachment.attachmentId,
+            terminalId: terminal.id,
+            afterSequence
+          })
+        ).toEqual({ active: true, frames });
+        expect(
+          manager.synchronizeAttachment({
+            attachmentId: attachment.attachmentId,
+            terminalId: terminal.id,
+            afterSequence: 3
+          })
+        ).toEqual({ active: true, frames: [] });
+        manager.detach(attachment.attachmentId);
+        const resumed = manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 3 });
+        expect(resumed.frames).toEqual([]);
+      } finally {
+        await manager.shutdown();
+      }
+    }
+  );
+
+  it.each([Number.MAX_SAFE_INTEGER + 1, -1, 0.5, NaN, Infinity, -Infinity, '1', null])(
+    'rejects invalid replay cursor %s without allocating or invalidating an attachment',
+    async (afterSequence) => {
+      const manager = new TerminalManager({
+        platform: 'linux',
+        ptyFactory: fakeFactory({}),
+        terminate: async () => undefined
+      });
+      try {
+        const terminal = manager.open({ cwd: '/workspace' });
+        expect(() =>
+          manager.authorizeAttach({ terminalId: terminal.id, afterSequence })
+        ).toThrowError(new Error('TERMINAL_REPLAY_INVALID'));
+        const attachment = manager.authorizeAttach({ terminalId: terminal.id });
+        expect(() =>
+          manager.synchronizeAttachment({
+            attachmentId: attachment.attachmentId,
+            terminalId: terminal.id,
+            afterSequence
+          })
+        ).toThrowError(new Error('TERMINAL_REPLAY_INVALID'));
+        expect(
+          manager.synchronizeAttachment({
+            attachmentId: attachment.attachmentId,
+            terminalId: terminal.id,
+            afterSequence: 0
+          })
+        ).toEqual({ active: true, frames: [] });
+      } finally {
+        await manager.shutdown();
+      }
+    }
+  );
+
   it.each([1001, 1006, 4003])(
     'preserves Terminal lifecycle and idle collection after control close %s',
     async (code) => {
