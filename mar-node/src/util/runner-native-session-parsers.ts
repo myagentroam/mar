@@ -1,20 +1,13 @@
+import { nativeTranscriptAdapter } from '../native-transcript-adapters.js';
+import type { NativeTranscriptProjection } from '../native-transcript-model.js';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import type { NodeAgentSession } from '../database.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../runtime-model.js';
 import type {
   NativeSessionHistory,
   NativeTranscriptImageAttachment,
   NativeTranscriptItem
-} from '../native-session-history.js';
-import { stripClaudePlanTag } from '../runner-command-engine.js';
-import { publicGoalHistoryText } from '../service/goal-runtime.js';
-import { parseCodexComposerImageMarkers } from '../runner/codex/composer-image-markers.js';
-import { normalizeCodexTool } from '../runner/codex/tool-normalizer.js';
-import {
-  normalizeClaudeTool,
-  restoreClaudeSubagentTitles
-} from '../runner/claude/tool-normalizer.js';
+} from '../native-transcript-model.js';
 import { compactRunnerText, isPlainRecord, nativePageEnd } from './node-operation-parsers.js';
 
 export interface SessionContextUsage {
@@ -36,20 +29,6 @@ export interface ConversationHistoryPage {
   readonly deferredOlderHistory?: boolean;
 }
 
-export function extractId(result: unknown, key: 'thread' | 'turn'): string {
-  if (
-    typeof result === 'object' &&
-    result !== null &&
-    key in result &&
-    typeof (result as Record<string, unknown>)[key] === 'object' &&
-    (result as Record<string, unknown>)[key] !== null &&
-    typeof ((result as Record<string, unknown>)[key] as Record<string, unknown>)['id'] === 'string'
-  ) {
-    return ((result as Record<string, unknown>)[key] as Record<string, unknown>)['id'] as string;
-  }
-  throw new Error(`CODEX_${key.toUpperCase()}_ID_MISSING`);
-}
-
 export async function settleWithin<T>(
   promise: Promise<T>,
   milliseconds: number
@@ -68,62 +47,6 @@ export async function settleWithin<T>(
   }
 }
 
-export function extractCodexThreads(result: unknown): readonly {
-  readonly id: string;
-  readonly source: string | undefined;
-  readonly derived: boolean;
-  readonly cwd: unknown;
-  readonly title: string | undefined;
-  readonly titleOrigin: 'OFFICIAL' | 'PREVIEW' | undefined;
-}[] {
-  if (typeof result !== 'object' || result === null || !('data' in result)) return [];
-  const data = (result as { data?: unknown }).data;
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((entry) => {
-    if (typeof entry !== 'object' || entry === null) return [];
-    const value = entry as {
-      id?: unknown;
-      sourceKind?: unknown;
-      source?: string | { kind?: unknown } | unknown;
-      cwd?: unknown;
-      name?: unknown;
-      preview?: unknown;
-    };
-    if (typeof value.id !== 'string') return [];
-    const source =
-      typeof value.sourceKind === 'string'
-        ? value.sourceKind
-        : typeof value.source === 'string'
-          ? value.source
-          : typeof value.source === 'object' &&
-              value.source !== null &&
-              typeof (value.source as { kind?: unknown }).kind === 'string'
-            ? ((value.source as { kind: string }).kind as string)
-            : undefined;
-    const sourceRecord = isPlainRecord(value.source) ? value.source : undefined;
-    const derived =
-      source === 'subagent' ||
-      sourceRecord?.kind === 'subagent' ||
-      isPlainRecord(sourceRecord?.subagent) ||
-      isPlainRecord(sourceRecord?.subAgent);
-    const name = typeof value.name === 'string' ? value.name.trim() : '';
-    const preview = typeof value.preview === 'string' ? value.preview.trim() : '';
-    const title = name || preview || undefined;
-    const titleOrigin = name ? 'OFFICIAL' : preview ? 'PREVIEW' : undefined;
-    return [{ id: value.id, source, derived, cwd: value.cwd, title, titleOrigin }];
-  });
-}
-
-export function codexThreadCwd(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) throw new Error('CODEX_THREAD_CWD_INVALID');
-  if (!value.startsWith('file:')) return value;
-  try {
-    return fileURLToPath(value);
-  } catch {
-    throw new Error('CODEX_THREAD_CWD_INVALID');
-  }
-}
-
 export function isWithinWorkspace(cwd: string, workspacePath: string): boolean {
   const normalize = (value: string) => {
     const compact = value.replace(/[\\/]+/g, '/').replace(/\/$/, '');
@@ -133,48 +56,6 @@ export function isWithinWorkspace(cwd: string, workspacePath: string): boolean {
   const normalizedWorkspace = normalize(workspacePath);
   if (normalizedCwd === normalizedWorkspace) return true;
   return normalizedCwd.startsWith(`${normalizedWorkspace}/`);
-}
-
-export function claudeDiscoveredSession(
-  value: unknown,
-  fallbackCwd: string
-):
-  | {
-      readonly externalSessionId: string;
-      readonly cwd: string;
-      readonly title?: string;
-      readonly titleOrigin?: 'OFFICIAL' | 'PREVIEW';
-    }
-  | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const record = value as Record<string, unknown>;
-  if (record.isSidechain === true) return undefined;
-  const externalSessionId =
-    typeof record.sessionId === 'string'
-      ? record.sessionId
-      : typeof record.id === 'string'
-        ? record.id
-        : undefined;
-  if (externalSessionId === undefined || externalSessionId.length === 0) return undefined;
-  const officialTitle = [record.customTitle, record.firstPrompt, record.title].find(
-    (candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0
-  );
-  const previewTitle =
-    typeof record.summary === 'string' && record.summary.trim().length > 0
-      ? record.summary
-      : undefined;
-  const title = officialTitle ?? previewTitle;
-  const cwd = typeof record.cwd === 'string' && record.cwd.length > 0 ? record.cwd : fallbackCwd;
-  return {
-    externalSessionId,
-    cwd,
-    ...(title === undefined
-      ? {}
-      : {
-          title: title.slice(0, 80),
-          titleOrigin: officialTitle === undefined ? ('PREVIEW' as const) : ('OFFICIAL' as const)
-        })
-  };
 }
 
 export function latestNativeActivity(history: NativeSessionHistory): number {
@@ -224,12 +105,8 @@ export function nativeConversationPage(
   const nativeTurnIds = nativeTranscriptTurnIds(session.id, nativeTurns);
   const end = nativePageEnd(effectiveCursor, session.id, nativeTurns.length);
   const start = Math.max(0, end - limit);
-  const knownClaudeSubagents = restoreClaudeSubagentTitles(
-    session.runner === 'claude-code'
-      ? history.items
-          .slice(0, nativeTurns[start]?.[0]?.index ?? 0)
-          .filter((entry) => entry.kind === 'tool_call')
-      : []
+  const projection = nativeTranscriptAdapter(session.runner)!.createProjection(
+    history.items.slice(0, nativeTurns[start]?.[0]?.index ?? 0)
   );
   const nativePageTurns = nativeTurns
     .slice(start, end)
@@ -240,8 +117,7 @@ export function nativeConversationPage(
       const matchedClientMessageId =
         nativeUser?.kind === 'message'
           ? nativeUserClientMessageId(
-              session.runner,
-              nativeUser,
+              projection.userText(nativeUser.text),
               nativeUser.createdAt,
               runtimeTurns
             )
@@ -261,7 +137,7 @@ export function nativeConversationPage(
           turnId,
           runtimeTurns,
           registerImages,
-          knownClaudeSubagents
+          projection
         ),
         runId: runtimeTurn?.runId ?? null
       }));
@@ -302,7 +178,7 @@ export function nativeConversationPage(
         model: null,
         effort: null,
         access: null,
-        ...(after === undefined || session.runner !== 'claude-code'
+        ...(after === undefined
           ? {}
           : {
               rewind: {
@@ -365,7 +241,7 @@ function runtimeTurnClientMessageId(turn: NodeConversationTurn): string | undefi
 function lastNativeItemId(
   entries: readonly { readonly entry: NativeTranscriptItem; readonly index: number }[]
 ): string | undefined {
-  return entries.findLast(({ entry }) => entry.nativeId !== undefined)?.entry.nativeId;
+  return entries.findLast(({ entry }) => entry.rewindAfter !== undefined)?.entry.rewindAfter;
 }
 
 function nativeTranscriptTurnIds(
@@ -453,55 +329,24 @@ function nativeTranscriptConversationItem(
   registerImages: (
     images: readonly NativeTranscriptImageAttachment[]
   ) => readonly Record<string, unknown>[],
-  knownClaudeSubagents: Map<string, string>
+  projection: NativeTranscriptProjection
 ): NodeConversationItem {
   const time = entry.createdAt;
   const isToolCall = entry.kind === 'tool_call';
   const isUnknown = entry.kind === 'unknown';
   const isReasoning = entry.kind === 'reasoning_summary';
   const isContextCompaction = entry.kind === 'context_compaction';
-  const normalizedClaudeTool =
-    session.runner === 'claude-code' && isToolCall
-      ? normalizeClaudeTool(
-          entry.toolName,
-          entry.input,
-          entry.outputSummary,
-          entry.failed,
-          entry.inputTruncated || entry.outputTruncated,
-          knownClaudeSubagents,
-          entry.claudeResult
-        )
-      : undefined;
-  const normalizedCodexTool =
-    session.runner === 'codex' && isToolCall
-      ? normalizeCodexTool({
-          name: entry.toolName,
-          namespace: 'codex',
-          rawInput: entry.input,
-          inputSummary: entry.inputSummary,
-          outputSummary: entry.outputSummary,
-          truncated: entry.inputTruncated || entry.outputTruncated,
-          ...(entry.imageAttachments === undefined ? {} : { attachments: entry.imageAttachments })
-        })
-      : undefined;
-  const userInputQuestions =
-    session.runner === 'claude-code' &&
-    isToolCall &&
-    entry.toolName === 'AskUserQuestion' &&
-    isPlainRecord(entry.input)
-      ? claudeUserInputQuestions(entry.input)
-      : [];
+  const normalizedTool = isToolCall ? projection.normalizeTool(entry) : undefined;
+  const userInputQuestions = isToolCall ? projection.userInputQuestions(entry) : [];
   const isUserInputRequest = userInputQuestions.length > 0;
   const clientMessageId =
     entry.kind === 'message' && entry.role === 'USER'
-      ? nativeUserClientMessageId(session.runner, entry, time, runtimeTurns)
+      ? nativeUserClientMessageId(projection.userText(entry.text), time, runtimeTurns)
       : null;
-  // Claude tagged Plan Mode strips the injected planning instruction label from user content
-  // and normalizes a complete <proposed_plan> Agent response into a plan card.
   const entryText =
     entry.kind === 'message'
       ? entry.role === 'USER'
-        ? nativeUserMessageText(session.runner, entry.text)
+        ? projection.userText(entry.text)
         : entry.text
       : '';
   const runtimeUserPayload =
@@ -512,7 +357,7 @@ function nativeTranscriptConversationItem(
       ? registerImages(entry.imageAttachments)
       : [];
   const planText =
-    entry.kind === 'message' && entry.role !== 'USER' ? claudePlanText(entryText) : undefined;
+    entry.kind === 'message' && entry.role !== 'USER' ? projection.planText(entryText) : undefined;
   const item: NodeConversationItem = {
     id: `${turnId}:item:${itemIdentity}`,
     ...(entry.sourceItemId === undefined ? {} : { sourceItemId: entry.sourceItemId }),
@@ -529,7 +374,7 @@ function nativeTranscriptConversationItem(
         : isContextCompaction
           ? 'context_compaction'
           : isToolCall
-            ? (normalizedClaudeTool?.kind ?? normalizedCodexTool?.kind ?? 'tool_call')
+            ? (normalizedTool?.kind ?? 'tool_call')
             : isUnknown
               ? 'unknown'
               : entry.kind === 'message' && entry.role === 'USER'
@@ -549,17 +394,16 @@ function nativeTranscriptConversationItem(
           ? { phase: entry.phase, summary: entry.summary }
           : isToolCall
             ? {
-                ...(normalizedClaudeTool?.payload ??
-                  normalizedCodexTool?.payload ?? {
-                    namespace: session.runner,
-                    toolName: entry.toolName,
-                    title: entry.toolName,
-                    inputSummary: entry.inputSummary,
-                    outputSummary: entry.outputSummary,
-                    progressLabel: null,
-                    errorCode: entry.failed ? 'TOOL_EXECUTION_FAILED' : null,
-                    truncated: entry.inputTruncated || entry.outputTruncated
-                  }),
+                ...(normalizedTool?.payload ?? {
+                  namespace: session.runner,
+                  toolName: entry.toolName,
+                  title: entry.toolName,
+                  inputSummary: entry.inputSummary,
+                  outputSummary: entry.outputSummary,
+                  progressLabel: null,
+                  errorCode: entry.failed ? 'TOOL_EXECUTION_FAILED' : null,
+                  truncated: entry.inputTruncated || entry.outputTruncated
+                }),
                 ...(entry.toolCategory === undefined ? {} : { toolCategory: entry.toolCategory }),
                 ...(entry.imageAttachments === undefined
                   ? {}
@@ -585,12 +429,11 @@ function nativeTranscriptConversationItem(
 }
 
 /**
- * Claude JSONL does not retain browser request IDs. While the Node process is alive, match current
+ * Native history may not retain browser request IDs. While the Node process is alive, match current
  * runtime user messages by content and creation time so native history replaces the optimistic Turn.
  */
 export function nativeUserClientMessageId(
-  runner: NodeAgentSession['runner'],
-  entry: Extract<NativeSessionHistory['items'][number], { readonly kind: 'message' }>,
+  text: string,
   createdAt: number | null,
   runtimeTurns: readonly NodeConversationTurn[]
 ): string | null {
@@ -601,9 +444,7 @@ export function nativeUserClientMessageId(
     const payload = user.payload;
     const clientMessageId =
       typeof payload.clientMessageId === 'string' ? payload.clientMessageId : null;
-    // Tagged Plan Mode instruction labels exist only in native transcripts; runtime bubbles retain the original content.
-    if (clientMessageId === null || payload.text !== nativeUserMessageText(runner, entry.text))
-      continue;
+    if (clientMessageId === null || payload.text !== text) continue;
     const runtimeCreatedAt = user.startedAt ?? turn.startedAt;
     candidates.push({ clientMessageId, createdAt: runtimeCreatedAt ?? null });
   }
@@ -629,76 +470,4 @@ function runtimeUserMessagePayload(
     return user.payload;
   }
   return undefined;
-}
-
-function nativeUserMessageText(runner: NodeAgentSession['runner'], text: string): string {
-  const withoutPlan = runner === 'claude-code' ? stripClaudePlanTag(text) : text;
-  const normalized = publicGoalHistoryText(withoutPlan);
-  if (runner !== 'codex') return normalized;
-  return parseCodexComposerImageMarkers(normalized).text;
-}
-
-/**
- * Normalize the documented App Server `thread/read(includeTurns: true)`
- * result.  Only items with a user-visible Workbench representation are kept;
- * raw protocol envelopes are deliberately never exposed to Web.
- */
-export function claudePlanText(text: string): string | undefined {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('<proposed_plan>') || !/<\/proposed_plan>\s*$/.test(trimmed))
-    return undefined;
-  const plan = trimmed
-    .slice('<proposed_plan>'.length)
-    .replace(/<\/proposed_plan>\s*$/, '')
-    .trim();
-  return plan.length > 0 ? plan : undefined;
-}
-
-export function claudeUserInputQuestions(value: Record<string, unknown>): readonly {
-  readonly id: string;
-  readonly prompt: string;
-  readonly input: 'SINGLE_SELECT' | 'MULTI_SELECT' | 'SHORT_TEXT';
-  readonly options: readonly {
-    readonly value: string;
-    readonly label: string;
-    readonly description: string | null;
-  }[];
-  readonly allowOther: boolean;
-  readonly multiSelect: boolean;
-}[] {
-  if (!Array.isArray(value.questions) || value.questions.length === 0 || value.questions.length > 4)
-    return [];
-  const questions = value.questions.map((raw, index) => {
-    if (!isPlainRecord(raw) || typeof raw.question !== 'string') return undefined;
-    const options = Array.isArray(raw.options)
-      ? raw.options.flatMap((option) => {
-          if (!isPlainRecord(option) || typeof option.label !== 'string') return [];
-          const label = compactRunnerText(option.label, 500);
-          return label.length === 0
-            ? []
-            : [
-                {
-                  value: label,
-                  label,
-                  description:
-                    typeof option.description === 'string'
-                      ? compactRunnerText(option.description, 1_000)
-                      : null
-                }
-              ];
-        })
-      : [];
-    const multiSelect = raw.multiSelect === true;
-    return {
-      id: `claude-question-${index}`,
-      prompt: compactRunnerText(raw.question, 5_000),
-      input: options.length === 0 ? 'SHORT_TEXT' : multiSelect ? 'MULTI_SELECT' : 'SINGLE_SELECT',
-      options,
-      allowOther: true,
-      multiSelect
-    } as const;
-  });
-  return questions.some((question) => question === undefined)
-    ? []
-    : (questions as NonNullable<(typeof questions)[number]>[]);
 }

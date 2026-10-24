@@ -23,6 +23,45 @@ const capabilities: NodeCapabilities = {
 };
 
 describe('Node Runner registry', () => {
+  it('broadcasts identity migration to every registered Runner, including unavailable and test Runners', () => {
+    const runners = [
+      new CodexRunner(),
+      new ClaudeCodeRunner(),
+      new OpenCodeRunner(),
+      new MarAgentRunner(),
+      new FakeTestRunner(new FakeRunner())
+    ];
+    const migrations = runners.map((runner) => vi.spyOn(runner, 'migrateSessionIdentity'));
+    const registry = new RunnerRegistry(runners);
+
+    registry.migrateSessionIdentity('bootstrap', 'native');
+
+    for (const migrate of migrations)
+      expect(migrate).toHaveBeenCalledExactlyOnceWith('bootstrap', 'native');
+    expect(new RunnerRegistry([]).migrateSessionIdentity('bootstrap', 'native')).toBeUndefined();
+  });
+
+  it('keeps the default identity migration a synchronous no-op for MAR Agent and Fake', () => {
+    for (const runner of [new MarAgentRunner(), new FakeTestRunner(new FakeRunner())]) {
+      expect(runner.migrateSessionIdentity('bootstrap', 'native')).toBeUndefined();
+      expect(runner.migrateSessionIdentity('native', 'native')).toBeUndefined();
+    }
+  });
+
+  it('propagates identity migration errors without rollback or continuing publication', () => {
+    const first = new CodexRunner();
+    const second = new ClaudeCodeRunner();
+    const failure = new Error('MIGRATION_FAILED');
+    vi.spyOn(first, 'migrateSessionIdentity').mockImplementation(() => {
+      throw failure;
+    });
+    const later = vi.spyOn(second, 'migrateSessionIdentity');
+    expect(() => new RunnerRegistry([first, second]).migrateSessionIdentity('old', 'new')).toThrow(
+      failure
+    );
+    expect(later).not.toHaveBeenCalled();
+  });
+
   it.each([
     { name: 'mar_goal', tools: ['get_goal', 'update_goal'] },
     {

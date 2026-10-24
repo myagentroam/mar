@@ -200,7 +200,8 @@ const emptyConversationFixture = {
     return () =>
       h('main', { style: 'display: flex; flex-direction: column; height: 100dvh' }, [
         h('header', [
-          h('button', { onClick: () => (hasTurns.value = true) }, 'Show first message')
+          h('button', { onClick: () => (hasTurns.value = true) }, 'Show first message'),
+          h('button', { onClick: () => (hasTurns.value = false) }, 'Show empty draft')
         ]),
         h(
           ConversationScroll,
@@ -355,7 +356,11 @@ const resourceDetailsFixture = {
             label: 'Fixture Node',
             connected: true,
             manageable: true,
-            capabilities: { codex: { available: true } }
+            capabilities: {
+              codex: { available: true },
+              claudeCode: { available: true },
+              openCode: { available: true }
+            }
           },
           nodeRefreshable: true,
           usageDisabledReason: () => '',

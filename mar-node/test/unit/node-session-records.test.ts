@@ -271,6 +271,9 @@ describe('Node session records and external discovery merge', () => {
           workspaceId: workspace.id,
           runner: 'codex',
           cwd: workspace.path,
+          model: 'test-model',
+          effort: 'high',
+          access: 'read-only',
           parentSessionId
         })) as { session: NodeAgentSession };
       const child = await create('coordinator');

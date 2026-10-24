@@ -69,7 +69,7 @@ async function checkUtility(
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Queue and Goal inline edits keep their display typography in ${theme}`, async ({
     browser
-  }) => {
+  }, testInfo) => {
     for (const width of [1280, 390]) {
       const context = await browser.newContext({
         viewport: { width, height: 844 },
@@ -82,6 +82,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           `${fixture.url}visual-alignment.html?utility-interaction&work-item-editing&theme=${theme}`
         );
         const queue = page.locator('.composer-queue');
+        const heading = queue.locator('.composer-queue-heading strong');
         for (const custom of [false, true]) {
           if (custom) {
             await queue.evaluate((element) => {
@@ -89,6 +90,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               (element as HTMLElement).style.setProperty('--mar-font-size-input', '18px');
             });
           }
+          const colors = custom ? await customPalette(page) : await palette(page);
+          await expect(heading).toHaveCSS('color', colors.secondary);
+          await expect(heading).toHaveCSS('font-weight', '500');
+          await expect(queue.locator('.queue-item-content > p')).toHaveCSS('color', colors.primary);
+          if (!custom)
+            await queue.screenshot({ path: testInfo.outputPath(`pending-work-${width}.png`) });
           for (const kind of ['queue', 'goal']) {
             const display = queue.locator(
               kind === 'queue' ? '.queue-item-content > p' : '.goal-objective'

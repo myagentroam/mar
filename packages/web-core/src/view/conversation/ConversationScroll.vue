@@ -2,7 +2,16 @@
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onMounted,
+  onUpdated,
+  ref,
+  watch
+} from 'vue';
 
 const props = defineProps<{
   readonly hasOlder: boolean;
@@ -23,9 +32,14 @@ const emit = defineEmits<{
   reload: [];
 }>();
 
+const region = ref<HTMLElement>();
 const element = ref<HTMLElement>();
 const content = ref<HTMLElement>();
 let contentObserver: ResizeObserver | undefined;
+let renderedEmpty = false;
+let previousComposerRect: DOMRect | undefined;
+let composerAnimation: Animation | undefined;
+let motionPreference: MediaQueryList | undefined;
 const reloading = ref(false);
 const olderAction = ref<'retry' | 'load'>();
 const showEmptyPrompt = computed(
@@ -76,7 +90,61 @@ async function loadOlder(): Promise<void> {
   if (!props.loadingOlder) olderAction.value = undefined;
 }
 
+function composerHost(): HTMLElement | undefined {
+  const sibling = region.value?.nextElementSibling;
+  return sibling instanceof HTMLElement && sibling.classList.contains('composer-host')
+    ? sibling
+    : undefined;
+}
+
+function cancelComposerMotion(): void {
+  composerAnimation?.cancel();
+  composerAnimation = undefined;
+}
+
+function updateMotionPreference(event: MediaQueryListEvent): void {
+  if (event.matches) cancelComposerMotion();
+}
+
+onBeforeUpdate(() => {
+  const composer = composerHost();
+  const motionAllowed =
+    motionPreference?.matches === false &&
+    window.matchMedia('(min-width: 768px)').matches &&
+    !document.hidden;
+  if (showEmptyPrompt.value || !motionAllowed) cancelComposerMotion();
+  previousComposerRect =
+    renderedEmpty && !showEmptyPrompt.value && composer !== undefined && motionAllowed
+      ? composer.getBoundingClientRect()
+      : undefined;
+});
+
+onUpdated(() => {
+  renderedEmpty = showEmptyPrompt.value;
+  const previous = previousComposerRect;
+  previousComposerRect = undefined;
+  const composer = composerHost();
+  if (previous === undefined || composer === undefined) return;
+  const next = composer.getBoundingClientRect();
+  const deltaX = previous.x - next.x;
+  const deltaY = previous.y - next.y;
+  cancelComposerMotion();
+  if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
+  const animation = composer.animate(
+    [{ transform: `translate(${deltaX}px, ${deltaY}px)` }, { transform: 'translate(0px, 0px)' }],
+    { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+  );
+  composerAnimation = animation;
+  const finished = () => {
+    if (composerAnimation === animation) composerAnimation = undefined;
+  };
+  void animation.finished.then(finished, finished);
+});
+
 onMounted(() => {
+  renderedEmpty = showEmptyPrompt.value;
+  motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+  motionPreference.addEventListener('change', updateMotionPreference);
   emit('scrollElement', element.value);
   if (content.value && typeof ResizeObserver !== 'undefined') {
     contentObserver = new ResizeObserver(() => emit('scroll'));
@@ -85,12 +153,14 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   contentObserver?.disconnect();
+  motionPreference?.removeEventListener('change', updateMotionPreference);
+  cancelComposerMotion();
   emit('scrollElement', undefined);
 });
 </script>
 
 <template>
-  <div class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
+  <div ref="region" class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
     <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
       <div
         ref="content"

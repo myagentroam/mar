@@ -33,6 +33,18 @@ import type { NodeDatabase } from '../database.js';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import type { NodeMcpInstallation } from '../mcp/model.js';
 import { safeErrorCode } from '../util/safe-error.js';
+import {
+  parseTemplateVersionManifest,
+  templateContentHash,
+  templateMcpConfigHash,
+  templateManifestHash,
+  isTemplateRuntimeLinkTarget,
+  isReservedTemplateSourcePath,
+  type TemplateVersionManifest,
+  type TemplateManifestFile,
+  type TemplateManifestSymlink,
+  type TemplateManifestMcpServer
+} from './conversation-template-manifest.js';
 import type { HostedConversationStore } from './hosted-conversation-store.js';
 
 interface ConversationTemplateNodeServiceOptions {
@@ -44,55 +56,9 @@ interface ConversationTemplateNodeServiceOptions {
   readonly id?: () => string;
 }
 
-interface PublishedFile {
-  readonly kind: 'FILE';
-  readonly relativePath: string;
-  readonly sourcePath: string;
-  readonly size: number;
-  readonly executable: boolean;
-  readonly sha256: string;
-}
-
-interface PublishedSymlink {
-  readonly kind: 'SYMLINK';
-  readonly relativePath: string;
-  readonly sourcePath: string;
-  readonly size: number;
-  readonly linkTarget: string;
-  readonly targetKind: 'SNAPSHOT' | 'RUNTIME';
-  readonly resolvedTarget: string;
-}
-
+type PublishedFile = TemplateManifestFile & { readonly sourcePath: string };
+type PublishedSymlink = TemplateManifestSymlink & { readonly sourcePath: string };
 type PublishedEntry = PublishedFile | PublishedSymlink;
-
-interface TemplateVersionManifest {
-  readonly schemaVersion: 2;
-  readonly templateId: string;
-  readonly versionId: string;
-  readonly versionNumber: number;
-  readonly draftRevision: number;
-  readonly hostPolicyVersion: 1;
-  readonly publishedByUserId: number;
-  readonly publishedAt: number;
-  readonly sourceWorkspacePath: string;
-  readonly draft: ConversationTemplateDraft;
-  readonly directories: readonly string[];
-  readonly entries: readonly Omit<PublishedEntry, 'sourcePath'>[];
-  readonly contentHash: string;
-  readonly mcpServers: readonly PublishedMcpServer[];
-  readonly mcpConfigHash: string;
-}
-
-interface PublishedMcpServer {
-  readonly id: string;
-  readonly serverName: string;
-  readonly displayName: string;
-  readonly version: string;
-  readonly origin: 'NODE' | 'WORKSPACE';
-  readonly transport: 'STDIO' | 'HTTP';
-  readonly runtime: NodeMcpInstallation['runtime'];
-  readonly configuration: NodeMcpInstallation['configuration'];
-}
 
 const HOST_POLICY_VERSION = 1;
 const FORCED_EXCLUDED_NAMES = new Set([
@@ -108,22 +74,6 @@ const FORCED_EXCLUDED_NAMES = new Set([
 const ROOT_EXCLUDED_NAMES = new Set(['credentials', 'secrets', 'readme.md', 'agents.md']);
 const ROOT_TEMPLATE_INSTRUCTIONS_SOURCE = 'AGENTS.template.md';
 const ROOT_TEMPLATE_INSTRUCTIONS_TARGET = 'AGENTS.md';
-const RUNTIME_LINK_ROOTS = ['/usr', '/bin', '/sbin', '/lib', '/lib64'] as const;
-const RESERVED_SANDBOX_ROOTS = [
-  '/workspace',
-  '/home/mar',
-  '/runtime',
-  '/usr',
-  '/bin',
-  '/sbin',
-  '/lib',
-  '/lib64',
-  '/proc',
-  '/dev',
-  '/run',
-  '/tmp'
-] as const;
-
 /** Handles the four closed template-management operations owned by Node. */
 export class ConversationTemplateNodeService {
   private readonly now: () => number;
@@ -324,7 +274,7 @@ export class ConversationTemplateNodeService {
       const snapshot = await this.collectSnapshot(request.draft);
       const entries = snapshot.entries;
       const mcpServers = this.selectedMcpServers(request.draft);
-      const mcpConfigHash = hashText(JSON.stringify(mcpServers));
+      const mcpConfigHash = templateMcpConfigHash(mcpServers);
       stage = 'ENUMERATING';
       this.updateJob(request.jobId, stage, 'RUNNING');
       await rm(candidate, { recursive: true, force: true });
@@ -371,7 +321,7 @@ export class ConversationTemplateNodeService {
       const versionNumber = this.nextVersionNumber(request.templateId);
       const versionId = this.id();
       const publishedAt = this.now();
-      const contentHash = snapshotContentHash(snapshot.directories, entries);
+      const contentHash = templateContentHash(snapshot.directories, entries);
       const manifest: TemplateVersionManifest = {
         schemaVersion: 2,
         templateId: request.templateId,
@@ -409,7 +359,7 @@ export class ConversationTemplateNodeService {
       stage = 'MANIFEST';
       this.updateJob(request.jobId, stage, 'RUNNING');
       const manifestJson = JSON.stringify(manifest);
-      const manifestHash = hashText(manifestJson);
+      const manifestHash = templateManifestHash(manifestJson);
       await writeFile(join(candidate, 'manifest.json'), `${manifestJson}\n`, { mode: 0o600 });
       await chmod(join(candidate, 'manifest.json'), 0o444);
       sealed = this.options.store.templateVersionDirectory(storageKey);
@@ -510,7 +460,9 @@ export class ConversationTemplateNodeService {
     }));
   }
 
-  private selectedMcpServers(draft: ConversationTemplateDraft): readonly PublishedMcpServer[] {
+  private selectedMcpServers(
+    draft: ConversationTemplateDraft
+  ): readonly TemplateManifestMcpServer[] {
     const effective = new Map(
       this.options.database
         .effectiveMcpInstallations(draft.workspaceId)
@@ -711,17 +663,17 @@ export class ConversationTemplateNodeService {
     const root = this.options.store.templateVersionDirectory(storageKey);
     const manifestText = await readFile(join(root, 'manifest.json'), 'utf8');
     const manifestJson = manifestText.endsWith('\n') ? manifestText.slice(0, -1) : manifestText;
-    if (hashText(manifestJson) !== stringValue(row, 'manifest_hash'))
+    if (templateManifestHash(manifestText) !== stringValue(row, 'manifest_hash'))
       throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-    const manifest = templateVersionManifest(JSON.parse(manifestJson));
+    const manifest = parseTemplateVersionManifest(JSON.parse(manifestJson));
     if (
       manifest.mcpConfigHash !== stringValue(row, 'mcp_config_hash') ||
-      hashText(JSON.stringify(manifest.mcpServers)) !== manifest.mcpConfigHash ||
+      templateMcpConfigHash(manifest.mcpServers) !== manifest.mcpConfigHash ||
       manifest.contentHash !== stringValue(row, 'content_hash') ||
       manifest.entries.length !== numberValue(row, 'file_count') ||
       manifest.entries.reduce((total, entry) => total + entry.size, 0) !==
         numberValue(row, 'total_bytes') ||
-      snapshotContentHash(manifest.directories, manifest.entries) !== manifest.contentHash
+      templateContentHash(manifest.directories, manifest.entries) !== manifest.contentHash
     )
       throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
     const expected = new Map(manifest.entries.map((entry) => [entry.relativePath, entry]));
@@ -1075,10 +1027,8 @@ async function publishedSymlink(
       resolvedTarget: targetRelative
     };
   }
-  const runtimeTarget = RUNTIME_LINK_ROOTS.find(
-    (root) => resolvedTarget === root || within(root, resolvedTarget)
-  );
-  if (runtimeTarget === undefined) throw new Error('CONVERSATION_TEMPLATE_SOURCE_LINK_INVALID');
+  if (!isTemplateRuntimeLinkTarget(resolvedTarget))
+    throw new Error('CONVERSATION_TEMPLATE_SOURCE_LINK_INVALID');
   return {
     kind: 'SYMLINK',
     relativePath,
@@ -1088,145 +1038,6 @@ async function publishedSymlink(
     targetKind: 'RUNTIME',
     resolvedTarget
   };
-}
-
-type ManifestEntry = Omit<PublishedFile, 'sourcePath'> | Omit<PublishedSymlink, 'sourcePath'>;
-
-interface ParsedTemplateVersionManifest {
-  readonly schemaVersion: 2;
-  readonly sourceWorkspacePath: string;
-  readonly directories: readonly string[];
-  readonly entries: readonly ManifestEntry[];
-  readonly contentHash: string;
-  readonly mcpServers: readonly PublishedMcpServer[];
-  readonly mcpConfigHash: string;
-}
-
-function templateVersionManifest(input: unknown): ParsedTemplateVersionManifest {
-  if (!record(input)) throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  const mcpServers = Array.isArray(input['mcpServers'])
-    ? (input['mcpServers'] as readonly PublishedMcpServer[])
-    : undefined;
-  if (
-    mcpServers === undefined ||
-    typeof input['mcpConfigHash'] !== 'string' ||
-    typeof input['contentHash'] !== 'string'
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  if (
-    input['schemaVersion'] !== 2 ||
-    typeof input['sourceWorkspacePath'] !== 'string' ||
-    !Array.isArray(input['directories']) ||
-    !Array.isArray(input['entries'])
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  validateSourceWorkspacePath(input['sourceWorkspacePath']);
-  const directories = input['directories'].map((value) => safeManifestRelativePath(value));
-  if (
-    new Set(directories).size !== directories.length ||
-    directories.includes('inbox') ||
-    directories.includes('output')
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  const entries = input['entries'].map((value) => manifestEntry(value));
-  if (new Set(entries.map((entry) => entry.relativePath)).size !== entries.length)
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  return {
-    schemaVersion: 2,
-    sourceWorkspacePath: input['sourceWorkspacePath'],
-    directories,
-    entries,
-    contentHash: input['contentHash'],
-    mcpServers,
-    mcpConfigHash: input['mcpConfigHash']
-  };
-}
-
-function manifestEntry(input: unknown): ManifestEntry {
-  if (!record(input)) throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  if (input['kind'] === 'FILE') return manifestFile(input, true);
-  if (
-    input['kind'] !== 'SYMLINK' ||
-    typeof input['linkTarget'] !== 'string' ||
-    input['linkTarget'].length === 0 ||
-    input['linkTarget'].includes('\0') ||
-    (input['targetKind'] !== 'SNAPSHOT' && input['targetKind'] !== 'RUNTIME') ||
-    typeof input['resolvedTarget'] !== 'string'
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  const relativePath = safeManifestRelativePath(input['relativePath']);
-  const size = safeNonNegativeInteger(input['size']);
-  const linkTarget = input['linkTarget'];
-  const targetKind = input['targetKind'];
-  const resolvedTarget = input['resolvedTarget'];
-  if (size !== Buffer.byteLength(linkTarget))
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  if (targetKind === 'SNAPSHOT') safeManifestRelativePath(resolvedTarget);
-  else if (
-    !isAbsolute(resolvedTarget) ||
-    !RUNTIME_LINK_ROOTS.some((root) => resolvedTarget === root || within(root, resolvedTarget))
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  return {
-    kind: 'SYMLINK',
-    relativePath,
-    size,
-    linkTarget,
-    targetKind,
-    resolvedTarget
-  };
-}
-
-function manifestFile(input: unknown, requireKind = false): Omit<PublishedFile, 'sourcePath'> {
-  if (
-    !record(input) ||
-    (requireKind && input['kind'] !== 'FILE') ||
-    typeof input['executable'] !== 'boolean' ||
-    typeof input['sha256'] !== 'string' ||
-    !/^[a-f0-9]{64}$/u.test(input['sha256'])
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  return {
-    kind: 'FILE',
-    relativePath: safeManifestRelativePath(input['relativePath']),
-    size: safeNonNegativeInteger(input['size']),
-    executable: input['executable'],
-    sha256: input['sha256']
-  };
-}
-
-function safeManifestRelativePath(input: unknown): string {
-  if (
-    typeof input !== 'string' ||
-    input.length === 0 ||
-    input.startsWith('/') ||
-    input.includes('\\') ||
-    input.split('/').some((segment) => segment.length === 0 || segment === '.' || segment === '..')
-  )
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  return input;
-}
-
-function safeNonNegativeInteger(input: unknown): number {
-  if (!Number.isSafeInteger(input) || (input as number) < 0)
-    throw new Error('CONVERSATION_TEMPLATE_VERSION_CORRUPTED');
-  return input as number;
-}
-
-function snapshotContentHash(
-  directories: readonly string[],
-  entries: readonly ManifestEntry[]
-): string {
-  return hashText(
-    [
-      ...directories.map((directory) => `DIRECTORY\0${directory}`),
-      ...entries.map((entry) =>
-        entry.kind === 'FILE'
-          ? `${entry.kind}\0${entry.relativePath}\0${entry.size}\0${entry.executable ? 1 : 0}\0${entry.sha256}`
-          : `${entry.kind}\0${entry.relativePath}\0${entry.size}\0${entry.linkTarget}\0${entry.targetKind}\0${entry.resolvedTarget}`
-      )
-    ].join('\n')
-  );
 }
 
 async function hostedFilesystemAvailableBytes(path: string): Promise<number> {
@@ -1246,19 +1057,12 @@ async function hostedFilesystemAvailableBytes(path: string): Promise<number> {
 function validateSourceWorkspacePath(path: string): void {
   if (!isAbsolute(path) || resolve(path) !== path || path === '/')
     throw new Error('CONVERSATION_TEMPLATE_SOURCE_INVALID');
-  if (
-    RESERVED_SANDBOX_ROOTS.some((root) => path === root || within(root, path) || within(path, root))
-  )
-    throw new Error('CONVERSATION_TEMPLATE_SOURCE_INVALID');
+  if (isReservedTemplateSourcePath(path)) throw new Error('CONVERSATION_TEMPLATE_SOURCE_INVALID');
 }
 
 function within(parent: string, candidate: string): boolean {
   const relation = relative(parent, candidate);
   return relation.length > 0 && relation !== '..' && !relation.startsWith(`..${sep}`);
-}
-
-function hashText(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
 }
 
 function hashBuffer(value: Uint8Array): string {

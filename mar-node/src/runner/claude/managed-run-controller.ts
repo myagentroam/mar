@@ -12,16 +12,12 @@ import { ClaudeChannelGate } from '../../claude-channel.js';
 import type { NodeAgentSession } from '../../database.js';
 import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
 import type { FakeRunnerStatus } from '../../fake-runner.js';
-import {
-  boundedConversationItemId,
-  claudePlanText,
-  compactRunnerText,
-  extractClaudeText,
-  extractClaudeToolUses,
-  type PublicConversationItem
-} from '../codex/conversation-parser.js';
+import { boundedConversationItemId, compactRunnerText } from '../../util/node-operation-parsers.js';
+import { extractClaudeText, extractClaudeToolUses } from './message-parsers.js';
+import { claudePlanText } from './conversation-parser.js';
+import type { PublicConversationItem } from '../../native-transcript-model.js';
 import { normalizeClaudeTool, extractClaudeToolResults } from './tool-normalizer.js';
-import { claudeContentBlocks } from '../../util/node-operation-parsers.js';
+import { claudeContentBlocks } from './message-parsers.js';
 import { ClaudeCodeRunner } from '../claude-code-runner.js';
 import { parseSecretEnvironment } from '../../util/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';

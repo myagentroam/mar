@@ -49,6 +49,7 @@ interface AcceptedMessage {
   readonly sessionId: string;
   readonly clientMessageId: string;
   readonly content: string;
+  readonly goalInput?: true;
   readonly source?: 'SCHEDULED';
   readonly suppressNotifications?: boolean;
   readonly initiatedByUserId?: number;
@@ -176,6 +177,7 @@ export class ContinuousRunCoordinator<TAttachment> {
         sessionId: message.sessionId,
         clientMessageId: message.clientMessageId,
         content: message.content,
+        ...(message.goalInput === true ? { goalInput: true as const } : {}),
         ...(message.suppressNotifications === true ? { suppressNotifications: true } : {}),
         ...(message.initiatedByUserId === undefined
           ? {}

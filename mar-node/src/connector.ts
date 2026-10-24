@@ -113,10 +113,10 @@ import {
   isPlainRecord,
   isRunnerImageAttachment,
   parseRunnerImageAttachments
-} from './runner/codex/conversation-parser.js';
+} from './util/node-operation-parsers.js';
 import { WebToolService } from './service/web-tool-service.js';
 
-export { nodeConnectEndpoint, validatedCapabilities } from './runner/codex/conversation-parser.js';
+export { nodeConnectEndpoint, validatedCapabilities } from './util/node-operation-parsers.js';
 import { NodeControlChannel } from './service/node-control-channel.js';
 import { NodeControlMessageService } from './service/node-control-message-service.js';
 import { NodeRequestService } from './service/node-request-service.js';
@@ -392,12 +392,14 @@ export class NodeConnector {
     invalidate: (workspaceId) =>
       void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions')
   });
+  private readonly invalidateWorkspaceFiles = (workspaceId: string): void => {
+    this.workspaceFileService.dispose(workspaceId);
+    this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
+    this.workspaceCoordinator.invalidate(workspaceId);
+  };
   private readonly workspaceFileService = new WorkspaceFileService(
     this.workspaceState,
-    (workspaceId) => {
-      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-      this.workspaceCoordinator.invalidate(workspaceId);
-    },
+    this.invalidateWorkspaceFiles,
     {},
     (workspaceId, resourcePath) =>
       this.workspaceUploadService.fileResource(workspaceId, resourcePath) ??
@@ -405,11 +407,7 @@ export class NodeConnector {
   );
   private readonly workspaceUploadService = new WorkspaceUploadService(
     this.workspaceState,
-    (workspaceId) => {
-      this.workspaceFileService.dispose(workspaceId);
-      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-      this.workspaceCoordinator.invalidate(workspaceId);
-    },
+    this.invalidateWorkspaceFiles,
     () => this.attachmentTemporaryRoot()
   );
   private directTransferService: DirectTransferService | undefined;
@@ -433,6 +431,7 @@ export class NodeConnector {
   );
   private readonly goalCoordinator = new GoalContinuationCoordinator({
     goals: this.goalRuntime,
+    runners: () => this.runners,
     runtime: this.runtime,
     commands: this.commandStates,
     queue: () => this.continuousRunCoordinator,
@@ -858,6 +857,8 @@ export class NodeConnector {
       capabilities: () => this.capabilities,
       state: this.sessionState,
       commands: this.commandStates,
+      releaseResumeState: (directIds, projectionIds) =>
+        this.externalSessionResumeService.forgetSessions(directIds, projectionIds),
       present: (session) => this.sessionPresentationService.present(session)
     });
     this.conversationHistoryService = new ConversationHistoryService({
@@ -868,7 +869,7 @@ export class NodeConnector {
       snapshotSequence: () => this.workbenchEventService.snapshotSequence(),
       hasManagedActiveRun: (session) => hasManagedActiveRun(this.runtime, session),
       setExternalActivity: (sessionId, activity) =>
-        this.sessionState.externalActivity.set(sessionId, activity)
+        this.externalSessionResumeService.setActivity(sessionId, activity)
     });
     this.conversationSegmentService = new ConversationSegmentService((session, input) =>
       this.conversationHistoryService.read(session, input)
@@ -1066,8 +1067,9 @@ export class NodeConnector {
         this.commandStates.validateSessionIdentityPromotion(previousId, nextId),
       migrateCommands: (previousId, nextId) =>
         this.commandStates.promoteSessionIdentity(previousId, nextId),
+      migrateAttachments: (previousId, nextId) =>
+        this.runAttachmentService.migrateSession(previousId, nextId),
       migrateGoal: (previousId, nextId) => {
-        this.runAttachmentService.migrateSession(previousId, nextId);
         this.goalCoordinator.migrateSession(previousId, nextId);
         this.goalMcpBridge.migrateSession(previousId, nextId);
       },
@@ -1075,7 +1077,7 @@ export class NodeConnector {
         this.continuousRunCoordinator.migrateSession(previousId, nextId),
       migrateRunnerState: (previousId, nextId) => {
         this.modelUsage.promoteSession(previousId, nextId);
-        this.runEventBridge.migrateRunnerSessionIdentity(previousId, nextId);
+        this.runners.migrateSessionIdentity(previousId, nextId);
       },
       emitSession: (session) => this.emitSessionWorkbenchEvent({ session }),
       emitRun: (run) => this.emitWorkbenchEvent('run', { run }),
@@ -1456,9 +1458,6 @@ export class NodeConnector {
       events: this.runEventService,
       emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
       queues: this.workspaceQueueWorkbenchService,
-      codex: this.codexClient,
-      claude: this.claudeClient,
-      openCode: this.openCodeClient,
       send: (type, payload, replyTo) => this.send(type, payload, replyTo)
     });
     this.connectionLifecycle = new NodeConnectionLifecycleService({
@@ -1606,11 +1605,7 @@ export class NodeConnector {
       changes: this.workspaceChangeService,
       listSessions: (workspaceId) =>
         this.executeNodeOperation('session.list', { workspaceId, limit: 30 }),
-      invalidate: (workspaceId) => {
-        this.workspaceFileService.dispose(workspaceId);
-        this.workspaceWorkbenchService.invalidateWorkspaceFiles(workspaceId);
-        this.workspaceCoordinator.invalidate(workspaceId);
-      },
+      invalidate: this.invalidateWorkspaceFiles,
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,
       emitWatchEvent: (payload) => this.send('watch.event', payload)

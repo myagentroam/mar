@@ -1,5 +1,5 @@
 import { posix, resolve } from 'node:path';
-import type { NativeTranscriptImageAttachment } from '../../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
 import type { MarAgentGeneratedImageArtifact } from './conversation-normalizer.js';
 
 const HOSTED_CONVERSATION_IMAGE_RUN_PREFIX = 'native-history:hosted:';

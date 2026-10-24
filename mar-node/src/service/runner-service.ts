@@ -77,15 +77,13 @@ export class RunnerService {
     const defaults = this.database()
       .getRunnerDefaults()
       .map((configuration) => {
-        if (
-          configuration.runner !== 'mar-agent' ||
-          configuration.access === 'auto' ||
-          configuration.access === 'full-access'
-        )
-          return configuration;
+        const runner = this.runners.optional(configuration.runner);
+        if (runner === undefined) return configuration;
+        const access = runner.restoreStoredAccess(configuration.access, configuration.access);
+        if (access === configuration.access) return configuration;
         const normalized = {
           ...configuration,
-          access: 'full-access'
+          access
         };
         this.database().saveRunnerDefaults(normalized);
         return normalized;

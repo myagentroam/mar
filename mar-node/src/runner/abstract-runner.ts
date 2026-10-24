@@ -15,7 +15,7 @@ import type { NodeConversationTurn } from '../runtime-model.js';
 import type { ChannelDelivery } from '../claude-channel.js';
 import type { CodexSessionControl } from '../codex-app-server.js';
 import type { ExternalSessionActivationState } from '../service/session-domain-state.js';
-import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import type { RunnerExecutionContext } from './execution-context.js';
 
 export type RegisteredRunnerName = RunnerName | 'fake';
@@ -100,6 +100,18 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     workspace?: NodeWorkspace,
     environment?: Readonly<Record<string, string>>
   ): RunnerDefaultConfiguration;
+
+  goalAccess(currentAccess: string | null): {
+    readonly access: string;
+    readonly accessChanged: boolean;
+  } {
+    return { access: 'auto', accessChanged: currentAccess !== 'auto' };
+  }
+
+  /** Restore persisted values only; never normalize fresh configuration input. */
+  restoreStoredAccess(access: string | null, fallbackAccess: string): string {
+    return access !== null && access.trim().length > 0 ? access : fallbackAccess;
+  }
 
   supportsConfiguration(
     configuration: RunnerDefaultConfiguration,
@@ -328,6 +340,12 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
   }
 
   abstract stop(): void | Promise<void>;
+
+  /** Synchronously migrate Runner-owned state without I/O or event publication. */
+  migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    void previousId;
+    void nativeSessionId;
+  }
 
   bindControl(control: RunnerControl): void {
     if (this.control !== undefined) throw new Error(`RUNNER_CONTROL_ALREADY_BOUND:${this.name}`);

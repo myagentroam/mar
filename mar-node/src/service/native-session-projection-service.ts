@@ -16,6 +16,10 @@ interface NativeSessionProjectionServiceOptions {
   readonly capabilities: () => NodeCapabilities;
   readonly state: SessionDomainState<NodeAgentSession, unknown>;
   readonly commands: CommandStateStore;
+  readonly releaseResumeState: (
+    directIds: ReadonlySet<string>,
+    projectionIds: ReadonlySet<string>
+  ) => void;
   readonly present: (
     session: NodeAgentSession
   ) => NodeAgentSession & { readonly control: CodexSessionControl };
@@ -162,12 +166,12 @@ export class NativeSessionProjectionService {
 
   resumedConfiguration(session: NodeAgentSession): RunnerDefaultConfiguration {
     const workspace = this.options.database()?.getWorkspace(session.workspaceId);
+    const runner = this.options.runners.require(session.runner);
     const saved = this.options
       .database()
       ?.getRunnerDefaults()
       .find((value) => value.runner === session.runner);
-    const fallback =
-      saved ?? this.options.runners.require(session.runner).defaultConfiguration(workspace);
+    const fallback = saved ?? runner.defaultConfiguration(workspace);
     const configuration: RunnerDefaultConfiguration = {
       runner: session.runner,
       model:
@@ -175,18 +179,9 @@ export class NativeSessionProjectionService {
           ? session.model
           : fallback.model,
       effort: typeof session.effort === 'string' ? session.effort : fallback.effort,
-      access:
-        typeof session.access === 'string' && session.access.trim().length > 0
-          ? session.access
-          : session.runner === 'mar-agent'
-            ? 'full-access'
-            : fallback.access
+      access: runner.restoreStoredAccess(session.access, fallback.access)
     };
-    return session.runner === 'mar-agent' &&
-      configuration.access !== 'auto' &&
-      configuration.access !== 'full-access'
-      ? { ...configuration, access: 'full-access' }
-      : configuration;
+    return configuration;
   }
 
   ensureResumedConfiguration(session: NodeAgentSession): NodeAgentSession {
@@ -408,6 +403,7 @@ export class NativeSessionProjectionService {
         runner.forgetNativeAlias(nativeId);
       }
     }
+    const directIds = new Set<string>();
     for (const [directId, direct] of this.options.state.directNative) {
       if (
         direct.runner === session.runner &&
@@ -415,25 +411,16 @@ export class NativeSessionProjectionService {
         direct.externalSessionId !== null &&
         nativeIds.has(direct.externalSessionId)
       ) {
+        directIds.add(directId);
         this.options.state.directNative.delete(directId);
-        this.options.state.externalActivity.delete(directId);
-        this.options.state.resumedByDirectId.delete(directId);
-        this.options.state.resumeFailures.delete(directId);
-        this.options.state.messageResumeFailures.delete(directId);
-        this.options.state.resumeFailureDetails.delete(directId);
-        const timer = this.options.state.failureTimers.get(directId);
-        if (timer !== undefined) clearTimeout(timer);
-        this.options.state.failureTimers.delete(directId);
       }
     }
-    for (const [directId, resumedId] of this.options.state.resumedByDirectId)
-      if (projectionIds.has(resumedId)) this.options.state.resumedByDirectId.delete(directId);
     for (const projectionId of projectionIds) {
       if (this.options.runtime.getAgentSession(projectionId) !== undefined)
         this.options.runtime.removeAgentSession(projectionId);
       this.options.commands.removeSession(projectionId);
-      this.options.state.externalActivity.delete(projectionId);
     }
+    this.options.releaseResumeState(directIds, projectionIds);
   }
 
   private requireDatabase(): NodeDatabase {

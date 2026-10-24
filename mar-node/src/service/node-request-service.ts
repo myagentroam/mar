@@ -1,6 +1,6 @@
 import type { NodeEnvelope } from '@myagentroam/protocol';
 import { nodeLog } from '../operational.js';
-import { validUserAuthorization } from '../runner/codex/conversation-parser.js';
+import { validUserAuthorization } from '../util/node-operation-parsers.js';
 import { safePublicError } from '../util/safe-error.js';
 
 interface NodeRequestServiceOptions {

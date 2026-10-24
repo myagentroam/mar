@@ -108,13 +108,76 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           });
           await page.locator('.composer-input').fill('Keep this draft');
           await page.getByRole('button', { name: 'Show first message' }).click();
+          const composerLocator = page.locator('.composer-host');
+          if (width >= 768) {
+            const moving = await page.waitForFunction(() => {
+              const host = document.querySelector('.composer-host');
+              const animation = host?.getAnimations()[0];
+              if (!(host instanceof HTMLElement) || animation === undefined) return false;
+              animation.pause();
+              animation.currentTime = 90;
+              return true;
+            });
+            await moving.dispose();
+            const during = (await composerLocator.boundingBox())!;
+            expect(during.y).toBeGreaterThan(composerHost.y + 1);
+            expect(during.y + during.height).toBeLessThan(844);
+            await composerLocator.evaluate((element) => {
+              for (const animation of element.getAnimations()) void animation.play();
+            });
+          } else {
+            expect(
+              await composerLocator.evaluate((element) => element.getAnimations().length)
+            ).toBe(0);
+          }
           await expect(welcome).toHaveCount(0);
           await expect(page.getByText('First message', { exact: true })).toBeVisible();
           await expect(page.locator('.conversation-scroll-region')).not.toHaveClass(/is-empty/);
           await expect(page.locator('.composer-input')).toHaveValue('Keep this draft');
+          await expect
+            .poll(async () => {
+              const bounds = (await composerLocator.boundingBox())!;
+              return bounds.y + bounds.height;
+            })
+            .toBe(844);
         }
       }
     }
+  });
+
+  test(`Composer startup respects reduced motion: ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    for (const mode of ['workspace', 'hosted']) {
+      await page.goto(
+        `${fixture.url}visual-alignment.html?empty-conversation=${mode}&theme=${theme}`
+      );
+      await page.getByRole('button', { name: 'Show first message' }).click();
+      await expect(page.locator('.conversation-empty')).toHaveCount(0);
+      expect(
+        await page.locator('.composer-host').evaluate((element) => element.getAnimations().length)
+      ).toBe(0);
+    }
+  });
+
+  test(`Composer startup cancels motion when returning to draft: ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?empty-conversation=workspace&theme=${theme}`
+    );
+    const composer = page.locator('.composer-host');
+    await page.getByRole('button', { name: 'Show first message' }).click();
+    await page.waitForFunction(() => {
+      return document.querySelector('.composer-host')?.getAnimations().length === 1;
+    });
+    await page.getByRole('button', { name: 'Show empty draft' }).click();
+    await expect(page.locator('.conversation-empty')).toBeVisible();
+    expect(await composer.evaluate((element) => element.getAnimations().length)).toBe(0);
+    const header = (await page.locator('header').boundingBox())!;
+    const region = (await page.locator('.conversation-scroll').boundingBox())!;
+    const host = (await composer.boundingBox())!;
+    const availableCenter = (header.y + header.height + 844) / 2;
+    expect(Math.abs((region.y + host.y + host.height) / 2 - availableCenter)).toBeLessThan(3);
   });
 
   test(`Composer reserves its exact height without a mobile seam: ${theme}`, async ({

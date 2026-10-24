@@ -17,7 +17,11 @@ test('Node detail actions stay above Close and capability refresh stays within i
     await page.goto(`${fixture.url}visual-alignment.html?resource-details=1`);
     const dialog = page.locator('.node-details-dialog');
     await expect(dialog).toBeVisible();
-    const usage = dialog.getByRole('button', { name: 'Usage', exact: true });
+    const usages = dialog.getByRole('button', { name: 'Usage', exact: true });
+    await expect(usages).toHaveCount(2);
+    for (const action of await usages.all())
+      await expect(action.locator('[data-mar-icon="refresh"]')).toBeVisible();
+    const usage = usages.first();
     await usage.scrollIntoViewIfNeeded();
     const colors = await usage.evaluate((element) => {
       const probe = document.createElement('span');

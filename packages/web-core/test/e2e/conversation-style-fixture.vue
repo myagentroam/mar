@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
@@ -29,6 +29,10 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
+const timelineVisible = ref(true);
+const initializing = ref(false);
+const renderVersion = ref(0);
 const previewText = `Inspecting ../workspace ${'workspace '.repeat(20)}https://example.com/search?q=one,two&next=2 changes`;
 const items: ConversationItem[] = [
   {
@@ -123,6 +127,44 @@ const turns = ref<ConversationTurn[]>([
       : items
   }
 ]);
+async function loadStressHistory() {
+  initializing.value = true;
+  renderVersion.value++;
+  turns.value = [
+    {
+      id: 'stress-turn',
+      sessionId: 'session',
+      runId: 'finished-run',
+      status: 'SUCCEEDED',
+      items: Array.from({ length: 80 }, (_, index): ConversationItem => ({
+        id: `stress-${index}`,
+        kind: 'reasoning',
+        status: 'COMPLETED',
+        processGroup: { id: `stress-process-${index}`, isStart: true },
+        payload: {
+          representation: 'visible_thinking',
+          sections: [
+            { text: index % 20 === 0 ? `${'.'.repeat(64 * 1024)}x` : `Inspect file ${index}, next` }
+          ]
+        }
+      }))
+    }
+  ];
+  await nextTick();
+  initializing.value = false;
+}
+
+async function toggleTimeline() {
+  if (timelineVisible.value) {
+    timelineVisible.value = false;
+    return;
+  }
+  initializing.value = true;
+  timelineVisible.value = true;
+  await nextTick();
+  initializing.value = false;
+}
+
 function publishSummary() {
   const turn = turns.value[0]!;
   turns.value = [
@@ -213,10 +255,11 @@ function publishSummary() {
       >Process content</ConversationWorkProcess
     >
     <ConversationTimeline
+      v-if="timelineVisible"
       :turns="turns"
       :loading="false"
-      :initializing="false"
-      :initial-render-version="0"
+      :initializing="initializing"
+      :initial-render-version="renderVersion"
       :image-attachments="() => []"
       :user-input-questions="() => []"
       :user-input-answer="() => ''"
@@ -225,6 +268,10 @@ function publishSummary() {
       :rewind-enabled="false"
       :rollback-enabled="false"
     />
+    <template v-if="stressFixture">
+      <button data-testid="load-stress-history" @click="loadStressHistory">Load history</button>
+      <button data-testid="toggle-stress-timeline" @click="toggleTimeline">Toggle timeline</button>
+    </template>
     <button v-if="previewFixture" data-testid="publish-reasoning-summary" @click="publishSummary">
       Publish summary
     </button>

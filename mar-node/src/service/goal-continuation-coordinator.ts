@@ -1,4 +1,5 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
+import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { composerVisibleText, type RunnerCommandState } from '@myagentroam/protocol';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
@@ -7,12 +8,7 @@ import { nodeLog } from '../operational.js';
 import { isPlainRecord } from '../util/node-operation-parsers.js';
 import { safeErrorCode } from '../util/safe-error.js';
 import { NODE_MCP } from '../mcp/naming.js';
-import {
-  goalUnrestrictedAccess,
-  type GoalRuntime,
-  type GoalExitSummary,
-  type GoalState
-} from './goal-runtime.js';
+import { type GoalRuntime, type GoalExitSummary, type GoalState } from './goal-runtime.js';
 import type {
   ContinuousRunCoordinator,
   PreparedExecutionInput
@@ -31,6 +27,7 @@ type GoalStartInput = Omit<
 };
 interface Options {
   readonly goals: GoalRuntime;
+  readonly runners: () => RunnerRegistry;
   readonly runtime: Pick<
     NodeRuntimeState,
     | 'activeSessionRun'
@@ -655,9 +652,11 @@ export class GoalContinuationCoordinator {
     readonly session: NodeAgentSession;
     readonly changed: boolean;
   } {
-    const access = goalUnrestrictedAccess(session.runner, session.access);
+    const { access, accessChanged: changed } = this.options
+      .runners()
+      .require(session.runner)
+      .goalAccess(session.access);
     const requiresUpdate = session.access !== access;
-    const changed = session.runner !== 'mar-agent' && requiresUpdate;
     const prepared = requiresUpdate
       ? this.options.runtime.updateAgentSessionAccess(session.id, access)
       : session;

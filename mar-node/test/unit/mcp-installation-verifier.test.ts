@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import type { McpCatalogEntry } from '../../../packages/protocol/src/mcp.js';
 import { McpInstallationVerifier } from '../../src/service/mcp-installation-verifier.js';
 
@@ -35,6 +37,51 @@ function stdioEntry(command: string, args: readonly string[]): McpCatalogEntry {
 }
 
 describe('Node MCP installation verification', () => {
+  it('does not forward secret headers to a cross-origin redirect target', async () => {
+    let receivedSecret: string | undefined;
+    const target = createServer((request, response) => {
+      receivedSecret = request.headers['x-mar-credential'] as string | undefined;
+      response.writeHead(500).end();
+    });
+    target.listen(0, '127.0.0.1');
+    await once(target, 'listening');
+    const targetAddress = target.address();
+    if (!targetAddress || typeof targetAddress === 'string')
+      throw new Error('Fixture address unavailable');
+    const source = createServer((_request, response) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${targetAddress.port}/mcp` }).end();
+    });
+    source.listen(0, '127.0.0.1');
+    await once(source, 'listening');
+    const sourceAddress = source.address();
+    if (!sourceAddress || typeof sourceAddress === 'string')
+      throw new Error('Fixture address unavailable');
+    try {
+      await expect(
+        new McpInstallationVerifier().verify({
+          entry: {
+            ...stdioEntry(process.execPath, []),
+            runtime: {
+              transport: 'HTTP',
+              url: `http://127.0.0.1:${sourceAddress.port}/mcp`
+            }
+          },
+          configuration: { headers: { 'x-mar-credential': { secretName: 'fixture' } } },
+          secrets: { fixture: 'fixture-secret' },
+          cwd: process.cwd()
+        })
+      ).rejects.toThrow();
+      expect(receivedSecret).toBeUndefined();
+    } finally {
+      source.closeAllConnections();
+      target.closeAllConnections();
+      await Promise.all([
+        new Promise<void>((resolve) => source.close(() => resolve())),
+        new Promise<void>((resolve) => target.close(() => resolve()))
+      ]);
+    }
+  });
+
   it('confirms stdio MCP availability through standard initialization and tool enumeration', async () => {
     await expect(
       new McpInstallationVerifier().verify({

@@ -31,20 +31,21 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type { NodeWorkspace } from '../database.js';
 import { discoverAllNativeSessions } from '../native-session-history.js';
-import { readCodexNativeContextUsage } from '../native-session-history.js';
+import { readCodexNativeContextUsage } from './codex/native-context-usage.js';
+import { codexThreadCwd, extractCodexThreads } from './codex/conversation-parser.js';
 import {
-  codexThreadCwd,
+  deduplicateDirectSessions,
+  isWithinWorkspace,
+  latestNativeActivity
+} from '../util/runner-native-session-parsers.js';
+import {
   codexThreadHistoryModes,
   codexPaginatedThread,
   codexPaginatedCursor,
-  codexPaginatedConversationPage,
-  deduplicateDirectSessions,
-  extractCodexThreads,
-  isWithinWorkspace,
-  latestNativeActivity
+  codexPaginatedConversationPage
 } from './codex/conversation-parser.js';
 import { codexSessionControl } from '../codex-app-server.js';
-import { extractId } from '../util/runner-native-session-parsers.js';
+import { extractId } from './codex/conversation-parser.js';
 import { nodeLog } from '../operational.js';
 import { conversationClientMessageId } from '../util/conversation-identity.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
@@ -105,6 +106,17 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   }
 
   private readonly client: CodexAppServerClient;
+
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [turnId, managed] of this.execution.managedTurns) {
+      if (managed.sessionId === previousId)
+        this.execution.managedTurns.set(turnId, { ...managed, sessionId: nativeSessionId });
+    }
+    for (const [runId, managed] of this.execution.runs) {
+      if (managed.sessionId === previousId)
+        this.execution.runs.set(runId, { ...managed, sessionId: nativeSessionId });
+    }
+  }
 
   profile(capabilities: NodeCapabilities): RunnerProfile {
     const base = declaredRunnerProfiles({
@@ -528,6 +540,10 @@ export class CodexRunner extends AbstractRunner<'codex'> {
       this.profileCacheForEnvironment(environment)?.defaultConfiguration ??
       emptyCodexConfiguration()
     );
+  }
+
+  override goalAccess(currentAccess: string | null) {
+    return { access: 'full-access', accessChanged: currentAccess !== 'full-access' };
   }
 
   override supportsConfiguration(

@@ -5,13 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   discoverAllNativeSessions,
   discoverNativeSessions,
-  claudeContextWindowTokens,
-  readClaudeNativeContextUsage,
-  readCodexNativeContextUsage,
   readNativeSession,
-  removeNativeSession,
-  type NativeTranscriptItem
+  removeNativeSession
 } from '../../src/native-session-history.js';
+import {
+  claudeContextWindowTokens,
+  readClaudeNativeContextUsage
+} from '../../src/runner/claude/native-context-usage.js';
+import { readCodexNativeContextUsage } from '../../src/runner/codex/native-context-usage.js';
+import type { NativeTranscriptItem } from '../../src/native-transcript-model.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
 import { claudeAssistantBlocks } from '../../src/runner/claude/conversation-parser.js';
@@ -759,7 +761,8 @@ describe('native session history adapter', () => {
               role: 'USER',
               text: 'Inspect the project',
               createdAt: 1,
-              nativeId: 'user-1'
+              nativeId: 'user-1',
+              ...(runner === 'claude-code' ? { rewindAfter: 'user-1' } : {})
             },
             {
               kind: 'tool_call',
@@ -790,7 +793,8 @@ describe('native session history adapter', () => {
               role: 'ASSISTANT',
               text: 'Inspection complete',
               createdAt: 4,
-              nativeId: 'assistant-1'
+              nativeId: 'assistant-1',
+              ...(runner === 'claude-code' ? { rewindAfter: 'assistant-1' } : {})
             }
           ]
         },

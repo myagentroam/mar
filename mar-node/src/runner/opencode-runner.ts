@@ -18,7 +18,7 @@ import {
   type RunnerSessionPresentation,
   type RunnerSessionPresentationContext
 } from './abstract-runner.js';
-import { isWithinWorkspace } from './codex/conversation-parser.js';
+import { isWithinWorkspace } from '../util/runner-native-session-parsers.js';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import {
@@ -92,6 +92,13 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     private readonly clientFactory: () => OpenCodeServerClient = () => new OpenCodeServerClient()
   ) {
     super();
+  }
+
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [runId, managed] of this.execution) {
+      if (managed.sessionId === previousId)
+        this.execution.set(runId, { ...managed, sessionId: nativeSessionId });
+    }
   }
 
   profile(capabilities: NodeCapabilities): RunnerProfile {

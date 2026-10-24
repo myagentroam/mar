@@ -1,8 +1,5 @@
 import type { NodeEnvelope, WorkbenchEventCategory } from '@myagentroam/protocol';
 import type { FakeRunnerStatus } from '../fake-runner.js';
-import type { CodexRunner } from '../runner/codex-runner.js';
-import type { ClaudeCodeRunner } from '../runner/claude-code-runner.js';
-import type { OpenCodeRunner } from '../runner/opencode-runner.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunDomainState } from './run-domain-state.js';
 import type { RunEventService } from './run-event-service.js';
@@ -15,9 +12,6 @@ interface NodeRunEventBridgeOptions {
   readonly events: RunEventService;
   readonly emitWorkbench: (category: WorkbenchEventCategory, payload: unknown) => void;
   readonly queues: WorkspaceQueueWorkbenchService;
-  readonly codex: CodexRunner;
-  readonly claude: ClaudeCodeRunner;
-  readonly openCode: OpenCodeRunner;
   readonly send: (type: string, payload: unknown, replyTo?: string) => void;
 }
 
@@ -54,31 +48,6 @@ export class NodeRunEventBridge {
       sessionId,
       queue: this.options.queues.present(workspaceId, sessionId)
     });
-  }
-
-  migrateRunnerSessionIdentity(sessionId: string, nativeSessionId: string): void {
-    for (const [turnId, managed] of this.options.codex.execution.managedTurns) {
-      if (managed.sessionId === sessionId)
-        this.options.codex.execution.managedTurns.set(turnId, {
-          ...managed,
-          sessionId: nativeSessionId
-        });
-    }
-    for (const [runId, managed] of this.options.codex.execution.runs) {
-      if (managed.sessionId === sessionId)
-        this.options.codex.execution.runs.set(runId, { ...managed, sessionId: nativeSessionId });
-    }
-    for (const [runId, managed] of this.options.claude.execution.runs) {
-      if (managed.marSessionId === sessionId)
-        this.options.claude.execution.runs.set(runId, {
-          ...managed,
-          marSessionId: nativeSessionId
-        });
-    }
-    for (const [runId, managed] of this.options.openCode.execution) {
-      if (managed.sessionId === sessionId)
-        this.options.openCode.execution.set(runId, { ...managed, sessionId: nativeSessionId });
-    }
   }
 
   reconcile(envelope: NodeEnvelope): void {

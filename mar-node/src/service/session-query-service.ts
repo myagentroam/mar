@@ -4,7 +4,7 @@ import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { SessionContextService } from './session-context-service.js';
 import { marctlSessionDetail } from './session-recent-activity.js';
-import { isPlainRecord } from '../runner/codex/conversation-parser.js';
+import { isPlainRecord } from '../util/node-operation-parsers.js';
 import type { RunnerName } from '@myagentroam/protocol';
 import { toolResultResourceInputSchema, toolResultResourcePageSchema } from '@myagentroam/protocol';
 

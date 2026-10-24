@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { serializeComposerTag } from '@myagentroam/protocol';
 import { RecentRunProjectionService } from '../../src/service/recent-run-projection-service.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NodeAgentSession } from '../../src/database.js';
@@ -46,6 +47,93 @@ function run(status: NodeAgentRun['status'], version: number, updatedAt: number)
 }
 
 describe('Node recent Run lightweight projection', () => {
+  it.each([
+    {
+      name: 'session origin longer than the preview limit',
+      input: `${serializeComposerTag('mar_session_origin', {
+        sessionId: 'origin-session',
+        name: 'c'.repeat(480)
+      })}\nPlease   review\nthis change`,
+      expected: 'Please review this change'
+    },
+    {
+      name: 'Goal objective without internal instructions',
+      input: serializeComposerTag('mar_goal_start', {
+        objective: 'Review <workspace> & fix issues',
+        instruction: 'Internal instructions'
+      }),
+      expected: 'Review <workspace> & fix issues'
+    },
+    {
+      name: 'steer message without its instruction wrapper',
+      input: serializeComposerTag('mar_steer', { message: 'Please continue' }),
+      expected: 'Please continue'
+    },
+    {
+      name: 'scheduled objective',
+      input: serializeComposerTag('mar_schedule', { objective: 'Check the workspace' }),
+      expected: 'Check the workspace'
+    },
+    {
+      name: 'literal markup in a code example',
+      input: 'Explain this:\n```xml\n<mar_restart />\n```',
+      expected: 'Explain this: ```xml <mar_restart /> ```'
+    }
+  ])('publishes only visible message text for $name', ({ input, expected }) => {
+    const emit = vi.fn();
+    const service = new RecentRunProjectionService(emit, () => 1_000);
+    try {
+      service.record(run('RUNNING', 1, 100), session(), input);
+      expect(service.snapshot()[0]?.userMessage).toBe(expected);
+      expect(emit).toHaveBeenLastCalledWith({
+        kind: 'UPDATE',
+        run: expect.objectContaining({ userMessage: expected })
+      });
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it.each([
+    ['restart', serializeComposerTag('mar_restart', {})],
+    [
+      'Goal continuation',
+      serializeComposerTag('mar_goal_continue', {
+        objective: 'Internal objective',
+        instruction: 'Continue internally'
+      })
+    ],
+    [
+      'session origin only',
+      serializeComposerTag('mar_session_origin', { sessionId: 'origin-session', name: 'Peer' })
+    ]
+  ])('does not expose %s or replace a valid summary with it', (_name, input) => {
+    const emit = vi.fn();
+    const service = new RecentRunProjectionService(emit, () => 1_000);
+    try {
+      service.record(run('STARTING', 1, 100), session(), input);
+      expect(service.snapshot()[0]).not.toHaveProperty('userMessage');
+      expect(emit.mock.lastCall?.[0].run).not.toHaveProperty('userMessage');
+
+      service.record(run('RUNNING', 2, 200), session(), 'User request');
+      service.record(run('SUCCEEDED', 3, 300), session(), input);
+      expect(service.snapshot()[0]?.userMessage).toBe('User request');
+      expect(emit).toHaveBeenLastCalledWith({
+        kind: 'UPDATE',
+        run: expect.objectContaining({ userMessage: 'User request', status: 'SUCCEEDED' })
+      });
+
+      service.record(
+        { ...run('RUNNING', 1, 500), id: 'run-2', createdAt: 400, startedAt: 400 },
+        session(),
+        input
+      );
+      expect(service.snapshot()[0]).not.toHaveProperty('userMessage');
+    } finally {
+      service.dispose();
+    }
+  });
+
   it('locks in the start time when a Run accepts input and does not reorder on terminal update', () => {
     const emit = vi.fn();
     const service = new RecentRunProjectionService(emit, () => 1_000);

@@ -126,6 +126,52 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
+test('Long reasoning history stays responsive through progressive rendering and remounts', async ({
+  page
+}, testInfo) => {
+  await page.goto(`${fixture.url}conversation-style.html?reasoning-stress=1`);
+  await expect(page.getByTestId('load-stress-history')).toBeVisible();
+  await page.evaluate(() => {
+    const gaps: number[] = [];
+    let previous = performance.now();
+    const timer = setInterval(() => {
+      const now = performance.now();
+      gaps.push(now - previous);
+      previous = now;
+    }, 10);
+    Object.assign(window, { freezeProbe: { gaps, stop: () => clearInterval(timer) } });
+  });
+  const processes = page.locator('[data-process-id^="stress-process-"]');
+  for (let iteration = 0; iteration < 3; iteration++) {
+    await page.getByTestId('load-stress-history').click();
+    await expect(processes).toHaveCount(80);
+    const longPreview = page.locator('[data-process-id="stress-process-0"] .process-summary');
+    expect(await longPreview.textContent()).toBe(`${'.'.repeat(64 * 1024)}x`);
+    await expect(processes.first().locator('.process-heading')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    await page.getByTestId('toggle-stress-timeline').click();
+    await expect(processes).toHaveCount(0);
+    await page.getByTestId('toggle-stress-timeline').click();
+    await expect(processes).toHaveCount(80);
+  }
+  const gaps = await page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const probe = (window as unknown as { freezeProbe: { gaps: number[]; stop(): void } })
+      .freezeProbe;
+    probe.stop();
+    return probe.gaps;
+  });
+  await testInfo.attach('main-thread-gaps', {
+    body: JSON.stringify(gaps),
+    contentType: 'application/json'
+  });
+  expect(gaps.length).toBeGreaterThan(0);
+  // Catch multi-second stalls with ample allowance for shared CI hosts.
+  expect(Math.max(...gaps)).toBeLessThan(1000);
+});
+
 test('Touch conversation details reveal status and unavailable change reasons', async ({
   browser
 }) => {
@@ -437,7 +483,7 @@ test('uses the original dark palette with distinct surfaces and readable button 
   ).toBeGreaterThanOrEqual(4.5);
   expect(dark['--mar-color-accent']).toBe('#5edcec');
   expect(dark['--mar-control-color-success']).toBe('#62d6a4');
-  expect(dark['--mar-text-primary']).toBe('#e8eef8');
+  expect(dark['--mar-text-primary']).toBe('#d3dbe7');
   expect(dark['--mar-text-secondary']).toBe('#9fb0c7');
   expect(dark['--mar-text-muted']).toBe('#8799b1');
   for (const surface of [

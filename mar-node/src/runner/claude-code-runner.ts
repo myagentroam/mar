@@ -23,22 +23,19 @@ import type {
 import { claudeDefaultModel, declaredRunnerProfiles } from '../runner-profiles.js';
 import { ClaudeChannelGate } from '../claude-channel.js';
 import type { ChannelDelivery } from '../claude-channel.js';
-import { claudeUserInputQuestions } from '../util/runner-native-session-parsers.js';
+import { claudeUserInputQuestions } from './claude/conversation-parser.js';
 import { withClaudePlanTag } from '../runner-command-engine.js';
 import type { NodeAgentSession, NodeWorkspace } from '../database.js';
+import { discoverNativeSessions, readNativeSession } from '../native-session-history.js';
+import { readClaudeNativeContextUsage } from './claude/native-context-usage.js';
+import type { NativeSessionHistory } from '../native-transcript-model.js';
+import { claudeDiscoveredSession } from './claude/conversation-parser.js';
 import {
-  discoverNativeSessions,
-  readNativeSession,
-  readClaudeNativeContextUsage,
-  type NativeSessionHistory
-} from '../native-session-history.js';
-import {
-  claudeDiscoveredSession,
   deduplicateDirectSessions,
   isNativeHistory,
   isWithinWorkspace,
   latestNativeActivity
-} from './codex/conversation-parser.js';
+} from '../util/runner-native-session-parsers.js';
 
 export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   readonly name = 'claude-code' as const;
@@ -50,6 +47,13 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
     private readonly environment: NodeJS.ProcessEnv = process.env
   ) {
     super();
+  }
+
+  override migrateSessionIdentity(previousId: string, nativeSessionId: string): void {
+    for (const [runId, managed] of this.execution.runs) {
+      if (managed.marSessionId === previousId)
+        this.execution.runs.set(runId, { ...managed, marSessionId: nativeSessionId });
+    }
   }
 
   profile(capabilities: NodeCapabilities): RunnerProfile {
@@ -84,6 +88,10 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
       effort: 'medium',
       access: 'default'
     };
+  }
+
+  override goalAccess(currentAccess: string | null) {
+    return { access: 'bypass', accessChanged: currentAccess !== 'bypass' };
   }
 
   override mcpConfiguration(

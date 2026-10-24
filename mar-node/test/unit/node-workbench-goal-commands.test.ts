@@ -13,6 +13,152 @@ import type { RunnerSteerResult } from '../../src/runner/abstract-runner.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 
 describe('Node Workbench Manifest and command control', () => {
+  it.each(['command', 'message'] as const)(
+    'keeps a Goal submitted during compaction out of every public queue snapshot (%s)',
+    async (entry) => {
+      const database = new NodeDatabase(':memory:', 'node-compacting-goal');
+      const workspace = database.saveWorkspace({
+        path: await workspacePath('compacting-goal'),
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      let notify: ((event: { method: string; params: unknown }) => void) | undefined;
+      const createClient = () => ({
+        onNotification(listener: typeof notify) {
+          notify = listener;
+          return () => undefined;
+        },
+        start: async () => undefined,
+        resumeThread: async () => ({ thread: { id: 'compacting-goal' } }),
+        request: vi.fn(async () => ({})),
+        configureEnvironment: () => undefined,
+        clearEnvironment: () => undefined,
+        stop: () => undefined
+      });
+      const connector = new NodeConnector({
+        reconnect: false,
+        database,
+        capabilities: {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: process.version,
+          codex: { available: true, version: 'codex-cli 0.147.0' },
+          claudeCode: { available: false }
+        },
+        codexClient: createClient() as never,
+        codexRunClientFactory: () => createClient() as never
+      });
+      const internals = connector as unknown as {
+        runtime: NodeRuntimeState;
+        goalRuntime: { get(id: string): { objective: string } | undefined };
+        runEventBridge: { emitQueue(workspaceId: string, sessionId: string): void };
+        workspaceQueueWorkbenchService: {
+          snapshot(id: string): { items: { queueItemId: string }[] };
+          queuedCount(id: string): number;
+        };
+      };
+      const session = internals.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        cwd: workspace.path,
+        externalSessionId: 'compacting-goal',
+        nativeControl: 'MAR_MANAGED'
+      });
+      try {
+        await operation(connector, 'session.command.execute', {
+          sessionId: session.id,
+          commandId: 'compact',
+          input: '/compact'
+        });
+        const snapshots: unknown[] = [];
+        vi.spyOn(internals.runEventBridge, 'emitQueue').mockImplementation((_workspaceId, id) => {
+          snapshots.push(internals.workspaceQueueWorkbenchService.snapshot(id));
+        });
+        let result: { queueItemId?: string };
+        if (entry === 'command') {
+          result = (await operation(connector, 'session.command.execute', {
+            sessionId: session.id,
+            commandId: 'goal',
+            input: '/goal Finish the feature'
+          })) as typeof result;
+        } else {
+          await operation(connector, 'session.command.execute', {
+            sessionId: session.id,
+            commandId: 'goal',
+            input: '/goal'
+          });
+          result = (await operation(connector, 'session.message', {
+            sessionId: session.id,
+            clientMessageId: 'goal-objective',
+            content: 'Finish the feature',
+            deliveryIntent: 'SEND'
+          })) as typeof result;
+          await expect(
+            operation(connector, 'session.message', {
+              sessionId: session.id,
+              clientMessageId: 'goal-objective',
+              content: 'Finish the feature',
+              deliveryIntent: 'SEND'
+            })
+          ).resolves.toMatchObject({ queueItemId: result.queueItemId, idempotent: true });
+        }
+        expect(internals.goalRuntime.get(session.id)?.objective).toBe('Finish the feature');
+        expect(internals.runtime.getQueueItem(result.queueItemId!)).toBeDefined();
+        expect(snapshots.length).toBeGreaterThan(0);
+        expect(
+          snapshots.every((snapshot) => (snapshot as { items: unknown[] }).items.length === 0)
+        ).toBe(true);
+        expect(internals.workspaceQueueWorkbenchService.queuedCount(session.id)).toBe(0);
+        await operation(connector, 'session.message', {
+          sessionId: session.id,
+          clientMessageId: 'goal:ordinary-message',
+          content: 'After the Goal',
+          deliveryIntent: 'QUEUE'
+        });
+        const queue = internals.workspaceQueueWorkbenchService.snapshot(session.id);
+        expect(queue.items).toHaveLength(1);
+        expect(internals.workspaceQueueWorkbenchService.queuedCount(session.id)).toBe(1);
+        expect(internals.runtime.getQueueItem(queue.items[0]!.queueItemId)?.content).toBe(
+          'After the Goal'
+        );
+        expect(
+          internals.runtime
+            .conversationTail(session.id)
+            .flatMap((turn) => turn.items)
+            .some((item) => item.kind === 'user_message')
+        ).toBe(false);
+        const revised = (await operation(connector, 'session.command.execute', {
+          sessionId: session.id,
+          commandId: 'goal',
+          input: '/goal Finish the revised feature'
+        })) as { queueItemId: string };
+        expect(internals.goalRuntime.get(session.id)?.objective).toBe('Finish the revised feature');
+        expect(internals.runtime.getQueueItem(result.queueItemId!)).toBeUndefined();
+        expect(internals.runtime.getQueueItem(revised.queueItemId)).toBeDefined();
+        expect(internals.workspaceQueueWorkbenchService.snapshot(session.id).items).toEqual(
+          queue.items
+        );
+        expect(internals.workspaceQueueWorkbenchService.queuedCount(session.id)).toBe(1);
+        await operation(connector, 'session.command.execute', {
+          sessionId: session.id,
+          commandId: 'goal',
+          input: '/goal --clear'
+        });
+        expect(internals.goalRuntime.get(session.id)).toBeUndefined();
+        expect(internals.runtime.getQueueItem(revised.queueItemId)).toBeUndefined();
+        expect(internals.workspaceQueueWorkbenchService.snapshot(session.id).items).toEqual(
+          queue.items
+        );
+      } finally {
+        notify?.({
+          method: 'turn/completed',
+          params: { threadId: 'compacting-goal', turn: { id: 'compact', status: 'completed' } }
+        });
+        await connector.stop();
+      }
+    }
+  );
+
   it.each(['accepted', 'handled'] as const)(
     'continues a Goal after repeated native steer without restarting or counting extra turns (%s)',
     async (status) => {

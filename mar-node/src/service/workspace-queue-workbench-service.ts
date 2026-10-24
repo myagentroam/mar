@@ -232,7 +232,7 @@ export class WorkspaceQueueWorkbenchService {
 
   private publicQueueItem(itemId: string) {
     const item = this.options.runtime.getQueueItem(itemId);
-    return item?.clientMessageId.startsWith('goal:') ? undefined : item;
+    return item?.goalInput === true ? undefined : item;
   }
 
   queuedCount(sessionId: string): number {
@@ -242,7 +242,7 @@ export class WorkspaceQueueWorkbenchService {
   }
 
   private requireItem(itemId: string, workspaceId?: unknown) {
-    const item = this.options.runtime.getQueueItem(itemId);
+    const item = this.publicQueueItem(itemId);
     if (item === undefined) throw new Error('QUEUE_ITEM_INVALID');
     if (typeof workspaceId !== 'string' || item.workspaceId !== workspaceId)
       throw new Error('QUEUE_ITEM_INVALID');

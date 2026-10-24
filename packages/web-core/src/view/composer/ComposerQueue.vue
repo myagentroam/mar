@@ -517,8 +517,9 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 }
 
 .composer-queue-heading strong {
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
+  font-weight: 500;
 }
 
 .composer-queue-paused {

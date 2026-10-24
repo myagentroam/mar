@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import type { TerminalManager } from '../terminal.js';
-import { nodeTerminalConnectEndpoint, isPlainRecord } from '../runner/codex/conversation-parser.js';
+import { nodeTerminalConnectEndpoint, isPlainRecord } from '../util/node-operation-parsers.js';
 import { TerminalRelayState } from './terminal-relay-state.js';
 import { TerminalRelaySender } from '@myagentroam/marctl/src/terminal-relay-sender.mjs';
 

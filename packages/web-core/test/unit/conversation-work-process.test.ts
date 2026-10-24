@@ -264,6 +264,28 @@ function processBlock(blocks: ReturnType<typeof conversationWorkProcessBlocks>, 
 }
 
 describe('Conversation work process blocks', () => {
+  it('reuses reasoning projections across process grouping and keeps preview identity', () => {
+    let sectionReads = 0;
+    const reasoning = item('thinking', 'reasoning', {
+      processGroup: { id: 'p', isStart: true },
+      payload: { representation: 'visible_thinking' }
+    });
+    Object.defineProperty(reasoning.payload, 'sections', {
+      get() {
+        sectionReads++;
+        return [{ text: 'Inspect the files, then verify' }];
+      }
+    });
+    const blocks = conversationWorkProcessBlocks([turn([reasoning])]);
+    const entry = blocks[0]!.entries[0]!.displayItem;
+    expect(entry.type).toBe('reasoning_group');
+    if (entry.type !== 'reasoning_group') throw new Error('Expected reasoning projection');
+    expect(blocks[0]!.preview).toBe(entry.preview);
+    expect(entry.preview?.text).toBe('Inspect the files');
+    // reasoningSections checks the array and reads it once; grouping must not repeat it.
+    expect(sectionReads).toBe(2);
+  });
+
   it('prefers explicit summaries and falls back to thinking without changing representation', () => {
     const blocks = conversationWorkProcessBlocks(
       [

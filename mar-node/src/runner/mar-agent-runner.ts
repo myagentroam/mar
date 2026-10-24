@@ -18,7 +18,7 @@ import {
   type MarAgentSessionCatalog,
   type MarAgentSessionSummary
 } from '@myagentroam/agent';
-import type { NativeTranscriptImageAttachment } from '../native-session-history.js';
+import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -267,6 +267,12 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       effort: model?.defaultEffort ?? '',
       access: 'auto'
     };
+  }
+  override goalAccess(currentAccess: string | null) {
+    return { access: currentAccess ?? 'full-access', accessChanged: false };
+  }
+  override restoreStoredAccess(access: string | null, _fallbackAccess: string): string {
+    return access === 'auto' || access === 'full-access' ? access : 'full-access';
   }
   presentSession(
     session: NodeAgentSession,

@@ -1195,6 +1195,11 @@ describe('OpenCode Runner', () => {
     await vi.waitFor(() => expect(fakeClient.prompt).toHaveBeenCalledOnce());
     expect(fakeClient.prompt).toHaveBeenCalledWith(expect.objectContaining({ agent: 'build' }));
     expect(events.some((event) => event.type === 'run.completed')).toBe(false);
+    const execution = runner.execution.get('run-1')!;
+    expect(execution.sessionId).toBe('bootstrap-1');
+    runner.migrateSessionIdentity('bootstrap-1', 'native-1');
+    expect(runner.execution.get('run-1')).toEqual({ ...execution, sessionId: 'native-1' });
+    expect(runner.execution.get('run-1')?.abort).toBe(execution.abort);
 
     const listener = vi.mocked(fakeClient.subscribe).mock.calls[0]?.[2];
     listener?.({

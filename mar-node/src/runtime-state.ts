@@ -564,6 +564,7 @@ export class NodeRuntimeState {
     readonly sessionId: string;
     readonly clientMessageId: string;
     readonly content: string;
+    readonly goalInput?: true;
     readonly suppressNotifications?: boolean;
     readonly initiatedByUserId?: number;
     readonly attachments?: readonly NodeMessageAttachmentInput[];
@@ -591,6 +592,7 @@ export class NodeRuntimeState {
       runner: session.runner,
       clientMessageId: input.clientMessageId,
       content: input.content,
+      ...(input.goalInput === true ? { goalInput: true as const } : {}),
       ...(input.suppressNotifications === true ? { suppressNotifications: true } : {}),
       attachments: input.attachments ?? [],
       ...(input.initiatedByUserId === undefined
