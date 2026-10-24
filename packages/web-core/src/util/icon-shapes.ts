@@ -104,7 +104,7 @@ export const iconShapes = {
   warning:
     '<path d="M10.3 4.4a2 2 0 0 1 3.4 0l7 12.2a2 2 0 0 1-1.7 3H5a2 2 0 0 1-1.7-3l7-12.2Z" /><path d="M12 9v4" /><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/>',
   'loading-action':
-    '<path d="M12 3.5v3" transform="rotate(0 12 12)" opacity="0.250"/><path d="M12 3.5v3" transform="rotate(45 12 12)" opacity="0.344"/><path d="M12 3.5v3" transform="rotate(90 12 12)" opacity="0.438"/><path d="M12 3.5v3" transform="rotate(135 12 12)" opacity="0.531"/><path d="M12 3.5v3" transform="rotate(180 12 12)" opacity="0.625"/><path d="M12 3.5v3" transform="rotate(225 12 12)" opacity="0.719"/><path d="M12 3.5v3" transform="rotate(270 12 12)" opacity="0.812"/><path d="M12 3.5v3" transform="rotate(315 12 12)" opacity="0.906"/>',
+    '<path d="M12 2.5v4.25" transform="rotate(0 12 12)"/><path d="M12 2.5v4.25" transform="rotate(45 12 12)"/><path d="M12 2.5v4.25" transform="rotate(90 12 12)"/><path d="M12 2.5v4.25" transform="rotate(135 12 12)"/><path d="M12 2.5v4.25" transform="rotate(180 12 12)"/><path d="M12 2.5v4.25" transform="rotate(225 12 12)"/><path d="M12 2.5v4.25" transform="rotate(270 12 12)"/><path d="M12 2.5v4.25" transform="rotate(315 12 12)"/>',
   'loading-content': '<path d="M20.5 12a8.5 8.5 0 1 1-8.5-8.5" />',
   lock: '<rect x="4.5" y="10" width="15" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14.5v2" />',
   unlock:

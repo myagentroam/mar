@@ -34,6 +34,18 @@ describe('shared MAR icons', () => {
     expect(direct).toContain('mar-icon--spinning');
   });
 
+  it('keeps action spokes uniformly opaque during whole-icon rotation', async () => {
+    const html = await renderToString(createSSRApp(MarIcon, { name: 'loading-action' }));
+    const paths = Array.from(html.matchAll(/<path\b[^>]*>/g), (match) => match[0]);
+    expect(paths).toHaveLength(8);
+    for (const path of paths) {
+      const opacity = path.match(/\bopacity="([^"]+)"/)?.[1] ?? '1';
+      expect(Number(opacity)).toBe(1);
+    }
+    expect(html).toContain('stroke-linecap="round"');
+    expect(html).not.toMatch(/<(?:animate|animateTransform|set)\b/);
+  });
+
   it('distinguishes the workspace, host and new conversation without changing button semantics', async () => {
     expect(iconShapes.workspace).not.toEqual(iconShapes.node);
     expect(iconShapes['session-add']).not.toEqual(iconShapes.conversation);

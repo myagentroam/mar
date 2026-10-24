@@ -9,6 +9,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const dpr of [1, 2, 3]) {
+  test.describe(`Action stars DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const theme of ['dark', 'light']) {
+      test(`Action star keeps equal brightness and a single linear rotation: ${theme}`, async ({
+        page
+      }, testInfo) => {
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          for (const consumer of ['composer', 'element-plus']) {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            const composer = consumer === 'composer';
+            await page.goto(
+              `${fixture.url}icon-system.html?${composer ? 'composer-icons' : 'information-icons'}=1&theme=${theme}`
+            );
+            const button = composer
+              ? page.locator('.composer-send-button')
+              : page.getByRole('button', { name: 'Query usage', exact: true });
+            await button.click();
+            const graphic = button.locator('[data-mar-icon="loading-action"]');
+            const owner = composer ? graphic : button.locator('.el-icon.is-loading');
+            await expect(graphic).toBeVisible();
+            await expect(button).toBeDisabled();
+            await expect(owner).not.toHaveCSS('animation-name', 'none');
+            await expect(owner).toHaveCSS('animation-timing-function', 'linear');
+            await expect(owner).toHaveCSS('animation-duration', composer ? '1s' : '2s');
+            if (!composer) await expect(graphic).toHaveCSS('animation-name', 'none');
+            const rotation = await owner.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return {
+                count: element
+                  .getAnimations()
+                  .filter(
+                    (animation) =>
+                      animation instanceof CSSAnimation && animation.playState === 'running'
+                  ).length,
+                origin: style.transformOrigin.split(' ').slice(0, 2).map(Number.parseFloat),
+                size: [style.width, style.height].map(Number.parseFloat)
+              };
+            });
+            expect(rotation.count).toBe(1);
+            for (const axis of [0, 1]) {
+              expect(rotation.origin[axis]).toBeCloseTo(rotation.size[axis] / 2, 1);
+            }
+            const star = await graphic.evaluate((element) => {
+              const svg = element as SVGSVGElement;
+              const bounds = svg.getBBox();
+              const style = getComputedStyle(svg);
+              const stroke = parseFloat(style.strokeWidth);
+              return {
+                color: style.color,
+                min: Math.min(bounds.x, bounds.y) - stroke / 2,
+                max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2,
+                rays: Array.from(svg.querySelectorAll('path'), (path) => {
+                  const ray = getComputedStyle(path);
+                  return {
+                    opacity: ray.opacity,
+                    stroke: ray.stroke,
+                    cap: ray.strokeLinecap,
+                    animation: ray.animationName,
+                    length: path.getTotalLength()
+                  };
+                })
+              };
+            });
+            expect(star.rays).toHaveLength(8);
+            expect(star.min).toBeGreaterThan(0);
+            expect(star.max).toBeLessThan(24);
+            for (const ray of star.rays) {
+              expect(ray.opacity).toBe('1');
+              expect(ray.stroke).toBe(star.color);
+              expect(ray.cap).toBe('round');
+              expect(ray.animation).toBe('none');
+              expect(ray.length).toBeGreaterThanOrEqual(4);
+              expect(ray.length).toBeLessThanOrEqual(5);
+            }
+            await button.screenshot({
+              path: testInfo.outputPath(`action-star-${consumer}-${theme}-${width}.png`)
+            });
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await expect(owner).toHaveCSS('animation-name', 'none');
+            await expect(graphic).toBeVisible();
+            await expect(button).toBeDisabled();
+          }
+        }
+      });
+    }
+  });
+}
+
 for (const theme of ['dark', 'light']) {
   test(`Git change restore icons stay compact on mobile in ${theme}`, async ({
     page
