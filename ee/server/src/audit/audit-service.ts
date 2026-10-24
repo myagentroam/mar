@@ -248,7 +248,7 @@ export class AuditService {
       params.push(range.to);
     }
     params.push(MAX_EXPORT_ROWS);
-    const [rows] = await this.database.raw.query<RowDataPacket[]>(
+    const [rows] = await this.database.auditRaw.query<RowDataPacket[]>(
       `SELECT id,event_type,occurred_at,result,error_code,actor_user_id,actor_username,
               authentication_method,provider_id,request_id,operation_id,session_public_id,target_type,target_id,target_name,
               organization_id,node_id,workspace_id,agent_session_id,run_id,client_message_id,
@@ -300,7 +300,7 @@ export class AuditService {
       conditions.push('event.organization_id IN (?)');
       params.push(scope);
     }
-    const [rows] = await this.database.raw.query<RowDataPacket[]>(
+    const [rows] = await this.database.auditRaw.query<RowDataPacket[]>(
       `SELECT event.id,event.event_type,event.occurred_at,event.result,event.error_code,
               event.actor_user_id,event.actor_username,event.authentication_method,event.provider_id,
               event.request_id,event.operation_id,event.session_public_id,event.target_type,event.target_id,
@@ -375,7 +375,7 @@ export class AuditService {
   async cleanupBatch(batchSize = DEFAULT_CLEANUP_BATCH_SIZE): Promise<number> {
     const cutoff = this.now() - (await this.retentionDays()) * 24 * 60 * 60 * 1000;
     const limit = normalizeCleanupBatchSize(batchSize);
-    return withMysqlTransaction(this.database.raw, async (connection) => {
+    return withMysqlTransaction(this.database.auditRaw, async (connection) => {
       const [rows] = await connection.execute<RowDataPacket[]>(
         `SELECT id FROM audit_events
          WHERE occurred_at<? ORDER BY occurred_at,id LIMIT ${limit} FOR UPDATE`,
