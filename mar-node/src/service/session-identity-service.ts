@@ -16,6 +16,7 @@ export interface SessionIdentityServiceOptions {
   readonly releaseAttachments?: (sessionId: string) => void;
   readonly persist: (session: NodeAgentSession, nativeSessionId: string) => void;
   readonly validateCommands: (previousId: string, nextId: string) => void;
+  readonly migrateAttachments: (previousId: string, nextId: string) => void;
   readonly migrateCommands: (previousId: string, nextId: string) => void;
   readonly migrateGoal: (previousId: string, nextId: string) => void;
   readonly migrateQueue: (previousId: string, nextId: string) => void;
@@ -54,6 +55,7 @@ export class SessionIdentityService {
     const session = this.options.runtime.promoteSessionIdentity(sessionId, nativeSessionId, {
       deferRunChanges: true
     });
+    this.options.migrateAttachments(sessionId, nativeSessionId);
     this.options.migrateGoal(sessionId, nativeSessionId);
     this.options.migrateCommands(sessionId, nativeSessionId);
     this.options.migrateQueue(sessionId, nativeSessionId);

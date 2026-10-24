@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +12,8 @@ import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { SessionIdentityService } from '../../src/service/session-identity-service.js';
 import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
+import type { RunAttachmentService } from '../../src/service/run-attachment-service.js';
+import type { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { capabilities, codexProfileClientFactory } from './support/codex-connector.js';
 import { executeNodeOperation } from './support/node-connector.js';
 import {
@@ -46,6 +48,7 @@ function fixture() {
   const releaseAttachments = vi.fn();
   const commands = new CommandStateStore();
   const hooks = {
+    migrateAttachments: vi.fn(),
     validateCommands: vi.fn((previousId: string, nextId: string) =>
       commands.validateSessionIdentityPromotion(previousId, nextId)
     ),
@@ -131,6 +134,7 @@ describe('Bootstrap Session identity retirement', () => {
       expect(runtime.getAgentSession(bootstrap.id)?.id).toBe(bootstrap.id);
       expect(runtime.getAgentSession('native-failed')).toBeUndefined();
       expect(database.getSessionRecord('native-failed')).toBeUndefined();
+      expect(hooks.migrateAttachments).not.toHaveBeenCalled();
       expect(hooks.migrateGoal).not.toHaveBeenCalled();
       expect(hooks.migrateCommands).not.toHaveBeenCalled();
       expect(hooks.migrateQueue).not.toHaveBeenCalled();
@@ -185,6 +189,7 @@ describe('Bootstrap Session identity retirement', () => {
         persist.mockClear();
         hooks.migrateCommands.mockClear();
         hooks.migrateRunnerState.mockClear();
+        hooks.migrateAttachments.mockClear();
       }
       if (scenario === 'command-conflict') {
         commands.set(bootstrap.id, command);
@@ -208,6 +213,7 @@ describe('Bootstrap Session identity retirement', () => {
       await Promise.resolve();
       expect(rejected).toHaveBeenCalledExactlyOnceWith(failure);
       expect(persist).not.toHaveBeenCalled();
+      expect(hooks.migrateAttachments).not.toHaveBeenCalled();
       expect(hooks.migrateCommands).not.toHaveBeenCalled();
       expect(database.getSessionRecord(target)?.metadata.customTitle).toBe('Keep me');
       expect(hooks.migrateRunnerState).not.toHaveBeenCalled();
@@ -217,7 +223,7 @@ describe('Bootstrap Session identity retirement', () => {
     }
   );
 
-  it('publishes only after Runtime and every synchronous state migration have completed', () => {
+  it('publishes only after Runtime and every synchronous state migration have completed', async () => {
     const { runtime, bootstrap, identity, hooks, persist, emitSession, onRunChanged } = fixture();
     runtime.createMessageRun({
       sessionId: bootstrap.id,
@@ -229,6 +235,7 @@ describe('Bootstrap Session identity retirement', () => {
       timeline.push('persist');
     });
     for (const name of [
+      'migrateAttachments',
       'migrateGoal',
       'migrateCommands',
       'migrateQueue',
@@ -240,6 +247,7 @@ describe('Bootstrap Session identity retirement', () => {
         timeline.push(name);
       });
     }
+    const waiting = identity.wait(bootstrap.id);
     for (const emit of [
       onRunChanged,
       emitSession,
@@ -248,19 +256,40 @@ describe('Bootstrap Session identity retirement', () => {
       hooks.emitTurn
     ]) {
       emit.mockImplementation(() => {
+        expect(identity.bootstrapIds.has(bootstrap.id)).toBe(false);
         timeline.push('publish');
       });
     }
     identity.promote(bootstrap.id, 'native-ordered');
-    expect(timeline.slice(0, 5)).toEqual([
+    expect(timeline.slice(0, 6)).toEqual([
       'persist',
+      'migrateAttachments',
       'migrateGoal',
       'migrateCommands',
       'migrateQueue',
       'migrateRunnerState'
     ]);
-    expect(timeline.slice(5)).not.toHaveLength(0);
-    expect(timeline.slice(5).every((step) => step === 'publish')).toBe(true);
+    expect(timeline.slice(6)).not.toHaveLength(0);
+    expect(timeline.slice(6).every((step) => step === 'publish')).toBe(true);
+    await expect(waiting).resolves.toBe('native-ordered');
+    for (const migrate of [
+      hooks.migrateAttachments,
+      hooks.migrateGoal,
+      hooks.migrateCommands,
+      hooks.migrateQueue,
+      hooks.migrateRunnerState
+    ])
+      expect(migrate).toHaveBeenCalledExactlyOnceWith(bootstrap.id, 'native-ordered');
+  });
+
+  it('migrates attachments independently when the Goal callback has no work', () => {
+    const { bootstrap, identity, hooks } = fixture();
+    hooks.migrateGoal.mockImplementation(() => undefined);
+    identity.promote(bootstrap.id, 'native-attachments');
+    expect(hooks.migrateAttachments).toHaveBeenCalledExactlyOnceWith(
+      bootstrap.id,
+      'native-attachments'
+    );
   });
 
   it('rejects a generic identity waiter without retiring its ordinary Session', async () => {
@@ -296,6 +325,7 @@ describe('Bootstrap Session identity retirement', () => {
       const observedStates: unknown[] = [];
       onRunChanged.mockImplementation(() => {
         observedStates.push([
+          hooks.migrateAttachments.mock.calls.length,
           hooks.migrateGoal.mock.calls.length,
           hooks.migrateCommands.mock.calls.length,
           hooks.migrateQueue.mock.calls.length,
@@ -318,7 +348,9 @@ describe('Bootstrap Session identity retirement', () => {
       await expect(waiting).resolves.toBe('native-success');
       expect(runtime.getAgentSession(bootstrap.id)?.id).toBe('native-success');
       expect(onRunChanged).toHaveBeenCalledTimes(2);
-      expect(observedStates).toEqual(Array(stage === 'observer' ? 1 : 2).fill([1, 1, 1, 1, false]));
+      expect(observedStates).toEqual(
+        Array(stage === 'observer' ? 1 : 2).fill([1, 1, 1, 1, 1, false])
+      );
       expect(emitSession).toHaveBeenCalledOnce();
       expect(hooks.emitRun).toHaveBeenCalledTimes(2);
       expect(hooks.emitQueue).toHaveBeenCalledOnce();
@@ -331,12 +363,13 @@ describe('Bootstrap Session identity retirement', () => {
   );
 
   it('preserves same-ID promotion without a waiter or extra Run observations', () => {
-    const { runtime, bootstrap, identity, onRunChanged } = fixture();
+    const { runtime, bootstrap, identity, onRunChanged, hooks } = fixture();
     runtime.createMessageRun({ sessionId: bootstrap.id, clientMessageId: 'one', content: 'one' });
     onRunChanged.mockClear();
     identity.promote(bootstrap.id, bootstrap.id);
     expect(runtime.getAgentSession(bootstrap.id)?.externalSessionId).toBe(bootstrap.id);
     expect(onRunChanged).not.toHaveBeenCalled();
+    expect(hooks.migrateAttachments).toHaveBeenCalledExactlyOnceWith(bootstrap.id, bootstrap.id);
     expect(identity.bootstrapIds.has(bootstrap.id)).toBe(false);
   });
 
@@ -641,6 +674,157 @@ it('fails a Codex start on SQLite rejection without publishing before the first 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it.each(['success', 'validation failure', 'persistence failure'] as const)(
+  'keeps the real Connector attachment phase separate, synchronous and gated on %s',
+  async (outcome) => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-identity-attachments-'));
+    const directory = join(root, 'attachments');
+    await mkdir(directory);
+    const path = join(directory, 'notes.txt');
+    await writeFile(path, 'retained input');
+    const database = new NodeDatabase(':memory:', 'identity-attachments');
+    const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+    const connector = new NodeConnector({
+      database,
+      capabilities: capabilities(),
+      reconnect: false
+    });
+    const node = connector as unknown as {
+      runtime: NodeRuntimeState;
+      sessionIdentityService: SessionIdentityService;
+      runAttachmentService: RunAttachmentService;
+      goalRuntime: GoalRuntime;
+      goalCoordinator: { migrateSession(previousId: string, nextId: string): void };
+      goalMcpBridge: { migrateSession(previousId: string, nextId: string): void };
+      commandStates: CommandStateStore;
+      continuousRunCoordinator: { migrateSession(previousId: string, nextId: string): void };
+      modelUsage: { promoteSession(previousId: string, nextId: string): void };
+      runners: RunnerRegistry;
+      publishWorkbenchEvent(category: string, payload: unknown): void;
+    };
+    try {
+      const session = node.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        cwd: root,
+        runner: 'claude-code'
+      });
+      node.sessionIdentityService.markBootstrap(session.id);
+      const goal = node.goalRuntime.start(session.id, 'Retain the accepted input');
+      const attachments = node.runAttachmentService;
+      attachments.adoptSessionFiles(session.id, 'input', [directory], workspace.id, [path]);
+      const retained = attachments.state.sessionRetentions.get(session.id);
+      const paths = attachments.state.runFileDirectories.get('input');
+      const timeline: string[] = [];
+      const promoteRuntime = node.runtime.promoteSessionIdentity.bind(node.runtime);
+      vi.spyOn(node.runtime, 'promoteSessionIdentity').mockImplementation((...args) => {
+        timeline.push('runtime');
+        return promoteRuntime(...args);
+      });
+      const stages = [
+        {
+          label: 'attachments',
+          call: attachments.migrateSession.bind(attachments),
+          spy: vi.spyOn(attachments, 'migrateSession')
+        },
+        {
+          label: 'goal',
+          call: node.goalCoordinator.migrateSession.bind(node.goalCoordinator),
+          spy: vi.spyOn(node.goalCoordinator, 'migrateSession')
+        },
+        {
+          label: 'goal-mcp',
+          call: node.goalMcpBridge.migrateSession.bind(node.goalMcpBridge),
+          spy: vi.spyOn(node.goalMcpBridge, 'migrateSession')
+        },
+        {
+          label: 'commands',
+          call: node.commandStates.promoteSessionIdentity.bind(node.commandStates),
+          spy: vi.spyOn(node.commandStates, 'promoteSessionIdentity')
+        },
+        {
+          label: 'queue',
+          call: node.continuousRunCoordinator.migrateSession.bind(node.continuousRunCoordinator),
+          spy: vi.spyOn(node.continuousRunCoordinator, 'migrateSession')
+        },
+        {
+          label: 'usage',
+          call: node.modelUsage.promoteSession.bind(node.modelUsage),
+          spy: vi.spyOn(node.modelUsage, 'promoteSession')
+        },
+        {
+          label: 'runners',
+          call: node.runners.migrateSessionIdentity.bind(node.runners),
+          spy: vi.spyOn(node.runners, 'migrateSessionIdentity')
+        }
+      ];
+      for (const stage of stages)
+        stage.spy.mockImplementation((previousId, nextId) => {
+          expect(node.runtime.getAgentSession(nextId)?.id).toBe(nextId);
+          if (stage.label !== 'attachments')
+            expect(attachments.state.runFileSessions.get('input')).toBe(nextId);
+          timeline.push(stage.label);
+          stage.call(previousId, nextId);
+        });
+      const publishing = vi.spyOn(node, 'publishWorkbenchEvent').mockImplementation(() => {
+        expect(node.sessionIdentityService.bootstrapIds.has(session.id)).toBe(false);
+        timeline.push('publish');
+      });
+      const waiting = node.sessionIdentityService.wait(session.id);
+      if (outcome !== 'success') {
+        if (outcome === 'persistence failure')
+          database.raw.exec(
+            "CREATE TRIGGER reject_attachment_identity BEFORE INSERT ON agent_sessions BEGIN SELECT RAISE(ABORT, 'IDENTITY_PERSIST_FAILED'); END"
+          );
+        const failure =
+          outcome === 'validation failure'
+            ? 'SESSION_EXTERNAL_ID_INVALID'
+            : 'IDENTITY_PERSIST_FAILED';
+        expect(() =>
+          node.sessionIdentityService.promote(
+            session.id,
+            outcome === 'validation failure' ? '' : 'native-attachments'
+          )
+        ).toThrow(failure);
+        await expect(waiting).rejects.toThrow(failure);
+        for (const stage of stages) expect(stage.spy).not.toHaveBeenCalled();
+        expect(timeline).toEqual([]);
+        expect(publishing).not.toHaveBeenCalled();
+        expect(node.goalRuntime.get(session.id)?.id).toBe(goal.id);
+        return;
+      }
+      node.sessionIdentityService.promote(session.id, 'native-attachments');
+      await expect(waiting).resolves.toBe('native-attachments');
+      for (const stage of stages)
+        expect(stage.spy).toHaveBeenCalledExactlyOnceWith(session.id, 'native-attachments');
+      expect(timeline.slice(0, 8)).toEqual([
+        'runtime',
+        'attachments',
+        'goal',
+        'goal-mcp',
+        'commands',
+        'queue',
+        'usage',
+        'runners'
+      ]);
+      expect(timeline.slice(8)).not.toHaveLength(0);
+      expect(timeline.slice(8).every((step) => step === 'publish')).toBe(true);
+      expect(attachments.state.sessionRetentions.has(session.id)).toBe(false);
+      expect(attachments.state.sessionRetentions.get('native-attachments')).toBe(retained);
+      expect(attachments.state.runFileDirectories.get('input')).toBe(paths);
+      expect(attachments.fileResource(workspace.id, attachments.resourcePath(path))).toBe(path);
+      expect(node.goalRuntime.get('native-attachments')?.id).toBe(goal.id);
+      await attachments.releaseSession(session.id);
+      expect(await readFile(path, 'utf8')).toBe('retained input');
+      await attachments.releaseSession('native-attachments');
+      await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      vi.restoreAllMocks();
+      await connector.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+);
 
 it('settles an accepted Claude start when its asynchronous identity persistence fails, then starts fresh', async () => {
   const root = await mkdtemp(join(tmpdir(), 'mar-identity-claude-'));

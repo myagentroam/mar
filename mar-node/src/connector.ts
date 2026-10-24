@@ -1066,8 +1066,9 @@ export class NodeConnector {
         this.commandStates.validateSessionIdentityPromotion(previousId, nextId),
       migrateCommands: (previousId, nextId) =>
         this.commandStates.promoteSessionIdentity(previousId, nextId),
+      migrateAttachments: (previousId, nextId) =>
+        this.runAttachmentService.migrateSession(previousId, nextId),
       migrateGoal: (previousId, nextId) => {
-        this.runAttachmentService.migrateSession(previousId, nextId);
         this.goalCoordinator.migrateSession(previousId, nextId);
         this.goalMcpBridge.migrateSession(previousId, nextId);
       },
