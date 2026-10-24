@@ -125,7 +125,7 @@ export const composerEnUS = {
       fastModeIsEnabled: 'Fast Mode is enabled',
       modelAndReasoningEffort: 'Model and reasoning effort',
       access: 'Access',
-      viewContextUsageClickToCompactContext: 'View context usage; click to compact context',
+      viewContextUsageClickToCompactContext: 'Click to compact context',
       compactUnavailable: 'Context compaction is currently unavailable.',
       enterToQueueCtrlEnterToStop: 'Enter to queue · Ctrl + Enter to steer',
       enterToSendShiftAltEnterFor: 'Enter to send · Shift/Alt + Enter for a new line',

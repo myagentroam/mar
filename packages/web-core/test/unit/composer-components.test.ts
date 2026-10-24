@@ -552,7 +552,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
       )
     )
   )(
-    'preserves stop eligibility independently of global loading: %j',
+    'preserves toolbar controls and context feedback independently of global loading: %j',
     async ({ hidden, loading, canInterrupt }) => {
       const props = {
         draftSessionOpen: true,
@@ -611,6 +611,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         expect(html).toContain('Original model');
         expect(html).toContain('25%');
         expect(html).toContain('Original context summary');
+        expect(html).toContain(
+          `aria-description="Original context summary\n${locale === 'zh-CN' ? '当前无法压缩上下文。' : 'Context compaction is currently unavailable.'}"`
+        );
+        const compactable = await render(ComposerToolbar, { ...props, canCompactContext: true });
+        expect(compactable).toContain(
+          `aria-description="Original context summary\n${locale === 'zh-CN' ? '点击压缩上下文' : 'Click to compact context'}"`
+        );
       }
       expect(html).toContain(
         locale === 'zh-CN'
