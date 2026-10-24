@@ -9,6 +9,52 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const locale of ['en-US', 'zh-CN']) {
+    for (const viewportWidth of [1280, 390]) {
+      test(`Inspector tabs fit panel widths in ${theme} (${locale}) at ${viewportWidth}px`, async ({
+        page
+      }, testInfo) => {
+        await page.setViewportSize({ width: viewportWidth, height: 900 });
+        await page.route('**/api/terminals**', (route) =>
+          route.fulfill({ json: { terminals: [] } })
+        );
+        await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&locale=${locale}`);
+        const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+        const strip = inspector.getByRole('tablist');
+        const tabs = strip.getByRole('tab');
+        await expect(tabs).toHaveCount(4);
+        await expect(tabs.first()).toHaveCSS('font-size', '12px');
+        for (const width of viewportWidth >= 768 ? [341, 275] : [366, 320]) {
+          await inspector.evaluate((element, width) => {
+            (element as HTMLElement).style.width = `${width}px`;
+          }, width);
+          expect(
+            await strip.evaluate((element) => element.scrollWidth <= element.clientWidth)
+          ).toBe(true);
+          const bounds = (await strip.boundingBox())!;
+          for (const tab of await tabs.all()) {
+            const tabBounds = (await tab.boundingBox())!;
+            expect(tabBounds.x).toBeGreaterThanOrEqual(bounds.x);
+            expect(tabBounds.x + tabBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+          }
+        }
+        await inspector.screenshot({ path: testInfo.outputPath('inspector-tabs.png') });
+        await inspector.evaluate((element) => {
+          (element as HTMLElement).style.width = '200px';
+        });
+        await expect(strip).toHaveCSS('overflow-x', 'auto');
+        expect(await strip.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          true
+        );
+        await tabs.last().scrollIntoViewIfNeeded();
+        await tabs.last().click();
+        await expect(tabs.last()).toHaveAttribute('aria-selected', 'true');
+      });
+    }
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
     test(`Session row feedback stays immediate in ${theme} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

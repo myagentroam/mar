@@ -6,7 +6,9 @@ import Fixture from './workbench-style-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/LocalePreferenceService.js';
 import { themePreferenceService } from '../../src/service/ThemePreferenceService.js';
 import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/ManagementComposition.js';
-localePreferenceService().setLocale('en-US');
+localePreferenceService().setLocale(
+  new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
+);
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );
