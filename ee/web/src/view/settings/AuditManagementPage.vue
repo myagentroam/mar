@@ -8,7 +8,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import type { TagProps } from 'element-plus';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
 import { currentLocale, translate } from '@/service/locale-preference-service';
@@ -83,6 +83,7 @@ const appendLoading = ref(false);
 const refreshLoading = ref(false);
 const pagination = createManagementPaginationService();
 let loadGeneration = 0;
+let detailGeneration = 0;
 watch(
   () => pagination.mobileViewport.value,
   () => {
@@ -306,13 +307,18 @@ function resultType(result: AuditEvent['result']): TagProps['type'] {
   return result === 'FAILED' ? 'danger' : result === 'DENIED' ? 'warning' : 'info';
 }
 async function openDetail(event: AuditEvent): Promise<void> {
+  const generation = ++detailGeneration;
+  selected.value = event;
   detailLoading.value = true;
+  const isCurrent = () => generation === detailGeneration && selected.value?.id === event.id;
   try {
-    selected.value = await props.request<AuditEventDetail>(
+    const detail = await props.request<AuditEventDetail>(
       `/api/audit-events/${encodeURIComponent(event.id)}`,
       { cache: 'no-store' }
     );
+    if (isCurrent()) selected.value = detail;
   } catch (error) {
+    if (!isCurrent()) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -321,8 +327,13 @@ async function openDetail(event: AuditEvent): Promise<void> {
       error
     );
   } finally {
-    detailLoading.value = false;
+    if (isCurrent()) detailLoading.value = false;
   }
+}
+function closeDetail(): void {
+  detailGeneration += 1;
+  selected.value = undefined;
+  detailLoading.value = false;
 }
 async function load(page = 1, append = false): Promise<void> {
   if (append && nextCursor.value === undefined) return;
@@ -386,6 +397,7 @@ onMounted(() => {
   void load();
 });
 onUnmounted(() => pagination.dispose());
+onBeforeUnmount(closeDetail);
 </script>
 
 <template>
@@ -476,7 +488,8 @@ onUnmounted(() => pagination.dispose());
       :model-value="selected !== undefined"
       :title="translate('generated.auditManagementPage.auditDetails')"
       width="min(720px, calc(100vw - 32px))"
-      @update:model-value="selected = undefined"
+      @close="closeDetail"
+      @update:model-value="closeDetail"
       :close-icon="marIcon('close')"
     >
       <el-descriptions
@@ -539,7 +552,7 @@ onUnmounted(() => pagination.dispose());
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="selected = undefined">{{ translate('common.close') }}</el-button>
+        <el-button @click="closeDetail">{{ translate('common.close') }}</el-button>
       </template>
     </el-dialog>
   </section>
