@@ -653,6 +653,7 @@ html.console-ui .el-message {
   --el-message-bg-color: var(--mar-control-bg-color-overlay);
   --el-message-border-color: var(--mar-border-default);
   --el-message-text-color: var(--mar-text-primary);
+  --mar-message-first-line-height: calc(var(--mar-font-size-body) * 1.5);
   max-width: min(
     36rem,
     calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))
@@ -678,7 +679,7 @@ html.console-ui .mar-message-text {
   display: block;
   overflow-wrap: anywhere;
   white-space: pre-line;
-  line-height: 1.5;
+  line-height: var(--mar-message-first-line-height);
   max-height: min(20rem, 50dvh);
   overflow-y: auto;
   color: var(--mar-text-primary);
@@ -687,7 +688,8 @@ html.console-ui .mar-message-text {
 
 html.console-ui .el-message__icon {
   flex: 0 0 auto;
-  margin: 2px 0 0;
+  height: var(--mar-message-first-line-height);
+  margin: 0;
 }
 
 html.console-ui .el-message--info .el-message__icon {
@@ -705,8 +707,9 @@ html.console-ui .el-message--error .el-message__icon {
 
 html.console-ui .el-message__closeBtn {
   position: absolute;
-  top: 12px;
+  top: 10px;
   right: 12px;
+  height: var(--mar-message-first-line-height);
   transform: none;
   color: var(--mar-text-secondary);
 }
