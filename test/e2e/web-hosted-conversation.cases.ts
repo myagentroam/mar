@@ -715,7 +715,7 @@ test('Hosted conversation entry aligns compact controls across languages and vie
     await page.evaluate((value) => localStorage.setItem('mar.locale.v2', value), locale);
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', locale);
-    const templateControl = page.locator('.hosted-template-trigger');
+    const templateControl = page.locator('.hosted-template-select');
     const composer = page.locator('.conversation-create-panel');
     const sendButton = page.locator('.hosted-send-button');
     await expect(templateControl).toBeVisible();
@@ -723,6 +723,8 @@ test('Hosted conversation entry aligns compact controls across languages and vie
     await expect(sendButton).toBeDisabled();
     await expect(page.locator('.create-conversation-button')).toHaveCount(0);
     await expect(page.locator('.template-selection-row')).toHaveCount(0);
+    await templateControl.click();
+    await page.getByRole('option', { name: snapshot.template.name, exact: true }).click();
 
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
@@ -743,7 +745,9 @@ test('Hosted conversation entry aligns compact controls across languages and vie
       expect(sendBox).not.toBeNull();
       expect(composerBox).not.toBeNull();
       expect(mainBox).not.toBeNull();
-      const templateLabelBox = await templateControl.locator('span').first().boundingBox();
+      const templateLabelBox = await templateControl
+        .locator('.el-select__placeholder')
+        .boundingBox();
       expect(templateLabelBox!.width).toBeGreaterThan(10);
       expect(templateBox!.x + templateBox!.width).toBeLessThanOrEqual(width);
       expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(width);
@@ -753,6 +757,7 @@ test('Hosted conversation entry aligns compact controls across languages and vie
       if (width >= 768) {
         expect(composerBox!.width).toBeLessThanOrEqual(800);
         await expect(page.locator('.files-draft-empty')).toBeVisible();
+        await expect(page.locator('.files-draft-empty .mar-icon')).toHaveCount(0);
         await expect(page.locator('.files-drop-target')).toHaveCount(0);
       }
       await page.screenshot({
@@ -1976,17 +1981,17 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await historyCreateButton.click();
   await expect(breadcrumb).toContainText('新建对话');
   await expect(page.getByRole('dialog', { name: '新建对话' })).toHaveCount(0);
-  const templateSelect = page.locator('.hosted-template-trigger');
+  const templateSelect = page.locator('.hosted-template-select');
   await expect(templateSelect).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '加载模板' })).toBeVisible();
   await expect(page.locator('.create-conversation-button')).toHaveCount(0);
   await expect(page.locator('.hosted-send-button')).toBeDisabled();
   await expect(page.locator('.files-draft-empty')).toBeVisible();
   await expect(page.locator('.files-drop-target')).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: '加载模板' })).toHaveCount(0);
   await templateSelect.click();
   await expect.poll(() => templateDirectoryRequests).toBeGreaterThanOrEqual(2);
-  await expect(page.getByRole('menuitem', { name: '战略调研', exact: true })).toBeVisible();
-  await page.getByRole('menuitem', { name: '战略调研', exact: true }).click();
+  await expect(page.getByRole('option', { name: '战略调研', exact: true })).toBeVisible();
+  await page.getByRole('option', { name: '战略调研', exact: true }).click();
   await expect(templateSelect).toContainText('战略调研');
 
   const selectedConversationRow = history
