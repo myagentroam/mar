@@ -5,6 +5,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'en-US'],
+  [320, 'vscode-dark-2026', 'en-US'],
   [390, 'daylight', 'en-US'],
   [1280, 'custom', 'zh-CN'],
   [1280, 'vscode-dark-2026', 'zh-CN'],
@@ -47,9 +48,16 @@ for (const [width, theme, locale] of [
         await expect(tab).toHaveCSS('text-align', 'center');
         const labelBounds = (await tab.locator('.group-label').boundingBox())!;
         const markerBounds = (await tab.locator('.group-markers').boundingBox())!;
-        expect(labelBounds.x + labelBounds.width / 2).toBeCloseTo(bounds!.x + bounds!.width / 2, 0);
-        expect(markerBounds.y).toBeLessThan(bounds!.y);
-        expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(labelBounds.y);
+        expect((labelBounds.x + markerBounds.x + markerBounds.width) / 2).toBeCloseTo(
+          bounds!.x + bounds!.width / 2,
+          0
+        );
+        expect(markerBounds.y).toBeGreaterThanOrEqual(bounds!.y);
+        expect(markerBounds.y).toBeLessThanOrEqual(labelBounds.y - 2);
+        expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(
+          bounds!.y + bounds!.height
+        );
+        expect(markerBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width);
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
         const badge = tab.locator('.el-badge__content');
         await expect(badge).toHaveCSS('border-top-width', '1px');
@@ -67,8 +75,19 @@ for (const [width, theme, locale] of [
       }
       const groupBounds = (await chats.getByRole('tablist').boundingBox())!;
       const listBounds = (await chats.locator('.session-list').boundingBox())!;
+      const sidebarBounds = (await chats.boundingBox())!;
+      const firstTab = (await tabs.nth(0).boundingBox())!;
+      const secondTab = (await tabs.nth(1).boundingBox())!;
+      expect(firstTab.width).toBeCloseTo(secondTab.width, 0);
+      expect(groupBounds.x - sidebarBounds.x).toBeCloseTo(6, 0);
+      expect(sidebarBounds.x + sidebarBounds.width - groupBounds.x - groupBounds.width).toBeCloseTo(
+        7,
+        0
+      );
       expect(groupBounds.height).toBeLessThanOrEqual(36);
-      expect(listBounds.y - groupBounds.y - groupBounds.height).toBeLessThanOrEqual(4);
+      expect(listBounds.y - groupBounds.y - groupBounds.height).toBeLessThanOrEqual(8);
+      await expect(chats.locator('.session-group-tabs')).toHaveCSS('border-top-width', '1px');
+      await expect(chats.locator('.session-list')).toHaveCSS('border-top-width', '0px');
       const directory = resolve('test/runs', process.env['MAR_TEST_RUN_ID']!);
       await mkdir(directory, { recursive: true });
       const headerBounds = (await chats.boundingBox())!;
@@ -112,6 +131,22 @@ for (const [width, theme, locale] of [
         expect(
           await list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
         ).toBe(true);
+        const options = await list.getByRole('tab').all();
+        const optionBounds = await Promise.all(options.map((option) => option.boundingBox()));
+        expect(optionBounds[0]!.width).toBeCloseTo(optionBounds[1]!.width, 0);
+        for (const option of options) {
+          const bounds = (await option.boundingBox())!;
+          const label = (await option.locator('.group-label').boundingBox())!;
+          const markers = (await option.locator('.group-markers').boundingBox())!;
+          expect((label.x + markers.x + markers.width) / 2).toBeCloseTo(
+            bounds.x + bounds.width / 2,
+            0
+          );
+          expect(markers.y).toBeGreaterThanOrEqual(bounds.y);
+          expect(markers.x).toBeGreaterThanOrEqual(label.x + label.width);
+          expect(markers.x + markers.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+          expect(markers.y + markers.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        }
         for (const property of ['color', 'background-color', 'border-top-color', 'font-weight']) {
           const expected = await chats
             .locator('.session-unread-label')
