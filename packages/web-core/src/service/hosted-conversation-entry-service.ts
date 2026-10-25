@@ -315,12 +315,12 @@ export function createHostedConversationEntryService(
       templateIdIn(nextTemplates, currentTemplateId) ??
       templateIdIn(nextTemplates, preferredTemplateId) ??
       (nextTemplates.length === 1 ? nextTemplates[0]?.id : undefined);
+    if (selectedTemplateId.value !== currentTemplateId) resetModelOptions();
     if (
       selectedTemplateId.value !== currentTemplateId ||
       creationIntentRevision === creationRevision
     ) {
       resetCreationIntent();
-      resetModelOptions();
     }
   }
 
