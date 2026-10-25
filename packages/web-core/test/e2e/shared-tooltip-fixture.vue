@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { getCurrentInstance, ref } from 'vue';
+import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { createMobileSurfaceFocusService } from '../../src/service/mobile-surface-focus-service.js';
 
 const root: WorkspaceFileTreeNode = {
   path: '.',
@@ -29,6 +30,14 @@ const dialogOpen = ref(false);
 const editing = ref(true);
 const selection = ref('one');
 const menuActions = ref(0);
+const mobileSidebarOpen = ref(false);
+const mobileSidebar = ref<HTMLElement>();
+const mobileFocus = createMobileSurfaceFocusService({
+  isOpen: () => mobileSidebarOpen.value,
+  regions: () => [mobileSidebar.value],
+  close: () => (mobileSidebarOpen.value = false)
+});
+onBeforeUnmount(mobileFocus.dispose);
 const runStops = ref(0);
 const runInput = ref('');
 const runner = createRunnerInteractionService({
@@ -83,6 +92,21 @@ getCurrentInstance()!.appContext.app.mixin({
     <textarea v-model="runInput" aria-label="Running composer" @keydown="onRunKeydown" />
     <button v-tooltip="'Run action details'">Run action hint</button>
     <output data-testid="run-stops">{{ runStops }}</output>
+    <button data-testid="open-mobile-sidebar" @click="mobileSidebarOpen = true">
+      Open mobile sidebar
+    </button>
+    <aside v-if="mobileSidebarOpen" ref="mobileSidebar" aria-label="Mobile sidebar" tabindex="-1">
+      <el-dropdown trigger="click" @command="menuActions++">
+        <button>Mobile sidebar menu</button>
+        <template #dropdown>
+          <div v-tooltip="'Mobile menu action details'">
+            <el-dropdown-menu>
+              <el-dropdown-item command="action">Mobile menu action</el-dropdown-item>
+            </el-dropdown-menu>
+          </div>
+        </template>
+      </el-dropdown>
+    </aside>
     <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
       <input
         v-if="editing"

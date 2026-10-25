@@ -345,7 +345,7 @@ describe('TooltipService', () => {
     expect(target.hasAttribute('aria-describedby')).toBe(false);
   });
 
-  it('leaves a menu-owned Escape to the existing document-level overlay dismissal', () => {
+  it('allows menu-owned document dismissal without forwarding Escape to outer window surfaces', () => {
     const { document, service } = createCoordinator();
     const menu = new FakeElement();
     menu.setAttribute('role', 'menu');
@@ -357,9 +357,11 @@ describe('TooltipService', () => {
     pointerOver(document, target);
     vi.advanceTimersByTime(tableTooltipOptions.showAfter);
 
-    document.dispatch('keydown', { target, key: 'Escape' });
+    const escape = document.dispatch('keydown', { target, key: 'Escape' });
     expect(service.active.value).toBeUndefined();
     expect(dismissMenu).toHaveBeenCalledOnce();
+    expect(escape.propagationStopped).toBe(true);
+    expect(escape.immediatePropagationStopped).toBe(false);
   });
 
   it('does not grant document-level Escape ownership to an expanded trigger', () => {

@@ -29,7 +29,7 @@ export class TooltipService {
   private descriptionId = '';
   private pointerWithin = false;
   private touchInput = false;
-  private readonly dismissedEscapes = new WeakSet<KeyboardEvent>();
+  private readonly dismissedEscapes = new WeakMap<KeyboardEvent, 'control' | 'menu'>();
 
   constructor(private readonly document: Document) {}
 
@@ -232,18 +232,23 @@ export class TooltipService {
     if (!active) return;
     const target = event.target instanceof Element ? event.target : undefined;
     // Native menus dismiss through the existing document-level focus-layer stack.
-    if (target?.closest('[role="menu"]')) return;
+    if (target?.closest('[role="menu"]')) {
+      this.dismissedEscapes.set(event, 'menu');
+      return;
+    }
     if (!target || !active.target.contains(target)) {
       // A hovered hint must not forward Escape into an unrelated focused run/composer.
       event.stopImmediatePropagation();
       return;
     }
-    this.dismissedEscapes.add(event);
+    this.dismissedEscapes.set(event, 'control');
   };
 
   private onKeyDownBubble = (event: KeyboardEvent): void => {
-    // Target/local handlers own cancellation first. Menus retain their existing
-    // document-level overlay dismissal; other hints must not dismiss an outer dialog.
-    if (this.dismissedEscapes.has(event)) event.stopImmediatePropagation();
+    // Keep same-document menu dismissal, but never forward it to window-level
+    // parent surfaces. Other hints must also isolate outer document-level dialogs.
+    const owner = this.dismissedEscapes.get(event);
+    if (owner === 'menu') event.stopPropagation();
+    else if (owner === 'control') event.stopImmediatePropagation();
   };
 }

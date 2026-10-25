@@ -199,6 +199,33 @@ test('Shared tooltip leaves nested native menu dismissal with its current overla
   await expect(dialog).toHaveCount(0);
 });
 
+test('Shared tooltip closes a mobile sidebar menu before the sidebar itself', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const openSidebar = page.getByTestId('open-mobile-sidebar');
+  await openSidebar.click();
+  const sidebar = page.getByRole('complementary', { name: 'Mobile sidebar', exact: true });
+  const trigger = sidebar.getByRole('button', { name: 'Mobile sidebar menu', exact: true });
+  await trigger.click();
+  const item = page.getByRole('menuitem', { name: 'Mobile menu action', exact: true });
+  await item.focus();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Mobile menu action details');
+  // Unlike a Dialog, this surface uses the product's window-level nonmodal closer.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await item.press('Escape');
+  await expect(page.getByRole('menu')).not.toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(sidebar).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.getByTestId('menu-actions')).toHaveText('0');
+  await expect(page.getByTestId('run-stops')).toHaveText('0');
+  await trigger.press('Escape');
+  await expect(sidebar).toHaveCount(0);
+  await expect(openSidebar).toBeFocused();
+  await expect(page.getByTestId('run-stops')).toHaveText('0');
+});
+
 test('Shared tooltip does not pass Escape from an expanded trigger into its containing dialog', async ({
   page
 }) => {
