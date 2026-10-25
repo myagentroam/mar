@@ -53,7 +53,7 @@ Agent 是主要执行者。浏览器是你**定义目标、调整执行方向、
 <td><strong>可复用的工具与工作空间</strong><br />配置模型、Skill 与 MCP，也能从模板创建隔离的托管对话，处理附件并交付产物。</td>
 </tr>
 <tr>
-<td><strong>自己的工作主机，随时触达</strong><br />从桌面或移动浏览器使用获授权的 Node，不必在每台设备重建项目环境。Windows / Linux / macOS；测试限制见下文。</td>
+<td><strong>自己的工作主机，随时触达</strong><br />从桌面或移动浏览器使用获授权的 Node，不必在每台设备重建项目环境。Windows / Linux / macOS；验证范围见下文。</td>
 <td><strong>目标推进与周期任务</strong><br />用 Goal 模式跨轮续作，或为会话配置周期执行任务。开启无人值守工作前，请先了解对应的权限与执行规则。</td>
 </tr>
 </table>
@@ -128,7 +128,7 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 
 ## 开始使用
 
-> **macOS 尚未测试：** 作者目前没有 macOS 设备，暂未进行实机验证；macOS 支持可能存在平台特有问题。
+> **macOS 验证范围：** 已在 GitHub Actions 的 macOS 15 Apple Silicon 与 Intel runner 上通过构建、CLI 启动、文件/Git、SQLite、进程锁、PTY 与 LaunchAgent 生命周期、内置 ctags、受管 Python Runtime 及 Computer Use 能力探测。真实用户桌面的权限授权、登录/重启恢复与锁屏行为仍需实机验证。
 
 标准部署使用具备真实主机 UUID 的 Linux 主机、Docker Compose 与 HTTPS 入口。工作 Node 支持 Windows、Linux、macOS，要求 Node.js `>=22.13`；原生 Server 要求 Node.js `>=24.12` 和 MySQL 8.4。
 
