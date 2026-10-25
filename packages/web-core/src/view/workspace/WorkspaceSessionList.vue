@@ -866,6 +866,10 @@ function submitSessionSearch(): void {
   color: var(--el-color-warning);
 }
 
+.watch-status:not(.failed) {
+  text-align: center;
+}
+
 .schedule-paused {
   opacity: 0.5;
 }
@@ -1091,6 +1095,7 @@ function submitSessionSearch(): void {
 .sidebar-empty {
   margin: 0.9rem 0;
   font-size: var(--mar-font-size-meta);
+  text-align: center;
 }
 
 @media (max-width: 767px) {

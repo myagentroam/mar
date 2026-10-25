@@ -9,6 +9,65 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
+    test(`List empty and initial loading states are centered in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&list-state=main`);
+      const sessions = page.getByRole('region', { name: 'Session fixture' });
+      const state = sessions.getByRole('combobox', { name: 'Set fixture list state' });
+      const empty = sessions.locator('.sidebar-empty');
+      for (const group of ['main', 'child']) {
+        await state.selectOption(group);
+        await expect(empty).toBeVisible();
+        await expect(empty).toHaveCSS('text-align', 'center');
+        await expect(empty).toContainText(group === 'main' ? 'main' : 'child');
+      }
+      await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('unmatched');
+      await expect(empty).toContainText('No matching');
+      await expect(empty).toHaveCSS('text-align', 'center');
+      await state.selectOption('loading');
+      const loading = sessions.locator('.watch-status:not(.failed)');
+      await expect(loading).toBeVisible();
+      await expect(loading).toHaveCSS('text-align', 'center');
+      await expect(empty).toHaveCount(0);
+      await state.selectOption('failed');
+      await expect(sessions.locator('.watch-status.failed')).toBeVisible();
+      await expect(sessions.locator('.watch-status.failed')).not.toHaveCSS('text-align', 'center');
+      await expect(empty).toHaveCount(0);
+
+      const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+      await tree.locator('.workspace-tree-filter input').fill('unmatched');
+      await expect(tree.locator('.tree-filter-empty')).toBeVisible();
+      await expect(tree.locator('.tree-filter-empty')).toHaveCSS('text-align', 'center');
+      await tree.screenshot({ path: testInfo.outputPath('tree-filter-empty.png') });
+      await state.selectOption('no-nodes');
+      await expect(tree.locator('.tree-empty')).toBeVisible();
+      await expect(tree.locator('.tree-empty')).toHaveCSS('text-align', 'center');
+      await tree.screenshot({ path: testInfo.outputPath('tree-empty.png') });
+      await state.selectOption('unselected');
+      await tree.locator('.workspace-tree-filter input').fill('');
+      await expect(tree.locator('.tree-foot')).toBeVisible();
+      await expect(tree.locator('.tree-foot')).not.toHaveCSS('text-align', 'center');
+      await state.selectOption('main');
+      await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('');
+      await expect(empty).toBeVisible();
+      const alignment = await empty.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        const panel = element.closest('.conversation-sidebar')!.getBoundingClientRect();
+        return Math.abs(text.x + text.width / 2 - (panel.x + panel.width / 2));
+      });
+      expect(alignment).toBeLessThanOrEqual(1);
+      await sessions.screenshot({ path: testInfo.outputPath('session-empty.png') });
+    });
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Unread labels share typography, color and geometry in ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 });

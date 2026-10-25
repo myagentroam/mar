@@ -15,6 +15,8 @@ const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const fileRootFixture = new URL(location.href).searchParams.has('file-root');
+const listStateFixture = new URL(location.href).searchParams.has('list-state');
+const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref('/home/example/my-agent-roam');
 const inspectorFixture =
   fileRootFixture ||
@@ -187,9 +189,13 @@ if (composerFixture) {
     </section>
     <section aria-label="Workspace tree fixture">
       <WorkspaceTree
-        :nodes="[node]"
+        :nodes="listState === 'no-nodes' ? [] : [node]"
         :expanded-node-ids="['node']"
-        :workspace-target="{ nodeId: 'node', workspaceId: selectedWorkspace }"
+        :workspace-target="
+          listState === 'unselected'
+            ? undefined
+            : { nodeId: 'node', workspaceId: selectedWorkspace }
+        "
         :dragging-workspace="undefined"
         :mobile-viewport="mobile"
         :loading="false"
@@ -200,8 +206,25 @@ if (composerFixture) {
       />
     </section>
     <section aria-label="Session fixture">
+      <select v-if="listStateFixture" v-model="listState" aria-label="Set fixture list state">
+        <option
+          v-for="state in ['ready', 'main', 'child', 'loading', 'failed', 'no-nodes', 'unselected']"
+          :key="state"
+        >
+          {{ state }}
+        </option>
+      </select>
       <WorkspaceSessionList
         v-bind="sessionProps"
+        :sessions="listState === 'ready' ? sessions : []"
+        :watch-status="listState === 'loading' || listState === 'failed' ? listState : 'ready'"
+        :session-group="
+          listState === 'child'
+            ? 'CHILD'
+            : listState === 'main'
+              ? 'MAIN'
+              : sessionProps.sessionGroup
+        "
         :selected-session-id="selectedSession"
         :search-query="search"
         @open="selectedSession = $event"
