@@ -12,7 +12,10 @@ import { createExtensionModels } from './extension-models.js';
 import { negotiateHost } from '../host/contracts.js';
 import { toolCallers } from '../tools/callers.js';
 import { AnthropicMessagesAdapter } from '../model/anthropic-messages.js';
-import { type MarAgentModelConfiguration } from '../model/configuration.js';
+import {
+  type MarAgentModelConfiguration,
+  type ModelCredentialProvider
+} from '../model/configuration.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import { OpenAiResponsesAdapter } from '../model/openai-responses.js';
 import { JsonlSessionStore } from '../session/store/jsonl-store.js';
@@ -46,6 +49,8 @@ export async function createMarAgentWithAdapter(
   let { models, defaultModelId } = resolvedModels;
   let modelGeneration = 0;
   const { credentialProviders } = resolvedModels;
+  let retainedExtensionProviders:
+    { revision: string | undefined; providers: typeof credentialProviders } | undefined;
   const description = negotiateHost(await options.host.describe());
   if (description.mode !== options.mode)
     throw new MarAgentError('MAR_AGENT_HOST_INCOMPATIBLE', 'Host mode does not match Agent mode.');
@@ -384,6 +389,20 @@ export async function createMarAgentWithAdapter(
           throw new MarAgentError('MAR_AGENT_DISPOSED', 'Agent is disposed.');
         }
         for (const commit of reconfigurationCommits.values()) commit();
+        if (extensions.hasReferences() || activeSessions.size > 0) {
+          if (
+            !retainedExtensionProviders ||
+            retainedExtensionProviders.revision !== extensions.revision
+          ) {
+            const providers = new Set<ModelCredentialProvider>();
+            for (const configuration of models.values())
+              addModelCredentialProviders(providers, configuration);
+            // A pending composition retains its original providers, not every intermediate catalog.
+            retainedExtensionProviders = { revision: extensions.revision, providers };
+          }
+        } else {
+          retainedExtensionProviders = undefined;
+        }
         models = next.models;
         defaultModelId = next.defaultModelId;
         modelGeneration++;
@@ -392,6 +411,8 @@ export async function createMarAgentWithAdapter(
           runtime.adapterGeneration = modelGeneration;
         }
         const liveProviders = new Set(next.credentialProviders);
+        for (const provider of retainedExtensionProviders?.providers ?? [])
+          liveProviders.add(provider);
         for (const adapter of activeExecutionAdapters)
           addModelCredentialProviders(liveProviders, adapter.configuration);
         for (const runtime of sessionRuntimes.values())

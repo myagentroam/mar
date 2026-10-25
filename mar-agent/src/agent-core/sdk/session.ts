@@ -1348,9 +1348,7 @@ export function createSessionOpener(services: SessionServices) {
             sessionId,
             controller.signal,
             sourceBindings,
-            sessionSource.type === 'user' &&
-              (mode === 'run' || mode === 'plan') &&
-              !internal.automaticInput
+            sessionSource.type === 'user' && !internal.automaticInput
           );
           executionContext.toolSources = sources;
           const operation = <T>(run: (call: CoreOperationContext) => T): T =>

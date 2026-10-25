@@ -205,10 +205,11 @@ describe('Core Extension SDK composition', () => {
     }
   );
 
-  it('initializes extensions for a first compact without refreshing an existing composition', async () => {
+  it('refreshes standalone compact sources while reusing the same revision and internal composition', async () => {
     let resolved = 0;
     let attached = 0;
     let compacted = 0;
+    let context: CoreSessionExtensionContext | undefined;
     const { session } = await fixture(
       {
         resolve: async () => {
@@ -220,6 +221,7 @@ describe('Core Extension SDK composition', () => {
                 id: 'first-compact',
                 apiVersion: '1.0',
                 attachSession(value) {
+                  context = value;
                   attached++;
                   value.hooks.intercept('session.compact', (input, _call, next) => {
                     compacted++;
@@ -236,7 +238,9 @@ describe('Core Extension SDK composition', () => {
     expect(await session.compact().result()).toMatchObject({ status: 'completed' });
     expect({ resolved, attached, compacted }).toEqual({ resolved: 1, attached: 1, compacted: 1 });
     await session.compact().result();
-    expect({ resolved, attached, compacted }).toEqual({ resolved: 1, attached: 1, compacted: 2 });
+    expect({ resolved, attached, compacted }).toEqual({ resolved: 2, attached: 1, compacted: 2 });
+    await context!.session!.compact({ focus: 'internal compact' });
+    expect({ resolved, attached, compacted }).toEqual({ resolved: 2, attached: 1, compacted: 3 });
   });
 
   it.each([null, {}, [null], undefined])(

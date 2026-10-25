@@ -6,6 +6,8 @@ import type {
 } from '../../../packages/protocol/src/index.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
+import { RUNNER_EXECUTION_CONTEXT } from '../../src/runner/execution-context.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { RuntimeCredentialControlService } from '../../src/service/runtime-credential-control-service.js';
 import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
@@ -766,6 +768,10 @@ describe('Node MAR Agent runtime credentials', () => {
     await expect(provider.acquire('REQUEST')).rejects.toThrow(
       'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'
     );
+    await expect(provider.acquire('REQUEST')).rejects.toMatchObject({
+      code: 'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+      publicMessage: 'The runtime credential provider is closed.'
+    });
     control.handle(
       response(sent[0]!.id, {
         credential: resolvedCredential(1),
@@ -820,8 +826,8 @@ describe('Node MAR Agent runtime credentials', () => {
       await secondProvider!.close();
     }
     const [firstError, secondError] = await Promise.all([firstResult, secondResult]);
-    expect(firstError).toEqual(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'));
-    expect(secondError).toEqual(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'));
+    expect(firstError).toMatchObject({ code: 'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED' });
+    expect(secondError).toMatchObject({ code: 'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED' });
     expect(sharedSignal?.aborted).toBe(true);
   });
 
@@ -840,7 +846,10 @@ describe('Node MAR Agent runtime credentials', () => {
         { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
       )[0]!.credentialProvider!;
 
-      await expect(provider.acquire('REQUEST')).rejects.toThrow('CONTROL_SEND_FAILED');
+      await expect(provider.acquire('REQUEST')).rejects.toMatchObject({
+        code: 'MAR_AGENT_RUNTIME_CREDENTIAL_REQUEST_SEND_FAILED',
+        cause: expect.objectContaining({ message: 'CONTROL_SEND_FAILED' })
+      });
       expect(vi.getTimerCount()).toBe(1);
       await provider.close();
       expect(vi.getTimerCount()).toBe(0);
@@ -864,7 +873,7 @@ describe('Node MAR Agent runtime credentials', () => {
         conversationTurnForRun: () => ({ id: 'turn-1' }),
         removeAgentSession: vi.fn()
       } as never,
-      runners: {} as never,
+      runners: { require: () => new MarAgentRunner() } as never,
       projection: {} as never,
       identity: {
         markBootstrap: vi.fn(),
@@ -892,7 +901,12 @@ describe('Node MAR Agent runtime credentials', () => {
 
     expect(execute).toHaveBeenCalledWith(
       'session.message',
-      expect.objectContaining({ marAgentRuntimeScopeId: 'scope-1' })
+      expect.objectContaining({
+        [RUNNER_EXECUTION_CONTEXT]: expect.objectContaining({
+          runner: 'mar-agent',
+          runnerInput: expect.objectContaining({ runtimeScopeId: 'scope-1' })
+        })
+      })
     );
   });
 
@@ -937,6 +951,8 @@ describe('Node MAR Agent runtime credentials', () => {
       } as never,
       runners: {
         require: () => ({
+          prepareExecutionContext: (input: Readonly<Record<string, unknown>>) =>
+            new MarAgentRunner().prepareExecutionContext(input),
           prepareMessageInput: (input: string) => input,
           serviceTier: () => undefined
         })
@@ -964,7 +980,12 @@ describe('Node MAR Agent runtime credentials', () => {
     expect(releasePreparation).toHaveBeenCalledOnce();
     expect(prepare).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ marAgentRuntimeScopeId: 'scope-1' })
+      expect.objectContaining({
+        executionContext: expect.objectContaining({
+          runner: 'mar-agent',
+          runnerInput: expect.objectContaining({ runtimeScopeId: 'scope-1' })
+        })
+      })
     );
   });
 
@@ -1011,14 +1032,19 @@ describe('Node MAR Agent runtime credentials', () => {
       access: 'full-access',
       collaborationMode: 'default',
       secretEnvironment: {},
-      marAgentRuntimeScopeId: 'scope-1'
+      executionContext: new MarAgentRunner().prepareExecutionContext({
+        marAgentRuntimeScopeId: 'scope-1'
+      })
     } as never);
 
     await coordinator.dispatch(session.id);
 
     expect(control).toHaveBeenCalledWith(
       'run.start',
-      expect.objectContaining({ marAgentRuntimeScopeId: 'scope-1' })
+      expect.objectContaining({
+        runner: 'mar-agent',
+        runnerInput: expect.objectContaining({ runtimeScopeId: 'scope-1' })
+      })
     );
   });
 });

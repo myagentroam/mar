@@ -115,6 +115,10 @@ export async function generateMarAgentCompact(
   const budget = Math.floor(window * 0.9) - overhead;
   let modelRequests = 0;
   let inputTokensEstimateAfter = overhead;
+  let failure: Pick<
+    CoreCompactDiagnostic,
+    'errorCode' | 'causeCode' | 'errorReason' | 'retryable' | 'transport' | 'httpStatus'
+  > = {};
   const report = async (
     state: CoreCompactDiagnostic['state'],
     reason?: CoreCompactDiagnostic['reason'],
@@ -125,12 +129,14 @@ export async function generateMarAgentCompact(
         modelId: selected.model.id,
         providerModelId: selected.model.modelId,
         reasoningEffort: selected.reasoningEffort,
+        trigger: context.reason,
         state,
         inputTokensEstimateBefore: countModelTokens(full) + overhead,
         inputTokensEstimateAfter,
         modelRequests,
         elapsedMs: Math.max(0, Date.now() - startedAt),
         ...(reason === undefined ? {} : { reason }),
+        ...failure,
         ...(errorCode === undefined ? {} : { errorCode })
       });
     } catch {
@@ -163,8 +169,18 @@ export async function generateMarAgentCompact(
       outputLimit: Math.min(selected.model.maxOutputTokens, context.summaryTokenBudget),
       onAttemptDiagnostic: async (diagnostic) => {
         if (diagnostic.state === 'STARTED') {
+          failure = {};
           modelRequests++;
           await report('STARTED');
+        } else if (diagnostic.state === 'FAILED') {
+          failure = {
+            ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
+            ...(diagnostic.causeCode === undefined ? {} : { causeCode: diagnostic.causeCode }),
+            ...(diagnostic.reason === undefined ? {} : { errorReason: diagnostic.reason }),
+            ...(diagnostic.retryable === undefined ? {} : { retryable: diagnostic.retryable }),
+            transport: diagnostic.transport
+          };
+          await report('FAILED', 'MODEL_FAILED');
         }
       },
       signal
@@ -175,10 +191,21 @@ export async function generateMarAgentCompact(
       : undefined;
   } catch (error) {
     signal.throwIfAborted();
+    if (error instanceof MarAgentError) {
+      const status = error.details?.status;
+      failure = {
+        ...failure,
+        retryable: error.retryable,
+        ...(typeof status === 'number' ? { httpStatus: status } : {}),
+        ...(typeof error.details?.reason === 'string' ? { errorReason: error.details.reason } : {})
+      };
+    }
     await report(
       'FAILED',
       'MODEL_FAILED',
-      error instanceof MarAgentError ? error.code : 'MAR_AGENT_COMPACT_MODEL_FAILED'
+      error instanceof MarAgentError
+        ? error.code
+        : (failure.errorCode ?? 'MAR_AGENT_COMPACT_MODEL_FAILED')
     );
     return undefined;
   }

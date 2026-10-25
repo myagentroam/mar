@@ -12,6 +12,12 @@ export interface CoreCompactDiagnostic {
   readonly elapsedMs: number;
   readonly reason?: 'INPUT_BUDGET_EXHAUSTED' | 'MODEL_INCOMPLETE' | 'MODEL_FAILED';
   readonly errorCode?: string;
+  readonly trigger?: 'manual' | 'automatic';
+  readonly causeCode?: string;
+  readonly errorReason?: string;
+  readonly httpStatus?: number;
+  readonly retryable?: boolean;
+  readonly transport?: 'HTTP' | 'WEBSOCKET';
 }
 
 export interface CoreCompactMessage {
@@ -85,6 +91,8 @@ export function compactExtensionDiagnostic(value: unknown): CoreCompactDiagnosti
     value.length > 0 &&
     value.length <= limit &&
     !/[\r\n]/u.test(value);
+  const code = (value: unknown): value is string =>
+    typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u.test(value);
   if (
     !label(input.modelId, 128) ||
     !label(input.reasoningEffort, 32) ||
@@ -113,8 +121,21 @@ export function compactExtensionDiagnostic(value: unknown): CoreCompactDiagnosti
     ['INPUT_BUDGET_EXHAUSTED', 'MODEL_INCOMPLETE', 'MODEL_FAILED'].includes(input.reason)
       ? { reason: input.reason as NonNullable<CoreCompactDiagnostic['reason']> }
       : {}),
-    ...(typeof input.errorCode === 'string' && /^[A-Z][A-Z0-9_]{0,127}$/u.test(input.errorCode)
-      ? { errorCode: input.errorCode }
+    ...(code(input.errorCode) ? { errorCode: input.errorCode } : {}),
+    ...(input.trigger === 'manual' || input.trigger === 'automatic'
+      ? { trigger: input.trigger }
+      : {}),
+    ...(code(input.causeCode) ? { causeCode: input.causeCode } : {}),
+    ...(code(input.errorReason) ? { errorReason: input.errorReason } : {}),
+    ...(typeof input.httpStatus === 'number' &&
+    Number.isInteger(input.httpStatus) &&
+    input.httpStatus >= 100 &&
+    input.httpStatus <= 599
+      ? { httpStatus: input.httpStatus }
+      : {}),
+    ...(typeof input.retryable === 'boolean' ? { retryable: input.retryable } : {}),
+    ...(input.transport === 'HTTP' || input.transport === 'WEBSOCKET'
+      ? { transport: input.transport }
       : {})
   };
 }
