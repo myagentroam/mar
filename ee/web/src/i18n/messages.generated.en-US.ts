@@ -1478,8 +1478,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'workbenchSurface.agentConversation':
     workbenchPageEnUS.generated.workbenchSurface.agentConversation,
   'workbenchSurface.run': workbenchPageEnUS.generated.workbenchSurface.run,
-  'workbenchSurface.thisSessionIsReadOnly':
-    workbenchPageEnUS.generated.workbenchSurface.thisSessionIsReadOnly,
   'workbenchSurface.typeForCommandsToReferenceWorkspaceFiles':
     workbenchPageEnUS.generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles,
   'workbenchSurface.readOnlyInspector':

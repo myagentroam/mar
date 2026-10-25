@@ -307,6 +307,33 @@ test('Idle external Codex sessions accept input and let Node resume on the first
   await messageRequested;
   await expect(page.locator('.conversation-message').getByText('继续这个会话')).toHaveCount(0);
   await expect(page.locator('.composer-takeover')).toHaveCount(0);
+  const resuming = {
+    id: 'session-1',
+    workspaceId: 'workspace-1',
+    runner: 'codex',
+    externalSessionId: 'vscode-thread-1',
+    nativeControl: 'EXTERNAL',
+    activity: 'IDLE',
+    control: {
+      level: 'MANAGED',
+      capabilities: ['history.read', 'events.live', 'turn.steer', 'turn.interrupt']
+    }
+  };
+  await emitMockSessionEvent(page, 'session', { session: resuming });
+  await expect(input).toHaveAttribute('readonly', '');
+  await expect(input).toHaveAttribute('placeholder', /Codex/);
+  await emitMockSessionEvent(page, 'run', {
+    run: {
+      id: 'run-resumed',
+      sessionId: 'session-1',
+      workspaceId: 'workspace-1',
+      status: 'RUNNING',
+      recoveryState: 'ACTIVE',
+      clientMessageId: 'resumed-message'
+    }
+  });
+  await expect(input).toHaveAttribute('readonly', '');
+  await expect(input).toHaveAttribute('placeholder', /Codex/);
   releaseMessageRequest?.();
   await expect
     .poll(() => writes.filter((entry) => entry.url.includes('/agent-sessions/session-1/messages')))
@@ -346,6 +373,8 @@ test('Idle external Codex sessions accept input and let Node resume on the first
     ]
   });
   await expect(page.locator('.conversation-message').getByText('继续这个会话')).toBeVisible();
+  await expect(input).not.toHaveAttribute('readonly');
+  await expect(input).toHaveAttribute('placeholder', /Codex/);
 });
 
 test('External Claude history shows a gray status and accepts a first resume message directly', async ({

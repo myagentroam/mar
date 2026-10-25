@@ -43,7 +43,6 @@ export const workbenchPageEnUS = {
         'Open a workspace from the resource explorer or switch to an open tab.',
       agentConversation: 'Agent conversation',
       run: 'Run /{value0}',
-      thisSessionIsReadOnly: 'This session is read-only',
       typeForCommandsToReferenceWorkspaceFiles:
         "Type / for commands, # for quick prompts, {'@'} to reference workspace files or folders, or add attachments and ask {value0}…",
       readOnlyInspector: 'Read-only inspector',

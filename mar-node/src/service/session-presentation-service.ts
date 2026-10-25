@@ -37,6 +37,14 @@ export class SessionPresentationService {
   constructor(private readonly options: SessionPresentationServiceOptions) {}
 
   present(session: NodeAgentSession): PresentedSession {
+    // Observers can retain pre-activation objects; Runtime owns current Session state.
+    const current = this.options.runtime.getAgentSession(session.id);
+    if (current !== undefined)
+      session = {
+        ...session,
+        ...current,
+        lastActivityAt: latestSessionActivityAt(current.lastActivityAt, session.lastActivityAt)
+      };
     const database = this.options.database();
     if (session.externalSessionId !== null && database !== undefined) {
       const metadata = database.getNativeSessionMetadata(

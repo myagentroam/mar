@@ -1464,8 +1464,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
   'workbenchSurface.agentConversation':
     workbenchPageZhCN.generated.workbenchSurface.agentConversation,
   'workbenchSurface.run': workbenchPageZhCN.generated.workbenchSurface.run,
-  'workbenchSurface.thisSessionIsReadOnly':
-    workbenchPageZhCN.generated.workbenchSurface.thisSessionIsReadOnly,
   'workbenchSurface.typeForCommandsToReferenceWorkspaceFiles':
     workbenchPageZhCN.generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles,
   'workbenchSurface.readOnlyInspector':

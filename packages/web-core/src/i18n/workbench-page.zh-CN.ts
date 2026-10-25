@@ -38,7 +38,6 @@ export const workbenchPageZhCN = {
       selectAWorkspaceOnTheCurrentNode: '从左侧资源管理器打开工作区，或切换已打开的标签。',
       agentConversation: 'Agent 对话',
       run: '执行 /{value0}',
-      thisSessionIsReadOnly: '此会话当前只读',
       typeForCommandsToReferenceWorkspaceFiles:
         "输入 / 调用命令、# 使用快捷提示词、用 {'@'} 提及工作区文件或文件夹，或添加附件，向 {value0} 提问…",
       readOnlyInspector: '只读检查器',

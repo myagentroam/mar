@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { shallowReactive, ref } from 'vue';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
+import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 
 vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
   createMobileSurfaceFocusService: () => ({ dispose: vi.fn() })
@@ -80,6 +81,28 @@ vi.mock('../../src/view/terminal/TerminalDock.vue?unit-render', async () => {
   };
 });
 
+vi.mock('../../src/view/workspace/WorkspaceSessionList.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
+vi.mock('../../src/view/workspace/WorkspaceInspector.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
+vi.mock('../../src/view/conversation/ConversationHeader.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
+vi.mock('../../src/view/conversation/ConversationScroll.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
+vi.mock('../../src/view/composer/ConversationComposer.vue?unit-render', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      props: ['placeholder', 'readonly', 'loading', 'working'],
+      setup: (props) => () => h('composer-fixture', { ...props })
+    })
+  };
+});
+
 function pageFixture() {
   const tabs = ['one', 'two'].map((id) => ({
     id,
@@ -131,6 +154,66 @@ function pageFixture() {
 }
 
 describe('Workbench surface composition behavior', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'never labels a temporarily disabled Codex Composer as read-only in %s',
+    async (locale) => {
+      const preference = localePreferenceService();
+      const previousLocale = preference.locale.value;
+      preference.setLocale(locale);
+      const page = shallowReactive({
+        ...pageFixture(),
+        selectedWorkspace: { id: 'one', kind: 'DIRECTORY', path: '/workspace' },
+        workspaceHost: { connected: true, disabled: false },
+        workspaceWatchTopicStatus: {},
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        workspaceTabLabel: () => 'Workspace',
+        composerSessionOpen: true,
+        composerRunner: 'codex',
+        composerInputDisabled: true,
+        composerWorking: false,
+        nodeManifest: { manifestVersion: 1 } as object | undefined,
+        nodeManifestLoading: false,
+        conversationTurns: [],
+        workPromptCompletion: { enabled: false }
+      });
+      const view = renderComponent(Surface, { page });
+      try {
+        const composer = () => view.findAll('composer-fixture')[0]!.props;
+        const guidance = translate(
+          'generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles',
+          { value0: 'Codex' }
+        );
+        expect(composer()).toMatchObject({ placeholder: guidance, readonly: true, working: false });
+        page.composerWorking = true;
+        await flushComponent();
+        expect(composer()).toMatchObject({ placeholder: guidance, readonly: true, working: true });
+        page.composerInputDisabled = false;
+        await flushComponent();
+        expect(composer()).toMatchObject({ placeholder: guidance, readonly: false, working: true });
+        page.composerInputDisabled = true;
+        page.nodeManifest = undefined;
+        page.nodeManifestLoading = true;
+        await flushComponent();
+        expect(composer()).toMatchObject({
+          placeholder: translate('generated.workspaceInspector.loading'),
+          readonly: true
+        });
+        page.nodeManifestLoading = false;
+        await flushComponent();
+        expect(composer()).toMatchObject({
+          placeholder: translate(
+            'generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable'
+          ),
+          readonly: true
+        });
+      } finally {
+        view.unmount();
+        preference.setLocale(previousLocale);
+      }
+    }
+  );
+
   it('refreshes the host after the active management extension changes', async () => {
     const page = pageFixture();
     page.view = 'management';
