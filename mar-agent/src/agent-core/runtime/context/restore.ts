@@ -173,8 +173,20 @@ export async function restoreMessages(
         }
       }
     }
-    for (const message of messages.slice(messageStart))
+    for (const message of messages.slice(messageStart)) {
+      if (!options.includeImages) delete message.images;
+      else if (
+        message.images?.some((image) => image.url === undefined && image.resourceId !== undefined)
+      )
+        message.images = await Promise.all(
+          message.images.map(async (image) =>
+            image.url !== undefined || image.resourceId === undefined
+              ? image
+              : { ...image, ...(await store.readImageResource(sessionId, image.resourceId)) }
+          )
+        );
       options.messageSources?.set(message, record);
+    }
   }
   const completedToolCalls = new Set(
     messages.filter((message) => message.role === 'tool').map((message) => message.callId)

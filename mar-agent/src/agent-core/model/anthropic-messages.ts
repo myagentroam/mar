@@ -1,6 +1,7 @@
 import { observeModelRequestUsage } from './usage-observer.js';
 import { jsonToolInput } from './tool-input.js';
 import { observationModelParts } from '../tools/code-mode/observations.js';
+import { modelImageKey, modelImageUrl } from './image.js';
 import { stableToolSchema } from '../tools/definition-projection.js';
 import { randomUUID } from 'node:crypto';
 import { MarAgentError } from '../error.js';
@@ -772,11 +773,7 @@ function anthropicMessages(
               ? { type: 'text', text: part.text }
               : {
                   type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: part.image.mimeType,
-                    data: part.image.dataBase64
-                  }
+                  source: anthropicImageSource(part.image)
                 }
           ) ??
           (message.textBlocks !== undefined
@@ -784,11 +781,7 @@ function anthropicMessages(
                 ...anthropicTextBlocks(message.content, message.textBlocks),
                 ...(message.images ?? []).map((image) => ({
                   type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: image.mimeType,
-                    data: image.dataBase64
-                  }
+                  source: anthropicImageSource(image)
                 }))
               ]
             : message.images?.length
@@ -796,11 +789,7 @@ function anthropicMessages(
                   { type: 'text', text: message.content },
                   ...message.images.map((image) => ({
                     type: 'image',
-                    source: {
-                      type: 'base64',
-                      media_type: image.mimeType,
-                      data: image.dataBase64
-                    }
+                    source: anthropicImageSource(image)
                   }))
                 ]
               : message.content)
@@ -830,11 +819,7 @@ function anthropicMessages(
           ? [
               ...userImages.map((image) => ({
                 type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: image.mimeType,
-                  data: image.dataBase64
-                }
+                source: anthropicImageSource(image)
               })),
               ...anthropicTextBlocks(message.content, message.textBlocks)
             ]
@@ -842,11 +827,7 @@ function anthropicMessages(
             ? [
                 ...userImages.map((image) => ({
                   type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: image.mimeType,
-                    data: image.dataBase64
-                  }
+                  source: anthropicImageSource(image)
                 })),
                 { type: 'text', text: message.content }
               ]
@@ -879,16 +860,23 @@ function isRealUserMessage(message: ModelRequest['messages'][number]): boolean {
 
 function uniqueModelImages(
   ...groups: Array<ModelRequest['images'] | undefined>
-): Array<{ mimeType: string; dataBase64: string }> {
+): Array<NonNullable<ModelRequest['images']>[number]> {
   const seen = new Set<string>();
   return groups.flatMap((group) =>
     (group ?? []).flatMap((image) => {
-      const key = `${image.mimeType}\u0000${image.dataBase64}`;
+      const key = modelImageKey(image);
       if (seen.has(key)) return [];
       seen.add(key);
       return [image];
     })
   );
+}
+
+function anthropicImageSource(image: NonNullable<ModelRequest['images']>[number]) {
+  const url = modelImageUrl(image);
+  return url === image.url
+    ? { type: 'url', url }
+    : { type: 'base64', media_type: image.mimeType, data: image.dataBase64 };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

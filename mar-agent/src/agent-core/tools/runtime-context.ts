@@ -37,6 +37,7 @@ export interface ToolRuntimeImage {
 
 export interface ToolRuntimeContext {
   host: MarAgentHost;
+  imageStore?: import('../session/store/contracts.js').SessionStore;
   todo: TodoStore;
   requestSmartCompact?: () => void;
   subagents?: SubagentController;

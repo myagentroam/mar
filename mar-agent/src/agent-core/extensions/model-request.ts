@@ -18,7 +18,7 @@ export type CoreModelMessage =
       readonly callId?: string;
       readonly name?: string;
       readonly arguments?: unknown;
-      readonly images?: readonly { readonly mimeType: string; readonly dataBase64: string }[];
+      readonly images?: readonly import('../model/image.js').ModelImage[];
     };
 export interface CoreModelRequest {
   readonly modelId: string;
@@ -28,7 +28,7 @@ export interface CoreModelRequest {
   readonly tools: readonly ClientToolDefinition[];
   readonly toolChoice?: 'auto' | 'none';
   readonly reasoningEffort?: MarAgentReasoningEffort;
-  readonly images?: readonly { readonly mimeType: string; readonly dataBase64: string }[];
+  readonly images?: readonly import('../model/image.js').ModelImage[];
 }
 
 export interface CoreRequestSnapshot {

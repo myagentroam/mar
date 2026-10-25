@@ -377,12 +377,14 @@ export class ExecutionLoop {
       await input.afterModel?.(pendingTools.length ? roundMessageCount : messages.length);
       const toolResults = await executeRoundTools(pendingTools, round.toolScope);
       for (const result of toolResults) {
-        if ('images' in result && result.images?.length)
+        if ('sourceImages' in result && result.sourceImages?.length)
           input.toolImages.push(
-            ...result.images.map((image) => ({
-              mimeType: image.mimeType,
-              data: Buffer.from(image.dataBase64, 'base64')
-            }))
+            ...result.sourceImages
+              .filter((image) => image.dataBase64 !== undefined)
+              .map((image) => ({
+                mimeType: image.mimeType,
+                data: Buffer.from(image.dataBase64!, 'base64')
+              }))
           );
         const toolSearchTools =
           result.call.name === 'tool_search' && !result.failed
@@ -408,6 +410,9 @@ export class ExecutionLoop {
           content: message.content,
           ...(message.calls ? { calls: message.calls } : {}),
           ...(message.observations ? { observations: message.observations } : {}),
+          ...(message.images?.length
+            ? { images: message.images.map(({ dataBase64: _bytes, ...image }) => image) }
+            : {}),
           ...(message.toolSearchTools === undefined
             ? {}
             : { toolSearchTools: message.toolSearchTools })

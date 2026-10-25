@@ -1305,7 +1305,9 @@ describe('agent runtime', () => {
         this.requests.push(request);
         if (this.requests.length === 1) {
           expect(request.tools.map((tool) => tool.name)).toContain('view_image');
-          expect(request.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+          expect(request.images).toMatchObject([
+            { mimeType: 'image/png', dataBase64: imageBase64 }
+          ]);
           yield {
             type: 'client_tool.call',
             callId: 'image',
@@ -1353,7 +1355,7 @@ describe('agent runtime', () => {
       .split('\n')
       .map((line) => JSON.parse(line) as { type?: string; payload?: unknown })
       .find((record) => record.type === 'turn.user');
-    expect(userRecord?.payload).toEqual({
+    expect(userRecord?.payload).toMatchObject({
       prompt: 'view image',
       images: [
         {
@@ -1398,7 +1400,7 @@ describe('agent runtime', () => {
     const firstAdapter: ModelAdapter = {
       configuration: visionModel,
       async *start(request) {
-        expect(request.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+        expect(request.images).toMatchObject([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
         yield { type: 'text.completed', itemId: 'first', text: 'Microsoft logo' };
         yield { type: 'completed', reason: 'completed' };
       }
@@ -1452,7 +1454,7 @@ describe('agent runtime', () => {
       'agent',
       'sessions',
       session.id,
-      'input_images',
+      'images',
       storedImage!.fileName!
     );
     await expect(readFile(storedImagePath)).resolves.toEqual(Buffer.from(imageBase64, 'base64'));
@@ -1468,7 +1470,7 @@ describe('agent runtime', () => {
             expect.objectContaining({
               role: 'user',
               content: 'What is in the image?',
-              images: [{ mimeType: 'image/png', dataBase64: imageBase64 }]
+              images: [expect.objectContaining({ mimeType: 'image/png', dataBase64: imageBase64 })]
             }),
             expect.objectContaining({ role: 'user', content: 'Look at it again.' })
           ])
@@ -3801,7 +3803,9 @@ describe('agent runtime', () => {
         content: expect.stringContaining(`<cwd>${workspace}</cwd>`)
       })
     ]);
-    expect(normalRequests[1]?.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+    expect(normalRequests[1]?.images).toMatchObject([
+      { mimeType: 'image/png', dataBase64: imageBase64 }
+    ]);
     expect(normalRequests[1]?.messages.every((message) => message.images === undefined)).toBe(true);
     await agent.dispose();
     const store = await JsonlSessionStore.open(home);

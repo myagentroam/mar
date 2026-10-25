@@ -9,6 +9,7 @@ import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:f
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError } from '../../error.js';
+import { isModelImageUrl } from '../../model/image.js';
 import { cloneCoreJson, type CoreCheckpoint, type CoreJsonValue } from '../../extensions/data.js';
 import { acquireFileLock } from '../../storage/file-lock.js';
 import { todoItemsFromSnapshot, type TodoSnapshot } from '../../tools/agent/todo.js';
@@ -91,9 +92,17 @@ import {
   inputImageReferencesFromRecords,
   readInputImageBytes,
   recoverPendingInputImages,
-  validInputImageFileName,
-  writeInputImages
+  validInputImageFileName
 } from './images.js';
+import {
+  persistImageResource,
+  setImageResourceUrl,
+  readImageResource,
+  copyImageResources,
+  imageResourceFiles,
+  completeImageResources,
+  recoverImageResources
+} from './image-resources.js';
 import {
   MAX_SEGMENT_BYTES,
   appendRecordBytes,
@@ -589,8 +598,66 @@ export class JsonlSessionStore implements SessionStore {
         'MAR_AGENT_HOST_LIMIT_EXCEEDED',
         'Too many image inputs were provided.'
       );
-    const directory = join(this.#sessionDirectory(sessionId), 'input_images');
-    return writeInputImages(directory, images);
+    const resources: SessionInputImageMetadata[] = [];
+    let total = 0;
+    for (const image of images) {
+      if (
+        (image.url !== undefined && !isModelImageUrl(image.url)) ||
+        (image.urlExpiresAt !== undefined &&
+          (!Number.isSafeInteger(image.urlExpiresAt) ||
+            image.urlExpiresAt <= 0 ||
+            image.url === undefined))
+      )
+        throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Image model URL is invalid.');
+      let resource = await this.persistImageResource(sessionId, image);
+      if (image.url !== undefined && image.urlExpiresAt !== undefined)
+        resource = await this.setImageResourceUrl(sessionId, resource.resourceId, {
+          url: image.url,
+          urlExpiresAt: image.urlExpiresAt
+        });
+      total += resource.byteSize;
+      if (resource.byteSize > 5 * 1024 * 1024 || total > 10 * 1024 * 1024)
+        throw new MarAgentError(
+          'MAR_AGENT_HOST_LIMIT_EXCEEDED',
+          'Image input exceeds the supported size limit.'
+        );
+      resources.push({ ...resource, name: image.name, fileName: `${resource.resourceId}.bin` });
+    }
+    return resources;
+  }
+  async persistImageResource(sessionId: string, image: import('../../model/image.js').ModelImage) {
+    this.#assertOpen();
+    return this.#serializeRecordOperation(sessionId, () =>
+      persistImageResource(join(this.#sessionDirectory(sessionId), 'images'), image)
+    );
+  }
+  async setImageResourceUrl(
+    sessionId: string,
+    resourceId: string,
+    published: { url: string; urlExpiresAt: number }
+  ) {
+    this.#assertOpen();
+    return this.#serializeRecordOperation(sessionId, () =>
+      setImageResourceUrl(join(this.#sessionDirectory(sessionId), 'images'), resourceId, published)
+    );
+  }
+  async readImageResource(sessionId: string, resourceId: string) {
+    this.#assertOpen();
+    const directory = join(this.#sessionDirectory(sessionId), 'images');
+    if (!/^[a-f0-9]{64}$/u.test(resourceId)) return undefined;
+    return this.#serializeRecordOperation(sessionId, async () => {
+      try {
+        await lstat(join(directory, `.${resourceId}.pending`));
+        if (
+          this.#shared.writerLeases.get(sessionId)?.appendFailure !== undefined ||
+          !imageResourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`)
+        )
+          return undefined;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      return readImageResource(directory, resourceId);
+    });
   }
   async writeToolResultResource(sessionId: string, text: string) {
     this.#assertOpen();
@@ -624,8 +691,30 @@ export class JsonlSessionStore implements SessionStore {
     const directory = join(this.#sessionDirectory(sessionId), 'input_images');
     const images: RestoredSessionInputImage[] = [];
     for (const reference of references) {
-      const data = await readInputImageBytes(directory, reference);
-      images.push({ mimeType: reference.mimeType, dataBase64: data.toString('base64') });
+      if (reference.url !== undefined) {
+        images.push({
+          mimeType: reference.mimeType,
+          url: reference.url,
+          ...(reference.urlExpiresAt === undefined ? {} : { urlExpiresAt: reference.urlExpiresAt }),
+          byteSize: reference.byteSize,
+          ...(reference.resourceId === undefined ? {} : { resourceId: reference.resourceId })
+        });
+        continue;
+      }
+      const data = await readInputImageBytes(
+        reference.resourceId === undefined
+          ? directory
+          : join(this.#sessionDirectory(sessionId), 'images'),
+        reference
+      );
+      images.push({
+        mimeType: reference.mimeType,
+        dataBase64: data.toString('base64'),
+        byteSize: reference.byteSize,
+        ...(reference.resourceId === undefined ? {} : { resourceId: reference.resourceId }),
+        ...(reference.url === undefined ? {} : { url: reference.url }),
+        ...(reference.urlExpiresAt === undefined ? {} : { urlExpiresAt: reference.urlExpiresAt })
+      });
     }
     return images;
   }
@@ -658,7 +747,10 @@ export class JsonlSessionStore implements SessionStore {
     const reference = inputImageReference(record.payload.images[input.imageIndex]);
     if (reference === undefined) return undefined;
     const data = await readInputImageBytes(
-      join(this.#sessionDirectory(sessionId), 'input_images'),
+      join(
+        this.#sessionDirectory(sessionId),
+        reference.resourceId === undefined ? 'input_images' : 'images'
+      ),
       reference
     );
     return {
@@ -779,6 +871,11 @@ export class JsonlSessionStore implements SessionStore {
           this.#sessionDirectory(sourceSessionId),
           this.#sessionDirectory(target.id),
           inputImageReferencesFromRecords(retained)
+        );
+        await copyImageResources(
+          this.#sessionDirectory(sourceSessionId),
+          this.#sessionDirectory(target.id),
+          retained
         );
         target.lastActivityAt = target.createdAt;
         this.#shared.pendingSessions.delete(target.id);
@@ -1007,6 +1104,12 @@ export class JsonlSessionStore implements SessionStore {
       inputTrash.push(
         ...(await stageUnreferencedImages(
           this.#sessionDirectory(sessionId),
+          'images',
+          operation.kind === 'rollback' ? imageResourceFiles(retained) : new Set(),
+          transactionId
+        )),
+        ...(await stageUnreferencedImages(
+          this.#sessionDirectory(sessionId),
           'tool_results',
           operation.kind === 'rollback' ? toolResultResourceFiles(retained) : new Set(),
           transactionId
@@ -1211,6 +1314,7 @@ export class JsonlSessionStore implements SessionStore {
     }
     updateSessionCurrentState(this.#shared.writerLeases.get(sessionId), record.type, serialized);
     await completeToolResultResources(this.#sessionDirectory(sessionId), record);
+    await completeImageResources(join(this.#sessionDirectory(sessionId), 'images'), record);
     if (
       record.type === 'turn.user' &&
       isObject(record.payload) &&
@@ -2226,6 +2330,9 @@ export class JsonlSessionStore implements SessionStore {
     await repairSegmentTail(latestPath);
     const records = await readRecords(latestPath);
     await recoverPendingInputImages(this.#sessionDirectory(sessionId), () =>
+      this.#readRecords(sessionId)
+    );
+    await recoverImageResources(join(this.#sessionDirectory(sessionId), 'images'), () =>
       this.#readRecords(sessionId)
     );
     await cleanupUnreferencedToolResources(this.#sessionDirectory(sessionId), () =>

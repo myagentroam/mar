@@ -98,6 +98,7 @@ export class LocalAgentHost implements MarAgentHost {
   readonly #extensions: LocalAgentExecutionExtensions | undefined;
   readonly events: MarAgentEvent[] = [];
   readonly requestToolApproval: MarAgentHost['requestToolApproval'];
+  readonly publishModelImage?: NonNullable<MarAgentHost['publishModelImage']>;
   readonly #mode: 'normal' | 'node';
   readonly #environment: NodeJS.ProcessEnv;
   readonly #sessionEnvironment: LocalSessionEnvironment;
@@ -118,6 +119,7 @@ export class LocalAgentHost implements MarAgentHost {
     ) => Promise<ToolExecutionResult>;
     network?: CoreNetworkBackend | false;
     modelUsage?: import('../model/usage-observer.js').ModelUsageObserver;
+    publishModelImage?: MarAgentHost['publishModelImage'];
     homeDirectory: string;
     workspace: string;
     mode?: 'normal' | 'node';
@@ -146,6 +148,7 @@ export class LocalAgentHost implements MarAgentHost {
   }) {
     this.modelUsage = input.modelUsage;
     this.requestToolApproval = input.approval;
+    if (input.publishModelImage !== undefined) this.publishModelImage = input.publishModelImage;
     this.#home = resolve(input.homeDirectory);
     this.#workspace = resolve(input.workspace);
     this.#environment = input.environment ?? process.env;

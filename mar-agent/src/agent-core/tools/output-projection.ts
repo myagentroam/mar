@@ -18,16 +18,18 @@ import type { BatchReadResult } from './local/read.js';
 import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
 import { publicToolMetadata, type PublicToolMetadata } from './public-metadata.js';
+import type { ModelImage } from '../model/image.js';
 export function currentExecutionImages(
-  modelInputImages:
-    readonly { readonly mimeType: string; readonly dataBase64: string }[] | undefined,
+  modelInputImages: readonly ModelImage[] | undefined,
   toolImages: readonly ToolRuntimeImage[]
 ): ToolRuntimeImage[] {
   return [
-    ...(modelInputImages ?? []).map((image) => ({
-      mimeType: image.mimeType,
-      data: Buffer.from(image.dataBase64, 'base64')
-    })),
+    ...(modelInputImages ?? [])
+      .filter((image) => image.dataBase64 !== undefined)
+      .map((image) => ({
+        mimeType: image.mimeType,
+        data: Buffer.from(image.dataBase64!, 'base64')
+      })),
     ...toolImages
   ]
     .slice(-5)

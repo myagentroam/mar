@@ -139,6 +139,7 @@ interface MarAgentManagedRunControllerOptions {
   readonly modelFactory?: Pick<MarAgentRuntimeModelFactory, 'create'>;
   readonly computerUse?: ComputerUseExecutionProvider;
   readonly generateTitle?: typeof generateSessionTitle;
+  readonly publishModelImage?: import('./session-runtime.js').NodeModelImagePublisher;
 }
 
 export class MarAgentManagedRunController {
@@ -191,6 +192,7 @@ export class MarAgentManagedRunController {
         customTitle: (sessionId) => this.host.customTitle?.(sessionId) ?? undefined,
         modelUsage: (runId, usage) =>
           this.host.emit(runId, 'run.usage', normalizeMarAgentUsage(usage)),
+        publishModelImage: options.publishModelImage!,
         question: (runId, request, signal) => this.requestQuestion(runId, request, signal),
         ...(this.host.createApproval && this.host.publishApproval
           ? {

@@ -800,6 +800,25 @@ describe('QuickJS Code Mode', () => {
     expect(imageOnly.observations).toMatchObject([
       { type: 'value', format: 'image', value: '', imageIndices: [0] }
     ]);
+    const published = { ...png, url: 'https://example.com/image', urlExpiresAt: Date.now() + 1000 };
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(published)})`, input)).images
+    ).toEqual([published]);
+    const { dataBase64: _bytes, ...urlOnly } = published;
+    const identified = { ...png, resourceId: 'a'.repeat(64), byteSize: 8 };
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(identified)})`, input)).images
+    ).toEqual([identified]);
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(urlOnly)})`, input)).images
+    ).toEqual([urlOnly]);
+    for (const image of [
+      { ...urlOnly, url: 'file:///private/image.png' },
+      { ...urlOnly, urlExpiresAt: 0 }
+    ])
+      await expect(
+        runner.execute(`observe.image(${JSON.stringify(image)})`, input)
+      ).rejects.toBeDefined();
     await expect(
       runner.execute(`observe.image(${JSON.stringify(png)})`, context())
     ).rejects.toMatchObject({

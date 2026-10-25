@@ -65,6 +65,67 @@ function activeObservations(broker: NodeRequestBroker): number {
 }
 
 describe('Node broker resource scope lifecycle', () => {
+  it.each(['workspaceId', 'conversationId'])(
+    'forwards signed image capabilities without user authorization (%s)',
+    async (scope) => {
+      const f = fixture();
+      f.authorize.mockResolvedValue(false);
+      const data = {
+        [scope]: 'w',
+        sessionId: 's',
+        resourceId: 'a'.repeat(64),
+        expiresAt: Date.now() + 60_000,
+        signature: 's'.repeat(43)
+      };
+      const promise = f.broker.request('n', 'model.image.read', data, {
+        userId: 0,
+        sessionHash: 'model-image'
+      });
+      await vi.waitFor(() => expect(f.sent).toHaveLength(1));
+      expect(f.sent[0]).toMatchObject({
+        payload: {
+          operation: 'model.image.read',
+          data,
+          userAuthorization: { userId: 0, sessionHash: 'model-image' }
+        }
+      });
+      expect(f.authorize).not.toHaveBeenCalled();
+      const result = { mimeType: 'image/png', dataBase64: 'aW1hZ2U=' };
+      f.broker.resolve(
+        'n',
+        createEnvelope('node.response', { result }, { replyTo: f.sent[0]!.id })
+      );
+      await expect(promise).resolves.toEqual(result);
+    }
+  );
+
+  it.each([
+    ['model.image.read', 'other'],
+    ['session.get', 'model-image']
+  ])('does not extend the image capability bypass to %s / %s', async (operation, sessionHash) => {
+    const f = fixture();
+    await expect(
+      f.broker.request('n', operation, { workspaceId: 'w' }, { userId: 0, sessionHash })
+    ).rejects.toThrow('USER_AUTHORIZATION_REQUIRED');
+    expect(f.sent).toEqual([]);
+    expect(f.authorize).not.toHaveBeenCalled();
+  });
+
+  it('reauthorizes a real user even with the internal image session marker', async () => {
+    const f = fixture();
+    f.authorize.mockResolvedValue(false);
+    const data = { workspaceId: 'w', sessionId: 's' };
+    await expect(
+      f.broker.request('n', 'model.image.read', data, {
+        userId: 2,
+        sessionHash: 'model-image',
+        workspaceId: 'w'
+      })
+    ).rejects.toThrow('NODE_ACCESS_DENIED');
+    expect(f.authorize).toHaveBeenCalledWith(2, 'n', 'model.image.read', data, 'w');
+    expect(f.sent).toEqual([]);
+  });
+
   it('does not learn identities from event bodies or noncanonical response slots', async () => {
     const f = fixture();
     await f.call(

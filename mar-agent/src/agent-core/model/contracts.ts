@@ -1,4 +1,5 @@
 import type { ClientToolDefinition } from '../tools/contracts.js';
+import type { ModelImage } from './image.js';
 import type {
   MarAgentModelConfiguration,
   MarAgentReasoningEffort,
@@ -49,7 +50,7 @@ export interface ModelMessage {
   provider?: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES';
   providerModelId?: string;
   item?: Record<string, unknown>;
-  images?: readonly { mimeType: string; dataBase64: string }[];
+  images?: readonly ModelImage[];
   observations?: readonly import('../tools/code-mode/observations.js').CodeObservation[];
   /** Runtime-only location used by the GC evidence adapter, never a Provider call. */
   observationId?: string;
@@ -118,7 +119,7 @@ export interface ModelRequest {
   /** Stable request-level effort while native configuration updates select the current effort. */
   requestReasoningEffort?: MarAgentReasoningEffort;
   promptCacheKey?: string;
-  images?: readonly { mimeType: string; dataBase64: string }[];
+  images?: readonly ModelImage[];
   onAttemptDiagnostic?: (diagnostic: ModelAttemptDiagnostic) => Promise<void> | void;
 }
 export interface ModelUsage {

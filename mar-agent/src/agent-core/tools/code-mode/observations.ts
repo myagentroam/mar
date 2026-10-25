@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { truncateModelText, countModelTokens } from '../../runtime/token-budget.js';
+import type { ModelImage } from '../../model/image.js';
 
 /** Execution metadata is independent of explicit model observations. */
 export interface CodeToolCallRecord {
@@ -62,10 +63,10 @@ export function observationImages(value: CodeObservation): readonly number[] {
 
 export function selectObservationImages(
   values: readonly CodeObservation[],
-  images: readonly { mimeType: string; dataBase64: string }[],
+  images: readonly ModelImage[],
   offset = 0
 ) {
-  const selected: { mimeType: string; dataBase64: string }[] = [];
+  const selected: ModelImage[] = [];
   const indices = new Map<number, number>();
   const observations = values.map((value) => {
     const remap = observationImages(value).flatMap((index) => {
@@ -198,17 +199,17 @@ export function observationModelParts(message: {
   content?: string;
   textBlocks?: readonly { readonly text: string }[];
   observations?: readonly CodeObservation[];
-  images?: readonly { mimeType: string; dataBase64: string }[];
+  images?: readonly import('../../model/image.js').ModelImage[];
 }):
   | Array<
       | { type: 'text'; text: string }
-      | { type: 'image'; image: { mimeType: string; dataBase64: string } }
+      | { type: 'image'; image: import('../../model/image.js').ModelImage }
     >
   | undefined {
   if (message.textBlocks !== undefined || message.observations === undefined) return undefined;
   const prefix: Array<
     | { type: 'text'; text: string }
-    | { type: 'image'; image: { mimeType: string; dataBase64: string } }
+    | { type: 'image'; image: import('../../model/image.js').ModelImage }
   > = [];
   try {
     const parsed = JSON.parse(message.content ?? '');
@@ -238,7 +239,7 @@ export function observationModelParts(message: {
     ...message.observations.flatMap((value) => {
       const parts: Array<
         | { type: 'text'; text: string }
-        | { type: 'image'; image: { mimeType: string; dataBase64: string } }
+        | { type: 'image'; image: import('../../model/image.js').ModelImage }
       > = [{ type: 'text', text: visibleObservationText(value) }];
       for (const index of observationImages(value)) {
         const image = message.images?.[index];

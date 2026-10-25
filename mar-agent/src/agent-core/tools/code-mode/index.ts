@@ -32,6 +32,7 @@ import { TOOL_EXECUTION_LIMITS as limits } from '../execution-limits.js';
 import { createToolCallScheduler } from '../scheduler.js';
 import { WorkspacePathResolver } from '../shared/path-resolver.js';
 import { detectImageMime } from '../local/view-image.js';
+import { isModelImageUrl } from '../../model/image.js';
 import { structuredToolFailureData } from '../output-projection.js';
 import { failedToolResultExtensions } from '../result-extensions.js';
 
@@ -50,7 +51,7 @@ export const codeModeToolDefinition: ClientToolDefinition = {
 
 Tool calls:
 - tools.NAME(input) returns a Promise. Pass a JavaScript value matching the current catalog inputSchema. For parameterless tools prefer tools.NAME({}); tools.NAME() is accepted only for explicitly closed empty-object schemas.
-- Results use the MAR envelope: { content?: string, data?: unknown, images?: Array<{mimeType:string,dataBase64:string}>, truncated?: boolean }. Redundant JSON content is omitted when it exactly renders data; independent text remains in content. Prefer data for programmatic results: result.data.results[0].text for read source text and result.data.exitCode/result.data.stdout for exec. content, when present, is rendered text, not raw file bytes. Use only fields documented by that tool; do not invent success or ok flags.
+- Results use the MAR envelope: { content?: string, data?: unknown, images?: Array<{mimeType:string,dataBase64:string,url?:string,urlExpiresAt?:number}>, truncated?: boolean }. Redundant JSON content is omitted when it exactly renders data; independent text remains in content. Prefer data for programmatic results: result.data.results[0].text for read source text and result.data.exitCode/result.data.stdout for exec. content, when present, is rendered text, not raw file bytes. Use only fields documented by that tool; do not invent success or ok flags.
 - Tool errors reject with code/message and may be caught, except nested Auto deny, which skips only that call and resolves with data.error/data.message. A failed cell preserves already emitted output alongside its status and error; completed tool effects are not rolled back. Inspect it before retrying completed work. Await every call; unawaited calls fail the cell. Use Promise.all for independent calls and sequential await for dependencies. Runtime preserves safe/serial barriers and Host checks.
 - skill, tool_search, question, code_exec, code_exec_wait and direct-only tools cannot be called here. Load Skills directly and read their instructions before the next tool call. Use direct tool_search before a later code cell for deferred tools; the current cell's tools do not change.
 
@@ -835,8 +836,31 @@ function parseImage(value: unknown): NonNullable<ToolExecutionResult['images']>[
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid();
   const image = value as Record<string, unknown>;
   if (
-    Object.keys(image).some((key) => key !== 'mimeType' && key !== 'dataBase64') ||
+    Object.keys(image).some(
+      (key) =>
+        !['mimeType', 'dataBase64', 'url', 'urlExpiresAt', 'resourceId', 'byteSize'].includes(key)
+    ) ||
     typeof image.mimeType !== 'string' ||
+    (image.resourceId !== undefined &&
+      (typeof image.resourceId !== 'string' || !/^[a-f0-9]{64}$/u.test(image.resourceId))) ||
+    (image.byteSize !== undefined &&
+      (!Number.isSafeInteger(image.byteSize) || (image.byteSize as number) <= 0)) ||
+    (image.url !== undefined && !isModelImageUrl(image.url)) ||
+    (image.urlExpiresAt !== undefined &&
+      (typeof image.urlExpiresAt !== 'number' ||
+        !Number.isSafeInteger(image.urlExpiresAt) ||
+        image.urlExpiresAt <= 0))
+  )
+    throw invalid();
+  if (image.dataBase64 === undefined && isModelImageUrl(image.url))
+    return {
+      mimeType: image.mimeType,
+      url: image.url,
+      ...(image.urlExpiresAt === undefined ? {} : { urlExpiresAt: image.urlExpiresAt as number }),
+      ...(typeof image.resourceId === 'string' ? { resourceId: image.resourceId } : {}),
+      ...(typeof image.byteSize === 'number' ? { byteSize: image.byteSize } : {})
+    };
+  if (
     typeof image.dataBase64 !== 'string' ||
     image.dataBase64.length === 0 ||
     image.dataBase64.length > Math.ceil(limits.viewImageMaxBytes / 3) * 4 ||
@@ -850,5 +874,12 @@ function parseImage(value: unknown): NonNullable<ToolExecutionResult['images']>[
     detectImageMime(bytes) !== image.mimeType
   )
     throw invalid();
-  return { mimeType: image.mimeType, dataBase64: image.dataBase64 };
+  return {
+    mimeType: image.mimeType,
+    dataBase64: image.dataBase64,
+    ...(typeof image.resourceId === 'string' ? { resourceId: image.resourceId } : {}),
+    ...(typeof image.byteSize === 'number' ? { byteSize: image.byteSize } : {}),
+    ...(image.url === undefined ? {} : { url: image.url }),
+    ...(image.urlExpiresAt === undefined ? {} : { urlExpiresAt: image.urlExpiresAt })
+  };
 }

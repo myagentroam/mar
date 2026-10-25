@@ -4,6 +4,7 @@ import { copyFile, lstat, mkdir, open, readdir, rename, rm, writeFile } from 'no
 import { basename, join } from 'node:path';
 import { MarAgentError } from '../../error.js';
 import type { SessionInputImage, SessionInputImageMetadata, SessionRecord } from './types.js';
+import { isModelImageUrl } from '../../model/image.js';
 
 export const MAX_INPUT_IMAGES = 5;
 
@@ -52,6 +53,9 @@ interface InputImageReference {
   readonly mimeType: string;
   readonly byteSize: number;
   readonly sha256: string;
+  readonly resourceId?: string;
+  readonly url?: string;
+  readonly urlExpiresAt?: number;
 }
 
 export function inputImageReferencesFromRecords(
@@ -61,6 +65,7 @@ export function inputImageReferencesFromRecords(
   for (const record of records) {
     if (record.type !== 'turn.user' || !isObject(record.payload)) continue;
     for (const reference of inputImageReferences(record.payload.images)) {
+      if (reference.resourceId !== undefined) continue;
       const existing = references.get(reference.fileName);
       if (
         existing !== undefined &&
@@ -103,7 +108,17 @@ export function inputImageReference(value: unknown): InputImageReference | undef
     typeof value.fileName !== 'string' ||
     !validInputImageFileName(value.fileName) ||
     typeof value.sha256 !== 'string' ||
-    !/^[a-f0-9]{64}$/u.test(value.sha256)
+    !/^[a-f0-9]{64}$/u.test(value.sha256) ||
+    (value.resourceId !== undefined &&
+      (typeof value.resourceId !== 'string' ||
+        !/^[a-f0-9]{64}$/u.test(value.resourceId) ||
+        value.fileName !== `${value.resourceId}.bin`)) ||
+    (value.url !== undefined && !isModelImageUrl(value.url)) ||
+    (value.urlExpiresAt !== undefined &&
+      (typeof value.urlExpiresAt !== 'number' ||
+        !Number.isSafeInteger(value.urlExpiresAt) ||
+        value.urlExpiresAt <= 0)) ||
+    (value.urlExpiresAt !== undefined && value.url === undefined)
   )
     throw corruptInputImageReference();
   return {
@@ -111,7 +126,10 @@ export function inputImageReference(value: unknown): InputImageReference | undef
     fileName: value.fileName,
     mimeType: value.mimeType,
     byteSize: value.byteSize,
-    sha256: value.sha256
+    sha256: value.sha256,
+    ...(typeof value.resourceId === 'string' ? { resourceId: value.resourceId } : {}),
+    ...(value.url === undefined ? {} : { url: value.url }),
+    ...(typeof value.urlExpiresAt === 'number' ? { urlExpiresAt: value.urlExpiresAt } : {})
   };
 }
 
@@ -253,7 +271,14 @@ export async function writeInputImages(
           'MAR_AGENT_INPUT_CAPABILITY_UNSUPPORTED',
           'Image input MIME type is unsupported.'
         );
-      const data = Buffer.from(image.dataBase64, 'base64');
+      const data = Buffer.from(image.dataBase64 ?? '', 'base64');
+      if (
+        (image.url !== undefined && !isModelImageUrl(image.url)) ||
+        (image.urlExpiresAt !== undefined &&
+          (!Number.isSafeInteger(image.urlExpiresAt) || image.urlExpiresAt <= 0)) ||
+        (image.urlExpiresAt !== undefined && image.url === undefined)
+      )
+        throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Image model URL is invalid.');
       totalBytes += data.byteLength;
       if (
         data.byteLength === 0 ||
@@ -284,7 +309,9 @@ export async function writeInputImages(
         mimeType: image.mimeType,
         byteSize: data.byteLength,
         fileName,
-        sha256: createHash('sha256').update(data).digest('hex')
+        sha256: createHash('sha256').update(data).digest('hex'),
+        ...(image.url === undefined ? {} : { url: image.url }),
+        ...(image.urlExpiresAt === undefined ? {} : { urlExpiresAt: image.urlExpiresAt })
       });
     }
     return metadata;

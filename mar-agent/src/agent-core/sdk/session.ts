@@ -15,6 +15,8 @@ import {
 } from '../runtime/context/world-state.js';
 import { eventForPersistence, publicModelUsage } from '../runtime/event-projection.js';
 import { ExecutionLoop, type PreparedExecutionRound } from '../runtime/execution.js';
+import type { ModelImage } from '../model/image.js';
+import { publishModelImages } from '../runtime/image-publication.js';
 import {
   closeModelAdapters,
   createExecutionModelResources,
@@ -982,8 +984,24 @@ export function createSessionOpener(services: SessionServices) {
                 smartPercent !== undefined &&
                 smartPercent >= AGENT_EXECUTION_POLICY.smartCompactionPercent &&
                 smartPercent < AGENT_EXECUTION_POLICY.automaticCompactionPercent;
-              const images = content.images?.length
-                ? await store.persistInputImages(sessionId, content.images)
+              const modelImages = await publishModelImages(
+                host,
+                content.images,
+                {
+                  sessionId,
+                  executionId
+                },
+                store
+              );
+              const actualContent =
+                modelImages === content.images
+                  ? content
+                  : {
+                      ...content,
+                      ...(modelImages === undefined ? {} : { images: modelImages })
+                    };
+              const images = modelImages?.length
+                ? await store.persistInputImages(sessionId, modelImages)
                 : [];
               const record = await store.append(
                 sessionId,
@@ -1015,7 +1033,7 @@ export function createSessionOpener(services: SessionServices) {
                 content: content.modelText ?? content.text,
                 metadata: inputMetadata
               });
-              committed(content, record.recordId, inputMetadata);
+              committed(actualContent, record.recordId, inputMetadata);
               for (const text of content.modelContext ?? content.context ?? [])
                 messages.push({ role: 'user', content: text, contextKind: 'contextual' });
             });
@@ -1142,10 +1160,7 @@ export function createSessionOpener(services: SessionServices) {
                       metadata,
                       ...(actual.images?.length
                         ? {
-                            images: actual.images.map(({ mimeType, dataBase64 }) => ({
-                              mimeType,
-                              dataBase64
-                            }))
+                            images: actual.images.map((image) => ({ ...image }))
                           }
                         : {})
                     });
@@ -1165,7 +1180,9 @@ export function createSessionOpener(services: SessionServices) {
           const hasRestoredUserImages = messages.some(
             (message) => message.role === 'user' && Boolean(message.images?.length)
           );
-          let modelInputImages: { mimeType: string; dataBase64: string }[] | undefined;
+          let modelInputImages: ModelImage[] | undefined;
+          const inputImageBytes = new Map<string, ModelImage>();
+          let inputToolImages: ModelImage[] = [];
           const currentExecutionToolImages: ToolRuntimeImage[] = [];
           let currentExecutionUserIndex: number | undefined;
           await emit({ type: 'execution.started', mode, permissionMode: permissionPolicy.mode });
@@ -1607,6 +1624,7 @@ export function createSessionOpener(services: SessionServices) {
                 : subagents.captureParentFrame(executionId);
             const roundSmartInput = smartInput;
             const toolContext: ToolRuntimeContext = {
+              imageStore: store,
               host: host,
               requestSmartCompact: () => {
                 controller.signal.throwIfAborted();
@@ -1673,7 +1691,7 @@ export function createSessionOpener(services: SessionServices) {
               }
             };
             const recentImages = () =>
-              currentExecutionImages(modelInputImages, currentExecutionToolImages);
+              currentExecutionImages(inputToolImages, currentExecutionToolImages);
             const toolScope: RoundToolScope = {
               context: toolContext,
               tools: roundTools,
@@ -1837,10 +1855,7 @@ export function createSessionOpener(services: SessionServices) {
                 call,
                 (actual, recordId, metadata) => {
                   entered = true;
-                  modelInputImages = actual.images?.map(({ mimeType, dataBase64 }) => ({
-                    mimeType,
-                    dataBase64
-                  }));
+                  modelInputImages = actual.images?.map((image) => ({ ...image }));
                   messages.push({
                     role: 'user',
                     content: actual.modelText ?? actual.text,
@@ -1888,8 +1903,17 @@ export function createSessionOpener(services: SessionServices) {
                       'MAR_AGENT_INPUT_CAPABILITY_UNSUPPORTED',
                       'Selected model does not support image input.'
                     );
-                  const images = content.images?.length
-                    ? await store.persistInputImages(sessionId, content.images)
+                  const modelImages = await publishModelImages(
+                    host,
+                    content.images,
+                    {
+                      sessionId,
+                      executionId
+                    },
+                    store
+                  );
+                  const images = modelImages?.length
+                    ? await store.persistInputImages(sessionId, modelImages)
                     : [];
                   const record = await store.append(
                     sessionId,
@@ -2187,7 +2211,16 @@ export function createSessionOpener(services: SessionServices) {
                               ...(saved as { role: 'user'; content: string }),
                               ...(message.metadata ? { metadata: message.metadata } : {})
                             }
-                          : message;
+                          : {
+                              ...message,
+                              ...(message.images?.length
+                                ? {
+                                    images: message.images.map(
+                                      ({ dataBase64: _bytes, ...image }) => image
+                                    )
+                                  }
+                                : {})
+                            };
                       }),
                       pendingInputs: [...pendingInputs.values()],
                       snapshotMessageCount: prefix.length,
@@ -2394,6 +2427,18 @@ export function createSessionOpener(services: SessionServices) {
                 await modelContext.syncMcpWorldState(messages.length);
                 executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
                 await modelContext.recordEnvironment();
+                inputToolImages = await Promise.all(
+                  (modelInputImages ?? []).map(async (image) => {
+                    if (image.dataBase64 !== undefined || image.resourceId === undefined)
+                      return image;
+                    const cached = inputImageBytes.get(image.resourceId);
+                    if (cached !== undefined) return cached;
+                    const source = await store.readImageResource(sessionId, image.resourceId);
+                    const restored = { ...image, ...source };
+                    inputImageBytes.set(image.resourceId, restored);
+                    return restored;
+                  })
+                );
                 const { roundTools, roundBindings, toolScope, composeSystemPrompt } =
                   captureRoundToolScope();
                 const residentTools = projectTools(mcpRegistry.projectDirect(baseTools()));

@@ -2,6 +2,7 @@ import { restoreNativeModelContext } from '../../model/native-context.js';
 import { appliedInputRecord } from '../../session/deferred-input.js';
 import { inputMetadataFromRecord } from '../../session/store/execution-state.js';
 import type { ModelMessage } from '../../model/contracts.js';
+import { parseModelImages } from '../../model/image.js';
 import {
   contextGcTargetKey,
   latestValidContextGcCheckpoint,
@@ -244,6 +245,9 @@ export function restoreModelContext(
       role: 'tool',
       content: payload.content,
       callId: payload.callId,
+      ...(parseModelImages(payload.images)?.length
+        ? { images: parseModelImages(payload.images)! }
+        : {}),
       ...(typeof payload.name === 'string' ? { name: payload.name } : {}),
       ...(typeof payload.isError === 'boolean' ? { isError: payload.isError } : {}),
       ...(Array.isArray(payload.textBlocks) &&

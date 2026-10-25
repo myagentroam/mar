@@ -1,12 +1,11 @@
 import type { MarAgentReasoningEffort } from '../model/configuration.js';
+import type { ModelImage } from '../model/image.js';
 
 /** @deprecated MAR Agent always executes tools directly through the Host. */
 export type AccessMode = 'full-access';
 export type ExecutionMode = 'run' | 'plan' | 'compact';
-export interface RunInputImage {
+export interface RunInputImage extends ModelImage {
   name: string;
-  mimeType: string;
-  dataBase64: string;
 }
 export interface MarAgentImageMetadata {
   name: string;

@@ -2914,6 +2914,19 @@ export const runImageReadInputSchema = z.union([
 ]);
 export type RunImageReadInput = z.infer<typeof runImageReadInputSchema>;
 
+const modelImageResourceInputSchema = z.object({
+  sessionId: protocolIdSchema,
+  resourceId: z.string().regex(/^[a-f0-9]{64}$/u),
+  expiresAt: z.number().int().positive().safe(),
+  signature: z.string().regex(/^[A-Za-z0-9_-]{43}$/u)
+});
+export const modelImageReadInputSchema = z.union([
+  modelImageResourceInputSchema.extend({ workspaceId: protocolIdSchema }).strict(),
+  modelImageResourceInputSchema.extend({ conversationId: protocolIdSchema }).strict(),
+  z.object({ imageId: z.string().uuid(), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u) }).strict()
+]);
+export type ModelImageReadInput = z.infer<typeof modelImageReadInputSchema>;
+
 export const hostedConversationImageReadInputSchema = hostedConversationIdInputSchema
   .extend({
     runId: protocolIdSchema,
@@ -3589,6 +3602,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'workspace.git.commit.file.content.read',
   'workspace.git.commit.file.direct.metadata',
   'run.image.read',
+  'model.image.read',
   'terminal.open',
   'terminal.command.open',
   'terminal.list',

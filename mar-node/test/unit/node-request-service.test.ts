@@ -149,6 +149,46 @@ describe('Node request user authorization', () => {
     );
   });
 
+  it('accepts only the bound model image capability identity', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
+    const f = fixture({
+      userId: 0,
+      sessionHash: 'model-image',
+      operation: 'model.image.read'
+    });
+    const request = {
+      ...f.request,
+      payload: { ...(f.request.payload as Record<string, unknown>), operation: 'model.image.read' }
+    };
+    await f.service.handle(request);
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith('model.image.read', {
+      __workspaceWatchSessionHash: 'model-image',
+      __requestUserId: 0
+    });
+
+    f.execute.mockClear();
+    await f.service.handle({
+      ...request,
+      payload: {
+        ...request.payload,
+        operation: OPERATION,
+        userAuthorization: {
+          ...((request.payload as Record<string, unknown>).userAuthorization as Record<
+            string,
+            unknown
+          >),
+          operation: OPERATION
+        }
+      }
+    });
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.send).toHaveBeenLastCalledWith(
+      'node.response',
+      expect.objectContaining({ error: 'USER_AUTHORIZATION_REQUIRED' }),
+      REQUEST_ID
+    );
+  });
+
   it('rejects requests before the Node identity is available', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
     const f = fixture();

@@ -759,6 +759,35 @@ describe('JSONL session store', () => {
     await store.close();
   });
 
+  it('persists the optional model URL alongside restorable input image bytes', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-input-image-url-home-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({ title: 'Image URL', workspace: home });
+    const url = 'https://images.example.test/input.png?signature=stable';
+    const urlExpiresAt = Date.now() + 60_000;
+    const images = await store.persistInputImages(session.id, [
+      { name: 'input.png', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', url, urlExpiresAt }
+    ]);
+    expect(images[0]).toMatchObject({ url, urlExpiresAt });
+    const restored = await store.readInputImages(session.id, images);
+    expect(restored).toMatchObject([
+      { mimeType: 'image/png', url, urlExpiresAt, resourceId: images[0]!.resourceId }
+    ]);
+    expect(restored[0]).not.toHaveProperty('dataBase64');
+    await store.append(session.id, { type: 'turn.user', payload: { prompt: 'inspect', images } });
+    await expect(store.readImageResource(session.id, images[0]!.resourceId!)).resolves.toEqual({
+      mimeType: 'image/png',
+      dataBase64: 'aW1hZ2U='
+    });
+    await expect(
+      store.persistInputImages(session.id, [
+        { name: 'invalid.png', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', urlExpiresAt }
+      ])
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_INPUT_INVALID' });
+    await store.close();
+  });
+
   it('copies only user input images referenced by retained fork history', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-fork-input-images-home-'));
     homes.push(home);

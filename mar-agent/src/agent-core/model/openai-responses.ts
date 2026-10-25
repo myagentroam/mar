@@ -1,5 +1,6 @@
 import { observeModelRequestUsage } from './usage-observer.js';
 import { observationModelParts } from '../tools/code-mode/observations.js';
+import { modelImageKey, modelImageUrl } from './image.js';
 import { stableToolSchema } from '../tools/definition-projection.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
@@ -2577,7 +2578,7 @@ function openAiInputItem(
             ? { type: 'input_text', text: part.text }
             : {
                 type: 'input_image',
-                image_url: `data:${part.image.mimeType};base64,${part.image.dataBase64}`
+                image_url: modelImageUrl(part.image)
               }
         ) ??
         (message.textBlocks !== undefined
@@ -2588,7 +2589,7 @@ function openAiInputItem(
               })),
               ...(message.images ?? []).map((image) => ({
                 type: 'input_image',
-                image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                image_url: modelImageUrl(image)
               }))
             ]
           : message.images?.length
@@ -2596,7 +2597,7 @@ function openAiInputItem(
                 { type: 'input_text', text: message.content },
                 ...message.images.map((image) => ({
                   type: 'input_image',
-                  image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                  image_url: modelImageUrl(image)
                 }))
               ]
             : message.content)
@@ -2615,7 +2616,7 @@ function openAiInputItem(
             })),
             ...userImages.map((image) => ({
               type: 'input_image',
-              image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+              image_url: modelImageUrl(image)
             }))
           ]
         : userImages.length > 0
@@ -2623,7 +2624,7 @@ function openAiInputItem(
               { type: 'input_text', text: message.content },
               ...userImages.map((image) => ({
                 type: 'input_image',
-                image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                image_url: modelImageUrl(image)
               }))
             ]
           : message.content
@@ -2681,11 +2682,11 @@ function hasOpenFunctionObject(value: unknown): boolean {
 
 function uniqueModelImages(
   ...groups: Array<ModelRequest['images'] | undefined>
-): Array<{ mimeType: string; dataBase64: string }> {
+): Array<NonNullable<ModelRequest['images']>[number]> {
   const seen = new Set<string>();
   return groups.flatMap((group) =>
     (group ?? []).flatMap((image) => {
-      const key = `${image.mimeType}\u0000${image.dataBase64}`;
+      const key = modelImageKey(image);
       if (seen.has(key)) return [];
       seen.add(key);
       return [image];

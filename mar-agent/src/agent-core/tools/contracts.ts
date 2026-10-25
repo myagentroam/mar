@@ -105,7 +105,7 @@ export interface ToolExecutionResult {
   /** Runtime-only definitions used to encode a Tool Search output. */
   toolSearchTools?: readonly ClientToolDefinition[];
   truncated?: boolean;
-  images?: readonly { mimeType: string; dataBase64: string }[];
+  images?: readonly import('../model/image.js').ModelImage[];
   artifacts?: readonly MarAgentToolArtifact[];
   /** Host-facing evidence, excluded from model and programmatic guest results. */
   resultExtensions?: readonly import('./result-extensions.js').ToolResultExtension[];
