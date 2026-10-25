@@ -455,7 +455,8 @@ async function createCertificates(root: string): Promise<{
     [
       'subjectAltName=IP:127.0.0.1',
       'basicConstraints=critical,CA:FALSE',
-      'keyUsage=digitalSignature,keyEncipherment'
+      'keyUsage=digitalSignature,keyEncipherment',
+      'extendedKeyUsage=serverAuth'
     ].join('\n')
   );
   await runCommand('openssl', [
@@ -610,6 +611,8 @@ function isMissing(error: unknown): error is NodeJS.ErrnoException {
 }
 
 function commandFailureKind(code: number | null, stderr: string): string {
+  if (stderr.includes('SSL') && stderr.includes('certificate')) return 'TLS_CERTIFICATE_REJECTED';
+  if (stderr.includes('requested URL returned error: 500')) return 'HTTP_BACKEND_FAILED';
   if (stderr.includes('Git SSH key could not be unlocked.')) return 'SSH_ASKPASS_REJECTED';
   if (stderr.includes('Host key verification failed.')) return 'SSH_HOST_UNTRUSTED';
   if (stderr.includes('Permission denied (publickey')) return 'SSH_PUBLIC_KEY_REJECTED';

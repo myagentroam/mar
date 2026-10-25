@@ -1,9 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn } from 'node-pty';
 import { describe, expect, it } from 'vitest';
-import { TerminalManager, type TerminalPty } from '../../src/terminal.js';
+import { nodePtyFactory, TerminalManager } from '../../src/terminal.js';
 
 function exists(pid: number): boolean {
   try {
@@ -43,12 +42,12 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           cwd: directory,
           profiles: [{ id: 'default', label: shell, shell, args: [], isDefault: true }],
           ptyFactory: (file, args, options) => {
-            const pty = spawn(file, [...args], options);
-            shellPid = pty.pid;
+            const pty = nodePtyFactory(file, args, options);
+            shellPid = pty.pid!;
             pty.onExit(() => {
               nativeExit = true;
             });
-            return pty as unknown as TerminalPty;
+            return pty;
           }
         });
         manager.onFrame((frame) => {

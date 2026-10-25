@@ -1,4 +1,13 @@
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile
+} from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { execFile as execFileCallback } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -779,7 +788,7 @@ describe('Node path and reconnection safety', () => {
 });
 
 async function temporaryDirectory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), 'my-agent-roam-node-'));
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'my-agent-roam-node-')));
   directories.push(path);
   return path;
 }
