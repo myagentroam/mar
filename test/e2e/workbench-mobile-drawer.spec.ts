@@ -288,15 +288,19 @@ for (const scenario of [
     await recent.click();
     await expect(panel).toBeVisible();
     await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
-    await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
+    await expect(panel.locator('.mobile-menu-header')).toHaveCount(0);
+    await expect(panel).toHaveAccessibleName(
+      scenario.locale === 'zh-CN' ? '最近会话' : 'Recent Sessions'
+    );
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect
       .poll(() => panel.evaluate((element) => element.getBoundingClientRect().x))
       .toBeCloseTo(0, 0);
     const bounds = (await panel.boundingBox())!;
+    const railBounds = (await page.locator('.activity-rail').boundingBox())!;
     expect(bounds.width).toBeCloseTo(Math.min(300, scenario.width - 48), 3);
-    expect(bounds.y).toBeGreaterThanOrEqual(44);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(scenario.height + 1);
+    expect(bounds.y).toBeCloseTo(railBounds.y + railBounds.height, 1);
+    expect(bounds.y + bounds.height).toBeCloseTo(scenario.height, 1);
     await page.screenshot({ path: testInfo.outputPath('recent-menu.png') });
     await recent.click();
     await expect(panel).toHaveCount(0);
@@ -313,7 +317,7 @@ for (const scenario of [
     await notification.click();
     await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(30);
     await expect(panel.locator('.recent-sessions-list')).toHaveCount(0);
-    await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
+    await expect(panel.locator('.mobile-menu-header')).toHaveCount(0);
     const markAllRead = panel.getByRole('button', {
       name: scenario.locale === 'zh-CN' ? '全部标记已读' : 'Mark all as read',
       exact: true
@@ -341,6 +345,8 @@ for (const scenario of [
       );
       await menu.click();
       await expect(panel).toBeVisible();
+      await expect(panel.locator('.mobile-menu-header')).toHaveCount(0);
+      await expect(panel).toHaveAccessibleName(/.+/u);
       await menu.click();
       await expect(panel).toHaveCount(0);
     }
@@ -360,13 +366,15 @@ test('Mobile menus preserve shared tokens, reduced motion, focus and transient p
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
-  await page.evaluate(() =>
-    document.documentElement.style.setProperty('--mar-bg-panel', '#243247')
-  );
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--mar-bg-panel', '#243247');
+    document.documentElement.style.setProperty('--mar-border-subtle', '#43546b');
+  });
   const trigger = page.getByRole('button', { name: 'Open notification center', exact: true });
   const panel = page.locator('.workspace-tree.mobile-open');
   await trigger.click();
   await expect(panel).toHaveCSS('background-color', 'rgb(36, 50, 71)');
+  await expect(panel).toHaveCSS('border-right-color', 'rgb(67, 84, 107)');
   await expect(panel).toHaveCSS('transition-duration', '0s');
   await page.keyboard.press('Tab');
   expect(await panel.evaluate((element) => element.contains(document.activeElement))).toBe(true);
@@ -425,7 +433,7 @@ test('Mobile menu history coalesces rapid reopening and preserves the selected r
   expect(await page.evaluate(() => history.state.foreign)).toBe('keep');
   await settings.click();
   await expect(panel).toBeVisible();
-  await expect(panel.locator('.mobile-menu-header button')).toHaveCount(0);
+  await expect(panel.locator('.mobile-menu-header')).toHaveCount(0);
   await settings.click();
   await expect(panel).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => history.state?.__marTemporaryLayer)).toBeUndefined();
@@ -530,17 +538,17 @@ test('Mobile menus animate in Chat, preserve their leaving content and isolate s
   // before the leave transition ends, rather than testing only the final state.
   const leaving = await page.evaluate(() => {
     document.querySelector<HTMLButtonElement>('.recent-sessions-trigger')!.click();
-    return new Promise<{ title: string | null; entries: number; scrim: boolean }>((resolve) => {
+    return new Promise<{ label: string | null; entries: number; scrim: boolean }>((resolve) => {
       requestAnimationFrame(() =>
         resolve({
-          title: document.querySelector('.mobile-menu-header')?.textContent ?? null,
+          label: document.querySelector('.workspace-tree')?.getAttribute('aria-label') ?? null,
           entries: document.querySelectorAll('.recent-sessions-list > li').length,
           scrim: document.querySelector('.sidebar-scrim') !== null
         })
       );
     });
   });
-  expect(leaving.title).toContain('Recent Sessions');
+  expect(leaving.label).toBe('Recent Sessions');
   expect(leaving.entries).toBe(30);
   expect(leaving.scrim).toBe(true);
   await expect(drawer).not.toBeVisible();

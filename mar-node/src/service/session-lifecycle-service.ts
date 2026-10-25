@@ -223,7 +223,7 @@ export class SessionLifecycleService {
       ...(typeof input.customTitle === 'string' ? { customTitle: input.customTitle } : {})
     });
     if (input.bootstrapOnly === true) this.options.identity.markBootstrap(session.id);
-    database.saveRunnerDefaults(configuration);
+    if (input.__marctlOrigin === undefined) database.saveRunnerDefaults(configuration);
     if (input.bootstrapOnly !== true) this.options.emitSession(session);
     return { session: this.options.present(session) };
   }

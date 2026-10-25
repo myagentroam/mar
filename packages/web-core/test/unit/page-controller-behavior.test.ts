@@ -8,6 +8,7 @@ import type { createWorkbenchLiveService } from '../../src/service/workbench-liv
 import type { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
 import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/standalone-file-window-service.js';
 import type { NodeSummary } from '../../src/model/node.js';
+import type { Session } from '../../src/model/workbench.js';
 import { renderComponent, flushComponent } from './support/component-renderer.js';
 
 const captured = vi.hoisted(() => ({
@@ -147,6 +148,174 @@ function controller() {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it.each(['CHILD', 'MAIN', undefined] as const)(
+    'keeps a newly submitted main session reachable after opening New from %s',
+    async (initialGroup) => {
+      const { page } = controller();
+      page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+      page.nodeManifest.value = {
+        manifestVersion: 1,
+        observedAt: 1,
+        ...(initialGroup === undefined ? {} : { sessionGroups: { apiVersion: 1 } }),
+        conversation: { available: true, reasonCode: null }
+      };
+      page.workspaces.value = [{ id: 'workspace-a', path: '/project', kind: 'DIRECTORY' }];
+      page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+      let created = false;
+      const main: Session = {
+        id: 'created-main',
+        workspaceId: 'workspace-a',
+        runner: 'codex',
+        externalSessionId: 'native-created',
+        sessionGroup: 'MAIN',
+        nativeControl: 'MAR_MANAGED',
+        activity: 'IDLE'
+      };
+      const child: Session = { ...main, id: 'child', sessionGroup: 'CHILD' };
+      const starts: Record<string, unknown>[] = [];
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        const url = new URL(String(input), location.href);
+        if (url.pathname === '/api/agent-sessions/start') {
+          starts.push(JSON.parse(String(init?.body)));
+          created = true;
+          return new Response(
+            JSON.stringify({
+              session: main,
+              run: {
+                id: 'created-run',
+                sessionId: main.id,
+                workspaceId: main.workspaceId,
+                status: 'COMPLETED',
+                startedAt: 1,
+                completedAt: 2
+              },
+              delivery: 'STARTED'
+            })
+          );
+        }
+        if (url.pathname === '/api/agent-sessions') {
+          const group = url.searchParams.get('sessionGroup');
+          return new Response(
+            JSON.stringify({
+              sessions: group === 'CHILD' ? [child] : created ? [main] : [],
+              nextCursor: null
+            })
+          );
+        }
+        return new Response(JSON.stringify({ csrfToken: 'fixture', nodes: [], profiles: [] }));
+      });
+      if (initialGroup !== undefined) page.selectWorkspaceSessionGroup(initialGroup);
+      await flushComponent();
+      if (initialGroup === 'CHILD') {
+        await page.refreshWorkspaceSessions();
+        expect(page.visibleWorkspaceSessions.value).toEqual([child]);
+      }
+
+      page.openNewSessionComposer();
+      await flushComponent();
+      page.sessionInput.value = 'Start a main session';
+      page.sendSessionMessage();
+      await vi.waitFor(() => expect(page.selectedSessionId.value).toBe(main.id));
+      // The Node's next authoritative directory page makes the created identity reachable.
+      await page.refreshWorkspaceSessions();
+      expect(page.workspaceSessionGroup.value).toBe(
+        initialGroup === undefined ? undefined : 'MAIN'
+      );
+      expect(page.selectedSession.value?.id).toBe(main.id);
+      expect(page.visibleWorkspaceSessions.value.map((session) => session.id)).toContain(main.id);
+      expect(page.sessions.value.some((session) => session.id.startsWith('draft:'))).toBe(false);
+      expect(starts).toHaveLength(1);
+      expect(starts[0]).not.toHaveProperty('parentSessionId');
+      expect(starts[0]).not.toHaveProperty('sessionGroup');
+    }
+  );
+
+  it('returns an already open draft to Main only on explicit New, preserving manual group changes', async () => {
+    const { page } = controller();
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionGroups: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.openNewSessionComposer();
+    page.sessionInput.value = 'Keep this draft';
+    page.selectWorkspaceSessionGroup('CHILD');
+    await flushComponent();
+    expect(page.draftSessionOpen.value).toBe(true);
+    expect(page.sessionInput.value).toBe('Keep this draft');
+    expect(page.workspaceSessionGroup.value).toBe('CHILD');
+
+    page.openNewSessionComposer();
+    expect(page.workspaceSessionGroup.value).toBe('MAIN');
+    expect(page.sessionInput.value).toBe('Keep this draft');
+  });
+
+  it.each(['quick', 'recent'] as const)(
+    'keeps CHILD when opening a main session through %s',
+    async (entry) => {
+      const { page } = controller();
+      const main = {
+        id: 'existing-main',
+        workspaceId: 'workspace-a',
+        runner: 'codex' as const,
+        nativeControl: 'MAR_MANAGED' as const,
+        externalSessionId: 'native-main',
+        activity: 'IDLE' as const,
+        control: { level: 'MANAGED' as const, capabilities: ['turn.start'] }
+      };
+      page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+      page.nodeManifest.value = {
+        manifestVersion: 1,
+        observedAt: 1,
+        sessionGroups: { apiVersion: 1 },
+        conversation: { available: true, reasonCode: null }
+      };
+      page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+      page.sessions.value = [main];
+      page.selectWorkspaceSessionGroup('CHILD');
+      const manifest = page.nodeManifest.value;
+      vi.stubGlobal(
+        'fetch',
+        async () =>
+          new Response(
+            JSON.stringify({
+              session: main,
+              sessions: [main],
+              turns: [],
+              nextCursor: null,
+              profiles: [],
+              manifest,
+              workspaces: [{ id: 'workspace-a', path: '/project', kind: 'DIRECTORY' }]
+            })
+          )
+      );
+
+      if (entry === 'quick') await page.openSessionFromList(main.id);
+      else
+        await page.openRecentRun({
+          nodeId: 'node-a',
+          workspaceId: 'workspace-a',
+          runId: 'recent-run',
+          sessionId: main.id,
+          sessionTitle: 'Existing main',
+          runner: 'codex',
+          status: 'SUCCEEDED',
+          createdAt: 1,
+          startedAt: 1,
+          completedAt: 2,
+          sortAt: 2,
+          updatedAt: 2,
+          version: 1
+        });
+      await flushComponent();
+      expect(page.selectedSessionId.value).toBe(main.id);
+      expect(page.workspaceSessionGroup.value).toBe('CHILD');
+    }
+  );
+
   it('coordinates a group change only within the same Workspace', async () => {
     const { page } = controller();
     page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];

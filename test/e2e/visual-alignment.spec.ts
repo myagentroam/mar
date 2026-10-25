@@ -102,6 +102,154 @@ test('Shared tooltip keeps one active instance for thousands of targets and pres
   expect(warnings).toEqual([]);
 });
 
+test('Shared tooltip lets Escape reach the target and local bubble handlers without reaching business shortcuts', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const target = page.locator('[data-row="1"]');
+  await target.focus();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Original 1');
+  await target.evaluate((element) => {
+    const trace: string[] = [];
+    const record = (phase: string) => (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      trace.push(phase);
+      document.documentElement.dataset['escapeTrace'] = JSON.stringify(trace);
+    };
+    document.addEventListener('keydown', record('capture'), true);
+    element.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key !== 'Escape') return;
+      // The description is removed synchronously, before the control receives the key.
+      trace.push(
+        element.getAttribute('aria-describedby') === 'existing-description' ? 'target' : 'stale'
+      );
+    });
+    document.body.addEventListener('keydown', record('local bubble'));
+    document.addEventListener('keydown', record('business shortcut'));
+  });
+  await target.press('Escape');
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(target).toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-escape-trace',
+    JSON.stringify(['capture', 'target', 'local bubble'])
+  );
+});
+
+test('Shared tooltip dismisses an unrelated hovered hint without stopping the focused run', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const composer = page.getByRole('textbox', { name: 'Running composer', exact: true });
+  await composer.focus();
+  await page.getByRole('button', { name: 'Run action hint', exact: true }).hover();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Run action details');
+  await composer.press('Escape');
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(composer).toBeFocused();
+  await expect(page.getByTestId('run-stops')).toHaveText('0');
+  await composer.press('Escape');
+  await expect(page.getByTestId('run-stops')).toHaveText('1');
+});
+
+test('Shared tooltip preserves inline cancellation and native select Escape inside a dialog', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.getByTestId('open-escape-dialog').click();
+  const dialog = page.getByRole('dialog', { name: 'Escape ownership', exact: true });
+  const input = dialog.getByRole('textbox', { name: 'Inline edit', exact: true });
+  const hint = page.locator('.mar-tooltip:visible');
+  await input.focus();
+  await expect(hint).toHaveText('Cancel editing with Escape');
+  await input.press('Escape');
+  await expect(dialog.getByTestId('edit-cancelled')).toBeVisible();
+  await expect(hint).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+
+  const select = dialog.getByRole('combobox', { name: 'Escape select', exact: true });
+  await select.click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await expect(hint).toHaveText('Select details');
+  await select.press('Escape');
+  await expect(page.getByRole('listbox')).not.toBeVisible();
+  await expect(hint).toHaveCount(0);
+  await expect(select).toBeFocused();
+  await expect(dialog).toBeVisible();
+});
+
+test('Shared tooltip leaves nested native menu dismissal with its current overlay owner', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.getByTestId('open-escape-dialog').click();
+  const dialog = page.getByRole('dialog', { name: 'Escape ownership', exact: true });
+  const trigger = dialog.getByRole('button', { name: 'Escape menu', exact: true });
+  await trigger.click();
+  const item = page.getByRole('menuitem', { name: 'Menu action', exact: true });
+  await item.focus();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Menu action details');
+  await item.press('Escape');
+  await expect(page.getByRole('menu')).not.toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.getByTestId('menu-actions')).toHaveText('0');
+  await trigger.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('Shared tooltip closes a mobile sidebar menu before the sidebar itself', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  const openSidebar = page.getByTestId('open-mobile-sidebar');
+  await openSidebar.click();
+  const sidebar = page.getByRole('complementary', { name: 'Mobile sidebar', exact: true });
+  const trigger = sidebar.getByRole('button', { name: 'Mobile sidebar menu', exact: true });
+  await trigger.click();
+  const item = page.getByRole('menuitem', { name: 'Mobile menu action', exact: true });
+  await item.focus();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Mobile menu action details');
+  // Unlike a Dialog, this surface uses the product's window-level nonmodal closer.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await item.press('Escape');
+  await expect(page.getByRole('menu')).not.toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(sidebar).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.getByTestId('menu-actions')).toHaveText('0');
+  await expect(page.getByTestId('run-stops')).toHaveText('0');
+  await trigger.press('Escape');
+  await expect(sidebar).toHaveCount(0);
+  await expect(openSidebar).toBeFocused();
+  await expect(page.getByTestId('run-stops')).toHaveText('0');
+});
+
+test('Shared tooltip does not pass Escape from an expanded trigger into its containing dialog', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.getByTestId('open-escape-dialog').click();
+  const dialog = page.getByRole('dialog', { name: 'Escape ownership', exact: true });
+  const trigger = dialog.getByRole('button', { name: 'Escape menu', exact: true });
+  await trigger.click();
+  await page.getByRole('menu').hover();
+  await trigger.focus();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(trigger).toBeFocused();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveText('Menu action details');
+  await trigger.press('Escape');
+  // The focused trigger is outside the menu's native focus layer. ARIA expansion
+  // alone must not grant it document-level Escape ownership over the outer dialog.
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.getByTestId('menu-actions')).toHaveText('0');
+});
+
 test('Shared tooltip cancels stale targets and follows content, hidden, removed and scrolling state', async ({
   page
 }) => {
@@ -201,7 +349,7 @@ test('Unified hints preserve keyboard actions, details and disabled semantics', 
   await compact.focus();
   const hint = page.locator('.mar-tooltip:visible');
   await expect(hint).toContainText('42000 of 100000');
-  await expect(hint).toContainText('click to compact');
+  await expect(hint).toContainText(/click to compact/iu);
   await expect(compact).not.toHaveAttribute('title');
   await compact.press('Escape');
   await expect(hint).toHaveCount(0);

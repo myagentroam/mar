@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 const productRoot = resolve(import.meta.dirname, '../../..');
 const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package.json'));
 
-export async function startCustomThemeFixture() {
+export async function startCustomThemeFixture(entry?: string) {
   const [{ createServer }, vue] = await Promise.all([
     import(webRequire.resolve('vite')),
     import(webRequire.resolve('@vitejs/plugin-vue'))
@@ -13,6 +13,7 @@ export async function startCustomThemeFixture() {
     root: productRoot,
     configFile: false,
     plugins: [vue.default()],
+    ...(entry === undefined ? {} : { optimizeDeps: { entries: [entry] } }),
     resolve: {
       alias: {
         vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),

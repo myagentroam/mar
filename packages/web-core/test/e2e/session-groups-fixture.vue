@@ -3,6 +3,8 @@ import { computed, ref } from 'vue';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type { Session } from '../../src/model/workbench.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
+import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
@@ -13,7 +15,13 @@ const mobile = matchMedia('(max-width: 767px)').matches;
 const group = ref<SessionGroup>('MAIN');
 const selected = ref('main');
 const sessions = ref<Session[]>([
-  { id: 'main', sessionGroup: 'MAIN', runner: 'mar-agent', status: 'READY' },
+  {
+    id: 'main',
+    externalSessionId: 'main',
+    sessionGroup: 'MAIN',
+    runner: 'mar-agent',
+    status: 'READY'
+  },
   { id: 'child', sessionGroup: 'CHILD', runner: 'mar-agent', status: 'READY' }
 ] as Session[]);
 const service = createWorkbenchNotificationService(ref(undefined));
@@ -26,11 +34,11 @@ service.recentRuns.value = Array.from({ length: 103 }, (_, index) => ({
   sessionTitle: index === 0 ? 'Main project conversation' : `Child collaboration ${index}`,
   workspaceName: 'Project',
   runner: 'mar-agent',
-  status: 'RUNNING',
+  status: index === 1 ? 'SUCCEEDED' : 'RUNNING',
   runId: `run-${index}`,
   createdAt: now,
   startedAt: now,
-  completedAt: null,
+  completedAt: index === 1 ? now : null,
   sortAt: now,
   updatedAt: now,
   version: 1
@@ -131,6 +139,35 @@ const props = {
       />
     </aside>
     <section class="conversation">
+      <WorkspaceTabs
+        :placement="mobile ? 'body' : 'header'"
+        :tabs="[
+          {
+            id: 'workspace',
+            nodeId: 'node',
+            workspaceId: 'workspace',
+            label: 'Project',
+            lastActiveAt: now
+          }
+        ]"
+        active-tab-id="workspace"
+        :node-label="() => 'Node'"
+        :direct-available="() => false"
+        :direct-description="() => undefined"
+        :has-active-run="() => true"
+        :has-unread="() => false"
+      />
+      <ConversationHeader
+        :session="sessions[0]"
+        runner="mar-agent"
+        :files-ready="false"
+        :terminal-ready="false"
+        :content-search-ready="false"
+        :runner-icon="props.runnerIcon"
+        :session-title="props.title"
+        :activity="props.activity"
+        :activity-label="props.activityLabel"
+      />
       <p>{{ selected }}</p>
       <p>{{ translate('sessionGroups.main') }}</p>
     </section>

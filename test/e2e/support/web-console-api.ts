@@ -1289,6 +1289,7 @@ export async function fulfillMockWorkspaceWatch(
     watchId?: string;
     mode?: string;
     workbenchConnectionId?: string;
+    topics?: { readonly sessionGroup?: 'MAIN' | 'CHILD' };
   };
   const nodeGeneration = 'mock-node-generation';
   const watchId = request.watchId ?? 'mock-workspace-watch';
@@ -1306,7 +1307,7 @@ export async function fulfillMockWorkspaceWatch(
     const snapshots =
       session === undefined
         ? await page.evaluate(
-            async ({ nodeId, selectedWorkspaceId, git }) => {
+            async ({ nodeId, selectedWorkspaceId, git, sessionGroup }) => {
               const readJson = async (path: string): Promise<Record<string, unknown>> => {
                 const response = await fetch(path, {
                   headers: { 'x-mar-e2e-workspace-watch-snapshot': '1' }
@@ -1315,7 +1316,7 @@ export async function fulfillMockWorkspaceWatch(
               };
               const [sessions, files, changes] = await Promise.all([
                 readJson(
-                  `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(selectedWorkspaceId)}&limit=30`
+                  `/api/agent-sessions?nodeId=${encodeURIComponent(nodeId)}&workspaceId=${encodeURIComponent(selectedWorkspaceId)}&limit=30${sessionGroup === undefined ? '' : `&sessionGroup=${sessionGroup}`}`
                 ),
                 readJson(
                   `/api/workspaces/${encodeURIComponent(selectedWorkspaceId)}/files?nodeId=${encodeURIComponent(nodeId)}`
@@ -1349,6 +1350,7 @@ export async function fulfillMockWorkspaceWatch(
             {
               nodeId: request.nodeId ?? 'node-1',
               selectedWorkspaceId: workspaceId,
+              sessionGroup: request.topics?.sessionGroup,
               git: workspaceKind === 'GIT_WORKSPACE'
             }
           )

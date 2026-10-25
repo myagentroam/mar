@@ -124,6 +124,8 @@ async function request<T>(path: string): Promise<T> {
     />
     <WorkbenchRecentSessionList
       v-if="view === 'recent'"
+      session-group="MAIN"
+      :group-state="{ MAIN: { running: 1, unread: false }, CHILD: { running: 0, unread: false } }"
       :runs="runs"
       :mobile-mode="false"
       :run-time="() => 'Just now'"

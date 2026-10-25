@@ -102,6 +102,72 @@ describe('Node session records and external discovery merge', () => {
   });
 
   it.each(['mar-agent', 'codex', 'claude-code', 'opencode'] as const)(
+    'keeps marctl Session configuration separate from Composer defaults (%s)',
+    async (runner) => {
+      const root = await mkdtemp(join(tmpdir(), 'session-marctl-defaults-'));
+      roots.push(root);
+      const database = new NodeDatabase(':memory:', 'marctl-defaults');
+      const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+      const connector = new NodeConnector({ reconnect: false, database });
+      const node = connector as unknown as {
+        executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
+      };
+      const configuration = { model: 'worker-model', effort: 'low', access: 'full-access' };
+      const create = (fields: Record<string, unknown>) =>
+        node.executeNodeOperation('session.create', {
+          workspaceId: workspace.id,
+          runner,
+          cwd: root,
+          ...fields
+        });
+      try {
+        await expect(create({ ...configuration, __marctlOrigin: {} })).resolves.toMatchObject({
+          session: configuration
+        });
+        expect(database.getRunnerDefaults()).toEqual([]);
+
+        const defaults = {
+          runner,
+          model: 'composer-model',
+          effort: 'high',
+          access: runner === 'mar-agent' ? 'auto' : 'read-only'
+        };
+        database.saveRunnerDefaults(defaults);
+        database.saveNativeSessionMetadata({
+          runner,
+          externalSessionId: 'coordinator',
+          workspaceId: workspace.id
+        });
+        await expect(
+          create({
+            ...configuration,
+            parentSessionId: 'coordinator',
+            __marctlOrigin: { sessionId: 'coordinator', name: 'Coordinator' }
+          })
+        ).resolves.toMatchObject({ session: { ...configuration, parentSessionId: 'coordinator' } });
+        expect(database.getRunnerDefaults()).toEqual([defaults]);
+
+        await expect(create({ __marctlOrigin: {} })).resolves.toMatchObject({
+          session: { model: defaults.model, effort: defaults.effort }
+        });
+        expect(database.getRunnerDefaults()).toEqual([defaults]);
+
+        const webConfiguration = {
+          model: 'new-composer-model',
+          effort: 'medium',
+          access: 'full-access'
+        };
+        await expect(create(webConfiguration)).resolves.toMatchObject({
+          session: webConfiguration
+        });
+        expect(database.getRunnerDefaults()).toEqual([{ runner, ...webConfiguration }]);
+      } finally {
+        await connector.stop();
+      }
+    }
+  );
+
+  it.each(['mar-agent', 'codex', 'claude-code', 'opencode'] as const)(
     'merges partial Session configuration without changing access or defaults (%s)',
     async (runner) => {
       const database = new NodeDatabase(':memory:', 'partial-config');

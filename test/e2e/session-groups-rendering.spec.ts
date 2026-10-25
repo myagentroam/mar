@@ -5,6 +5,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'en-US'],
+  [320, 'vscode-dark-2026', 'en-US'],
   [390, 'daylight', 'en-US'],
   [1280, 'custom', 'zh-CN'],
   [1280, 'vscode-dark-2026', 'zh-CN'],
@@ -29,6 +30,33 @@ for (const [width, theme, locale] of [
       );
       await expect(tabs.nth(1)).toContainText('99+');
       await expect(tabs.nth(1)).toContainText(locale === 'zh-CN' ? '未读' : 'Unread');
+      const palette = await page.evaluate(() => {
+        const probe = document.createElement('span');
+        document.body.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          brand: color('--mar-color-brand'),
+          link: color('--mar-control-link-text'),
+          success: color('--mar-color-success-text')
+        };
+        probe.remove();
+        return result;
+      });
+      const runningDots = page.locator('.session-activity.managed_active i');
+      await expect(runningDots).toHaveCount(3);
+      for (const dot of await runningDots.all()) {
+        await expect(dot).toHaveCSS('background-color', palette.brand);
+        await expect(dot).toHaveCSS('width', '5px');
+        await expect(dot).toHaveCSS('height', '5px');
+        await expect(dot).toHaveCSS('animation-name', 'none');
+      }
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      for (const dot of await runningDots.all())
+        await expect(dot).toHaveCSS('animation-name', 'mar-run-glow');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       const selectedBackground = await tabs.nth(0).evaluate((element) => {
         const style = getComputedStyle(element);
         const probe = document.createElement('span');
@@ -47,12 +75,20 @@ for (const [width, theme, locale] of [
         await expect(tab).toHaveCSS('text-align', 'center');
         const labelBounds = (await tab.locator('.group-label').boundingBox())!;
         const markerBounds = (await tab.locator('.group-markers').boundingBox())!;
-        expect(labelBounds.x + labelBounds.width / 2).toBeCloseTo(bounds!.x + bounds!.width / 2, 0);
-        expect(markerBounds.y).toBeLessThan(bounds!.y);
-        expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(labelBounds.y);
+        expect((labelBounds.x + markerBounds.x + markerBounds.width) / 2).toBeCloseTo(
+          bounds!.x + bounds!.width / 2,
+          0
+        );
+        expect(markerBounds.y).toBeGreaterThanOrEqual(bounds!.y);
+        expect(markerBounds.y).toBeLessThanOrEqual(labelBounds.y - 2);
+        expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(
+          bounds!.y + bounds!.height
+        );
+        expect(markerBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width);
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
         const badge = tab.locator('.el-badge__content');
         await expect(badge).toHaveCSS('border-top-width', '1px');
+        await expect(badge).toHaveCSS('background-color', palette.brand);
         const markerColor = await badge.evaluate((element) => {
           const probe = document.createElement('span');
           probe.style.color = 'var(--mar-color-on-accent)';
@@ -67,8 +103,19 @@ for (const [width, theme, locale] of [
       }
       const groupBounds = (await chats.getByRole('tablist').boundingBox())!;
       const listBounds = (await chats.locator('.session-list').boundingBox())!;
+      const sidebarBounds = (await chats.boundingBox())!;
+      const firstTab = (await tabs.nth(0).boundingBox())!;
+      const secondTab = (await tabs.nth(1).boundingBox())!;
+      expect(firstTab.width).toBeCloseTo(secondTab.width, 0);
+      expect(groupBounds.x - sidebarBounds.x).toBeCloseTo(6, 0);
+      expect(sidebarBounds.x + sidebarBounds.width - groupBounds.x - groupBounds.width).toBeCloseTo(
+        7,
+        0
+      );
       expect(groupBounds.height).toBeLessThanOrEqual(36);
-      expect(listBounds.y - groupBounds.y - groupBounds.height).toBeLessThanOrEqual(4);
+      expect(listBounds.y - groupBounds.y - groupBounds.height).toBeLessThanOrEqual(8);
+      await expect(chats.locator('.session-group-tabs')).toHaveCSS('border-top-width', '1px');
+      await expect(chats.locator('.session-list')).toHaveCSS('border-top-width', '0px');
       const directory = resolve('test/runs', process.env['MAR_TEST_RUN_ID']!);
       await mkdir(directory, { recursive: true });
       const headerBounds = (await chats.boundingBox())!;
@@ -104,14 +151,43 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
+      await expect(page.locator('.recent-sessions-badge')).toHaveCSS(
+        'background-color',
+        palette.brand
+      );
       await expect(recent.getByRole('tab').nth(0)).toHaveAttribute('aria-selected', 'true');
       await recent.getByRole('tab').nth(1).click();
       await expect(recent.locator('.recent-sessions-list > li')).toHaveCount(102);
+      const statuses = recent.locator('.recent-sessions-list .el-tag');
+      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      await expect(statuses.first()).toHaveCSS('color', palette.success);
+      await expect(statuses.last()).toHaveClass(/el-tag--primary/);
+      await expect(statuses.last()).toHaveCSS('color', palette.link);
       for (const list of [chats.getByRole('tablist'), recent.getByRole('tablist')]) {
         await expect(list.locator('.group-unread')).toHaveCount(2);
         expect(
           await list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
         ).toBe(true);
+        const options = await list.getByRole('tab').all();
+        const optionBounds = await Promise.all(options.map((option) => option.boundingBox()));
+        expect(optionBounds[0]!.width).toBeCloseTo(optionBounds[1]!.width, 0);
+        for (const option of options) {
+          await expect(option.locator('.el-badge__content')).toHaveCSS(
+            'background-color',
+            palette.brand
+          );
+          const bounds = (await option.boundingBox())!;
+          const label = (await option.locator('.group-label').boundingBox())!;
+          const markers = (await option.locator('.group-markers').boundingBox())!;
+          expect((label.x + markers.x + markers.width) / 2).toBeCloseTo(
+            bounds.x + bounds.width / 2,
+            0
+          );
+          expect(markers.y).toBeGreaterThanOrEqual(bounds.y);
+          expect(markers.x).toBeGreaterThanOrEqual(label.x + label.width);
+          expect(markers.x + markers.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+          expect(markers.y + markers.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        }
         for (const property of ['color', 'background-color', 'border-top-color', 'font-weight']) {
           const expected = await chats
             .locator('.session-unread-label')

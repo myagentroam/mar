@@ -66,7 +66,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
             class="group-running"
             :value="state[group].running"
             :max="99"
-            type="success"
+            type="primary"
           />
           <span v-if="state[group].unread" class="group-unread">{{
             translate('sessionGroups.unread')
@@ -81,26 +81,26 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 .session-group-tabs {
   display: flex;
   flex-shrink: 0;
-  overflow-x: auto;
-  padding: 0.5rem 0 0;
+  min-width: 0;
+  padding-block: 0.25rem;
 }
 .group-options {
-  display: inline-flex;
-  flex: none;
+  display: flex;
+  flex: 1;
+  min-width: 0;
   gap: 2px;
   padding: 2px;
   border-radius: var(--mar-radius-control);
   background: var(--mar-fill-hover);
 }
 .session-group-tabs button {
-  position: relative;
-  flex: none;
+  flex: 1 1 0;
   display: inline-flex;
-  min-width: 7.5rem;
+  min-width: 0;
   min-height: var(--mar-compact-control-size);
   align-items: center;
   justify-content: center;
-  padding: 0.125rem 0.5rem;
+  padding: 0.25rem;
   border: 0;
   border-radius: calc(var(--mar-radius-control) - 2px);
   background: transparent;
@@ -126,13 +126,12 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   outline-offset: -2px;
 }
 .group-markers {
-  position: absolute;
-  top: -3px;
-  right: 2px;
   display: inline-flex;
+  flex: none;
+  margin-inline-start: 0.125rem;
   align-items: center;
   gap: 2px;
-  transform: translateY(-50%);
+  transform: translateY(-0.25rem);
 }
 .group-running {
   display: inline-flex;
@@ -140,7 +139,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 }
 .group-running :deep(.el-badge__content) {
   min-width: 14px;
-  background: color-mix(in srgb, var(--mar-control-color-success) 60%, black);
+  background: var(--mar-color-brand);
   border: 1px solid var(--mar-bg-panel);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);

@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-25
 ---
 
 # Create and Manage Sessions
@@ -11,7 +11,7 @@ Each tab has a green active-session count (`99+` above 99) and a separate **Unre
 
 A regular work session must execute in the selected Workspace's valid root or a subdirectory. An independently registered Git worktree uses its own Workspace. Node rejects new execution if the directory disappears, the registered root is replaced, or a link escapes the Workspace; it does not silently switch directories. If queued messages are paused for this reason, restore a valid directory and use **Resume** in the queue. Messages and attachments are retained and can still be removed through the existing queue controls. This check does not make work mode a host filesystem sandbox or change hosted-conversation isolation.
 
-Select **New Session** to prepare an Agent, model, reasoning level, and permission mode before the first message. A session is created only when that message is accepted.
+Select **New Session** to prepare an Agent, model, reasoning level, and permission mode before the first message. On supported Nodes, the button and new-session shortcut switch the list to Main Sessions before opening Composer, so the main session created by the first message can be reopened there. Manually switching groups afterward does not change the Composer draft. A session is created only when that message is accepted.
 
 The session list initially loads up to 30 sessions. Scrolling near the bottom automatically loads up to 30 more; search results continue in the same way. New sessions remain visible in the current list. A small ring marks the pending page. A failure preserves the loaded sessions and pauses automatic loading; select **Retry** at the bottom to continue.
 
