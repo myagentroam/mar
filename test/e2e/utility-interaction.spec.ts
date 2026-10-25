@@ -114,18 +114,32 @@ for (const width of [1280, 390]) {
         expect(prevented).toBe(false);
         await expect(input).toBeVisible();
       }
+      await queueInput.focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        queue.locator('.queue-item-actions').getByRole('button', { name: 'Save' })
+      ).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(queueInput).toBeFocused();
       await queueInput.press('Escape');
       await expect(queueInput).toHaveCount(0);
-      await expect(queueEdit).toBeFocused();
+      await expect(queueEdit).not.toBeFocused();
       await expect(queue.locator('.queue-item-content > p')).toHaveText(
         'Review the pending change'
       );
       await expect(goalInput).toHaveValue('Unsaved goal draft');
       await queueEdit.click();
       await expect(queueInput).toHaveValue('Review the pending change');
+      await goalInput.focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        queue.locator('.goal-editor-actions').getByRole('button', { name: 'Cancel' })
+      ).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(goalInput).toBeFocused();
       await goalInput.press('Escape');
       await expect(goalInput).toHaveCount(0);
-      await expect(goalEdit).toBeFocused();
+      await expect(goalEdit).not.toBeFocused();
       await expect(queue.locator('.goal-objective')).toHaveText('Review the pending goal');
       await expect(queueInput).toBeVisible();
       await goalEdit.click();
@@ -140,11 +154,11 @@ for (const width of [1280, 390]) {
       await queue.locator('.goal-editor-actions').getByRole('button', { name: 'Cancel' }).focus();
       await page.keyboard.press('Escape');
       await expect(goalInput).toHaveCount(0);
-      await expect(goalEdit).toBeFocused();
+      await expect(goalEdit).not.toBeFocused();
       await queue.locator('.queue-item-actions').getByRole('button', { name: 'Save' }).focus();
       await page.keyboard.press('Escape');
       await expect(queueInput).toHaveCount(0);
-      await expect(queueEdit).toBeFocused();
+      await expect(queueEdit).not.toBeFocused();
       await expect(page.locator('body')).toHaveAttribute('data-outer-escape', '0');
       await queueEdit.click();
       await queueInput.fill('Saved through Enter');
