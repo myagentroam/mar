@@ -380,6 +380,79 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
   }
 });
 
+for (const [width, action] of [
+  [1280, 'Escape'],
+  [1280, 'mask'],
+  [390, 'button'],
+  [390, 'last-tab'],
+  [390, 'back']
+] as const) {
+  test(`File preview finishes its exit before releasing tabs: ${action} at ${width}px`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+    try {
+      await page.setViewportSize({ width, height: 844 });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.goto(`${fixture.url}file-tabs.html`);
+      const surface = page.locator('.file-preview-surface.el-dialog');
+      const overlay = page.locator('.el-overlay').filter({ has: surface });
+      await expect(surface).toBeVisible();
+      if (action === 'last-tab') {
+        for (let index = 0; index < 11; index += 1) {
+          await page.locator('.workspace-file-tab-close').first().click();
+        }
+        await expect(page.getByRole('tab')).toHaveCount(1);
+      }
+      await expect
+        .poll(() => overlay.evaluate((element) => element.getAnimations().length))
+        .toBe(0);
+      await overlay.evaluate((element) => {
+        element.addEventListener('animationstart', (event) => {
+          if (event.target !== element) return;
+          const state = document.documentElement.dataset;
+          state.fileTabsExitCount = String(element.querySelectorAll('[role="tab"]').length);
+          state.fileTabsExitInert = String(
+            element.querySelector('.workspace-file-tabs')?.hasAttribute('inert')
+          );
+        });
+        element.addEventListener('animationend', (event) => {
+          if (event.target === element) document.documentElement.dataset.fileTabsExitEnded = 'true';
+        });
+      });
+      if (action === 'mask') {
+        await page.evaluate(() => {
+          document.documentElement.dataset.fileTabsCloseAllowed = 'false';
+        });
+        await page.locator('.el-overlay-dialog').click({ position: { x: 4, y: 4 } });
+        await expect(page.getByRole('tab')).toHaveCount(12);
+        await expect(surface).toBeVisible();
+        await page.evaluate(() => {
+          document.documentElement.dataset.fileTabsCloseAllowed = 'true';
+        });
+        await page.locator('.el-overlay-dialog').click({ position: { x: 4, y: 4 } });
+      } else if (action === 'Escape') await page.keyboard.press('Escape');
+      else if (action === 'back') await page.goBack();
+      else if (action === 'last-tab') await page.locator('.workspace-file-tab-close').click();
+      else await page.locator('.workspace-file-window-close').click();
+      await expect(page.getByText('Files closed')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-file-tabs-exit-count',
+        action === 'last-tab' ? '1' : '12'
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-file-tabs-exit-inert', 'true');
+      await expect(page.locator('html')).toHaveAttribute('data-file-tabs-exit-ended', 'true');
+      await expect(surface).toHaveCount(0);
+      await expect(overlay).toHaveCount(0);
+      await page.locator('#reopen-file-tabs').click();
+      await expect(page.getByRole('tab')).toHaveCount(12);
+      await expect(page.locator('.workspace-file-tabs')).not.toHaveAttribute('inert');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Window presentation remains full-screen without a Dialog', async ({ page }) => {
   const fixture = await startCustomThemeFixture();
   try {

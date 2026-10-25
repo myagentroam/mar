@@ -1,23 +1,46 @@
 <script setup lang="ts">
+import type { DialogInstance } from 'element-plus';
+import { onBeforeUnmount, ref } from 'vue';
+
 const props = defineProps<{
   readonly overlay: boolean;
   readonly label: string;
 }>();
 const emit = defineEmits<{ focus: []; close: [] }>();
+const dialog = ref<DialogInstance>();
+let finishClose: ((closed: boolean) => void) | undefined;
 
 function focusContent(): void {
   emit('focus');
 }
 
-function requestClose(): void {
-  // The owner controls visibility after its unsaved-change guards accept.
-  emit('close');
+function requestClose(done: () => void): void {
+  // Only an owner-approved close may start Dialog's built-in leave transition.
+  if (finishClose) done();
+  else emit('close');
 }
+
+function close(): Promise<boolean> {
+  if (!dialog.value) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    finishClose = resolve;
+    dialog.value!.handleClose();
+  });
+}
+
+function closed(): void {
+  finishClose?.(true);
+  finishClose = undefined;
+}
+
+onBeforeUnmount(() => finishClose?.(false));
+defineExpose({ close });
 </script>
 
 <template>
   <el-dialog
     v-if="props.overlay"
+    ref="dialog"
     :model-value="props.overlay"
     :title="props.label"
     :aria-label="props.label"
@@ -30,6 +53,7 @@ function requestClose(): void {
     destroy-on-close
     class="file-preview-surface"
     @open-auto-focus="focusContent"
+    @closed="closed"
   >
     <template #header />
     <slot />
