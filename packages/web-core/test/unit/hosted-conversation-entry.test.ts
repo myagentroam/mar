@@ -151,6 +151,84 @@ describe('Web Hosted Conversation Portal', () => {
     });
   });
 
+  it('Preserves a valid model through catalog refresh while ending the old creation intent', async () => {
+    const bodies: Array<{ clientRequestId: string; modelId: string }> = [];
+    const service = createHostedConversationEntryService(async (path, init) => {
+      if (path === '/api/conversation-templates') return { templates: [template] } as never;
+      if (path.endsWith('/model-options'))
+        return {
+          models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+          defaultModelId: 'model-1'
+        } as never;
+      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+      throw new TypeError('Failed to fetch');
+    });
+    await service.loadTemplates();
+    await service.loadModelOptions();
+    service.selectModel('model-2');
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+    await service.loadTemplates();
+    expect(service.selectedModelId.value).toBe('model-2');
+    await service.loadModelOptions();
+    await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+    expect(bodies.map((body) => body.modelId)).toEqual(['model-2', 'model-2']);
+    expect(bodies[1]!.clientRequestId).not.toBe(bodies[0]!.clientRequestId);
+  });
+
+  it.each(['catalog', 'model-options'] as const)(
+    'Falls back when a %s refresh removes the selected model and ends the old intent',
+    async (refresh) => {
+      let modelAvailable = true;
+      const bodies: Array<{ clientRequestId: string; modelId: string }> = [];
+      const service = createHostedConversationEntryService(async (path, init) => {
+        if (path === '/api/conversation-templates') return { templates: [template] } as never;
+        if (path.endsWith('/model-options'))
+          return {
+            models: [
+              modelSummary('model-1', 'Model One'),
+              ...(modelAvailable ? [modelSummary('model-2', 'Model Two')] : [])
+            ],
+            defaultModelId: 'model-1'
+          } as never;
+        bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+        throw new TypeError('Failed to fetch');
+      });
+      await service.loadTemplates();
+      await service.loadModelOptions();
+      service.selectModel('model-2');
+      await expect(service.create()).rejects.toThrow('Failed to fetch');
+
+      modelAvailable = false;
+      if (refresh === 'catalog') await service.loadTemplates();
+      await service.loadModelOptions();
+      expect(service.selectedModelId.value).toBe('model-1');
+      await expect(service.create()).rejects.toThrow('Failed to fetch');
+      expect(bodies.map((body) => body.modelId)).toEqual(['model-2', 'model-1']);
+      expect(bodies[1]!.clientRequestId).not.toBe(bodies[0]!.clientRequestId);
+    }
+  );
+
+  it('Selects the new template default even when the previous model is also available', async () => {
+    const secondTemplate = { ...template, id: 'template-2' };
+    const service = createHostedConversationEntryService(async (path) => {
+      if (path === '/api/conversation-templates')
+        return { templates: [template, secondTemplate] } as never;
+      return {
+        models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+        defaultModelId: 'model-1'
+      } as never;
+    });
+    await service.loadTemplates();
+    service.selectTemplate(template.id);
+    await service.loadModelOptions();
+    service.selectModel('model-2');
+    service.selectTemplate(secondTemplate.id);
+    await service.loadModelOptions();
+    expect(service.selectedModelId.value).toBe('model-1');
+  });
+
   it('Ignores model options returned for a previously selected template', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
@@ -319,17 +397,24 @@ describe('Web Hosted Conversation Portal', () => {
     async (outcome) => {
       const catalog = deferred<unknown>();
       const creation = deferred<void>();
-      const clientRequestIds: string[] = [];
+      const bodies: Array<{ clientRequestId: string; modelId: string }> = [];
       const service = createHostedConversationEntryService(async (path, init) => {
         if (path === '/api/conversation-templates') return catalog.promise as never;
-        clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
-        if (clientRequestIds.length === 1) {
+        if (path.endsWith('/model-options'))
+          return {
+            models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+            defaultModelId: 'model-1'
+          } as never;
+        bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
+        if (bodies.length === 1) {
           await creation.promise;
           throw new TypeError('Failed to fetch');
         }
         return snapshot as never;
       });
       service.setTemplates([template]);
+      await service.loadModelOptions();
+      service.selectModel('model-2');
 
       const refresh = service.loadTemplates();
       const attempt = expect(service.create()).rejects.toThrow('Failed to fetch');
@@ -339,36 +424,49 @@ describe('Web Hosted Conversation Portal', () => {
       }
       catalog.resolve({ templates: [{ ...template, name: 'Updated catalog name' }] });
       await refresh;
+      await service.loadModelOptions();
       if (outcome === 'pending') {
         creation.resolve(undefined);
         await attempt;
       }
 
       expect(service.templates.value[0]?.name).toBe('Updated catalog name');
-      expect(clientRequestIds).toHaveLength(1);
+      expect(service.selectedModelId.value).toBe('model-2');
+      expect(bodies).toHaveLength(1);
       await service.create();
-      expect(clientRequestIds).toHaveLength(2);
-      expect(clientRequestIds[1]).toBe(clientRequestIds[0]);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(bodies[0]);
+      expect(bodies[1]?.modelId).toBe('model-2');
     }
   );
 
   it('keeps an explicit retry identity when a previously started refresh resolves later', async () => {
     const catalog = deferred<unknown>();
-    const clientRequestIds: string[] = [];
+    const bodies: Array<{ clientRequestId: string; modelId: string }> = [];
     const service = createHostedConversationEntryService(async (path, init) => {
       if (path === '/api/conversation-templates') return catalog.promise as never;
-      clientRequestIds.push(JSON.parse(String(init?.body)).clientRequestId as string);
+      if (path.endsWith('/model-options'))
+        return {
+          models: [modelSummary('model-1', 'Model One'), modelSummary('model-2', 'Model Two')],
+          defaultModelId: 'model-1'
+        } as never;
+      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
       throw new TypeError('Failed to fetch');
     });
     service.setTemplates([template]);
+    await service.loadModelOptions();
+    service.selectModel('model-2');
     await expect(service.create()).rejects.toThrow('Failed to fetch');
     const refresh = service.loadTemplates();
     await expect(service.create()).rejects.toThrow('Failed to fetch');
     catalog.resolve({ templates: [template] });
     await refresh;
-    expect(clientRequestIds).toHaveLength(2);
+    await service.loadModelOptions();
+    expect(bodies).toHaveLength(2);
     await expect(service.create()).rejects.toThrow('Failed to fetch');
-    expect(new Set(clientRequestIds)).toHaveLength(1);
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[2]).toEqual(bodies[0]);
+    expect(bodies[2]?.modelId).toBe('model-2');
   });
 
   it('ends the old unknown creation intent when a normal catalog refresh completes first', async () => {
