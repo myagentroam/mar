@@ -5,6 +5,8 @@ import ConversationScroll from '../../src/view/conversation/ConversationScroll.v
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
+import WorkspaceSessionCleanupDialog from '../../src/view/workspace/WorkspaceSessionCleanupDialog.vue';
+import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 
 const previewLoading = ref(true);
@@ -14,6 +16,21 @@ const initialRequests = ref(0);
 const loadingOlder = ref(true);
 const olderError = ref<string>();
 const olderRequests = ref(0);
+const cleanupOpen = ref(false);
+const cleanupRequests = ref(0);
+const cleanupDays = ref<number>();
+let completeCleanup: (() => void) | undefined;
+let failCleanup: (() => void) | undefined;
+
+function cleanup(inactiveDays: number): Promise<WorkspaceSessionCleanupResult> {
+  cleanupRequests.value++;
+  cleanupDays.value = inactiveDays;
+  return new Promise((resolve, reject) => {
+    completeCleanup = () =>
+      resolve({ deleted: 2, skipped: 1, failed: 0, deletedByRunner: { 'mar-agent': 2 } });
+    failCleanup = () => reject(new Error('Fixture cleanup failed'));
+  });
+}
 
 function reloadHistory() {
   initialRequests.value++;
@@ -79,6 +96,16 @@ const moreRoot = ref<WorkspaceFileTreeNode>({
 
 <template>
   <main class="loading-fixture">
+    <section
+      data-testid="cleanup-controls"
+      :data-request-count="cleanupRequests"
+      :data-inactive-days="cleanupDays"
+    >
+      <button @click="cleanupOpen = true">Open cleanup</button>
+      <button @click="completeCleanup?.()">Finish cleanup</button>
+      <button @click="failCleanup?.()">Fail cleanup</button>
+      <WorkspaceSessionCleanupDialog v-if="cleanupOpen" v-model="cleanupOpen" :cleanup="cleanup" />
+    </section>
     <section data-testid="file-content">
       <h2>File content</h2>
       <FilePreviewLoading v-if="previewLoading" />

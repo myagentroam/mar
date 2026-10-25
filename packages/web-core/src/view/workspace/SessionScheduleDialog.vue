@@ -49,10 +49,13 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 const open = computed({
   get: () => props.modelValue,
-  set: (value: boolean) => emit('update:modelValue', value)
+  set: (value: boolean) => {
+    if (!saving.value) emit('update:modelValue', value);
+  }
 });
 const loading = ref(false);
-const saving = ref(false);
+const pendingAction = ref<string>();
+const saving = computed(() => pendingAction.value !== undefined);
 const task = ref<Task | null>(null);
 const taskLoaded = ref(false);
 const currentUserName = ref('');
@@ -328,12 +331,15 @@ function cronInteger(value: string | undefined, min: number, max: number): numbe
 
 async function save(): Promise<void> {
   if (
+    saving.value ||
+    loading.value ||
     props.session === undefined ||
     !taskLoaded.value ||
     !(await formRef.value?.validate().catch(() => false))
   )
     return;
-  saving.value = true;
+  if (saving.value || loading.value) return;
+  pendingAction.value = 'save';
   try {
     await props.request(path(), {
       method: 'PUT',
@@ -348,21 +354,22 @@ async function save(): Promise<void> {
       })
     });
     showMessage(translate('generated.scheduledSession.saved'), 'success');
-    await load();
   } catch (error) {
     showMessage(
       errorMessage(error, translate('generated.scheduledSession.saveFailed')),
       'error',
       error
     );
+    return;
   } finally {
-    saving.value = false;
+    pendingAction.value = undefined;
   }
+  await load();
 }
 
 async function remove(): Promise<void> {
-  if (task.value === null) return;
-  saving.value = true;
+  if (task.value === null || !taskLoaded.value || saving.value || loading.value) return;
+  pendingAction.value = 'remove';
   try {
     await props.request(path(), {
       method: 'DELETE',
@@ -373,36 +380,42 @@ async function remove(): Promise<void> {
       })
     });
     showMessage(translate('generated.scheduledSession.removed'), 'success');
-    await load();
   } catch (error) {
     showMessage(
       errorMessage(error, translate('generated.scheduledSession.removeFailed')),
       'error',
       error
     );
+    return;
   } finally {
-    saving.value = false;
+    pendingAction.value = undefined;
   }
+  await load();
 }
 
 async function resolveProposal(proposalId: string, accept: boolean): Promise<void> {
-  if (props.session === undefined) return;
-  saving.value = true;
+  if (props.session === undefined || saving.value || loading.value) return;
+  pendingAction.value = `${accept ? 'accept' : 'reject'}:${proposalId}`;
   try {
     await props.request(`${path()}/proposals/${encodeURIComponent(proposalId)}/resolve`, {
       method: 'POST',
       body: JSON.stringify({ nodeId: props.nodeId, workspaceId: props.workspaceId, accept })
     });
-    await load();
   } catch (error) {
     showMessage(
       errorMessage(error, translate('generated.scheduledSession.proposalFailed')),
       'error',
       error
     );
+    return;
   } finally {
-    saving.value = false;
+    pendingAction.value = undefined;
   }
+  await load();
+}
+
+function requestClose(done: () => void): void {
+  if (!saving.value) done();
 }
 
 function localTime(value: number | null): string {
@@ -430,6 +443,10 @@ function occurrenceStatus(status: string): string {
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-model="open"
+    :before-close="requestClose"
+    :show-close="!saving"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
     :title="translate('generated.scheduledSession.title')"
     width="min(560px, calc(100vw - 32px))"
     append-to-body
@@ -438,8 +455,10 @@ function occurrenceStatus(status: string): string {
     <el-form
       ref="formRef"
       v-loading="loading"
+      :aria-busy="loading"
       :model="form"
       :rules="rules"
+      :disabled="saving || loading || !taskLoaded"
       class="schedule-form"
       label-position="left"
       label-width="116px"
@@ -598,6 +617,8 @@ function occurrenceStatus(status: string): string {
             <el-button
               size="small"
               :disabled="saving"
+              :loading="pendingAction === `reject:${proposal.id}`"
+              :loading-icon="marIcon('loading-action')"
               @click="resolveProposal(proposal.id, false)"
               >{{ translate('generated.scheduledSession.reject') }}</el-button
             >
@@ -605,6 +626,8 @@ function occurrenceStatus(status: string): string {
               size="small"
               type="primary"
               :disabled="saving"
+              :loading="pendingAction === `accept:${proposal.id}`"
+              :loading-icon="marIcon('loading-action')"
               @click="resolveProposal(proposal.id, true)"
               >{{ translate('generated.scheduledSession.accept') }}</el-button
             >
@@ -632,14 +655,22 @@ function occurrenceStatus(status: string): string {
       </div>
     </el-form>
     <template #footer>
-      <el-button v-if="task !== null" :disabled="saving" type="danger" @click="remove">{{
-        translate('generated.scheduledSession.remove')
+      <el-button
+        v-if="task !== null"
+        :disabled="saving || loading || !taskLoaded"
+        :loading="pendingAction === 'remove'"
+        :loading-icon="marIcon('loading-action')"
+        type="danger"
+        @click="remove"
+        >{{ translate('generated.scheduledSession.remove') }}</el-button
+      >
+      <el-button :disabled="saving" @click="open = false">{{
+        translate('common.close')
       }}</el-button>
-      <el-button @click="open = false">{{ translate('common.close') }}</el-button>
       <el-button
         type="primary"
-        :loading="saving"
-        :disabled="loading || !taskLoaded"
+        :loading="pendingAction === 'save'"
+        :disabled="saving || loading || !taskLoaded"
         @click="save"
         :loading-icon="marIcon('loading-action')"
         >{{ translate('generated.scheduledSession.save') }}</el-button
