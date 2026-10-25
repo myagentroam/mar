@@ -73,7 +73,13 @@ async function runCommandOutput(
       }
       reject(
         new Error(
-          `The fixture command failed: ${commandFailureKind(code, Buffer.concat(stderr).toString('utf8'))}.`
+          `The fixture command failed: ${commandFailureKind(
+            code,
+            Buffer.concat([
+              ...stderr,
+              ...(command === 'openssl' && args[0] === 'verify' ? stdout : [])
+            ]).toString('utf8')
+          )}.`
         )
       );
     });
@@ -626,6 +632,8 @@ function isMissing(error: unknown): error is NodeJS.ErrnoException {
 }
 
 function commandFailureKind(code: number | null, stderr: string): string {
+  const certificateError = stderr.match(/error (\d+) at (\d+) depth lookup/u);
+  if (certificateError) return `TLS_X509_${certificateError[1]}_DEPTH_${certificateError[2]}`;
   if (stderr.includes('SSL') && stderr.includes('certificate')) return 'TLS_CERTIFICATE_REJECTED';
   if (stderr.includes('requested URL returned error: 500')) return 'HTTP_BACKEND_FAILED';
   if (stderr.includes('Git SSH key could not be unlocked.')) return 'SSH_ASKPASS_REJECTED';
