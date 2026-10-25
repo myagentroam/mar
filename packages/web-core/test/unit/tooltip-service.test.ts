@@ -12,29 +12,32 @@ interface TestEvent {
   readonly detail?: number | undefined;
   readonly key?: string | undefined;
   readonly isComposing?: boolean | undefined;
+  propagationStopped: boolean;
   immediatePropagationStopped: boolean;
+  stopPropagation(): void;
   stopImmediatePropagation(): void;
 }
 
 type TestListener = EventListenerOrEventListenerObject;
 
 class FakeEventTarget {
-  private readonly listeners = new Map<string, Set<TestListener>>();
+  private readonly listeners = new Map<string, Map<TestListener, boolean>>();
 
-  addEventListener(type: string, listener: TestListener | null): void {
+  addEventListener(type: string, listener: TestListener | null, capture = false): void {
     if (!listener) return;
-    const listeners = this.listeners.get(type) ?? new Set<TestListener>();
-    listeners.add(listener);
+    const listeners = this.listeners.get(type) ?? new Map<TestListener, boolean>();
+    listeners.set(listener, capture);
     this.listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: TestListener | null): void {
+  removeEventListener(type: string, listener: TestListener | null, _capture = false): void {
     if (!listener) return;
     this.listeners.get(type)?.delete(listener);
   }
 
-  protected emit(event: TestEvent): void {
-    for (const listener of this.listeners.get(event.type) ?? []) {
+  protected emit(event: TestEvent, capture = false): void {
+    for (const [listener, registeredCapture] of this.listeners.get(event.type) ?? []) {
+      if (registeredCapture !== capture) continue;
       if (typeof listener === 'function') listener.call(this, event as unknown as Event);
       else listener.handleEvent(event as unknown as Event);
       if (event.immediatePropagationStopped) break;
@@ -44,7 +47,14 @@ class FakeEventTarget {
   dispatch(
     type: string,
     init: Partial<
-      Omit<TestEvent, 'type' | 'immediatePropagationStopped' | 'stopImmediatePropagation'>
+      Omit<
+        TestEvent,
+        | 'type'
+        | 'propagationStopped'
+        | 'immediatePropagationStopped'
+        | 'stopPropagation'
+        | 'stopImmediatePropagation'
+      >
     > = {}
   ): TestEvent {
     const event: TestEvent = {
@@ -56,12 +66,24 @@ class FakeEventTarget {
       detail: init.detail,
       key: init.key,
       isComposing: init.isComposing,
+      propagationStopped: false,
       immediatePropagationStopped: false,
+      stopPropagation() {
+        this.propagationStopped = true;
+      },
       stopImmediatePropagation() {
+        this.propagationStopped = true;
         this.immediatePropagationStopped = true;
       }
     };
-    this.emit(event);
+    this.emit(event, true);
+    for (
+      let target = event.target;
+      target && !event.propagationStopped;
+      target = target.parentElement
+    )
+      target.emit(event);
+    if (!event.propagationStopped) this.emit(event);
     return event;
   }
 }
@@ -76,8 +98,8 @@ class FakeElement extends FakeEventTarget {
   }
 
   closest(selector: string): FakeElement | null {
-    if (selector !== '[inert]') return null;
-    if (this.hasAttribute('inert')) return this;
+    if (selector === '[inert]' && this.hasAttribute('inert')) return this;
+    if (selector === '[role="menu"]' && this.getAttribute('role') === 'menu') return this;
     return this.parentElement?.closest(selector) ?? null;
   }
 
@@ -238,7 +260,7 @@ describe('TooltipService', () => {
     expect(service.active.value).toBeUndefined();
   });
 
-  it('does not consume ordinary keys or Escape until a hint is visible', () => {
+  it('preserves ordinary, pending and composing keys while isolating a visible hint from document shortcuts', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
     const showAfter = tableTooltipOptions.showAfter;
@@ -268,9 +290,94 @@ describe('TooltipService', () => {
     expect(laterKeyHandler).toHaveBeenCalledTimes(4);
     expect(service.active.value).toMatchObject({ content: 'Keyboard hint', target });
 
-    const activeEscape = document.dispatch('keydown', { key: 'Escape' });
-    expect(activeEscape.immediatePropagationStopped).toBe(true);
+    document.dispatch('keydown', { target, key: 'Escape' });
     expect(laterKeyHandler).toHaveBeenCalledTimes(4);
+    expect(service.active.value).toBeUndefined();
+  });
+
+  it('dismisses in capture but lets the target and its local owner handle Escape before document shortcuts', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    const owner = new FakeElement();
+    target.parentElement = owner;
+    const received: string[] = [];
+    target.addEventListener('keydown', () => {
+      expect(service.active.value).toBeUndefined();
+      received.push('target');
+    });
+    owner.addEventListener('keydown', () => received.push('owner'));
+    document.addEventListener('keydown', () => received.push('document'));
+    service.update(target as unknown as Element, 'Cancel edit');
+    pointerOver(document, target);
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+
+    document.dispatch('keydown', { target, key: 'Escape' });
+    expect(received).toEqual(['target', 'owner']);
+  });
+
+  it('does not forward an unrelated hovered hint dismissal into a focused run stop handler', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    const composer = new FakeElement();
+    const stop = vi.fn();
+    composer.addEventListener('keydown', stop);
+    service.update(target as unknown as Element, 'Run action hint');
+    pointerOver(document, target);
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+
+    document.dispatch('keydown', { target: composer, key: 'Escape' });
+    expect(service.active.value).toBeUndefined();
+    expect(stop).not.toHaveBeenCalled();
+    document.dispatch('keydown', { target: composer, key: 'Escape' });
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('closes the hint even when the control stops Escape propagation', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    target.addEventListener('keydown', (event) => event.stopPropagation());
+    service.update(target as unknown as Element, 'Select hint');
+    pointerOver(document, target);
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+
+    document.dispatch('keydown', { target, key: 'Escape' });
+    expect(service.active.value).toBeUndefined();
+    expect(target.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('leaves a menu-owned Escape to the existing document-level overlay dismissal', () => {
+    const { document, service } = createCoordinator();
+    const menu = new FakeElement();
+    menu.setAttribute('role', 'menu');
+    const target = new FakeElement();
+    target.parentElement = menu;
+    const dismissMenu = vi.fn();
+    document.addEventListener('keydown', dismissMenu);
+    service.update(target as unknown as Element, 'Menu action hint');
+    pointerOver(document, target);
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+
+    document.dispatch('keydown', { target, key: 'Escape' });
+    expect(service.active.value).toBeUndefined();
+    expect(dismissMenu).toHaveBeenCalledOnce();
+  });
+
+  it('does not grant document-level Escape ownership to an expanded trigger', () => {
+    const { document, service } = createCoordinator();
+    const target = new FakeElement();
+    target.setAttribute('aria-haspopup', 'menu');
+    target.setAttribute('aria-expanded', 'true');
+    const handleControl = vi.fn();
+    const dismissOuterDialog = vi.fn();
+    target.addEventListener('keydown', handleControl);
+    document.addEventListener('keydown', dismissOuterDialog);
+    service.update(target as unknown as Element, 'Trigger hint');
+    pointerOver(document, target);
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+
+    document.dispatch('keydown', { target, key: 'Escape' });
+    expect(handleControl).toHaveBeenCalledOnce();
+    expect(dismissOuterDialog).not.toHaveBeenCalled();
     expect(service.active.value).toBeUndefined();
   });
 
