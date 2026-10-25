@@ -9,6 +9,35 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`File tree roots use the actual directory instead of the Workspace alias in ${theme}`, async ({
+    page
+  }) => {
+    await page.route('**/api/workspaces/workspace/**', (route) =>
+      route.fulfill({ json: { files: { entries: [], nextCursor: null } } })
+    );
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&file-root=1`);
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      const root = inspector.locator('[role="treeitem"][data-file-path="."]');
+      await expect(root.locator('.tree-name')).toHaveText('my-agent-roam');
+      await expect(root).toHaveAccessibleName('/home/example/my-agent-roam');
+      if (width >= 768) {
+        await root.scrollIntoViewIfNeeded();
+        await page.mouse.move(0, 0);
+        await root.hover();
+        await expect(page.getByRole('tooltip')).toHaveText('/home/example/my-agent-roam');
+      }
+      await root.click();
+      await expect(root).toHaveAttribute('aria-expanded', 'false');
+      await root.click();
+      await expect(root).toHaveAttribute('aria-expanded', 'true');
+      await inspector.getByRole('button', { name: 'Switch root path', exact: true }).click();
+      await expect(root.locator('.tree-name')).toHaveText('my-agent-roam');
+      await expect(root).toHaveAccessibleName('/home/other/my-agent-roam');
+    }
+  });
+
   test(`Git repository headers keep tags subordinate to file content in ${theme}`, async ({
     page
   }, testInfo) => {

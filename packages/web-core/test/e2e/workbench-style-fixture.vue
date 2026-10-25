@@ -13,8 +13,12 @@ const composerFixture = new URL(location.href).searchParams.has('composer');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
+const fileRootFixture = new URL(location.href).searchParams.has('file-root');
+const fileRootPath = ref('/home/example/my-agent-roam');
 const inspectorFixture =
-  contentSearchFixture || new URL(location.href).searchParams.has('git-previews');
+  fileRootFixture ||
+  contentSearchFixture ||
+  new URL(location.href).searchParams.has('git-previews');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
@@ -217,10 +221,18 @@ if (composerFixture) {
       />
     </section>
     <section aria-label="Inspector fixture">
+      <button
+        v-if="fileRootFixture"
+        type="button"
+        @click="fileRootPath = '/home/other/my-agent-roam'"
+      >
+        Switch root path
+      </button>
       <WorkspaceInspector
         :node-id="inspectorFixture ? 'node' : undefined"
         :workspace-id="inspectorFixture ? 'workspace' : undefined"
         workspace-name="Workspace"
+        :workspace-path="fileRootFixture ? fileRootPath : undefined"
         workspace-kind="GIT_WORKSPACE"
         csrf-token="fixture"
         :renew-csrf-token="async () => 'fixture'"

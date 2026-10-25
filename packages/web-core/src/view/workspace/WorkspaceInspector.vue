@@ -476,8 +476,15 @@ const base = computed(() => {
 });
 const ready = computed(() => props.enabled && base.value !== undefined && !unavailable.value);
 
+const fileTreeRootName = computed(() => {
+  const path = props.workspacePath;
+  if (!path) return props.workspaceName;
+  if (/^[a-z]:[\\/]+$/iu.test(path)) return path;
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
+});
+
 const fileTree = createWorkspaceFileTreeService({
-  workspaceName: () => props.workspaceName,
+  workspaceName: () => fileTreeRootName.value,
   list: listTreeDirectory
 });
 
@@ -1291,6 +1298,7 @@ function restore(snapshot: unknown): void {
       ? 'files'
       : value.activeSection;
   fileTree.restore(value.fileTree);
+  fileTree.setRootName(fileTreeRootName.value);
   contentQuery.value = typeof value.contentQuery === 'string' ? value.contentQuery : '';
   contentUseRegex.value = value.contentUseRegex === true;
   contentSearch.restore(value);
@@ -1800,10 +1808,7 @@ watch(
     if (workspaceKind !== previousKind) resetGitState();
   }
 );
-watch(
-  () => props.workspaceName,
-  (name) => fileTree.setRootName(name)
-);
+watch(fileTreeRootName, (name) => fileTree.setRootName(name));
 watch(
   () => props.contentSearchEnabled,
   (enabled) => {
@@ -2019,6 +2024,7 @@ onBeforeUnmount(() => filePreviews.reset());
           <WorkspaceFileTree
             ref="fileTreeView"
             :root="fileTree.root.value"
+            :root-path="workspacePath"
             :filter="fileDisplayFilter"
             :selected-path="fileTree.selectedPath.value"
             :disabled="filesBusy"
