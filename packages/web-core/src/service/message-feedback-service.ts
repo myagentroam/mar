@@ -13,15 +13,12 @@ export const showMessage: MessageFeedback = (message, type, cause) => {
 
 const renderMessage: MessageFeedback = (message, type, cause) => {
   if (!message.trim() || cause instanceof AuthenticationContextChangedError) return;
-  // Reading time depends on content size, never on translated semantic keywords.
-  const needsReading = message.includes('\n') || message.length > 180;
-  let handle: MessageHandler | undefined;
   let ownerObserver: MutationObserver | undefined;
   const dialog =
     typeof document === 'undefined'
       ? undefined
       : document.activeElement?.closest<HTMLElement>('[role="dialog"]');
-  handle = ElMessage[type]({
+  const handle: MessageHandler = ElMessage[type]({
     message: () =>
       h('span', [
         h('span', { class: 'mar-message-text' }, message),
@@ -43,7 +40,7 @@ const renderMessage: MessageFeedback = (message, type, cause) => {
     showClose: false,
     grouping: false,
     onClose: () => ownerObserver?.disconnect(),
-    duration: needsReading ? 0 : type === 'error' || type === 'warning' ? 6_000 : 3_000
+    duration: type === 'error' || type === 'warning' ? 6_000 : 3_000
   });
   // Element Plus renders independently of the dialog's Vue tree.
   if (dialog) {

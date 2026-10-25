@@ -1357,6 +1357,35 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
   await expect(repeated).toHaveCount(0);
 });
 
+test('short and diagnostic feedback automatically disappear while hover pauses dismissal', async ({
+  page
+}) => {
+  await page.clock.install();
+  await page.mouse.move(0, 0);
+  await page.getByTestId('show-info-feedback').click();
+  const info = page.locator('.el-message--info');
+  await expect(info).toBeVisible();
+  await page.clock.runFor(2_000);
+  await expect(info).toBeVisible();
+  await page.clock.runFor(1_500);
+  await expect(info).toHaveCount(0);
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByTestId('show-long-feedback').click();
+    const error = page.locator('.el-message--error');
+    await expect(error).toBeVisible();
+    await page.clock.runFor(5_000);
+    await expect(error).toBeVisible();
+    await error.hover();
+    await page.clock.runFor(7_000);
+    await expect(error).toBeVisible();
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(6_500);
+    await expect(error).toHaveCount(0);
+  }
+});
+
 test('mobile long feedback scrolls without trapping its accessible close control and dialogs close with Escape', async ({
   page
 }) => {

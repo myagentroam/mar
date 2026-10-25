@@ -139,15 +139,20 @@ describe('Message feedback service', () => {
       ['warning', 6_000],
       ['error', 6_000]
     ] as const) {
-      const message = `Explicit ${type}; success, info, warning, and error are only words.`;
-      showMessage(message, type);
-      await nextTick();
-      const options = optionsFor(type);
+      for (const message of [
+        `Explicit ${type}; success, info, warning, and error are only words.`,
+        'The request failed.\nCode: MODEL_UNAVAILABLE\nRequest ID: req-feedback-test',
+        'x'.repeat(181)
+      ]) {
+        showMessage(message, type);
+        await nextTick();
+        const options = optionsFor(type);
 
-      expect(options).toMatchObject({ showClose: false, grouping: false, duration });
-      expect(messageText(options)).toBe(message);
-      const iconHtml = await renderToString(createSSRApp(options.icon));
-      expect(iconHtml).toContain(`data-mar-icon="${type}"`);
+        expect(options).toMatchObject({ showClose: false, grouping: false, duration });
+        expect(messageText(options)).toBe(message);
+        const iconHtml = await renderToString(createSSRApp(options.icon));
+        expect(iconHtml).toContain(`data-mar-icon="${type}"`);
+      }
     }
   });
 
@@ -210,7 +215,7 @@ describe('Message feedback service', () => {
     }
   });
 
-  it('renders multiline and overlong feedback as safe text until the native close button is used', async () => {
+  it('renders multiline and overlong feedback as safe text with automatic and manual closing', async () => {
     const multiline = '<img src=x>\nSecond line';
     showMessage(multiline, 'info');
     await nextTick();
@@ -226,7 +231,7 @@ describe('Message feedback service', () => {
     const close = children[1]!;
     const html = await renderToString(createSSRApp({ render: () => multilineVNode }));
 
-    expect(multilineOptions.duration).toBe(0);
+    expect(multilineOptions.duration).toBe(3_000);
     expect(text.type).toBe('span');
     expect(text.props).toMatchObject({ class: 'mar-message-text' });
     expect(text.children).toBe(multiline);
@@ -244,7 +249,7 @@ describe('Message feedback service', () => {
     (close.props?.['onClick'] as () => void)();
     expect(feedback.handlers.info.close).toHaveBeenCalledOnce();
     expect(messageText(optionsFor('success', 0))).toBe('x'.repeat(181));
-    expect(optionsFor('success', 0).duration).toBe(0);
+    expect(optionsFor('success', 0).duration).toBe(3_000);
     expect(messageText(optionsFor('success', 1))).toBe('x'.repeat(180));
     expect(optionsFor('success').duration).toBe(3_000);
   });
