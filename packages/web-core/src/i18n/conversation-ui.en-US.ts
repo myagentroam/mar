@@ -99,8 +99,7 @@ export const conversationUiEnUS = {
       elapsed: 'Time elapsed',
       steer: 'User input',
       subagent_message: 'New public subagent message'
-    },
-    truncated: 'Output truncated'
+    }
   },
   permissionStop: {
     code: 'Code',

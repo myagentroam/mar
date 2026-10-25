@@ -147,13 +147,13 @@ export function toolPresentationDetails(payload: unknown): string {
       )
     );
   details.push(line('presentation.input', raw.inputSummary));
-  const output =
-    value.kind === 'READ' || value.kind === 'SKILL' || value.kind === 'WEB_FETCH' || raw.errorCode
-      ? line('presentation.output', raw.outputSummary)
-      : '';
-  details.push(output);
+  if (
+    value.kind === 'READ' ||
+    value.kind === 'SKILL' ||
+    value.kind === 'WEB_FETCH' ||
+    raw.errorCode
+  )
+    details.push(line('presentation.output', raw.outputSummary));
   details.push(line('presentation.error', raw.errorCode));
-  if (raw.truncated === true && !/\[(?:tool event summary )?truncated\]$/u.test(output.trimEnd()))
-    details.push(translate('toolPresentation.truncated'));
   return details.filter(Boolean).join(String.fromCharCode(10));
 }
