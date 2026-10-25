@@ -311,9 +311,6 @@ function openBlankMenu(event: MouseEvent): void {
       tabindex="-1"
       @contextmenu="view === 'nodes' && mobileUtilityPanel === undefined && openBlankMenu($event)"
     >
-      <header v-if="mobileViewport" class="mobile-menu-header">
-        <strong>{{ menuLabel }}</strong>
-      </header>
       <div
         v-show="displayUtility !== undefined"
         ref="mobilePanelTarget"
@@ -614,22 +611,6 @@ function openBlankMenu(event: MouseEvent): void {
   background: var(--mar-bg-panel);
 }
 
-.mobile-menu-header {
-  position: sticky;
-  z-index: 1;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.3rem 0.6rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-panel);
-  font-size: var(--mar-font-size-meta);
-}
-.mobile-menu-header strong {
-  font-weight: 500;
-}
 .mobile-menu-content {
   min-width: 0;
 }
@@ -909,7 +890,7 @@ function openBlankMenu(event: MouseEvent): void {
     inset: var(--sidebar-header-height) auto 0 0;
     width: min(300px, calc(100vw - 48px));
     max-height: none;
-    border-right: 1px solid var(--mar-border-strong);
+    border-right: 1px solid var(--mar-border-subtle);
     border-bottom: 0;
     box-shadow: 0 8px 24px var(--mar-shadow-medium);
     transform: translateX(0);
@@ -923,7 +904,7 @@ function openBlankMenu(event: MouseEvent): void {
     width: min(300px, calc(100vw - 48px));
     max-height: none;
     overflow-y: auto;
-    border-right: 1px solid var(--mar-border-strong);
+    border-right: 1px solid var(--mar-border-subtle);
     transform: translateX(0);
   }
 }
