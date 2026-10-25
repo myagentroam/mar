@@ -29,17 +29,37 @@ export class WorkspaceWatchSnapshotService {
   private readonly dirty = new Set<string>();
   private readonly reads = new Map<string, Promise<unknown>>();
   private readonly signatures = new Map<string, string>();
+  // Handoff only between consecutive group selections on the same page/Workspace.
+  // Weak keys release the two resource payloads with their lease, not a second TTL cache.
+  private readonly resourceSnapshots = new WeakMap<
+    WorkspaceWatch,
+    Partial<Record<'files' | 'changes', { readonly payload: unknown; readonly revision: number }>>
+  >();
   private filesRefreshTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly options: WorkspaceWatchSnapshotServiceOptions) {}
 
-  async initial(workspace: NodeWorkspace, watch: WorkspaceWatch): Promise<void> {
+  async initial(
+    workspace: NodeWorkspace,
+    watch: WorkspaceWatch,
+    previous?: WorkspaceWatch
+  ): Promise<void> {
     if (watch.topics.files !== undefined) this.ensureFilesRefreshTimer();
     await Promise.all(
       this.subscribedTopics(watch).map(async (topic) => {
         const revision = this.readRevision(workspace.id, topic);
         try {
-          const payload = await this.read(workspace, topic, watch);
+          const retained =
+            topic === 'sessions' || previous === undefined
+              ? undefined
+              : this.resourceSnapshots.get(previous)?.[topic];
+          const payload =
+            retained !== undefined &&
+            retained.revision === revision &&
+            !this.readActive(workspace.id, topic, watch) &&
+            !this.refreshes.has(`${workspace.id}:${topic}`)
+              ? retained.payload
+              : await this.read(workspace, topic, watch);
           if (!this.matches(workspace.id, watch)) return;
           if (revision !== this.readRevision(workspace.id, topic)) {
             void this.invalidate(workspace.id, topic);
@@ -237,7 +257,13 @@ export class WorkspaceWatchSnapshotService {
       : `${workspaceId}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}`;
   }
 
-  private readActive(workspaceId: string, topic: WorkspaceWatchTopic): boolean {
+  private readActive(
+    workspaceId: string,
+    topic: WorkspaceWatchTopic,
+    watch?: WorkspaceWatch
+  ): boolean {
+    if (topic === 'files' && watch !== undefined)
+      return this.reads.has(this.viewKey(workspaceId, topic, watch));
     const prefix = `${workspaceId}:${topic}`;
     return [...this.reads.keys()].some((key) => key === prefix || key.startsWith(`${prefix}:`));
   }
@@ -265,6 +291,11 @@ export class WorkspaceWatchSnapshotService {
     payload: unknown
   ): void {
     if (!this.matches(workspace.id, watch)) return;
+    if (topic !== 'sessions') {
+      const snapshots = this.resourceSnapshots.get(watch) ?? {};
+      snapshots[topic] = { payload, revision: this.readRevision(workspace.id, topic) };
+      this.resourceSnapshots.set(watch, snapshots);
+    }
     this.options.emitWatchEvent({
       type: 'watch.workspace.snapshot',
       workbenchConnectionId: watch.workbenchConnectionId,
@@ -282,6 +313,10 @@ export class WorkspaceWatchSnapshotService {
 
   private fail(workspaceId: string, watch: WorkspaceWatch, topic: WorkspaceWatchTopic): void {
     if (!this.matches(workspaceId, watch)) return;
+    if (topic !== 'sessions') {
+      const snapshots = this.resourceSnapshots.get(watch);
+      if (snapshots !== undefined) delete snapshots[topic];
+    }
     this.options.emitWatchEvent({
       type: 'watch.failed',
       workbenchConnectionId: watch.workbenchConnectionId,

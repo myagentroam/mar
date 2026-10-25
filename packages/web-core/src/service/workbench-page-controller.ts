@@ -2107,7 +2107,7 @@ export function createWorkbenchPageController<
         target.workspaceId === previousTarget?.workspaceId &&
         group !== previousGroup
       )
-        void watchCoordinator.current?.restartWorkspace(target.workspaceId);
+        void watchCoordinator.current?.startWorkspace(target.workspaceId);
     }
   );
 

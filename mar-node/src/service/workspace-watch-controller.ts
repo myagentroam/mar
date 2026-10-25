@@ -32,6 +32,13 @@ export class WorkspaceWatchController {
     }
     const topics = this.options.watch.parseTopics(input);
     const existing = this.options.watch.existing(workspace.id, key);
+    const groupOnly =
+      existing !== undefined &&
+      existing.topics.sessions === topics.sessions &&
+      existing.topics.sessionGroup !== topics.sessionGroup &&
+      existing.topics.changes === topics.changes &&
+      JSON.stringify(existing.topics.files) === JSON.stringify(topics.files) &&
+      (existing.prepareFiles === true) === (input.prepareFiles === true);
     if (
       existing !== undefined &&
       existing.watchId === input.watchId &&
@@ -50,7 +57,7 @@ export class WorkspaceWatchController {
       topics,
       input.prepareFiles === true
     );
-    void this.options.snapshots.initial(workspace, watch);
+    void this.options.snapshots.initial(workspace, watch, groupOnly ? existing : undefined);
     if (watch.prepareFiles) this.options.snapshots.prewarmFiles(workspace, watch);
     return this.accepted(watch);
   }

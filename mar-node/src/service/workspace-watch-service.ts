@@ -69,7 +69,9 @@ export class WorkspaceWatchService {
   ): WorkspaceWatch {
     const key = `${sessionHash}:${workbenchConnectionId}`;
     for (const [activeWorkspaceId, watches] of this.state.watches)
-      if (watches.has(key)) this.remove(activeWorkspaceId, key);
+      if (activeWorkspaceId !== workspaceId && watches.has(key))
+        this.remove(activeWorkspaceId, key);
+    const previous = this.state.watches.get(workspaceId)?.get(key);
     const watch: WorkspaceWatch = {
       workspaceId,
       watchId,
@@ -85,6 +87,12 @@ export class WorkspaceWatchService {
     const watches = this.state.watches.get(workspaceId) ?? new Map<string, WorkspaceWatch>();
     watches.set(key, watch);
     this.state.watches.set(workspaceId, watches);
+    if (previous !== undefined) {
+      clearTimeout(previous.timer);
+      this.onWatchRemoved(previous);
+      if (previous.topics.sessions && !this.topicActive(workspaceId, 'sessions'))
+        this.onSessionWatchUnused(workspaceId);
+    }
     if (topics.sessions) this.onSessionWatchRequired(workspaceId);
     return watch;
   }

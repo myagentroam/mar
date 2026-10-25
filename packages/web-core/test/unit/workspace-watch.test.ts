@@ -144,7 +144,7 @@ describe('Shared Workspace Watch', () => {
       onSnapshot: (_nodeId, _workspaceId, snapshot) => snapshots.push(snapshot)
     });
 
-    await service.start('workspace-1');
+    await service.start('workspace-1', 'src');
     const mainWatch = JSON.parse(String(requests[0]?.init?.body)) as {
       watchId: string;
       workbenchConnectionId: string;
@@ -154,10 +154,23 @@ describe('Shared Workspace Watch', () => {
     expect(mainWatch.topics).toEqual({
       sessions: true,
       sessionGroup: 'MAIN',
-      files: { path: '.', limit: 200 },
+      files: { path: 'src', limit: 200 },
       changes: true
     });
 
+    for (const topic of ['files', 'changes'] as const)
+      service.handleEvent({
+        type: 'watch.workspace.snapshot',
+        workbenchConnectionId: mainWatch.workbenchConnectionId,
+        nodeGeneration: 'test-generation',
+        watchId: mainWatch.watchId,
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        topic,
+        revision: 1,
+        payload: {}
+      });
+    snapshots.length = 0;
     sessionGroup = 'CHILD';
     expect(
       service.handleEvent({
@@ -174,7 +187,8 @@ describe('Shared Workspace Watch', () => {
     ).toBe(false);
     expect(snapshots).toEqual([]);
 
-    await service.restart('workspace-1');
+    await service.start('workspace-1');
+    expect(service.topicStatus).toEqual({ sessions: 'loading', files: 'ready', changes: 'ready' });
     const posts = requests.filter(({ init }) => init?.method === 'POST');
     expect(posts).toHaveLength(2);
     const childWatch = JSON.parse(String(posts[1]?.init?.body)) as {
@@ -191,7 +205,7 @@ describe('Shared Workspace Watch', () => {
     expect(childWatch.topics).toEqual({
       sessions: true,
       sessionGroup: 'CHILD',
-      files: { path: '.', limit: 200 },
+      files: { path: 'src', limit: 200 },
       changes: true
     });
     expect(

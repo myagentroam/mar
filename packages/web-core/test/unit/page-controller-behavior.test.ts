@@ -327,21 +327,25 @@ describe('Workbench controller composition behavior', () => {
     };
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
     await flushComponent();
+    captured.startWorkspace.mockClear();
     captured.restartWorkspace.mockClear();
 
     page.selectWorkspaceSessionGroup('CHILD');
     await flushComponent();
-    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-a');
+    expect(captured.startWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-a');
+    expect(captured.restartWorkspace).not.toHaveBeenCalled();
 
-    captured.restartWorkspace.mockClear();
+    captured.startWorkspace.mockClear();
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-b' };
     await flushComponent();
     expect(page.workspaceSessionGroup.value).toBe('MAIN');
+    expect(captured.startWorkspace).not.toHaveBeenCalled();
     expect(captured.restartWorkspace).not.toHaveBeenCalled();
 
     page.selectWorkspaceSessionGroup('CHILD');
     await flushComponent();
-    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
+    expect(captured.startWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
+    expect(captured.restartWorkspace).not.toHaveBeenCalled();
   });
 
   it('shows only sessions in the current group page while retaining the selected session body', async () => {
