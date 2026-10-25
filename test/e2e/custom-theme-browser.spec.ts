@@ -336,6 +336,115 @@ test('built-ins are read-only, copies include every color, and reset restores sa
 });
 
 for (const scheme of ['Light', 'Dark']) {
+  test(`Select options separate neutral selection from brand focus in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    const samples = page.getByRole('region', { name: 'Select state samples' });
+    for (const custom of [false, true]) {
+      if (custom)
+        await page.locator('html').evaluate((element) => {
+          for (const [token, value] of Object.entries({
+            '--mar-color-brand': '#bf6ac9',
+            '--mar-text-primary': '#dae5cf',
+            '--mar-text-faint': '#8293a4',
+            '--mar-border-medium': '#718293',
+            '--mar-fill-row-hover': '#334455',
+            '--mar-fill-selection': '#445566'
+          }))
+            element.style.setProperty(token, value);
+        });
+      const palette = await samples.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          text: color('--mar-text-primary'),
+          disabled: color('--mar-text-faint'),
+          selected: color('--mar-fill-selection'),
+          hover: color('--mar-fill-row-hover'),
+          hoverBorder: color('--mar-border-medium'),
+          disabledBorder: color('--mar-border-subtle'),
+          focus: color('--mar-color-brand')
+        };
+        probe.remove();
+        return result;
+      });
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const name of ['Neutral select', 'Multiple select']) {
+          const select = samples.getByRole('combobox', { name, exact: true });
+          const wrapper = select.locator(
+            'xpath=ancestor::div[contains(@class,"el-select__wrapper")]'
+          );
+          await page.getByRole('button', { name: 'Sample default', exact: true }).focus();
+          await wrapper.hover();
+          await expect(wrapper).toHaveCSS(
+            'box-shadow',
+            `${palette.hoverBorder} 0px 0px 0px 1px inset`
+          );
+          await select.focus();
+          await select.press('ArrowDown');
+          await expect(wrapper).toHaveCSS('box-shadow', `${palette.focus} 0px 0px 0px 1px inset`);
+          const dropdown = page.getByRole('listbox', { name, exact: true });
+          const selected = dropdown.getByRole('option', { name: 'One', exact: true });
+          const other = dropdown.getByRole('option', { name: 'Two', exact: true });
+          const disabled = dropdown.getByRole('option', { name: 'Unavailable', exact: true });
+          await expect(selected).toHaveAttribute('aria-selected', 'true');
+          await expect(selected).toHaveCSS('color', palette.text);
+          await expect(selected).toHaveCSS('font-weight', '400');
+          await expect(selected).toHaveCSS('background-color', palette.selected);
+          await other.hover();
+          await expect(other).toHaveCSS('color', palette.text);
+          await expect(other).toHaveCSS('background-color', palette.hover);
+          await selected.hover();
+          await expect(selected).toHaveCSS('background-color', palette.selected);
+          await disabled.hover({ force: true });
+          await expect(disabled).toHaveAttribute('aria-disabled', 'true');
+          await expect(disabled).toHaveCSS('color', palette.disabled);
+          await expect(disabled).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          if (name === 'Multiple select') {
+            expect(
+              await selected.evaluate(
+                (element) => getComputedStyle(element, '::after').backgroundColor
+              )
+            ).toBe(palette.text);
+            expect(
+              await disabled.evaluate(
+                (element) => getComputedStyle(element, '::after').backgroundColor
+              )
+            ).toBe(palette.disabled);
+          }
+          if (!custom)
+            await dropdown.screenshot({ path: testInfo.outputPath(`${name}-${width}.png`) });
+          await select.press('Escape');
+          await expect(dropdown).toBeHidden();
+        }
+        const disabledSelect = samples.getByRole('combobox', {
+          name: 'Disabled select',
+          exact: true
+        });
+        await expect(disabledSelect).toBeDisabled();
+        const disabledWrapper = disabledSelect.locator(
+          'xpath=ancestor::div[contains(@class,"el-select__wrapper")]'
+        );
+        await disabledWrapper.hover();
+        await expect(disabledWrapper).toHaveCSS(
+          'box-shadow',
+          `${palette.disabledBorder} 0px 0px 0px 1px inset`
+        );
+      }
+    }
+  });
+
   test(`Ordinary actions preserve neutral states and bordered surfaces in ${scheme}`, async ({
     page
   }, testInfo) => {

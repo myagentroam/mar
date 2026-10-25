@@ -800,7 +800,7 @@ function submitSessionSearch(): void {
               <p class="effective-mcp-meta">{{ serverName }}</p>
             </div>
             <span class="effective-skill-tags">
-              <el-tag effect="plain" type="primary">{{
+              <el-tag effect="plain" type="info">{{
                 translate('generated.workspaceSessionList.executionInjected')
               }}</el-tag>
               <el-tag effect="plain" type="info">{{

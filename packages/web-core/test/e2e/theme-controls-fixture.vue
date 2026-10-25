@@ -6,6 +6,8 @@ import { ref } from 'vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 const value = ref('');
+const selection = ref('one');
+const selections = ref(['one', 'unavailable']);
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {
   throw new Error('This visual fixture does not persist prompts');
@@ -60,6 +62,21 @@ function saveFeedbackDialog(): void {
     <el-table :data="[{ name: 'First' }, { name: 'Second' }]">
       <el-table-column prop="name" label="Name" />
     </el-table>
+  </section>
+  <section aria-label="Select state samples">
+    <el-select v-model="selection" aria-label="Neutral select">
+      <el-option label="One" value="one" />
+      <el-option label="Two" value="two" />
+      <el-option label="Unavailable" value="unavailable" disabled />
+    </el-select>
+    <el-select v-model="selections" aria-label="Multiple select" multiple>
+      <el-option label="One" value="one" />
+      <el-option label="Two" value="two" />
+      <el-option label="Unavailable" value="unavailable" disabled />
+    </el-select>
+    <el-select v-model="selection" aria-label="Disabled select" disabled>
+      <el-option label="One" value="one" />
+    </el-select>
   </section>
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">
     <AgentMarkdown :content="message" />

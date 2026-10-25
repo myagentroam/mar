@@ -683,10 +683,35 @@ html.console-ui :where(input, textarea)::placeholder {
   opacity: 1;
 }
 
+:where(html.console-ui, .theme-preview) .el-select {
+  --el-border-color-hover: var(--mar-border-medium);
+}
+
 .el-select-dropdown__item {
   height: var(--mar-compact-control-size);
   padding-inline: var(--mar-compact-option-padding-inline);
   line-height: var(--mar-compact-control-size);
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item:not(.is-disabled) {
+  color: var(--mar-text-primary);
+  font-weight: 400;
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-hovering:not(.is-disabled) {
+  background-color: var(--mar-fill-row-hover);
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-selected:not(.is-disabled) {
+  background-color: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
+}
+
+:where(html.console-ui, .theme-preview)
+  .el-select-dropdown.is-multiple
+  .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
+  background-color: currentColor;
 }
 
 .el-select-group__title {

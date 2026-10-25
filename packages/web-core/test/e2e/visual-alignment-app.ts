@@ -100,13 +100,19 @@ const hostedWorkspace = {
   }
 } as unknown as ReturnType<typeof createHostedConversationWorkspaceService>;
 const modelOptions = new URLSearchParams(location.search).has('model-options');
+const selectStates = new URLSearchParams(location.search).has('select-states');
 const modelEffortSelection = ref('model:one');
 const selectedModel = ref('one');
 const selectedEffort = ref('medium');
 const toolbar = {
-  draftSessionOpen: false,
+  draftSessionOpen: selectStates,
   runner: 'mar-agent' as const,
-  runnerOptions: [],
+  runnerOptions: selectStates
+    ? [
+        { value: 'mar-agent' as const, label: 'MAR Agent' },
+        { value: 'codex' as const, label: 'Codex' }
+      ]
+    : [],
   runnerLoading: false,
   runnerLabel: 'MAR Agent',
   modelEffortSelection: undefined,
@@ -123,8 +129,13 @@ const toolbar = {
   hideModelSelection: !modelOptions,
   access: 'auto',
   accessLabel: 'Auto',
-  accessOptions: [],
-  hideAccessSelection: true,
+  accessOptions: selectStates
+    ? [
+        { id: 'auto', label: 'Auto' },
+        { id: 'ask', label: 'Ask' }
+      ]
+    : [],
+  hideAccessSelection: !selectStates,
   configurationDisabled: false,
   accessDisabled: false,
   fastEnabled: false,

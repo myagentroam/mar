@@ -140,6 +140,71 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
+  for (const width of [1280, 390]) {
+    test(`Composer selectors separate neutral hover from brand focus in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}visual-alignment.html?select-states&model-options&theme=${theme}${width < 768 ? '&mobile' : ''}`
+      );
+      for (const custom of [false, true]) {
+        if (custom)
+          await page.locator('html').evaluate((element) => {
+            for (const [token, value] of Object.entries({
+              '--mar-color-brand': '#bf6ac9',
+              '--mar-text-primary': '#dae5cf',
+              '--mar-fill-row-hover': '#334455',
+              '--mar-fill-selection': '#445566',
+              '--mar-border-medium': '#718293'
+            }))
+              element.style.setProperty(token, value);
+          });
+        const palette = await colors(page);
+        const borders = await page.locator('html').evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          probe.style.color = 'var(--mar-color-brand)';
+          const focus = getComputedStyle(probe).color;
+          probe.style.color = 'var(--mar-border-medium)';
+          const hover = getComputedStyle(probe).color;
+          probe.remove();
+          return { focus, hover };
+        });
+        for (const kind of ['runner', 'access', 'model-effort']) {
+          const select = page.locator(`.composer-${kind}-select`);
+          const input = select.getByRole('combobox');
+          const wrapper = select.locator('.el-select__wrapper');
+          await page.getByRole('button', { name: 'Open hint dialog', exact: true }).focus();
+          await wrapper.hover();
+          await expect(wrapper).toHaveCSS('box-shadow', `${borders.hover} 0px 0px 0px 1px inset`);
+          await input.focus();
+          await expect(wrapper).toHaveCSS('box-shadow', `${borders.focus} 0px 0px 0px 1px inset`);
+          await input.press('ArrowDown');
+          const dropdown = page.locator(`.el-select-dropdown.composer-${kind}-popper:visible`);
+          const selected = dropdown.locator('.is-selected, .composer-model-effort-option-selected');
+          await expect(selected).toHaveCount(kind === 'model-effort' ? 2 : 1);
+          for (const option of await selected.all()) {
+            await expect(option).toHaveCSS('color', palette.primary);
+            await expect(option).toHaveCSS('font-weight', '400');
+            await option.hover();
+            await expect(option).toHaveCSS('background-color', palette.selected);
+          }
+          const other = dropdown.getByRole('option', {
+            name: kind === 'runner' ? 'Codex' : kind === 'access' ? 'Ask' : 'Model Two',
+            exact: true
+          });
+          await other.hover();
+          await expect(other).toHaveCSS('background-color', palette.hover);
+          if (!custom)
+            await dropdown.screenshot({ path: testInfo.outputPath(`${kind}-${width}.png`) });
+          await input.press('Escape');
+          await expect(dropdown).toBeHidden();
+        }
+      }
+    });
+  }
+
   test(`Settings navigation and model choices keep regular selected text in ${theme}`, async ({
     page
   }) => {
@@ -155,7 +220,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       const select = page.locator('.composer-model-effort-select');
       await select.click();
-      const dropdown = page.locator('.composer-model-effort-popper:visible');
+      const dropdown = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
       const selected = dropdown.locator('.composer-model-effort-option-selected');
       await expect(selected).toHaveCount(2);
       for (const option of await selected.all()) {
