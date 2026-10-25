@@ -906,6 +906,111 @@ it.each([
   }
 });
 
+describe.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)('Git format focus (%s)', (kind) => {
+  const intent = (path: string) => ({
+    kind,
+    nodeId: 'node-1',
+    workspaceId: 'workspace-1',
+    path,
+    repositoryPath: '',
+    worktreePath: '',
+    ...(kind === 'HISTORY_TEXT' ? { commit: 'b'.repeat(40), refs: ['refs/heads/main'] } : {})
+  });
+  const directGitFileReadRange = async () => ({ bytes: new Uint8Array([0]), size: 20 });
+
+  it('returns focus to the same active page when reopening its source', async () => {
+    const { app, inspector } = mountInspector({
+      workspaceKind: 'GIT_WORKSPACE',
+      directGitFileReadRange
+    });
+    try {
+      await inspector.value!.openWorkspaceFileTab(intent('manual.pdf'));
+      await nextTick();
+      const tab = (latestTabs()!.props.tabs as { id: number }[])[0]!;
+      const page = latestFormatPage('manual.pdf')!;
+      const frameCount = fakeViews.formatPages.length;
+      // The browser regression moves actual DOM focus back to the source control.
+      fakeViews.focusPage.mockClear();
+      await inspector.value!.openWorkspaceFileTab(intent('manual.pdf'));
+      await nextTick();
+      expect(latestTabs()!.props.tabs).toHaveLength(1);
+      expect(latestTabs()!.props.activeTabId).toBe(tab.id);
+      expect(fakeViews.formatPages).toHaveLength(frameCount);
+      expect(latestFormatPage('manual.pdf')).toBe(page);
+      expect(fakeViews.focusPage.mock.calls).toEqual([[tab.id]]);
+    } finally {
+      app.unmount();
+    }
+  });
+
+  it.each(['another tab', 'another Workspace', 'closed tab'] as const)(
+    'does not focus a late page after moving to %s',
+    async (destination) => {
+      let release!: () => void;
+      const pending = new Promise<undefined>((resolve) => {
+        release = () => resolve(undefined);
+      });
+      const readObject = vi.fn((...args: unknown[]) =>
+        args.includes('A.pdf') ? pending : Promise.resolve(undefined)
+      );
+      const workspaceId = ref('workspace-1');
+      const { app, inspector } = mountInspector(
+        {
+          workspaceKind: 'GIT_WORKSPACE',
+          directGitFileReadRange,
+          directFileObjectUrl: readObject,
+          directGitFileObjectUrl: readObject
+        },
+        () => ({ workspaceId: workspaceId.value })
+      );
+      let opening: Promise<void> | undefined;
+      try {
+        opening = inspector.value!.openWorkspaceFileTab(intent('A.pdf'));
+        await vi.waitFor(() => expect(readObject).toHaveBeenCalled());
+        const tabA = (latestTabs()!.props.tabs as { id: number }[])[0]!;
+        if (destination === 'another tab') {
+          await inspector.value!.openWorkspaceFileTab(intent('B.pdf'));
+        } else if (destination === 'another Workspace') {
+          workspaceId.value = 'workspace-2';
+        } else latestTabs()!.emit('close', tabA.id);
+        await nextTick();
+        const activeId = latestTabs()?.props.activeTabId;
+        const focusCount = fakeViews.focusPage.mock.calls.length;
+        release();
+        await opening;
+        await nextTick();
+        expect(fakeViews.focusPage).toHaveBeenCalledTimes(focusCount);
+        expect(latestTabs()?.props.activeTabId).toBe(activeId);
+      } finally {
+        release();
+        await opening;
+        app.unmount();
+      }
+    }
+  );
+});
+
+it('does not focus an existing format page for a historical target without a commit', async () => {
+  const { app, inspector } = mountInspector({ workspaceKind: 'GIT_WORKSPACE' });
+  const intent = {
+    kind: 'HISTORY_TEXT' as const,
+    nodeId: 'node-1',
+    workspaceId: 'workspace-1',
+    path: 'manual.pdf',
+    repositoryPath: '',
+    worktreePath: ''
+  };
+  try {
+    await inspector.value!.openWorkspaceFileTab({ ...intent, commit: 'b'.repeat(40) });
+    fakeViews.focusPage.mockClear();
+    await inspector.value!.openWorkspaceFileTab(intent);
+    expect(latestTabs()!.props.tabs).toHaveLength(1);
+    expect(fakeViews.focusPage).not.toHaveBeenCalled();
+  } finally {
+    app.unmount();
+  }
+});
+
 it('preserves historical text locations when opening and restoring file tabs', async () => {
   const body = new TextEncoder().encode('first\nsecond\nthird\n');
   fetchRequest.mockResolvedValue({

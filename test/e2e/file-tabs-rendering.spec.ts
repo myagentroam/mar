@@ -190,6 +190,52 @@ for (const width of [1280, 390]) {
   });
 }
 
+for (const kind of ['worktree', 'history']) {
+  test(`Git format preview restores actual focus when reopening ${kind}`, async ({ page }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+    try {
+      await page.route('**/api/workspaces/workspace/**/content?*', (route) =>
+        route.fulfill({
+          contentType: 'image/svg+xml',
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="2000"><rect width="1200" height="2000" fill="navy"/></svg>'
+        })
+      );
+      await page.goto(`${fixture.url}file-tabs.html?format-focus=${kind}`);
+      const source = page.locator('#git-format-source');
+      const frame = page.locator('.workspace-file-page-frame:visible');
+      await source.click();
+      await expect(source).toHaveAttribute('data-completed-opens', '1');
+      await expect(frame).toBeFocused();
+      await expect(frame.locator('img')).toBeVisible();
+      await expect
+        .poll(() => frame.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
+        .toBe(1200);
+      const originalFrame = await frame.elementHandle();
+      const tabs = page.getByRole('tablist', { name: 'File preview tabs' }).getByRole('tab');
+      await expect(tabs).toHaveCount(1);
+      const originalTab = await tabs.first().elementHandle();
+      await source.focus();
+      await expect(source).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(source).toHaveAttribute('data-completed-opens', '2');
+      await expect(frame).toBeFocused();
+      await expect(tabs).toHaveCount(1);
+      await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+      expect(
+        await tabs.first().evaluate((element, original) => element === original, originalTab)
+      ).toBe(true);
+      expect(await frame.evaluate((element, original) => element === original, originalFrame)).toBe(
+        true
+      );
+      await expect(frame.locator('img')).toBeVisible();
+      await page.keyboard.press('Alt+w');
+      await expect(frame).toHaveCount(0);
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('File preview overlay stays bounded, modal, and stable across viewport changes', async ({
   page
 }) => {
