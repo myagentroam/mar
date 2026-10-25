@@ -135,7 +135,13 @@ const turns = ref<ConversationTurn[]>([
               processGroup: { id: 'spacing-process', isStart: kind === 'command' && index === 0 },
               payload:
                 kind === 'command'
-                  ? { command: `echo review-${index}`, outputPreview: 'Review output' }
+                  ? {
+                      command:
+                        index === 0
+                          ? `const command = "${'long-command-with-original-content-'.repeat(10)}";\nobserve.result(await tools.exec({ command }));\n// Full command tail`
+                          : `echo review-${index}`,
+                      ...(index === 1 ? {} : { outputPreview: 'Review output' })
+                    }
                   : {
                       toolName: kind === 'read' ? 'read' : 'review',
                       outputSummary: 'Review output',

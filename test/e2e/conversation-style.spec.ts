@@ -231,6 +231,72 @@ test('Touch conversation details reveal titles and unavailable change reasons', 
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Expanded command details expose the complete command in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 1000 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
+        await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+        const group = page.locator('.conversation-item.command-group > details');
+        await group.locator(':scope > summary').click();
+        const command = group.locator(':scope > details').first();
+        const heading = command.locator(':scope > summary');
+        const preview = heading.locator('.conversation-command-preview');
+        const fullCommand = await preview.textContent();
+        expect(fullCommand).toContain('Full command tail');
+        expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          true
+        );
+        const headingHeight = await heading.evaluate(
+          (element) => element.getBoundingClientRect().height
+        );
+        await expect(command.locator('.conversation-command-output')).toHaveCount(0);
+        await heading.click();
+        const detail = command.locator('.conversation-command-output');
+        await expect(detail).toBeVisible();
+        expect(await detail.textContent()).toContain(fullCommand);
+        await expect(detail).toContainText('Review output');
+        expect(
+          await heading.evaluate((element) => element.getBoundingClientRect().height)
+        ).toBeCloseTo(headingHeight, 1);
+        expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true
+        );
+        await expect
+          .poll(() =>
+            detail.evaluate((element) => {
+              const body = element.getBoundingClientRect();
+              return ['.conversation-command-detail', '.conversation-record-group'].every(
+                (selector) => {
+                  const parent = element.closest(selector)!.getBoundingClientRect();
+                  return body.top >= parent.top - 1 && body.bottom <= parent.bottom + 1;
+                }
+              );
+            })
+          )
+          .toBe(true);
+        await detail.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+        await detail.screenshot({ path: testInfo.outputPath(`full-command-${width}.png`) });
+        await heading.click();
+        await expect(detail).toHaveCount(0);
+        const withoutOutput = group.locator(':scope > details').nth(1);
+        await withoutOutput.locator(':scope > summary').click();
+        await expect(withoutOutput.locator('.conversation-command-output')).toContainText(
+          'echo review-1'
+        );
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   test(`Grouped conversation rows keep consistent compact spacing in ${theme}`, async ({
     page
   }, testInfo) => {
