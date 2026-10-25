@@ -1,7 +1,7 @@
 export const conversationUiEnUS = {
   conversationEmpty: {
     workspace: {
-      title: 'What would you like to work on?',
+      title: 'Where to start?',
       description: 'Describe a task, ask a question, or add files to get started.'
     },
     hosted: {
