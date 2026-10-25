@@ -637,7 +637,6 @@ onBeforeUnmount(() => {
           @visible-change="refreshDraftTemplates"
         >
           <button
-            v-tooltip="draftTemplateLabel"
             class="hosted-template-trigger hosted-model-trigger"
             type="button"
             :disabled="templateSelectionDisabled"
@@ -676,7 +675,6 @@ onBeforeUnmount(() => {
             @command="updateModel(String($event))"
           >
             <button
-              v-tooltip="selectedModelLabel"
               class="hosted-model-trigger"
               type="button"
               :disabled="modelSelectionDisabled"
