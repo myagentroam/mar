@@ -1,6 +1,7 @@
 import { emitAudit, resourceAuditEvent, deferMysqlAudit, type AuditObserver } from './audit.js';
 import { withMysqlTransaction, lockMysqlUsers, lockMysqlModels } from './mysql-reference-store.js';
 import { randomBytes } from 'node:crypto';
+import { MarAgentResourceInputService } from './mar-agent-resource-input-service.js';
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
@@ -47,6 +48,7 @@ function parseOrderInput(raw: unknown, allowEmpty: boolean): string[] {
 }
 
 export class MarAgentModelService {
+  readonly resourceInput: MarAgentResourceInputService;
   constructor(
     protected readonly database: { readonly raw: Pool } & Partial<AuditObserver>,
     private readonly now: () => number = Date.now,
@@ -81,7 +83,20 @@ export class MarAgentModelService {
         ownership?: ResourceOwnership
       ): Promise<void>;
     }
-  ) {}
+  ) {
+    this.resourceInput = new MarAgentResourceInputService(database);
+  }
+
+  async resourceInputEnabled(): Promise<boolean> {
+    return (await this.resourceInput.read()).useResourceUrl;
+  }
+
+  async #resourceMetadata<T extends MarAgentModelSummary | MarAgentStoredModelConfiguration>(
+    models: readonly T[]
+  ) {
+    const settings = await this.resourceInput.models(models.map((model) => model.id));
+    return models.map((model) => ({ ...model, metadata: settings.get(model.id)! }));
+  }
 
   async #assertCredentialBinding(
     actorUserId: number,
@@ -110,7 +125,7 @@ export class MarAgentModelService {
     else if (model.baseUrl === CHATGPT_BASE_URL) throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
   }
   async list(): Promise<readonly MarAgentModelSummary[]> {
-    return Promise.all(
+    const models = await Promise.all(
       (await this.summaryRows()).map(async (row) => {
         const model = summary(row);
         if (row.credential !== undefined && row.credential !== null)
@@ -121,6 +136,7 @@ export class MarAgentModelService {
         return model;
       })
     );
+    return this.#resourceMetadata(models);
   }
 
   async listManagedForUser(userId: number): Promise<readonly MarAgentModelSummary[]> {
@@ -227,6 +243,7 @@ export class MarAgentModelService {
           now
         ]
       );
+      await this.resourceInput.write(parsed.metadata ?? { useResourceUrl: false }, connection, id);
     });
     const values = await this.list();
     const created = values.find((value) => value.id === id);
@@ -250,6 +267,7 @@ export class MarAgentModelService {
     const record = raw as Record<string, unknown>;
     return this.create(userId, {
       ...record,
+      metadata: record.metadata ?? source.metadata,
       credential:
         record.credential ??
         (typeof record.apiKey === 'string' && record.apiKey.length > 0
@@ -306,35 +324,44 @@ export class MarAgentModelService {
       existingSummary.ownership
     );
     await this.#assertTarget(actorUserId, parsed);
-    await this.database.raw.execute(
-      "UPDATE mar_agent_models SET name=?,normalized_name=?,protocol=?,base_url=?,credential=?,model_id=?,context_window_tokens=?,max_output_tokens=?,input_capabilities=?,output_capabilities=?,reasoning_efforts=?,default_reasoning_effort=?,conversation_model=?,title_generation=?,code_mode=?,fast_mode=?,service_tier=?,hosted_web_search=?,responses_transport=?,responses_previous_response_id=?,enabled=?,sort_order=?,last_test_status='UNVERIFIED',last_test_code=NULL,updated_at=? WHERE id=?",
-      [
-        parsed.name,
-        normalizeMarAgentModelName(parsed.name),
-        parsed.protocol,
-        parsed.baseUrl,
-        JSON.stringify(parsed.credential),
-        parsed.modelId,
-        parsed.contextWindowTokens,
-        parsed.maxOutputTokens,
-        JSON.stringify(parsed.inputCapabilities),
-        JSON.stringify(parsed.outputCapabilities),
-        JSON.stringify(parsed.reasoningEfforts),
-        parsed.defaultReasoningEffort,
-        parsed.conversationModel,
-        parsed.titleGeneration,
-        parsed.codeMode,
-        parsed.fastMode,
-        parsed.serviceTier ?? null,
-        parsed.hostedWebSearch,
-        parsed.responsesTransport === undefined ? null : JSON.stringify(parsed.responsesTransport),
-        parsed.responsesPreviousResponseId,
-        parsed.enabled,
-        parsed.sortOrder,
-        this.now(),
+    await withMysqlTransaction(this.database.raw, async (connection) => {
+      await connection.execute(
+        "UPDATE mar_agent_models SET name=?,normalized_name=?,protocol=?,base_url=?,credential=?,model_id=?,context_window_tokens=?,max_output_tokens=?,input_capabilities=?,output_capabilities=?,reasoning_efforts=?,default_reasoning_effort=?,conversation_model=?,title_generation=?,code_mode=?,fast_mode=?,service_tier=?,hosted_web_search=?,responses_transport=?,responses_previous_response_id=?,enabled=?,sort_order=?,last_test_status='UNVERIFIED',last_test_code=NULL,updated_at=? WHERE id=?",
+        [
+          parsed.name,
+          normalizeMarAgentModelName(parsed.name),
+          parsed.protocol,
+          parsed.baseUrl,
+          JSON.stringify(parsed.credential),
+          parsed.modelId,
+          parsed.contextWindowTokens,
+          parsed.maxOutputTokens,
+          JSON.stringify(parsed.inputCapabilities),
+          JSON.stringify(parsed.outputCapabilities),
+          JSON.stringify(parsed.reasoningEfforts),
+          parsed.defaultReasoningEffort,
+          parsed.conversationModel,
+          parsed.titleGeneration,
+          parsed.codeMode,
+          parsed.fastMode,
+          parsed.serviceTier ?? null,
+          parsed.hostedWebSearch,
+          parsed.responsesTransport === undefined
+            ? null
+            : JSON.stringify(parsed.responsesTransport),
+          parsed.responsesPreviousResponseId,
+          parsed.enabled,
+          parsed.sortOrder,
+          this.now(),
+          modelId
+        ]
+      );
+      await this.resourceInput.write(
+        parsed.metadata ?? { useResourceUrl: false },
+        connection,
         modelId
-      ]
-    );
+      );
+    });
     emitAudit(
       this.database,
       resourceAuditEvent(
@@ -367,6 +394,7 @@ export class MarAgentModelService {
         modelId
       ]);
       await connection.execute('DELETE FROM mar_agent_models WHERE id=?', [modelId]);
+      await this.resourceInput.remove(modelId, connection);
       deferMysqlAudit(connection, () => {
         emitAudit(
           this.database,
@@ -674,7 +702,7 @@ export class MarAgentModelService {
   }
 
   async runtime(modelId: string) {
-    return runtimeConfiguration(await this.stored(modelId));
+    return runtimeConfiguration(await this.stored(modelId), await this.resourceInputEnabled());
   }
 
   async stored(modelId: string): Promise<MarAgentStoredModelConfiguration> {
@@ -686,7 +714,7 @@ export class MarAgentModelService {
     if (!row) throw new Error('MAR_AGENT_MODEL_NOT_FOUND');
     const model = storedConfiguration(row);
     await this.#assertStoredTarget(model);
-    return model;
+    return (await this.#resourceMetadata([model]))[0]!;
   }
 
   async storedConfigurations(): Promise<readonly MarAgentStoredModelConfiguration[]> {
@@ -695,7 +723,7 @@ export class MarAgentModelService {
     );
     const models = rows.map(storedConfiguration);
     await Promise.all(models.map((model) => this.#assertStoredTarget(model)));
-    return models;
+    return this.#resourceMetadata(models);
   }
 
   async #assertStoredTarget(model: MarAgentStoredModelConfiguration): Promise<void> {
@@ -736,7 +764,8 @@ export class MarAgentModelService {
   }
 
   async runtimeConfigurations() {
-    return (await this.storedConfigurations()).map(runtimeConfiguration);
+    const enabled = await this.resourceInputEnabled();
+    return (await this.storedConfigurations()).map((model) => runtimeConfiguration(model, enabled));
   }
 
   async runtimeConfigurationsForUser(userId: number) {
@@ -777,6 +806,7 @@ export class MarAgentModelService {
 }
 
 interface ParsedModel {
+  metadata?: { useResourceUrl: boolean };
   name: string;
   protocol: MarAgentModelSummary['protocol'];
   baseUrl: string;
@@ -826,6 +856,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     conversationModel: record.conversationModel ?? true,
     titleGeneration: record.titleGeneration ?? false,
     codeMode: record.codeMode ?? false,
+    metadata: record.metadata,
     fastMode: isInlineApiKeyCredential(credential)
       ? false
       : record.serviceTier !== undefined
@@ -889,7 +920,8 @@ function deduplicateModelsByName(
   });
 }
 function runtimeConfiguration(
-  value: MarAgentStoredModelConfiguration
+  value: MarAgentStoredModelConfiguration,
+  resourceUrlsEnabled: boolean
 ): MarAgentRuntimeModelConfiguration {
   if (value.credential.type !== 'INLINE_API_KEY')
     throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_CONTEXT_REQUIRED');
@@ -915,6 +947,7 @@ function runtimeConfiguration(
     ...(value.fastMode === true ? { fastMode: true } : {}),
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
     hostedWebSearch: value.hostedWebSearch,
+    useResourceUrl: resourceUrlsEnabled && value.metadata?.useResourceUrl === true,
     ...(value.responsesTransport === undefined
       ? {}
       : { responsesTransport: value.responsesTransport }),

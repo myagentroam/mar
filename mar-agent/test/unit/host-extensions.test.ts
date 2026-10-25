@@ -137,6 +137,14 @@ it('uses the selected child model for generic Host policies and tool execution',
                 : {}
           };
           yield { type: 'completed', reason: 'tool_use' };
+        } else if (configuration.id === 'parent' && round === 2) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'wait-child',
+            name: 'agent_wait',
+            arguments: { waitFor: 'completion', waitMs: 10_000 }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
         } else {
           yield { type: 'text.completed', itemId: `${configuration.id}-answer`, text: 'Done' };
           yield { type: 'completed', reason: 'completed' };
@@ -458,110 +466,146 @@ it('does not execute a host tool when the local hook rejects it', async () => {
   }
 });
 
-it('keeps image snapshots batch-scoped and accepts generic host artifacts', async () => {
-  const paths = await fixture();
-  const png = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    'base64'
-  );
-  const seen: number[] = [];
-  const model = parseModelCatalog({
-    version: 1,
-    models: [
-      {
-        id: 'test',
-        name: 'Test',
-        protocol: 'ANTHROPIC_MESSAGES',
-        baseUrl: 'https://example.test',
-        apiKey: 'unused',
-        modelId: 'test',
-        contextWindowTokens: 200_000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ['TEXT', 'IMAGE'],
-        outputCapabilities: ['TEXT'],
-        reasoningEfforts: [],
-        hostedWebSearch: false,
-        enabled: true
-      }
-    ]
-  }).models[0]!;
-  let round = 0;
-  const host = new LocalAgentHost({
-    homeDirectory: paths.home,
-    workspace: paths.workspace,
-    extensions: {
-      tools: [tool],
-      executeTool: async (_call, context) => {
-        seen.push(context.recentImages?.length ?? 0);
-        // The handler cannot mutate the Runtime's copy.
-        expect(context.recentImages?.[0]?.data[0]).toBe(0x89);
-        context.recentImages?.[0]?.data.fill(0);
-        return {
-          content: 'Observed.',
-          images: [{ mimeType: 'image/png', dataBase64: png.toString('base64') }],
-          artifacts: [
-            {
-              kind: 'image',
-              name: 'result.png',
-              fileName: 'result.png',
-              mimeType: 'image/png',
-              byteSize: png.length,
-              sha256: 'a'.repeat(64)
-            }
-          ]
-        };
-      }
-    }
-  });
-  const agent = await createMarAgent({
-    mode: 'normal',
-    host,
-    models: [model],
-    adapterFactory: (configuration) => ({
-      configuration,
-      async *start(): AsyncIterable<ModelEvent> {
-        round++;
-        if (round <= 2) {
-          for (let i = 0; i < (round === 1 ? 2 : 1); i++)
-            yield {
-              type: 'client_tool.call',
-              callId: `${round}-${i}`,
-              name: tool.name,
-              arguments: { sample: `${round}-${i}` }
-            };
-          yield { type: 'completed', reason: 'tool_use' };
-        } else {
-          yield { type: 'text.completed', itemId: 'answer', text: 'Done' };
-          yield { type: 'completed', reason: 'completed' };
+it.each([
+  { useResourceUrl: false, codeMode: false },
+  { useResourceUrl: true, codeMode: false },
+  { useResourceUrl: true, codeMode: true }
+])(
+  'keeps image snapshots batch-scoped and accepts generic host artifacts (%j)',
+  async ({ useResourceUrl, codeMode }) => {
+    const paths = await fixture();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+    const seen: number[] = [];
+    const imageTool = { ...tool, allowedCallers: ['direct', 'programmatic'] as const };
+    const model = parseModelCatalog({
+      version: 1,
+      models: [
+        {
+          id: 'test',
+          name: 'Test',
+          protocol: 'ANTHROPIC_MESSAGES',
+          baseUrl: 'https://example.test',
+          apiKey: 'unused',
+          modelId: 'test',
+          contextWindowTokens: 200_000,
+          maxOutputTokens: 4096,
+          inputCapabilities: ['TEXT', 'IMAGE'],
+          outputCapabilities: ['TEXT'],
+          reasoningEfforts: [],
+          useResourceUrl,
+          codeMode,
+          hostedWebSearch: false,
+          enabled: true
+        }
+      ]
+    }).models[0]!;
+    let round = 0;
+    const host = new LocalAgentHost({
+      homeDirectory: paths.home,
+      workspace: paths.workspace,
+      ...(useResourceUrl
+        ? {
+            publishModelResource: async () => ({
+              url: 'https://images.example.test/fixed.png',
+              urlExpiresAt: 1
+            })
+          }
+        : {}),
+      extensions: {
+        tools: [imageTool],
+        executeTool: async (_call, context) => {
+          seen.push(context.recentImages?.length ?? 0);
+          // The handler cannot mutate the Runtime's copy.
+          expect(context.recentImages?.[0]?.data[0]).toBe(0x89);
+          context.recentImages?.[0]?.data.fill(0);
+          return {
+            content: 'Observed.',
+            images: [{ mimeType: 'image/png', dataBase64: png.toString('base64') }],
+            artifacts: [
+              {
+                kind: 'image',
+                name: 'result.png',
+                fileName: 'result.png',
+                mimeType: 'image/png',
+                byteSize: png.length,
+                sha256: 'a'.repeat(64)
+              }
+            ]
+          };
         }
       }
-    })
-  });
-  try {
-    const session = await agent.createSession({
-      workspace: paths.workspace,
-      title: 'Image snapshots'
     });
-    expect(
-      await session
-        .run({
-          prompt: 'Inspect',
-          images: [{ name: 'input.png', mimeType: 'image/png', dataBase64: png.toString('base64') }]
-        })
-        .result()
-    ).toMatchObject({ status: 'completed' });
-    expect(seen).toEqual([1, 1, 3]);
-    expect(
-      host.events.filter(
-        (event) => event.type === 'tool.completed' && event.artifacts?.length === 1
-      )
-    ).toHaveLength(3);
-    host.bindExecutionExtensions({ tools: [{ ...tool, name: 'read' }] });
-    expect(await session.run({ prompt: 'Reject the conflicting tool.' }).result()).toMatchObject({
-      status: 'failed'
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host,
+      models: [model],
+      adapterFactory: (configuration) => ({
+        configuration,
+        async *start(): AsyncIterable<ModelEvent> {
+          round++;
+          if (round <= 2) {
+            if (codeMode) {
+              yield {
+                type: 'client_tool.call',
+                callId: `code-${round}`,
+                name: 'code_exec',
+                inputMode: 'freeform',
+                arguments: Array.from(
+                  { length: round === 1 ? 2 : 1 },
+                  (_, i) => `observe.result(await tools.host_action({sample:"${round}-${i}"}));`
+                ).join('\n')
+              };
+            } else
+              for (let i = 0; i < (round === 1 ? 2 : 1); i++)
+                yield {
+                  type: 'client_tool.call',
+                  callId: `${round}-${i}`,
+                  name: tool.name,
+                  arguments: { sample: `${round}-${i}` }
+                };
+            yield { type: 'completed', reason: 'tool_use' };
+          } else {
+            yield { type: 'text.completed', itemId: 'answer', text: 'Done' };
+            yield { type: 'completed', reason: 'completed' };
+          }
+        }
+      })
     });
-    expect(round).toBe(3);
-  } finally {
-    await agent.dispose();
+    try {
+      const session = await agent.createSession({
+        workspace: paths.workspace,
+        title: 'Image snapshots'
+      });
+      expect(
+        await session
+          .run({
+            prompt: 'Inspect',
+            images: [
+              { name: 'input.png', mimeType: 'image/png', dataBase64: png.toString('base64') }
+            ]
+          })
+          .result()
+      ).toMatchObject({ status: 'completed' });
+      expect(seen).toEqual([1, 1, 3]);
+      expect(host.events.filter((event) => event.type === 'tool.failed')).toEqual([]);
+      expect(
+        host.events.filter(
+          (event) =>
+            event.type === 'tool.completed' &&
+            event.toolName === tool.name &&
+            event.artifacts?.length === 1
+        )
+      ).toHaveLength(3);
+      host.bindExecutionExtensions({ tools: [{ ...tool, name: 'read' }] });
+      expect(await session.run({ prompt: 'Reject the conflicting tool.' }).result()).toMatchObject({
+        status: 'failed'
+      });
+      expect(round).toBe(3);
+    } finally {
+      await agent.dispose();
+    }
   }
-});
+);

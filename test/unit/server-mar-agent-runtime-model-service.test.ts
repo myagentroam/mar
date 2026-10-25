@@ -27,12 +27,61 @@ function model(
     defaultReasoningEffort: 'high',
     hostedWebSearch: false,
     ...(responsesTransport === undefined ? {} : { responsesTransport }),
-    responsesPreviousResponseId: true,
+    responsesPreviousResponseId: responsesTransport?.transport === 'WEBSOCKET',
     enabled: true
   };
 }
 
 describe('Server MAR Agent runtime model service', () => {
+  it.each([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+    [true, undefined, false]
+  ])('projects global %s AND model %s resource URLs as %s', async (global, selected, expected) => {
+    const configured = {
+      ...model('vision', { type: 'INLINE_API_KEY', value: 'test-key' }),
+      protocol: 'ANTHROPIC_MESSAGES',
+      inputCapabilities: ['TEXT', 'IMAGE'],
+      ...(selected === undefined ? {} : { metadata: { useResourceUrl: selected } })
+    };
+    const service = new MarAgentRuntimeModelService({
+      models: {
+        storedConfigurationsForUser: vi.fn(async () => [configured]),
+        resourceInputEnabled: vi.fn(async () => global)
+      },
+      tickets: { issue: vi.fn() },
+      capability: () => ({
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        resourceInput: true
+      })
+    });
+    const result = await service.prepare({ userId: 7, nodeId: 'node', workspaceId: 'workspace' });
+    expect(result.models[0]?.useResourceUrl).toBe(expected);
+  });
+
+  it('rejects image delivery on a Node without resource input support', async () => {
+    const service = new MarAgentRuntimeModelService({
+      models: {
+        storedConfigurationsForUser: vi.fn(async () => [
+          {
+            ...model('vision', { type: 'INLINE_API_KEY', value: 'test-key' }),
+            protocol: 'ANTHROPIC_MESSAGES',
+            inputCapabilities: ['TEXT', 'IMAGE']
+          }
+        ])
+      },
+      tickets: { issue: vi.fn() },
+      capability: () => ({ apiVersion: 1, websocket: true, httpVersions: ['1.1'] })
+    });
+    await expect(
+      service.prepare({ userId: 7, nodeId: 'node', workspaceId: 'workspace' })
+    ).rejects.toThrow('MAR_AGENT_MODEL_RESOURCE_INPUT_UNAVAILABLE');
+  });
+
   it('prepares only the authorized completion model without image or Compact configuration', async () => {
     const selected = model(
       'completion',
@@ -169,7 +218,8 @@ describe('Server MAR Agent runtime model service', () => {
       capability: () => ({
         apiVersion: 1,
         websocket: true,
-        httpVersions: ['1.1', '2']
+        httpVersions: ['1.1', '2'],
+        resourceInput: true
       }),
       id: () => 'scope-1'
     });

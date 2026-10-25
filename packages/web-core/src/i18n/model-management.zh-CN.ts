@@ -1,5 +1,10 @@
 export const modelManagementZhCN = {
   marAgentModels: {
+    useResourceUrl: '使用资源 URL',
+    resourceUrlDescription:
+      '需同时开启全局选项。当前用于图片；否则仅在一次模型调用中内联提供图片。修改对下一次执行生效。',
+    globalResourceUrlDescription:
+      '允许 MAR Agent 在模型选项也开启时使用固定资源 URL；否则仅在一次模型调用中内联提供图片。修改对下一次执行生效。',
     compactTab: 'Compact',
     compactEffortOptions: {
       low: 'low',

@@ -151,7 +151,11 @@ export class NodeRequestBroker {
       !workbenchNodeOperationSchema.safeParse(operation).success
     )
       return Promise.reject(new Error('OPERATION_UNSUPPORTED'));
-    if (operation === 'model.image.read' && user.userId === 0 && user.sessionHash === 'model-image')
+    if (
+      operation === 'model.resource.read' &&
+      user.userId === 0 &&
+      user.sessionHash === 'model-resource'
+    )
       return this.dispatch(
         nodeId,
         operation,

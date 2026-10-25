@@ -7,7 +7,7 @@ import type { SessionStore } from '../session/store/contracts.js';
 const pending = new WeakMap<SessionStore, Map<string, Promise<ModelImage>>>();
 
 /** Persist immutable bytes first; publication never changes an existing resource URL. */
-export async function publishModelImages<T extends ModelImage>(
+export async function publishModelResources<T extends ModelImage>(
   host: MarAgentHost,
   images: readonly T[] | undefined,
   context: { sessionId: string; executionId: string },
@@ -15,7 +15,7 @@ export async function publishModelImages<T extends ModelImage>(
 ): Promise<readonly T[] | undefined> {
   if (!images?.length) return images;
   if (store === undefined) {
-    if (host.publishModelImage === undefined) return images;
+    if (host.publishModelResource === undefined) return images;
     throw new MarAgentError(
       'MAR_AGENT_IMAGE_PUBLICATION_FAILED',
       'Image publication requires a SessionStore.'
@@ -31,9 +31,9 @@ export async function publishModelImages<T extends ModelImage>(
         isModelImageUrl(image.url)
       )
         return image;
-      let resource = await store.persistImageResource(context.sessionId, image);
+      let resource = await store.persistResource(context.sessionId, image);
       if (resource.url === undefined && image.url !== undefined && image.urlExpiresAt !== undefined)
-        resource = await store.setImageResourceUrl(context.sessionId, resource.resourceId, {
+        resource = await store.setResourceUrl(context.sessionId, resource.resourceId, {
           url: image.url,
           urlExpiresAt: image.urlExpiresAt
         });
@@ -41,8 +41,8 @@ export async function publishModelImages<T extends ModelImage>(
       let publication = publications!.get(key);
       if (publication === undefined) {
         publication = (async () => {
-          if (resource.url === undefined && host.publishModelImage !== undefined) {
-            const published = await host.publishModelImage(resource, {
+          if (resource.url === undefined && host.publishModelResource !== undefined) {
+            const published = await host.publishModelResource(resource, {
               ...context,
               homeDirectory: (await host.describe()).homeDirectory
             });
@@ -56,7 +56,7 @@ export async function publishModelImages<T extends ModelImage>(
                 'MAR_AGENT_IMAGE_PUBLICATION_FAILED',
                 'Image publication did not return a valid fixed URL.'
               );
-            resource = await store.setImageResourceUrl(
+            resource = await store.setResourceUrl(
               context.sessionId,
               resource.resourceId,
               published
@@ -72,7 +72,7 @@ export async function publishModelImages<T extends ModelImage>(
       try {
         const published = await publication;
         const { dataBase64: _bytes, ...metadata } = image;
-        return { ...metadata, ...published } as T;
+        return { ...metadata, ...published, resourceInputVersion: 1 } as T;
       } finally {
         if (publications!.get(key) === publication) publications!.delete(key);
       }

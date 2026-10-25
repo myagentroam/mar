@@ -70,10 +70,12 @@ export class NodeRequestChannel {
     observe?: RequestObserver
   ): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('NODE_CONTROL_CLOSED'));
-    const modelImageCapability =
-      operation === 'model.image.read' && user.userId === 0 && user.sessionHash === 'model-image';
+    const modelResourceCapability =
+      operation === 'model.resource.read' &&
+      user.userId === 0 &&
+      user.sessionHash === 'model-resource';
     if (
-      !modelImageCapability &&
+      !modelResourceCapability &&
       (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
     )
       return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));

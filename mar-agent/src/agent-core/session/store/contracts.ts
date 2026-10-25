@@ -28,7 +28,7 @@ export type {
   SessionRecord
 } from './types.js';
 export type { CodeModeStateEntry } from '../../tools/code-mode/state.js';
-export type { SessionImageResource } from './image-resources.js';
+export type { SessionResource } from './resources.js';
 export type { TodoSnapshot, TodoItem } from '../../tools/contracts.js';
 export type { CodeToolCallRecord, CodeObservation } from '../../tools/code-mode/observations.js';
 export type {
@@ -193,16 +193,16 @@ export interface SessionStore {
     sessionId: string,
     images: readonly SessionInputImage[]
   ): Promise<SessionInputImageMetadata[]>;
-  persistImageResource(
+  persistResource(
     sessionId: string,
     image: import('../../model/image.js').ModelImage
-  ): Promise<import('./image-resources.js').SessionImageResource>;
-  setImageResourceUrl(
+  ): Promise<import('./resources.js').SessionResource>;
+  setResourceUrl(
     sessionId: string,
     resourceId: string,
     published: { url: string; urlExpiresAt: number }
-  ): Promise<import('./image-resources.js').SessionImageResource>;
-  readImageResource(
+  ): Promise<import('./resources.js').SessionResource>;
+  readResource(
     sessionId: string,
     resourceId: string
   ): Promise<{ mimeType: string; dataBase64: string } | undefined>;

@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
 
 describe('Shared system configuration transactions', () => {
+  it('defaults resource URLs on and writes the global switch independently', async () => {
+    const request = vi.fn(async () => ({ useResourceUrl: false }));
+    const service = createSystemConfigurationService(request as never);
+    expect(service.snapshot.value.useResourceUrl).toBe(true);
+    service.beginEdit('mar-agent-resource-input');
+    service.setDraft('mar-agent-resource-input', false);
+    expect(await service.save('mar-agent-resource-input')).toBe(true);
+    expect(request).toHaveBeenCalledWith('/api/system-settings/mar-agent-resource-input', {
+      method: 'PATCH',
+      body: JSON.stringify({ useResourceUrl: false })
+    });
+    expect(service.snapshot.value.useResourceUrl).toBe(false);
+  });
   it('defaults Web Push off and updates only the selected administrator switch', async () => {
     const request = vi.fn(async () => ({ webPushEnabled: true }));
     const service = createSystemConfigurationService(request as never);
@@ -105,6 +118,7 @@ describe('Shared system configuration transactions', () => {
     ]);
     expect(service.settings.map(({ key }) => key)).toEqual([
       'example/window',
+      'mar-agent-resource-input',
       'mail-smtp',
       'web-push',
       'html-preview-origin',

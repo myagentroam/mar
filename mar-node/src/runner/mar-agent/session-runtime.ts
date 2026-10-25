@@ -83,10 +83,12 @@ export interface MarAgentRuntimeRequest {
 }
 
 type HostOptions = ConstructorParameters<typeof LocalAgentHost>[0];
-export type NodeModelImagePublisher = (
-  image: Parameters<NonNullable<HostOptions['publishModelImage']>>[0],
-  context: Parameters<NonNullable<HostOptions['publishModelImage']>>[1] & { ownerSessionId: string }
-) => ReturnType<NonNullable<HostOptions['publishModelImage']>>;
+export type NodeModelResourcePublisher = (
+  image: Parameters<NonNullable<HostOptions['publishModelResource']>>[0],
+  context: Parameters<NonNullable<HostOptions['publishModelResource']>>[1] & {
+    ownerSessionId: string;
+  }
+) => ReturnType<NonNullable<HostOptions['publishModelResource']>>;
 export interface MarAgentRuntimeResources {
   readonly mcpClients: MarAgentMcpClientCache;
   readonly createAgent: typeof createMarAgent;
@@ -98,7 +100,7 @@ export interface MarAgentRuntimeResources {
     runId: string,
     usage: Parameters<NonNullable<HostOptions['modelUsage']>>[0]
   ) => void;
-  readonly publishModelImage?: NodeModelImagePublisher;
+  readonly publishModelResource?: NodeModelResourcePublisher;
   readonly question: (
     runId: string,
     request: { requestId: string; questions: unknown[] },
@@ -132,11 +134,11 @@ export async function createSessionRuntime(
     releaseEnvironment = dependencies.retainEnvironment?.(input.secretEnvironment ?? {});
     const mcp = mcpLease.pool;
     const localHost = new LocalAgentHost({
-      publishModelImage:
-        dependencies.publishModelImage === undefined
+      publishModelResource:
+        dependencies.publishModelResource === undefined
           ? undefined
           : (image, context) =>
-              dependencies.publishModelImage!(image, {
+              dependencies.publishModelResource!(image, {
                 ...context,
                 ownerSessionId: input.sessionId
               }),

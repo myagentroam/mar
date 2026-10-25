@@ -340,7 +340,14 @@ describe('Code Mode SDK and protocol integration', () => {
               : { type: 'value', format: 'image' }
           )
         ]);
-        expect(imageResult.images).toEqual([png]);
+        expect(imageResult.images).toEqual([
+          {
+            ...png,
+            resourceId: expect.stringMatching(/^[a-f0-9]{64}$/),
+            resourceInputVersion: 1,
+            byteSize: Buffer.from(png.dataBase64, 'base64').length
+          }
+        ]);
       } finally {
         await agent.dispose();
       }

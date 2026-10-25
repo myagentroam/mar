@@ -181,6 +181,8 @@ function runtimeModel() {
     outputCapabilities: ['TEXT' as const],
     reasoningEfforts: ['high' as const],
     titleGeneration: false,
+    conversationModel: true,
+    useResourceUrl: false,
     codeMode: false,
     hostedWebSearch: false,
     responsesTransport: { transport: 'HTTP' as const, httpVersion: '2' as const },

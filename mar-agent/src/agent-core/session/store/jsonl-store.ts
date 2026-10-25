@@ -85,24 +85,20 @@ import {
 import {
   MAX_INPUT_IMAGES,
   copyGeneratedImages,
-  copyInputImages,
   generatedImageFileNames,
   inputImageReference,
   inputImageReferences,
-  inputImageReferencesFromRecords,
-  readInputImageBytes,
-  recoverPendingInputImages,
-  validInputImageFileName
+  readInputImageBytes
 } from './images.js';
 import {
-  persistImageResource,
-  setImageResourceUrl,
-  readImageResource,
-  copyImageResources,
-  imageResourceFiles,
-  completeImageResources,
-  recoverImageResources
-} from './image-resources.js';
+  persistResource,
+  setResourceUrl,
+  readResource,
+  copyResources,
+  resourceFiles,
+  completeResources,
+  recoverResources
+} from './resources.js';
 import {
   MAX_SEGMENT_BYTES,
   appendRecordBytes,
@@ -609,9 +605,9 @@ export class JsonlSessionStore implements SessionStore {
             image.url === undefined))
       )
         throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Image model URL is invalid.');
-      let resource = await this.persistImageResource(sessionId, image);
+      let resource = await this.persistResource(sessionId, image);
       if (image.url !== undefined && image.urlExpiresAt !== undefined)
-        resource = await this.setImageResourceUrl(sessionId, resource.resourceId, {
+        resource = await this.setResourceUrl(sessionId, resource.resourceId, {
           url: image.url,
           urlExpiresAt: image.urlExpiresAt
         });
@@ -621,42 +617,47 @@ export class JsonlSessionStore implements SessionStore {
           'MAR_AGENT_HOST_LIMIT_EXCEEDED',
           'Image input exceeds the supported size limit.'
         );
-      resources.push({ ...resource, name: image.name, fileName: `${resource.resourceId}.bin` });
+      resources.push({
+        ...resource,
+        resourceInputVersion: 1,
+        name: image.name,
+        fileName: `${resource.resourceId}.bin`
+      });
     }
     return resources;
   }
-  async persistImageResource(sessionId: string, image: import('../../model/image.js').ModelImage) {
+  async persistResource(sessionId: string, image: import('../../model/image.js').ModelImage) {
     this.#assertOpen();
     return this.#serializeRecordOperation(sessionId, () =>
-      persistImageResource(join(this.#sessionDirectory(sessionId), 'images'), image)
+      persistResource(join(this.#sessionDirectory(sessionId), 'resources'), image)
     );
   }
-  async setImageResourceUrl(
+  async setResourceUrl(
     sessionId: string,
     resourceId: string,
     published: { url: string; urlExpiresAt: number }
   ) {
     this.#assertOpen();
     return this.#serializeRecordOperation(sessionId, () =>
-      setImageResourceUrl(join(this.#sessionDirectory(sessionId), 'images'), resourceId, published)
+      setResourceUrl(join(this.#sessionDirectory(sessionId), 'resources'), resourceId, published)
     );
   }
-  async readImageResource(sessionId: string, resourceId: string) {
+  async readResource(sessionId: string, resourceId: string) {
     this.#assertOpen();
-    const directory = join(this.#sessionDirectory(sessionId), 'images');
+    const directory = join(this.#sessionDirectory(sessionId), 'resources');
     if (!/^[a-f0-9]{64}$/u.test(resourceId)) return undefined;
     return this.#serializeRecordOperation(sessionId, async () => {
       try {
         await lstat(join(directory, `.${resourceId}.pending`));
         if (
           this.#shared.writerLeases.get(sessionId)?.appendFailure !== undefined ||
-          !imageResourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`)
+          !resourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`)
         )
           return undefined;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
-      return readImageResource(directory, resourceId);
+      return readResource(directory, resourceId);
     });
   }
   async writeToolResultResource(sessionId: string, text: string) {
@@ -686,32 +687,22 @@ export class JsonlSessionStore implements SessionStore {
 
   async readInputImages(sessionId: string, value: unknown): Promise<RestoredSessionInputImage[]> {
     this.#assertOpen();
-    const references = inputImageReferences(value);
+    const references = inputImageReferences(
+      Array.isArray(value) ? value.filter((item) => item?.resourceInputVersion === 1) : undefined
+    );
     if (references.length === 0) return [];
-    const directory = join(this.#sessionDirectory(sessionId), 'input_images');
     const images: RestoredSessionInputImage[] = [];
     for (const reference of references) {
-      if (reference.url !== undefined) {
-        images.push({
-          mimeType: reference.mimeType,
-          url: reference.url,
-          ...(reference.urlExpiresAt === undefined ? {} : { urlExpiresAt: reference.urlExpiresAt }),
-          byteSize: reference.byteSize,
-          ...(reference.resourceId === undefined ? {} : { resourceId: reference.resourceId })
-        });
-        continue;
-      }
-      const data = await readInputImageBytes(
-        reference.resourceId === undefined
-          ? directory
-          : join(this.#sessionDirectory(sessionId), 'images'),
-        reference
-      );
+      if (reference.resourceId === undefined)
+        throw new MarAgentError(
+          'MAR_AGENT_SESSION_CORRUPT',
+          'Session resource identity is missing.'
+        );
       images.push({
+        resourceInputVersion: 1,
         mimeType: reference.mimeType,
-        dataBase64: data.toString('base64'),
         byteSize: reference.byteSize,
-        ...(reference.resourceId === undefined ? {} : { resourceId: reference.resourceId }),
+        resourceId: reference.resourceId,
         ...(reference.url === undefined ? {} : { url: reference.url }),
         ...(reference.urlExpiresAt === undefined ? {} : { urlExpiresAt: reference.urlExpiresAt })
       });
@@ -744,13 +735,13 @@ export class JsonlSessionStore implements SessionStore {
       return undefined;
     if (!Array.isArray(record.payload.images) || input.imageIndex >= record.payload.images.length)
       return undefined;
+    if (record.payload.images[input.imageIndex]?.resourceInputVersion !== 1) return undefined;
     const reference = inputImageReference(record.payload.images[input.imageIndex]);
     if (reference === undefined) return undefined;
+    if (reference.resourceId === undefined)
+      throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session resource identity is missing.');
     const data = await readInputImageBytes(
-      join(
-        this.#sessionDirectory(sessionId),
-        reference.resourceId === undefined ? 'input_images' : 'images'
-      ),
+      join(this.#sessionDirectory(sessionId), 'resources'),
       reference
     );
     return {
@@ -867,12 +858,7 @@ export class JsonlSessionStore implements SessionStore {
           this.#sessionDirectory(target.id),
           generatedImageFileNames(retained)
         );
-        await copyInputImages(
-          this.#sessionDirectory(sourceSessionId),
-          this.#sessionDirectory(target.id),
-          inputImageReferencesFromRecords(retained)
-        );
-        await copyImageResources(
+        await copyResources(
           this.#sessionDirectory(sourceSessionId),
           this.#sessionDirectory(target.id),
           retained
@@ -1059,7 +1045,7 @@ export class JsonlSessionStore implements SessionStore {
     const contextualWorldStateBackup = `${contextualWorldStatePath}.${targetNextSequence}.${transactionId}.${operation.kind}-backup`;
     let contextualWorldStateStaged = false;
     let generatedTrash: Array<{ from: string; to: string; trash: string }> = [];
-    let inputTrash: Array<{ from: string; to: string; trash: string }> = [];
+    let resourceTrash: Array<{ from: string; to: string; trash: string }> = [];
     const originalMeta = structuredClone(meta);
     const originalIndexRevision = this.#shared.index.revision;
     const originalSegment = this.#shared.segments.get(sessionId);
@@ -1093,19 +1079,11 @@ export class JsonlSessionStore implements SessionStore {
         operation.kind === 'rollback' ? new Set(generatedImageFileNames(retained)) : new Set(),
         transactionId
       );
-      inputTrash = await stageUnreferencedImages(
-        this.#sessionDirectory(sessionId),
-        'input_images',
-        operation.kind === 'rollback'
-          ? new Set(inputImageReferencesFromRecords(retained).map((image) => image.fileName))
-          : new Set(),
-        transactionId
-      );
-      inputTrash.push(
+      resourceTrash.push(
         ...(await stageUnreferencedImages(
           this.#sessionDirectory(sessionId),
-          'images',
-          operation.kind === 'rollback' ? imageResourceFiles(retained) : new Set(),
+          'resources',
+          operation.kind === 'rollback' ? resourceFiles(retained) : new Set(),
           transactionId
         )),
         ...(await stageUnreferencedImages(
@@ -1171,7 +1149,7 @@ export class JsonlSessionStore implements SessionStore {
           await restoreRenamedFiles([
             { from: contextualWorldStateBackup, to: contextualWorldStatePath }
           ]);
-        await restoreRenamedFiles([...generatedTrash, ...inputTrash]);
+        await restoreRenamedFiles([...generatedTrash, ...resourceTrash]);
         restoreSessionMeta(meta, originalMeta);
         this.#shared.index.revision = originalIndexRevision;
         if (originalSegment === undefined) this.#shared.segments.delete(sessionId);
@@ -1314,22 +1292,7 @@ export class JsonlSessionStore implements SessionStore {
     }
     updateSessionCurrentState(this.#shared.writerLeases.get(sessionId), record.type, serialized);
     await completeToolResultResources(this.#sessionDirectory(sessionId), record);
-    await completeImageResources(join(this.#sessionDirectory(sessionId), 'images'), record);
-    if (
-      record.type === 'turn.user' &&
-      isObject(record.payload) &&
-      Array.isArray(record.payload.images)
-    )
-      for (const image of record.payload.images)
-        if (
-          isObject(image) &&
-          typeof image.fileName === 'string' &&
-          validInputImageFileName(image.fileName)
-        )
-          await rm(
-            join(this.#sessionDirectory(sessionId), 'input_images', `.${image.fileName}.pending`),
-            { force: true }
-          ).catch(() => undefined);
+    await completeResources(join(this.#sessionDirectory(sessionId), 'resources'), record);
     return record;
   }
   async read(sessionId: string): Promise<SessionRecord[]> {
@@ -2329,10 +2292,7 @@ export class JsonlSessionStore implements SessionStore {
     const latestPath = paths.at(-1)!;
     await repairSegmentTail(latestPath);
     const records = await readRecords(latestPath);
-    await recoverPendingInputImages(this.#sessionDirectory(sessionId), () =>
-      this.#readRecords(sessionId)
-    );
-    await recoverImageResources(join(this.#sessionDirectory(sessionId), 'images'), () =>
+    await recoverResources(join(this.#sessionDirectory(sessionId), 'resources'), () =>
       this.#readRecords(sessionId)
     );
     await cleanupUnreferencedToolResources(this.#sessionDirectory(sessionId), () =>

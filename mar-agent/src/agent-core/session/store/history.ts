@@ -89,7 +89,7 @@ export async function stageSessionSegments(
 
 export async function stageUnreferencedImages(
   sessionDirectory: string,
-  directoryName: 'input_images' | 'generated_images' | 'tool_results' | 'images',
+  directoryName: 'generated_images' | 'tool_results' | 'resources',
   retained: ReadonlySet<string>,
   transactionId: string
 ): Promise<Array<{ from: string; to: string; trash: string }>> {

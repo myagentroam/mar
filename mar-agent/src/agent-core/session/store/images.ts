@@ -1,9 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { MarAgentError } from '../../error.js';
-import type { SessionInputImage, SessionInputImageMetadata, SessionRecord } from './types.js';
+import type { SessionRecord } from './types.js';
 import { isModelImageUrl } from '../../model/image.js';
 
 export const MAX_INPUT_IMAGES = 5;
@@ -56,28 +56,6 @@ interface InputImageReference {
   readonly resourceId?: string;
   readonly url?: string;
   readonly urlExpiresAt?: number;
-}
-
-export function inputImageReferencesFromRecords(
-  records: readonly SessionRecord[]
-): readonly InputImageReference[] {
-  const references = new Map<string, InputImageReference>();
-  for (const record of records) {
-    if (record.type !== 'turn.user' || !isObject(record.payload)) continue;
-    for (const reference of inputImageReferences(record.payload.images)) {
-      if (reference.resourceId !== undefined) continue;
-      const existing = references.get(reference.fileName);
-      if (
-        existing !== undefined &&
-        (existing.mimeType !== reference.mimeType ||
-          existing.byteSize !== reference.byteSize ||
-          existing.sha256 !== reference.sha256)
-      )
-        throw corruptInputImageReference();
-      references.set(reference.fileName, reference);
-    }
-  }
-  return [...references.values()];
 }
 
 export function inputImageReferences(value: unknown): InputImageReference[] {
@@ -201,130 +179,10 @@ async function readExactBytes(
   return data;
 }
 
-export async function copyInputImages(
-  sourceSessionDirectory: string,
-  targetSessionDirectory: string,
-  references: readonly InputImageReference[]
-): Promise<void> {
-  if (references.length === 0) return;
-  const source = join(sourceSessionDirectory, 'input_images');
-  const target = join(targetSessionDirectory, 'input_images');
-  await mkdir(target, { recursive: true, mode: 0o700 });
-  for (const reference of references) {
-    const data = await readInputImageBytes(source, reference);
-    await writeFile(join(target, reference.fileName), data, { mode: 0o600, flag: 'wx' });
-  }
-}
-
 function corruptInputImageReference(cause?: unknown): MarAgentError {
   return new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session input image is corrupt.', {
     ...(cause === undefined ? {} : { cause })
   });
-}
-
-/** A pending marker is removable only after the committed JSONL references are checked. */
-export async function recoverPendingInputImages(
-  sessionDirectory: string,
-  readHistory: () => Promise<SessionRecord[]>
-): Promise<void> {
-  const directory = join(sessionDirectory, 'input_images');
-  let names: string[];
-  try {
-    names = await readdir(directory);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw error;
-  }
-  const pending = names.filter((name) => /^\.[0-9a-f-]{36}\.bin\.pending$/iu.test(name));
-  const temporary = names.filter((name) =>
-    /^\.[0-9a-f-]{36}\.bin\.[0-9a-f-]{36}\.tmp$/iu.test(name)
-  );
-  if (pending.length === 0 && temporary.length === 0) return;
-  const referenced =
-    pending.length === 0
-      ? new Set<string>()
-      : new Set(
-          inputImageReferencesFromRecords(await readHistory()).map((image) => image.fileName)
-        );
-  for (const name of pending) {
-    const fileName = name.slice(1, -'.pending'.length);
-    if (!referenced.has(fileName)) await rm(join(directory, fileName), { force: true });
-    await rm(join(directory, name), { force: true });
-  }
-  for (const name of temporary) await rm(join(directory, name), { force: true });
-}
-
-export async function writeInputImages(
-  directory: string,
-  images: readonly SessionInputImage[]
-): Promise<SessionInputImageMetadata[]> {
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const written: string[] = [];
-  const pending: string[] = [];
-  let temporary: string | undefined;
-  let totalBytes = 0;
-  try {
-    const metadata: SessionInputImageMetadata[] = [];
-    for (const image of images) {
-      if (!INPUT_IMAGE_MIME_TYPES.has(image.mimeType))
-        throw new MarAgentError(
-          'MAR_AGENT_INPUT_CAPABILITY_UNSUPPORTED',
-          'Image input MIME type is unsupported.'
-        );
-      const data = Buffer.from(image.dataBase64 ?? '', 'base64');
-      if (
-        (image.url !== undefined && !isModelImageUrl(image.url)) ||
-        (image.urlExpiresAt !== undefined &&
-          (!Number.isSafeInteger(image.urlExpiresAt) || image.urlExpiresAt <= 0)) ||
-        (image.urlExpiresAt !== undefined && image.url === undefined)
-      )
-        throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Image model URL is invalid.');
-      totalBytes += data.byteLength;
-      if (
-        data.byteLength === 0 ||
-        data.byteLength > MAX_INPUT_IMAGE_BYTES ||
-        totalBytes > MAX_INPUT_IMAGES_BYTES
-      )
-        throw new MarAgentError(
-          'MAR_AGENT_HOST_LIMIT_EXCEEDED',
-          'Image input exceeds the supported size limit.'
-        );
-      const fileName = `${randomUUID()}.bin`;
-      temporary = join(directory, `.${fileName}.${randomUUID()}.tmp`);
-      const handle = await open(temporary, 'wx', 0o600);
-      try {
-        await handle.writeFile(data);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      const marker = join(directory, `.${fileName}.pending`);
-      await writeFile(marker, '', { mode: 0o600, flag: 'wx', flush: true });
-      pending.push(marker);
-      await rename(temporary, join(directory, fileName));
-      temporary = undefined;
-      written.push(fileName);
-      metadata.push({
-        name: image.name,
-        mimeType: image.mimeType,
-        byteSize: data.byteLength,
-        fileName,
-        sha256: createHash('sha256').update(data).digest('hex'),
-        ...(image.url === undefined ? {} : { url: image.url }),
-        ...(image.urlExpiresAt === undefined ? {} : { urlExpiresAt: image.urlExpiresAt })
-      });
-    }
-    return metadata;
-  } catch (error) {
-    if (temporary !== undefined) await rm(temporary, { force: true }).catch(() => undefined);
-    await Promise.all(pending.map((marker) => rm(marker, { force: true })));
-    await Promise.all(
-      written.map((fileName) =>
-        rm(join(directory, fileName), { force: true }).catch(() => undefined)
-      )
-    );
-    throw error;
-  }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

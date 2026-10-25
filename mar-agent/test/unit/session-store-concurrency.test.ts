@@ -330,8 +330,8 @@ describe('Session append and directory index concurrency', () => {
       'agent',
       'sessions',
       session.id,
-      'input_images',
-      `.${images[0]!.fileName}.pending`
+      'resources',
+      `.${images[0]!.resourceId}.pending`
     );
     const started = signal();
     const resume = signal();

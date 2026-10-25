@@ -219,5 +219,7 @@ export interface ModelTurnSession {
   start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent>;
   /** Drops incremental response state after a local context replacement. */
   resetContinuation?(): void;
+  continuationInputCount?(): number;
+  commitContinuationInput?(messageCount: number): void;
   close(): Promise<void>;
 }

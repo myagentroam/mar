@@ -1,4 +1,4 @@
-import { restoreMessages } from '../runtime/context/restore.js';
+import { readResourceImages, restoreMessages } from '../runtime/context/restore.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import { createNativeSteer } from './native-steer.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
@@ -16,7 +16,8 @@ import {
 import { eventForPersistence, publicModelUsage } from '../runtime/event-projection.js';
 import { ExecutionLoop, type PreparedExecutionRound } from '../runtime/execution.js';
 import type { ModelImage } from '../model/image.js';
-import { publishModelImages } from '../runtime/image-publication.js';
+import { publishModelResources } from '../runtime/resource-publication.js';
+import { ResourceInputProjection } from './resource-input.js';
 import {
   closeModelAdapters,
   createExecutionModelResources,
@@ -984,7 +985,7 @@ export function createSessionOpener(services: SessionServices) {
                 smartPercent !== undefined &&
                 smartPercent >= AGENT_EXECUTION_POLICY.smartCompactionPercent &&
                 smartPercent < AGENT_EXECUTION_POLICY.automaticCompactionPercent;
-              const modelImages = await publishModelImages(
+              const modelImages = await publishModelResources(
                 host,
                 content.images,
                 {
@@ -1182,7 +1183,6 @@ export function createSessionOpener(services: SessionServices) {
           );
           let modelInputImages: ModelImage[] | undefined;
           const inputImageBytes = new Map<string, ModelImage>();
-          let inputToolImages: ModelImage[] = [];
           const currentExecutionToolImages: ToolRuntimeImage[] = [];
           let currentExecutionUserIndex: number | undefined;
           await emit({ type: 'execution.started', mode, permissionMode: permissionPolicy.mode });
@@ -1202,6 +1202,13 @@ export function createSessionOpener(services: SessionServices) {
             executionModels
           );
           const selectedModel = executionModels.get(input.modelId ?? executionDefaultModelId)!;
+          const restoredMessageCount = messages.length;
+          const resourceInput = new ResourceInputProjection(
+            selectedModel.useResourceUrl === true,
+            store,
+            sessionId,
+            messages
+          );
           const selected = modelResources.openTurn(
             selectedAdapter,
             services.hasCustomAdapters && selectedAdapter.createTurnSession === undefined
@@ -1409,7 +1416,12 @@ export function createSessionOpener(services: SessionServices) {
           ): Promise<ModelRequest> => {
             let lowered = candidate;
             if (coreExtensions.hooks.hasInterceptors('model.request')) {
-              const bridge = new ExtensionRequestBridge(modelId, candidate);
+              const bridge = new ExtensionRequestBridge(
+                modelId,
+                candidate,
+                undefined,
+                selected.continuationInputCount?.() ?? 0
+              );
               const request = await operation((call) =>
                 coreExtensions.hooks.invoke(
                   'model.request',
@@ -1419,6 +1431,7 @@ export function createSessionOpener(services: SessionServices) {
                 )
               );
               lowered = bridge.lower(request);
+              if (bridge.rewroteCommittedInput) selected.resetContinuation?.();
             }
             for (const definition of lowered.tools) {
               const binding = bindings.get(definition.name);
@@ -1690,8 +1703,21 @@ export function createSessionOpener(services: SessionServices) {
                 );
               }
             };
-            const recentImages = () =>
-              currentExecutionImages(inputToolImages, currentExecutionToolImages);
+            const recentImages = async () => {
+              const inputImages = await Promise.all(
+                (modelInputImages ?? []).map(async (image) => {
+                  if (image.dataBase64 !== undefined || image.resourceId === undefined)
+                    return image;
+                  const cached = inputImageBytes.get(image.resourceId);
+                  if (cached !== undefined) return cached;
+                  const source = await store.readResource(sessionId, image.resourceId);
+                  const restored = { ...image, ...source };
+                  inputImageBytes.set(image.resourceId, restored);
+                  return restored;
+                })
+              );
+              return currentExecutionImages(inputImages, currentExecutionToolImages);
+            };
             const toolScope: RoundToolScope = {
               context: toolContext,
               tools: roundTools,
@@ -1722,8 +1748,7 @@ export function createSessionOpener(services: SessionServices) {
               recentImages,
               captureCodeContext: () => ({
                 ...toolContext,
-                waitInterrupt: undefined,
-                recentImages: recentImages()
+                waitInterrupt: undefined
               }),
               codeModeContext: async (call) => {
                 const stateSnapshot =
@@ -1799,6 +1824,8 @@ export function createSessionOpener(services: SessionServices) {
           sources.bind(captureRoundToolScope().toolScope);
           let preparingRequestMessages: readonly ModelMessage[] | undefined;
           let preparingRequestBaseLength = 0;
+          let dispatchedInputCount = 0;
+          let dispatchedLocalCount = 0;
           executionContext.requestMessages = {
             read: () =>
               preparingRequestMessages !== undefined
@@ -1859,7 +1886,8 @@ export function createSessionOpener(services: SessionServices) {
                   messages.push({
                     role: 'user',
                     content: actual.modelText ?? actual.text,
-                    metadata
+                    metadata,
+                    ...(modelInputImages?.length ? { images: modelInputImages } : {})
                   });
                   currentExecutionUserIndex = messages.length - 1;
                   internal.inputCommitted?.(recordId);
@@ -1903,7 +1931,7 @@ export function createSessionOpener(services: SessionServices) {
                       'MAR_AGENT_INPUT_CAPABILITY_UNSUPPORTED',
                       'Selected model does not support image input.'
                     );
-                  const modelImages = await publishModelImages(
+                  const modelImages = await publishModelResources(
                     host,
                     content.images,
                     {
@@ -2050,7 +2078,12 @@ export function createSessionOpener(services: SessionServices) {
               turnId
             });
             let lastServerContextTokens = lastServerUsage?.contextInputTokens;
-            let compactBoundary = messages.length;
+            let compactBoundary = restoredMessageCount;
+            const advanceCompactBoundary = () => {
+              // Keep a new image with its complete tool round until a model accepts it.
+              if (!resourceInput.hasPendingImages(messages.slice(compactBoundary)))
+                compactBoundary = messages.length;
+            };
             const invalidateCompactUsage = () => {
               lastServerContextTokens = undefined;
               lastServerUsage = undefined;
@@ -2236,6 +2269,7 @@ export function createSessionOpener(services: SessionServices) {
                     options
                   );
                   modelContext.replaceCompactMessages(replacementHistory, retainedModelContext);
+                  compactBoundary = messages.length - retainedModelContext.length;
                   return record;
                 }
               );
@@ -2342,7 +2376,7 @@ export function createSessionOpener(services: SessionServices) {
                 } catch (error) {
                   controller.signal.throwIfAborted();
                   if (!hadPending) throw error;
-                  compactBoundary = messages.length;
+                  advanceCompactBoundary();
                   compacted = await compactContext();
                 }
                 if (!compacted)
@@ -2415,7 +2449,7 @@ export function createSessionOpener(services: SessionServices) {
                 updateMcpRegistry();
                 executionTools = mcpRegistry.project(baseTools());
                 await modelContext.syncMcpWorldState(messages.length);
-                compactBoundary = messages.length;
+                advanceCompactBoundary();
                 const blocking = compactRequests.drain((input) =>
                   startCompact({
                     ...(input.prompt === undefined ? {} : { focus: input.prompt }),
@@ -2427,18 +2461,6 @@ export function createSessionOpener(services: SessionServices) {
                 await modelContext.syncMcpWorldState(messages.length);
                 executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
                 await modelContext.recordEnvironment();
-                inputToolImages = await Promise.all(
-                  (modelInputImages ?? []).map(async (image) => {
-                    if (image.dataBase64 !== undefined || image.resourceId === undefined)
-                      return image;
-                    const cached = inputImageBytes.get(image.resourceId);
-                    if (cached !== undefined) return cached;
-                    const source = await store.readImageResource(sessionId, image.resourceId);
-                    const restored = { ...image, ...source };
-                    inputImageBytes.set(image.resourceId, restored);
-                    return restored;
-                  })
-                );
                 const { roundTools, roundBindings, toolScope, composeSystemPrompt } =
                   captureRoundToolScope();
                 const residentTools = projectTools(mcpRegistry.projectDirect(baseTools()));
@@ -2499,24 +2521,33 @@ export function createSessionOpener(services: SessionServices) {
                   // Never sample the candidate assembled against the replaced context.
                   return prepareRound(pendingOutputContinuation, true);
                 }
-                return { request, toolScope };
+                return { request: await resourceInput.prepare(request), toolScope };
               },
               startModel: async function* (request) {
                 const snapshots = (sessionRuntime.requestSnapshots ??=
                   new ExtensionRequestSnapshots());
                 const snapshot = snapshots.record(selectedModel.id, request);
+                dispatchedInputCount = request.messages.length;
+                dispatchedLocalCount = messages.length;
                 yield* streamModel(async function* (nativeSignal) {
                   for await (const event of selected.start(request, nativeSignal)) {
-                    if (snapshot && event.type === 'completed' && event.reason !== 'cancelled')
-                      snapshots.complete(snapshot);
+                    if (event.type === 'completed' && event.reason !== 'cancelled') {
+                      if (snapshot) snapshots.complete(snapshot);
+                    }
                     yield event;
                   }
                 }, controller.signal);
               },
               recoverySignal: () => controller.signal,
               compactContext,
-              afterModel: async (closedPrefixLength) => {
-                compactBoundary = closedPrefixLength;
+              afterModel: async (closedPrefixLength, acceptedRequest) => {
+                if (acceptedRequest) {
+                  resourceInput.complete(acceptedRequest);
+                  compactBoundary = closedPrefixLength;
+                }
+                selected.commitContinuationInput?.(
+                  dispatchedInputCount + messages.length - dispatchedLocalCount
+                );
                 if (
                   lastServerContextTokens !== undefined &&
                   (lastServerContextTokens * 100) / selectedModel.contextWindowTokens >=
@@ -2537,7 +2568,7 @@ export function createSessionOpener(services: SessionServices) {
                 }
               },
               checkpoint: async (round, latestUsage) => {
-                compactBoundary = messages.length;
+                advanceCompactBoundary();
                 const blocking = compactRequests.drain((input) =>
                   startCompact({
                     ...(input.prompt === undefined ? {} : { focus: input.prompt }),
@@ -2852,8 +2883,23 @@ export function createSessionOpener(services: SessionServices) {
         call.signal.throwIfAborted();
         const targetRuntime = sessionRuntimes.get(target);
         const requestMessages = targetRuntime?.execution?.requestMessages;
-        if (selection.view === 'request' && requestMessages)
-          return sessionMessagesPage(requestMessages.read(), selection);
+        if (selection.view === 'request' && requestMessages) {
+          const messages = requestMessages.read();
+          const restored = selection.includeImages
+            ? await Promise.all(
+                messages.map(async (message) =>
+                  message.images?.length
+                    ? {
+                        ...message,
+                        images: await readResourceImages(store, target, message.images)
+                      }
+                    : message
+                )
+              )
+            : messages;
+          call.signal.throwIfAborted();
+          return sessionMessagesPage(restored, selection);
+        }
         const modelState = services.modelState();
         const requestModel =
           selection.view === 'request'

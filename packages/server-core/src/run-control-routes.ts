@@ -17,7 +17,7 @@ import type {
   MarAgentRuntimeModelService
 } from './session-run-contracts.js';
 import { createHash } from 'node:crypto';
-import { modelImageReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
+import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 export function registerRunControlRoutes(input: {
   readonly app: FastifyInstance;
@@ -121,14 +121,14 @@ export function registerRunControlRoutes(input: {
       });
       return reply.code(202).send(result);
     };
-  const serveModelImage = async (nodeId: string, value: unknown, reply: FastifyReply) => {
-    const parsed = modelImageReadInputSchema.safeParse(value);
+  const serveModelResource = async (nodeId: string, value: unknown, reply: FastifyReply) => {
+    const parsed = modelResourceReadInputSchema.safeParse(value);
     if (!parsed.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     reply.header('cache-control', 'private, no-store');
     try {
-      const result = (await nodeControl.requestNode(nodeId, 'model.image.read', parsed.data, {
+      const result = (await nodeControl.requestNode(nodeId, 'model.resource.read', parsed.data, {
         userId: 0,
-        sessionHash: 'model-image'
+        sessionHash: 'model-resource'
       })) as { image?: { mimeType?: unknown; dataBase64?: unknown } };
       if (
         typeof result.image?.mimeType !== 'string' ||
@@ -141,20 +141,7 @@ export function registerRunControlRoutes(input: {
       return databaseError(reply, error);
     }
   };
-  app.get<{
-    Params: { nodeId: string; imageId: string };
-    Querystring: { token?: string };
-  }>('/api/nodes/:nodeId/model-images/:imageId', (request, reply) =>
-    serveModelImage(
-      request.params.nodeId,
-      {
-        imageId: request.params.imageId,
-        token: request.query.token
-      },
-      reply
-    )
-  );
-  const resourceImage = (
+  const serveResource = (
     request: FastifyRequest<{
       Params: {
         nodeId: string;
@@ -167,7 +154,7 @@ export function registerRunControlRoutes(input: {
     }>,
     reply: FastifyReply
   ) =>
-    serveModelImage(
+    serveModelResource(
       request.params.nodeId,
       {
         ...(request.params.workspaceId === undefined
@@ -184,12 +171,12 @@ export function registerRunControlRoutes(input: {
       reply
     );
   app.get(
-    '/api/nodes/:nodeId/workspaces/:workspaceId/sessions/:sessionId/images/:resourceId',
-    resourceImage
+    '/api/nodes/:nodeId/workspaces/:workspaceId/sessions/:sessionId/resources/:resourceId',
+    serveResource
   );
   app.get(
-    '/api/nodes/:nodeId/conversations/:conversationId/sessions/:sessionId/images/:resourceId',
-    resourceImage
+    '/api/nodes/:nodeId/conversations/:conversationId/sessions/:sessionId/resources/:resourceId',
+    serveResource
   );
   app.post<{
     Params: { workspaceId: string };

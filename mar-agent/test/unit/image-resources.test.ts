@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,16 +70,46 @@ async function fixture() {
   const store = await JsonlSessionStore.open(home);
   cleanups.push(() => store.close());
   const session = await store.createSession({ workspace: home });
-  const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'images');
+  const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
   return { home, store, session, directory };
 }
 
 describe('unified Session image resources', () => {
+  it.each(['bytes', 'mimeType'] as const)(
+    'rejects metadata whose %s no longer matches its content-addressed resource ID',
+    async (change) => {
+      const { store, session, directory } = await fixture();
+      const image = await store.persistResource(session.id, {
+        mimeType: 'image/png',
+        dataBase64: pixel
+      });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
+      });
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
+        dataBase64: pixel
+      });
+      const metadataPath = join(directory, `${image.resourceId}.json`);
+      const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
+      if (change === 'bytes') {
+        const bytes = Buffer.from(pixel, 'base64');
+        bytes[0] = bytes[0]! ^ 1;
+        metadata.sha256 = createHash('sha256').update(bytes).digest('hex');
+        await writeFile(join(directory, `${image.resourceId}.bin`), bytes);
+      } else metadata.mimeType = 'image/jpeg';
+      await writeFile(metadataPath, JSON.stringify(metadata));
+      await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_CORRUPT'
+      });
+    }
+  );
+
   it.each(['{', 'null', '{}'])(
     'rejects corrupt resource metadata with a stable code (%s)',
     async (metadata) => {
       const { store, session, directory } = await fixture();
-      const image = await store.persistImageResource(session.id, {
+      const image = await store.persistResource(session.id, {
         mimeType: 'image/png',
         dataBase64: pixel
       });
@@ -87,7 +118,7 @@ describe('unified Session image resources', () => {
         payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
       });
       await writeFile(join(directory, `${image.resourceId}.json`), metadata);
-      await expect(store.readImageResource(session.id, image.resourceId)).rejects.toMatchObject({
+      await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
         code: 'MAR_AGENT_SESSION_CORRUPT'
       });
     }
@@ -95,17 +126,17 @@ describe('unified Session image resources', () => {
 
   it('does not expose uncommitted bytes and accepts a committed surviving pending marker', async () => {
     const { store, session, directory } = await fixture();
-    const image = await store.persistImageResource(session.id, {
+    const image = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: pixel
     });
-    expect(await store.readImageResource(session.id, image.resourceId)).toBeUndefined();
+    expect(await store.readResource(session.id, image.resourceId)).toBeUndefined();
     await store.append(session.id, {
       type: 'model.context',
       payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
     });
     await writeFile(join(directory, `.${image.resourceId}.pending`), '');
-    expect(await store.readImageResource(session.id, image.resourceId)).toMatchObject({
+    expect(await store.readResource(session.id, image.resourceId)).toMatchObject({
       dataBase64: pixel
     });
   });
@@ -113,7 +144,7 @@ describe('unified Session image resources', () => {
     const { home, store, session, directory } = await fixture();
     const release = await store.acquireSessionLease(session.id);
     cleanups.push(release);
-    const image = await store.persistImageResource(session.id, {
+    const image = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: pixel
     });
@@ -133,7 +164,7 @@ describe('unified Session image resources', () => {
         payload: { role: 'tool', callId: 'pending-image', images: [image] }
       });
       await vi.waitFor(() => expect(syncStarted).toBe(true));
-      const read = store.readImageResource(session.id, image.resourceId);
+      const read = store.readResource(session.id, image.resourceId);
       expect(imageIo.pendingStats).toBe(0);
       let readSettled = false;
       void read.then(() => (readSettled = true));
@@ -153,7 +184,7 @@ describe('unified Session image resources', () => {
     const { home, store, session, directory } = await fixture();
     const release = await store.acquireSessionLease(session.id);
     cleanups.push(release);
-    const image = await store.persistImageResource(session.id, {
+    const image = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: pixel
     });
@@ -181,7 +212,7 @@ describe('unified Session image resources', () => {
         payload: { images: [expect.objectContaining({ resourceId: image.resourceId })] }
       });
       expect(await readdir(directory)).toContain(`.${image.resourceId}.pending`);
-      await expect(store.readImageResource(session.id, image.resourceId)).resolves.toBeUndefined();
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toBeUndefined();
     } finally {
       await release();
     }
@@ -189,7 +220,7 @@ describe('unified Session image resources', () => {
     const recovered = await store.acquireSessionLease(session.id);
     try {
       expect(await readdir(directory)).not.toContain(`.${image.resourceId}.pending`);
-      await expect(store.readImageResource(session.id, image.resourceId)).resolves.toMatchObject({
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
         dataBase64: pixel
       });
     } finally {
@@ -198,11 +229,11 @@ describe('unified Session image resources', () => {
   });
   it('copies retained user and tool images on fork, then removes only rolled-back resources', async () => {
     const { home, store, session, directory } = await fixture();
-    const image = await store.persistImageResource(session.id, {
+    const image = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: pixel
     });
-    const first = await store.setImageResourceUrl(session.id, image.resourceId, {
+    const first = await store.setResourceUrl(session.id, image.resourceId, {
       url,
       urlExpiresAt: 1
     });
@@ -216,7 +247,7 @@ describe('unified Session image resources', () => {
       turnId: 'first',
       payload: { role: 'tool', callId: 'image', content: 'viewed', images: [first] }
     });
-    const second = await store.persistImageResource(session.id, {
+    const second = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: 'AAAB'
     });
@@ -229,12 +260,12 @@ describe('unified Session image resources', () => {
       }
     });
     const fork = await store.forkSession(session.id, { boundaryTurnId: 'first', title: 'Fork' });
-    const forkDirectory = join(home, '.mar', 'agent', 'sessions', fork.id, 'images');
+    const forkDirectory = join(home, '.mar', 'agent', 'sessions', fork.id, 'resources');
     expect((await readdir(forkDirectory)).sort()).toEqual([
       `${first.resourceId}.bin`,
       `${first.resourceId}.json`
     ]);
-    await expect(store.readImageResource(fork.id, first.resourceId)).resolves.toEqual({
+    await expect(store.readResource(fork.id, first.resourceId)).resolves.toEqual({
       mimeType: 'image/png',
       dataBase64: pixel
     });
@@ -250,18 +281,18 @@ describe('unified Session image resources', () => {
     ]);
     await store.clearSession(session.id);
     expect(await readdir(directory)).toEqual([]);
-    expect(await store.readImageResource(fork.id, first.resourceId)).toMatchObject({
+    expect(await store.readResource(fork.id, first.resourceId)).toMatchObject({
       dataBase64: pixel
     });
   });
 
   it('restores Compact tail URLs without requiring the original image file', async () => {
     const { store, session, directory } = await fixture();
-    const resource = await store.persistImageResource(session.id, {
+    const resource = await store.persistResource(session.id, {
       mimeType: 'image/png',
       dataBase64: pixel
     });
-    const image = await store.setImageResourceUrl(session.id, resource.resourceId, {
+    const image = await store.setResourceUrl(session.id, resource.resourceId, {
       url,
       urlExpiresAt: 1
     });
@@ -315,6 +346,7 @@ describe('unified Session image resources', () => {
         reasoningEfforts: ['low'],
         defaultReasoningEffort: 'low',
         enabled: true,
+        useResourceUrl: true,
         codeMode
       };
       const requests: ModelRequest[] = [];
@@ -326,7 +358,7 @@ describe('unified Session image resources', () => {
           host: new LocalAgentHost({
             homeDirectory: home,
             workspace: home,
-            publishModelImage: async () => {
+            publishModelResource: async () => {
               publications++;
               return { url, urlExpiresAt: 1 };
             }
@@ -373,7 +405,7 @@ describe('unified Session image resources', () => {
         expect(toolImage).not.toHaveProperty('dataBase64');
         expect(publications).toBe(1);
         await writeFile(path, Buffer.from('overwritten original'));
-        expect(await store.readImageResource(session.id, toolImage.resourceId!)).toMatchObject({
+        expect(await store.readResource(session.id, toolImage.resourceId!)).toMatchObject({
           dataBase64: pixel
         });
         expect(await live.run({ prompt: 'next' }).result()).toMatchObject({ status: 'completed' });

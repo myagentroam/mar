@@ -264,7 +264,7 @@ export {
 export type { SessionListInput, SessionSource } from './agent-core/session/types.js';
 export type {
   SessionStore,
-  SessionImageResource,
+  SessionResource,
   SessionStoreMaintenance,
   SessionStoreSession,
   SessionRecordInput,

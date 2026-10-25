@@ -36,6 +36,7 @@ export interface SessionInputImage extends ModelImage {
 }
 
 export interface SessionInputImageMetadata {
+  readonly resourceInputVersion?: 1;
   readonly name: string;
   readonly mimeType: string;
   readonly byteSize: number;

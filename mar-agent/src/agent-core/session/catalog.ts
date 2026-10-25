@@ -86,7 +86,7 @@ export interface MarAgentSessionCatalog {
     sessionId: string,
     input: { readonly sequence: number; readonly imageIndex: number }
   ): Promise<MarAgentSessionImage | undefined>;
-  readImageResource(
+  readResource(
     sessionId: string,
     resourceId: string
   ): Promise<{ mimeType: string; dataBase64: string } | undefined>;
@@ -221,9 +221,9 @@ export async function openMarAgentSessionCatalog(
             dataBase64: image.dataBase64
           };
     },
-    readImageResource: async (sessionId, resourceId) => {
+    readResource: async (sessionId, resourceId) => {
       assertOpen();
-      return store.readImageResource(sessionId, resourceId);
+      return store.readResource(sessionId, resourceId);
     },
     readToolResultResource: async (sessionId, input) => {
       assertOpen();

@@ -77,16 +77,16 @@ describe('Node broker resource scope lifecycle', () => {
         expiresAt: Date.now() + 60_000,
         signature: 's'.repeat(43)
       };
-      const promise = f.broker.request('n', 'model.image.read', data, {
+      const promise = f.broker.request('n', 'model.resource.read', data, {
         userId: 0,
-        sessionHash: 'model-image'
+        sessionHash: 'model-resource'
       });
       await vi.waitFor(() => expect(f.sent).toHaveLength(1));
       expect(f.sent[0]).toMatchObject({
         payload: {
-          operation: 'model.image.read',
+          operation: 'model.resource.read',
           data,
-          userAuthorization: { userId: 0, sessionHash: 'model-image' }
+          userAuthorization: { userId: 0, sessionHash: 'model-resource' }
         }
       });
       expect(f.authorize).not.toHaveBeenCalled();
@@ -100,8 +100,8 @@ describe('Node broker resource scope lifecycle', () => {
   );
 
   it.each([
-    ['model.image.read', 'other'],
-    ['session.get', 'model-image']
+    ['model.resource.read', 'other'],
+    ['session.get', 'model-resource']
   ])('does not extend the image capability bypass to %s / %s', async (operation, sessionHash) => {
     const f = fixture();
     await expect(
@@ -116,13 +116,13 @@ describe('Node broker resource scope lifecycle', () => {
     f.authorize.mockResolvedValue(false);
     const data = { workspaceId: 'w', sessionId: 's' };
     await expect(
-      f.broker.request('n', 'model.image.read', data, {
+      f.broker.request('n', 'model.resource.read', data, {
         userId: 2,
-        sessionHash: 'model-image',
+        sessionHash: 'model-resource',
         workspaceId: 'w'
       })
     ).rejects.toThrow('NODE_ACCESS_DENIED');
-    expect(f.authorize).toHaveBeenCalledWith(2, 'n', 'model.image.read', data, 'w');
+    expect(f.authorize).toHaveBeenCalledWith(2, 'n', 'model.resource.read', data, 'w');
     expect(f.sent).toEqual([]);
   });
 

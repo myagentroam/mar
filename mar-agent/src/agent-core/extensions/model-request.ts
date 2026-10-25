@@ -116,12 +116,17 @@ function freezeSnapshot<T>(value: T): T {
 
 /** One conversion per actual request; references are valid only for this candidate. */
 export class ExtensionRequestBridge {
-  readonly #messages = new Map<string, { original: ModelMessage; view: CoreModelMessage }>();
+  readonly #messages = new Map<
+    string,
+    { original: ModelMessage; view: CoreModelMessage; index: number }
+  >();
+  rewroteCommittedInput = false;
   readonly view: CoreModelRequest;
   constructor(
     readonly modelId: string,
     readonly original: ModelRequest,
-    sourceMessages?: readonly CoreModelMessage[]
+    sourceMessages?: readonly CoreModelMessage[],
+    private readonly committedPrefix = 0
   ) {
     const messages = original.messages.map((original, index): CoreModelMessage => {
       const sourceRef = sourceMessages?.[index]?.sourceRef ?? randomUUID();
@@ -142,7 +147,7 @@ export class ExtensionRequestBridge {
                 : {}),
               ...(original.images !== undefined ? { images: structuredClone(original.images) } : {})
             };
-      this.#messages.set(sourceRef, { original, view: structuredClone(view) });
+      this.#messages.set(sourceRef, { original, view: structuredClone(view), index });
       return view;
     });
     this.view = {
@@ -182,7 +187,13 @@ export class ExtensionRequestBridge {
         'Model request view is invalid.'
       );
     const seen = new Set<string>();
-    const messages = view.messages.map((message): ModelMessage => {
+    if (
+      view.messages.length < this.committedPrefix ||
+      view.system !== this.original.system ||
+      !isDeepStrictEqual(view.systemBlocks, this.original.systemBlocks)
+    )
+      this.rewroteCommittedInput = true;
+    const messages = view.messages.map((message, index): ModelMessage => {
       if (!message || typeof message !== 'object')
         throw new MarAgentError(
           'MAR_AGENT_EXTENSION_MODEL_REQUEST_INVALID',
@@ -197,7 +208,10 @@ export class ExtensionRequestBridge {
           );
         seen.add(message.sourceRef);
       }
+      if (index < this.committedPrefix && source?.index !== index)
+        this.rewroteCommittedInput = true;
       if (source && isDeepStrictEqual(message, source.view)) return source.original;
+      if (index < this.committedPrefix) this.rewroteCommittedInput = true;
       if (
         message.role === 'opaque' ||
         typeof message.content !== 'string' ||

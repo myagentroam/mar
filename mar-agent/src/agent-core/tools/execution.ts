@@ -19,7 +19,7 @@ import {
   structuredToolFailureData
 } from './output-projection.js';
 import type { ToolRuntimeContext, ToolRuntimeImage } from './runtime-context.js';
-import { publishModelImages } from '../runtime/image-publication.js';
+import { publishModelResources } from '../runtime/resource-publication.js';
 import { executeRegisteredTool } from './runtime.js';
 import { failedToolResultExtensions } from './result-extensions.js';
 import { permissionStopFromError } from './permissions.js';
@@ -50,7 +50,7 @@ export interface RoundToolScope {
   readonly assertExecutionLive: () => void;
   readonly emit: (event: EventPayload, assertLive?: () => void) => Promise<void>;
   readonly searchMcpTools: NonNullable<ToolRuntimeContext['searchMcpTools']>;
-  readonly recentImages: () => ToolRuntimeImage[];
+  readonly recentImages: () => Promise<ToolRuntimeImage[]>;
   readonly captureCodeContext: () => Omit<
     ToolRuntimeContext,
     'signal' | 'codeMode' | 'expectedMcpTool' | 'searchMcpTools'
@@ -69,6 +69,12 @@ export async function createRoundToolRuntimeContext(
   scope.assertLive();
   signal.throwIfAborted();
   const codeMode = await scope.codeModeContext(call);
+  const recentImages =
+    scope.extensionToolNames.has(call.name) ||
+    call.name === 'code_exec' ||
+    call.name === 'code_exec_wait'
+      ? await scope.recentImages()
+      : undefined;
   scope.assertLive();
   signal.throwIfAborted();
   const assertSessionLive = scope.assertLive;
@@ -106,7 +112,10 @@ export async function createRoundToolRuntimeContext(
             }
           }),
       invoke: createCodeToolDispatch({
-        context: scope.captureCodeContext(),
+        context: {
+          ...scope.captureCodeContext(),
+          ...(recentImages === undefined ? {} : { recentImages })
+        },
         tools: scope.tools,
         expectations: scope.expectations,
         parentCallId: call.callId,
@@ -115,7 +124,9 @@ export async function createRoundToolRuntimeContext(
         emit: (event) => emitCodeEvent(event, assertDispatchLive)
       })
     },
-    ...(scope.extensionToolNames.has(call.name) ? { recentImages: scope.recentImages() } : {})
+    ...(scope.extensionToolNames.has(call.name) && recentImages !== undefined
+      ? { recentImages }
+      : {})
   };
 }
 
@@ -157,7 +168,7 @@ export async function executeRoundTools(
               scope.tools.find((tool) => tool.name === call.name),
               runTool
             );
-      const publishedImages = await publishModelImages(
+      const publishedImages = await publishModelResources(
         scope.context.host,
         rawOutput.images,
         {
@@ -203,7 +214,7 @@ export async function executeRoundTools(
     } catch (error) {
       const diagnostic = describeMarAgentError(error, 'MAR_AGENT_HOST_OPERATION_FAILED');
       const partialResult = error instanceof CodeCellExecutionError ? error.result : undefined;
-      const publishedPartialImages = await publishModelImages(
+      const publishedPartialImages = await publishModelResources(
         scope.context.host,
         partialResult?.images,
         { sessionId: scope.context.sessionId, executionId: scope.context.executionId },

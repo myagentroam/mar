@@ -842,8 +842,56 @@ describe('Core Session active message views', () => {
     }
   );
 
+  it('reads explicit resource pixels from the active request without mutating its source', async () => {
+    const dataBase64 = Buffer.from('pixels').toString('base64');
+    let observed: unknown;
+    const f = await fixture(
+      [
+        {
+          id: 'live-resource-reader',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.hooks.intercept('model.request', async (input, _call, next) => {
+              const original = JSON.stringify(input.messages);
+              observed = await context.session!.messages({ view: 'request', includeImages: true });
+              expect(JSON.stringify(input.messages)).toBe(original);
+              return next(input);
+            });
+          }
+        }
+      ],
+      () => answer(),
+      false,
+      false,
+      {},
+      'OPENAI_RESPONSES',
+      ['TEXT', 'IMAGE']
+    );
+    expect(
+      await f.session
+        .run({
+          prompt: 'with image',
+          images: [{ name: 'image.png', mimeType: 'image/png', dataBase64 }]
+        })
+        .result()
+    ).toMatchObject({ status: 'completed' });
+    expect(await f.session.run({ prompt: 'continue without a new image' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(observed).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({ images: [expect.objectContaining({ dataBase64 })] })
+      ])
+    });
+    expect(
+      f.adapter.requests.map(
+        (request) => request.messages.flatMap((message) => message.images ?? []).length
+      )
+    ).toEqual([1, 0]);
+  });
+
   it.each(['missing', 'corrupt', 'legacy'] as const)(
-    'reports %s explicit media instead of silently claiming completeness',
+    'handles %s media without weakening current resource integrity',
     async (mode) => {
       const f = await messagesFixture();
       try {
@@ -870,15 +918,20 @@ describe('Core Session active message views', () => {
           'agent',
           'sessions',
           f.session.id,
-          'input_images',
+          'resources',
           images[0]!.fileName
         );
         if (mode === 'missing') await rm(path);
         if (mode === 'corrupt') await writeFile(path, 'bad');
         expect((await f.api.messages()).messages.at(-1)).toMatchObject({ content: 'with image' });
-        await expect(f.api.messages({ includeImages: true })).rejects.toMatchObject({
-          code: 'MAR_AGENT_SESSION_CORRUPT'
-        });
+        if (mode === 'legacy')
+          expect(
+            (await f.api.messages({ includeImages: true })).messages.at(-1)
+          ).not.toHaveProperty('images');
+        else
+          await expect(f.api.messages({ includeImages: true })).rejects.toMatchObject({
+            code: 'MAR_AGENT_SESSION_CORRUPT'
+          });
         const requestView = await f.api.messages({
           view: 'request',
           includeImages: true,
@@ -915,7 +968,7 @@ describe('Core Session active message views', () => {
         type: 'compact.completed',
         payload: { summary: 'replacement summary' }
       });
-      await rm(join(f.home, '.mar', 'agent', 'sessions', f.session.id, 'input_images'), {
+      await rm(join(f.home, '.mar', 'agent', 'sessions', f.session.id, 'resources'), {
         recursive: true
       });
       const page = await f.api.messages({ view: 'conversation', includeImages: true });

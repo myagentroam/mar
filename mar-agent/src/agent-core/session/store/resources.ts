@@ -6,7 +6,8 @@ import { isModelImageUrl, type ModelImage } from '../../model/image.js';
 import { readInputImageBytes } from './images.js';
 import type { SessionRecord } from './types.js';
 
-export interface SessionImageResource {
+export interface SessionResource {
+  readonly resourceInputVersion?: 1;
   readonly resourceId: string;
   readonly mimeType: string;
   readonly byteSize: number;
@@ -18,10 +19,14 @@ export interface SessionImageResource {
 const idPattern = /^[a-f0-9]{64}$/u;
 const mimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-export async function imageResource(
+function resourceIdentity(mimeType: string, sha256: string): string {
+  return createHash('sha256').update(mimeType).update('\0').update(sha256).digest('hex');
+}
+
+export async function resourceMetadata(
   directory: string,
   resourceId: string
-): Promise<SessionImageResource | undefined> {
+): Promise<SessionResource | undefined> {
   if (!idPattern.test(resourceId)) return undefined;
   let text: string;
   try {
@@ -30,9 +35,9 @@ export async function imageResource(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
   }
-  let value: SessionImageResource | undefined;
+  let value: SessionResource | undefined;
   try {
-    value = JSON.parse(text) as SessionImageResource;
+    value = JSON.parse(text) as SessionResource;
   } catch {
     // Invalid JSON is reported below without exposing metadata contents.
   }
@@ -44,6 +49,7 @@ export async function imageResource(
     value.byteSize <= 0 ||
     value.byteSize > 20 * 1024 * 1024 ||
     !idPattern.test(value.sha256) ||
+    resourceIdentity(value.mimeType, value.sha256) !== resourceId ||
     (value.url !== undefined &&
       (!isModelImageUrl(value.url) ||
         !Number.isSafeInteger(value.urlExpiresAt) ||
@@ -54,12 +60,12 @@ export async function imageResource(
   return value;
 }
 
-export async function persistImageResource(
+export async function persistResource(
   directory: string,
   image: ModelImage
-): Promise<SessionImageResource> {
+): Promise<SessionResource> {
   if (image.resourceId !== undefined && image.dataBase64 === undefined) {
-    const existing = await imageResource(directory, image.resourceId);
+    const existing = await resourceMetadata(directory, image.resourceId);
     if (existing !== undefined && existing.mimeType === image.mimeType) return existing;
     throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
   }
@@ -75,19 +81,16 @@ export async function persistImageResource(
       'Image resource exceeds supported limits.'
     );
   const sha256 = createHash('sha256').update(data).digest('hex');
-  const resourceId = createHash('sha256')
-    .update(image.mimeType)
-    .update('\0')
-    .update(sha256)
-    .digest('hex');
+  const resourceId = resourceIdentity(image.mimeType, sha256);
   if (image.resourceId !== undefined && image.resourceId !== resourceId)
     throw new MarAgentError(
       'MAR_AGENT_SESSION_INPUT_INVALID',
       'Image resource identity does not match its bytes.'
     );
-  const existing = await imageResource(directory, resourceId);
+  const existing = await resourceMetadata(directory, resourceId);
   if (existing !== undefined) return existing;
-  const resource: SessionImageResource = {
+  const resource: SessionResource = {
+    resourceInputVersion: 1,
     resourceId,
     mimeType: image.mimeType,
     byteSize: data.length,
@@ -100,12 +103,12 @@ export async function persistImageResource(
   return resource;
 }
 
-export async function setImageResourceUrl(
+export async function setResourceUrl(
   directory: string,
   resourceId: string,
   published: { url: string; urlExpiresAt: number }
-): Promise<SessionImageResource> {
-  const resource = await imageResource(directory, resourceId);
+): Promise<SessionResource> {
+  const resource = await resourceMetadata(directory, resourceId);
   if (!resource)
     throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
   if (resource.url !== undefined) return resource;
@@ -120,8 +123,8 @@ export async function setImageResourceUrl(
   return result;
 }
 
-export async function readImageResource(directory: string, resourceId: string) {
-  const resource = await imageResource(directory, resourceId);
+export async function readResource(directory: string, resourceId: string) {
+  const resource = await resourceMetadata(directory, resourceId);
   if (!resource) return undefined;
   const bytes = await readInputImageBytes(directory, {
     ...resource,
@@ -132,7 +135,7 @@ export async function readImageResource(directory: string, resourceId: string) {
 }
 
 /** Resource identities are SDK-owned metadata, never interpreted as file paths. */
-export function imageResourceFiles(records: readonly SessionRecord[]): Set<string> {
+export function resourceFiles(records: readonly SessionRecord[]): Set<string> {
   const ids = new Set<string>();
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
@@ -141,7 +144,11 @@ export function imageResourceFiles(records: readonly SessionRecord[]): Set<strin
     }
     if (!value || typeof value !== 'object') return;
     const item = value as Record<string, unknown>;
-    if (typeof item.resourceId === 'string' && idPattern.test(item.resourceId))
+    if (
+      item.resourceInputVersion === 1 &&
+      typeof item.resourceId === 'string' &&
+      idPattern.test(item.resourceId)
+    )
       ids.add(item.resourceId);
     for (const key of ['images', 'input', 'pendingInputs', 'payload', 'retainedModelContext'])
       if (item[key] !== undefined) visit(item[key]);
@@ -150,27 +157,31 @@ export function imageResourceFiles(records: readonly SessionRecord[]): Set<strin
   return new Set([...ids].flatMap((id) => [`${id}.bin`, `${id}.json`]));
 }
 
-export async function copyImageResources(
+export async function copyResources(
   source: string,
   target: string,
   records: readonly SessionRecord[]
 ) {
-  const files = imageResourceFiles(records);
+  const files = resourceFiles(records);
   if (!files.size) return;
-  await mkdir(join(target, 'images'), { recursive: true, mode: 0o700 });
+  await mkdir(join(target, 'resources'), { recursive: true, mode: 0o700 });
   for (const file of files) {
     if (!file.endsWith('.bin')) continue;
     const resourceId = file.slice(0, -4);
-    const resource = await imageResource(join(source, 'images'), resourceId);
+    const resource = await resourceMetadata(join(source, 'resources'), resourceId);
     if (resource === undefined)
       throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
-    const bytes = await readInputImageBytes(join(source, 'images'), {
+    const bytes = await readInputImageBytes(join(source, 'resources'), {
       ...resource,
       name: 'image',
       fileName: file
     });
-    await writeFile(join(target, 'images', file), bytes, { mode: 0o600, flag: 'wx', flush: true });
-    await writeFile(join(target, 'images', `${resourceId}.json`), JSON.stringify(resource), {
+    await writeFile(join(target, 'resources', file), bytes, {
+      mode: 0o600,
+      flag: 'wx',
+      flush: true
+    });
+    await writeFile(join(target, 'resources', `${resourceId}.json`), JSON.stringify(resource), {
       mode: 0o600,
       flag: 'wx',
       flush: true
@@ -178,13 +189,13 @@ export async function copyImageResources(
   }
 }
 
-export async function completeImageResources(directory: string, record: SessionRecord) {
-  for (const file of imageResourceFiles([record]))
+export async function completeResources(directory: string, record: SessionRecord) {
+  for (const file of resourceFiles([record]))
     if (file.endsWith('.bin'))
       await rm(join(directory, `.${file.slice(0, -4)}.pending`), { force: true });
 }
 
-export async function recoverImageResources(
+export async function recoverResources(
   directory: string,
   readHistory: () => Promise<SessionRecord[]>
 ) {
@@ -197,7 +208,7 @@ export async function recoverImageResources(
   }
   const pending = names.filter((name) => /^\.[a-f0-9]{64}\.pending$/u.test(name));
   if (pending.length) {
-    const retained = imageResourceFiles(await readHistory());
+    const retained = resourceFiles(await readHistory());
     for (const name of pending) {
       const id = name.slice(1, -8);
       if (!retained.has(`${id}.bin`))

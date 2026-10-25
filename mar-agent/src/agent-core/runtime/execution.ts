@@ -52,7 +52,10 @@ export interface ExecutionLoopInput {
     usage: Omit<AuthoritativeModelUsage, 'historyMessages'> | undefined
   ) => void;
   readonly observeContextTokens: (tokens: number) => void;
-  readonly afterModel?: (closedPrefixLength: number) => Promise<void>;
+  readonly afterModel?: (
+    closedPrefixLength: number,
+    acceptedRequest?: ModelRequest
+  ) => Promise<void>;
   readonly checkpoint: (
     round: PreparedExecutionRound,
     usage: ModelUsage | undefined
@@ -374,7 +377,11 @@ export class ExecutionLoop {
       }
       recoveringFromContextOverflow = false;
       input.observeUsage(roundServerUsage);
-      await input.afterModel?.(pendingTools.length ? roundMessageCount : messages.length);
+      const emptyCompletion = stop === 'completed' && !sawTool && !this.finalAnswer.trim();
+      await input.afterModel?.(
+        pendingTools.length ? roundMessageCount : messages.length,
+        emptyCompletion || stop === 'cancelled' ? undefined : round.request
+      );
       const toolResults = await executeRoundTools(pendingTools, round.toolScope);
       for (const result of toolResults) {
         if ('sourceImages' in result && result.sourceImages?.length)
@@ -465,7 +472,7 @@ export class ExecutionLoop {
             'MAR_AGENT_COMPACT_FAILED',
             'Compaction returned an empty handoff.'
           );
-        if (mode !== 'compact' && !this.finalAnswer.trim()) {
+        if (mode !== 'compact' && emptyCompletion) {
           const error = new MarAgentError(
             input.sourceType === 'subagent'
               ? 'MAR_AGENT_SUBAGENT_FAILED'

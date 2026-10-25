@@ -210,6 +210,7 @@ async function modelsCommand(
           .map((effort) => parseReasoningEffort(effort, '--reasoning-efforts'));
   const defaultReasoningEffortOption = option('--default-reasoning-effort');
   const model: CliModelConfiguration = {
+    useResourceUrl: existing?.useResourceUrl ?? false,
     id,
     name: required(option('--name', existing?.name), '--name'),
     protocol,

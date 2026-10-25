@@ -1,4 +1,5 @@
 export interface ModelImage {
+  readonly resourceInputVersion?: 1;
   readonly mimeType: string;
   readonly dataBase64?: string;
   readonly resourceId?: string;
@@ -24,6 +25,7 @@ export function persistedModelImages(images: readonly ModelImage[] | undefined):
   return (images ?? [])
     .filter((image) => isModelImageUrl(image.url) || image.resourceId !== undefined)
     .map((image) => ({
+      resourceInputVersion: 1,
       mimeType: image.mimeType,
       ...(image.url === undefined ? {} : { url: image.url }),
       ...(image.urlExpiresAt === undefined ? {} : { urlExpiresAt: image.urlExpiresAt }),
@@ -39,6 +41,7 @@ export function parseModelImages(value: unknown): ModelImage[] | undefined {
     !value.every(
       (image) =>
         image &&
+        image.resourceInputVersion === 1 &&
         typeof image.mimeType === 'string' &&
         (image.url === undefined || isModelImageUrl(image.url)) &&
         (image.resourceId === undefined ||

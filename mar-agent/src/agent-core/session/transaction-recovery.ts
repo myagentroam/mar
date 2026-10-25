@@ -119,7 +119,7 @@ export async function recoverSessionStorageTransaction(
       await rename(backup, sidecar);
     }
   }
-  for (const folder of ['input_images', 'generated_images', 'tool_results', 'images']) {
+  for (const folder of ['generated_images', 'tool_results', 'resources']) {
     const path = join(directory, folder);
     let names: string[];
     try {

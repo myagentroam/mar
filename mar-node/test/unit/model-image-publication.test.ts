@@ -3,17 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openMarAgentSessionCatalog } from '@myagentroam/agent';
-import type { ModelImageReadInput } from '@myagentroam/protocol';
+import type { ModelResourceReadInput } from '@myagentroam/protocol';
 import { JsonlSessionStore } from '../../../mar-agent/src/agent-core/session/store/index.js';
-import { ModelImagePublicationService } from '../../src/service/model-image-publication-service.js';
+import { ModelResourcePublicationService } from '../../src/service/model-resource-publication-service.js';
 
-type ResourceReadInput = Extract<ModelImageReadInput, { resourceId: string }>;
+type ResourceReadInput = Extract<ModelResourceReadInput, { resourceId: string }>;
 
 const imageBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 255, 65, 0]);
 const image = { mimeType: 'image/png', dataBase64: imageBytes.toString('base64') };
 
 function createService(directory: string, now: () => number, nodeId = 'node-1') {
-  return new ModelImagePublicationService({
+  return new ModelResourcePublicationService({
     directory: () => join(directory, 'node-publications'),
     origin: () => 'https://workbench.example.test',
     nodeId: () => nodeId,
@@ -42,7 +42,7 @@ async function createSessionImage(homeDirectory: string) {
       workspace: homeDirectory,
       title: 'Image resource'
     });
-    const resource = await store.persistImageResource(session.id, image);
+    const resource = await store.persistResource(session.id, image);
     await store.append(session.id, {
       type: 'turn.user',
       payload: { text: 'Image fixture', images: [resource] }
@@ -56,7 +56,7 @@ async function createSessionImage(homeDirectory: string) {
 describe('model image publication', () => {
   let directory: string;
   let now: number;
-  let service: ModelImagePublicationService;
+  let service: ModelResourcePublicationService;
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'mar-model-images-'));
@@ -79,13 +79,13 @@ describe('model image publication', () => {
     expect(concurrent).toEqual([first, first, first, first]);
     expect(first.urlExpiresAt - now).toBe(24 * 60 * 60_000);
     expect(first.url).toContain(
-      `/workspaces/workspace-1/sessions/${sessionId}/images/${resource.resourceId}`
+      `/workspaces/workspace-1/sessions/${sessionId}/resources/${resource.resourceId}`
     );
     expect(await service.publish(source, resource)).toEqual(first);
     await expect(service.read(readInput(first.url))).resolves.toEqual(image);
 
     const sessionDirectory = join(directory, '.mar', 'agent', 'sessions', sessionId);
-    const imageDirectory = join(sessionDirectory, 'images');
+    const imageDirectory = join(sessionDirectory, 'resources');
     const imageFiles = await readdir(imageDirectory);
     expect(imageFiles.filter((name) => name.endsWith('.bin'))).toEqual([
       `${resource.resourceId}.bin`
@@ -138,7 +138,7 @@ describe('model image publication', () => {
     await expect(service.publish(source, resource)).resolves.toEqual(published);
     const store = await JsonlSessionStore.open(directory);
     try {
-      await expect(store.readImageResource(sessionId, resource.resourceId)).resolves.toEqual(image);
+      await expect(store.readResource(sessionId, resource.resourceId)).resolves.toEqual(image);
     } finally {
       await store.close();
     }

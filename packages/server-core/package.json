@@ -15,6 +15,11 @@
     "test:unit": "vitest run --config vitest.config.mts"
   },
   "exports": {
+    "./mar-agent-resource-input-service": {
+      "development": "./src/mar-agent-resource-input-service.ts",
+      "types": "./dist/mar-agent-resource-input-service.d.ts",
+      "import": "./dist/mar-agent-resource-input-service.js"
+    },
     "./database-identity": {
       "development": "./src/database-identity.ts",
       "types": "./dist/database-identity.d.ts",

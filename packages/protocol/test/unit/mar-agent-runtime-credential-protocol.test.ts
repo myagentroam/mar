@@ -53,6 +53,40 @@ const ticket = {
 };
 
 describe('Conversation model purpose', () => {
+  it.each([undefined, {}, { useResourceUrl: true }])(
+    'keeps resource metadata separate from the effective runtime flag: %j',
+    (metadata) => {
+      const value = {
+        ...baseModel,
+        credential: { type: 'INLINE_API_KEY', value: 'test-key' },
+        ...(metadata === undefined ? {} : { metadata })
+      };
+      const stored = marAgentStoredModelConfigurationSchema.parse(value);
+      expect(stored.metadata?.useResourceUrl ?? false).toBe(metadata?.useResourceUrl ?? false);
+      expect(marAgentRuntimeModelConfigurationSchema.parse(value).useResourceUrl).toBe(false);
+      expect(
+        marAgentRuntimeModelConfigurationSchema.parse({ ...value, useResourceUrl: true })
+          .useResourceUrl
+      ).toBe(true);
+    }
+  );
+
+  it('rejects invalid resource settings and the removed image operation alias', () => {
+    const value = { ...baseModel, credential: { type: 'INLINE_API_KEY', value: 'test-key' } };
+    expect(
+      marAgentStoredModelConfigurationSchema.safeParse({
+        ...value,
+        metadata: { useResourceUrl: 'true' }
+      }).success
+    ).toBe(false);
+    expect(
+      marAgentRuntimeModelConfigurationSchema.safeParse({ ...value, useResourceUrl: 'true' })
+        .success
+    ).toBe(false);
+    expect(workbenchNodeOperationSchema.safeParse('model.resource.read').success).toBe(true);
+    expect(workbenchNodeOperationSchema.safeParse('model.image.read').success).toBe(false);
+  });
+
   it('defaults legacy models to conversation use and preserves auxiliary-only configurations', () => {
     for (const conversationModel of [undefined, false, true]) {
       const value = {

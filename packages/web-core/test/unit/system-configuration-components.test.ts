@@ -30,6 +30,7 @@ describe('Public system configuration page', () => {
     }
     const service = createSystemConfigurationService(vi.fn() as never);
     expect(service.settings.map(({ key }) => key)).toEqual([
+      'mar-agent-resource-input',
       'mail-smtp',
       'web-push',
       'html-preview-origin',
@@ -103,6 +104,7 @@ describe('Public system configuration page', () => {
       const tableRows = view.findAll('ElTable')[0]?.props['data'] as { key: string }[];
       expect(tableRows.map(({ key }) => key)).toEqual([
         ...settings.map(({ key }) => key),
+        'mar-agent-resource-input',
         'mail-smtp',
         'web-push',
         'html-preview-origin',

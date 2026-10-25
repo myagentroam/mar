@@ -199,7 +199,7 @@ describe('Responses serialized prefix stability', () => {
     }
   );
 
-  it('does not reorder native output to manufacture an identical input prefix', async () => {
+  it('preserves native output order after an explicit history replacement', async () => {
     const server = await startResponsesWebSocketServer([], {
       responsesByRequest: [completed('first'), completed('second')]
     });
@@ -217,6 +217,7 @@ describe('Responses serialized prefix stability', () => {
       const next = messages().map((message) =>
         message.role === 'provider' ? { ...message, item: reordered } : message
       );
+      turn.resetContinuation();
       await consume(
         turn.start({ system: 'Stable.', messages: next, tools: [] }, new AbortController().signal)
       );
@@ -320,7 +321,7 @@ describe('Responses serialized prefix stability', () => {
     expect(JSON.stringify(models)).toBe(original);
   });
 
-  it('does not let consumers mutate the completed native-output baseline', async () => {
+  it('replays changed native output after its owner resets continuation', async () => {
     const server = await startResponsesWebSocketServer([], {
       responsesByRequest: [completed('first'), completed('second')]
     });
@@ -335,6 +336,7 @@ describe('Responses serialized prefix stability', () => {
       ))
         if (event.type === 'response.item') output = event.item;
       (output!.content as Array<{ text: string }>)[0]!.text = 'Changed';
+      turn.resetContinuation();
       await consume(
         turn.start(
           {

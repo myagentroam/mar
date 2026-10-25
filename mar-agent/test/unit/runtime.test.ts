@@ -1305,9 +1305,12 @@ describe('agent runtime', () => {
         this.requests.push(request);
         if (this.requests.length === 1) {
           expect(request.tools.map((tool) => tool.name)).toContain('view_image');
-          expect(request.images).toMatchObject([
-            { mimeType: 'image/png', dataBase64: imageBase64 }
-          ]);
+          expect(request.images).toBeUndefined();
+          expect(
+            request.messages.find(
+              (message) => message.role === 'user' && message.content === 'view image'
+            )
+          ).toMatchObject({ images: [{ mimeType: 'image/png', dataBase64: imageBase64 }] });
           yield {
             type: 'client_tool.call',
             callId: 'image',
@@ -1321,6 +1324,9 @@ describe('agent runtime', () => {
           role: 'tool',
           images: [{ mimeType: 'image/png', dataBase64: imageBase64 }]
         });
+        expect(request.messages.slice(0, -1).flatMap((message) => message.images ?? [])).toEqual(
+          []
+        );
         expect(request.promptCacheKey).toBe(this.requests[0]?.promptCacheKey);
         expect(request.tools.map((tool) => tool.name)).toEqual(
           this.requests[0]?.tools.map((tool) => tool.name)
@@ -1385,7 +1391,7 @@ describe('agent runtime', () => {
     expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('skill');
     await textAgent.dispose();
   });
-  it('restores user image pixels for later executions after the Agent restarts', async () => {
+  it('keeps historical inline image pixels on disk without replaying or loading them after restart', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-image-history-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -1400,7 +1406,10 @@ describe('agent runtime', () => {
     const firstAdapter: ModelAdapter = {
       configuration: visionModel,
       async *start(request) {
-        expect(request.images).toMatchObject([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+        expect(request.images).toBeUndefined();
+        expect(request.messages.flatMap((message) => message.images ?? [])).toMatchObject([
+          { mimeType: 'image/png', dataBase64: imageBase64 }
+        ]);
         yield { type: 'text.completed', itemId: 'first', text: 'Microsoft logo' };
         yield { type: 'completed', reason: 'completed' };
       }
@@ -1454,7 +1463,7 @@ describe('agent runtime', () => {
       'agent',
       'sessions',
       session.id,
-      'images',
+      'resources',
       storedImage!.fileName!
     );
     await expect(readFile(storedImagePath)).resolves.toEqual(Buffer.from(imageBase64, 'base64'));
@@ -1469,12 +1478,12 @@ describe('agent runtime', () => {
           expect.arrayContaining([
             expect.objectContaining({
               role: 'user',
-              content: 'What is in the image?',
-              images: [expect.objectContaining({ mimeType: 'image/png', dataBase64: imageBase64 })]
+              content: 'What is in the image?'
             }),
             expect.objectContaining({ role: 'user', content: 'Look at it again.' })
           ])
         );
+        expect(request.messages.flatMap((message) => message.images ?? [])).toEqual([]);
         yield { type: 'text.completed', itemId: 'second', text: 'Still a Microsoft logo' };
         yield { type: 'completed', reason: 'completed' };
       }
@@ -1519,6 +1528,7 @@ describe('agent runtime', () => {
     ).toEqual({
       role: 'user',
       content: 'What is in the image?',
+      images: [],
       metadata: { source: 'user', recordId: expect.any(String) }
     });
     const warningRecord = (await readFile(eventsPath, 'utf8'))
@@ -1526,11 +1536,7 @@ describe('agent runtime', () => {
       .split('\n')
       .map((line) => JSON.parse(line) as { type?: string; payload?: unknown })
       .findLast((record) => record.type === 'context.warning');
-    expect(warningRecord?.payload).toEqual({
-      code: 'MAR_AGENT_INPUT_IMAGE_IGNORED',
-      message: 'One or more corrupt historical input images were ignored.',
-      ignoredImages: 1
-    });
+    expect(warningRecord).toBeUndefined();
     await thirdAgent.dispose();
   });
   it('rejects a text-only model instead of dropping restored user images', async () => {
@@ -3370,7 +3376,7 @@ describe('agent runtime', () => {
           description: 'Inspect input',
           status: 'failed',
           errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-          errorMessage: 'MAR_AGENT_SUBAGENT_FAILED: Subagent completed without a final summary.'
+          errorMessage: 'Subagent completed without a final summary.'
         })
       ])
     );
@@ -3385,7 +3391,7 @@ describe('agent runtime', () => {
       description: 'Inspect input',
       status: 'failed',
       errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-      errorMessage: 'MAR_AGENT_SUBAGENT_FAILED: Subagent completed without a final summary.'
+      errorMessage: 'Subagent completed without a final summary.'
     });
     await agent.dispose();
   });
@@ -4964,7 +4970,7 @@ describe('agent runtime', () => {
         })
         .result()
     ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'image described' });
-    await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'input_images'), {
+    await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'resources'), {
       recursive: true,
       force: true
     });

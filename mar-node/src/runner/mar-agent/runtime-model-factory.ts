@@ -130,6 +130,7 @@ export class MarAgentRuntimeModelFactory {
             ? { fastMode: true }
             : {}),
           hostedWebSearch: configuration.hostedWebSearch,
+          useResourceUrl: configuration.useResourceUrl,
           ...(imageGeneration === undefined ? {} : { imageGeneration }),
           ...(configuration.responsesTransport === undefined
             ? {}

@@ -87,8 +87,8 @@ export interface HostSessionResourceSnapshot {
 export interface MarAgentHost {
   /** Independent model consumption facts, including child and auxiliary calls. */
   modelUsage?: import('../model/usage-observer.js').ModelUsageObserver | undefined;
-  publishModelImage?: (
-    image: import('../session/store/image-resources.js').SessionImageResource,
+  publishModelResource?: (
+    image: import('../session/store/resources.js').SessionResource,
     context: { sessionId: string; executionId: string; homeDirectory: string }
   ) => Promise<{ url: string; urlExpiresAt: number } | undefined>;
   readonly extensionPorts?: CoreHostExtensionPorts;

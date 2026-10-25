@@ -79,6 +79,7 @@ interface ModelDraft {
   codeMode: boolean;
   serviceTier: NonNullable<MarAgentModelSummary['serviceTier']>;
   hostedWebSearch: boolean;
+  useResourceUrl: boolean;
   responsesTransport: MarAgentResponsesTransport | undefined;
   responsesPreviousResponseId: boolean;
   enabled: boolean;
@@ -499,6 +500,7 @@ function emptyDraft(): ModelDraft {
     codeMode: false,
     serviceTier: 'default',
     hostedWebSearch: false,
+    useResourceUrl: false,
     responsesTransport: undefined,
     responsesPreviousResponseId: false,
     enabled: true,
@@ -721,6 +723,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     codeMode: model.codeMode,
     serviceTier: model.serviceTier ?? (model.fastMode === true ? 'priority' : 'default'),
     hostedWebSearch: model.hostedWebSearch,
+    useResourceUrl: model.metadata?.useResourceUrl ?? false,
     responsesTransport:
       protocol === 'GROK'
         ? (model.responsesTransport ?? grokTransport())
@@ -792,6 +795,7 @@ function modelSaveBody(): Record<string, unknown> {
     codeMode: draft.codeMode,
     ...(oauth && !grok ? { serviceTier: draft.serviceTier } : {}),
     hostedWebSearch: draft.hostedWebSearch,
+    metadata: { useResourceUrl: draft.useResourceUrl },
     responsesPreviousResponseId:
       draft.protocol === 'ANTHROPIC_MESSAGES' ? false : draft.responsesPreviousResponseId,
     enabled: draft.enabled,
@@ -1957,6 +1961,9 @@ onBeforeUnmount(() => {
           <el-checkbox v-model="draft.codeMode">{{
             translate('marAgentModels.codeMode')
           }}</el-checkbox>
+          <el-checkbox v-model="draft.useResourceUrl">{{
+            translate('marAgentModels.useResourceUrl')
+          }}</el-checkbox>
           <el-checkbox
             v-model="draft.hostedWebSearch"
             :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
@@ -1967,6 +1974,7 @@ onBeforeUnmount(() => {
             :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
             >{{ translate('marAgentModels.responsesContinuation') }}</el-checkbox
           >
+          <p class="form-hint">{{ translate('marAgentModels.resourceUrlDescription') }}</p>
         </el-form-item>
         <el-form-item :label="translate('marAgentModels.reasoningEfforts')">
           <el-checkbox-group v-model="draft.reasoningEfforts">

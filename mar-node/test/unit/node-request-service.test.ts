@@ -149,20 +149,23 @@ describe('Node request user authorization', () => {
     );
   });
 
-  it('accepts only the bound model image capability identity', async () => {
+  it('accepts only the bound model resource capability identity', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
     const f = fixture({
       userId: 0,
-      sessionHash: 'model-image',
-      operation: 'model.image.read'
+      sessionHash: 'model-resource',
+      operation: 'model.resource.read'
     });
     const request = {
       ...f.request,
-      payload: { ...(f.request.payload as Record<string, unknown>), operation: 'model.image.read' }
+      payload: {
+        ...(f.request.payload as Record<string, unknown>),
+        operation: 'model.resource.read'
+      }
     };
     await f.service.handle(request);
-    expect(f.execute).toHaveBeenCalledExactlyOnceWith('model.image.read', {
-      __workspaceWatchSessionHash: 'model-image',
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith('model.resource.read', {
+      __workspaceWatchSessionHash: 'model-resource',
       __requestUserId: 0
     });
 

@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import {
   MarAgentError,
   openMarAgentSessionCatalog,
-  type SessionImageResource
+  type SessionResource
 } from '@myagentroam/agent';
-import { modelImageReadInputSchema, type ModelImageReadInput } from '@myagentroam/protocol';
+import { modelResourceReadInputSchema, type ModelResourceReadInput } from '@myagentroam/protocol';
 
 const TTL_MS = 24 * 60 * 60_000;
 type ResourceScope = { workspaceId: string } | { conversationId: string };
@@ -20,7 +20,7 @@ interface Publication {
 }
 
 /** Only capability metadata lives here. The SDK owns the sole immutable image file. */
-export class ModelImagePublicationService {
+export class ModelResourcePublicationService {
   readonly #pending = new Map<string, Promise<{ url: string; urlExpiresAt: number }>>();
   #key: Promise<Buffer> | undefined;
 
@@ -33,7 +33,7 @@ export class ModelImagePublicationService {
     }
   ) {}
 
-  async publish(source: PublicationSource, resource: SessionImageResource) {
+  async publish(source: PublicationSource, resource: SessionResource) {
     const origin = this.options.origin();
     const nodeId = this.options.nodeId();
     if (origin === undefined || nodeId === undefined) return undefined;
@@ -60,7 +60,7 @@ export class ModelImagePublicationService {
     try {
       const record = JSON.parse(await readFile(this.path(id), 'utf8')) as Publication;
       if (record.version !== 2 || this.identity(record.source, record.resourceId) !== id)
-        throw new Error('MODEL_IMAGE_INVALID');
+        throw new Error('MODEL_RESOURCE_INVALID');
       return { url: record.url, urlExpiresAt: record.expiresAt };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -71,7 +71,7 @@ export class ModelImagePublicationService {
       'workspaceId' in source
         ? `workspaces/${encodeURIComponent(source.workspaceId)}`
         : `conversations/${encodeURIComponent(source.conversationId)}`;
-    const url = `${origin}/api/nodes/${encodeURIComponent(nodeId)}/${scope}/sessions/${encodeURIComponent(source.sessionId)}/images/${resourceId}?expiresAt=${expiresAt}&signature=${signature}`;
+    const url = `${origin}/api/nodes/${encodeURIComponent(nodeId)}/${scope}/sessions/${encodeURIComponent(source.sessionId)}/resources/${resourceId}?expiresAt=${expiresAt}&signature=${signature}`;
     const record: Publication = { version: 2, source, resourceId, expiresAt, url };
     const temporary = join(this.options.directory(), `.${id}.${randomUUID()}.tmp`);
     try {
@@ -84,10 +84,9 @@ export class ModelImagePublicationService {
   }
 
   async read(
-    input: ModelImageReadInput
+    input: ModelResourceReadInput
   ): Promise<{ mimeType: string; dataBase64: string } | undefined> {
-    if (!modelImageReadInputSchema.safeParse(input).success) return undefined;
-    if ('imageId' in input) return this.readLegacy(input.imageId, input.token);
+    if (!modelResourceReadInputSchema.safeParse(input).success) return undefined;
     if (input.expiresAt <= this.now()) return undefined;
     const nodeId = this.options.nodeId();
     if (nodeId === undefined) return undefined;
@@ -123,7 +122,7 @@ export class ModelImagePublicationService {
       homeDirectory: record.source.homeDirectory
     });
     try {
-      return await catalog.readImageResource(record.source.sessionId, record.resourceId);
+      return await catalog.readResource(record.source.sessionId, record.resourceId);
     } catch (error) {
       if (error instanceof MarAgentError && error.code === 'MAR_AGENT_SESSION_NOT_FOUND')
         return undefined;
@@ -176,35 +175,9 @@ export class ModelImagePublicationService {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       }
       const key = await readFile(path);
-      if (key.length !== 32) throw new Error('MODEL_IMAGE_SIGNING_KEY_INVALID');
+      if (key.length !== 32) throw new Error('MODEL_RESOURCE_SIGNING_KEY_INVALID');
       return key;
     })());
   }
   /** Already stored URLs stay readable until their original expiry, without rewriting history. */
-  private async readLegacy(id: string, token: string) {
-    try {
-      const record = JSON.parse(await readFile(this.path(id), 'utf8')) as {
-        id?: string;
-        token?: string;
-        expiresAt?: number;
-        mimeType?: string;
-        dataBase64?: string;
-      };
-      if (
-        record.id !== id ||
-        typeof record.token !== 'string' ||
-        record.token.length !== token.length ||
-        !timingSafeEqual(Buffer.from(record.token), Buffer.from(token)) ||
-        typeof record.expiresAt !== 'number' ||
-        record.expiresAt <= this.now() ||
-        typeof record.mimeType !== 'string' ||
-        typeof record.dataBase64 !== 'string'
-      )
-        return undefined;
-      return { mimeType: record.mimeType, dataBase64: record.dataBase64 };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw error;
-    }
-  }
 }

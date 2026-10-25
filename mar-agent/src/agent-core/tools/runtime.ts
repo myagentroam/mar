@@ -61,7 +61,14 @@ export async function executeCapturedTool(
     sessionId: context.sessionId,
     executionId: context.executionId,
     ...(context.modelId === undefined ? {} : { modelId: context.modelId }),
-    ...(context.recentImages === undefined ? {} : { recentImages: context.recentImages }),
+    ...(context.recentImages === undefined
+      ? {}
+      : {
+          recentImages: context.recentImages.map((image) => ({
+            ...image,
+            data: Buffer.from(image.data)
+          }))
+        }),
     ...(context.codeMode === undefined ? {} : { codeMode: context.codeMode })
   });
 }
