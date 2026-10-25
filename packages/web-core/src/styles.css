@@ -43,6 +43,10 @@
   }
 }
 
+html.console-ui {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,

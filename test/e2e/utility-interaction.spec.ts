@@ -399,6 +399,7 @@ test.describe('touch utility feedback', () => {
     await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
     const colors = await customPalette(page);
     const control = page.getByTestId('native');
+    await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
     // Touch pseudo-class timing belongs to the browser; held :active is covered above.
     await control.tap();
     await expect(page.getByTestId('events')).toHaveText('native');
