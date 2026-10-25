@@ -62,6 +62,7 @@ export function createWorkspaceGitService(input: {
   let epoch = 0;
   let historyGeneration = 0;
   let appliedWatchRevision = -1;
+  let changesTarget: WorkspaceFileOperationTarget | undefined;
   const fileRequests = new Map<string, Promise<boolean>>();
   const visibleChanges = computed(() => changeEntries(changes.value));
   const repositories = computed(() => changeRepositories(changes.value));
@@ -129,11 +130,18 @@ export function createWorkspaceGitService(input: {
     });
   }
   let changesTask = createChangesTask(epoch);
+  function matchesChangesTarget(target = input.target()): boolean {
+    return (
+      target?.nodeId === changesTarget?.nodeId && target?.workspaceId === changesTarget?.workspaceId
+    );
+  }
   function loadChanges(): Promise<void> {
+    if (!matchesChangesTarget()) reset();
     return changesTask.request();
   }
   function applyWatch(value: unknown, revision?: number): boolean {
     const target = input.target();
+    if (!matchesChangesTarget(target)) reset();
     if (
       target === undefined ||
       (revision === undefined
@@ -223,6 +231,7 @@ export function createWorkspaceGitService(input: {
     return loadHistory(true);
   }
   async function openHistory(): Promise<void> {
+    if (!matchesChangesTarget()) reset();
     const target = input.target(),
       generation = epoch;
     if (target === undefined) return;
@@ -343,7 +352,9 @@ export function createWorkspaceGitService(input: {
   function reset(preserveWatchRevision = false): void {
     epoch += 1;
     historyGeneration += 1;
-    if (!preserveWatchRevision) appliedWatchRevision = -1;
+    if (!preserveWatchRevision || !matchesChangesTarget()) appliedWatchRevision = -1;
+    const target = input.target();
+    changesTarget = target === undefined ? undefined : { ...target };
     changesTask = createChangesTask(epoch);
     changes.value = undefined;
     changesRefreshing.value = false;
@@ -360,7 +371,7 @@ export function createWorkspaceGitService(input: {
   }
   function restore(value: Partial<WorkspaceGitSnapshot>): void {
     const watchedChanges = changes.value;
-    const hasWatch = appliedWatchRevision >= 0;
+    const hasWatch = matchesChangesTarget() && appliedWatchRevision >= 0;
     reset(true);
     if (input.target() === undefined || !input.gitEnabled()) return;
     changes.value = hasWatch ? watchedChanges : value.changes;

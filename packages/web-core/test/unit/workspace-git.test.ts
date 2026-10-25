@@ -164,6 +164,20 @@ describe('Workspace Git service', () => {
     expect(service.changes.value).toEqual(snapshot);
   });
 
+  it('opens History before the first Watch after binding the initial target', async () => {
+    const { service, request } = createGitHarness(async (path) => {
+      const pathname = requestUrl(path).pathname;
+      if (pathname.endsWith('/changes')) return { changes: [] };
+      if (pathname.endsWith('/git/refs')) return { refs: [historyRef('refs/heads/main')] };
+      if (pathname.endsWith('/git/history'))
+        return { commits: [historyCommit('initial')], nextCursor: null };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    await service.openHistory();
+    expect(service.historyCommits.value.map((commit) => commit.hash)).toEqual(['initial']);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
   it('coalesces overlapping change refreshes into one trailing request', async () => {
     const first = deferred<unknown>();
     const trailing = deferred<unknown>();
@@ -483,6 +497,78 @@ describe('Workspace Git service', () => {
     expect(service.changes.value).toEqual(fresh);
   });
 
+  it.each([
+    { nodeId: 'node-1', workspaceId: 'workspace-2' },
+    { nodeId: 'node-2', workspaceId: 'workspace-1' }
+  ])('isolates cached Changes and Watch revisions for $nodeId/$workspaceId', (target) => {
+    const { service, setTarget } = createGitHarness();
+    const a = { changes: [{ path: 'a-only.txt' }] };
+    const cached = { changes: [{ path: 'b-cached.txt' }] };
+    const fresh = { changes: [{ path: 'b-fresh.txt' }] };
+    expect(service.applyWatch(a, 3)).toBe(true);
+    setTarget(target);
+    service.restore({ changes: cached });
+    expect(service.changes.value).toEqual(cached);
+    expect(service.applyWatch(fresh, 1)).toBe(true);
+    expect(service.applyWatch(a, 0)).toBe(false);
+    expect(service.changes.value).toEqual(fresh);
+    service.restore({ changes: cached });
+    expect(service.changes.value).toEqual(fresh);
+  });
+
+  it('accepts a new target Watch before cache recovery and clears missing targets and reset state', () => {
+    const { service, setTarget } = createGitHarness();
+    service.applyWatch({ changes: [{ path: 'a-only.txt' }] }, 3);
+    setTarget({ nodeId: 'node-2', workspaceId: 'workspace-1' });
+    const fresh = { changes: [{ path: 'b-fresh.txt' }] };
+    expect(service.applyWatch(fresh, 1)).toBe(true);
+    service.restore({ changes: { changes: [{ path: 'b-cached.txt' }] } });
+    expect(service.changes.value).toEqual(fresh);
+    setTarget(defaultTarget);
+    service.restore({});
+    expect(service.changes.value).toBeUndefined();
+    expect(service.applyWatch(fresh, 1)).toBe(true);
+    setTarget(undefined);
+    service.restore({ changes: fresh });
+    expect(service.changes.value).toBeUndefined();
+    expect(service.applyWatch(fresh, 9)).toBe(false);
+    setTarget(defaultTarget);
+    service.reset();
+    expect(service.applyWatch(fresh, 1)).toBe(true);
+    service.reset(true);
+    expect(service.changes.value).toBeUndefined();
+    expect(service.applyWatch(fresh, 1)).toBe(false);
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'isolates old HTTP %s and finally while the restored target refreshes',
+    async (outcome) => {
+      const old = deferred<unknown>();
+      const next = deferred<unknown>();
+      const { service, setTarget, onFailure } = createGitHarness(async (path) =>
+        requestUrl(path).pathname.includes('workspace-1') ? old.promise : next.promise
+      );
+      service.applyWatch({ changes: [{ path: 'a-only.txt' }] }, 3);
+      const oldRequest = service.loadChanges();
+      setTarget({ nodeId: 'node-1', workspaceId: 'workspace-2' });
+      const cached = { changes: [{ path: 'b-cached.txt' }] };
+      service.restore({ changes: cached });
+      const newRequest = service.loadChanges();
+      if (outcome === 'success') old.resolve({ changes: [{ path: 'a-late.txt' }] });
+      else old.reject(new Error('OLD_TARGET_FAILED'));
+      await oldRequest;
+      expect(service.changes.value).toEqual(cached);
+      expect(service.changesRefreshing.value).toBe(true);
+      expect(onFailure).not.toHaveBeenCalled();
+      const fresh = { changes: [{ path: 'b-fresh.txt' }] };
+      expect(service.applyWatch(fresh, 1)).toBe(true);
+      next.resolve({ changes: [{ path: 'b-stale-http.txt' }] });
+      await newRequest;
+      expect(service.changes.value).toEqual(fresh);
+      expect(service.changesRefreshing.value).toBe(false);
+    }
+  );
+
   it('runs distinct commit file reads in parallel, reuses identical reads, and ignores reset results', async () => {
     const filesA = deferred<unknown>();
     const filesB = deferred<unknown>();
@@ -625,6 +711,54 @@ describe('Workspace Git service', () => {
     expect(service.restoringPath.value).toBeUndefined();
     expect(onFailure).toHaveBeenCalledExactlyOnceWith(refreshError, 'CHANGES');
   });
+
+  it.each(['success', 'failure'] as const)(
+    'isolates an old restore POST %s from the new target operation',
+    async (outcome) => {
+      const old = deferred<unknown>();
+      const next = deferred<unknown>();
+      const { service, setTarget, request, onFailure } = createGitHarness(async (path, init) => {
+        if (init?.method !== 'POST') return { changes: [] };
+        return requestUrl(path).searchParams.get('nodeId') === 'node-1'
+          ? old.promise
+          : next.promise;
+      });
+      const entry: ChangeEntry = {
+        repositoryPath: 'sub',
+        repositoryName: 'sub',
+        source: 'SUBMODULE',
+        worktreePath: '/temporary/a',
+        path: 'same.txt',
+        state: 'UNSTAGED',
+        change: 'MODIFIED',
+        diffAvailable: true
+      };
+      const oldRestore = service.restoreChange(entry);
+      const b = { nodeId: 'node-2', workspaceId: 'workspace-1' };
+      setTarget(b);
+      service.restore({ changes: { changes: [] } });
+      const bEntry = { ...entry, repositoryPath: '', worktreePath: '/temporary/b' };
+      const newRestore = service.restoreChange(bEntry);
+      if (outcome === 'success') old.resolve({ restored: true });
+      else old.reject(new Error('OLD_RESTORE_FAILED'));
+      await expect(oldRestore).resolves.toBe(outcome === 'success');
+      expect(onFailure).not.toHaveBeenCalled();
+      expect(service.restoringPath.value).toBe(changeKey(bEntry));
+      expect(request).toHaveBeenCalledTimes(2);
+      const [path, init] = request.mock.calls[1]!;
+      expect(requestUrl(path).pathname).toBe('/api/workspaces/workspace-1/changes/restore');
+      expect(requestUrl(path).searchParams.get('nodeId')).toBe('node-2');
+      expect(JSON.parse(init!.body as string)).toEqual({
+        nodeId: 'node-2',
+        path: 'same.txt',
+        state: 'UNSTAGED',
+        worktreePath: '/temporary/b'
+      });
+      next.resolve({ restored: true });
+      await expect(newRestore).resolves.toBe(true);
+      expect(service.restoringPath.value).toBeUndefined();
+    }
+  );
 
   it('restores a Git snapshot and clears Git state on a DIRECTORY Watch update', async () => {
     const watchSnapshot = {
