@@ -223,6 +223,34 @@ describe('Composer product tags', () => {
       'text'
     );
   });
+  it('round-trips optional attachment instructions without exposing them as body text', () => {
+    const instruction = 'Images <included> & ready.';
+    const files = [
+      { name: 'shot.png', mime: 'image/png', path: '.mar/temp-files/input/shot.png' },
+      { name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }
+    ];
+    const tag = serializeComposerTag('mar_attachments', { files, instruction });
+    expect(tag).toContain('<instruction>Images &lt;included&gt; &amp; ready.</instruction>');
+    expect(parseComposerTags(tag)[0]).toMatchObject({
+      kind: 'mar_attachments',
+      payload: { files, instruction }
+    });
+    expect(composerVisibleText(`Review these\n${tag}`)).toBe('Review these');
+  });
+
+  it('rejects empty, oversized, and duplicate attachment instructions', () => {
+    const files = [{ name: 'shot.png', mime: 'image/png', path: '.mar/temp-files/input/shot.png' }];
+    for (const instruction of ['', 'x'.repeat(513)])
+      expect(() => serializeComposerTag('mar_attachments', { files, instruction })).toThrow(
+        'COMPOSER_TAG_INVALID'
+      );
+    const raw = serializeComposerTag('mar_attachments', { files }).replace(
+      '</mar_attachments>',
+      '<instruction>First</instruction><instruction>Second</instruction></mar_attachments>'
+    );
+    expect(parseComposerTags(raw)).toEqual([{ kind: 'text', text: raw }]);
+  });
+
   it('keeps opaque attachment resources separate from Runner paths and rejects resource traversal', () => {
     const resource = 'mar-attachment://00000000-0000-4000-8000-000000000001/原图.png';
     for (const file of [

@@ -63,118 +63,44 @@ describe('ResourceInputProjection', () => {
           ? { mimeType: 'image/png', url: injected.url }
           : { mimeType: 'image/png', dataBase64: injected.dataBase64 }
       ]);
-      projection.complete(first);
+      await projection.complete(first);
       const next = await projection.prepare(
         request([attachment], { images: structuredClone(mirrors) }),
         mirrors
       );
       expect(next).not.toHaveProperty('images');
-      expect(next.messages[0]?.images).toEqual(useResourceUrl ? mirrors : []);
+      expect(next.messages[0]?.images).toEqual(
+        useResourceUrl
+          ? mirrors
+          : [{ ...mirrors[0], url: undefined, dataBase64: 'YXR0YWNobWVudA==' }].map(
+              ({ url: _url, ...image }) => image
+            )
+      );
       expect(injected).toHaveProperty('dataBase64');
       expect(injected).toHaveProperty('url');
     }
   );
 
-  it('sends only each newly delivered image across tool-result rounds and re-views', async () => {
-    const store = createStore({
-      attachment: 'YXR0YWNobWVudA==',
-      sharedFile: 'c2hhcmVkLWZpbGU=',
-      imageB: 'aW1hZ2UtYg==',
-      mixedImage: 'bWl4ZWQtaW1hZ2U='
-    });
+  it('keeps recent images across ordinary rounds and independent re-views', async () => {
+    const store = createStore({ shared: 'c2hhcmVk' });
     const projection = new ResourceInputProjection(false, store, 'session-1', []);
-    const attachment = message({
-      role: 'user',
-      metadata: { source: 'user', recordId: 'attachment-1' },
-      images: [
-        {
-          ...image('attachment'),
-          url: 'http://assets.example.test/expired-attachment.png',
-          urlExpiresAt: 1
-        }
-      ]
-    });
-    const mirrors = [image('attachment')];
-    const first = await projection.prepare(request([attachment], { images: mirrors }), mirrors);
-
-    expect(first.messages[0]?.images).toEqual([
-      { ...image('attachment'), dataBase64: 'YXR0YWNobWVudA==' }
-    ]);
-    expect(first).not.toHaveProperty('images');
-    expect(attachment.images).toEqual([
-      {
-        ...image('attachment'),
-        url: 'http://assets.example.test/expired-attachment.png',
-        urlExpiresAt: 1
-      }
-    ]);
-    projection.complete({ ...first, retryState: { attempts: 1 } });
-
-    const ordinaryTool = message({ callId: 'ordinary-1', content: 'read completed' });
-    const afterAttachment = await projection.prepare(request([attachment, ordinaryTool]));
-    expect(afterAttachment.messages[0]?.images).toEqual([]);
-    expect(afterAttachment.messages[1]).toEqual(ordinaryTool);
-    expect(store.readResource).toHaveBeenCalledTimes(1);
-
-    const imageA = imageMessage('sharedFile', { callId: 'view-image-a' });
-    const afterImageA = await projection.prepare(request([attachment, ordinaryTool, imageA]));
-    expect(afterImageA.messages.map((item) => item.images ?? [])).toEqual([
-      [],
-      [],
-      [{ ...image('sharedFile'), dataBase64: 'c2hhcmVkLWZpbGU=' }]
-    ]);
-    projection.complete(afterImageA);
-
-    const ordinaryAfterImage = message({ callId: 'ordinary-2', content: 'command completed' });
-    const afterOrdinary = await projection.prepare(
-      request([attachment, imageA, ordinaryAfterImage])
-    );
-    expect(afterOrdinary.messages.map((item) => item.images ?? [])).toEqual([[], [], []]);
-    expect(store.readResource).toHaveBeenCalledTimes(2);
-
-    const sameFileAgain = imageMessage('sharedFile', { callId: 'view-image-a-again' });
-    const afterReView = await projection.prepare(
-      request([attachment, imageA, ordinaryAfterImage, sameFileAgain])
-    );
-    expect(afterReView.messages[3]?.images).toEqual([
-      { ...image('sharedFile'), dataBase64: 'c2hhcmVkLWZpbGU=' }
-    ]);
-    expect(store.readResource).toHaveBeenNthCalledWith(3, 'session-1', 'sharedFile');
-    projection.complete(afterReView);
-
-    const imageB = imageMessage('imageB', { callId: 'view-image-b' });
-    const mixedResult = message({
-      callId: 'mixed-image-result',
-      content: 'two images were observed',
-      images: [image('imageB'), image('mixedImage')]
-    });
-    const finalRound = await projection.prepare(
-      request([attachment, imageA, sameFileAgain, ordinaryAfterImage, imageB, mixedResult])
-    );
-    expect(finalRound.messages.map((item) => item.images ?? [])).toEqual([
-      [],
-      [],
-      [],
-      [],
-      [{ ...image('imageB'), dataBase64: 'aW1hZ2UtYg==' }],
-      [
-        { ...image('imageB'), dataBase64: 'aW1hZ2UtYg==' },
-        { ...image('mixedImage'), dataBase64: 'bWl4ZWQtaW1hZ2U=' }
-      ]
-    ]);
-    expect(finalRound.messages.map((item) => item.content)).toEqual([
-      attachment.content,
-      imageA.content,
-      sameFileAgain.content,
-      ordinaryAfterImage.content,
-      imageB.content,
-      mixedResult.content
-    ]);
-    expect(store.readResource).toHaveBeenCalledTimes(6);
+    const first = imageMessage('shared', { callId: 'first-view' });
+    await projection.complete(await projection.prepare(request([first])));
+    const ordinary = message({ callId: 'read', content: 'ordinary result' });
+    const secondView = imageMessage('shared', { callId: 'second-view' });
+    const next = await projection.prepare(request([first, ordinary, secondView]));
+    expect(next.messages.map((item) => item.images?.length ?? 0)).toEqual([1, 0, 1]);
+    expect(next.messages[1]).toBe(ordinary);
+    expect(first.images).toEqual([image('shared')]);
+    await projection.complete(next);
+    expect(projection.hasPendingImages([first, secondView])).toBe(false);
+    expect(
+      (await projection.prepare(request([first, secondView]))).messages.map((m) => m.images?.length)
+    ).toEqual([1, 1]);
   });
 
   it('uses callId or recordId as source identity instead of resourceId', async () => {
-    const store = createStore({ shared: 'c2hhcmVk' });
+    const store = createStore({ shared: 'c2hhcmVk', 'different-resource': 'ZGlmZmVyZW50' });
     const history = [
       imageMessage('shared', { callId: 'historical-call' }),
       imageMessage('shared', { recordId: 'historical-record' })
@@ -190,14 +116,14 @@ describe('ResourceInputProjection', () => {
     );
 
     expect(prepared.messages.map((item) => item.images ?? [])).toEqual([
-      [],
-      [],
+      [{ ...image('different-resource'), dataBase64: 'ZGlmZmVyZW50' }],
+      [{ ...image('different-resource'), dataBase64: 'ZGlmZmVyZW50' }],
       [{ ...image('shared'), dataBase64: 'c2hhcmVk' }],
       [{ ...image('shared'), dataBase64: 'c2hhcmVk' }]
     ]);
-    expect(store.readResource).toHaveBeenCalledTimes(2);
-    expect(store.readResource).toHaveBeenNthCalledWith(1, 'session-1', 'shared');
-    expect(store.readResource).toHaveBeenNthCalledWith(2, 'session-1', 'shared');
+    expect(store.readResource).toHaveBeenCalledTimes(4);
+    expect(store.readResource).toHaveBeenNthCalledWith(3, 'session-1', 'shared');
+    expect(store.readResource).toHaveBeenNthCalledWith(4, 'session-1', 'shared');
   });
 
   it('keeps images available across uncompleted retries and completes cloned requests', async () => {
@@ -221,12 +147,11 @@ describe('ResourceInputProjection', () => {
 
     const runtimeClone = { ...retryAttempt, retryState: { attempts: 2 } };
     expect(runtimeClone.messages).toBe(retryAttempt.messages);
-    projection.complete(runtimeClone);
+    await projection.complete(runtimeClone);
     expect(projection.hasPendingImages(initial.messages)).toBe(false);
 
     const next = await projection.prepare(request([source]));
-    expect(next.messages[0]?.images).toEqual([]);
-    expect(store.readResource).toHaveBeenCalledTimes(2);
+    expect(next.messages[0]?.images).toEqual([{ ...image('retryImage'), dataBase64: 'cmV0cnk=' }]);
   });
 
   it('preserves fixed expired HTTP URLs without reading or refreshing resource bytes', async () => {

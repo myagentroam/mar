@@ -5,6 +5,7 @@ import { modelImageKey, modelImageUrl } from './image.js';
 import { stableToolSchema } from '../tools/definition-projection.js';
 import { randomUUID } from 'node:crypto';
 import { MarAgentError } from '../error.js';
+import { assertInlineMediaBudget } from '../session/inline-media.js';
 import {
   resolveModelDefaultReasoningEffort,
   type MarAgentModelConfiguration
@@ -118,6 +119,7 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
     request: ModelRequest,
     signal: AbortSignal
   ): AsyncIterable<ModelEvent> {
+    assertInlineMediaBudget(request);
     const apiKey = this.configuration.apiKey;
     if (apiKey === undefined)
       throw new MarAgentError(

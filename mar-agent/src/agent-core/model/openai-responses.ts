@@ -5,6 +5,7 @@ import { stableToolSchema } from '../tools/definition-projection.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { describeMarAgentError, MarAgentError } from '../error.js';
+import { assertInlineMediaBudget } from '../session/inline-media.js';
 import {
   marAgentReasoningEffortSchema,
   resolveModelDefaultReasoningEffort,
@@ -1018,6 +1019,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
   }
 
   prepareRequest(request: ModelRequest): PreparedResponsesRequest {
+    assertInlineMediaBudget(request);
     if (
       this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET' &&
       this.state.socket !== undefined &&

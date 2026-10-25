@@ -24,6 +24,21 @@ export function contextGcTokenEntries(input: TokenContext, messages: readonly Mo
 }
 
 function serializedEntries(input: TokenContext, messages: readonly ModelMessage[]) {
+  // Media bytes have a separate budget. Keep identity for cache boundaries without
+  // loading resources or counting base64 payloads as text tokens.
+  messages = messages.map((message) =>
+    message.images?.length
+      ? {
+          ...message,
+          images: message.images.map((image) => ({
+            mimeType: image.mimeType,
+            url: image.resourceId
+              ? `https://mar.invalid/resource/${image.resourceId}`
+              : (image.url ?? 'https://mar.invalid/inline-image')
+          }))
+        }
+      : message
+  );
   const responses =
     input.modelProtocol === 'OPENAI_RESPONSES' ||
     (input.modelProtocol === undefined &&

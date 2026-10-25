@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
 import {
   contextGcMessageTokens,
-  contextGcReclaimedTokens
+  contextGcReclaimedTokens,
+  contextGcCacheImpact,
+  contextGcPrefixTokens
 } from '../../src/agent-core/runtime/context/gc-tokens.js';
 import * as tokenBudget from '../../src/agent-core/runtime/token-budget.js';
 
@@ -15,6 +17,45 @@ describe('GC token estimates', () => {
     system: '',
     tools: []
   };
+
+  it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
+    'uses resource identity, not media byte size, for %s framing and cache boundaries',
+    (modelProtocol) => {
+      const context = { ...input, modelProtocol };
+      const prefix: ModelMessage = { role: 'user', content: 'Stable prefix. '.repeat(100) };
+      const image: ModelMessage = {
+        role: 'user',
+        content: 'Observe.',
+        images: [
+          {
+            mimeType: 'image/png',
+            resourceId: 'a'.repeat(64),
+            byteSize: 3 * 1_048_576
+          }
+        ]
+      };
+      expect(contextGcMessageTokens(context, [image])).toBe(
+        contextGcMessageTokens(context, [
+          {
+            ...image,
+            images: [{ ...image.images![0]!, byteSize: 100, dataBase64: 'cGl4ZWxz' }]
+          }
+        ])
+      );
+      const before = [prefix, image, { role: 'user' as const, content: 'Retain suffix.' }];
+      const after = [prefix, { ...image, images: [] }, before[2]!];
+      const cached = contextGcPrefixTokens(context) + contextGcMessageTokens(context, before);
+      const impact = contextGcCacheImpact(
+        context,
+        before,
+        after,
+        cached,
+        contextGcReclaimedTokens(context, before, after)
+      );
+      expect(impact.preservedCachedPrefixTokens).toBeGreaterThan(0);
+      expect(impact.preservedCachedPrefixTokens).toBeLessThan(cached);
+    }
+  );
 
   it('uses the shared token estimator for projected entries', () => {
     const expected = tokenBudget.countModelTokens('{"content":"A local estimate.","role":"user"}');

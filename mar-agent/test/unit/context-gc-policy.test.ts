@@ -28,6 +28,7 @@ import { validateContextGcCheckpoint } from '../../src/agent-core/session/contex
 import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
 import { ContextGcRuntime } from '../../src/agent-core/runtime/context/gc-runtime.js';
+import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
 
 function records() {
   let sequence = 0;
@@ -1350,5 +1351,147 @@ describe('context GC high-water policy', () => {
     ).toBe(0);
     expect(contextGcAppliedCompactCreditCostUnits(2_000, 7_040)).toBe(7_040);
     expect(contextGcAppliedCompactCreditCostUnits(8_000, 7_040)).toBe(8_000);
+  });
+});
+
+describe('unified inline media GC', () => {
+  async function mediaFixture(bytes = 3 * 1_048_576, text = false) {
+    const fixture = records();
+    for (const id of ['a', 'b'])
+      modelContext(fixture.add, {
+        role: 'tool',
+        callId: id,
+        name: 'view_image',
+        content: `Viewed ${id} (1×1 px).`,
+        images: [
+          {
+            resourceInputVersion: 1,
+            mimeType: 'image/png',
+            resourceId: id.repeat(64),
+            byteSize: bytes
+          }
+        ]
+      });
+    if (text) addPatchCandidate(fixture);
+    const tokens = text ? 6_000 : 1_000;
+    successfulRollout(fixture.add, tokens);
+    successfulRollout(fixture.add, tokens);
+    fixture.add('resource.window', {
+      version: 1,
+      consideredThrough: { sourceId: 'tool:b', imageIndex: 0 }
+    });
+    const projection = buildContextProjection(fixture.values);
+    const window = new ResourceInputProjection(
+      false,
+      { readResource: async () => undefined },
+      'session',
+      projection.entries.map((entry) => entry.message),
+      { records: fixture.values }
+    );
+    return { fixture, candidate: await window.gcCandidate(), tokens };
+  }
+
+  it('admits image pressure at low token usage without inventing text replacements', async () => {
+    const { fixture, candidate, tokens } = await mediaFixture();
+    expect(candidate?.reason).toBe('SOFT_LIMIT');
+    const selected = plan(
+      fixture.values,
+      { contextInputTokens: tokens },
+      { inlineMedia: candidate! }
+    );
+    expect(selected).toMatchObject({
+      stage: 'INLINE_MEDIA',
+      draft: { replacements: [], inlineMedia: { reason: 'SOFT_LIMIT' } }
+    });
+    const record = fixture.add('context.gc.completed', {
+      ...selected!.draft,
+      checkpointId: 'media',
+      generation: 1
+    });
+    expect(validateContextGcCheckpoint(fixture.values, record)?.inlineMedia?.state).toEqual(
+      candidate!.state
+    );
+  });
+
+  it('does not independently collect a below-trigger text hitchhike candidate', async () => {
+    const { fixture, candidate, tokens } = await mediaFixture(2 * 1_048_576);
+    expect(candidate?.reason).toBe('TEXT_GC');
+    expect(
+      plan(fixture.values, { contextInputTokens: tokens }, { inlineMedia: candidate! })
+    ).toBeUndefined();
+  });
+
+  it('persists media pressure even when there is no finite text-cache payback', async () => {
+    const { fixture, candidate } = await mediaFixture(3 * 1_048_576);
+    const selected = plan(
+      fixture.values,
+      { contextInputTokens: 1_000, outputTokens: 0 },
+      {
+        inlineMedia: { ...candidate!, project: (messages) => messages }
+      }
+    );
+    expect(selected?.draft.metrics).toMatchObject({
+      reclaimedTokens: 0,
+      requiredPositiveNetRollouts: null,
+      requiredTargetRoiRollouts: null
+    });
+    const record = {
+      ...fixture.values.at(-1)!,
+      sequence: fixture.values.at(-1)!.sequence + 1,
+      type: 'context.gc.completed',
+      payload: JSON.parse(
+        JSON.stringify({ ...selected!.draft, checkpointId: 'media-pressure', generation: 1 })
+      )
+    };
+    expect(validateContextGcCheckpoint(fixture.values, record, '/workspace')).toBeDefined();
+  });
+
+  it('shares one checkpoint with eligible text GC at the lower image watermark', async () => {
+    const { fixture, candidate, tokens } = await mediaFixture(2 * 1_048_576, true);
+    expect(candidate?.reason).toBe('TEXT_GC');
+    const selected = plan(
+      fixture.values,
+      { contextInputTokens: tokens },
+      { inlineMedia: candidate! }
+    );
+    expect(selected?.draft.replacements.length).toBeGreaterThan(0);
+    expect(selected?.draft.inlineMedia?.state).toEqual(candidate!.state);
+    expect(selected?.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
+    const record = fixture.add('context.gc.completed', {
+      ...selected!.draft,
+      checkpointId: 'combined',
+      generation: 1
+    });
+    expect(validateContextGcCheckpoint(fixture.values, record)?.inlineMedia?.state).toEqual(
+      candidate!.state
+    );
+  });
+
+  it('anchors usage-free media checkpoints without permitting new text replacements', async () => {
+    const { fixture, candidate, tokens } = await mediaFixture(3 * 1_048_576, true);
+    const combined = plan(
+      fixture.values,
+      { contextInputTokens: tokens },
+      { inlineMedia: candidate! }
+    )!;
+    expect(combined.draft.replacements.length).toBeGreaterThan(0);
+    const withoutUsage = fixture.values.filter(
+      (record) => (record.payload as { type?: string }).type !== 'usage.updated'
+    );
+    const selected = plan(withoutUsage, {}, { inlineMedia: candidate! })!;
+    expect(selected.draft.trigger.usageSequence).toBeNull();
+    expect(selected.draft.replacements).toEqual([]);
+    const record = fixture.add('context.gc.completed', {
+      ...selected.draft,
+      checkpointId: 'without-usage',
+      generation: 1
+    });
+    expect(validateContextGcCheckpoint(withoutUsage, record)).toBeDefined();
+    expect(
+      validateContextGcCheckpoint(withoutUsage, {
+        ...record,
+        payload: { ...(record.payload as object), replacements: combined.draft.replacements }
+      })
+    ).toBeUndefined();
   });
 });

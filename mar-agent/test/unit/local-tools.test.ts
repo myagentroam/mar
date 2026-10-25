@@ -103,9 +103,20 @@ describe('local workspace tools', () => {
     expect(execProperties.action).toBeUndefined();
     expect(TOOL_EXECUTION_LIMITS.execDefaultYieldMs).toBe(10_000);
     expect(TOOL_EXECUTION_LIMITS.execMaxYieldMs).toBe(30_000);
-    expect(viewImageToolDefinition.description).toContain(
-      `${TOOL_EXECUTION_LIMITS.viewImageMaxBytes}`
+    expect(TOOL_EXECUTION_LIMITS.viewImageMaxBytes).toBe(3_145_728);
+    expect(TOOL_EXECUTION_LIMITS.viewImageMaxSourceBytes).toBe(20_971_520);
+    expect(viewImageToolDefinition.description).not.toMatch(
+      /\b\d[\d,.]*\s*(?:bytes|pixels|MiB|MB|MP)\b/iu
     );
+    expect(viewImageToolDefinition.inputSchema.required).toBeUndefined();
+    const viewProperties = viewImageToolDefinition.inputSchema.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(viewProperties.path?.type).toBe('string');
+    expect(viewProperties.resourceId?.type).toBe('string');
+    expect(viewProperties.region?.required).toEqual(['x', 'y', 'width', 'height']);
+    expect(viewProperties.resize).not.toHaveProperty('minProperties');
   });
 
   it('registers every built-in tool once and keeps agent handlers explicit', () => {
@@ -130,10 +141,12 @@ describe('local workspace tools', () => {
       'agent_wait',
       'agent_message',
       'agent_cancel',
-      'smart_compact'
+      'smart_compact',
+      'sleep'
     ]);
     expect([...AGENT_TOOL_HANDLERS.keys()]).toEqual([
       'skill',
+      'sleep',
       'smart_compact',
       'tool_search',
       'question',
@@ -181,9 +194,12 @@ describe('local workspace tools', () => {
         path: 'pixel.bin',
         mimeType: 'image/png',
         bytes: png.byteLength,
+        width: 1,
+        height: 1,
         sha256
       }
     });
+    expect(output.content).toContain('1×1 px');
     expect(output.content).not.toContain('sha256');
     expect(output.content).not.toContain(sha256);
     expect(JSON.stringify(output.data)).not.toContain(png.toString('base64'));

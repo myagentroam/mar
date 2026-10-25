@@ -113,7 +113,7 @@ describe('Responses WebSocket request framing', () => {
   );
 
   it.each([8, 16, 24, 32])(
-    'sends %s MiB of image Base64 as one unchanged text message',
+    'sends a %s MiB mixed payload as one unchanged text message within the image budget',
     async (mib) => {
       const server = await startResponsesWebSocketServer(completed, {
         maxClientFrameBytes: 1_048_576
@@ -123,17 +123,26 @@ describe('Responses WebSocket request framing', () => {
       const diagnostics: ModelAttemptDiagnostic[] = [];
       const image = {
         mimeType: 'image/png',
-        dataBase64: Buffer.alloc((mib * 1024 * 1024 * 3) / 4).toString('base64')
+        dataBase64: Buffer.alloc((8 * 1024 * 1024 * 3) / 4).toString('base64')
       };
+      const padding = 'x'.repeat((mib - 8) * 1024 * 1024);
       try {
         await collect(
-          adapter.start({ ...request(diagnostics), images: [image] }, new AbortController().signal)
+          adapter.start(
+            {
+              ...request(diagnostics),
+              messages: [{ role: 'user', content: `Inspect.${padding}` }],
+              images: [image]
+            },
+            new AbortController().signal
+          )
         );
         expect(server.requests).toHaveLength(1);
         const body = server.requests[0] as Record<string, unknown>;
         expect(JSON.stringify(body).includes(`data:image/png;base64,${image.dataBase64}`)).toBe(
           true
         );
+        expect(JSON.stringify(body)).toContain(`Inspect.${padding}`);
         const frames = server.clientFrames.filter(
           (frame) => frame.opcode === 1 || frame.opcode === 0
         );
@@ -147,7 +156,7 @@ describe('Responses WebSocket request framing', () => {
           state: 'SUCCEEDED',
           requestBytes: Buffer.byteLength(JSON.stringify(body)),
           imageCount: 1,
-          imageBytes: (mib * 1024 * 1024 * 3) / 4,
+          imageBytes: (8 * 1024 * 1024 * 3) / 4,
           requestFrameCount: frames.length,
           sentFrameCount: frames.length,
           webSocketPhase: 'RECEIVE'

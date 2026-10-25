@@ -162,10 +162,24 @@ export interface ReadEventData {
   truncated: boolean;
 }
 
+export interface ViewImageRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ViewImageResult {
-  path: string;
+  /** The input source; transformations may produce a different output resource. */
+  path?: string;
+  resourceId?: string;
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
   bytes: number;
+  width: number;
+  height: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  region?: ViewImageRegion;
   sha256: string;
 }
 

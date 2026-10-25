@@ -75,6 +75,7 @@ export interface SessionStoreCompactInput {
   summary: string;
   replacementHistory?: readonly CompactHistoryMessage[];
   retainedModelContext?: readonly ModelMessage[];
+  inlineMediaState?: import('../inline-media.js').InlineMediaState;
   pendingInputs?: readonly SessionRecord[];
   snapshotRecordId?: string;
   snapshotMessageCount?: number;

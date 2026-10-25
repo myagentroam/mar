@@ -25,6 +25,43 @@ import { NativeSessionProjectionService } from '../../src/service/native-session
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
 import { RunnerService } from '../../src/service/runner-service.js';
 import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
+import {
+  composerVisibleText,
+  parseComposerTags,
+  serializeComposerTag
+} from '@myagentroam/protocol';
+
+describe('MAR Agent attachment instructions', () => {
+  it.each([false, true])('keeps image guidance inside attachment tags (mixed=%s)', (mixed) => {
+    const files = [
+      { name: 'shot.png', mime: 'image/png', path: '.mar/temp-files/input/shot.png' },
+      ...(mixed
+        ? [{ name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }]
+        : [])
+    ];
+    const runner = new MarAgentRunner();
+    const input = `Please inspect\n${serializeComposerTag('mar_attachments', { files })}`;
+    const prepared = runner.prepareMessageInput(input, 'default');
+    const parts = parseComposerTags(prepared);
+    expect(parts).toHaveLength(2);
+    expect(parts[1]).toMatchObject({
+      kind: 'mar_attachments',
+      payload: {
+        files,
+        instruction: 'Images are included. Use view_image only to revisit them.'
+      }
+    });
+    expect(composerVisibleText(prepared)).toBe('Please inspect');
+    expect(runner.prepareMessageInput(prepared, 'default')).toBe(prepared);
+  });
+
+  it('leaves ordinary file attachment prompts unchanged', () => {
+    const input = `Read this\n${serializeComposerTag('mar_attachments', {
+      files: [{ name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }]
+    })}`;
+    expect(new MarAgentRunner().prepareMessageInput(input, 'default')).toBe(input);
+  });
+});
 
 function codeModeEvents(
   toolName: 'code_exec' | 'code_exec_wait',

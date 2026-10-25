@@ -1,6 +1,11 @@
 import { posix, win32 } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  inlineMediaGcAnchored,
+  parseInlineMediaGc,
+  type InlineMediaGcCheckpoint
+} from './inline-media.js';
+import {
   codeCallEvidence,
   codePartialPatchCallEvidence,
   callsFromRecord,
@@ -134,7 +139,7 @@ export type ContextGcReplacement =
     };
 
 export interface ContextGcMetrics {
-  readonly stage: 'STAGE_A' | 'STAGE_A_AND_EXEC';
+  readonly stage: 'STAGE_A' | 'STAGE_A_AND_EXEC' | 'INLINE_MEDIA';
   readonly tokenEstimator?: 'UTF8_BYTES_V1';
   readonly beforeTokens: number;
   readonly afterTokens: number;
@@ -146,8 +151,8 @@ export interface ContextGcMetrics {
   readonly compactDeferralCreditCostUnits: number;
   readonly imminentCompactAvoidanceCreditCostUnits?: number;
   readonly appliedCompactCreditCostUnits?: number;
-  readonly requiredPositiveNetRollouts: number;
-  readonly requiredTargetRoiRollouts: number;
+  readonly requiredPositiveNetRollouts: number | null;
+  readonly requiredTargetRoiRollouts: number | null;
   readonly projectedRolloutsUntilCompactAfterGc: number;
   readonly projectedTokensBeforeGc?: number;
   readonly projectedTokensAfterGc?: number;
@@ -163,12 +168,13 @@ export interface ContextGcMetrics {
 }
 
 export interface ContextGcCheckpointDraft {
+  readonly inlineMedia?: InlineMediaGcCheckpoint;
   readonly version: 1;
   readonly base: ContextGcBase;
   readonly boundarySequence: number;
   readonly replacements: readonly ContextGcReplacement[];
   readonly trigger: {
-    readonly usageSequence: number;
+    readonly usageSequence: number | null;
     readonly contextInputTokens: number;
     readonly contextWindowTokens: number;
     readonly normalRolloutOrdinal: number;
@@ -343,10 +349,11 @@ export function parseContextGcCheckpoint(
     !isContextGcBase(payload.base) ||
     !isPositiveInteger(payload.boundarySequence) ||
     !Array.isArray(payload.replacements) ||
-    payload.replacements.length === 0 ||
+    (payload.replacements.length === 0 && payload.inlineMedia === undefined) ||
     !isContextGcTrigger(payload.trigger) ||
     !isContextGcEconomicsPolicy(payload.economics) ||
-    !isContextGcMetrics(payload.metrics)
+    !isContextGcMetrics(payload.metrics) ||
+    (payload.inlineMedia !== undefined && !parseInlineMediaGc(payload.inlineMedia))
   )
     return undefined;
   const replacements = normalizeContextGcReplacements(
@@ -362,7 +369,10 @@ export function parseContextGcCheckpoint(
     replacements,
     trigger: structuredClone(payload.trigger),
     economics: structuredClone(payload.economics),
-    metrics: structuredClone(payload.metrics)
+    metrics: structuredClone(payload.metrics),
+    ...(payload.inlineMedia === undefined
+      ? {}
+      : { inlineMedia: parseInlineMediaGc(payload.inlineMedia)! })
   } as ContextGcCheckpointPayload;
 }
 
@@ -379,8 +389,14 @@ export function validateContextGcCheckpoint(
   const baseSequence = contextGcBaseSequence(payload.base);
   // Later cell completion cannot retroactively authorize an earlier checkpoint.
   records = records.filter((item) => item.sequence <= payload.boundarySequence);
+  if (payload.inlineMedia && !inlineMediaGcAnchored(records, payload.inlineMedia)) return undefined;
   const recordsBySequence = new Map(records.map((item) => [item.sequence, item]));
   if (!triggerMatchesRecords(records, recordsBySequence, payload)) return undefined;
+  if (
+    payload.trigger.usageSequence === null &&
+    !isDeepStrictEqual(payload.replacements, committedReplacements)
+  )
+    return undefined;
   const committed = new Map(
     committedReplacements.map((replacement) => [contextGcReplacementKey(replacement), replacement])
   );
@@ -1118,16 +1134,29 @@ function triggerMatchesRecords(
   payload: ContextGcCheckpointPayload
 ): boolean {
   if (
-    payload.trigger.usageSequence < contextGcBaseSequence(payload.base) ||
-    payload.trigger.usageSequence > payload.boundarySequence
+    payload.trigger.usageSequence !== null &&
+    (payload.trigger.usageSequence < contextGcBaseSequence(payload.base) ||
+      payload.trigger.usageSequence > payload.boundarySequence)
   )
     return false;
-  const usageRecord = recordsBySequence.get(payload.trigger.usageSequence);
+  const withoutUsage = payload.trigger.usageSequence === null;
   if (
-    !usageRecord ||
-    !isRecord(usageRecord.payload) ||
-    usageRecord.payload.type !== 'usage.updated' ||
-    modelContextUsage(usageRecord.payload) !== payload.trigger.contextInputTokens
+    withoutUsage &&
+    (!payload.inlineMedia ||
+      payload.inlineMedia.reason === 'TEXT_GC' ||
+      payload.metrics.stage !== 'INLINE_MEDIA' ||
+      payload.trigger.contextInputTokens !== 0)
+  )
+    return false;
+  const usageRecord = withoutUsage
+    ? undefined
+    : recordsBySequence.get(payload.trigger.usageSequence!);
+  if (
+    !withoutUsage &&
+    (!usageRecord ||
+      !isRecord(usageRecord.payload) ||
+      usageRecord.payload.type !== 'usage.updated' ||
+      modelContextUsage(usageRecord.payload) !== payload.trigger.contextInputTokens)
   )
     return false;
   const baseSequence = contextGcBaseSequence(payload.base);
@@ -1150,7 +1179,7 @@ function triggerMatchesRecords(
     const matchingConfiguration =
       modelId === payload.trigger.modelId &&
       contextWindowTokens === payload.trigger.contextWindowTokens;
-    if (record.sequence === usageRecord.sequence)
+    if (record.sequence === usageRecord?.sequence || withoutUsage)
       triggerConfigurationMatches = matchingConfiguration;
     if (
       matchingConfiguration &&
@@ -1170,7 +1199,9 @@ function triggerMatchesRecords(
   }
   return (
     triggerConfigurationMatches &&
-    latestMatchingUsageSequence === payload.trigger.usageSequence &&
+    (withoutUsage
+      ? latestMatchingUsageSequence === undefined
+      : latestMatchingUsageSequence === payload.trigger.usageSequence) &&
     normalRolloutOrdinal === payload.trigger.normalRolloutOrdinal
   );
 }
@@ -1382,7 +1413,7 @@ function isContextGcBase(value: unknown): value is ContextGcBase {
 function isContextGcTrigger(value: unknown): boolean {
   return (
     isRecord(value) &&
-    isPositiveInteger(value.usageSequence) &&
+    (value.usageSequence === null || isPositiveInteger(value.usageSequence)) &&
     isNonnegativeInteger(value.contextInputTokens) &&
     isPositiveInteger(value.contextWindowTokens) &&
     isNonnegativeInteger(value.normalRolloutOrdinal) &&
@@ -1416,7 +1447,12 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
 }
 
 function isContextGcMetrics(value: unknown): boolean {
-  if (!isRecord(value) || (value.stage !== 'STAGE_A' && value.stage !== 'STAGE_A_AND_EXEC'))
+  if (
+    !isRecord(value) ||
+    (value.stage !== 'STAGE_A' &&
+      value.stage !== 'STAGE_A_AND_EXEC' &&
+      value.stage !== 'INLINE_MEDIA')
+  )
     return false;
   const nonnegative = [
     'beforeTokens',
@@ -1425,8 +1461,6 @@ function isContextGcMetrics(value: unknown): boolean {
     'grossReductionRate',
     'cacheRebuildPenaltyCostUnits',
     'compactDeferralCreditCostUnits',
-    'requiredPositiveNetRollouts',
-    'requiredTargetRoiRollouts',
     'projectedRolloutsUntilCompactAfterGc',
     'contextGrowthSampleCount',
     'contextGrowthP75Tokens',
@@ -1445,6 +1479,10 @@ function isContextGcMetrics(value: unknown): boolean {
   ];
   return (
     nonnegative.every((key) => isNonnegativeFinite(value[key])) &&
+    ['requiredPositiveNetRollouts', 'requiredTargetRoiRollouts'].every(
+      (key) =>
+        isNonnegativeFinite(value[key]) || (value.stage === 'INLINE_MEDIA' && value[key] === null)
+    ) &&
     optionalNonnegative.every(
       (key) => value[key] === undefined || isNonnegativeFinite(value[key])
     ) &&

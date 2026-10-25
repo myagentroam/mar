@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { inlineMediaHistory } from '../inline-media.js';
 import type {
   SessionStore,
   SessionStoreMaintenance,
@@ -813,6 +814,12 @@ export class JsonlSessionStore implements SessionStore {
           }
         ];
         const retained = input.boundaryTurnId === null ? [] : records.slice(1, boundaryIndex + 1);
+        const inlineState = inlineMediaHistory(retained).state;
+        const stateAnchor =
+          inlineState &&
+          retained.findLast(
+            (record) => record.type === 'resource.window' || record.type === 'compact.completed'
+          );
         const forkIdentities = new Map<string, { recordId: string; sequence: number }>();
         for (const record of retained) {
           if (record.type === 'context.gc.completed' || record.type === 'responses.continuation')
@@ -826,7 +833,14 @@ export class JsonlSessionStore implements SessionStore {
             type: record.type,
             payload: forkedPayload(
               record.type,
-              record.payload,
+              record === stateAnchor
+                ? record.type === 'resource.window'
+                  ? inlineState
+                  : {
+                      ...(record.payload as Record<string, unknown>),
+                      inlineMediaState: inlineState
+                    }
+                : record.payload,
               sourceSessionId,
               target.id,
               input.title,
@@ -1487,13 +1501,16 @@ export class JsonlSessionStore implements SessionStore {
           'Context GC planning boundary is invalid.'
         );
       const previous = latestValidContextGcCheckpoint(records, boundarySequence);
-      if (!contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger))
+      if (
+        (!draft.inlineMedia || draft.inlineMedia.reason === 'TEXT_GC') &&
+        !contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger)
+      )
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint interval validation failed.'
         );
       const plannedReplacements = normalizeContextGcReplacements(draft.replacements);
-      if (!plannedReplacements || plannedReplacements.length === 0)
+      if (!plannedReplacements || (plannedReplacements.length === 0 && !draft.inlineMedia))
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint must contain a replacement.'
@@ -1504,7 +1521,10 @@ export class JsonlSessionStore implements SessionStore {
       ]);
       if (
         !replacements ||
-        (previous && isDeepStrictEqual(replacements, previous.payload.replacements))
+        (previous &&
+          isDeepStrictEqual(replacements, previous.payload.replacements) &&
+          (!draft.inlineMedia ||
+            isDeepStrictEqual(draft.inlineMedia, previous.payload.inlineMedia)))
       )
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
@@ -1538,8 +1558,10 @@ export class JsonlSessionStore implements SessionStore {
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint validation failed.'
         );
+      const turnId = records.findLast((record) => record.type === 'execution.header')?.turnId;
       return this.#appendRecord(sessionId, {
         type: 'context.gc.completed',
+        ...(turnId === undefined ? {} : { turnId }),
         payload
       });
     });
@@ -1607,6 +1629,7 @@ export class JsonlSessionStore implements SessionStore {
           ...(input.retainedModelContext?.length
             ? { retainedModelContext: input.retainedModelContext }
             : {}),
+          ...(input.inlineMediaState ? { inlineMediaState: input.inlineMediaState } : {}),
           ...(input.environment === undefined ? {} : { environment: input.environment }),
           boundarySequence: meta.nextSequence - 1,
           automatic: input.automatic === true,

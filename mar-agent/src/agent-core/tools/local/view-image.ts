@@ -2,22 +2,47 @@ import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { MarAgentError } from '../../error.js';
 import type { ClientToolDefinition } from '../../model/contracts.js';
-import type { ToolExecutionResult, ViewImageResult } from '../contracts.js';
+import type { ToolExecutionResult, ViewImageRegion, ViewImageResult } from '../contracts.js';
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 import { WorkspacePathResolver } from '../shared/path-resolver.js';
+import { processImage, readImageMetadata, type ImageResizeBounds } from './image-processing.js';
 export type { ViewImageResult } from '../contracts.js';
 
 export const viewImageToolDefinition: ClientToolDefinition = {
   name: 'view_image',
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
-  description: `Read one known local PNG, JPEG, or WebP image and provide its actual pixels to the vision-capable model. Relative paths use the workspace; absolute paths are allowed. The file must be a regular file no larger than ${TOOL_EXECUTION_LIMITS.viewImageMaxBytes} bytes. MIME is detected from file content, not its extension. Use this instead of installing OCR or converting the image through exec.`,
+  description:
+    'View a PNG, JPEG, or WebP image by path or Session resourceId. Relative paths use the workspace; absolute paths are allowed. Use this tool instead of converting images through exec.',
   inputSchema: {
     type: 'object',
     properties: {
-      path: { type: 'string', description: 'Relative workspace path or absolute image path.' }
+      path: { type: 'string', description: 'Relative workspace path or absolute image path.' },
+      resourceId: { type: 'string', description: 'Session image resource ID, instead of path.' },
+      region: {
+        type: 'object',
+        description:
+          'For close inspection of a specific area; coordinates use oriented source pixels.',
+        properties: {
+          x: { type: 'integer', minimum: 0 },
+          y: { type: 'integer', minimum: 0 },
+          width: { type: 'integer', minimum: 1 },
+          height: { type: 'integer', minimum: 1 }
+        },
+        required: ['x', 'y', 'width', 'height'],
+        additionalProperties: false
+      },
+      resize: {
+        type: 'object',
+        description:
+          'For a smaller overview; fit the image or cropped region within these dimensions without enlargement.',
+        properties: {
+          maxWidth: { type: 'integer', minimum: 1 },
+          maxHeight: { type: 'integer', minimum: 1 }
+        },
+        additionalProperties: false
+      }
     },
-    required: ['path'],
     additionalProperties: false
   }
 };
@@ -27,6 +52,7 @@ export class ViewImageTool {
 
   async execute(arguments_: unknown, signal?: AbortSignal): Promise<ToolExecutionResult> {
     const input = parseViewImageInput(arguments_);
+    if (input.path === undefined) return invalidInput();
     signal?.throwIfAborted();
     const path = await this.paths.resolve(input.path);
     const handle = await open(path, 'r');
@@ -34,19 +60,24 @@ export class ViewImageTool {
       const stat = await handle.stat({ bigint: true });
       if (!stat.isFile())
         throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Path is not a regular file.');
-      if (stat.size > BigInt(TOOL_EXECUTION_LIMITS.viewImageMaxBytes))
+      if (stat.size > BigInt(TOOL_EXECUTION_LIMITS.viewImageMaxSourceBytes))
         throw new MarAgentError(
           'MAR_AGENT_TOOL_OUTPUT_LIMIT',
-          `Image exceeds the ${TOOL_EXECUTION_LIMITS.viewImageMaxBytes}-byte limit.`
+          `Image exceeds the ${TOOL_EXECUTION_LIMITS.viewImageMaxSourceBytes}-byte source limit. Use an external image tool to reduce it first.`
         );
+      const hasTransform = input.region !== undefined || input.resize !== undefined;
+      if (!hasTransform && stat.size > BigInt(TOOL_EXECUTION_LIMITS.viewImageMaxBytes))
+        throw imageOutputLimit('Image exceeds 3 MiB. Use resize or region.');
       signal?.throwIfAborted();
-      const data = await handle.readFile();
+      const data = Buffer.allocUnsafe(Number(stat.size));
+      let offset = 0;
+      while (offset < data.byteLength) {
+        signal?.throwIfAborted();
+        const { bytesRead } = await handle.read(data, offset, data.byteLength - offset, offset);
+        if (bytesRead === 0) incompleteImage();
+        offset += bytesRead;
+      }
       signal?.throwIfAborted();
-      if (data.byteLength > TOOL_EXECUTION_LIMITS.viewImageMaxBytes)
-        throw new MarAgentError(
-          'MAR_AGENT_TOOL_OUTPUT_LIMIT',
-          `Image exceeds the ${TOOL_EXECUTION_LIMITS.viewImageMaxBytes}-byte limit.`
-        );
       const after = await handle.stat({ bigint: true });
       signal?.throwIfAborted();
       if (
@@ -56,35 +87,169 @@ export class ViewImageTool {
         stat.ctimeNs !== after.ctimeNs
       )
         return incompleteImage();
-      const mimeType = detectImageMime(data);
-      validateImageContainer(data, mimeType);
-      const metadata: ViewImageResult = {
-        path: input.path,
-        mimeType,
-        bytes: data.byteLength,
-        sha256: createHash('sha256').update(data).digest('hex')
-      };
-      return {
-        content: `Viewed image ${input.path} (${mimeType}, ${data.byteLength} bytes).`,
-        data: metadata,
-        images: [{ mimeType, dataBase64: data.toString('base64') }]
-      };
+      return await renderViewImage(data, input, signal);
     } finally {
       await handle.close();
     }
   }
 }
 
-function parseViewImageInput(value: unknown): { path: string } {
+/** Resolve Session-owned bytes without using the resource's public URL or original path. */
+export async function viewResourceImage(
+  arguments_: unknown,
+  readResource: (resourceId: string) => Promise<{ dataBase64: string } | undefined>,
+  signal?: AbortSignal
+): Promise<ToolExecutionResult> {
+  const input = parseViewImageInput(arguments_);
+  if (input.resourceId === undefined) return invalidInput();
+  signal?.throwIfAborted();
+  const resource = await readResource(input.resourceId);
+  signal?.throwIfAborted();
+  if (!resource)
+    throw new MarAgentError(
+      'MAR_AGENT_TOOL_INPUT_INVALID',
+      'Image resource was not found in this Session.'
+    );
+  const data = Buffer.from(resource.dataBase64, 'base64');
+  if (data.length > TOOL_EXECUTION_LIMITS.viewImageMaxSourceBytes)
+    throw imageOutputLimit('Image exceeds the source limit.');
+  if (!input.region && !input.resize && data.length > TOOL_EXECUTION_LIMITS.viewImageMaxBytes)
+    throw imageOutputLimit('Image exceeds 3 MiB. Use resize or region.');
+  return renderViewImage(data, input, signal);
+}
+
+async function renderViewImage(
+  data: Buffer,
+  input: ViewImageInput,
+  signal?: AbortSignal
+): Promise<ToolExecutionResult> {
+  const mimeType = detectImageMime(data);
+  validateImageContainer(data, mimeType);
+  const sourceMetadata = await readImageMetadata(data, mimeType, signal);
+  if (
+    input.region &&
+    (input.region.x > sourceMetadata.width ||
+      input.region.y > sourceMetadata.height ||
+      input.region.width > sourceMetadata.width - input.region.x ||
+      input.region.height > sourceMetadata.height - input.region.y)
+  )
+    throw new MarAgentError(
+      'MAR_AGENT_TOOL_INPUT_INVALID',
+      'Image region is outside the oriented source dimensions.'
+    );
+
+  const visual =
+    input.region !== undefined || input.resize !== undefined
+      ? await processImage(data, sourceMetadata, input, signal)
+      : {
+          bytes: data,
+          width: sourceMetadata.width,
+          height: sourceMetadata.height,
+          mimeType
+        };
+  signal?.throwIfAborted();
+  const resultMetadata: ViewImageResult = {
+    ...(input.path ? { path: input.path } : { resourceId: input.resourceId! }),
+    mimeType: visual.mimeType,
+    bytes: visual.bytes.byteLength,
+    width: visual.width,
+    height: visual.height,
+    ...('sourceWidth' in visual && visual.sourceWidth !== undefined
+      ? { sourceWidth: visual.sourceWidth, sourceHeight: visual.sourceHeight }
+      : {}),
+    ...('region' in visual && visual.region ? { region: visual.region } : {}),
+    sha256: createHash('sha256').update(visual.bytes).digest('hex')
+  };
+  return {
+    content: describeImageResult(resultMetadata),
+    data: resultMetadata,
+    images: [{ mimeType: visual.mimeType, dataBase64: visual.bytes.toString('base64') }]
+  };
+}
+
+type ViewImageInput = {
+  path?: string;
+  resourceId?: string;
+  region?: ViewImageRegion;
+  resize?: ImageResizeBounds;
+};
+
+function parseViewImageInput(value: unknown): ViewImageInput {
   if (!value || typeof value !== 'object') return invalidInput();
   const input = value as Record<string, unknown>;
   if (
-    Object.keys(input).some((key) => key !== 'path') ||
-    typeof input.path !== 'string' ||
-    input.path.length === 0
+    Object.keys(input).some((key) => !['path', 'resourceId', 'region', 'resize'].includes(key)) ||
+    (input.path == null) === (input.resourceId == null) ||
+    (input.path != null && (typeof input.path !== 'string' || input.path.length === 0)) ||
+    (input.resourceId != null &&
+      (typeof input.resourceId !== 'string' || input.resourceId.length === 0))
   )
     return invalidInput();
-  return { path: input.path };
+  return {
+    ...(typeof input.path === 'string'
+      ? { path: input.path }
+      : { resourceId: input.resourceId as string }),
+    ...(input.region == null ? {} : { region: parseRegion(input.region) }),
+    ...(input.resize == null ? {} : { resize: parseResize(input.resize) })
+  };
+}
+
+function parseRegion(value: unknown): ViewImageRegion {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !['x', 'y', 'width', 'height'].includes(key)) ||
+    !Number.isSafeInteger(value.x) ||
+    (value.x as number) < 0 ||
+    !Number.isSafeInteger(value.y) ||
+    (value.y as number) < 0 ||
+    !isPositiveSafeInteger(value.width) ||
+    !isPositiveSafeInteger(value.height)
+  )
+    return invalidInput();
+  return {
+    x: value.x as number,
+    y: value.y as number,
+    width: value.width,
+    height: value.height
+  };
+}
+
+function parseResize(value: unknown): ImageResizeBounds {
+  if (
+    !isRecord(value) ||
+    (value.maxWidth == null && value.maxHeight == null) ||
+    Object.keys(value).some((key) => key !== 'maxWidth' && key !== 'maxHeight') ||
+    (value.maxWidth != null && !isPositiveSafeInteger(value.maxWidth)) ||
+    (value.maxHeight != null && !isPositiveSafeInteger(value.maxHeight))
+  )
+    return invalidInput();
+  return {
+    ...(value.maxWidth == null ? {} : { maxWidth: value.maxWidth as number }),
+    ...(value.maxHeight == null ? {} : { maxHeight: value.maxHeight as number })
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function describeImageResult(result: ViewImageResult): string {
+  const details = [`${result.width}×${result.height} px`, result.mimeType, `${result.bytes} bytes`];
+  if (result.sourceWidth !== undefined && result.sourceHeight !== undefined)
+    details.push(`source ${result.sourceWidth}×${result.sourceHeight} px`);
+  if (result.region)
+    details.push(
+      `region ${result.region.x},${result.region.y} ${result.region.width}×${result.region.height} px`
+    );
+  return `Viewed image ${result.path ?? result.resourceId} (${details.join(', ')}).`;
+}
+
+function imageOutputLimit(message: string): MarAgentError {
+  return new MarAgentError('MAR_AGENT_TOOL_OUTPUT_LIMIT', message);
 }
 
 export function detectImageMime(data: Buffer): ViewImageResult['mimeType'] {

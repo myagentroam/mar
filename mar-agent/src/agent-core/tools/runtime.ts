@@ -5,6 +5,7 @@ import { normalizeToolInput } from './input.js';
 import type { ToolRuntimeContext } from './runtime-context.js';
 import { validateToolResult } from './output-projection.js';
 import { withToolResultExtensions } from './result-extensions.js';
+import { viewResourceImage } from './local/view-image.js';
 
 export async function executeRegisteredTool(
   name: string,
@@ -40,6 +41,26 @@ export async function executeCapturedTool(
       : undefined;
   if (definition)
     call = { ...call, arguments: normalizeToolInput(call.arguments, definition.inputSchema) };
+  if (
+    kind !== 'mcp' &&
+    call.name === 'view_image' &&
+    call.arguments !== null &&
+    typeof call.arguments === 'object' &&
+    'resourceId' in call.arguments &&
+    call.arguments.resourceId != null
+  ) {
+    const store = context.imageStore;
+    if (!store)
+      throw new MarAgentError(
+        'MAR_AGENT_TOOL_INPUT_INVALID',
+        'Session image resources are unavailable.'
+      );
+    return viewResourceImage(
+      call.arguments,
+      (resourceId) => store.readResource(context.sessionId, resourceId),
+      context.signal
+    );
+  }
   if (kind === 'builtin') {
     const handler = AGENT_TOOL_HANDLERS.get(call.name);
     if (handler) return handler(call.arguments, context, call.callId ?? randomUUID());

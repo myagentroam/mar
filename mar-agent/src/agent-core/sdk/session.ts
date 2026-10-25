@@ -865,6 +865,7 @@ export function createSessionOpener(services: SessionServices) {
                   ...retainedModelContext
                 );
                 pendingAppends.length = 0;
+                resourceInput.replace(messages);
                 selected.resetContinuation?.();
               },
               // Derived state follows the committed splice, never delays it past the writer window.
@@ -910,6 +911,8 @@ export function createSessionOpener(services: SessionServices) {
                   .filter((entry) => !restoredIds.has(entry.recordId))
                   .map((entry) => entry.message);
                 messages.splice(0, messages.length, ...refreshed.messages, ...lateMessages);
+                resourceInput.replace(messages);
+                resourceInput.adoptGc(committed.projection.checkpoint?.inlineMedia?.state);
                 restoreMcpDiscovery();
                 recordedEnvironment = refreshed.environmentState;
                 userMessages = [...refreshed.userMessages];
@@ -1207,7 +1210,20 @@ export function createSessionOpener(services: SessionServices) {
             selectedModel.useResourceUrl === true,
             store,
             sessionId,
-            messages
+            messages,
+            {
+              records: contextRecords,
+              persist: async (state) => {
+                await withRecordProjection(() =>
+                  store.append(sessionId, {
+                    type: 'resource.window',
+                    payload: state,
+                    executionId,
+                    turnId
+                  })
+                );
+              }
+            }
           );
           const selected = modelResources.openTurn(
             selectedAdapter,
@@ -1823,6 +1839,7 @@ export function createSessionOpener(services: SessionServices) {
           let preparingRequestMessages: readonly ModelMessage[] | undefined;
           let preparingRequestBaseLength = 0;
           let dispatchedInputCount = 0;
+          const completedMediaRequests = new WeakSet<readonly ModelMessage[]>();
           let dispatchedLocalCount = 0;
           executionContext.requestMessages = {
             read: () =>
@@ -2111,7 +2128,9 @@ export function createSessionOpener(services: SessionServices) {
                 )
               )
                 return false;
-              const compactHistory = structuredClone(prefix);
+              const compactHistory = structuredClone(prefix).map(
+                ({ images: _images, ...message }) => message
+              );
               const prefixInputs = modelContext.compactInputs(prefix);
               const snapshotTools = structuredClone(projectTools(executionTools));
               const generation = modelContext.worldState.generation;
@@ -2222,6 +2241,7 @@ export function createSessionOpener(services: SessionServices) {
                     {
                       summary: actual,
                       replacementHistory,
+                      inlineMediaState: resourceInput.checkpoint(retainedModelContext),
                       retainedModelContext: retainedModelContext.map((message) => {
                         const source = messageSources.get(message);
                         const saved =
@@ -2519,8 +2539,38 @@ export function createSessionOpener(services: SessionServices) {
                   // Never sample the candidate assembled against the replaced context.
                   return prepareRound(pendingOutputContinuation, true);
                 }
+                resourceInput.observe(candidateRequest.messages);
+                const media =
+                  sessionSource.type === 'subagent'
+                    ? undefined
+                    : await resourceInput.gcCandidate(request, candidateRequest.images);
+                if (media?.reason === 'HARD_LIMIT') {
+                  const appendBoundary = pendingAppends.length;
+                  const committed = await contextGc.run({
+                    inlineMedia: media,
+                    mediaView: (messages) => resourceInput.historyView(messages),
+                    store,
+                    sessionId,
+                    system: request.system,
+                    tools: toolScope.tools,
+                    modelId: selectedModel.id,
+                    contextWindowTokens: selectedModel.contextWindowTokens,
+                    usage: lastServerUsage ?? {},
+                    ...modelConfiguration.contextProjection,
+                    workspace: logicalWorkspace,
+                    platform: description.platform
+                  });
+                  if (committed) {
+                    await modelContext.adoptGcCheckpoint(committed, appendBoundary);
+                    return prepareRound(pendingOutputContinuation, true);
+                  }
+                }
                 return {
-                  request: await resourceInput.prepare(request, candidateRequest.images),
+                  request: await resourceInput.prepare(
+                    request,
+                    candidateRequest.images,
+                    candidateRequest.messages
+                  ),
                   toolScope
                 };
               },
@@ -2533,6 +2583,7 @@ export function createSessionOpener(services: SessionServices) {
                 yield* streamModel(async function* (nativeSignal) {
                   for await (const event of selected.start(request, nativeSignal)) {
                     if (event.type === 'completed' && event.reason !== 'cancelled') {
+                      completedMediaRequests.add(request.messages);
                       if (snapshot) snapshots.complete(snapshot);
                     }
                     yield event;
@@ -2542,13 +2593,13 @@ export function createSessionOpener(services: SessionServices) {
               recoverySignal: () => controller.signal,
               compactContext,
               afterModel: async (closedPrefixLength, acceptedRequest) => {
-                if (acceptedRequest) {
-                  resourceInput.complete(acceptedRequest);
-                  compactBoundary = closedPrefixLength;
-                }
                 selected.commitContinuationInput?.(
                   dispatchedInputCount + messages.length - dispatchedLocalCount
                 );
+                if (acceptedRequest && completedMediaRequests.has(acceptedRequest.messages)) {
+                  await resourceInput.complete(acceptedRequest);
+                  compactBoundary = closedPrefixLength;
+                }
                 if (
                   lastServerContextTokens !== undefined &&
                   (lastServerContextTokens * 100) / selectedModel.contextWindowTokens >=
@@ -2581,21 +2632,19 @@ export function createSessionOpener(services: SessionServices) {
                   await compactCoordinator.checkpoint(false).catch(() => {
                     controller.signal.throwIfAborted();
                   });
-                if (
-                  !compactCoordinator.pending &&
-                  sessionSource.type !== 'subagent' &&
-                  latestUsage !== undefined
-                ) {
+                if (!compactCoordinator.pending && sessionSource.type !== 'subagent') {
                   // Only a committed GC checkpoint may replace active context and invalidate continuation.
                   const appendBoundary = pendingAppends.length;
                   const committed = await contextGc.run({
+                    inlineMedia: await resourceInput.gcCandidate(),
+                    mediaView: (messages) => resourceInput.historyView(messages),
                     store,
                     sessionId,
                     system: round.request.system,
                     tools: round.toolScope.tools,
                     modelId: selectedModel.id,
                     contextWindowTokens: selectedModel.contextWindowTokens,
-                    usage: latestUsage,
+                    usage: latestUsage ?? {},
                     ...modelConfiguration.contextProjection,
                     workspace: logicalWorkspace,
                     platform: description.platform,

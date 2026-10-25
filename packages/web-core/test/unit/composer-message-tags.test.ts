@@ -45,6 +45,36 @@ afterEach(() => {
 });
 
 describe('Composer product tag presentation', () => {
+  it('hides attachment instructions in history and queue editing while retaining mixed files', () => {
+    const instruction = 'Images are included. Use view_image only to revisit them.';
+    const mixedFiles = [
+      ...files,
+      { name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }
+    ];
+    const raw = `Review these\n${serializeComposerTag('mar_attachments', {
+      files: mixedFiles,
+      instruction
+    })}`;
+    expect(composerMessagePresentation({ text: raw })).toMatchObject({
+      text: 'Review these',
+      files: mixedFiles
+    });
+    expect(conversationItemText('user_message', { text: raw })).toBe('Review these');
+    const queue = createComposerQueueService();
+    queue.startEditing({ queueItemId: 'mixed-attachments', content: raw });
+    expect(queue.editingContent.value).toBe('Review these');
+    const edited = queue.serializeEditedContent('Updated input');
+    expect(composerMessagePresentation({ text: edited })).toMatchObject({
+      text: 'Updated input',
+      files: mixedFiles
+    });
+    expect(parseComposerTags(edited).find((part) => part.kind === 'mar_attachments')).toMatchObject(
+      {
+        payload: { instruction }
+      }
+    );
+  });
+
   it('shows steering body, source snapshot, and resources consistently in history and queue editing', () => {
     const body = '补充 <message>literal</message> & context';
     const tag = serializeComposerTag('mar_steer', { message: body });
