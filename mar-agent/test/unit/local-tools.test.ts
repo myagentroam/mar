@@ -924,11 +924,17 @@ describe('local workspace tools', () => {
       results: [
         {
           path: 'invalid.txt',
-          error: { code: 'MAR_AGENT_FILE_ENCODING_INVALID' }
+          error: {
+            code: 'MAR_AGENT_FILE_ENCODING_INVALID',
+            message: 'File contains invalid text for its declared encoding.'
+          }
         },
         {
           path: 'utf16-without-bom.txt',
-          error: { code: 'MAR_AGENT_FILE_ENCODING_INVALID' }
+          error: {
+            code: 'MAR_AGENT_FILE_ENCODING_INVALID',
+            message: 'Text files cannot contain NUL characters; UTF-16 requires a BOM.'
+          }
         },
         { path: 'valid.txt', content: '1\tvalid' }
       ]

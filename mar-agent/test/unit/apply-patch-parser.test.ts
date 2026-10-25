@@ -132,33 +132,30 @@ describe('freeform apply_patch parsing', () => {
       column: 18,
       expected: 'Patch contains duplicate or overlapping paths.'
     }
-  ])(
-    'locates $expected without exposing file content or paths',
-    async ({ body, line, column, expected }) => {
-      const { workspace, tools } = await fixture();
-      const patch = `*** Begin Patch\n${body}\n*** End Patch`;
-      const error = await failure(tools, patch);
-      const offset =
-        patch
-          .split('\n')
-          .slice(0, line - 1)
-          .join('\n').length +
-        1 +
-        column -
-        1;
-      expect(error).toMatchObject({
-        code: 'MAR_AGENT_TOOL_INPUT_INVALID',
-        details: { line, column, offset }
-      });
-      expect(error.message).toContain(`line ${line}, column ${column}`);
-      expect(error.message).toContain(expected);
-      expect(error.message).toContain(`${line} | `);
-      expect(error.message).toContain('^');
-      expect(error.message).not.toContain('private-body');
-      expect(error.message).not.toContain('private-path');
-      expect(await readdir(workspace)).toEqual([]);
-    }
-  );
+  ])('locates $expected in the submitted patch', async ({ body, line, column, expected }) => {
+    const { workspace, tools } = await fixture();
+    const patch = `*** Begin Patch\n${body}\n*** End Patch`;
+    const error = await failure(tools, patch);
+    const offset =
+      patch
+        .split('\n')
+        .slice(0, line - 1)
+        .join('\n').length +
+      1 +
+      column -
+      1;
+    expect(error).toMatchObject({
+      code: 'MAR_AGENT_TOOL_INPUT_INVALID',
+      details: { line, column, offset }
+    });
+    expect(error.message).toContain(`line ${line}, column ${column}`);
+    expect(error.message).toContain(expected);
+    expect(error.message).toContain(`${line} | `);
+    expect(error.message).toContain('^');
+    expect(error.message).toContain(patch.split('\n')[line - 1]!);
+    expect(error.message).not.toContain('<content omitted>');
+    expect(await readdir(workspace)).toEqual([]);
+  });
 
   it('pinpoints bare carriage returns with CRLF and Unicode before the error', async () => {
     const { tools } = await fixture();
@@ -168,11 +165,11 @@ describe('freeform apply_patch parsing', () => {
     expect(error.details).toEqual({ line: 3, column: 4, offset: patch.indexOf('\rprivate-body') });
     expect(error.message).toContain('unsupported bare carriage returns');
     expect(error.message).toContain('^');
-    expect(error.message).not.toContain('private-body');
-    expect(error.message).not.toContain('🙂中');
+    expect(error.message).toContain('private-body');
+    expect(error.message).toContain('🙂中');
     const lines = error.message.split('\n');
     expect(lines[1]).toContain('\\r');
-    expect(lines[2]!.indexOf('^')).toBe(lines[1]!.indexOf('\\r'));
+    expect(lines[2]!.indexOf('^')).toBe('3 | '.length + 5);
   });
 
   it('aligns caret diagnostics with escaped tabs and exact missing marker characters', async () => {
@@ -180,16 +177,16 @@ describe('freeform apply_patch parsing', () => {
     const error = await failure(tools, '\t*** Begin Patches\n*** End Patch');
     expect(error.details).toEqual({ line: 1, column: 17, offset: 16 });
     const lines = error.message.split('\n');
-    expect(lines[1]).toBe('1 |     *** Begin Patche<content omitted>');
-    expect(lines[2]!.indexOf('^')).toBe(lines[1]!.indexOf('e<content omitted>'));
+    expect(lines[1]).toBe('1 |     *** Begin Patches');
+    expect(lines[2]!.indexOf('^')).toBe(lines[1]!.indexOf('es'));
   });
 
-  it('pinpoints a missing operation-header separator without echoing a path', async () => {
+  it('pinpoints a missing operation-header separator in the submitted path', async () => {
     const { tools } = await fixture();
     const error = await failure(tools, '*** Begin Patch\n*** Add File:private-path\n*** End Patch');
     expect(error.details).toMatchObject({ line: 2, column: 14 });
-    expect(error.message).not.toContain('private-path');
-    expect(error.message).toContain('2 | *** Add File:p<content omitted>');
+    expect(error.message).toContain('private-path');
+    expect(error.message).toContain('2 | *** Add File:private-path');
     expect(error.message).toContain('^');
   });
 
@@ -211,7 +208,7 @@ describe('freeform apply_patch parsing', () => {
     );
     expect(error.message).toContain('\\u{2028}');
     expect(error.message).not.toContain('\u2028');
-    expect(error.message).not.toContain('private-body');
+    expect(error.message).toContain('private-body');
   });
 
   it('keeps diagnostics bounded and retains the arrow after error projection', async () => {
@@ -220,7 +217,8 @@ describe('freeform apply_patch parsing', () => {
     const error = await failure(tools, patch);
     expect(error.details).toMatchObject({ line: 2, column: 140015 });
     expect(error.message.length).toBeLessThan(800);
-    expect(error.message).not.toContain('private');
+    expect(error.message).toContain('private');
+    expect(error.message).toContain('…');
     expect(describeMarAgentError(error, 'MAR_AGENT_TOOL_FAILED').message).toContain('^');
   });
 
@@ -331,13 +329,13 @@ describe('freeform apply_patch parsing', () => {
         if (error?.type !== 'tool.failed') throw new Error('Expected a patch failure.');
         expect(error.message).toContain('line 3, column 1');
         expect(error.message).toContain('^');
-        expect(error.message).not.toContain('private-body');
+        expect(error.message).toContain('private-body');
         const output = requests[1]!.messages.find(
           (message) => message.role === 'tool' && message.callId === 'patch-1'
         )!;
         expect(output.content).toContain('line 3, column 1');
         expect(output.content).toContain('^');
-        expect(output.content).not.toContain('private-body');
+        expect(output.content).toContain('private-body');
         expect(await readFile(join(workspace, 'output.txt'), 'utf8')).toBe('corrected\n');
       } finally {
         await agent.dispose();

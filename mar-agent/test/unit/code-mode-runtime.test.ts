@@ -606,10 +606,14 @@ describe('Code Mode SDK and protocol integration', () => {
           error: {
             code: 'MAR_AGENT_CODE_SYNTAX_ERROR',
             message: expect.stringMatching(
-              /before tool execution:[\s\S]*line 1, column \d+[\s\S]*\^/u
+              /Line 1, column \d+\. No tools were executed\.[\s\S]*\^/u
             )
           }
         });
+        const diagnostic = JSON.parse(toolResult.content).error.message;
+        expect(diagnostic).toContain('command": "echo harmless"');
+        expect(diagnostic).not.toContain('MAR_AGENT_CODE_SYNTAX_ERROR:');
+        expect(diagnostic).not.toContain('code-mode.js');
         const store = await JsonlSessionStore.open(home);
         try {
           const records = await store.read(session.id);

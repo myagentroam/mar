@@ -11,6 +11,7 @@ import {
 import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
 import { type ModelAdapter, type ModelEvent } from '../../src/agent-core/model/contracts.js';
 import { describeMarAgentError, MarAgentError } from '../../src/agent-core/error.js';
+import { CodeCellExecutionError } from '../../src/agent-core/tools/code-mode/cells.js';
 
 const roots: string[] = [];
 
@@ -93,15 +94,48 @@ describe('MAR Agent error projection', () => {
     });
   });
 
-  it('retains bounded nested error causes with their codes', () => {
+  it('separates the top-level error code from its readable message', () => {
     const error = Object.assign(new Error('Failed to open AGENTS.md: access denied.'), {
       code: 'EACCES'
     });
 
     expect(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
       code: 'EACCES',
-      message: 'EACCES: Failed to open AGENTS.md: access denied.'
+      message: 'Failed to open AGENTS.md: access denied.'
     });
+  });
+
+  it('retains distinct cause codes without duplicating the outer code or summary', () => {
+    const cause = new MarAgentError('EACCES', 'Underlying access denied.');
+    const error = new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.', { cause });
+    expect(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
+      code: 'TEST_TOOL_FAILED',
+      message: 'Expected tool failure. Caused by: EACCES: Underlying access denied.'
+    });
+    expect(
+      describeMarAgentError(
+        new MarAgentError(error.code, error.publicMessage, { cause: error }),
+        'MAR_AGENT_EXECUTION_FAILED'
+      )
+    ).toEqual(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED'));
+  });
+
+  it('projects a cell wrapper and its cause chain exactly once', () => {
+    const cause = Object.assign(new Error('Access denied.'), { code: 'EACCES' });
+    const error = new MarAgentError('TEST_TOOL_FAILED', 'Tool failed.', { cause, retryable: true });
+    const wrapped = new CodeCellExecutionError(error, { content: '' });
+    expect(wrapped.cause).toBe(error);
+    expect(wrapped.retryable).toBe(true);
+    expect(describeMarAgentError(wrapped, 'MAR_AGENT_CODE_FAILED')).toEqual({
+      code: 'TEST_TOOL_FAILED',
+      message: 'Tool failed. Caused by: EACCES: Access denied.'
+    });
+    expect(
+      describeMarAgentError(
+        new CodeCellExecutionError(wrapped, { content: '' }),
+        'MAR_AGENT_CODE_FAILED'
+      )
+    ).toEqual(describeMarAgentError(wrapped, 'MAR_AGENT_CODE_FAILED'));
   });
 
   it('emits and returns the underlying model failure detail', async () => {
@@ -121,14 +155,14 @@ describe('MAR Agent error projection', () => {
     await expect(handle.result()).resolves.toMatchObject({
       status: 'failed',
       errorCode: 'EACCES',
-      errorMessage: 'EACCES: Failed to open AGENTS.md: access denied.'
+      errorMessage: 'Failed to open AGENTS.md: access denied.'
     });
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'execution.failed',
           code: 'EACCES',
-          message: 'EACCES: Failed to open AGENTS.md: access denied.'
+          message: 'Failed to open AGENTS.md: access denied.'
         })
       ])
     );
@@ -160,7 +194,7 @@ describe('MAR Agent error projection', () => {
           type: 'tool.failed',
           toolName: 'read',
           code: 'EACCES',
-          message: 'EACCES: Workspace read failed: access denied.'
+          message: 'Workspace read failed: access denied.'
         })
       ])
     );

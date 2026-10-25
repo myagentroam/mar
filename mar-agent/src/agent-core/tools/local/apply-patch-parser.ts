@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import { MarAgentError } from '../../error.js';
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
+import { sourcePreview } from '../input-diagnostics/source-preview.js';
 
 export type PatchHunk = {
   changeContext?: string;
@@ -25,18 +26,6 @@ const addHeader = '*** Add File: ';
 const updateHeader = '*** Update File: ';
 const deleteHeader = '*** Delete File: ';
 const moveHeader = '*** Move to: ';
-const syntaxTokens = [
-  `${beginMarker} ***`,
-  `${endMarker} ***`,
-  addHeader,
-  updateHeader,
-  deleteHeader,
-  moveHeader,
-  '@@ ',
-  '+',
-  '-',
-  ' '
-];
 
 export function parsePatch(patch: string): PatchChange[] {
   if (typeof patch !== 'string')
@@ -204,7 +193,7 @@ class FreeformPatchParser {
     const line = index + 1;
     const column = characterCount(source.slice(0, characterOffset)) + 1;
     const offset = this.#lineOffsets[index]! + characterOffset;
-    const preview = syntaxPreview(source, characterOffset);
+    const preview = sourcePreview(source, column);
     const gutter = String(line);
     throw new MarAgentError(
       'MAR_AGENT_TOOL_INPUT_INVALID',
@@ -225,47 +214,4 @@ function characterCount(value: string) {
   let count = 0;
   for (const _character of value) count++;
   return count;
-}
-
-function syntaxPreview(source: string, characterOffset: number) {
-  // Only grammar tokens and one offending character are public; paths and file bodies are not.
-  const trimmed = source.trimStart();
-  const leading = source.length - trimmed.length;
-  const tokenLength = Math.max(...syntaxTokens.map((token) => commonPrefixLength(trimmed, token)));
-  const token = trimmed.slice(0, tokenLength);
-  if (characterOffset < leading) {
-    const before = characterOffset > 40 ? '… ' : displaySyntax(source.slice(0, characterOffset));
-    return {
-      text: `${before}${displayCharacter(source[characterOffset]!)}<content omitted>`,
-      caret: before.length
-    };
-  }
-  const prefix = leading > 40 ? '… ' : displaySyntax(source.slice(0, leading));
-  const syntaxEnd = leading + tokenLength;
-  if (characterOffset < syntaxEnd) {
-    return {
-      text: `${prefix}${token}${source.length > syntaxEnd ? '<content omitted>' : ''}`,
-      caret: prefix.length + characterOffset - leading
-    };
-  }
-  const gap = characterOffset > syntaxEnd ? '<content omitted>' : '';
-  const character = source.slice(characterOffset)[Symbol.iterator]().next().value as
-    string | undefined;
-  const before = `${prefix}${token}${gap}`;
-  return {
-    text: `${before}${character === undefined ? '<end of line>' : displayCharacter(character)}${character !== undefined && source.length > characterOffset + character.length ? '<content omitted>' : ''}`,
-    caret: before.length
-  };
-}
-
-function displayCharacter(character: string) {
-  const point = character.codePointAt(0)!;
-  if (point >= 0x7f) return `\\u{${point.toString(16)}}`;
-  return JSON.stringify(character).slice(1, -1);
-}
-
-function displaySyntax(value: string) {
-  return [...value]
-    .map((character) => (character === '\t' ? '    ' : displayCharacter(character)))
-    .join('');
 }

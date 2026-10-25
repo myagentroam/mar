@@ -223,6 +223,7 @@ function defaultEngineFactory(): CodeModeEngineFactory {
     runtimeDirectories: [
       ...new Set([
         fileURLToPath(new URL('.', import.meta.url)),
+        fileURLToPath(new URL('../input-diagnostics/', import.meta.url)),
         dependencyRoot(core),
         dependencyRoot(variant),
         dependencyRoot(ffi)
@@ -676,10 +677,7 @@ export class CodeModeTool {
               ok: false,
               error: {
                 code: diagnostic.code,
-                // The guest carries the code separately; the outer error adds its own prefix.
-                message: diagnostic.message.startsWith(`${diagnostic.code}: `)
-                  ? diagnostic.message.slice(diagnostic.code.length + 2)
-                  : diagnostic.message
+                message: diagnostic.message
               }
             });
           }

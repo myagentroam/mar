@@ -354,7 +354,7 @@ function readKey(input: ReadRequest): string {
 
 function readError(path: string, error: unknown): ReadErrorResult {
   if (error instanceof MarAgentError)
-    return { path, error: { code: error.code, message: error.message } };
+    return { path, error: { code: error.code, message: error.publicMessage } };
   const code =
     typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
       ? error.code
