@@ -40,6 +40,41 @@ function createStore(resources: Record<string, string> = {}) {
 }
 
 describe('ResourceInputProjection', () => {
+  it.each([false, true])(
+    'projects hook images without replaying cloned attachment mirrors (URL=%s)',
+    async (useResourceUrl) => {
+      const store = createStore({ attachment: 'YXR0YWNobWVudA==' });
+      const projection = new ResourceInputProjection(useResourceUrl, store, 'session-1', []);
+      const mirrors = [
+        { ...image('attachment'), url: 'https://assets.example.test/attachment.png' }
+      ];
+      const attachment = message({ role: 'user', images: mirrors });
+      const injected = {
+        mimeType: 'image/png',
+        dataBase64: 'aG9vay1pbWFnZQ==',
+        url: 'https://assets.example.test/hook.png'
+      };
+      const first = await projection.prepare(
+        request([attachment], { images: [...structuredClone(mirrors), injected] }),
+        mirrors
+      );
+      expect(first.images).toEqual([
+        useResourceUrl
+          ? { mimeType: 'image/png', url: injected.url }
+          : { mimeType: 'image/png', dataBase64: injected.dataBase64 }
+      ]);
+      projection.complete(first);
+      const next = await projection.prepare(
+        request([attachment], { images: structuredClone(mirrors) }),
+        mirrors
+      );
+      expect(next).not.toHaveProperty('images');
+      expect(next.messages[0]?.images).toEqual(useResourceUrl ? mirrors : []);
+      expect(injected).toHaveProperty('dataBase64');
+      expect(injected).toHaveProperty('url');
+    }
+  );
+
   it('sends only each newly delivered image across tool-result rounds and re-views', async () => {
     const store = createStore({
       attachment: 'YXR0YWNobWVudA==',
@@ -59,9 +94,8 @@ describe('ResourceInputProjection', () => {
         }
       ]
     });
-    const first = await projection.prepare(
-      request([attachment], { images: [image('attachment')] })
-    );
+    const mirrors = [image('attachment')];
+    const first = await projection.prepare(request([attachment], { images: mirrors }), mirrors);
 
     expect(first.messages[0]?.images).toEqual([
       { ...image('attachment'), dataBase64: 'YXR0YWNobWVudA==' }

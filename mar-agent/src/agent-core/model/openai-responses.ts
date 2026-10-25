@@ -1036,17 +1036,23 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       ));
     if (responsesContinuationEnabled(this.adapter.configuration)) {
       const websocket = this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET';
+      const suffixMessages =
+        websocket && this.state.lastMessageCount !== undefined
+          ? request.messages.slice(this.state.lastMessageCount)
+          : undefined;
       const suffixBody =
         websocket &&
         this.state.lastResponse !== undefined &&
-        this.state.lastMessageCount !== undefined &&
+        suffixMessages !== undefined &&
         this.state.lastRequest !== undefined &&
-        this.state.lastSystem === JSON.stringify([request.system, request.systemBlocks])
+        this.state.lastSystem === JSON.stringify([request.system, request.systemBlocks]) &&
+        // Top-level images attach to the last real user, which must be in this suffix.
+        (!request.images?.length || suffixMessages.some(isRealUserMessage))
           ? snapshot(
               responsesRequestBody(
                 this.adapter.configuration,
                 { ...request, system: '', systemBlocks: [] },
-                request.messages.slice(this.state.lastMessageCount),
+                suffixMessages,
                 this.state.lastResponse.outputItems
               )
             )

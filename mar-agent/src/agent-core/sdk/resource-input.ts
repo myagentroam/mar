@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError } from '../error.js';
 import type { ModelMessage, ModelRequest } from '../model/contracts.js';
 import { isModelImageUrl, type ModelImage } from '../model/image.js';
@@ -27,7 +28,10 @@ export class ResourceInputProjection {
     );
   }
 
-  async prepare(request: ModelRequest): Promise<ModelRequest> {
+  async prepare(
+    request: ModelRequest,
+    mirroredImages: readonly ModelImage[] = []
+  ): Promise<ModelRequest> {
     const selected: Source[] = [];
     const messages = await Promise.all(
       request.messages.map(async (message) => {
@@ -41,8 +45,14 @@ export class ResourceInputProjection {
         return { ...message, images };
       })
     );
-    const result = { ...request, messages };
-    delete result.images;
+    const { images: topImages, ...retained } = request;
+    // SDK attachment mirrors already follow their source messages' delivery lifecycle.
+    const images = await Promise.all(
+      (topImages ?? [])
+        .filter((image) => !mirroredImages.some((mirror) => isDeepStrictEqual(image, mirror)))
+        .map((image) => this.#project(image))
+    );
+    const result = { ...retained, messages, ...(images.length ? { images } : {}) };
     this.#candidates.set(result.messages, selected);
     return result;
   }

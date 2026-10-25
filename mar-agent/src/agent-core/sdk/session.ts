@@ -2521,7 +2521,10 @@ export function createSessionOpener(services: SessionServices) {
                   // Never sample the candidate assembled against the replaced context.
                   return prepareRound(pendingOutputContinuation, true);
                 }
-                return { request: await resourceInput.prepare(request), toolScope };
+                return {
+                  request: await resourceInput.prepare(request, candidateRequest.images),
+                  toolScope
+                };
               },
               startModel: async function* (request) {
                 const snapshots = (sessionRuntime.requestSnapshots ??=

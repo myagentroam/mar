@@ -228,6 +228,7 @@ function imagePayloads(value: unknown, protocol: Protocol): string[] {
     if (protocol === 'ANTHROPIC_MESSAGES' && record.type === 'image') {
       const source = record.source as Record<string, unknown> | undefined;
       if (source?.type === 'base64' && typeof source.data === 'string') payloads.push(source.data);
+      if (source?.type === 'url' && typeof source.url === 'string') payloads.push(source.url);
     }
     Object.values(record).forEach(visit);
   };
@@ -255,12 +256,14 @@ async function createAgent(
   home: string,
   workspace: string,
   model: MarAgentModelConfiguration,
-  publishModelResource?: ConstructorParameters<typeof LocalAgentHost>[0]['publishModelResource']
+  publishModelResource?: ConstructorParameters<typeof LocalAgentHost>[0]['publishModelResource'],
+  runtimeExtensions?: Parameters<typeof createMarAgentWithAdapter>[0]['runtimeExtensions']
 ) {
   const agent = await createMarAgentWithAdapter({
     mode: 'normal',
     host: new LocalAgentHost({ homeDirectory: home, workspace, publishModelResource }),
-    models: [model]
+    models: [model],
+    ...(runtimeExtensions === undefined ? {} : { runtimeExtensions })
   });
   agents.push(agent);
   return agent;
@@ -293,6 +296,90 @@ async function createImageWorkspace() {
 describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
   'SDK inline image delivery over %s HTTP',
   (protocol) => {
+    it.each([
+      [false, 'add'],
+      [false, 'replace'],
+      [true, 'add'],
+      [true, 'replace']
+    ] as const)(
+      'delivers top-level hook images once without replaying attachment mirrors (URL=%s, %s)',
+      async (useResourceUrl, operation) => {
+        const { baseUrl, requests } = await startProtocolServer(protocol, [
+          { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
+          { type: 'final' },
+          { type: 'final' }
+        ]);
+        const { home, workspace, imageABase64 } = await createImageWorkspace();
+        const attachmentUrl = 'https://assets.example.test/attachment.png';
+        const hookUrl = 'https://assets.example.test/hook.png';
+        const hookBase64 = alternatePng.toString('base64');
+        let hooks = 0;
+        const agent = await createAgent(
+          home,
+          workspace,
+          { ...configuration(protocol, baseUrl), useResourceUrl },
+          async () => ({ url: attachmentUrl, urlExpiresAt: 1 }),
+          [
+            {
+              id: 'inject-request-image',
+              apiVersion: '1.0',
+              attachSession(context) {
+                context.hooks.intercept('model.request', (request, _call, next) => {
+                  hooks++;
+                  if (hooks === 1)
+                    expect(request.images?.length ?? 0).toBe(operation === 'replace' ? 1 : 0);
+                  return next({
+                    ...request,
+                    system: `${request.system}\nRequest hook active.`,
+                    ...(hooks === 1
+                      ? {
+                          images: [{ mimeType: 'image/png', dataBase64: hookBase64, url: hookUrl }]
+                        }
+                      : {})
+                  });
+                });
+              }
+            }
+          ]
+        );
+        const session = await agent.createSession({ workspace });
+        await expect(
+          session
+            .run({
+              prompt: 'Inspect the image, then read plain.txt.',
+              ...(operation === 'replace'
+                ? {
+                    images: [
+                      { name: 'attachment.png', mimeType: 'image/png', dataBase64: imageABase64 }
+                    ]
+                  }
+                : {})
+            })
+            .result()
+        ).resolves.toMatchObject({ status: 'completed' });
+        await expect(
+          session.run({ prompt: 'Continue without a new image.' }).result()
+        ).resolves.toMatchObject({ status: 'completed' });
+        expect(hooks).toBe(3);
+        const expectedHook = useResourceUrl
+          ? hookUrl
+          : protocol === 'OPENAI_RESPONSES'
+            ? `data:image/png;base64,${hookBase64}`
+            : hookBase64;
+        const expectedAttachment = useResourceUrl
+          ? attachmentUrl
+          : protocol === 'OPENAI_RESPONSES'
+            ? `data:image/png;base64,${imageABase64}`
+            : imageABase64;
+        const retained = useResourceUrl && operation === 'replace' ? [expectedAttachment] : [];
+        expect(requests.map((body) => imagePayloads(body, protocol))).toEqual([
+          [...(operation === 'replace' ? [expectedAttachment] : []), expectedHook],
+          retained,
+          retained
+        ]);
+      }
+    );
+
     it('does not load local image bytes for URL requests or ordinary tools', async () => {
       const { baseUrl, requests } = await startProtocolServer(protocol, [
         { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
@@ -632,6 +719,64 @@ describe('SDK Code Mode inline image delivery over Responses HTTP', () => {
 });
 
 describe('SDK inline image delivery over Responses WebSocket', () => {
+  it.each([false, true])(
+    'delivers a top-level hook image added after a tool result (URL=%s)',
+    async (useResourceUrl) => {
+      const actions: ToolAction[] = [
+        { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
+        { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
+        { type: 'final' }
+      ];
+      const server = await startResponsesWebSocketServer([], {
+        responsesByRequest: actions.map((action, index) =>
+          toolEvents('OPENAI_RESPONSES', action, index)
+        )
+      });
+      servers.push(server.server);
+      const { home, workspace, imageABase64 } = await createImageWorkspace();
+      const hookUrl = 'https://assets.example.test/hook.png';
+      let hooks = 0;
+      const agent = await createAgent(
+        home,
+        workspace,
+        { ...configuration('OPENAI_RESPONSES', server.baseUrl, 'WEBSOCKET'), useResourceUrl },
+        undefined,
+        [
+          {
+            id: 'inject-after-tool',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.hooks.intercept('model.request', (request, _call, next) => {
+                hooks++;
+                return next(
+                  hooks === 2
+                    ? {
+                        ...request,
+                        images: [{ mimeType: 'image/png', dataBase64: imageABase64, url: hookUrl }]
+                      }
+                    : request
+                );
+              });
+            }
+          }
+        ]
+      );
+      const session = await agent.createSession({ workspace });
+      await expect(
+        session.run({ prompt: 'Read plain.txt twice.' }).result()
+      ).resolves.toMatchObject({ status: 'completed' });
+      expect(hooks).toBe(3);
+      expect(server.connections()).toBe(1);
+      expect(server.requests.map((body) => imagePayloads(body, 'OPENAI_RESPONSES'))).toEqual([
+        [],
+        [useResourceUrl ? hookUrl : `data:image/png;base64,${imageABase64}`],
+        []
+      ]);
+      expect(server.requests[1]).not.toHaveProperty('previous_response_id');
+      expect(server.requests[2]).toHaveProperty('previous_response_id', 'response-1');
+    }
+  );
+
   it('continues on a healthy socket and fully replays only the newly viewed image after disconnect', async () => {
     const actions: ToolAction[] = [
       { type: 'tool', name: 'view_image', arguments: { path: 'image-a.png' } },
@@ -681,7 +826,10 @@ describe('SDK inline image delivery over Responses WebSocket', () => {
       [wireImage],
       [wireImageB]
     ]);
+    expect(server.requests[1]).toHaveProperty('previous_response_id', 'response-0');
+    expect(server.requests[2]).toHaveProperty('previous_response_id', 'response-1');
     expect(server.requests[3]).not.toHaveProperty('previous_response_id');
+    expect(server.requests[4]).toHaveProperty('previous_response_id', 'response-3');
     expect(JSON.stringify(server.requests[3]?.input)).toContain(
       'Inspect this attachment and then the requested files.'
     );
