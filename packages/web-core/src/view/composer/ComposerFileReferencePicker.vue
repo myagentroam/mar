@@ -53,7 +53,7 @@ watch(
         @click="emit('select', entry)"
       >
         <FileTypeIcon :name="entry.name" :kind="entry.kind" />
-        <span v-tooltip="entry.name" class="candidate-name">{{ entry.name }}</span>
+        <span class="candidate-name">{{ entry.name }}</span>
         <code>{{ entry.path }}</code>
         <span class="entry-kind">{{
           entry.kind === 'DIRECTORY'

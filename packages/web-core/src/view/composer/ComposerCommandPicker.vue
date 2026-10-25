@@ -133,7 +133,7 @@ function statusText(): string {
         @mouseenter="emit('activate', index)"
         @click="emit('selectQuickPrompt', prompt)"
       >
-        <span v-tooltip="`#${prompt.phrase}`" class="candidate-name">#{{ prompt.phrase }}</span>
+        <span class="candidate-name">#{{ prompt.phrase }}</span>
         <span class="candidate-description">{{ prompt.prompt }}</span>
       </button>
     </template>

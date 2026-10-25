@@ -9,6 +9,25 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Process headings reveal content without a redundant status tooltip', async ({ page }) => {
+  await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1`);
+  const process = page.locator('[data-process-id="preview-process"]');
+  const heading = process.locator('.process-heading');
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await page.clock.install();
+  await heading.hover();
+  await page.clock.runFor(500);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(heading).not.toHaveAttribute('aria-describedby');
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  const reasoning = process.locator('.reasoning-group').first();
+  await reasoning.locator('summary').click();
+  await expect(reasoning.locator('p')).toContainText('Full thinking detail');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Jump to latest uses neutral floating feedback in ${theme}`, async ({
     browser

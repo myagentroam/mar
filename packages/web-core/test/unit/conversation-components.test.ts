@@ -49,6 +49,7 @@ it.each([false, true])(
   'only invokes a process content slot while open (active: %s)',
   async (active) => {
     const slot = vi.fn(() => h('div', 'Expensive process content'));
+    const tooltipValues: unknown[] = [];
     const html = await render(
       ConversationWorkProcess,
       {
@@ -63,11 +64,13 @@ it.each([false, true])(
         synchronized: true,
         now: undefined
       },
-      { default: slot }
+      { default: slot },
+      tooltipValues
     );
     expect(slot).toHaveBeenCalledTimes(active ? 1 : 0);
     expect(html.includes('Expensive process content')).toBe(active);
     expect(html).toContain(`aria-expanded="${active}"`);
+    expect(tooltipValues.filter(Boolean)).toEqual([]);
   }
 );
 
@@ -171,11 +174,17 @@ const DialogStub = defineComponent({
 async function render(
   component: Component,
   props: Record<string, unknown>,
-  slots?: Record<string, () => ReturnType<typeof h>>
+  slots?: Record<string, () => ReturnType<typeof h>>,
+  tooltipValues?: unknown[]
 ): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props, slots) });
   app.use(i18n);
-  app.directive('tooltip', { getSSRProps: () => ({}) });
+  app.directive('tooltip', {
+    getSSRProps: (binding) => {
+      tooltipValues?.push(binding.value);
+      return {};
+    }
+  });
   if (component === ImagePreviewDialogs) app.component('ElDialog', DialogStub);
   else app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
