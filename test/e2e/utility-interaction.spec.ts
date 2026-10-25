@@ -67,6 +67,57 @@ async function checkUtility(
 }
 
 for (const width of [1280, 390]) {
+  test(`Queue text keeps glyphs clear of clipped edges without increasing row height at ${width}px`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
+      await page.evaluate(() => document.fonts.ready);
+      const row = page.locator('.queue-item');
+      const originalHeight = (await row.boundingBox())!.height;
+      const actions = row.locator('.queue-item-actions');
+      await actions.getByRole('button', { name: 'Edit', exact: true }).click();
+      const text = 'g j p q y · review fix loop again, 有问题额外review一轮 commit';
+      await row.locator('textarea').fill(text);
+      await actions.getByRole('button', { name: 'Save', exact: true }).click();
+      const paragraph = row.locator('.queue-item-content > p');
+      await expect(paragraph).toHaveText(text);
+      const layout = await paragraph.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        const paragraph = element.getBoundingClientRect();
+        const content = element.parentElement!.getBoundingClientRect();
+        return {
+          top: text.top - Math.max(paragraph.top, content.top),
+          bottom: Math.min(paragraph.bottom, content.bottom) - text.bottom,
+          lineHeight: getComputedStyle(element).lineHeight
+        };
+      });
+      await testInfo.attach('queue-text-layout', {
+        body: JSON.stringify(layout),
+        contentType: 'application/json'
+      });
+      await page.mouse.move(0, 0);
+      await row.screenshot({ path: testInfo.outputPath(`queue-descenders-${width}.png`) });
+      // Leave breathing room inside both overflow clips, including fractional font metrics.
+      expect(layout.top).toBeGreaterThanOrEqual(1);
+      expect(layout.bottom).toBeGreaterThanOrEqual(1);
+      expect((await row.boundingBox())!.height).toBeCloseTo(originalHeight, 1);
+      await expect(paragraph).toHaveCSS('white-space', 'nowrap');
+      await expect(paragraph).toHaveCSS('text-overflow', 'ellipsis');
+      expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`Queue drag label stays compact without crowding content at ${width}px`, async ({
     page
   }) => {

@@ -769,7 +769,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 .work-item-content {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
-  line-height: 1.2;
+  line-height: 1.5;
 }
 
 .composer-queue li.editing {
