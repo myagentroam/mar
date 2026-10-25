@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type { RecentRun } from '../../src/service/workbench-notification-service.js';
 import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue?unit-render';
+import WorkbenchRecentSessionList from '../../src/view/workbench/WorkbenchRecentSessionList.vue?unit-render';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import {
   mountSessionGroupTestComponent,
@@ -39,6 +40,39 @@ function run(sessionId: string, sessionGroup: SessionGroup, runIndex: number): R
 }
 
 describe('Workbench recent session groups', () => {
+  it('uses primary for ongoing runs, success for completion, and preserves other status semantics', () => {
+    const statuses: RecentRun['status'][] = [
+      'STARTING',
+      'RUNNING',
+      'SUCCEEDED',
+      'FAILED',
+      'CANCELLING',
+      'INTERRUPTED',
+      'CANCELLED'
+    ];
+    const mounted = mountSessionGroupTestComponent(WorkbenchRecentSessionList, {
+      sessionGroup: 'MAIN',
+      groupState: { MAIN: { running: 2, unread: false }, CHILD: { running: 0, unread: false } },
+      runs: statuses.map((status, index) => ({ ...run(status, 'MAIN', index), status })),
+      mobileMode: false,
+      runTime: () => 'Just now'
+    });
+    mountedApps.push(mounted.app);
+    const list = mounted.container.findAll(
+      (node) => node.props.get('class') === 'recent-sessions-list'
+    )[0]!;
+    const tags = list.findAll((node) => node.type === 'span' && node.props.has('type'));
+    expect(tags.map((node) => node.props.get('type'))).toEqual([
+      'primary',
+      'primary',
+      'success',
+      'danger',
+      'warning',
+      'warning',
+      'info'
+    ]);
+  });
+
   it('defaults to Main, filters runs on selection, and preserves the combined entry count', async () => {
     localePreferenceService().setLocale('en-US');
     const runs = ref([

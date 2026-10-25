@@ -31,9 +31,9 @@ const RUN_STATUS_KEYS = {
 function runStatusType(
   status: RecentRun['status']
 ): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
-  if (status === 'SUCCEEDED') return 'primary';
+  if (status === 'SUCCEEDED') return 'success';
   if (status === 'FAILED') return 'danger';
-  if (status === 'STARTING' || status === 'RUNNING') return 'success';
+  if (status === 'STARTING' || status === 'RUNNING') return 'primary';
   if (status === 'CANCELLING' || status === 'INTERRUPTED') return 'warning';
   return 'info';
 }

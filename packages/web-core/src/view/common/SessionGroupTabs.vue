@@ -66,7 +66,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
             class="group-running"
             :value="state[group].running"
             :max="99"
-            type="success"
+            type="primary"
           />
           <span v-if="state[group].unread" class="group-unread">{{
             translate('sessionGroups.unread')
@@ -139,7 +139,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 }
 .group-running :deep(.el-badge__content) {
   min-width: 14px;
-  background: color-mix(in srgb, var(--mar-control-color-success) 60%, black);
+  background: var(--mar-color-brand);
   border: 1px solid var(--mar-bg-panel);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);

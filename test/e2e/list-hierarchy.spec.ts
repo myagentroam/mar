@@ -22,6 +22,7 @@ async function colors(page: Page) {
       secondary: color('--mar-text-secondary'),
       tertiary: color('--mar-text-tertiary'),
       success: color('--mar-color-success-text'),
+      link: color('--mar-control-link-text'),
       selected: color('--mar-fill-selection'),
       hover: color('--mar-fill-row-hover'),
       match: color('--mar-color-brand-text')
@@ -94,6 +95,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       }
       await expect(page.locator('.recent-sessions-list .el-tag--success')).toHaveCount(1);
       await expect(page.locator('.recent-sessions-list .el-tag--primary')).toHaveCount(1);
+      const statuses = page.locator('.recent-sessions-list .el-tag');
+      const recentPalette = await colors(page);
+      await expect(statuses.first()).toHaveClass(/el-tag--primary/);
+      await expect(statuses.first()).toHaveCSS('color', recentPalette.link);
+      await expect(statuses.last()).toHaveClass(/el-tag--success/);
+      await expect(statuses.last()).toHaveCSS('color', recentPalette.success);
       await page.locator('.recent-sessions-list button').last().click();
       await expect(page.getByTestId('opened')).toHaveText('Review second');
     }

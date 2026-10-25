@@ -1288,10 +1288,10 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 }
 
 .session-activity.managed_active i {
-  background: var(--mar-color-success-text);
+  background: var(--mar-color-brand);
   box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--mar-color-success-text) 11%, transparent),
-    0 0 4px 0 color-mix(in srgb, var(--mar-color-success-text) 20%, transparent);
+    0 0 0 1.5px color-mix(in srgb, var(--mar-color-brand) 11%, transparent),
+    0 0 4px 0 color-mix(in srgb, var(--mar-color-brand) 20%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .session-activity.managed_active i {

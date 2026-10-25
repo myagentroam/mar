@@ -30,6 +30,33 @@ for (const [width, theme, locale] of [
       );
       await expect(tabs.nth(1)).toContainText('99+');
       await expect(tabs.nth(1)).toContainText(locale === 'zh-CN' ? '未读' : 'Unread');
+      const palette = await page.evaluate(() => {
+        const probe = document.createElement('span');
+        document.body.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          brand: color('--mar-color-brand'),
+          link: color('--mar-control-link-text'),
+          success: color('--mar-color-success-text')
+        };
+        probe.remove();
+        return result;
+      });
+      const runningDots = page.locator('.session-activity.managed_active i');
+      await expect(runningDots).toHaveCount(3);
+      for (const dot of await runningDots.all()) {
+        await expect(dot).toHaveCSS('background-color', palette.brand);
+        await expect(dot).toHaveCSS('width', '5px');
+        await expect(dot).toHaveCSS('height', '5px');
+        await expect(dot).toHaveCSS('animation-name', 'none');
+      }
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      for (const dot of await runningDots.all())
+        await expect(dot).toHaveCSS('animation-name', 'mar-run-glow');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       const selectedBackground = await tabs.nth(0).evaluate((element) => {
         const style = getComputedStyle(element);
         const probe = document.createElement('span');
@@ -61,6 +88,7 @@ for (const [width, theme, locale] of [
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
         const badge = tab.locator('.el-badge__content');
         await expect(badge).toHaveCSS('border-top-width', '1px');
+        await expect(badge).toHaveCSS('background-color', palette.brand);
         const markerColor = await badge.evaluate((element) => {
           const probe = document.createElement('span');
           probe.style.color = 'var(--mar-color-on-accent)';
@@ -123,9 +151,18 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
+      await expect(page.locator('.recent-sessions-badge')).toHaveCSS(
+        'background-color',
+        palette.brand
+      );
       await expect(recent.getByRole('tab').nth(0)).toHaveAttribute('aria-selected', 'true');
       await recent.getByRole('tab').nth(1).click();
       await expect(recent.locator('.recent-sessions-list > li')).toHaveCount(102);
+      const statuses = recent.locator('.recent-sessions-list .el-tag');
+      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      await expect(statuses.first()).toHaveCSS('color', palette.success);
+      await expect(statuses.last()).toHaveClass(/el-tag--primary/);
+      await expect(statuses.last()).toHaveCSS('color', palette.link);
       for (const list of [chats.getByRole('tablist'), recent.getByRole('tablist')]) {
         await expect(list.locator('.group-unread')).toHaveCount(2);
         expect(
@@ -135,6 +172,10 @@ for (const [width, theme, locale] of [
         const optionBounds = await Promise.all(options.map((option) => option.boundingBox()));
         expect(optionBounds[0]!.width).toBeCloseTo(optionBounds[1]!.width, 0);
         for (const option of options) {
+          await expect(option.locator('.el-badge__content')).toHaveCSS(
+            'background-color',
+            palette.brand
+          );
           const bounds = (await option.boundingBox())!;
           const label = (await option.locator('.group-label').boundingBox())!;
           const markers = (await option.locator('.group-markers').boundingBox())!;
