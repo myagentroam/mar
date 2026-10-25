@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-25
 ---
 
 # 使用 marctl 管理节点
@@ -102,7 +102,7 @@ marctl sessions goal clear <session-id> --json
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。`start`、`send` 还可重复传入 `--image <路径>`，与文本组合或只发送图片。图片从 CLI 所在主机读取，使用既有 Session 图片附件链路发送，不是远端路径引用。支持 PNG、JPEG、GIF、WebP，最多 5 张，单张 5 MiB、合计 10 MiB；实际图片能力仍取决于目标 Runner 和模型。`goal set` 只接受文本，并拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
-`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model` 时使用目标 Runner 的配置，不继承 Coordinator 模型；`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
+`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
 Agent 内执行 `start` 时，CLI 自动携带当前会话作为创建来源，Node 校验同一 Workspace 后以正式 ID 保存 `parentSessionId`；没有来源则为空，不支持手动指定或修改 parent。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它，删除父会话不删除子会话，旧会话不补推关系。
 

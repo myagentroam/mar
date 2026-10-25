@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-25
 ---
 
 # Manage Nodes with marctl
@@ -102,7 +102,7 @@ marctl sessions goal clear <session-id> --json
 
 For `start`, `send` and `goal set`, use `-m` / `--message` to supply text directly, or `--message-file` to read a UTF-8 file or stdin; the two options are mutually exclusive. `start` and `send` also accept repeated `--image <path>` options, with or without text. Images are read on the CLI host and sent as existing Session image attachments, not remote path references. PNG, JPEG, GIF and WebP are supported, up to 5 images, 5 MiB each and 10 MiB total. Actual image capabilities still depend on the target Runner and model. `goal set` accepts text only and rejects the reserved objective `--clear`; use `goal clear` to clear the Goal.
 
-`start` creates a Session at the Workspace root and submits its first message; it supports `mar-agent`, `codex`, `claude-code`, and `opencode`, subject to actual Runner capabilities. Omit `--model` to use the target Runner configuration, not the Coordinator's model. `--message-file -` reads UTF-8 stdin. Record the returned native Session ID; titles are not unique routing identities.
+`start` creates a Session at the Workspace root and submits its first message; it supports `mar-agent`, `codex`, `claude-code`, and `opencode`, subject to actual Runner capabilities. Omit `--model` to use the target Runner configuration, not the Coordinator's model. Creating a Session does not overwrite the default model, reasoning effort, or access saved for the Web Composer, with or without a parent Session; explicit configuration applies only to the new Session. `--message-file -` reads UTF-8 stdin. Record the returned native Session ID; titles are not unique routing identities.
 
 When an Agent runs `start`, the CLI automatically supplies its current Session as the creation source. The Node checks the same Workspace and stores the canonical ID as `parentSessionId`; without a source it remains null. There is no parent override or editing command. `list --parent <session-id>` pages through direct children, and `graph <session-id>` returns creation descendants including the root. Graph defaults to at most 100 nodes; `--limit` accepts 1..100. Results contain `rootSessionId`, `nodes`, and `truncated`, using only Node-known Sessions without scanning Runners. Parent means creation source, not authorization, current coordinator, or task dependency. Sending messages and taking over work do not change it; deleting a parent does not delete children, and old relationships are not inferred.
 
