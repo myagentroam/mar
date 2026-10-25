@@ -118,6 +118,12 @@ export const hostedConversationsEnUS = {
     uploadProgress: 'Uploading {value}%',
     uploaded: 'Uploaded',
     uploadAfterCreate: 'Ready to upload',
+    firstMessagePaused:
+      'Your first-message draft is saved. Return to New conversation to continue.',
+    firstMessageDisposed:
+      'First-message submission paused. Submitted creation or uploads were not cancelled. Return to conversation history to continue.',
+    firstMessageWatchRequired:
+      'Wait for the conversation connection to recover, then send the draft again.',
     retryAttachment: 'Retry',
     retryAttachmentNamed: 'Upload attachment “{name}” again',
     removeAttachment: 'Remove attachment “{name}”',

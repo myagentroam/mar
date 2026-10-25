@@ -49,6 +49,7 @@ function runStatusType(
       {{ translate('workbenchNotificationCenter.recentSessions') }}
     </header>
     <SessionGroupTabs
+      class="recent-session-groups"
       :model-value="sessionGroup"
       :state="groupState"
       @update:model-value="emit('selectGroup', $event)"
@@ -105,6 +106,9 @@ function runStatusType(
 .recent-sessions-panel.drawer-mode {
   max-height: none;
   overflow: visible;
+}
+.recent-session-groups {
+  margin-inline: 0.35rem;
 }
 .drawer-mode .recent-sessions-list {
   overflow: visible;

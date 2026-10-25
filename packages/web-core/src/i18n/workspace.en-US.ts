@@ -3,6 +3,8 @@ export const workspaceEnUS = {
     label: 'Session groups',
     main: 'Main Sessions',
     child: 'Child Sessions',
+    mainTab: 'Main',
+    childTab: 'Child',
     unread: 'Unread',
     running: '{count} running sessions',
     emptyMain: 'No main sessions',

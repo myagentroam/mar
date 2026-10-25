@@ -137,6 +137,19 @@ for (const width of [1280, 390]) {
       const frame = page.locator('.workspace-file-page-frame:visible');
       await expect(frame.locator('.unified-history-diff')).toContainText('src/first.ts');
       await captureScreenshot(page, `file-preview-diff-${width}.png`);
+      const content = frame.locator('.unified-diff-content');
+      for (const panel of ['#171e28', '#ffffff', '#263b32']) {
+        await page.locator('html').evaluate((element, color) => {
+          element.style.setProperty('--mar-bg-panel', color);
+        }, panel);
+        const background = await frame
+          .locator('.unified-history-diff')
+          .evaluate((element) => getComputedStyle(element).backgroundColor);
+        await expect(content).toHaveCSS('background-color', background);
+      }
+      await page.locator('html').evaluate((element) => {
+        element.style.removeProperty('--mar-bg-panel');
+      });
       await frame.focus();
       for (const [key, path] of [
         ['ArrowRight', paths[1]],
@@ -214,11 +227,7 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
         })
         .toEqual(expected);
     };
-    const expectContentInset = async (insetRem: number) => {
-      const inset = await page.evaluate(
-        (rem) => Math.round(rem * parseFloat(getComputedStyle(document.documentElement).fontSize)),
-        insetRem
-      );
+    const expectFlushChrome = async () => {
       await expect
         .poll(() =>
           surface.evaluate((element) => {
@@ -233,11 +242,15 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
             ].map(Math.round);
           })
         )
-        .toEqual([inset, inset, inset, inset]);
+        .toEqual([0, 0, 0, 0]);
+      const content = page.locator('.workspace-file-page-frame-content:visible');
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        await expect(content).toHaveCSS(`padding-${side}`, '0px');
+      }
     };
 
     await expectBounds({ x: 240, y: 120, width: 1440, height: 960 });
-    await expectContentInset(0.5);
+    await expectFlushChrome();
     await captureScreenshot(page, 'file-preview-overlay-1920x1200.png');
     await page.getByRole('button', { name: 'Finish loading', exact: true }).click();
     await page.getByText('Content of Long project file-1.txt', { exact: true }).click();
@@ -264,12 +277,12 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
     await expect(tabs).toHaveCount(12);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expectBounds({ x: 16, y: 16, width: 1248, height: 768 });
-    await expectContentInset(0.5);
+    await expectFlushChrome();
     await expect(tabs).toHaveCount(12);
     await captureScreenshot(page, 'file-preview-overlay-1280x800.png');
     await page.setViewportSize({ width: 390, height: 844 });
     await expectBounds({ x: 0, y: 0, width: 390, height: 844 });
-    await expectContentInset(0);
+    await expectFlushChrome();
     await expect(tabs).toHaveCount(12);
     await captureScreenshot(page, 'file-preview-overlay-390x844.png');
 

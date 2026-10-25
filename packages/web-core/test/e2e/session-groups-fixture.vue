@@ -106,7 +106,7 @@ const props = {
   skillSupported: false,
   mcpSupported: false,
   cleanupSessionsSupported: false,
-  searchSupported: false,
+  searchSupported: true,
   searchQuery: '',
   searching: false,
   refreshing: false,

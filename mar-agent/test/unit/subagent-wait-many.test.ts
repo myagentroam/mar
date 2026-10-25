@@ -97,9 +97,13 @@ describe('multi-agent SDK integration', () => {
       expect(groupResult).toMatchObject({
         mode: 'all',
         waitFor,
-        pendingAgentIds: [],
-        agents: [{ latestMessage: { text: 'done' } }, { latestMessage: { text: 'done' } }]
+        pendingAgentIds: []
       });
+      const agents = (
+        groupResult as { agents: Array<{ summary?: string; latestMessage?: { text: string } }> }
+      ).agents;
+      expect(agents).toHaveLength(2);
+      for (const agent of agents) expect(agent.summary ?? agent.latestMessage?.text).toBe('done');
       if (waitFor === 'completion')
         expect(groupResult).toMatchObject({
           waitOutcome: 'completion',
@@ -111,9 +115,7 @@ describe('multi-agent SDK integration', () => {
       const waitEvent = events.find(
         (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
       );
-      expect(waitEvent).toMatchObject({
-        data: { agents: [{ latestMessage: { text: 'done' } }, { latestMessage: { text: 'done' } }] }
-      });
+      expect(waitEvent).toMatchObject({ data: groupResult });
       expect(facts.filter((fact) => fact.operation === 'wait')).toHaveLength(2);
       const store = await JsonlSessionStore.open(f.home);
       const records = await store.read(f.session.id);
@@ -203,7 +205,8 @@ describe('multi-agent SDK integration', () => {
         updates.some(
           (message) =>
             message.content.includes(child.agentId) &&
-            message.content.includes('<summary>done</summary>')
+            message.content.includes('<summary>done</summary>') &&
+            !message.content.includes('<message ')
         )
       ).toBe(true);
     for (const result of (modelResult as { agents: Record<string, unknown>[] }).agents)

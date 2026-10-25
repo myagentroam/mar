@@ -165,6 +165,7 @@ const CONVERSATION_TEMPLATE_OPERATIONS = [
 
 const HOSTED_CONVERSATION_OPERATIONS = [
   'conversation.hosted.list',
+  'conversation.hosted.model-options',
   'conversation.hosted.create',
   'conversation.hosted.get',
   'conversation.hosted.history',

@@ -389,6 +389,84 @@ describe('Server hosted conversation routes', () => {
     expect(response.json()).toEqual(hostedSnapshot());
   });
 
+  it('reads draft model options and injects the selected model when creating', async () => {
+    const fixture = routeFixture();
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+    const optionModel = {
+      id: model.id,
+      name: model.name,
+      protocol: model.protocol,
+      baseUrl: model.baseUrl,
+      modelId: model.modelId,
+      contextWindowTokens: model.contextWindowTokens,
+      maxOutputTokens: model.maxOutputTokens,
+      inputCapabilities: model.inputCapabilities,
+      outputCapabilities: model.outputCapabilities,
+      reasoningEfforts: model.reasoningEfforts,
+      defaultReasoningEffort: 'high',
+      titleGeneration: false,
+      codeMode: false,
+      conversationModel: true,
+      hostedWebSearch: false,
+      responsesPreviousResponseId: false,
+      enabled: true,
+      sortOrder: 0,
+      apiKeyConfigured: true
+    };
+    fixture.nodeControl.requestHostedConversationNode.mockResolvedValueOnce({
+      models: [optionModel],
+      defaultModelId: 'model-1'
+    });
+
+    const options = await app.inject({
+      method: 'GET',
+      url: '/api/nodes/node-1/conversation-templates/template-1/model-options',
+      headers
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations',
+      headers,
+      payload: { templateId: 'template-1', clientRequestId: 'create-model', modelId: 'model-1' }
+    });
+
+    expect(options.statusCode).toBe(200);
+    expect(options.json()).toEqual({ models: [optionModel], defaultModelId: 'model-1' });
+    expect(created.statusCode).toBe(201);
+    expect(fixture.models.runtimeForUser).toHaveBeenCalledWith(7, 'model-1');
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      1,
+      'node-1',
+      'conversation.hosted.model-options',
+      { templateId: 'template-1', __template: template, __marAgentModels: [model] },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.create',
+      {
+        templateId: 'template-1',
+        clientRequestId: 'create-model',
+        modelId: 'model-1',
+        __template: template,
+        __marAgentModel: model,
+        __marAgentModels: [model]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+  });
+
   it('uses the hosted relay for owner-scoped Watch when ordinary Node access is denied', async () => {
     const fixture = routeFixture();
     fixture.nodeControl.requestHostedConversationNode

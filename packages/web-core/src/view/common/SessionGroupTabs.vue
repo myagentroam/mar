@@ -39,78 +39,127 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 </script>
 
 <template>
-  <div class="session-group-tabs" role="tablist" :aria-label="translate('sessionGroups.label')">
-    <button
-      v-for="group in groups"
-      :key="group"
-      type="button"
-      role="tab"
-      :data-group="group"
-      :aria-selected="modelValue === group"
-      :tabindex="modelValue === group ? 0 : -1"
-      :aria-label="accessibleLabel(group)"
-      @click="emit('update:modelValue', group)"
-      @keydown="navigate($event, group)"
-    >
-      <span>{{ label(group) }}</span>
-      <el-badge
-        v-if="state[group].running"
-        class="group-running"
-        :value="state[group].running"
-        :max="99"
-        type="success"
-        aria-hidden="true"
-      />
-      <span v-if="state[group].unread" class="group-unread" aria-hidden="true">{{
-        translate('sessionGroups.unread')
-      }}</span>
-    </button>
+  <div class="session-group-tabs">
+    <div class="group-options" role="tablist" :aria-label="translate('sessionGroups.label')">
+      <button
+        v-for="group in groups"
+        :key="group"
+        type="button"
+        role="tab"
+        :data-group="group"
+        :aria-selected="modelValue === group"
+        :tabindex="modelValue === group ? 0 : -1"
+        :aria-label="accessibleLabel(group)"
+        @click="emit('update:modelValue', group)"
+        @keydown="navigate($event, group)"
+      >
+        <span class="group-label">{{
+          translate(group === 'MAIN' ? 'sessionGroups.mainTab' : 'sessionGroups.childTab')
+        }}</span>
+        <span
+          v-if="state[group].running || state[group].unread"
+          class="group-markers"
+          aria-hidden="true"
+        >
+          <el-badge
+            v-if="state[group].running"
+            class="group-running"
+            :value="state[group].running"
+            :max="99"
+            type="success"
+          />
+          <span v-if="state[group].unread" class="group-unread">{{
+            translate('sessionGroups.unread')
+          }}</span>
+        </span>
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .session-group-tabs {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
+  flex-shrink: 0;
+  overflow-x: auto;
+  padding: 0.5rem 0 0;
+}
+.group-options {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-fill-hover);
 }
 .session-group-tabs button {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  min-width: 7.5rem;
+  min-height: var(--mar-compact-control-size);
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
-  padding: 0.4rem 0.25rem;
+  padding: 0.125rem 0.5rem;
   border: 0;
-  border-radius: var(--mar-radius-control);
+  border-radius: calc(var(--mar-radius-control) - 2px);
   background: transparent;
   color: var(--mar-text-secondary);
+  font-family: inherit;
   font-size: var(--mar-font-size-meta);
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
 }
 .session-group-tabs button:hover {
   background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
 }
 .session-group-tabs button[aria-selected='true'] {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }
+.session-group-tabs button:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+}
+.group-markers {
+  position: absolute;
+  top: -3px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+.group-running {
+  display: inline-flex;
+  flex: none;
+}
 .group-running :deep(.el-badge__content) {
-  background: var(--mar-color-success-bg);
-  border-color: var(--mar-color-success-text);
-  color: var(--mar-color-success-text);
-  font-size: var(--mar-font-size-meta);
+  min-width: 14px;
+  background: color-mix(in srgb, var(--mar-control-color-success) 60%, black);
+  border: 1px solid var(--mar-bg-panel);
+  color: var(--mar-color-on-accent);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   border-radius: var(--mar-radius-marker);
-  padding: 0 0.25rem;
+  height: auto;
+  line-height: 1.2;
+  padding: 0 0.1875rem;
 }
 .group-unread {
-  border: 1px solid var(--mar-border-medium);
+  flex: none;
+  border: 1px solid var(--mar-border-strong);
   border-radius: var(--mar-radius-marker);
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1;
-  padding: 1px 3px;
+  background: var(--mar-bg-page);
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0 0.1875rem;
 }
 </style>

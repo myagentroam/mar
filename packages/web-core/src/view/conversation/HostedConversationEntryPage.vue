@@ -2,8 +2,7 @@
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { onMounted, ref } from 'vue';
-import type { HostedConversationSnapshot } from '@myagentroam/protocol';
-import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
+import type { HostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import type { createHostedConversationWorkspaceService } from '../../service/hosted-conversation-workspace-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -14,16 +13,17 @@ const props = defineProps<{
   readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
   readonly mobileViewport: boolean;
   readonly connected?: boolean;
-  readonly createConversation: (snapshot: HostedConversationSnapshot) => Promise<void>;
+  readonly entry: HostedConversationEntryService;
 }>();
 const emit = defineEmits<{
   started: [];
 }>();
 
-const service = createHostedConversationEntryService(props.request);
+const service = props.entry;
 const loading = ref(false);
 const loaded = ref(false);
 let loadSequence = 0;
+let modelLoadSequence = 0;
 
 async function load(): Promise<void> {
   const sequence = ++loadSequence;
@@ -32,6 +32,7 @@ async function load(): Promise<void> {
     await service.loadTemplates();
     if (sequence !== loadSequence) return;
     loaded.value = true;
+    await loadModels();
   } catch (error) {
     if (sequence !== loadSequence) return;
     showMessage(
@@ -44,26 +45,31 @@ async function load(): Promise<void> {
   }
 }
 
-async function createConversation(): Promise<boolean> {
+async function loadModels(): Promise<void> {
+  const sequence = ++modelLoadSequence;
   try {
-    const snapshot = await service.create();
-    await props.createConversation(snapshot);
-    return true;
+    await service.loadModelOptions();
   } catch (error) {
+    if (sequence !== modelLoadSequence) return;
     showMessage(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.createFailed'),
+      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed'),
       'error',
       error
     );
-    return false;
   }
 }
-
 function refreshTemplatesOnOpen(visible: boolean): void {
   if (visible && !loading.value) void load();
 }
 
-onMounted(load);
+function refreshModelsOnOpen(visible: boolean): void {
+  if (visible) void loadModels();
+}
+
+onMounted(() => {
+  if (service.templates.value.length === 0) void load();
+  else if (!service.modelOptionsLoaded.value) void loadModels();
+});
 </script>
 
 <template>
@@ -86,8 +92,8 @@ onMounted(load);
         readonly-reason=""
         draft
         :entry="service"
-        :create-conversation="createConversation"
         :reload-templates="refreshTemplatesOnOpen"
+        :reload-models="refreshModelsOnOpen"
         @started="emit('started')"
       />
     </div>

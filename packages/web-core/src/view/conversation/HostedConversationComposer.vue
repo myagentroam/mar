@@ -14,7 +14,10 @@ import {
   hostedConversationSubmissionContext,
   type createHostedConversationWorkspaceService
 } from '../../service/hosted-conversation-workspace-service.js';
-import type { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
+import type {
+  HostedAttachment,
+  createHostedConversationEntryService
+} from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
 import {
   conversationActivityLabel,
@@ -22,19 +25,6 @@ import {
   conversationElapsedLabel
 } from '../../util/conversation-activity.js';
 import ConversationComposer from '../composer/ConversationComposer.vue';
-
-interface HostedAttachment {
-  readonly id: string;
-  readonly file: File;
-  readonly previewUrl: string | null;
-  name: string;
-  clientRequestId: string;
-  readonly controller: AbortController;
-  fileId?: string;
-  receivedBytes: number;
-  status: 'PENDING' | 'UPLOADING' | 'COMPLETED' | 'FAILED';
-  error?: string;
-}
 
 const props = defineProps<{
   readonly connected?: boolean;
@@ -44,20 +34,20 @@ const props = defineProps<{
   readonly readonlyReason: string;
   readonly draft?: boolean;
   readonly entry?: ReturnType<typeof createHostedConversationEntryService>;
-  readonly createConversation?: () => Promise<boolean>;
   readonly reloadTemplates?: (visible: boolean) => void;
+  readonly reloadModels?: (visible: boolean) => void;
 }>();
 const emit = defineEmits<{
   started: [];
 }>();
 
-const input = ref('');
+const input = props.draft && props.entry ? props.entry.prompt : ref('');
 const composer = ref<{ focusAt(cursor: number): void }>();
-const attachments = ref<HostedAttachment[]>([]);
+const attachments =
+  props.draft && props.entry ? props.entry.attachments : ref<HostedAttachment[]>([]);
 const draggingAttachments = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const configurationUpdating = ref(false);
-const starting = ref(false);
 let messageIntent:
   | {
       readonly fingerprint: string;
@@ -73,7 +63,15 @@ function restoreMessage(text: string): void {
 
 defineExpose({ restoreMessage });
 
-const snapshot = computed(() => props.workspace.snapshot.value);
+const snapshot = computed(() => {
+  if (!props.draft || !props.entry) return props.workspace.snapshot.value;
+  const target = props.entry.target.value;
+  if (target === undefined) return undefined;
+  return props.workspace.selectedNodeId.value === target.conversation.nodeId &&
+    props.workspace.selectedConversationId.value === target.conversation.id
+    ? (props.workspace.snapshot.value ?? target)
+    : target;
+});
 const selectedSubmissionContext = computed(() => {
   const conversation = snapshot.value?.conversation;
   return conversation === undefined
@@ -82,7 +80,7 @@ const selectedSubmissionContext = computed(() => {
 });
 const submitting = computed(
   () =>
-    starting.value ||
+    (props.draft === true && props.entry?.submitting.value === true) ||
     (props.workspace.messageSubmitting.value &&
       props.workspace.messageSubmissionContext.value === selectedSubmissionContext.value)
 );
@@ -144,6 +142,7 @@ const canStopCurrent = computed(
 const composerReadonly = computed(
   () =>
     props.readonly ||
+    (props.draft === true && props.entry?.writable.value === false) ||
     submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
@@ -154,25 +153,46 @@ const workingLabel = computed(() =>
 const elapsedLabel = computed(() =>
   props.readonly ? '' : conversationElapsedLabel(workingStartedAt.value, workingNow.value)
 );
-const models = computed(() => snapshot.value?.models ?? []);
-const selectedModelId = computed(() => snapshot.value?.conversation.modelId ?? '');
-const modelUnavailable = computed(() => snapshot.value !== undefined && models.value.length === 0);
+const models = computed(
+  () => snapshot.value?.models ?? (props.draft ? (props.entry?.models.value ?? []) : [])
+);
+const selectedModelId = computed(
+  () =>
+    snapshot.value?.conversation.modelId ??
+    (props.draft ? (props.entry?.selectedModelId.value ?? '') : '')
+);
+const modelUnavailable = computed(
+  () =>
+    (snapshot.value !== undefined ||
+      (props.draft === true && props.entry?.modelOptionsLoaded.value === true)) &&
+    models.value.length === 0
+);
 const modelSelectionDisabled = computed(
   () =>
     props.readonly ||
+    (props.draft === true && props.entry?.writable.value === false) ||
     submitting.value ||
     activeRun.value !== undefined ||
     configurationUpdating.value ||
-    modelUnavailable.value
+    modelUnavailable.value ||
+    (props.draft === true &&
+      snapshot.value === undefined &&
+      props.entry?.modelOptionsLoaded.value !== true)
 );
 const selectedModelLabel = computed(
   () =>
-    models.value.find((model) => model.id === selectedModelId.value)?.name ?? selectedModelId.value
+    models.value.find((model) => model.id === selectedModelId.value)?.name ??
+    (selectedModelId.value || translate('hostedConversations.model'))
 );
 const templateName = computed(() => snapshot.value?.conversation.templateName ?? '');
 const draftTemplates = computed(() => props.entry?.templates.value ?? []);
 const draftTemplateId = computed(() => props.entry?.selectedTemplateId.value ?? '');
-const templateSelectionDisabled = computed(() => props.readonly || starting.value);
+const draftTemplateLabel = computed(
+  () =>
+    draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
+    translate('hostedConversations.templatePlaceholder')
+);
+const templateSelectionDisabled = computed(() => props.readonly || submitting.value);
 const loadedTemplateLabel = computed(() =>
   templateName.value === ''
     ? ''
@@ -203,6 +223,10 @@ function selectedFiles(event: Event): void {
 }
 
 function queueFiles(files: Iterable<File>): void {
+  if (props.draft && props.entry) {
+    props.entry.addFiles(files);
+    return;
+  }
   for (const file of files) {
     if (attachments.value.length >= 32) {
       showMessage(translate('hostedConversations.attachmentLimit'), 'warning');
@@ -248,6 +272,12 @@ async function uploadAttachment(attachment: HostedAttachment): Promise<void> {
 
 function retryAttachment(attachmentId: string): void {
   if (composerReadonly.value) return;
+  if (props.draft && props.entry) {
+    void props.entry
+      .retryAttachment(attachmentId)
+      .catch((error) => showMessage(hostedErrorMessage(error), 'error', error));
+    return;
+  }
   const attachment = attachments.value.find((candidate) => candidate.id === attachmentId);
   if (attachment === undefined || attachment.status !== 'FAILED') return;
   const retry: HostedAttachment = {
@@ -286,6 +316,10 @@ function updateAttachment(
 }
 
 function removeAttachment(attachmentId: string): void {
+  if (props.draft && props.entry) {
+    props.entry.removeAttachment(attachmentId);
+    return;
+  }
   const attachment = attachments.value.find((candidate) => candidate.id === attachmentId);
   attachment?.controller.abort();
   if (attachment?.previewUrl !== null && attachment?.previewUrl !== undefined)
@@ -306,6 +340,7 @@ function messageFingerprint(): string {
 function selectTemplate(templateId: string): void {
   props.entry?.selectTemplate(templateId);
   messageIntent = undefined;
+  props.reloadModels?.(true);
 }
 
 function refreshDraftTemplates(visible: boolean): void {
@@ -339,33 +374,17 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
     !inputHasContent.value
   )
     return;
-  const creating = props.draft === true && snapshot.value === undefined;
-  if (creating) {
-    const template = draftTemplates.value.find(
-      (candidate) => candidate.id === draftTemplateId.value && candidate.available
-    );
-    if (template === undefined) {
-      showMessage(translate('hostedConversations.templateRequired'), 'warning');
-      return;
+  if (props.draft && props.entry) {
+    try {
+      if (await props.entry.submit()) emit('started');
+    } catch (error) {
+      showMessage(hostedErrorMessage(error), 'error', error);
     }
+    return;
   }
-  starting.value = creating;
   let submittedIntent: typeof messageIntent;
   try {
-    if (creating) {
-      if (props.createConversation === undefined || !(await props.createConversation())) return;
-      if (snapshot.value === undefined) return;
-      const pending = attachments.value.filter((attachment) => attachment.status === 'PENDING');
-      await Promise.all(pending.map((attachment) => uploadAttachment(attachment)));
-      const pendingIds = new Set(pending.map((attachment) => attachment.id));
-      if (
-        attachments.value.some(
-          (attachment) => pendingIds.has(attachment.id) && attachment.status !== 'COMPLETED'
-        )
-      )
-        return;
-    }
-    if (snapshot.value === undefined || (creating && modelUnavailable.value)) return;
+    if (snapshot.value === undefined) return;
     const submittedMessage = messageFingerprint();
     const submittedAttachments = attachments.value;
     const fingerprint = JSON.stringify({ deliveryIntent, message: submittedMessage });
@@ -390,13 +409,10 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
     attachments.value = [];
     messageIntent = undefined;
-    if (props.draft) emit('started');
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
     showMessage(hostedErrorMessage(error), 'error', error);
-  } finally {
-    starting.value = false;
   }
 }
 
@@ -426,7 +442,16 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 async function updateModel(modelId: string): Promise<void> {
-  if (configurationUpdating.value || modelId === selectedModelId.value) return;
+  if (modelSelectionDisabled.value || modelId === selectedModelId.value) return;
+  if (props.draft === true && snapshot.value === undefined) {
+    try {
+      props.entry?.selectModel(modelId);
+      messageIntent = undefined;
+    } catch (error) {
+      showMessage(hostedErrorMessage(error), 'error', error);
+    }
+    return;
+  }
   configurationUpdating.value = true;
   try {
     await props.workspace.updateConfiguration({ modelId });
@@ -446,8 +471,24 @@ async function stop(): Promise<void> {
   }
 }
 
+function attachmentError(attachment: HostedAttachment): string | undefined {
+  return props.draft && attachment.error !== undefined
+    ? hostedErrorMessage(new Error(attachment.error))
+    : attachment.error;
+}
+
 function hostedErrorMessage(error: unknown): string {
   switch (errorCode(error)) {
+    case 'HOSTED_CONVERSATION_DRAFT_PAUSED':
+      return translate('hostedConversations.firstMessagePaused');
+    case 'HOSTED_CONVERSATION_DRAFT_DISPOSED':
+      return translate('hostedConversations.firstMessageDisposed');
+    case 'HOSTED_CONVERSATION_WATCH_NOT_READY':
+      return translate('hostedConversations.firstMessageWatchRequired');
+    case 'HOSTED_CONVERSATION_TEMPLATE_REQUIRED':
+      return translate('hostedConversations.templateRequired');
+    case 'HOSTED_CONVERSATION_MODEL_REQUIRED':
+      return translate('hostedConversations.modelUnavailable');
     case 'HOSTED_CONVERSATION_QUOTA_EXCEEDED':
     case 'HOSTED_CONVERSATION_UPLOAD_QUOTA_EXCEEDED':
       return translate('hostedConversations.quotaExceeded');
@@ -473,6 +514,7 @@ function hostedErrorMessage(error: unknown): string {
 }
 
 onBeforeUnmount(() => {
+  if (props.draft && props.entry) return;
   for (const attachment of attachments.value) {
     attachment.controller.abort();
     if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
@@ -483,6 +525,7 @@ onBeforeUnmount(() => {
 <template>
   <ConversationComposer
     ref="composer"
+    :class="{ 'hosted-draft-composer': draft }"
     v-model:input="input"
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
@@ -533,7 +576,9 @@ onBeforeUnmount(() => {
           <small v-else-if="attachment.status === 'COMPLETED'" role="status" aria-live="polite">
             {{ translate('hostedConversations.uploaded') }}
           </small>
-          <small v-else class="attachment-error" role="alert">{{ attachment.error }}</small>
+          <small v-else class="attachment-error" role="alert">{{
+            attachmentError(attachment)
+          }}</small>
           <button
             v-if="attachment.status === 'FAILED'"
             class="utility-control"
@@ -583,7 +628,47 @@ onBeforeUnmount(() => {
         >
           <MarIcon name="attachment" />
         </button>
-        <div v-if="snapshot" class="hosted-model-slot">
+        <el-dropdown
+          v-if="draft && !snapshot"
+          class="hosted-template-menu hosted-model-menu"
+          :disabled="templateSelectionDisabled"
+          trigger="click"
+          @command="selectTemplate(String($event))"
+          @visible-change="refreshDraftTemplates"
+        >
+          <button
+            v-tooltip="draftTemplateLabel"
+            class="hosted-template-trigger hosted-model-trigger"
+            type="button"
+            :disabled="templateSelectionDisabled"
+            :aria-label="translate('hostedConversations.chooseTemplate')"
+            :aria-description="draftTemplateLabel"
+          >
+            <span>{{ draftTemplateLabel }}</span>
+            <MarIcon name="chevron-down" aria-hidden="true" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="template in draftTemplates"
+                :key="template.id"
+                :command="template.id"
+                :disabled="!template.available"
+                :class="{ 'is-selected': template.id === draftTemplateId }"
+              >
+                {{ template.name }}
+              </el-dropdown-item>
+              <el-dropdown-item v-if="draftTemplates.length === 0" disabled>
+                {{ translate('hostedConversations.noTemplates') }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <div
+          v-if="snapshot || (draft && draftTemplateId)"
+          class="hosted-model-slot"
+          :class="{ 'draft-model-slot': draft && !snapshot }"
+        >
           <el-dropdown
             class="hosted-model-menu"
             :disabled="modelSelectionDisabled"
@@ -615,29 +700,6 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <el-select
-          v-if="draft && !snapshot"
-          class="hosted-template-select"
-          :model-value="draftTemplateId"
-          :disabled="templateSelectionDisabled"
-          :placeholder="translate('hostedConversations.templatePlaceholder')"
-          :suffix-icon="marIcon('chevron-down')"
-          :aria-label="translate('hostedConversations.chooseTemplate')"
-          filterable
-          @change="selectTemplate(String($event))"
-          @visible-change="refreshDraftTemplates"
-        >
-          <el-option
-            v-for="template in draftTemplates"
-            :key="template.id"
-            :label="template.name"
-            :value="template.id"
-            :disabled="!template.available"
-          />
-          <template #empty>
-            {{ translate('hostedConversations.noTemplates') }}
-          </template>
-        </el-select>
         <span
           v-tooltip="loadedTemplateLabel"
           v-if="templateName"
@@ -689,6 +751,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.hosted-draft-composer :deep(.composer) {
+  background: transparent;
+}
+
 .composer-submitting {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
@@ -808,11 +874,6 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
-.hosted-template-select {
-  width: 240px;
-  max-width: 100%;
-}
-
 .hosted-model-trigger,
 .hosted-template-name {
   min-height: var(--mar-compact-control-size);
@@ -924,9 +985,17 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
   }
 
-  .hosted-template-select {
+  .hosted-template-menu {
     width: 100%;
-    grid-column: 2 / 4;
+    grid-column: 2;
+  }
+
+  .hosted-template-trigger {
+    width: 100%;
+  }
+
+  .draft-model-slot {
+    grid-column: 3;
   }
 
   .hosted-send-button,

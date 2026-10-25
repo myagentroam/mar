@@ -8,6 +8,11 @@ import type {
   ContextGcSubagentSnapshot,
   ContextGcSubagentToolName
 } from '../../src/agent-core/session/context-gc-subagent.js';
+import {
+  contextGcCompletedSubagentTurnId,
+  contextGcSubagentPriorFinalIsRetained,
+  normalizeContextGcSubagentSnapshot
+} from '../../src/agent-core/session/context-gc-subagent.js';
 
 function records() {
   let sequence = 0;
@@ -189,7 +194,59 @@ function completedSnapshot(
 }
 
 describe('context GC superseded subagent snapshots', () => {
-  it('reclaims an observed running wait after retaining the completed snapshot for the same turn', () => {
+  it('accepts independent Turn identity without accepting partial delivery receipts', () => {
+    const snapshot = completedSnapshot('child-turn', {
+      latestMessage: undefined,
+      turnId: 'child-turn'
+    });
+    const normalize = (value: ContextGcSubagentSnapshot) =>
+      normalizeContextGcSubagentSnapshot(
+        JSON.stringify(value),
+        { type: 'tool.completed', toolName: 'agent_wait', data: value },
+        'agent_wait'
+      );
+    expect(normalize(snapshot)?.turnId).toBe('child-turn');
+    for (const partial of [
+      { messageId: 'message' },
+      { deliveryStatus: 'applied' as const },
+      { messageId: 'message', deliveryStatus: 'applied' as const, turnId: undefined }
+    ])
+      expect(normalize({ ...snapshot, ...partial })).toBeUndefined();
+    expect(
+      normalize({ ...snapshot, messageId: 'message', deliveryStatus: 'applied' })
+    ).toBeDefined();
+  });
+
+  it('requires exact final text and Turn identity when a retained summary replaces a message', () => {
+    const source = {
+      ...runningSnapshot('current-turn'),
+      turnId: 'current-turn',
+      latestMessage: latestMessage('prior-turn', 'final_answer', 'Verified result.')
+    };
+    const retained = completedSnapshot('prior-turn', {
+      turnId: 'prior-turn',
+      summary: 'Verified result.',
+      latestMessage: undefined
+    });
+    expect(contextGcSubagentPriorFinalIsRetained(source, retained)).toBe(true);
+    expect(
+      contextGcSubagentPriorFinalIsRetained(source, { ...retained, summary: 'Other result.' })
+    ).toBe(false);
+    expect(
+      contextGcSubagentPriorFinalIsRetained(source, { ...retained, turnId: 'other-turn' })
+    ).toBe(false);
+  });
+
+  it.each([
+    { summary: undefined, turnId: 'child-turn' },
+    { summary: 'Done.', turnId: undefined },
+    { summary: '', turnId: 'child-turn' }
+  ])('rejects a message-free terminal without summary and Turn identity: %#', (override) => {
+    const snapshot = completedSnapshot('child-turn', { latestMessage: undefined, ...override });
+    expect(contextGcCompletedSubagentTurnId(snapshot)).toBeUndefined();
+  });
+
+  it.each([false, true])('reclaims observed work, message omitted=%s', (omitMessage) => {
     const fixture = records();
     const turnId = 'child-turn-1';
     const started = addSubagentRound(fixture, {
@@ -216,7 +273,10 @@ describe('context GC superseded subagent snapshots', () => {
       arguments: { agentId: 'child-1', waitMs: 30_000 },
       snapshot: { ...runningSnapshot(turnId), waitOutcome: 'timeout' }
     });
-    const terminalSnapshot = completedSnapshot(turnId, { waitOutcome: 'completion' });
+    const terminalSnapshot = completedSnapshot(turnId, {
+      waitOutcome: 'completion',
+      ...(omitMessage ? { latestMessage: undefined, turnId } : {})
+    });
     const terminal = addSubagentRound(fixture, {
       toolName: 'agent_wait',
       callId: 'agent-wait-terminal',
@@ -423,14 +483,16 @@ describe('context GC superseded subagent snapshots', () => {
     expect(planContextGc(plannerInput(fixture.values))).toBeUndefined();
   });
 
-  it('keeps a follow-up instruction while reclaiming only its superseded receipt snapshot', () => {
+  it.each([false, true])('keeps follow-up, prior message omitted=%s', (omitMessage) => {
     const fixture = records();
     const previousTurn = 'child-turn-previous';
     const currentTurn = 'child-turn-current';
     const previousFinalText = `Previous retained final answer. ${'context '.repeat(1_500)}`;
+    const previousMessage = latestMessage(previousTurn, 'final_answer', previousFinalText);
     const previousTerminalSnapshot = completedSnapshot(previousTurn, {
-      latestMessage: latestMessage(previousTurn, 'final_answer', previousFinalText),
-      summary: previousFinalText
+      latestMessage: previousMessage,
+      summary: previousFinalText,
+      ...(omitMessage ? { latestMessage: undefined, turnId: previousTurn } : {})
     });
     addSubagentRound(fixture, {
       toolName: 'agent_wait',
@@ -440,7 +502,7 @@ describe('context GC superseded subagent snapshots', () => {
     });
     const receiptSnapshot: ContextGcSubagentSnapshot = {
       ...runningSnapshot(previousTurn),
-      latestMessage: previousTerminalSnapshot.latestMessage!,
+      latestMessage: previousMessage,
       messageId: 'message-current',
       turnId: currentTurn,
       deliveryStatus: 'accepted'

@@ -54,7 +54,7 @@ function requestClose(): void {
   left: calc((var(--preview-left) - var(--preview-right)) / 2);
   top: calc((var(--preview-top) - var(--preview-bottom)) / 2);
   overflow: hidden;
-  padding: 0.5rem;
+  padding: 0;
   background: var(--mar-control-bg-color-overlay);
   color: var(--mar-text-primary);
 }

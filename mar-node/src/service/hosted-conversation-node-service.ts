@@ -25,6 +25,8 @@ import {
   hostedConversationListPageSchema,
   hostedConversationMessageInputSchema,
   hostedConversationMetadataUpdateInputSchema,
+  hostedConversationModelOptionsInputSchema,
+  hostedConversationModelOptionsSchema,
   hostedConversationRollbackInputSchema,
   hostedConversationSnapshotSchema,
   hostedConversationSummarySchema,
@@ -317,6 +319,7 @@ export class HostedConversationNodeService {
   operations(): Readonly<Record<string, NodeOperationHandler>> {
     return {
       'conversation.hosted.list': (raw) => this.list(raw),
+      'conversation.hosted.model-options': (raw) => this.modelOptions(raw),
       'conversation.hosted.create': (raw) => this.create(raw),
       'conversation.hosted.get': (raw) => this.get(raw),
       'conversation.hosted.history': (raw) => this.history(raw),
@@ -391,6 +394,31 @@ export class HostedConversationNodeService {
     });
   }
 
+  private async modelOptions(raw: unknown): Promise<unknown> {
+    if (this.disablePrepared) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
+    const payload = hostedRequest(raw);
+    const input = hostedConversationModelOptionsInputSchema.parse(payload.data);
+    const template = conversationTemplateSummarySchema.parse(payload.template);
+    if (
+      template.id !== input.templateId ||
+      template.nodeId !== this.options.nodeId() ||
+      !template.available ||
+      template.status !== 'ACTIVE' ||
+      template.currentVersionId === null
+    )
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_UNAVAILABLE');
+    const version = await this.loadTemplateVersion(template.currentVersionId, template.id);
+    const models = allowedModels(version, runtimeModels(payload.models)).filter(
+      (model) => model.conversationModel !== false
+    );
+    const selected =
+      models.length === 0 ? undefined : selectModel(version, models, version.modelPolicy.defaultId);
+    return hostedConversationModelOptionsSchema.parse({
+      models: networkModels(models, version.draft.networkMode).map(modelSummary),
+      defaultModelId: selected?.id ?? null
+    });
+  }
+
   private create(raw: unknown): Promise<unknown> {
     if (this.disablePrepared) return Promise.reject(new Error('CONVERSATION_HOSTING_UNAVAILABLE'));
     const payload = hostedRequest(raw);
@@ -418,6 +446,7 @@ export class HostedConversationNodeService {
       input.clientRequestId,
       template,
       models,
+      input.modelId,
       payload.runtimeScopeId
     );
     this.pendingCreates.set(key, operation);
@@ -430,11 +459,23 @@ export class HostedConversationNodeService {
     clientRequestId: string,
     template: ConversationTemplateSummary,
     models: readonly MarAgentRuntimeModelConfiguration[],
+    requestedModelId?: string,
     runtimeScopeId?: string
   ): Promise<unknown> {
     await this.options.assertCanCreate?.();
     const version = await this.loadTemplateVersion(template.currentVersionId!, template.id);
-    const selected = selectModel(version, models, version.modelPolicy.defaultId);
+    if (
+      requestedModelId !== undefined &&
+      !allowedModels(version, models).some(
+        (model) => model.id === requestedModelId && model.conversationModel !== false
+      )
+    )
+      throw new Error('HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE');
+    const selected = selectModel(
+      version,
+      models,
+      requestedModelId ?? version.modelPolicy.defaultId
+    );
     const conversationId = this.id();
     const prepared = await this.options.store.prepareConversationEnvironment(
       userId,

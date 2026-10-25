@@ -3,6 +3,8 @@ export const workspaceZhCN = {
     label: '会话分组',
     main: '主会话',
     child: '子会话',
+    mainTab: '主会话',
+    childTab: '子会话',
     unread: '未读',
     running: '运行 {count} 个会话',
     emptyMain: '暂无主会话',

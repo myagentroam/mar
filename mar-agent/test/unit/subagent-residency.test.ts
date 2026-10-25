@@ -60,7 +60,11 @@ describe('Subagent detail residency', () => {
       const fresh = f.controller.collectModelUpdates();
       expect(fresh).toHaveLength(1);
       expect(fresh[0]!.snapshot.agentId).toBe(ids[0]);
-      expect(fresh[0]!.snapshot.latestMessage).toBeDefined();
+      const current = await f.controller.inspect(ids[0]!);
+      expect(fresh[0]!.snapshot.summary).toBe(current.summary);
+      expect(fresh[0]!.snapshot.turnId).toBe(current.latestMessage?.turnId);
+      expect(fresh[0]!.snapshot.turnId).not.toBe(before.latestMessage?.turnId);
+      expect(fresh[0]!.snapshot).not.toHaveProperty('latestMessage');
     } finally {
       await f.close();
     }

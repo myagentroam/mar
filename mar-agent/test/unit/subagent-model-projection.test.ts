@@ -8,6 +8,7 @@ import { SubagentScheduler } from '../../src/agent-core/subagent/scheduler.js';
 import type { SubagentTaskSnapshot } from '../../src/agent-core/subagent/contracts.js';
 import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
 import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
 
 const fixtures: Awaited<ReturnType<typeof residencyFixture>>[] = [];
 afterEach(async () => {
@@ -16,7 +17,7 @@ afterEach(async () => {
 
 const task = { description: 'Inspect', prompt: 'Inspect independently.', role: 'explore' as const };
 
-async function fixture(noisy = false) {
+async function fixture(noisy = false, answer?: { text?: string; summary: string }) {
   const f = await residencyFixture(128, false);
   fixtures.push(f);
   const parent = f.context();
@@ -30,6 +31,10 @@ async function fixture(noisy = false) {
       const handle = await parent.startTurn(input);
       return {
         ...handle,
+        result: async () => {
+          const result = await handle.result();
+          return answer ? { ...result, finalAnswer: answer.summary } : result;
+        },
         async *[Symbol.asyncIterator]() {
           if (noisy)
             for (let i = 0; i < 16; i++)
@@ -40,7 +45,10 @@ async function fixture(noisy = false) {
                 summary: 'command-output '.repeat(140),
                 timestamp: new Date().toISOString()
               } as MarAgentEvent;
-          yield* handle;
+          for await (const event of handle)
+            if (answer && event.type === 'message.completed' && event.phase === 'final_answer') {
+              if (answer.text !== undefined) yield { ...event, text: answer.text };
+            } else yield event;
         }
       };
     }
@@ -134,8 +142,59 @@ describe('subagent model result projection', () => {
       expectModelResult(agent);
       expect(agent.agentId).toBe(ids[index]);
       expect(agent.summary).toBe(native[index]!.summary);
+      expect(agent.turnId).toBe(native[index]!.latestMessage?.turnId);
+      expect(agent).not.toHaveProperty('latestMessage');
     }
   });
+
+  it.each([
+    { name: 'identical text', text: 'Verified.', summary: 'Verified.', omit: true },
+    { name: 'different text', text: 'Public result.', summary: 'Final result.', omit: false },
+    { name: 'whitespace differences', text: ' Result ', summary: 'Result', omit: false },
+    { name: 'missing public message', summary: 'Final result.', omit: false },
+    {
+      name: 'clipped public message',
+      text: 'x'.repeat(12_000),
+      summary: 'x'.repeat(12_000),
+      omit: true
+    },
+    {
+      name: 'complete Unicode message',
+      text: '界'.repeat(6_000),
+      summary: '界'.repeat(6_000),
+      omit: false
+    }
+  ])(
+    'keeps summary and omits only a fully covered final message: $name',
+    async ({ text, summary, omit }) => {
+      const f = await fixture(false, { text, summary });
+      const id = await f.spawn();
+      const [update] = f.controller.collectModelUpdates();
+      const projected = update!.snapshot;
+      const native = await f.controller.inspect(id);
+      const summaryClipped =
+        Buffer.byteLength(summary) > TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes;
+      if (summaryClipped) {
+        expect(summary.startsWith(projected.summary!)).toBe(true);
+        expect(Buffer.byteLength(projected.summary!)).toBeLessThanOrEqual(
+          TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes
+        );
+      } else expect(projected.summary).toBe(summary);
+      if (omit) {
+        expect(projected).not.toHaveProperty('latestMessage');
+        expect(projected.turnId).toBe(native.latestMessage?.turnId);
+        expect(renderSubagentUpdate(projected)).not.toContain('<message ');
+        expect(f.terminals[0]).not.toHaveProperty('latestMessage');
+      } else if (text === undefined) expect(projected).not.toHaveProperty('latestMessage');
+      else expect(projected.latestMessage?.text).toBe(text);
+      expect(update!.truncated).toBe(summaryClipped);
+      expect(renderSubagentUpdate(projected)).toContain('<summary>');
+      const output = await executeAgentWait({ agentId: id, waitMs: 10_000 }, f.context);
+      expect(JSON.parse(output.content)).toEqual(expect.objectContaining(projected));
+      expect(native).toHaveProperty('summary', summary);
+      if (text !== undefined) expect(native.latestMessage?.text).toBe(text);
+    }
+  );
 
   it('does not expose automatic records through the standalone scheduler', async () => {
     const scheduler = new SubagentScheduler(async () => ({

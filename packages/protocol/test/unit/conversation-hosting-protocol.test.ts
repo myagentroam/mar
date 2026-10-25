@@ -791,6 +791,9 @@ describe('conversation hosting protocol', () => {
     };
     expect(hostedConversationCreateInputSchema.parse(createInput)).toEqual(createInput);
     expect(
+      hostedConversationCreateInputSchema.parse({ ...createInput, modelId: 'model-1' })
+    ).toEqual({ ...createInput, modelId: 'model-1' });
+    expect(
       hostedConversationHistoryInputSchema.parse({
         conversationId: 'conversation-1',
         cursor: 'opaque-history-cursor'
@@ -906,6 +909,9 @@ describe('conversation hosting protocol', () => {
     ).toMatchObject({ mode: 'initial' });
     expect(workbenchNodeOperationSchema.parse('conversation.hosted.create')).toBe(
       'conversation.hosted.create'
+    );
+    expect(workbenchNodeOperationSchema.parse('conversation.hosted.model-options')).toBe(
+      'conversation.hosted.model-options'
     );
     expect(workbenchNodeOperationSchema.parse('conversation.hosted.history')).toBe(
       'conversation.hosted.history'

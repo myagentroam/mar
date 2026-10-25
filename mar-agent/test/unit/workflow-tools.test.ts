@@ -411,12 +411,12 @@ describe('workflow tools', () => {
     } as unknown as ToolRuntimeContext;
     const items = [{ id: 'new', step: 'New objective', status: 'in_progress' }];
 
-    await expect(executeTodoWrite({ items }, context)).resolves.toMatchObject({
-      data: { revision: 8, items }
-    });
-    await expect(executeTodoWrite({ items: [] }, context)).resolves.toMatchObject({
-      data: { revision: 9, items: [] }
-    });
+    const written = await executeTodoWrite({ items }, context);
+    expect(JSON.parse(written.content)).toEqual({ revision: 8, count: 1 });
+    expect(written.data).toEqual({ revision: 8, items });
+    const cleared = await executeTodoWrite({ items: [] }, context);
+    expect(JSON.parse(cleared.content)).toEqual({ revision: 9, count: 0 });
+    expect(cleared.data).toEqual({ revision: 9, items: [] });
     expect(emit.mock.calls).toEqual([
       [{ type: 'todo.updated', revision: 8, items }],
       [{ type: 'todo.updated', revision: 9, items: [] }]

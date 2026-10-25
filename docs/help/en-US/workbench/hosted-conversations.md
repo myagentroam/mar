@@ -80,6 +80,8 @@ If a rule should apply to every user and conversation created from the template,
 
 The conversation page reuses the page's single Workbench WebSocket and subscribes only to the current conversation. Switching conversations, leaving the page, or replacing the browser connection releases the old subscription. After reconnecting, the page obtains a new authoritative Node snapshot instead of inferring a Run result from missing events.
 
+If the first message creates a conversation but its connection is not ready, the draft and attachments remain available. Send again after recovery; the message is never retried automatically. Switching history during creation or upload does not cancel submitted operations or jump back to the old selection. Choose **New conversation** on the same page to continue the original draft. Leaving the entire page does not cancel submitted operations; when you return, the created conversation is available in history.
+
 After a Run succeeds, fails, or ends because of an unexpected interruption, Notification Center retains a notification for that hosted conversation for 24 hours. Explicitly selecting **Stop**, or deleting the conversation while it is running, cancels the Run without creating a terminal notification. Selecting a notification switches to Conversation mode and opens the matching conversation. Hosted conversations do not appear in the **Recent Sessions** list.
 
 The page shows an action message in these cases:
