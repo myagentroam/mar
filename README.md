@@ -53,7 +53,7 @@ Closing the browser or putting it in the background does not automatically stop 
 <td><strong>Tools and spaces you can reuse</strong><br />Configure models, Skills, and MCP. Start isolated template-based conversations with attachments and deliverable artifacts.</td>
 </tr>
 <tr>
-<td><strong>Your work machines, within reach</strong><br />Use authorized Nodes from a desktop or mobile browser without recreating the project environment on every device. Windows / Linux / macOS — see the testing caveat below.</td>
+<td><strong>Your work machines, within reach</strong><br />Use authorized Nodes from a desktop or mobile browser without recreating the project environment on every device. Windows / Linux / macOS.</td>
 <td><strong>Goals and recurring work</strong><br />Use Goal mode for multi-turn continuation, or schedule a session for recurring tasks. Review their permission and execution rules before enabling unattended work.</td>
 </tr>
 </table>
@@ -127,8 +127,6 @@ Choose an authorized published template and begin an isolated hosted conversatio
 [Explore hosted conversations](docs/help/en-US/workbench/hosted-conversations.md)
 
 ## Get started
-
-> **macOS is untested:** the author does not currently have a macOS device and has not verified support on real hardware. Platform-specific issues may remain.
 
 The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
 

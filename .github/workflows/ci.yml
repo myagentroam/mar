@@ -1,0 +1,90 @@
+name: CI smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      macos_validation:
+        description: Run extended native validation on Apple Silicon and Intel macOS
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.macos_validation && 'macos-validation' || 'smoke' }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ inputs.macos_validation && fromJSON('["macos-15", "macos-15-intel"]') || fromJSON('["ubuntu-24.04", "windows-2025", "macos-15"]') }}
+    env:
+      MAR_TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        shell: bash
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Node and its workspace dependencies
+        run: pnpm --filter @myagentroam/node... build
+
+      - name: Check compiled CLI entrypoints
+        run: node --test test/unit/cli-smoke.test.mjs
+
+      - name: Check Node health and process probes
+        run: pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts test/unit/node-smoke.test.ts
+
+      - name: Validate macOS filesystem, Git, SQLite, locks, PTY, and native integrations
+        if: ${{ inputs.macos_validation }}
+        env:
+          MAR_MACOS_NATIVE_TESTS: '1'
+        run: >-
+          pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts
+          test/unit/node-workspace.test.ts
+          test/unit/node-files-git-history.test.ts
+          test/unit/node-runtime-database.test.ts
+          test/unit/node-process-lock.test.ts
+          test/unit/node-terminal-native.test.ts
+          test/unit/terminal-posix-lifecycle.test.ts
+          test/unit/git-execution-integration.test.ts
+          test/unit/macos-native-integration.test.ts
+
+      - name: Validate Agent shell execution on macOS
+        if: ${{ inputs.macos_validation && !cancelled() }}
+        run: pnpm --filter @myagentroam/agent exec vitest run --config vitest.config.ts test/unit/exec-shell.test.ts

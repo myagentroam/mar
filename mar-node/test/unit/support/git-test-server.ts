@@ -73,7 +73,13 @@ async function runCommandOutput(
       }
       reject(
         new Error(
-          `The fixture command failed: ${commandFailureKind(code, Buffer.concat(stderr).toString('utf8'))}.`
+          `The fixture command failed: ${commandFailureKind(
+            code,
+            Buffer.concat([
+              ...stderr,
+              ...(command === 'openssl' && args[0] === 'verify' ? stdout : [])
+            ]).toString('utf8')
+          )}.`
         )
       );
     });
@@ -417,9 +423,28 @@ async function createCertificates(root: string): Promise<{
   const key = join(certificates, 'server-key.pem');
   const request = join(certificates, 'server.csr');
   const extensions = join(certificates, 'server.ext');
+  const configuration = join(certificates, 'openssl.cnf');
+  // OpenSSL 1.1.1 appends -addext entries to host defaults, which can duplicate CA extensions.
+  await writeFile(
+    configuration,
+    [
+      '[req]',
+      'distinguished_name=subject',
+      'x509_extensions=authority',
+      '[subject]',
+      '[authority]',
+      'basicConstraints=critical,CA:TRUE',
+      'keyUsage=critical,keyCertSign,cRLSign',
+      'subjectKeyIdentifier=hash',
+      'authorityKeyIdentifier=keyid:always'
+    ].join('\n')
+  );
   await runCommand('openssl', [
     'req',
     '-x509',
+    '-sha256',
+    '-config',
+    configuration,
     '-newkey',
     'rsa:2048',
     '-nodes',
@@ -430,14 +455,12 @@ async function createCertificates(root: string): Promise<{
     '-days',
     '1',
     '-subj',
-    '/CN=MAR Git Test Authority',
-    '-addext',
-    'basicConstraints=critical,CA:TRUE',
-    '-addext',
-    'keyUsage=critical,keyCertSign,cRLSign'
+    '/CN=MAR Git Test Authority'
   ]);
   await runCommand('openssl', [
     'req',
+    '-config',
+    configuration,
     '-newkey',
     'rsa:2048',
     '-nodes',
@@ -446,21 +469,23 @@ async function createCertificates(root: string): Promise<{
     '-out',
     request,
     '-subj',
-    '/CN=127.0.0.1',
-    '-addext',
-    'subjectAltName=IP:127.0.0.1'
+    '/CN=127.0.0.1'
   ]);
   await writeFile(
     extensions,
     [
       'subjectAltName=IP:127.0.0.1',
       'basicConstraints=critical,CA:FALSE',
-      'keyUsage=digitalSignature,keyEncipherment'
+      'keyUsage=digitalSignature,keyEncipherment',
+      'extendedKeyUsage=serverAuth',
+      'subjectKeyIdentifier=hash',
+      'authorityKeyIdentifier=keyid,issuer'
     ].join('\n')
   );
   await runCommand('openssl', [
     'x509',
     '-req',
+    '-sha256',
     '-in',
     request,
     '-CA',
@@ -474,6 +499,15 @@ async function createCertificates(root: string): Promise<{
     '1',
     '-extfile',
     extensions
+  ]);
+  await runCommand('openssl', [
+    'verify',
+    '-x509_strict',
+    '-purpose',
+    'sslserver',
+    '-CAfile',
+    authority,
+    certificate
   ]);
   return { authority, certificate, key };
 }
@@ -610,6 +644,10 @@ function isMissing(error: unknown): error is NodeJS.ErrnoException {
 }
 
 function commandFailureKind(code: number | null, stderr: string): string {
+  const certificateError = stderr.match(/error (\d+) at (\d+) depth lookup/u);
+  if (certificateError) return `TLS_X509_${certificateError[1]}_DEPTH_${certificateError[2]}`;
+  if (stderr.includes('SSL') && stderr.includes('certificate')) return 'TLS_CERTIFICATE_REJECTED';
+  if (stderr.includes('requested URL returned error: 500')) return 'HTTP_BACKEND_FAILED';
   if (stderr.includes('Git SSH key could not be unlocked.')) return 'SSH_ASKPASS_REJECTED';
   if (stderr.includes('Host key verification failed.')) return 'SSH_HOST_UNTRUSTED';
   if (stderr.includes('Permission denied (publickey')) return 'SSH_PUBLIC_KEY_REJECTED';

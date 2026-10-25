@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -192,7 +192,7 @@ function operation(connector: NodeConnector, name: string, data: unknown): Promi
 }
 
 async function temporaryDirectory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), 'my-agent-roam-files-'));
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'my-agent-roam-files-')));
   directories.push(path);
   return path;
 }

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { spawn as spawnProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { chmodSync, existsSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
 import { nodeExecutionEnvironment } from './node-execution-environment.js';
@@ -722,11 +723,12 @@ export class TerminalManager {
   }
 }
 
-function nodePtyFactory(
+export function nodePtyFactory(
   shell: string,
   args: readonly string[],
   options: TerminalSpawnOptions
 ): TerminalPty {
+  repairPtySpawnHelper();
   const pty: IPty = spawn(shell, [...args], {
     name: options.name,
     cols: options.cols,
@@ -735,6 +737,19 @@ function nodePtyFactory(
     env: options.env
   });
   return pty as unknown as TerminalPty;
+}
+
+export function repairPtySpawnHelper(
+  platform: NodeJS.Platform = process.platform,
+  architecture: string = process.arch,
+  packageRoot?: string
+): void {
+  if (platform !== 'darwin') return;
+  const root =
+    packageRoot ?? dirname(createRequire(import.meta.url).resolve('node-pty/package.json'));
+  const helper = join(root, `prebuilds/darwin-${architecture}/spawn-helper`);
+  // node-pty 1.1.0 publishes these prebuild helpers without their execute bit.
+  if (existsSync(helper) && (statSync(helper).mode & 0o111) !== 0o111) chmodSync(helper, 0o755);
 }
 
 function nodePipeFactory(
