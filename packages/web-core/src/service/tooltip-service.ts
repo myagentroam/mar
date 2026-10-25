@@ -29,6 +29,7 @@ export class TooltipService {
   private descriptionId = '';
   private pointerWithin = false;
   private touchInput = false;
+  private readonly dismissedEscapes = new WeakMap<KeyboardEvent, 'control' | 'menu'>();
 
   constructor(private readonly document: Document) {}
 
@@ -89,6 +90,7 @@ export class TooltipService {
     doc.addEventListener('focusin', this.onFocusIn, true);
     doc.addEventListener('focusout', this.onFocusOut, true);
     doc.addEventListener('keydown', this.onKeyDown, true);
+    doc.addEventListener('keydown', this.onKeyDownBubble);
     doc.addEventListener('scroll', this.close, true);
     doc.addEventListener('visibilitychange', this.close);
     win?.addEventListener('resize', this.close);
@@ -102,6 +104,7 @@ export class TooltipService {
       doc.removeEventListener('focusin', this.onFocusIn, true);
       doc.removeEventListener('focusout', this.onFocusOut, true);
       doc.removeEventListener('keydown', this.onKeyDown, true);
+      doc.removeEventListener('keydown', this.onKeyDownBubble);
       doc.removeEventListener('scroll', this.close, true);
       doc.removeEventListener('visibilitychange', this.close);
       win?.removeEventListener('resize', this.close);
@@ -224,8 +227,28 @@ export class TooltipService {
   private onKeyDown = (event: KeyboardEvent): void => {
     this.touchInput = false;
     if (event.key !== 'Escape' || event.isComposing) return;
-    // Stop other document-level shortcut handlers only when an actual hint was dismissed.
-    if (this.active.value) event.stopImmediatePropagation();
+    const active = this.active.value;
     this.close();
+    if (!active) return;
+    const target = event.target instanceof Element ? event.target : undefined;
+    // Native menus dismiss through the existing document-level focus-layer stack.
+    if (target?.closest('[role="menu"]')) {
+      this.dismissedEscapes.set(event, 'menu');
+      return;
+    }
+    if (!target || !active.target.contains(target)) {
+      // A hovered hint must not forward Escape into an unrelated focused run/composer.
+      event.stopImmediatePropagation();
+      return;
+    }
+    this.dismissedEscapes.set(event, 'control');
+  };
+
+  private onKeyDownBubble = (event: KeyboardEvent): void => {
+    // Keep same-document menu dismissal, but never forward it to window-level
+    // parent surfaces. Other hints must also isolate outer document-level dialogs.
+    const owner = this.dismissedEscapes.get(event);
+    if (owner === 'menu') event.stopPropagation();
+    else if (owner === 'control') event.stopImmediatePropagation();
   };
 }
