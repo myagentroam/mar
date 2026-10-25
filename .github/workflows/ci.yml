@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      macos_validation:
+        description: Run extended native validation on Apple Silicon and Intel macOS
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.macos_validation && 'macos-validation' || 'smoke' }}
   cancel-in-progress: true
 
 jobs:
@@ -22,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
+        os: ${{ inputs.macos_validation && fromJSON('["macos-15", "macos-15-intel"]') || fromJSON('["ubuntu-24.04", "windows-2025", "macos-15"]') }}
     env:
       MAR_TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
     steps:
@@ -54,3 +59,21 @@ jobs:
 
       - name: Check Node health and process probes
         run: pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts test/unit/node-smoke.test.ts
+
+      - name: Validate macOS filesystem, Git, SQLite, locks, PTY, and native integrations
+        if: ${{ inputs.macos_validation }}
+        env:
+          MAR_MACOS_NATIVE_TESTS: '1'
+        run: >-
+          pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts
+          test/unit/node-workspace.test.ts
+          test/unit/node-files-git-history.test.ts
+          test/unit/node-runtime-database.test.ts
+          test/unit/node-process-lock.test.ts
+          test/unit/terminal-posix-lifecycle.test.ts
+          test/unit/git-execution-integration.test.ts
+          test/unit/macos-native-integration.test.ts
+
+      - name: Validate Agent shell execution on macOS
+        if: ${{ inputs.macos_validation }}
+        run: pnpm --filter @myagentroam/agent exec vitest run --config vitest.config.ts test/unit/exec-shell.test.ts

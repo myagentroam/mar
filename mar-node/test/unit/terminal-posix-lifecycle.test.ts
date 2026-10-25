@@ -22,7 +22,13 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
       ['/bin/sh', 'close'],
       ['/bin/sh', 'shutdown'],
       ['/bin/bash', 'close'],
-      ['/bin/bash', 'shutdown']
+      ['/bin/bash', 'shutdown'],
+      ...(process.platform === 'darwin'
+        ? ([
+            ['/bin/zsh', 'close'],
+            ['/bin/zsh', 'shutdown']
+          ] as const)
+        : [])
     ] as const)(
       'releases %s, its foreground job and descendant through %s',
       async (shell, operation) => {
