@@ -423,10 +423,28 @@ async function createCertificates(root: string): Promise<{
   const key = join(certificates, 'server-key.pem');
   const request = join(certificates, 'server.csr');
   const extensions = join(certificates, 'server.ext');
+  const configuration = join(certificates, 'openssl.cnf');
+  // OpenSSL 1.1.1 appends -addext entries to host defaults, which can duplicate CA extensions.
+  await writeFile(
+    configuration,
+    [
+      '[req]',
+      'distinguished_name=subject',
+      'x509_extensions=authority',
+      '[subject]',
+      '[authority]',
+      'basicConstraints=critical,CA:TRUE',
+      'keyUsage=critical,keyCertSign,cRLSign',
+      'subjectKeyIdentifier=hash',
+      'authorityKeyIdentifier=keyid:always'
+    ].join('\n')
+  );
   await runCommand('openssl', [
     'req',
     '-x509',
     '-sha256',
+    '-config',
+    configuration,
     '-newkey',
     'rsa:2048',
     '-nodes',
@@ -437,16 +455,12 @@ async function createCertificates(root: string): Promise<{
     '-days',
     '1',
     '-subj',
-    '/CN=MAR Git Test Authority',
-    '-addext',
-    'basicConstraints=critical,CA:TRUE',
-    '-addext',
-    'keyUsage=critical,keyCertSign,cRLSign',
-    '-addext',
-    'subjectKeyIdentifier=hash'
+    '/CN=MAR Git Test Authority'
   ]);
   await runCommand('openssl', [
     'req',
+    '-config',
+    configuration,
     '-newkey',
     'rsa:2048',
     '-nodes',
@@ -455,9 +469,7 @@ async function createCertificates(root: string): Promise<{
     '-out',
     request,
     '-subj',
-    '/CN=127.0.0.1',
-    '-addext',
-    'subjectAltName=IP:127.0.0.1'
+    '/CN=127.0.0.1'
   ]);
   await writeFile(
     extensions,
@@ -488,28 +500,15 @@ async function createCertificates(root: string): Promise<{
     '-extfile',
     extensions
   ]);
-  try {
-    await runCommand('openssl', [
-      'verify',
-      '-x509_strict',
-      '-purpose',
-      'sslserver',
-      '-CAfile',
-      authority,
-      certificate
-    ]);
-  } catch (error) {
-    // Only this isolated fixture's public certificates are diagnostic material, never its keys.
-    console.info(
-      'GIT_TLS_FIXTURE_PUBLIC_CHAIN',
-      JSON.stringify({
-        openssl: (await runCommand('openssl', ['version'])).trim(),
-        authority: await readFile(authority, 'utf8'),
-        certificate: await readFile(certificate, 'utf8')
-      })
-    );
-    throw error;
-  }
+  await runCommand('openssl', [
+    'verify',
+    '-x509_strict',
+    '-purpose',
+    'sslserver',
+    '-CAfile',
+    authority,
+    certificate
+  ]);
   return { authority, certificate, key };
 }
 
