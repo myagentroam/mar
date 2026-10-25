@@ -19,7 +19,7 @@ import type { MarAgentRuntimeCompactConfiguration } from '@myagentroam/protocol'
 interface MarAgentRuntimeModelServiceOptions {
   readonly compact?: Pick<MarAgentCompactService, 'runtime'>;
   readonly models: Pick<MarAgentModelService, 'storedConfigurationsForUser'> &
-    Partial<Pick<MarAgentModelService, 'stored'>>;
+    Partial<Pick<MarAgentModelService, 'stored' | 'resourceInputEnabled'>>;
   readonly imageGeneration?: Pick<ImageGenerationConfigurationService, 'forUser'>;
   readonly tickets: Pick<RuntimeCredentialService, 'issue'>;
   readonly capability: (nodeId: string) => MarAgentRuntimeCredentialCapability | undefined;
@@ -67,6 +67,7 @@ export class MarAgentRuntimeModelService {
 
   async prepare(context: RuntimeModelContext): Promise<PreparedMarAgentRuntimeModels> {
     const stored = await this.#models.storedConfigurationsForUser(context.userId);
+    const resourceUrlsEnabled = (await this.#models.resourceInputEnabled?.()) ?? true;
     const selected =
       context.selectedModelId === undefined
         ? undefined
@@ -111,7 +112,8 @@ export class MarAgentRuntimeModelService {
           ? tickets.get(model.credential.credentialId)
           : undefined,
         imageGeneration,
-        capability
+        capability,
+        resourceUrlsEnabled
       )
     );
     const compact = await this.compact?.runtime(models);
@@ -152,7 +154,7 @@ export class MarAgentRuntimeModelService {
       });
     }
     // Auxiliary generation has no image, Compact, child-agent or unrelated model authority.
-    return { runtimeScopeId, model: runtimeModel(model, ticket, undefined, capability) };
+    return { runtimeScopeId, model: runtimeModel(model, ticket, undefined, capability, false) };
   }
 
   async prepareTest(context: ModelTransportTestContext): Promise<{
@@ -180,7 +182,13 @@ export class MarAgentRuntimeModelService {
         : undefined;
     return {
       runtimeScopeId,
-      model: runtimeModel(model, ticket, undefined, capability)
+      model: runtimeModel(
+        model,
+        ticket,
+        undefined,
+        capability,
+        (await this.#models.resourceInputEnabled?.()) ?? true
+      )
     };
   }
 
@@ -277,8 +285,11 @@ function runtimeModel(
   model: MarAgentStoredModelConfiguration,
   ticket: RuntimeCredentialTicket | undefined,
   imageGeneration: MarAgentRuntimeModelConfiguration['imageGeneration'],
-  capability: MarAgentRuntimeCredentialCapability | undefined
+  capability: MarAgentRuntimeCredentialCapability | undefined,
+  resourceUrlsEnabled: boolean = true
 ): MarAgentRuntimeModelConfiguration {
+  if (model.inputCapabilities.includes('IMAGE') && capability?.resourceInput !== true)
+    throw new Error('MAR_AGENT_MODEL_RESOURCE_INPUT_UNAVAILABLE');
   const responses = model.protocol === 'OPENAI_RESPONSES';
   if (
     responses &&
@@ -344,6 +355,7 @@ function runtimeModel(
         ? { fastMode: true }
         : {}),
     hostedWebSearch: model.hostedWebSearch,
+    useResourceUrl: resourceUrlsEnabled && model.metadata?.useResourceUrl === true,
     ...(model.responsesTransport === undefined
       ? {}
       : { responsesTransport: model.responsesTransport }),

@@ -536,6 +536,7 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
       .join('\n');
   if (kind === 'command_execution')
     return [
+      formatDetail(translate('presentation.command'), stringField(value, 'command')),
       formatDetail(translate('presentation.workingDirectory'), stringField(value, 'cwd')),
       formatDetail(translate('presentation.output'), stringField(value, 'outputPreview')),
       typeof value.exitCode === 'number'

@@ -210,6 +210,7 @@ async function modelsCommand(
           .map((effort) => parseReasoningEffort(effort, '--reasoning-efforts'));
   const defaultReasoningEffortOption = option('--default-reasoning-effort');
   const model: CliModelConfiguration = {
+    useResourceUrl: existing?.useResourceUrl ?? false,
     id,
     name: required(option('--name', existing?.name), '--name'),
     protocol,
@@ -589,6 +590,6 @@ function parseExecutionInvocation(input: string): {
 
 main().catch((error: unknown) => {
   const diagnostic = describeMarAgentError(error, 'MAR_AGENT_CLI_FAILED', 'CLI command failed.');
-  process.stderr.write(`${diagnostic.message}\n`);
+  process.stderr.write(`${diagnostic.code}: ${diagnostic.message}\n`);
   process.exitCode = cliExitCode(diagnostic.code);
 });

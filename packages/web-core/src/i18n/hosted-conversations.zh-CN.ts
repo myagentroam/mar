@@ -80,6 +80,7 @@ export const hostedConversationsZhCN = {
     pinned: '已置顶“{title}”。',
     unpinned: '已取消置顶“{title}”。',
     pinnedLabel: '已置顶',
+    unreadLabel: '未读',
     deleteNamed: '删除对话“{title}”',
     deleteTitle: '删除对话？',
     deleteConfirmation: '删除“{title}”后无法恢复。是否继续？',

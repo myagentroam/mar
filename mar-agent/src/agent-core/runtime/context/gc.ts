@@ -111,7 +111,7 @@ export interface ContextGcEconomicsResult {
 }
 
 export interface ContextGcPlan {
-  readonly stage: 'STAGE_A' | 'STAGE_A_AND_EXEC';
+  readonly stage: ContextGcMetrics['stage'];
   readonly draft: ContextGcCheckpointDraft;
   readonly metrics: ContextGcMetrics;
 }
@@ -128,6 +128,7 @@ export interface ContextGcInspection {
 }
 
 export interface ContextGcPlannerInput {
+  readonly inlineMedia?: import('../../session/inline-media.js').InlineMediaGcCandidate;
   readonly records: readonly SessionRecord[];
   readonly messages: readonly ModelMessage[];
   readonly messageSources: readonly SessionRecord[];
@@ -314,6 +315,68 @@ export function planContextGc(input: ContextGcPlannerInput): ContextGcPlan | und
 }
 
 export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspection {
+  const text = inspectTextGc(input);
+  const media = input.inlineMedia;
+  if (!media || (media.reason === 'TEXT_GC' && !text.plan)) return text;
+  const usageRecord = latestUsageRecord(input.records, input.modelId) ?? input.records.at(-1);
+  const contextUsageTokens = modelContextUsage(input.usage) ?? 0;
+  if (!usageRecord || contextUsageTokens === undefined) return text;
+  input = {
+    ...input,
+    tokenCache: new Map(),
+    checkpointCache: input.checkpointCache ?? new ContextGcCheckpointCache()
+  };
+  const state = {
+    stage: text.plan?.stage ?? ('INLINE_MEDIA' as const),
+    contextUsageTokens,
+    usageRatio: contextUsageTokens / input.contextWindowTokens,
+    usageRecord,
+    normalRolloutOrdinal: countSuccessfulNormalRollouts(
+      input.records,
+      input.modelId,
+      input.contextWindowTokens
+    ),
+    protectedCandidateTokens: text.plan?.metrics.protectedCandidateTokens ?? 0
+  };
+  if (text.plan) {
+    const combined = evaluateCandidateSet(
+      input,
+      [],
+      [
+        {
+          replacements: text.plan.draft.replacements,
+          observedRollouts: text.plan.metrics.minimumObservedRollouts,
+          evidenceSequence: text.plan.draft.boundarySequence
+        }
+      ],
+      state,
+      media.project
+    );
+    if (combined?.economics.passes) {
+      const plan = finalizePlan(input, combined, true);
+      if (plan) return { plan };
+    }
+    if (media.reason === 'TEXT_GC') return text;
+  }
+  // Byte pressure has its own admission signal; it never relaxes text GC eligibility.
+  const onlyMedia = evaluateCandidateSet(
+    input,
+    input.checkpointCache!.read(input.records)?.payload.replacements ?? [],
+    [
+      {
+        replacements: [],
+        observedRollouts: media.reason === 'HARD_LIMIT' ? 0 : 2,
+        evidenceSequence: input.records.at(-1)!.sequence
+      }
+    ],
+    { ...state, stage: 'INLINE_MEDIA', mediaOnly: true },
+    media.project
+  );
+  const plan = onlyMedia && finalizePlan(input, onlyMedia, true);
+  return plan ? { plan } : text;
+}
+
+function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
   const contextUsageTokens = contextGcEligibleUsage(input.usage, input.contextWindowTokens);
   if (contextUsageTokens === undefined) return {};
   input = {
@@ -709,13 +772,19 @@ export function contextGcEarliestReplacementSequence(
 
 function finalizePlan(
   input: ContextGcPlannerInput,
-  evaluated: ReturnType<typeof evaluateCandidateSet> & {}
+  evaluated: ReturnType<typeof evaluateCandidateSet> & {},
+  includeMedia = false
 ): ContextGcPlan | undefined {
   if (!evaluated) return undefined;
+  let inlineMedia: import('../../session/inline-media.js').InlineMediaGcCheckpoint | undefined;
+  if (includeMedia && input.inlineMedia) {
+    const { project: _project, ...checkpoint } = input.inlineMedia;
+    inlineMedia = checkpoint;
+  }
   const base = contextGcBaseFromRecords(input.records, evaluated.boundarySequence);
   if (!base) return undefined;
   const replacements = normalizeContextGcReplacements(evaluated.replacements);
-  if (!replacements || replacements.length === 0) return undefined;
+  if (!replacements || (replacements.length === 0 && !inlineMedia)) return undefined;
   const metrics: ContextGcMetrics = {
     stage: evaluated.stage,
     tokenEstimator: CONTEXT_GC_TOKEN_ESTIMATOR,
@@ -729,8 +798,12 @@ function finalizePlan(
     compactDeferralCreditCostUnits: evaluated.compactDeferralCreditCostUnits,
     imminentCompactAvoidanceCreditCostUnits: evaluated.imminentCompactAvoidanceCreditCostUnits,
     appliedCompactCreditCostUnits: evaluated.appliedCompactCreditCostUnits,
-    requiredPositiveNetRollouts: evaluated.economics.requiredPositiveNetRollouts,
-    requiredTargetRoiRollouts: evaluated.economics.requiredTargetRoiRollouts,
+    requiredPositiveNetRollouts: Number.isFinite(evaluated.economics.requiredPositiveNetRollouts)
+      ? evaluated.economics.requiredPositiveNetRollouts
+      : null,
+    requiredTargetRoiRollouts: Number.isFinite(evaluated.economics.requiredTargetRoiRollouts)
+      ? evaluated.economics.requiredTargetRoiRollouts
+      : null,
     projectedRolloutsUntilCompactAfterGc: evaluated.projectedRolloutsUntilCompactAfterGc,
     projectedTokensBeforeGc: evaluated.projectedTokensBeforeGc,
     projectedTokensAfterGc: evaluated.projectedTokensAfterGc,
@@ -751,12 +824,17 @@ function finalizePlan(
     cachePenaltyKnown: input.usage.cacheReadTokens !== undefined
   };
   const draft: ContextGcCheckpointDraft = {
+    ...(inlineMedia ? { inlineMedia } : {}),
     version: 1,
     base,
     boundarySequence: evaluated.boundarySequence,
     replacements,
     trigger: {
-      usageSequence: evaluated.usageRecord.sequence,
+      usageSequence:
+        isRecord(evaluated.usageRecord.payload) &&
+        evaluated.usageRecord.payload.type === 'usage.updated'
+          ? evaluated.usageRecord.sequence
+          : null,
       contextInputTokens: evaluated.contextUsageTokens,
       contextWindowTokens: input.contextWindowTokens,
       normalRolloutOrdinal: evaluated.normalRolloutOrdinal,
@@ -774,13 +852,15 @@ function evaluateCandidateSet(
   existing: readonly ContextGcReplacement[],
   candidates: readonly ContextCandidate[],
   state: {
-    readonly stage: 'STAGE_A' | 'STAGE_A_AND_EXEC';
+    readonly stage: ContextGcMetrics['stage'];
+    readonly mediaOnly?: boolean;
     readonly contextUsageTokens: number;
     readonly usageRatio: number;
     readonly usageRecord: SessionRecord;
     readonly normalRolloutOrdinal: number;
     readonly protectedCandidateTokens: number;
-  }
+  },
+  mediaProjection?: (messages: readonly ModelMessage[]) => readonly ModelMessage[]
 ) {
   if (candidates.length === 0) return undefined;
   const replacements = normalizeContextGcReplacements([
@@ -793,21 +873,22 @@ function evaluateCandidateSet(
     input.messageSources,
     replacements
   );
-  const reclaimedTokens = contextGcReclaimedTokens(input, input.messages, projected.messages);
+  const projectedMessages = mediaProjection?.(projected.messages) ?? projected.messages;
+  const reclaimedTokens = contextGcReclaimedTokens(input, input.messages, projectedMessages);
   const minimumGrossReductionRate = contextGcMinimumGrossReductionRate(state.usageRatio);
   const minimumReclaimedTokens = contextGcMinimumReclaimedTokens(
     state.contextUsageTokens,
     input.contextWindowTokens
   );
-  if (reclaimedTokens < minimumReclaimedTokens) return undefined;
+  if (!state.mediaOnly && reclaimedTokens < minimumReclaimedTokens) return undefined;
   const beforeTokens = contextGcPrefixTokens(input) + contextGcMessageTokens(input, input.messages);
   const afterTokens =
-    contextGcPrefixTokens(input) + contextGcMessageTokens(input, projected.messages);
-  if (reclaimedTokens === 0) return undefined;
+    contextGcPrefixTokens(input) + contextGcMessageTokens(input, projectedMessages);
+  if (!state.mediaOnly && reclaimedTokens === 0) return undefined;
   const cache = contextGcCacheImpact(
     input,
     input.messages,
-    projected.messages,
+    projectedMessages,
     input.usage.cacheReadTokens ?? 0,
     reclaimedTokens
   );
@@ -827,7 +908,7 @@ function evaluateCandidateSet(
     Math.max(0, input.usage.outputTokens ?? 0) + contextGcMessageTokens(input, pendingMessages);
   const projectedTokensBeforeGc = state.contextUsageTokens + pendingTokens;
   const projectedTokensAfterGc = Math.max(0, projectedTokensBeforeGc - reclaimedTokens);
-  if (projectedTokensAfterGc >= compactThresholdTokens) return undefined;
+  if (!state.mediaOnly && projectedTokensAfterGc >= compactThresholdTokens) return undefined;
   const projectedRolloutsUntilCompactAfterGc =
     contextGrowthP75Tokens <= 0
       ? 0

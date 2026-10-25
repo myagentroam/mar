@@ -31,7 +31,7 @@ const workbench = defineComponent({
         webBuildHash: 'fixture'
       })
     );
-    return () => h(WorkbenchPage<string, void, void>, { page });
+    return () => h(WorkbenchPage, { page });
   }
 });
 bootstrapConsole({ workbench, filePreview: defineComponent(() => () => null), management });

@@ -1,6 +1,7 @@
 import type { ModelInputMetadata } from '../../model/contracts.js';
 import type { TodoSnapshot } from '../../tools/agent/todo.js';
 import type { SessionSource } from '../types.js';
+import type { ModelImage } from '../../model/image.js';
 
 export interface SessionRecord {
   schemaVersion: 1;
@@ -30,24 +31,23 @@ export interface CompactHistoryMessage extends CompactUserInput {
   kind: 'user_input' | 'extension_input' | 'summary';
 }
 
-export interface SessionInputImage {
+export interface SessionInputImage extends ModelImage {
   readonly name: string;
-  readonly mimeType: string;
-  readonly dataBase64: string;
 }
 
 export interface SessionInputImageMetadata {
+  readonly resourceInputVersion?: 1;
   readonly name: string;
   readonly mimeType: string;
   readonly byteSize: number;
   readonly fileName: string;
   readonly sha256: string;
+  readonly resourceId?: string;
+  readonly url?: string;
+  readonly urlExpiresAt?: number;
 }
 
-export interface RestoredSessionInputImage {
-  readonly mimeType: string;
-  readonly dataBase64: string;
-}
+export interface RestoredSessionInputImage extends ModelImage {}
 
 export interface SessionInputImageData extends SessionInputImageMetadata {
   readonly dataBase64: string;

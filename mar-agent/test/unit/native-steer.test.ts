@@ -6,7 +6,8 @@ import {
   LocalAgentHost,
   SecretValue,
   openMarAgentSessionCatalog,
-  type MarAgentModelConfiguration
+  type MarAgentModelConfiguration,
+  type MarAgentHost
 } from '../../src/index.js';
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
 import type {
@@ -21,7 +22,10 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function fixture(protocol: MarAgentModelConfiguration['protocol']) {
+async function fixture(
+  protocol: MarAgentModelConfiguration['protocol'],
+  publishModelResource?: MarAgentHost['publishModelResource']
+) {
   const root = await mkdtemp(join(tmpdir(), 'mar-steer-'));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
   const home = join(root, 'home'),
@@ -42,6 +46,7 @@ async function fixture(protocol: MarAgentModelConfiguration['protocol']) {
     reasoningEfforts: ['low'],
     defaultReasoningEffort: 'low',
     hostedWebSearch: false,
+    useResourceUrl: publishModelResource !== undefined,
     enabled: true
   };
   const started = Promise.withResolvers<void>(),
@@ -51,7 +56,7 @@ async function fixture(protocol: MarAgentModelConfiguration['protocol']) {
   const create = () =>
     createMarAgentWithAdapter({
       mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
+      host: new LocalAgentHost({ homeDirectory: home, workspace, publishModelResource }),
       models: [configuration],
       adapterFactory: () =>
         ({
@@ -149,7 +154,12 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       );
     });
     it('keeps pending input and private image references through an independent Compact and restart', async () => {
-      const f = await fixture(protocol);
+      const published = {
+        url: 'https://images.example.test/session/steer.png?signature=stable',
+        urlExpiresAt: Date.now() + 60_000
+      };
+      const publishModelResource = vi.fn(async () => published);
+      const f = await fixture(protocol, publishModelResource);
       const handle = f.session.run({ prompt: 'initial' });
       await Promise.race([
         f.started,
@@ -169,6 +179,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         clientMessageId: 'image',
         images: [image]
       });
+      expect(publishModelResource).toHaveBeenCalledTimes(1);
       handle.cancel();
       await handle.result();
       expect(await f.session.compact().result()).toMatchObject({ status: 'completed' });
@@ -185,9 +196,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       await session.run({ prompt: 'fresh' }).result();
       const users = f.requests.at(-1)!.messages.filter((m) => m.role === 'user' && !m.contextKind);
       expect(users.map((m) => m.content).slice(-2)).toEqual(['pending image', 'fresh']);
-      expect(users.find((m) => m.content === 'pending image')!.images).toEqual([
-        { mimeType: image.mimeType, dataBase64: image.dataBase64 }
-      ]);
+      const restored = users.find((m) => m.content === 'pending image')!.images!;
+      expect(restored).toMatchObject([{ mimeType: image.mimeType, ...published }]);
+      expect(restored[0]).not.toHaveProperty('dataBase64');
+      expect(publishModelResource).toHaveBeenCalledTimes(1);
     });
 
     it('stops a failed application before another model request and retains the input for retry', async () => {

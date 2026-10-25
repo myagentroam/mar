@@ -67,7 +67,7 @@ export function createImageGenerationExtensions(input: {
             .host()
             .executeTool({ name: 'view_image', arguments: { path } }, context);
           const image = output.images?.length === 1 ? output.images[0] : undefined;
-          if (image === undefined)
+          if (image === undefined || image.dataBase64 === undefined)
             throw new MarAgentError(
               'MAR_AGENT_TOOL_OUTPUT_INVALID',
               'Referenced image result is invalid.'

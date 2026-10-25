@@ -9,6 +9,25 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Process headings reveal content without a redundant status tooltip', async ({ page }) => {
+  await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1`);
+  const process = page.locator('[data-process-id="preview-process"]');
+  const heading = process.locator('.process-heading');
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await page.clock.install();
+  await heading.hover();
+  await page.clock.runFor(500);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(heading).not.toHaveAttribute('aria-describedby');
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
+  await heading.click();
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  const reasoning = process.locator('.reasoning-group').first();
+  await reasoning.locator('summary').click();
+  await expect(reasoning.locator('p')).toContainText('Full thinking detail');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Jump to latest uses neutral floating feedback in ${theme}`, async ({
     browser
@@ -193,7 +212,7 @@ test('Long reasoning history stays responsive through progressive rendering and 
   expect(Math.max(...gaps)).toBeLessThan(1000);
 });
 
-test('Touch conversation details reveal status and unavailable change reasons', async ({
+test('Touch conversation details reveal titles and unavailable change reasons', async ({
   browser
 }) => {
   const context = await browser.newContext({
@@ -207,8 +226,7 @@ test('Touch conversation details reveal status and unavailable change reasons', 
     const hint = page.locator('[role="tooltip"]:visible');
     await page.locator('.conversation-header h2').tap();
     await expect(hint).toHaveText('Review session');
-    await page.locator('.conversation-header .session-activity').tap();
-    await expect(hint).toHaveText('Managed by an agent');
+    await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
     await page.getByText('File changes', { exact: true }).tap();
     await expect(page.locator('.conversation-file-change-note')).toBeVisible();
     // Reading starts after expansion; scrolling during the height animation dismisses hints.
@@ -232,6 +250,105 @@ test('Touch conversation details reveal status and unavailable change reasons', 
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Expanded command details expose the complete command in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 1000 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
+        await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+        const group = page.locator('.conversation-item.command-group > details');
+        await group.locator(':scope > summary').click();
+        const command = group.locator(':scope > details').first();
+        const heading = command.locator(':scope > summary');
+        const preview = heading.locator('.conversation-command-preview');
+        const fullCommand = await preview.textContent();
+        expect(fullCommand).toContain('Full command tail');
+        expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          true
+        );
+        const headingHeight = await heading.evaluate(
+          (element) => element.getBoundingClientRect().height
+        );
+        await expect(command.locator('.conversation-command-output')).toHaveCount(0);
+        await heading.click();
+        const detail = command.locator('.conversation-command-output');
+        await expect(detail).toBeVisible();
+        expect(await detail.textContent()).toContain(fullCommand);
+        await expect(detail).toContainText('Review output');
+        expect(
+          await heading.evaluate((element) => element.getBoundingClientRect().height)
+        ).toBeCloseTo(headingHeight, 1);
+        expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true
+        );
+        await expect
+          .poll(() =>
+            detail.evaluate((element) => {
+              const body = element.getBoundingClientRect();
+              return ['.conversation-command-detail', '.conversation-record-group'].every(
+                (selector) => {
+                  const parent = element.closest(selector)!.getBoundingClientRect();
+                  return body.top >= parent.top - 1 && body.bottom <= parent.bottom + 1;
+                }
+              );
+            })
+          )
+          .toBe(true);
+        await detail.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+        await detail.screenshot({ path: testInfo.outputPath(`full-command-${width}.png`) });
+        await heading.click();
+        await expect(detail).toHaveCount(0);
+        const withoutOutput = group.locator(':scope > details').nth(1);
+        await withoutOutput.locator(':scope > summary').click();
+        await expect(withoutOutput.locator('.conversation-command-output')).toContainText(
+          'echo review-1'
+        );
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
+  test(`Grouped conversation rows keep consistent compact spacing in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
+      await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+      const groups = page.locator('.conversation-record-group');
+      await expect(groups).toHaveCount(3);
+      for (const group of await groups.all()) {
+        await group.locator(':scope > summary').click();
+        await expect(group.locator(':scope > details')).toHaveCount(3);
+        const spacing = await group.evaluate((element) => {
+          const rows = Array.from(element.children).map((child) => child.getBoundingClientRect());
+          return rows.slice(1).map((row, index) => row.top - rows[index]!.bottom);
+        });
+        for (const gap of spacing) {
+          expect(gap).toBeGreaterThanOrEqual(0);
+          expect(gap).toBeLessThanOrEqual(4);
+          expect(gap).toBeCloseTo(spacing[0]!, 1);
+        }
+        const child = group.locator(':scope > details').first();
+        await child.locator(':scope > summary').click();
+        await expect(child.locator(':scope > p')).toBeVisible();
+        await child.locator(':scope > summary').click();
+        await expect(child.locator(':scope > p')).toHaveCount(0);
+      }
+      await page.locator('.conversation-timeline').screenshot({
+        path: testInfo.outputPath(`group-spacing-${width}.png`)
+      });
+    }
+  });
+
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -250,6 +367,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return {
           text: color('--mar-conversation-text'),
           muted: color('--mar-conversation-muted'),
+          primary: color('--mar-text-primary'),
           brand: color('--mar-color-brand-text'),
           canvas: color('--mar-conversation-canvas'),
           panel: color('--mar-bg-panel')
@@ -326,14 +444,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const copy = page.locator('.conversation-session-id button');
       await expect(copy).toHaveCSS('cursor', 'pointer');
       await copy.hover();
-      await expect(copy.locator('code')).toHaveCSS('color', tokens.brand);
+      await expect(copy.locator('code')).toHaveCSS('color', tokens.primary);
       for (const control of [
         page.getByTestId('native-utility'),
         page.getByTestId('element-utility')
       ]) {
         await control.hover();
         await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        await expect(control).toHaveCSS('color', tokens.brand);
+        await expect(control).toHaveCSS('color', tokens.primary);
         await control.focus();
         await page.keyboard.press('Tab');
         await page.keyboard.press('Shift+Tab');
@@ -345,7 +463,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await control.evaluate((element) => element.setAttribute('aria-expanded', 'true'));
         await page.mouse.move(0, 0);
         await control.evaluate((element) => element.blur());
-        await expect(control).toHaveCSS('color', tokens.brand);
+        await expect(control).toHaveCSS('color', tokens.primary);
         await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       }
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();

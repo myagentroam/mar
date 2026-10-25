@@ -83,6 +83,7 @@ const rawModelSchema = z
     conversationModel: z.boolean().optional().default(true),
     titleGeneration: z.boolean().optional().default(false),
     codeMode: z.boolean().optional().default(false),
+    useResourceUrl: z.boolean().optional().default(false),
     fastMode: z.boolean().optional(),
     serviceTier: z.enum(['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']).optional(),
     hostedWebSearch: z.boolean(),
@@ -146,9 +147,14 @@ const rawModelSchema = z
 
 export interface MarAgentModelConfiguration extends Omit<
   z.infer<typeof rawModelSchema>,
-  'apiKey' | 'responsesPreviousResponseId' | 'responsesTransport' | 'conversationModel'
+  | 'apiKey'
+  | 'responsesPreviousResponseId'
+  | 'responsesTransport'
+  | 'conversationModel'
+  | 'useResourceUrl'
 > {
   conversationModel?: boolean;
+  useResourceUrl?: boolean;
   apiKey?: SecretValue;
   credentialProvider?: ModelCredentialProvider;
   /** Whether this Responses endpoint accepts native configuration_update input items. */

@@ -10,8 +10,22 @@ import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-datab
 import { MarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
 
 function database(responses: unknown[] = []) {
+  const settings = new Map<string, string>();
   const execute = vi.fn(async (...args: unknown[]) => {
-    void args;
+    const sql = String(args[0]);
+    const values = Array.isArray(args[1]) ? args[1] : [];
+    if (sql.includes('system_settings')) {
+      if (sql.startsWith('SELECT'))
+        return [
+          [...settings]
+            .filter(([key]) => values.includes(key))
+            .map(([setting_key, setting_value]) => ({ setting_key, setting_value })),
+          []
+        ];
+      if (sql.startsWith('INSERT')) settings.set(String(values[0]), String(values[1]));
+      if (sql.startsWith('DELETE')) settings.delete(String(values[0]));
+      return [{ affectedRows: 1 }];
+    }
     const response = responses.shift() ?? [{ affectedRows: 1 }];
     if (
       Array.isArray(response) &&
@@ -162,6 +176,7 @@ describe('MAR Agent model service', () => {
       const { apiKey: _sourceKey, sortOrder: _sourceOrder, ...sourceConfiguration } = input;
       const source = marAgentStoredModelConfigurationSchema.parse({
         ...sourceConfiguration,
+        metadata: { useResourceUrl: true },
         id: 'source-id',
         credential: { type: 'INLINE_API_KEY', value: 'secret' }
       });
@@ -185,9 +200,12 @@ describe('MAR Agent model service', () => {
         ownership: { ownerType: 'PERSONAL', ownerUserId: 7 },
         titleGeneration: true,
         codeMode: true,
+        metadata: { useResourceUrl: true },
         sortOrder: 8
       });
-      const writes = db.raw.execute.mock.calls.filter(([sql]) => String(sql).startsWith('INSERT'));
+      const writes = db.raw.execute.mock.calls.filter(([sql]) =>
+        String(sql).startsWith('INSERT INTO mar_agent_models')
+      );
       expect(writes).toHaveLength(1);
       expect(String(writes[0]?.[0])).toContain('INSERT INTO mar_agent_models');
       expect(writes[0]?.[1]).toContain(
@@ -341,7 +359,7 @@ describe('MAR Agent model service', () => {
     await expect(service.duplicate(7, source.id, { ...configuration })).rejects.toThrow(
       'MAR_AGENT_MODEL_CONFIG_INVALID'
     );
-    expect(db.raw.execute).toHaveBeenCalledTimes(2);
+    expect(db.raw.execute).toHaveBeenCalledTimes(4);
   });
 
   it.each(
@@ -692,6 +710,7 @@ describe('MAR Agent model service', () => {
     );
     const codexInput = {
       ...input,
+      apiKey: undefined,
       protocol: 'OPENAI_RESPONSES',
       baseUrl: 'https://chatgpt.com/backend-api/codex',
       credential: { type: 'CREDENTIAL_REF', credentialId: 'credential-missing' },
@@ -733,7 +752,9 @@ describe('MAR Agent model service', () => {
     };
     db.raw.execute
       .mockResolvedValueOnce([[stored], []])
+      .mockResolvedValueOnce([[], []])
       .mockResolvedValueOnce([[stored], []])
+      .mockResolvedValueOnce([[], []])
       .mockResolvedValueOnce([[{ sort_order: 0 }], []]);
     await expect(
       service.update(7, 'codex-id', {
@@ -893,17 +914,37 @@ describe('MAR Agent model service', () => {
         responsesTransport: { transport: 'HTTP', httpVersion: '2' },
         responsesPreviousResponseId: true
       });
-      expect((updateDatabase.raw.execute.mock.calls[3]?.[1] as unknown[] | undefined)?.[18]).toBe(
-        JSON.stringify({ transport: 'HTTP', httpVersion: '2' })
-      );
-      expect((updateDatabase.raw.execute.mock.calls[3]?.[1] as unknown[])?.[15]).toBe(false);
-      expect((updateDatabase.raw.execute.mock.calls[3]?.[1] as unknown[])?.[19]).toBe(true);
+      expect(
+        (
+          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
+            String(sql).startsWith('UPDATE mar_agent_models')
+          )?.[1] as unknown[] | undefined
+        )?.[18]
+      ).toBe(JSON.stringify({ transport: 'HTTP', httpVersion: '2' }));
+      expect(
+        (
+          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
+            String(sql).startsWith('UPDATE mar_agent_models')
+          )?.[1] as unknown[]
+        )?.[15]
+      ).toBe(false);
+      expect(
+        (
+          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
+            String(sql).startsWith('UPDATE mar_agent_models')
+          )?.[1] as unknown[]
+        )?.[19]
+      ).toBe(true);
       expect(String(createDatabase.raw.execute.mock.calls[0]?.[0])).not.toContain(
         'responses_encoding'
       );
-      expect(String(updateDatabase.raw.execute.mock.calls[3]?.[0])).not.toContain(
-        'responses_encoding'
-      );
+      expect(
+        String(
+          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
+            String(sql).startsWith('UPDATE mar_agent_models')
+          )?.[0]
+        )
+      ).not.toContain('responses_encoding');
     }
   );
 
@@ -960,12 +1001,34 @@ describe('MAR Agent model service', () => {
       credentialType: 'INLINE_API_KEY'
     });
 
-    expect((db.raw.execute.mock.calls[3]?.[1] as unknown[] | undefined)?.[18]).toBe(
-      JSON.stringify({ transport: 'WEBSOCKET' })
-    );
-    expect((db.raw.execute.mock.calls[3]?.[1] as unknown[])?.[19]).toBe(true);
-    expect((db.raw.execute.mock.calls[3]?.[1] as unknown[])[12]).toBe(false);
-    expect(String(db.raw.execute.mock.calls[3]?.[0])).not.toContain('responses_encoding');
+    expect(
+      (
+        db.raw.execute.mock.calls.find(([sql]) =>
+          String(sql).startsWith('UPDATE mar_agent_models')
+        )?.[1] as unknown[] | undefined
+      )?.[18]
+    ).toBe(JSON.stringify({ transport: 'WEBSOCKET' }));
+    expect(
+      (
+        db.raw.execute.mock.calls.find(([sql]) =>
+          String(sql).startsWith('UPDATE mar_agent_models')
+        )?.[1] as unknown[]
+      )?.[19]
+    ).toBe(true);
+    expect(
+      (
+        db.raw.execute.mock.calls.find(([sql]) =>
+          String(sql).startsWith('UPDATE mar_agent_models')
+        )?.[1] as unknown[]
+      )[12]
+    ).toBe(false);
+    expect(
+      String(
+        db.raw.execute.mock.calls.find(([sql]) =>
+          String(sql).startsWith('UPDATE mar_agent_models')
+        )?.[0]
+      )
+    ).not.toContain('responses_encoding');
   });
 
   it('reads persisted Responses transport with an inline API key', async () => {
@@ -1540,7 +1603,7 @@ describe('MAR Agent model service', () => {
 
     await expect(service.remove('coding-id')).resolves.toBeUndefined();
 
-    expect(db.raw.execute).toHaveBeenNthCalledWith(3, 'DELETE FROM mar_agent_models WHERE id=?', [
+    expect(db.raw.execute).toHaveBeenCalledWith('DELETE FROM mar_agent_models WHERE id=?', [
       'coding-id'
     ]);
     lease.release();

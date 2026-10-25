@@ -12,9 +12,16 @@ import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 const composerFixture = new URL(location.href).searchParams.has('composer');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
+const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
+const fileRootFixture = new URL(location.href).searchParams.has('file-root');
+const listStateFixture = new URL(location.href).searchParams.has('list-state');
+const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
+const fileRootPath = ref('/home/example/my-agent-roam');
 const inspectorFixture =
-  contentSearchFixture || new URL(location.href).searchParams.has('git-previews');
+  fileRootFixture ||
+  contentSearchFixture ||
+  new URL(location.href).searchParams.has('git-previews');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
@@ -39,6 +46,15 @@ const sessions = ['active', 'idle', 'other'].map(
   (id) => ({ id, runner: 'mar', status: 'READY' }) as Session
 );
 const sessionProps = {
+  ...(unreadFixture
+    ? {
+        sessionGroup: 'MAIN' as const,
+        groupState: {
+          MAIN: { running: 1, unread: true },
+          CHILD: { running: 0, unread: true }
+        }
+      }
+    : {}),
   sessions,
   mobileViewport: mobile,
   canLoadMore: false,
@@ -67,7 +83,7 @@ const sessionProps = {
   refreshing: false,
   workspaceManageable: false,
   request: async <T,>() => ({}) as T,
-  hasUnread: () => false
+  hasUnread: () => unreadFixture
 };
 const surfacePage = {
   view: 'nodes',
@@ -167,15 +183,19 @@ if (composerFixture) {
         :direct-available="() => false"
         :direct-description="() => undefined"
         :has-active-run="() => false"
-        :has-unread="() => false"
+        :has-unread="() => unreadFixture"
         @activate="activeTab = $event.id"
       />
     </section>
     <section aria-label="Workspace tree fixture">
       <WorkspaceTree
-        :nodes="[node]"
+        :nodes="listState === 'no-nodes' ? [] : [node]"
         :expanded-node-ids="['node']"
-        :workspace-target="{ nodeId: 'node', workspaceId: selectedWorkspace }"
+        :workspace-target="
+          listState === 'unselected'
+            ? undefined
+            : { nodeId: 'node', workspaceId: selectedWorkspace }
+        "
         :dragging-workspace="undefined"
         :mobile-viewport="mobile"
         :loading="false"
@@ -186,8 +206,25 @@ if (composerFixture) {
       />
     </section>
     <section aria-label="Session fixture">
+      <select v-if="listStateFixture" v-model="listState" aria-label="Set fixture list state">
+        <option
+          v-for="state in ['ready', 'main', 'child', 'loading', 'failed', 'no-nodes', 'unselected']"
+          :key="state"
+        >
+          {{ state }}
+        </option>
+      </select>
       <WorkspaceSessionList
         v-bind="sessionProps"
+        :sessions="listState === 'ready' ? sessions : []"
+        :watch-status="listState === 'loading' || listState === 'failed' ? listState : 'ready'"
+        :session-group="
+          listState === 'child'
+            ? 'CHILD'
+            : listState === 'main'
+              ? 'MAIN'
+              : sessionProps.sessionGroup
+        "
         :selected-session-id="selectedSession"
         :search-query="search"
         @open="selectedSession = $event"
@@ -217,10 +254,18 @@ if (composerFixture) {
       />
     </section>
     <section aria-label="Inspector fixture">
+      <button
+        v-if="fileRootFixture"
+        type="button"
+        @click="fileRootPath = '/home/other/my-agent-roam'"
+      >
+        Switch root path
+      </button>
       <WorkspaceInspector
         :node-id="inspectorFixture ? 'node' : undefined"
         :workspace-id="inspectorFixture ? 'workspace' : undefined"
         workspace-name="Workspace"
+        :workspace-path="fileRootFixture ? fileRootPath : undefined"
         workspace-kind="GIT_WORKSPACE"
         csrf-token="fixture"
         :renew-csrf-token="async () => 'fixture'"

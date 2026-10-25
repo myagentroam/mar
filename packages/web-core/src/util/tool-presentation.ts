@@ -155,6 +155,5 @@ export function toolPresentationDetails(payload: unknown): string {
   )
     details.push(line('presentation.output', raw.outputSummary));
   details.push(line('presentation.error', raw.errorCode));
-  if (raw.truncated === true) details.push(translate('toolPresentation.truncated'));
   return details.filter(Boolean).join(String.fromCharCode(10));
 }

@@ -3,6 +3,7 @@ import type { RunInputImage } from '../runtime/contracts.js';
 import type { CoreDomainOperations, CoreDomainFacts } from './contracts.js';
 import type { ExtensionHooks } from './hooks.js';
 import type { CoreOperationContext } from './operation.js';
+import { isModelImageUrl } from '../model/image.js';
 
 /** Content only. Identity, queue policy and lifetime come from the physical ingress. */
 export interface CorePromptInput {
@@ -35,7 +36,8 @@ export function captureCorePromptInput(input: CorePromptInput): CorePromptInput 
             image &&
             typeof image.name === 'string' &&
             typeof image.mimeType === 'string' &&
-            typeof image.dataBase64 === 'string'
+            typeof image.dataBase64 === 'string' &&
+            (image.url === undefined || isModelImageUrl(image.url))
         )))
   )
     throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Prompt content is invalid.');

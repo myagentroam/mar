@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { open, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MarAgentError } from '../../error.js';
+import { parseInlineMediaState } from '../inline-media.js';
 import { MAX_SEGMENT_BYTES } from './records.js';
 import type { SessionMeta, SessionRecord } from './types.js';
 
@@ -89,7 +90,7 @@ export async function stageSessionSegments(
 
 export async function stageUnreferencedImages(
   sessionDirectory: string,
-  directoryName: 'input_images' | 'generated_images' | 'tool_results',
+  directoryName: 'generated_images' | 'tool_results' | 'resources',
   retained: ReadonlySet<string>,
   transactionId: string
 ): Promise<Array<{ from: string; to: string; trash: string }>> {
@@ -147,9 +148,28 @@ export function forkedPayload(
 ): unknown {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
   const payload = { ...(value as Record<string, unknown>) };
+  const remapWindow = (value: unknown) => {
+    const state = parseInlineMediaState(value);
+    if (!state) return value;
+    for (const cursor of [state.consideredThrough, state.evictedThrough]) {
+      if (!cursor?.sourceId.startsWith('input:')) continue;
+      const target = identities.get(cursor.sourceId.slice(6));
+      if (!target)
+        throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Fork media reference is missing.');
+      cursor.sourceId = `input:${target.recordId}`;
+    }
+    return state;
+  };
+  if (type === 'resource.window') return remapWindow(payload);
   if (payload.sessionId === sourceSessionId) payload.sessionId = targetSessionId;
   const application = (input: Record<string, unknown>) => {
-    if (typeof input.inputRef !== 'string') return input;
+    if (typeof input.inputRef !== 'string') {
+      const recordId = isObject(input.metadata) ? input.metadata.recordId : undefined;
+      const identity = typeof recordId === 'string' ? identities.get(recordId) : undefined;
+      return identity && isObject(input.metadata)
+        ? { ...input, metadata: { ...input.metadata, recordId: identity.recordId } }
+        : input;
+    }
     const identity = identities.get(input.inputRef);
     if (!identity)
       throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Fork input reference is missing.');
@@ -163,6 +183,7 @@ export function forkedPayload(
   };
   if (type === 'model.context') return application(payload);
   if (type === 'compact.completed') {
+    if (payload.inlineMediaState) payload.inlineMediaState = remapWindow(payload.inlineMediaState);
     if (Array.isArray(payload.retainedModelContext))
       payload.retainedModelContext = payload.retainedModelContext.map((item) =>
         isObject(item) ? application(item) : item

@@ -65,6 +65,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     responsesOptionalParameters: z.boolean().optional(),
     responsesHttpContinuation: z.boolean().optional(),
     conversationModels: z.boolean().optional(),
+    resourceInput: z.boolean().optional(),
     httpVersions: z
       .array(runtimeCredentialHttpVersionSchema)
       .min(1)
@@ -849,6 +850,10 @@ export const imageGenerationCatalogSchema = z
       context.addIssue({ code: 'custom', message: 'Image model IDs must be unique.' });
   });
 const marAgentModelShape = {
+  metadata: z
+    .object({ useResourceUrl: z.boolean().default(false) })
+    .strict()
+    .optional(),
   id: z.string().min(1).max(128),
   name: z.string().trim().min(1).max(128),
   protocol: marAgentModelProtocolSchema,
@@ -937,6 +942,7 @@ export const marAgentModelSummarySchema = refineMarAgentModel(
     .strict()
 );
 export interface MarAgentModelSummary {
+  metadata?: { useResourceUrl: boolean };
   id: string;
   name: string;
   protocol: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES';
@@ -974,6 +980,7 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
       ...marAgentModelShape,
       baseUrl: z.string().url().max(2048),
       apiKey: z.string().min(1).max(16_384).optional(),
+      useResourceUrl: z.boolean().default(false),
       credential: marAgentRuntimeCredentialSchema.optional(),
       responsesToolNamespace: z
         .string()
@@ -2914,6 +2921,18 @@ export const runImageReadInputSchema = z.union([
 ]);
 export type RunImageReadInput = z.infer<typeof runImageReadInputSchema>;
 
+const modelResourceInputSchema = z.object({
+  sessionId: protocolIdSchema,
+  resourceId: z.string().regex(/^[a-f0-9]{64}$/u),
+  expiresAt: z.number().int().positive().safe(),
+  signature: z.string().regex(/^[A-Za-z0-9_-]{43}$/u)
+});
+export const modelResourceReadInputSchema = z.union([
+  modelResourceInputSchema.extend({ workspaceId: protocolIdSchema }).strict(),
+  modelResourceInputSchema.extend({ conversationId: protocolIdSchema }).strict()
+]);
+export type ModelResourceReadInput = z.infer<typeof modelResourceReadInputSchema>;
+
 export const hostedConversationImageReadInputSchema = hostedConversationIdInputSchema
   .extend({
     runId: protocolIdSchema,
@@ -3589,6 +3608,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'workspace.git.commit.file.content.read',
   'workspace.git.commit.file.direct.metadata',
   'run.image.read',
+  'model.resource.read',
   'terminal.open',
   'terminal.command.open',
   'terminal.list',

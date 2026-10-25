@@ -85,11 +85,16 @@ export function createWorkspaceWatchService(options: {
     );
   }
 
-  function resetTopicState(current: WatchContext, preserveReady: boolean): void {
+  function resetTopicState(
+    current: WatchContext,
+    preserveReady: boolean,
+    preserveResources = false
+  ): void {
     topicStatus.sessions = preserveReady && topicStatus.sessions === 'ready' ? 'ready' : 'loading';
-    topicStatus.files = preserveReady && topicStatus.files === 'ready' ? 'ready' : 'loading';
+    const keepResources = preserveReady || preserveResources;
+    topicStatus.files = keepResources && topicStatus.files === 'ready' ? 'ready' : 'loading';
     topicStatus.changes = current.git
-      ? preserveReady && topicStatus.changes === 'ready'
+      ? keepResources && topicStatus.changes === 'ready'
         ? 'ready'
         : 'loading'
       : 'idle';
@@ -170,6 +175,15 @@ export function createWorkspaceWatchService(options: {
     const sessionGroup = options.sessionGroup?.();
     const nextKey = `${currentConnectionId}:${nodeId}:${workspaceId}:${directory}:${workspace.kind === 'GIT_WORKSPACE' ? 'git' : 'directory'}:${sessionGroup ?? 'ALL'}`;
     if (resetFailures && !paused && context !== undefined && targetKey(context) === nextKey) return;
+    const groupOnly =
+      !paused &&
+      context !== undefined &&
+      context.connectionId === currentConnectionId &&
+      context.nodeId === nodeId &&
+      context.workspaceId === workspaceId &&
+      context.directory === directory &&
+      context.git === (workspace.kind === 'GIT_WORKSPACE') &&
+      context.sessionGroup !== sessionGroup;
     replaceLocally();
     if (resetFailures) {
       leaseFailures = 0;
@@ -188,7 +202,7 @@ export function createWorkspaceWatchService(options: {
     };
     context = next;
     paused = false;
-    resetTopicState(next, !resetFailures);
+    resetTopicState(next, !resetFailures, groupOnly);
     try {
       await lifecycle.start(targetKey(next));
     } catch {
@@ -209,8 +223,13 @@ export function createWorkspaceWatchService(options: {
     }
   }
 
-  function start(workspaceId: string, directory = '.'): Promise<void> {
-    return establish(workspaceId, directory, true);
+  function start(workspaceId: string, directory?: string): Promise<void> {
+    const currentDirectory =
+      context?.workspaceId === workspaceId &&
+      context.nodeId === options.workspaceTarget.value?.nodeId
+        ? context.directory
+        : '.';
+    return establish(workspaceId, directory ?? currentDirectory, true);
   }
 
   async function restart(workspaceId: string): Promise<void> {

@@ -476,7 +476,9 @@ describe('session storage recovery', () => {
           reopened.readInputImage(session.id, { sequence: 2, imageIndex: 0 })
         ).resolves.toMatchObject({ dataBase64: 'AAAB' });
         const directory = join(home, '.mar', 'agent', 'sessions', session.id);
-        expect(await readdir(join(directory, 'input_images'))).toEqual([image!.fileName]);
+        expect(
+          (await readdir(join(directory, 'resources'))).filter((name) => name.endsWith('.bin'))
+        ).toEqual([image!.fileName]);
         expect(await readdir(directory)).not.toContain('storage-transaction.json');
         expect(
           (await reopened.append(session.id, { type: 'model.context', payload: { text: 'next' } }))
@@ -524,7 +526,7 @@ describe('session storage recovery', () => {
         ]);
         await expect(reopened.readContextualWorldState(session.id)).resolves.toBeUndefined();
         const directory = join(home, '.mar', 'agent', 'sessions', session.id);
-        expect(await readdir(join(directory, 'input_images'))).toEqual([]);
+        expect(await readdir(join(directory, 'resources'))).toEqual([]);
         expect(await readdir(directory)).not.toContain('storage-transaction.json');
         expect(
           (await reopened.append(session.id, { type: 'model.context', payload: { text: 'next' } }))
@@ -624,7 +626,9 @@ describe('session storage recovery', () => {
       const deadline = Date.now() + 8_000;
       for (;;) {
         try {
-          return await readFile(path, 'utf8');
+          const content = await readFile(path, 'utf8');
+          if (content.length > 0) return content;
+          if (Date.now() >= deadline) throw new Error('Writer signal was not published.');
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || Date.now() >= deadline)
             throw error;
@@ -666,7 +670,7 @@ describe('session storage recovery', () => {
     const [image] = await store.persistInputImages(session.id, [
       { name: 'orphan.png', mimeType: 'image/png', dataBase64: 'AAAB' }
     ]);
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
+    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
     await writeFile(join(directory, `.${image!.fileName}.${randomUUID()}.tmp`), 'partial');
     await store.close();
     const reopened = await JsonlSessionStore.open(home);
@@ -674,6 +678,26 @@ describe('session storage recovery', () => {
     await release();
     expect(await readdir(directory)).toEqual([]);
     await reopened.close();
+  });
+
+  it('leaves unsupported image storage untouched during writer recovery', async () => {
+    const { home, store, session } = await fixture();
+    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
+    const file = `${randomUUID()}.bin`;
+    const pending = `.${file}.pending`;
+    await mkdir(directory);
+    await writeFile(join(directory, file), 'legacy');
+    await writeFile(join(directory, pending), '');
+    await store.close();
+    const reopened = await JsonlSessionStore.open(home);
+    try {
+      const release = await reopened.acquireSessionLease(session.id);
+      await release();
+      expect((await readdir(directory)).sort()).toEqual([pending, file].sort());
+      expect(await readFile(join(directory, file), 'utf8')).toBe('legacy');
+    } finally {
+      await reopened.close();
+    }
   });
 
   it('preserves a committed image if its pending marker survives a crash', async () => {
@@ -687,13 +711,15 @@ describe('session storage recovery', () => {
       executionId: 'execution',
       turnId: 'turn'
     });
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
-    await writeFile(join(directory, `.${image!.fileName}.pending`), '');
+    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    await writeFile(join(directory, `.${image!.resourceId}.pending`), '');
     await store.close();
     const reopened = await JsonlSessionStore.open(home);
     const release = await reopened.acquireSessionLease(session.id);
     await release();
-    expect(await readdir(directory)).toEqual([image!.fileName]);
+    expect((await readdir(directory)).filter((name) => name.endsWith('.bin'))).toEqual([
+      image!.fileName
+    ]);
     expect(await reopened.readInputImage(session.id, { sequence: 2, imageIndex: 0 })).toMatchObject(
       {
         dataBase64: 'AAAB'
@@ -736,9 +762,9 @@ describe('session storage recovery', () => {
     const reopened = await JsonlSessionStore.open(home);
     const release = await reopened.acquireSessionLease(session.id);
     await release();
-    expect(
-      await readdir(join(home, '.mar', 'agent', 'sessions', session.id, 'input_images'))
-    ).toEqual([]);
+    expect(await readdir(join(home, '.mar', 'agent', 'sessions', session.id, 'resources'))).toEqual(
+      []
+    );
     expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
       'session.created'
     ]);
@@ -787,8 +813,8 @@ describe('session storage recovery', () => {
            stagedSegments: [],
            sidecarBackup: \`context-world-state.json.2.\${transactionId}.clear-backup\`
          });
-         const imagePath = join(directory, 'input_images', process.argv[3]);
-         await rename(imagePath, join(directory, 'input_images',
+         const imagePath = join(directory, 'resources', process.argv[3]);
+         await rename(imagePath, join(directory, 'resources',
            \`.\${process.argv[3]}.\${transactionId}.rollback-trash\`));
          await rename(original, \`\${original}.\${transactionId}.clear-backup\`);
          const first = (await readFile(\`\${original}.\${transactionId}.clear-backup\`, 'utf8')).split('\\n')[0];
@@ -839,7 +865,7 @@ describe('session storage recovery', () => {
       await store.close();
       const original = await readFile(eventsPath, 'utf8');
       const directory = join(home, '.mar', 'agent', 'sessions', session.id);
-      const imagePath = join(directory, 'input_images', image!.fileName);
+      const imagePath = join(directory, 'resources', image!.fileName);
       const transactionId = randomUUID();
       const stagedId = randomUUID();
       const temporary = `events-000001.jsonl.${stagedId}.rollback-tmp`;
@@ -854,7 +880,7 @@ describe('session storage recovery', () => {
       await beginSessionStorageTransaction(directory, transaction);
       const trash = join(
         directory,
-        'input_images',
+        'resources',
         `.${image!.fileName}.${transactionId}.rollback-trash`
       );
       await rename(imagePath, trash);
@@ -874,7 +900,9 @@ describe('session storage recovery', () => {
       });
       expect(await readdir(directory)).not.toContain('storage-transaction.json');
       expect(await readdir(directory)).not.toContain(temporary);
-      expect(await readdir(join(directory, 'input_images'))).toEqual([image!.fileName]);
+      expect(
+        (await readdir(join(directory, 'resources'))).filter((name) => name.endsWith('.bin'))
+      ).toEqual([image!.fileName]);
       expect(await readFile(indexPath, 'utf8')).toContain(session.id);
       await reopened.close();
     }

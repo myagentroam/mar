@@ -800,6 +800,25 @@ describe('QuickJS Code Mode', () => {
     expect(imageOnly.observations).toMatchObject([
       { type: 'value', format: 'image', value: '', imageIndices: [0] }
     ]);
+    const published = { ...png, url: 'https://example.com/image', urlExpiresAt: Date.now() + 1000 };
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(published)})`, input)).images
+    ).toEqual([published]);
+    const { dataBase64: _bytes, ...urlOnly } = published;
+    const identified = { ...png, resourceId: 'a'.repeat(64), byteSize: 8 };
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(identified)})`, input)).images
+    ).toEqual([identified]);
+    expect(
+      (await runner.execute(`observe.image(${JSON.stringify(urlOnly)})`, input)).images
+    ).toEqual([urlOnly]);
+    for (const image of [
+      { ...urlOnly, url: 'file:///private/image.png' },
+      { ...urlOnly, urlExpiresAt: 0 }
+    ])
+      await expect(
+        runner.execute(`observe.image(${JSON.stringify(image)})`, input)
+      ).rejects.toBeDefined();
     await expect(
       runner.execute(`observe.image(${JSON.stringify(png)})`, context())
     ).rejects.toMatchObject({
@@ -1204,12 +1223,14 @@ describe('QuickJS Code Mode', () => {
           input
         )
         .catch((error) => error);
-      const message = failure.message;
+      const message = failure.publicMessage;
       expect(failure).toMatchObject({ code: 'MAR_AGENT_CODE_SYNTAX_ERROR' });
-      expect(message).toContain('before tool execution');
-      expect(message).toContain('line 3, column 31');
+      expect(message).not.toContain('MAR_AGENT_CODE_SYNTAX_ERROR:');
+      expect(message).not.toContain('code-mode.js');
+      expect(message).toContain('No tools were executed.');
+      expect(message).toContain('Line 3, column 31.');
       expect(message).toContain('^');
-      expect(message).not.toContain('const broken');
+      expect(message).toContain('3 | const broken = {offset: 1, 230};');
       expect(message).not.toContain('at code-mode');
       expect(invoked).toBe(0);
       expect(failure.result.observations).toEqual([]);
@@ -1228,18 +1249,17 @@ describe('QuickJS Code Mode', () => {
   it.each([
     {
       error: new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.'),
-      message: 'TEST_TOOL_FAILED: Expected tool failure.'
+      message: 'Expected tool failure.'
     },
     {
       error: Object.assign(new Error('Expected tool failure.'), { code: 'TEST_TOOL_FAILED' }),
-      message: 'TEST_TOOL_FAILED: Expected tool failure.'
+      message: 'Expected tool failure.'
     },
     {
       error: new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.', {
         cause: Object.assign(new Error('Underlying access denied.'), { code: 'EACCES' })
       }),
-      message:
-        'TEST_TOOL_FAILED: Expected tool failure. Caused by: EACCES: Underlying access denied.'
+      message: 'Expected tool failure. Caused by: EACCES: Underlying access denied.'
     }
   ])('does not duplicate the nested tool error prefix: $message', async ({ error, message }) => {
     const { workspace } = await fixture();
@@ -1252,7 +1272,8 @@ describe('QuickJS Code Mode', () => {
       const failure = await runner
         .start('observe.text("earlier evidence"); await tools.read_value({});', input)
         .catch((error) => error);
-      expect(failure).toMatchObject({ code: 'TEST_TOOL_FAILED', message });
+      expect(failure).toMatchObject({ code: 'TEST_TOOL_FAILED', publicMessage: message });
+      expect(failure.message).toBe(`TEST_TOOL_FAILED: ${message}`);
       expect(observedText(failure.result)).toBe('earlier evidence');
       expect(failure.result.data).toMatchObject({
         status: 'failed',

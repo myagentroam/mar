@@ -27,7 +27,8 @@ const MAX_ERROR_MESSAGE_CHARACTERS = 1_000;
 export function describeMarAgentError(
   error: unknown,
   fallbackCode: string,
-  fallbackMessage = 'MAR Agent operation failed.'
+  fallbackMessage = 'MAR Agent operation failed.',
+  includeCauses = true
 ): { code: string; message: string } {
   const code = diagnosticCode(error) ?? fallbackCode;
   const messages: string[] = [];
@@ -37,7 +38,12 @@ export function describeMarAgentError(
     seen.add(current);
     const currentCode = diagnosticCode(current);
     const message = diagnosticMessage(current, currentCode);
-    if (message && !messages.includes(message)) messages.push(message);
+    const summary =
+      message && currentCode !== undefined && currentCode !== code
+        ? `${currentCode}: ${message}`
+        : message;
+    if (summary && !messages.includes(summary)) messages.push(summary);
+    if (!includeCauses) break;
     current = diagnosticCause(current);
   }
   return {
@@ -55,23 +61,23 @@ function diagnosticCode(value: unknown): string | undefined {
 
 function diagnosticMessage(value: unknown, code: string | undefined): string | undefined {
   const message =
-    value instanceof Error
-      ? value.message
-      : value !== null &&
-          typeof value === 'object' &&
-          'message' in value &&
-          typeof (value as { message?: unknown }).message === 'string'
-        ? (value as { message: string }).message
-        : typeof value === 'string'
-          ? value
-          : undefined;
+    value instanceof MarAgentError
+      ? value.publicMessage
+      : value instanceof Error
+        ? value.message
+        : value !== null &&
+            typeof value === 'object' &&
+            'message' in value &&
+            typeof (value as { message?: unknown }).message === 'string'
+          ? (value as { message: string }).message
+          : typeof value === 'string'
+            ? value
+            : undefined;
   const normalized = message?.trim();
   if (!normalized) return undefined;
-  const withoutDuplicatedCode =
-    code !== undefined && normalized.startsWith(`${code}: `)
-      ? normalized.slice(code.length + 2)
-      : normalized;
-  return code === undefined ? withoutDuplicatedCode : `${code}: ${withoutDuplicatedCode}`;
+  return code !== undefined && normalized.startsWith(`${code}: `)
+    ? normalized.slice(code.length + 2)
+    : normalized;
 }
 
 function diagnosticCause(value: unknown): unknown {

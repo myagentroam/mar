@@ -28,6 +28,7 @@ export type {
   SessionRecord
 } from './types.js';
 export type { CodeModeStateEntry } from '../../tools/code-mode/state.js';
+export type { SessionResource } from './resources.js';
 export type { TodoSnapshot, TodoItem } from '../../tools/contracts.js';
 export type { CodeToolCallRecord, CodeObservation } from '../../tools/code-mode/observations.js';
 export type {
@@ -74,6 +75,7 @@ export interface SessionStoreCompactInput {
   summary: string;
   replacementHistory?: readonly CompactHistoryMessage[];
   retainedModelContext?: readonly ModelMessage[];
+  inlineMediaState?: import('../inline-media.js').InlineMediaState;
   pendingInputs?: readonly SessionRecord[];
   snapshotRecordId?: string;
   snapshotMessageCount?: number;
@@ -192,6 +194,19 @@ export interface SessionStore {
     sessionId: string,
     images: readonly SessionInputImage[]
   ): Promise<SessionInputImageMetadata[]>;
+  persistResource(
+    sessionId: string,
+    image: import('../../model/image.js').ModelImage
+  ): Promise<import('./resources.js').SessionResource>;
+  setResourceUrl(
+    sessionId: string,
+    resourceId: string,
+    published: { url: string; urlExpiresAt: number }
+  ): Promise<import('./resources.js').SessionResource>;
+  readResource(
+    sessionId: string,
+    resourceId: string
+  ): Promise<{ mimeType: string; dataBase64: string } | undefined>;
   readInputImages(sessionId: string, value: unknown): Promise<RestoredSessionInputImage[]>;
   readInputImage(
     sessionId: string,

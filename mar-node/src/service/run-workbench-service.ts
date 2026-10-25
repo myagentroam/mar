@@ -1,5 +1,5 @@
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import { runImageReadInputSchema } from '@myagentroam/protocol';
+import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
 import { nodeOperationData } from '../util/node-operation-data.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
@@ -11,6 +11,9 @@ import { assertRunOwner } from './run-ownership-policy.js';
 export interface RunWorkbenchServiceOptions {
   readonly runtime: NodeRuntimeState;
   readonly readImage: (runId: string, selector: number | string) => Promise<unknown | undefined>;
+  readonly readModelResource?: (
+    input: import('@myagentroam/protocol').ModelResourceReadInput
+  ) => Promise<unknown | undefined>;
   readonly respondUserInput: (
     runId: string,
     requestId: string,
@@ -35,12 +38,21 @@ export class RunWorkbenchService {
     return {
       'run.get': (data) => this.get(record(data)),
       'run.image.read': (data) => this.image(record(data)),
+      'model.resource.read': (data) => this.modelResource(record(data)),
       'run.user-input.respond': (data) => this.respond(record(data)),
       'session.interrupt': (data) => this.interruptSession(record(data)),
       'run.cancel': (data) => this.cancelOrInterrupt('run.cancel', record(data)),
       'run.interrupt': (data) => this.cancelOrInterrupt('run.interrupt', record(data)),
       'run.approval.decide': (data) => this.decideApproval(record(data))
     };
+  }
+
+  private async modelResource(input: Record<string, unknown>): Promise<unknown> {
+    const parsed = modelResourceReadInputSchema.safeParse(nodeOperationData(input));
+    if (!parsed.success) throw new Error('RUN_IMAGE_INVALID');
+    const image = await this.options.readModelResource?.(parsed.data);
+    if (image === undefined) throw new Error('RUN_IMAGE_NOT_FOUND');
+    return { image };
   }
 
   private get(input: Record<string, unknown>): { run: NodeAgentRun } {

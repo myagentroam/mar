@@ -28,17 +28,12 @@ export class CodeCellExecutionError extends MarAgentError {
     error: unknown,
     readonly result: ToolExecutionResult
   ) {
-    const diagnostic = describeMarAgentError(error, 'MAR_AGENT_CODE_FAILED');
-    super(
-      diagnostic.code,
-      diagnostic.message.startsWith(`${diagnostic.code}: `)
-        ? diagnostic.message.slice(diagnostic.code.length + 2)
-        : diagnostic.message,
-      {
-        cause: error,
-        ...(error instanceof MarAgentError ? { retryable: error.retryable } : {})
-      }
-    );
+    // Preserve the original chain; the public boundary summarizes its causes only once.
+    const diagnostic = describeMarAgentError(error, 'MAR_AGENT_CODE_FAILED', undefined, false);
+    super(diagnostic.code, diagnostic.message, {
+      cause: error,
+      ...(error instanceof MarAgentError ? { retryable: error.retryable } : {})
+    });
   }
 }
 type Status = 'running' | 'completed' | 'failed' | 'cancelled';

@@ -62,7 +62,6 @@ watch(open, async () => {
       {{ block.preview.text }}
     </p>
     <button
-      v-tooltip="statusLabel"
       v-if="block.groupId"
       type="button"
       class="process-heading"

@@ -25,6 +25,28 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'preserves tool output without interpreting truncation markers or adding notices in %s',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      for (const kind of ['READ', 'SKILL', 'WEB_FETCH', 'WEB_SEARCH', 'SLEEP']) {
+        for (const output of [
+          'Original output',
+          '  Partial output... [tool event summary truncated]\n',
+          'Partial output [truncated]\n',
+          '[truncated]\nMore output follows',
+          '输出已截断\nOutput truncated'
+        ]) {
+          const original = Object.freeze({ ...payload({ kind }), outputSummary: output });
+          const detail = toolPresentationDetails({ ...original, truncated: true });
+          expect(detail).toBe(toolPresentationDetails(original));
+          if (kind === 'READ' || kind === 'SKILL' || kind === 'WEB_FETCH')
+            expect(detail).toContain(output);
+        }
+      }
+    }
+  );
+
   it('keeps fixed-title tool rows visible even before helper facts arrive or after failure', () => {
     for (const kind of ['WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'])
       for (const status of ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'CANCELLED'])

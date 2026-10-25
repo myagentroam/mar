@@ -130,35 +130,36 @@ describe('restricted Code Mode engine', () => {
   });
 
   it.each([
-    { source: 'const broken = {offset: 1, 230};', location: 'code-mode.js:1' },
+    { source: 'const broken = {offset: 1, 230};', location: 'Line 1, column 31.' },
     {
       source: '\nconst valid = 1;\nconst broken = {offset: 1, 230};',
-      location: 'code-mode.js:3'
+      location: 'Line 3, column 31.'
     },
     {
       source: '// header\r\nconst broken = {offset: 1, 230};',
-      location: 'code-mode.js:2'
+      location: 'Line 2, column 31.'
     },
-    { source: '// header\rconst broken = {offset: 1, 230};', location: 'code-mode.js:2' },
-    { source: '// header\u2028const broken = {offset: 1, 230};', location: 'code-mode.js:2' },
+    { source: '// header\rconst broken = {offset: 1, 230};', location: 'Line 2, column 31.' },
+    { source: '// header\u2028const broken = {offset: 1, 230};', location: 'Line 2, column 31.' },
     {
       source: 'const text = "你😀";\rconst broken = {offset: 1, 230};',
-      location: 'code-mode.js:2'
+      location: 'Line 2, column 31.'
     },
     {
       source: 'const broken = {offset: 1, 230};\rconst after = 1;',
-      location: 'code-mode.js:1'
+      location: 'Line 1, column 31.'
     },
-    { source: 'const broken = {', location: 'code-mode.js:1, end of input' }
+    { source: 'const broken = {', location: 'Line 1, column 17.' }
   ])(
     'reports syntax errors against the submitted source: $location',
     async ({ source, location }) => {
       const failure = await execute(source).catch((error) => error);
       expect(failure).toMatchObject({
         code: 'MAR_AGENT_CODE_SYNTAX_ERROR',
-        message: expect.stringContaining(`JavaScript compilation failed before tool execution:`)
+        message: expect.stringContaining('No tools were executed.')
       });
-      expect(failure.message).toContain(`(${location})`);
+      expect(failure.message).toContain(location);
+      expect(failure.message).not.toContain('code-mode.js');
     }
   );
 
@@ -287,26 +288,30 @@ describe('restricted Code Mode engine', () => {
     { source: '// private-body\u2028const broken = {offset: 1, 230};', line: 2, column: 31 },
     { source: '// private-body\u2029const broken = {offset: 1, 230};', line: 2, column: 31 },
     { source: 'const text = "你😀";\r\nconst broken = {offset: 1, 230};', line: 2, column: 31 },
-    { source: 'const text = "你😀"; const broken = {offset: 1, 230};', line: 1, column: 50 },
-    { source: '\tconst broken = {offset: 1, 230};', line: 1, column: 32 },
+    {
+      source: 'const text = "你😀"; const broken = {offset: 1, 230};',
+      line: 1,
+      column: 50,
+      caret: 51
+    },
+    { source: '\tconst broken = {offset: 1, 230};', line: 1, column: 32, caret: 34 },
     { source: 'const broken = {\r\n', line: 2, column: 1 }
   ])(
-    'locates compilation failure at $line:$column without revealing source',
-    async ({ source, line, column }) => {
+    'locates compilation failure at $line:$column in the submitted source',
+    async ({ source, line, column, caret: expectedCaret }) => {
       const error = await execute(source).catch((error) => error);
       expect(error.code).toBe('MAR_AGENT_CODE_SYNTAX_ERROR');
-      expect(error.message).toContain(`line ${line}, column ${column}`);
+      expect(error.message).toContain(`Line ${line}, column ${column}.`);
       expect(error.message).toContain(`${line} | `);
       expect(error.message).toContain('^');
-      expect(error.message).not.toContain('privateText');
-      expect(error.message).not.toContain('private-body');
-      expect(error.message).not.toContain('你😀');
+      expect(error.message).toContain(source.split(/\r\n|[\r\n\u2028\u2029]/u)[line - 1]!.trim());
+      expect(error.message).not.toContain('<source omitted>');
+      expect(error.message).not.toContain('<character omitted>');
       expect(error.message).not.toContain('at code-mode');
       expect(error.message.length).toBeLessThan(800);
       const lines = error.message.split('\n');
-      expect(lines.at(-1).indexOf('^')).toBe(
-        lines.at(-2).indexOf('<source omitted>') + '<source omitted>'.length
-      );
+      const caret = lines.at(-1).indexOf('^') - `${line} | `.length;
+      expect(caret).toBe(expectedCaret ?? column - 1);
     }
   );
 
@@ -314,9 +319,28 @@ describe('restricted Code Mode engine', () => {
     const error = await execute(`${' '.repeat(20000)}const broken = {offset: 1, 230};`).catch(
       (error) => error
     );
-    expect(error.message).toContain('line 1, column 20031');
+    expect(error.message).toContain('Line 1, column 20031.');
+    expect(error.message).toContain('…');
+    expect(error.message).toContain('const broken = {offset: 1, 230};');
     expect(error.message).toContain('^');
     expect(error.message.length).toBeLessThan(800);
+  });
+
+  it('does not classify echoed source text as an engine memory failure', async () => {
+    const error = await execute('const message = "out of memory"; const broken = {x: 1, 2};').catch(
+      (error) => error
+    );
+    expect(error.code).toBe('MAR_AGENT_CODE_SYNTAX_ERROR');
+    expect(error.message).toContain('out of memory');
+  });
+
+  it('explains unterminated strings using the submitted source and no internal filename', async () => {
+    const error = await execute('const message = "hello;').catch((error) => error);
+    expect(error).toMatchObject({ code: 'MAR_AGENT_CODE_SYNTAX_ERROR' });
+    expect(error.message).toContain('Unterminated string literal.');
+    expect(error.message).toContain('No tools were executed.');
+    expect(error.message).toContain('1 | const message = "hello;');
+    expect(error.message).not.toContain('code-mode.js');
   });
 
   it.each(['', 'undefined', '{}'])(
@@ -465,7 +489,7 @@ describe('restricted Code Mode engine', () => {
       })
     ).rejects.toMatchObject({
       code: 'MAR_AGENT_CODE_SYNTAX_ERROR',
-      message: expect.stringContaining('before tool execution')
+      message: expect.stringContaining('No tools were executed.')
     });
     expect(calls).toBe(0);
   });

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { inlineMediaHistory } from '../inline-media.js';
 import type {
   SessionStore,
   SessionStoreMaintenance,
@@ -9,6 +10,7 @@ import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:f
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError } from '../../error.js';
+import { isModelImageUrl } from '../../model/image.js';
 import { cloneCoreJson, type CoreCheckpoint, type CoreJsonValue } from '../../extensions/data.js';
 import { acquireFileLock } from '../../storage/file-lock.js';
 import { todoItemsFromSnapshot, type TodoSnapshot } from '../../tools/agent/todo.js';
@@ -84,16 +86,20 @@ import {
 import {
   MAX_INPUT_IMAGES,
   copyGeneratedImages,
-  copyInputImages,
   generatedImageFileNames,
   inputImageReference,
   inputImageReferences,
-  inputImageReferencesFromRecords,
-  readInputImageBytes,
-  recoverPendingInputImages,
-  validInputImageFileName,
-  writeInputImages
+  readInputImageBytes
 } from './images.js';
+import {
+  persistResource,
+  setResourceUrl,
+  readResource,
+  copyResources,
+  resourceFiles,
+  completeResources,
+  recoverResources
+} from './resources.js';
 import {
   MAX_SEGMENT_BYTES,
   appendRecordBytes,
@@ -589,8 +595,71 @@ export class JsonlSessionStore implements SessionStore {
         'MAR_AGENT_HOST_LIMIT_EXCEEDED',
         'Too many image inputs were provided.'
       );
-    const directory = join(this.#sessionDirectory(sessionId), 'input_images');
-    return writeInputImages(directory, images);
+    const resources: SessionInputImageMetadata[] = [];
+    let total = 0;
+    for (const image of images) {
+      if (
+        (image.url !== undefined && !isModelImageUrl(image.url)) ||
+        (image.urlExpiresAt !== undefined &&
+          (!Number.isSafeInteger(image.urlExpiresAt) ||
+            image.urlExpiresAt <= 0 ||
+            image.url === undefined))
+      )
+        throw new MarAgentError('MAR_AGENT_SESSION_INPUT_INVALID', 'Image model URL is invalid.');
+      let resource = await this.persistResource(sessionId, image);
+      if (image.url !== undefined && image.urlExpiresAt !== undefined)
+        resource = await this.setResourceUrl(sessionId, resource.resourceId, {
+          url: image.url,
+          urlExpiresAt: image.urlExpiresAt
+        });
+      total += resource.byteSize;
+      if (resource.byteSize > 5 * 1024 * 1024 || total > 10 * 1024 * 1024)
+        throw new MarAgentError(
+          'MAR_AGENT_HOST_LIMIT_EXCEEDED',
+          'Image input exceeds the supported size limit.'
+        );
+      resources.push({
+        ...resource,
+        resourceInputVersion: 1,
+        name: image.name,
+        fileName: `${resource.resourceId}.bin`
+      });
+    }
+    return resources;
+  }
+  async persistResource(sessionId: string, image: import('../../model/image.js').ModelImage) {
+    this.#assertOpen();
+    return this.#serializeRecordOperation(sessionId, () =>
+      persistResource(join(this.#sessionDirectory(sessionId), 'resources'), image)
+    );
+  }
+  async setResourceUrl(
+    sessionId: string,
+    resourceId: string,
+    published: { url: string; urlExpiresAt: number }
+  ) {
+    this.#assertOpen();
+    return this.#serializeRecordOperation(sessionId, () =>
+      setResourceUrl(join(this.#sessionDirectory(sessionId), 'resources'), resourceId, published)
+    );
+  }
+  async readResource(sessionId: string, resourceId: string) {
+    this.#assertOpen();
+    const directory = join(this.#sessionDirectory(sessionId), 'resources');
+    if (!/^[a-f0-9]{64}$/u.test(resourceId)) return undefined;
+    return this.#serializeRecordOperation(sessionId, async () => {
+      try {
+        await lstat(join(directory, `.${resourceId}.pending`));
+        if (
+          this.#shared.writerLeases.get(sessionId)?.appendFailure !== undefined ||
+          !resourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`)
+        )
+          return undefined;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      return readResource(directory, resourceId);
+    });
   }
   async writeToolResultResource(sessionId: string, text: string) {
     this.#assertOpen();
@@ -619,13 +688,25 @@ export class JsonlSessionStore implements SessionStore {
 
   async readInputImages(sessionId: string, value: unknown): Promise<RestoredSessionInputImage[]> {
     this.#assertOpen();
-    const references = inputImageReferences(value);
+    const references = inputImageReferences(
+      Array.isArray(value) ? value.filter((item) => item?.resourceInputVersion === 1) : undefined
+    );
     if (references.length === 0) return [];
-    const directory = join(this.#sessionDirectory(sessionId), 'input_images');
     const images: RestoredSessionInputImage[] = [];
     for (const reference of references) {
-      const data = await readInputImageBytes(directory, reference);
-      images.push({ mimeType: reference.mimeType, dataBase64: data.toString('base64') });
+      if (reference.resourceId === undefined)
+        throw new MarAgentError(
+          'MAR_AGENT_SESSION_CORRUPT',
+          'Session resource identity is missing.'
+        );
+      images.push({
+        resourceInputVersion: 1,
+        mimeType: reference.mimeType,
+        byteSize: reference.byteSize,
+        resourceId: reference.resourceId,
+        ...(reference.url === undefined ? {} : { url: reference.url }),
+        ...(reference.urlExpiresAt === undefined ? {} : { urlExpiresAt: reference.urlExpiresAt })
+      });
     }
     return images;
   }
@@ -655,10 +736,13 @@ export class JsonlSessionStore implements SessionStore {
       return undefined;
     if (!Array.isArray(record.payload.images) || input.imageIndex >= record.payload.images.length)
       return undefined;
+    if (record.payload.images[input.imageIndex]?.resourceInputVersion !== 1) return undefined;
     const reference = inputImageReference(record.payload.images[input.imageIndex]);
     if (reference === undefined) return undefined;
+    if (reference.resourceId === undefined)
+      throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session resource identity is missing.');
     const data = await readInputImageBytes(
-      join(this.#sessionDirectory(sessionId), 'input_images'),
+      join(this.#sessionDirectory(sessionId), 'resources'),
       reference
     );
     return {
@@ -730,6 +814,12 @@ export class JsonlSessionStore implements SessionStore {
           }
         ];
         const retained = input.boundaryTurnId === null ? [] : records.slice(1, boundaryIndex + 1);
+        const inlineState = inlineMediaHistory(retained).state;
+        const stateAnchor =
+          inlineState &&
+          retained.findLast(
+            (record) => record.type === 'resource.window' || record.type === 'compact.completed'
+          );
         const forkIdentities = new Map<string, { recordId: string; sequence: number }>();
         for (const record of retained) {
           if (record.type === 'context.gc.completed' || record.type === 'responses.continuation')
@@ -743,7 +833,14 @@ export class JsonlSessionStore implements SessionStore {
             type: record.type,
             payload: forkedPayload(
               record.type,
-              record.payload,
+              record === stateAnchor
+                ? record.type === 'resource.window'
+                  ? inlineState
+                  : {
+                      ...(record.payload as Record<string, unknown>),
+                      inlineMediaState: inlineState
+                    }
+                : record.payload,
               sourceSessionId,
               target.id,
               input.title,
@@ -775,10 +872,10 @@ export class JsonlSessionStore implements SessionStore {
           this.#sessionDirectory(target.id),
           generatedImageFileNames(retained)
         );
-        await copyInputImages(
+        await copyResources(
           this.#sessionDirectory(sourceSessionId),
           this.#sessionDirectory(target.id),
-          inputImageReferencesFromRecords(retained)
+          retained
         );
         target.lastActivityAt = target.createdAt;
         this.#shared.pendingSessions.delete(target.id);
@@ -962,7 +1059,7 @@ export class JsonlSessionStore implements SessionStore {
     const contextualWorldStateBackup = `${contextualWorldStatePath}.${targetNextSequence}.${transactionId}.${operation.kind}-backup`;
     let contextualWorldStateStaged = false;
     let generatedTrash: Array<{ from: string; to: string; trash: string }> = [];
-    let inputTrash: Array<{ from: string; to: string; trash: string }> = [];
+    let resourceTrash: Array<{ from: string; to: string; trash: string }> = [];
     const originalMeta = structuredClone(meta);
     const originalIndexRevision = this.#shared.index.revision;
     const originalSegment = this.#shared.segments.get(sessionId);
@@ -996,15 +1093,13 @@ export class JsonlSessionStore implements SessionStore {
         operation.kind === 'rollback' ? new Set(generatedImageFileNames(retained)) : new Set(),
         transactionId
       );
-      inputTrash = await stageUnreferencedImages(
-        this.#sessionDirectory(sessionId),
-        'input_images',
-        operation.kind === 'rollback'
-          ? new Set(inputImageReferencesFromRecords(retained).map((image) => image.fileName))
-          : new Set(),
-        transactionId
-      );
-      inputTrash.push(
+      resourceTrash.push(
+        ...(await stageUnreferencedImages(
+          this.#sessionDirectory(sessionId),
+          'resources',
+          operation.kind === 'rollback' ? resourceFiles(retained) : new Set(),
+          transactionId
+        )),
         ...(await stageUnreferencedImages(
           this.#sessionDirectory(sessionId),
           'tool_results',
@@ -1068,7 +1163,7 @@ export class JsonlSessionStore implements SessionStore {
           await restoreRenamedFiles([
             { from: contextualWorldStateBackup, to: contextualWorldStatePath }
           ]);
-        await restoreRenamedFiles([...generatedTrash, ...inputTrash]);
+        await restoreRenamedFiles([...generatedTrash, ...resourceTrash]);
         restoreSessionMeta(meta, originalMeta);
         this.#shared.index.revision = originalIndexRevision;
         if (originalSegment === undefined) this.#shared.segments.delete(sessionId);
@@ -1211,21 +1306,7 @@ export class JsonlSessionStore implements SessionStore {
     }
     updateSessionCurrentState(this.#shared.writerLeases.get(sessionId), record.type, serialized);
     await completeToolResultResources(this.#sessionDirectory(sessionId), record);
-    if (
-      record.type === 'turn.user' &&
-      isObject(record.payload) &&
-      Array.isArray(record.payload.images)
-    )
-      for (const image of record.payload.images)
-        if (
-          isObject(image) &&
-          typeof image.fileName === 'string' &&
-          validInputImageFileName(image.fileName)
-        )
-          await rm(
-            join(this.#sessionDirectory(sessionId), 'input_images', `.${image.fileName}.pending`),
-            { force: true }
-          ).catch(() => undefined);
+    await completeResources(join(this.#sessionDirectory(sessionId), 'resources'), record);
     return record;
   }
   async read(sessionId: string): Promise<SessionRecord[]> {
@@ -1420,13 +1501,16 @@ export class JsonlSessionStore implements SessionStore {
           'Context GC planning boundary is invalid.'
         );
       const previous = latestValidContextGcCheckpoint(records, boundarySequence);
-      if (!contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger))
+      if (
+        (!draft.inlineMedia || draft.inlineMedia.reason === 'TEXT_GC') &&
+        !contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger)
+      )
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint interval validation failed.'
         );
       const plannedReplacements = normalizeContextGcReplacements(draft.replacements);
-      if (!plannedReplacements || plannedReplacements.length === 0)
+      if (!plannedReplacements || (plannedReplacements.length === 0 && !draft.inlineMedia))
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint must contain a replacement.'
@@ -1437,7 +1521,10 @@ export class JsonlSessionStore implements SessionStore {
       ]);
       if (
         !replacements ||
-        (previous && isDeepStrictEqual(replacements, previous.payload.replacements))
+        (previous &&
+          isDeepStrictEqual(replacements, previous.payload.replacements) &&
+          (!draft.inlineMedia ||
+            isDeepStrictEqual(draft.inlineMedia, previous.payload.inlineMedia)))
       )
         throw new MarAgentError(
           'MAR_AGENT_SESSION_CORRUPT',
@@ -1471,8 +1558,10 @@ export class JsonlSessionStore implements SessionStore {
           'MAR_AGENT_SESSION_CORRUPT',
           'Context GC checkpoint validation failed.'
         );
+      const turnId = records.findLast((record) => record.type === 'execution.header')?.turnId;
       return this.#appendRecord(sessionId, {
         type: 'context.gc.completed',
+        ...(turnId === undefined ? {} : { turnId }),
         payload
       });
     });
@@ -1540,6 +1629,7 @@ export class JsonlSessionStore implements SessionStore {
           ...(input.retainedModelContext?.length
             ? { retainedModelContext: input.retainedModelContext }
             : {}),
+          ...(input.inlineMediaState ? { inlineMediaState: input.inlineMediaState } : {}),
           ...(input.environment === undefined ? {} : { environment: input.environment }),
           boundarySequence: meta.nextSequence - 1,
           automatic: input.automatic === true,
@@ -2225,7 +2315,7 @@ export class JsonlSessionStore implements SessionStore {
     const latestPath = paths.at(-1)!;
     await repairSegmentTail(latestPath);
     const records = await readRecords(latestPath);
-    await recoverPendingInputImages(this.#sessionDirectory(sessionId), () =>
+    await recoverResources(join(this.#sessionDirectory(sessionId), 'resources'), () =>
       this.#readRecords(sessionId)
     );
     await cleanupUnreferencedToolResources(this.#sessionDirectory(sessionId), () =>

@@ -866,6 +866,8 @@ test('Hosted conversation entry aligns compact controls across languages and vie
     await templateControl.click();
     await page.getByRole('menuitem', { name: snapshot.template.name, exact: true }).click();
     await modelControl.click();
+    await expect(page.getByRole('menuitem', { name: 'Model Two', exact: true })).toBeVisible();
+    await expect(page.locator('.el-popper[role="tooltip"]:visible')).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Model Two', exact: true }).click();
     await expect(modelControl).toContainText('Model Two');
 

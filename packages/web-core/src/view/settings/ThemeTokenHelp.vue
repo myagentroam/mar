@@ -109,8 +109,6 @@ async function copy(token: string): Promise<void> {
   line-height: 1.6;
 }
 .reference-body {
-  max-height: 55vh;
-  overflow-y: auto;
   margin-top: 0.75rem;
 }
 h3 {

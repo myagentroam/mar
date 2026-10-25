@@ -1,4 +1,5 @@
 import { BoundedTextOutput } from './text-output.js';
+import { sourcePreview } from '../input-diagnostics/source-preview.js';
 
 // This trusted module runs only in the Host-managed worker, never in the model's JS context.
 /** @returns {Promise<import('./engine.js').CodeModeEngine>} */
@@ -77,11 +78,18 @@ export async function createCodeModeEngine(options) {
         if (budgetExceeded()) throw executionTimeout();
         let message = String(error?.message ?? error).slice(0, 4096);
         const syntaxError = locateSource && error?.name === 'SyntaxError';
-        if (syntaxError)
-          message = `JavaScript compilation failed before tool execution: ${message}`.slice(
-            0,
-            4096
-          );
+        if (syntaxError) {
+          const reason =
+            message === 'unexpected end of string' ? 'Unterminated string literal.' : message;
+          const location = compilerSourceLocation(error, input.code);
+          message = `${reason.slice(0, 256)}\n${location ? `Line ${location.line}${location.column === undefined ? '' : `, column ${location.column}`}. ` : ''}No tools were executed.`;
+          if (location?.column !== undefined) {
+            const source = input.code.split(/\r\n|[\r\n\u2028\u2029]/u)[location.line - 1];
+            const preview = sourcePreview(source, location.column);
+            const gutter = String(location.line);
+            message += `\n\n${gutter} | ${preview.text}\n${' '.repeat(gutter.length)} | ${' '.repeat(preview.caret)}^`;
+          }
+        }
         if (
           error?.name === 'ReferenceError' &&
           ["'text' is not defined", "'console' is not defined"].includes(message)
@@ -91,12 +99,10 @@ export async function createCodeModeEngine(options) {
               0,
               4096
             );
-        const location = locateSource ? compilerSourceLocation(error, input.code) : '';
-        if (location) message = message.slice(0, 4096 - location.length) + location;
-        const code = message.includes('out of memory')
-          ? 'MAR_AGENT_CODE_MEMORY_LIMIT'
-          : syntaxError
-            ? 'MAR_AGENT_CODE_SYNTAX_ERROR'
+        const code = syntaxError
+          ? 'MAR_AGENT_CODE_SYNTAX_ERROR'
+          : message.includes('out of memory')
+            ? 'MAR_AGENT_CODE_MEMORY_LIMIT'
             : typeof error?.code === 'string'
               ? error.code
               : 'MAR_AGENT_CODE_FAILED';
@@ -735,11 +741,11 @@ function compilerSourceLocation(error, source) {
     !Number.isSafeInteger(error.lineNumber) ||
     error.lineNumber <= 1
   )
-    return '';
+    return undefined;
   // QuickJS counts LF lines and Unicode code-point columns; the wrapper adds one LF line.
   const lines = source.split('\n');
   const line = error.lineNumber - 1;
-  if (line > lines.length) return compilerCaret(source, source, true);
+  if (line > lines.length) return originalSourceLocation(source);
   const column = Number(
     typeof error.stack === 'string'
       ? error.stack.match(/^\s*at code-mode\.js:\d+:(\d+)(?:\n|$)/u)?.[1]
@@ -751,9 +757,9 @@ function compilerSourceLocation(error, source) {
     column > Array.from(lines[line - 1]).length + 1
   ) {
     // Without a valid column, intra-LF-line separators make the original source line ambiguous.
-    if (/[\r\u2028\u2029]/u.test(lines[line - 1].replace(/\r$/u, ''))) return '';
+    if (/[\r\u2028\u2029]/u.test(lines[line - 1].replace(/\r$/u, ''))) return undefined;
     const preceding = line > 1 ? lines.slice(0, line - 1).join('\n') + '\n' : '';
-    return ` (code-mode.js:${preceding.split(/\r\n|[\r\n\u2028\u2029]/u).length})`;
+    return { line: preceding.split(/\r\n|[\r\n\u2028\u2029]/u).length };
   }
   const prefix = [
     ...lines.slice(0, line - 1),
@@ -761,24 +767,14 @@ function compilerSourceLocation(error, source) {
       .slice(0, column - 1)
       .join('')
   ].join('\n');
-  return compilerCaret(source, prefix);
+  return originalSourceLocation(prefix);
 }
 
-function compilerCaret(source, prefix, endOfInput = false) {
+function originalSourceLocation(prefix) {
   const segments = prefix.split(/\r\n|[\r\n\u2028\u2029]/u);
   const line = segments.length;
   const column = Array.from(segments.at(-1)).length + 1;
-  const character = source.slice(prefix.length)[Symbol.iterator]().next().value;
-  // Source may contain credentials, commands or private code. Show only a punctuation token.
-  const token = endOfInput
-    ? '<end of input>'
-    : character === undefined || /[\r\n\u2028\u2029]/u.test(character)
-      ? '<end of line>'
-      : /^[{}[\]():;,.=+*/?!<>|&%\-]$/u.test(character)
-        ? character
-        : '<character omitted>';
-  const preview = '<source omitted>';
-  return ` (code-mode.js:${line}${endOfInput ? ', end of input' : ''})\nSyntax location: line ${line}, column ${column}\n${line} | ${preview}${token}\n${' '.repeat(String(line).length)} | ${' '.repeat(preview.length)}^`;
+  return { line, column };
 }
 
 function isParameterlessTool(tool) {

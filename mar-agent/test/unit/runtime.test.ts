@@ -1305,7 +1305,12 @@ describe('agent runtime', () => {
         this.requests.push(request);
         if (this.requests.length === 1) {
           expect(request.tools.map((tool) => tool.name)).toContain('view_image');
-          expect(request.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+          expect(request.images).toBeUndefined();
+          expect(
+            request.messages.find(
+              (message) => message.role === 'user' && message.content === 'view image'
+            )
+          ).toMatchObject({ images: [{ mimeType: 'image/png', dataBase64: imageBase64 }] });
           yield {
             type: 'client_tool.call',
             callId: 'image',
@@ -1319,6 +1324,9 @@ describe('agent runtime', () => {
           role: 'tool',
           images: [{ mimeType: 'image/png', dataBase64: imageBase64 }]
         });
+        expect(
+          request.messages.slice(0, -1).flatMap((message) => message.images ?? [])
+        ).toMatchObject([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
         expect(request.promptCacheKey).toBe(this.requests[0]?.promptCacheKey);
         expect(request.tools.map((tool) => tool.name)).toEqual(
           this.requests[0]?.tools.map((tool) => tool.name)
@@ -1353,7 +1361,7 @@ describe('agent runtime', () => {
       .split('\n')
       .map((line) => JSON.parse(line) as { type?: string; payload?: unknown })
       .find((record) => record.type === 'turn.user');
-    expect(userRecord?.payload).toEqual({
+    expect(userRecord?.payload).toMatchObject({
       prompt: 'view image',
       images: [
         {
@@ -1383,7 +1391,7 @@ describe('agent runtime', () => {
     expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('skill');
     await textAgent.dispose();
   });
-  it('restores user image pixels for later executions after the Agent restarts', async () => {
+  it('retains recent inline pixels across restart and fails explicitly on corrupt retained bytes', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-image-history-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -1398,7 +1406,10 @@ describe('agent runtime', () => {
     const firstAdapter: ModelAdapter = {
       configuration: visionModel,
       async *start(request) {
-        expect(request.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
+        expect(request.images).toBeUndefined();
+        expect(request.messages.flatMap((message) => message.images ?? [])).toMatchObject([
+          { mimeType: 'image/png', dataBase64: imageBase64 }
+        ]);
         yield { type: 'text.completed', itemId: 'first', text: 'Microsoft logo' };
         yield { type: 'completed', reason: 'completed' };
       }
@@ -1452,7 +1463,7 @@ describe('agent runtime', () => {
       'agent',
       'sessions',
       session.id,
-      'input_images',
+      'resources',
       storedImage!.fileName!
     );
     await expect(readFile(storedImagePath)).resolves.toEqual(Buffer.from(imageBase64, 'base64'));
@@ -1467,12 +1478,14 @@ describe('agent runtime', () => {
           expect.arrayContaining([
             expect.objectContaining({
               role: 'user',
-              content: 'What is in the image?',
-              images: [{ mimeType: 'image/png', dataBase64: imageBase64 }]
+              content: 'What is in the image?'
             }),
             expect.objectContaining({ role: 'user', content: 'Look at it again.' })
           ])
         );
+        expect(request.messages.flatMap((message) => message.images ?? [])).toMatchObject([
+          { mimeType: 'image/png', dataBase64: imageBase64 }
+        ]);
         yield { type: 'text.completed', itemId: 'second', text: 'Still a Microsoft logo' };
         yield { type: 'completed', reason: 'completed' };
       }
@@ -1507,28 +1520,16 @@ describe('agent runtime', () => {
     });
     const reopenedAgain = await thirdAgent.openSession(session.id);
     await expect(reopenedAgain.run({ prompt: 'Continue.' }).result()).resolves.toMatchObject({
-      status: 'completed',
-      finalAnswer: 'Continued without the image'
+      status: 'failed',
+      finalAnswer: ''
     });
-    expect(
-      degradedRequests[0]?.messages.find(
-        (message) => message.role === 'user' && message.content === 'What is in the image?'
-      )
-    ).toEqual({
-      role: 'user',
-      content: 'What is in the image?',
-      metadata: { source: 'user', recordId: expect.any(String) }
-    });
+    expect(degradedRequests).toEqual([]);
     const warningRecord = (await readFile(eventsPath, 'utf8'))
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type?: string; payload?: unknown })
       .findLast((record) => record.type === 'context.warning');
-    expect(warningRecord?.payload).toEqual({
-      code: 'MAR_AGENT_INPUT_IMAGE_IGNORED',
-      message: 'One or more corrupt historical input images were ignored.',
-      ignoredImages: 1
-    });
+    expect(warningRecord).toBeUndefined();
     await thirdAgent.dispose();
   });
   it('rejects a text-only model instead of dropping restored user images', async () => {
@@ -3299,6 +3300,17 @@ describe('agent runtime', () => {
       'tool',
       'tool'
     ]);
+    const childReadResults = childContinuation?.messages
+      .filter((message) => message.role === 'tool')
+      .map((message) => message.content);
+    expect(childReadResults).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('input.txt'),
+        expect.stringContaining('subagent content'),
+        expect.stringContaining('input-second.txt'),
+        expect.stringContaining('more content')
+      ])
+    );
     const parentContinuation = requests.filter(
       (request) => !effectiveInstructions(request).includes('non-recursive subagent')
     )[2];
@@ -3308,12 +3320,7 @@ describe('agent runtime', () => {
     expect(Buffer.byteLength(taskResult.summary)).toBeLessThanOrEqual(
       TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes
     );
-    expect(taskResult.evidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: 'input.txt', startLine: 1, endLine: 1 }),
-        expect.objectContaining({ path: 'input-second.txt', startLine: 1, endLine: 1 })
-      ])
-    );
+    expect(taskResult).not.toHaveProperty('evidence');
     expect(taskResult.changedFiles).toEqual(['move.txt', 'moved.txt']);
     await agent.dispose();
     const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
@@ -3368,7 +3375,7 @@ describe('agent runtime', () => {
           description: 'Inspect input',
           status: 'failed',
           errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-          errorMessage: 'MAR_AGENT_SUBAGENT_FAILED: Subagent completed without a final summary.'
+          errorMessage: 'Subagent completed without a final summary.'
         })
       ])
     );
@@ -3383,7 +3390,7 @@ describe('agent runtime', () => {
       description: 'Inspect input',
       status: 'failed',
       errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-      errorMessage: 'MAR_AGENT_SUBAGENT_FAILED: Subagent completed without a final summary.'
+      errorMessage: 'Subagent completed without a final summary.'
     });
     await agent.dispose();
   });
@@ -3787,7 +3794,9 @@ describe('agent runtime', () => {
     const persistedPrefix = baseMessages(normalRequests[0]!).filter(
       (message) => message.contextKind !== 'contextual' && message.contextKind !== 'private'
     );
-    expect(baseMessages(compactRequest!).slice(0, persistedPrefix.length)).toEqual(persistedPrefix);
+    expect(baseMessages(compactRequest!).slice(0, persistedPrefix.length)).toEqual(
+      persistedPrefix.map(({ images: _images, ...message }) => message)
+    );
     expect(
       normalRequests[1]!.messages.filter((message) =>
         message.content.includes('CURRENT_COMPACT_RULE')
@@ -3801,8 +3810,10 @@ describe('agent runtime', () => {
         content: expect.stringContaining(`<cwd>${workspace}</cwd>`)
       })
     ]);
-    expect(normalRequests[1]?.images).toEqual([{ mimeType: 'image/png', dataBase64: imageBase64 }]);
-    expect(normalRequests[1]?.messages.every((message) => message.images === undefined)).toBe(true);
+    expect(normalRequests[1]?.images).toBeUndefined();
+    expect(normalRequests[1]?.messages.flatMap((message) => message.images ?? [])).toMatchObject([
+      { mimeType: 'image/png', dataBase64: imageBase64 }
+    ]);
     await agent.dispose();
     const store = await JsonlSessionStore.open(home);
     expect(await store.read(session.id)).toEqual(
@@ -4960,7 +4971,7 @@ describe('agent runtime', () => {
         })
         .result()
     ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'image described' });
-    await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'input_images'), {
+    await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'resources'), {
       recursive: true,
       force: true
     });

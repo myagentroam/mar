@@ -272,6 +272,7 @@ describe('Model management component behavior', () => {
         enabled: false,
         titleGeneration: true,
         codeMode: true,
+        metadata: { useResourceUrl: false },
         defaultReasoningEffort: 'high',
         hostedWebSearch: false,
         responsesPreviousResponseId: false,
@@ -289,6 +290,48 @@ describe('Model management component behavior', () => {
       view.unmount();
     }
   });
+
+  it.each(['zh-CN', 'en-US'] as const)(
+    'keeps the resource URL setting and its explanation together in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const labels = commonMessages[locale].marAgentModels;
+      const base = requestFixture([{ ...model, metadata: { useResourceUrl: true } }]);
+      const request = vi.fn(async (path: string, init?: RequestInit) =>
+        init?.method === 'PUT' ? {} : base(path, init)
+      );
+      const view = renderComponent(Page, {
+        request,
+        canManageModels: true,
+        writable: true,
+        nodes: []
+      });
+      try {
+        await flushComponent();
+        await trigger(button(view, labels.edit), 'onClick');
+        const setting = view
+          .findAll('ElCheckbox')
+          .find((node) => textContent(node).trim() === labels.useResourceUrl)!;
+        expect(setting.props['modelValue']).toBe(true);
+        const field = view
+          .findAll('ElFormItem')
+          .find((node) => node.props['label'] === labels.capabilities)!;
+        expect(textContent(field)).toContain(labels.resourceUrlDescription);
+        const reasoning = view
+          .findAll('ElFormItem')
+          .find((node) => node.props['label'] === labels.reasoningEfforts)!;
+        expect(textContent(reasoning)).not.toContain(labels.resourceUrlDescription);
+        await trigger(setting, 'onUpdate:modelValue', false);
+        await trigger(button(view, labels.save), 'onClick');
+        const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');
+        expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({
+          metadata: { useResourceUrl: false }
+        });
+      } finally {
+        view.unmount();
+      }
+    }
+  );
 
   it('shows mixed OAuth types and keeps ChatGPT usage available in read-only details', async () => {
     const request = requestFixture();

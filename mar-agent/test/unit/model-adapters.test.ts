@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
 import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
 import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { type ModelEvent } from '../../src/agent-core/model/contracts.js';
+import { type ModelEvent, type ModelRequest } from '../../src/agent-core/model/contracts.js';
 import { fetchModelResponse, modelRetryDelay } from '../../src/agent-core/model/http.js';
 import { parseSse } from '../../src/agent-core/model/sse.js';
 
@@ -941,6 +941,126 @@ describe('model adapters', () => {
           new AbortController().signal
         )
       );
+    }
+  });
+
+  it('uses HTTP image URLs without repeating base64 in either protocol', async () => {
+    const image = {
+      mimeType: 'image/png',
+      url: 'https://images.example.test/session/image.png?signature=stable',
+      urlExpiresAt: Date.now() + 60_000
+    };
+    for (const protocol of ['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const) {
+      const wires: Record<string, unknown>[] = [];
+      const baseUrl = await sseServer(
+        protocol === 'OPENAI_RESPONSES'
+          ? [{ type: 'response.completed', response: { usage: {} } }]
+          : [
+              { type: 'message_start', message: { id: 'm', usage: {} } },
+              { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: {} },
+              { type: 'message_stop' }
+            ],
+        (body) => {
+          wires.push(body as Record<string, unknown>);
+        }
+      );
+      const adapter =
+        protocol === 'OPENAI_RESPONSES'
+          ? new OpenAiResponsesAdapter(configuration(protocol, baseUrl))
+          : new AnthropicMessagesAdapter(configuration(protocol, baseUrl));
+      const messages: ModelRequest['messages'] = [
+        {
+          role: 'user',
+          content: 'first image',
+          images: [image, { ...image, url: `${image.url}-other` }]
+        },
+        { role: 'assistant', content: 'seen' },
+        { role: 'tool_call', callId: 'call_1', name: 'view_image', arguments: {} },
+        { role: 'tool', callId: 'call_1', content: 'Viewed image.', images: [image] }
+      ];
+      for (const roundMessages of [messages, [...messages, { role: 'user', content: 'next' }]]) {
+        await collect(
+          adapter.start(
+            {
+              system: 'system',
+              messages: roundMessages,
+              tools: [],
+              promptCacheKey: 'session-1'
+            },
+            new AbortController().signal
+          )
+        );
+      }
+      expect(wires).toHaveLength(2);
+      for (const wire of wires) {
+        const serialized = JSON.stringify(wire);
+        expect(serialized).not.toContain('data:image/png;base64');
+        expect(serialized).not.toContain('dataBase64');
+        if (protocol === 'OPENAI_RESPONSES') {
+          expect(serialized.match(/input_image/g)).toHaveLength(3);
+          expect(serialized).toContain(`"image_url":"${image.url}"`);
+        } else {
+          expect(serialized.match(/"type":"image"/g)).toHaveLength(3);
+          expect(serialized).toContain(`"source":{"type":"url","url":"${image.url}"}`);
+        }
+      }
+      const [first, second] = wires;
+      if (protocol === 'OPENAI_RESPONSES') {
+        const prefix = first.input as unknown[];
+        expect((second.input as unknown[]).slice(0, prefix.length)).toEqual(prefix);
+        expect(wires.map((wire) => wire.prompt_cache_key)).toEqual(['session-1', 'session-1']);
+      } else {
+        const withoutCacheBreakpoints = (value: unknown) =>
+          JSON.parse(
+            JSON.stringify(value, (key, child) => (key === 'cache_control' ? undefined : child))
+          );
+        const prefix = first.messages as unknown[];
+        expect(
+          withoutCacheBreakpoints((second.messages as unknown[]).slice(0, prefix.length))
+        ).toEqual(withoutCacheBreakpoints(prefix));
+        expect(JSON.stringify(second)).toContain('"cache_control":{"type":"ephemeral"}');
+      }
+    }
+  });
+
+  it('keeps expired published URLs unchanged in either protocol', async () => {
+    const image = {
+      mimeType: 'image/png',
+      url: 'https://images.example.test/session/expired.png?signature=expired',
+      urlExpiresAt: Date.now() - 1
+    };
+    for (const protocol of ['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const) {
+      let wire: Record<string, unknown> | undefined;
+      const baseUrl = await sseServer(
+        protocol === 'OPENAI_RESPONSES'
+          ? [{ type: 'response.completed', response: { usage: {} } }]
+          : [
+              { type: 'message_start', message: { id: 'm', usage: {} } },
+              { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: {} },
+              { type: 'message_stop' }
+            ],
+        (body) => {
+          wire = body as Record<string, unknown>;
+        }
+      );
+      const adapter =
+        protocol === 'OPENAI_RESPONSES'
+          ? new OpenAiResponsesAdapter(configuration(protocol, baseUrl))
+          : new AnthropicMessagesAdapter(configuration(protocol, baseUrl));
+      await collect(
+        adapter.start(
+          {
+            system: 'system',
+            messages: [{ role: 'user', content: 'image', images: [image] }],
+            tools: []
+          },
+          new AbortController().signal
+        )
+      );
+      const serialized = JSON.stringify(wire);
+      expect(serialized).toContain(image.url);
+      expect(serialized).not.toContain(image.dataBase64);
+      expect(serialized).not.toContain('data:image/png;base64');
     }
   });
 

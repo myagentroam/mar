@@ -119,6 +119,7 @@ import {
   parseRunnerImageAttachments
 } from './util/node-operation-parsers.js';
 import { WebToolService } from './service/web-tool-service.js';
+import { ModelResourcePublicationService } from './service/model-resource-publication-service.js';
 
 export { nodeConnectEndpoint, validatedCapabilities } from './util/node-operation-parsers.js';
 import { NodeControlChannel } from './service/node-control-channel.js';
@@ -301,6 +302,7 @@ export class NodeConnector {
   private readonly sessionCatalogService: SessionCatalogService;
   private readonly sessionCommandService: SessionCommandService;
   private readonly runAttachmentService: RunAttachmentService;
+  private readonly modelResourcePublicationService: ModelResourcePublicationService;
   private readonly terminalChannel: NodeTerminalChannel;
   private readonly codexClient: CodexRunner;
   private readonly codexRunController: CodexManagedRunController<RunnerImageAttachment>;
@@ -551,6 +553,15 @@ export class NodeConnector {
       capabilities: () => this.capabilities,
       probe: this.conversationHostingProbe,
       runtime: {
+        publishModelResource: (image, context) =>
+          this.modelResourcePublicationService.publish(
+            {
+              conversationId: context.conversationId,
+              sessionId: context.sessionId,
+              homeDirectory: context.homeDirectory
+            },
+            image
+          ),
         webSearch: (input, signal) => this.webToolService.webSearch(input, signal),
         webFetch: (input, signal) => this.webToolService.webFetch(input, signal, false),
         modelFactory: this.marAgentRuntimeModels,
@@ -618,6 +629,17 @@ export class NodeConnector {
         this.runtime.sessionQueue(sessionId).itemIds.length > 0,
       () => this.attachmentTemporaryRoot()
     );
+    this.modelResourcePublicationService = new ModelResourcePublicationService({
+      directory: () => resolve(nodeDataDirectory(this.config!, this.configPath), 'model-resources'),
+      nodeId: () => this.config?.nodeId,
+      origin: () => {
+        if (!this.config) return undefined;
+        const url = new URL(this.config.serverUrl);
+        if (url.protocol === 'ws:') url.protocol = 'http:';
+        if (url.protocol === 'wss:') url.protocol = 'https:';
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : undefined;
+      }
+    });
     this.codexClient = new CodexRunner(
       options.codexClient,
       options.codexProfileClientFactory,
@@ -732,6 +754,18 @@ export class NodeConnector {
       },
       {
         modelFactory: this.marAgentRuntimeModels,
+        publishModelResource: (image, context) => {
+          const session = this.runtime.getAgentSession(context.ownerSessionId);
+          if (session === undefined) throw new Error('RUN_SESSION_NOT_FOUND');
+          return this.modelResourcePublicationService.publish(
+            {
+              workspaceId: session.workspaceId,
+              sessionId: context.sessionId,
+              homeDirectory: context.homeDirectory
+            },
+            image
+          );
+        },
         retainEnvironment: (environment) => this.gitExecution().retain(environment),
         computerUse: this.computerUseProvider
       }
@@ -892,6 +926,7 @@ export class NodeConnector {
         typeof selector === 'number'
           ? this.runAttachmentService.read(runId, selector)
           : this.runAttachmentService.readNative(runId, selector),
+      readModelResource: (input) => this.modelResourcePublicationService.read(input),
       respondUserInput: (runId, requestId, answers) =>
         this.runnerInteractionService.respondUserInput(runId, requestId, answers),
       pauseQueue: (sessionId) => this.workspaceQueueWorkbenchService.pauseSessionQueue(sessionId),
@@ -1958,6 +1993,7 @@ export class NodeConnector {
     this.runEventService.clear();
     this.sessionContextService.dispose();
     this.runAttachmentService.dispose();
+    this.modelResourcePublicationService.dispose();
     const marAgentDrain = this.marAgentRunController.dispose();
     const conversationHostingDrain = this.conversationHosting.dispose();
     const uploadDrain = this.workspaceUploadService.shutdown();

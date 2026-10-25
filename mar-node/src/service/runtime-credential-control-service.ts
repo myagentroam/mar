@@ -1,3 +1,4 @@
+import { MarAgentError } from '@myagentroam/agent';
 import {
   createEnvelope,
   runtimeCredentialResolveRequestSchema,
@@ -53,7 +54,12 @@ export class RuntimeCredentialControlService {
     if (pending === undefined || pending.generation !== this.#generation) return true;
     const parsed = runtimeCredentialResolveResponseSchema.safeParse(envelope.payload);
     if (!parsed.success) {
-      pending.reject(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_RESPONSE_INVALID'));
+      pending.reject(
+        new MarAgentError(
+          'MAR_AGENT_RUNTIME_CREDENTIAL_RESPONSE_INVALID',
+          'The runtime credential response is invalid.'
+        )
+      );
       return true;
     }
     pending.resolve(parsed.data);
@@ -65,9 +71,19 @@ export class RuntimeCredentialControlService {
     signal?: AbortSignal
   ): Promise<RuntimeCredentialResolveResponse> {
     if (this.#closed)
-      return Promise.reject(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_CONTROL_CLOSED'));
+      return Promise.reject(
+        new MarAgentError(
+          'MAR_AGENT_RUNTIME_CREDENTIAL_CONTROL_CLOSED',
+          'The runtime credential control service is closed.'
+        )
+      );
     if (!this.#connected)
-      return Promise.reject(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_CONNECTION_INVALID'));
+      return Promise.reject(
+        new MarAgentError(
+          'MAR_AGENT_RUNTIME_CREDENTIAL_CONNECTION_INVALID',
+          'The runtime credential control connection is unavailable.'
+        )
+      );
     const parsed = runtimeCredentialResolveRequestSchema.parse(request);
     const envelope = createEnvelope('credential.resolve', parsed);
     const generation = this.#generation;
@@ -84,12 +100,21 @@ export class RuntimeCredentialControlService {
         action(value);
       };
       const abort = () =>
-        settle((error) => reject(error), new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'));
+        settle(
+          (error) => reject(error),
+          new MarAgentError(
+            'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+            'The runtime credential provider is closed.'
+          )
+        );
       const timer = setTimeout(
         () =>
           settle(
             (error) => reject(error),
-            new Error('MAR_AGENT_RUNTIME_CREDENTIAL_REQUEST_TIMEOUT')
+            new MarAgentError(
+              'MAR_AGENT_RUNTIME_CREDENTIAL_REQUEST_TIMEOUT',
+              'The runtime credential request timed out.'
+            )
           ),
         this.#timeoutMs
       );
@@ -110,9 +135,11 @@ export class RuntimeCredentialControlService {
         } catch (error) {
           settle(
             (cause) => reject(cause),
-            error instanceof Error
-              ? error
-              : new Error('MAR_AGENT_RUNTIME_CREDENTIAL_REQUEST_SEND_FAILED')
+            new MarAgentError(
+              'MAR_AGENT_RUNTIME_CREDENTIAL_REQUEST_SEND_FAILED',
+              'The runtime credential request could not be sent.',
+              { cause: error }
+            )
           );
         }
     });
@@ -127,6 +154,9 @@ export class RuntimeCredentialControlService {
   }
 
   #rejectPending(code: string): void {
-    for (const pending of [...this.#pending.values()]) pending.reject(new Error(code));
+    for (const pending of [...this.#pending.values()])
+      pending.reject(
+        new MarAgentError(code, 'The runtime credential control connection is no longer valid.')
+      );
   }
 }

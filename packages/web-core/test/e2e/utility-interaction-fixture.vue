@@ -158,8 +158,6 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :content-search-ready="false"
       :runner-icon="() => ''"
       :session-title="() => 'Review'"
-      :activity="() => 'IDLE'"
-      :activity-label="() => 'Idle'"
       @open-surface="record(`surface:${$event}`)"
     />
     <ComposerQueue

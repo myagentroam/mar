@@ -51,6 +51,7 @@ const service = createEnvironmentSecretService<Secret, EnvironmentSecretInput<st
 );
 const secrets = shallowRef<readonly Secret[]>([]);
 const operationLoading = ref(false);
+const saving = ref(false);
 const refreshLoading = ref(false);
 const dialogOpen = ref(false);
 const editing = shallowRef<Secret>();
@@ -126,7 +127,7 @@ const pagination = createManagementPageService<Secret>({
   reportError: (error) => showMessage(message(error), 'error', error)
 });
 const loading = computed(
-  () => operationLoading.value || (!targetScoped.value && pagination.loading.value)
+  () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
 );
 const regionLoading = computed(
   () =>
@@ -164,6 +165,7 @@ async function load(): Promise<void> {
   }
 }
 async function refresh(): Promise<void> {
+  if (loading.value) return;
   refreshLoading.value = true;
   try {
     await load();
@@ -222,7 +224,8 @@ function secretVisibilityLabel(secret: Secret): string {
 async function save(): Promise<void> {
   if (props.writable === false || loading.value) return;
   if (!(await formRef.value?.validate().catch(() => false))) return;
-  operationLoading.value = true;
+  if (loading.value) return;
+  saving.value = true;
   try {
     if (editing.value === undefined)
       await (props.submitCreate ?? service.create)({
@@ -239,12 +242,17 @@ async function save(): Promise<void> {
     else await service.replace(editing.value.id, value.value);
     dialogOpen.value = false;
     clearForm();
-    await load();
   } catch (caught) {
     showMessage(message(caught), 'error', caught);
+    return;
   } finally {
-    operationLoading.value = false;
+    saving.value = false;
   }
+  await load();
+}
+
+function requestEditorClose(done: () => void): void {
+  if (!saving.value) done();
 }
 
 async function remove(secret: Secret): Promise<void> {
@@ -337,6 +345,7 @@ function message(error: unknown): string {
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading"
+        :disabled="loading"
         @click="refresh"
         :loading-icon="marIcon('loading-action')"
         >{{ translate('generated.environmentSecretManager.refresh') }}</el-button
@@ -345,6 +354,7 @@ function message(error: unknown): string {
         v-if="writable !== false"
         type="primary"
         :icon="marIcon('plus')"
+        :disabled="loading"
         @click="openCreate"
         >{{ translate('generated.environmentSecretManager.addSecret') }}</el-button
       >
@@ -474,6 +484,10 @@ function message(error: unknown): string {
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
       v-model="dialogOpen"
+      :before-close="requestEditorClose"
+      :show-close="!saving"
+      :close-on-click-modal="!saving"
+      :close-on-press-escape="!saving"
       :title="
         editing === undefined
           ? translate('generated.environmentSecretManager.addSecret2')
@@ -488,6 +502,7 @@ function message(error: unknown): string {
         ref="formRef"
         :model="{ ...formContext, name, value }"
         :rules="rules"
+        :disabled="saving"
         label-position="top"
         @submit.prevent="save"
       >
@@ -528,12 +543,12 @@ function message(error: unknown): string {
         /></el-form-item>
       </el-form>
       <template #footer
-        ><el-button @click="dialogOpen = false">{{
+        ><el-button :disabled="saving" @click="dialogOpen = false">{{
           translate('generated.environmentSecretManager.cancel2')
         }}</el-button
         ><el-button
           type="primary"
-          :loading="loading"
+          :loading="saving"
           :disabled="writable === false"
           @click="save"
           :loading-icon="marIcon('loading-action')"

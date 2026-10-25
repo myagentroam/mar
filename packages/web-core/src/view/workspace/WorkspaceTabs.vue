@@ -376,7 +376,7 @@ function activate(tab: WorkspaceTab): void {
               <span
                 v-tooltip="translate('workspaceTabs.unreadDescription')"
                 v-if="hasUnread(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-unread"
+                class="workspace-tab-unread mar-unread-label"
                 :aria-label="translate('workspaceTabs.unreadDescription')"
                 >{{ translate('workspaceTabs.unread') }}</span
               >
@@ -453,7 +453,7 @@ function activate(tab: WorkspaceTab): void {
                 <span
                   v-tooltip="translate('workspaceTabs.unreadDescription')"
                   v-if="hasUnread(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-unread"
+                  class="workspace-tab-unread mar-unread-label"
                   :aria-label="translate('workspaceTabs.unreadDescription')"
                   >{{ translate('workspaceTabs.unread') }}</span
                 >
@@ -779,24 +779,6 @@ function activate(tab: WorkspaceTab): void {
   flex: none;
   color: var(--mar-text-secondary);
   font-size: inherit;
-}
-
-.workspace-tab-unread {
-  flex: none;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: var(--mar-radius-marker);
-  background: transparent;
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 500;
-  line-height: 1;
-  padding: 1px 3px;
-}
-
-@media (min-width: 768px) {
-  .workspace-tab-unread {
-    font-size: calc(var(--mar-font-size-meta) - 1px);
-  }
 }
 
 .workspace-tab .tab-close,

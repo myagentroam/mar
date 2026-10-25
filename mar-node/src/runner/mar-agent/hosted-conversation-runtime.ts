@@ -58,6 +58,7 @@ import {
 import type { WebFetchHandler } from '../../service/web-fetch-contracts.js';
 
 export interface HostedLocalAgentHostInput {
+  readonly publishModelResource?: MarAgentHost['publishModelResource'];
   readonly modelUsage?: import('@myagentroam/agent').ModelUsageObserver;
   readonly mode: 'node';
   readonly homeDirectory: string;
@@ -78,6 +79,12 @@ export interface HostedLocalAgentHostInput {
 }
 
 interface MarAgentHostedConversationRuntimeOptions {
+  readonly publishModelResource?: (
+    image: Parameters<NonNullable<MarAgentHost['publishModelResource']>>[0],
+    context: Parameters<NonNullable<MarAgentHost['publishModelResource']>>[1] & {
+      conversationId: string;
+    }
+  ) => ReturnType<NonNullable<MarAgentHost['publishModelResource']>>;
   readonly createAgent?: typeof createMarAgent;
   readonly generateTitle?: typeof generateSessionTitle;
   readonly createHost?: (input: HostedLocalAgentHostInput) => MarAgentHost;
@@ -111,6 +118,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
   readonly #createAgent: typeof createMarAgent;
   readonly #generateTitle: typeof generateSessionTitle;
   readonly #createHost: (input: HostedLocalAgentHostInput) => MarAgentHost;
+  readonly #publishModelResource: MarAgentHostedConversationRuntimeOptions['publishModelResource'];
   readonly #openCatalog: typeof openMarAgentSessionCatalog;
   readonly #now: () => number;
   readonly #onEvent:
@@ -133,6 +141,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     | undefined;
 
   constructor(options: MarAgentHostedConversationRuntimeOptions = {}) {
+    this.#publishModelResource = options.publishModelResource;
     this.#createAgent = options.createAgent ?? createMarAgent;
     this.#generateTitle = options.generateTitle ?? generateSessionTitle;
     this.#createHost = options.createHost ?? ((input) => new LocalAgentHost(input));
@@ -496,6 +505,15 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         })
       );
       host = this.#createHost({
+        ...(this.#publishModelResource === undefined
+          ? {}
+          : {
+              publishModelResource: (image, context) =>
+                this.#publishModelResource!(image, {
+                  ...context,
+                  conversationId: input.conversationId
+                })
+            }),
         ...('onModelUsage' in input && input.onModelUsage !== undefined
           ? { modelUsage: input.onModelUsage }
           : {}),

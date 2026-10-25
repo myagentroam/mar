@@ -11,6 +11,7 @@ import type {
   MarAgentToolArtifact,
   ToolExecutionResult,
   ReadEventData,
+  ViewImageRegion,
   ViewImageResult
 } from './contracts.js';
 import { TOOL_EXECUTION_LIMITS } from './execution-limits.js';
@@ -18,16 +19,18 @@ import type { BatchReadResult } from './local/read.js';
 import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
 import { publicToolMetadata, type PublicToolMetadata } from './public-metadata.js';
+import type { ModelImage } from '../model/image.js';
 export function currentExecutionImages(
-  modelInputImages:
-    readonly { readonly mimeType: string; readonly dataBase64: string }[] | undefined,
+  modelInputImages: readonly ModelImage[] | undefined,
   toolImages: readonly ToolRuntimeImage[]
 ): ToolRuntimeImage[] {
   return [
-    ...(modelInputImages ?? []).map((image) => ({
-      mimeType: image.mimeType,
-      data: Buffer.from(image.dataBase64, 'base64')
-    })),
+    ...(modelInputImages ?? [])
+      .filter((image) => image.dataBase64 !== undefined)
+      .map((image) => ({
+        mimeType: image.mimeType,
+        data: Buffer.from(image.dataBase64!, 'base64')
+      })),
     ...toolImages
   ]
     .slice(-5)
@@ -219,17 +222,7 @@ export function structuredToolEventData(
       }))
     };
   }
-  if (
-    toolName === 'view_image' &&
-    typeof value.path === 'string' &&
-    (value.mimeType === 'image/png' ||
-      value.mimeType === 'image/jpeg' ||
-      value.mimeType === 'image/webp') &&
-    isNonnegativeInteger(value.bytes) &&
-    typeof value.sha256 === 'string' &&
-    /^[a-f0-9]{64}$/u.test(value.sha256)
-  )
-    return value as unknown as ViewImageResult;
+  if (toolName === 'view_image') return parseViewImageResult(value);
   if (
     (toolName === 'exec' || toolName === 'exec_wait') &&
     (value.status === 'running' || value.status === 'completed' || value.status === 'cancelled') &&
@@ -248,6 +241,95 @@ export function structuredToolEventData(
     return value as unknown as ExecResult;
   if (toolName === 'apply_patch') return parseApplyPatchResult(value);
   return undefined;
+}
+
+function parseViewImageResult(value: Record<string, unknown>): ViewImageResult | undefined {
+  if (
+    !(
+      (typeof value.path === 'string' && value.path.length > 0 && value.resourceId === undefined) ||
+      (typeof value.resourceId === 'string' &&
+        value.resourceId.length > 0 &&
+        value.path === undefined)
+    ) ||
+    (value.mimeType !== 'image/png' &&
+      value.mimeType !== 'image/jpeg' &&
+      value.mimeType !== 'image/webp') ||
+    !isPositiveSafeInteger(value.bytes) ||
+    value.bytes > TOOL_EXECUTION_LIMITS.viewImageMaxBytes ||
+    !isPositiveSafeInteger(value.width) ||
+    !isPositiveSafeInteger(value.height) ||
+    !withinImagePixelLimit(value.width, value.height) ||
+    typeof value.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(value.sha256)
+  )
+    return undefined;
+
+  const hasSourceWidth = Object.hasOwn(value, 'sourceWidth');
+  const hasSourceHeight = Object.hasOwn(value, 'sourceHeight');
+  if (hasSourceWidth !== hasSourceHeight) return undefined;
+  if (
+    hasSourceWidth &&
+    (!isPositiveSafeInteger(value.sourceWidth) ||
+      !isPositiveSafeInteger(value.sourceHeight) ||
+      !withinImagePixelLimit(value.sourceWidth, value.sourceHeight) ||
+      value.width > value.sourceWidth ||
+      value.height > value.sourceHeight)
+  )
+    return undefined;
+
+  let region: ViewImageRegion | undefined;
+  if (Object.hasOwn(value, 'region')) {
+    if (!isRecord(value.region)) return undefined;
+    const candidate = value.region;
+    if (
+      Object.keys(candidate).some((key) => !['x', 'y', 'width', 'height'].includes(key)) ||
+      !isNonnegativeSafeInteger(candidate.x) ||
+      !isNonnegativeSafeInteger(candidate.y) ||
+      !isPositiveSafeInteger(candidate.width) ||
+      !isPositiveSafeInteger(candidate.height) ||
+      !hasSourceWidth ||
+      candidate.x > (value.sourceWidth as number) ||
+      candidate.y > (value.sourceHeight as number) ||
+      candidate.width > (value.sourceWidth as number) - candidate.x ||
+      candidate.height > (value.sourceHeight as number) - candidate.y ||
+      value.width > candidate.width ||
+      value.height > candidate.height
+    )
+      return undefined;
+    region = {
+      x: candidate.x,
+      y: candidate.y,
+      width: candidate.width,
+      height: candidate.height
+    };
+  }
+
+  return {
+    ...(typeof value.path === 'string'
+      ? { path: value.path }
+      : { resourceId: value.resourceId as string }),
+    mimeType: value.mimeType,
+    bytes: value.bytes,
+    width: value.width,
+    height: value.height,
+    ...(hasSourceWidth
+      ? { sourceWidth: value.sourceWidth as number, sourceHeight: value.sourceHeight as number }
+      : {}),
+    ...(region ? { region } : {}),
+    sha256: value.sha256
+  };
+}
+
+function withinImagePixelLimit(width: number, height: number): boolean {
+  return width <= Math.floor(TOOL_EXECUTION_LIMITS.viewImageMaxPixels / height);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function isNonnegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
 /** Partial patch facts are allowlisted; arbitrary error details never become public event data. */

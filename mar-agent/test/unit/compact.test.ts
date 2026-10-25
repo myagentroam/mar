@@ -41,6 +41,29 @@ describe('compaction task retention', () => {
     ])
       expect(compactExtensionDiagnostic(invalid)).toBeUndefined();
     expect(compactExtensionDiagnostic({ ...valid, errorCode: 'raw error body' })).toEqual(valid);
+    const failure = {
+      trigger: 'manual',
+      errorCode: 'MAR_AGENT_MODEL_REQUEST_FAILED',
+      causeCode: 'ECONNRESET',
+      errorReason: 'MODEL_TRANSPORT_FAILURE',
+      httpStatus: 503,
+      retryable: true,
+      transport: 'HTTP'
+    };
+    expect(
+      compactExtensionDiagnostic({ ...valid, ...failure, errorMessage: 'PRIVATE_ERROR' })
+    ).toEqual({ ...valid, ...failure });
+    expect(
+      compactExtensionDiagnostic({
+        ...valid,
+        trigger: 'unknown',
+        causeCode: 'raw private error',
+        errorReason: { secret: 'PRIVATE_REASON' },
+        httpStatus: 999,
+        retryable: 'yes',
+        transport: 'unknown'
+      })
+    ).toEqual(valid);
     expect(
       compactExtensionDiagnostic({
         ...valid,

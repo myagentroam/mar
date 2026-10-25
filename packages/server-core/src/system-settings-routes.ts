@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { emitAudit, type AuditObserver } from './audit.js';
+import { MarAgentResourceInputService } from './mar-agent-resource-input-service.js';
 import { isAllowedOrigin } from './auth.js';
 import { protectedManagementAdmin, validCsrf, type SessionLookup } from './session.js';
 import { sendError } from './http-errors.js';
@@ -25,10 +26,30 @@ export function registerSystemSettingsRoutes(input: {
   readonly webPush?: Pick<WebPushConfiguration, 'read' | 'setEnabled'>;
   readonly publicOrigin: string | undefined;
   readonly extensions?: readonly SystemSettingExtension[];
+  readonly resourceInput?: Pick<MarAgentResourceInputService, 'read' | 'write'>;
 }): void {
   const { app, database, network, publicOrigin } = input;
   const settings: readonly SystemSettingExtension[] = [
     ...(input.extensions ?? []),
+    ...(input.resourceInput === undefined
+      ? []
+      : [
+          {
+            key: 'mar-agent-resource-input',
+            field: 'useResourceUrl',
+            read: async () => (await input.resourceInput!.read()).useResourceUrl,
+            write: async (_userId: number, raw: unknown) => {
+              if (
+                raw === null ||
+                typeof raw !== 'object' ||
+                !('useResourceUrl' in raw) ||
+                typeof raw.useResourceUrl !== 'boolean'
+              )
+                throw new Error('SYSTEM_SETTING_INPUT_INVALID');
+              await input.resourceInput!.write({ useResourceUrl: raw.useResourceUrl });
+            }
+          }
+        ]),
     ...(input.webPush === undefined
       ? []
       : [

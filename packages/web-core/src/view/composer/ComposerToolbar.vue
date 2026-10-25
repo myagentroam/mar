@@ -717,14 +717,18 @@ function selectFiles(event: Event): void {
   padding: 1px 0.35rem;
 }
 
-:global(.composer-runner-select .el-select__wrapper:hover),
-:global(.composer-runner-select .el-select__wrapper.is-focused),
-:global(.composer-access-select .el-select__wrapper:hover),
-:global(.composer-access-select .el-select__wrapper.is-focused),
-:global(.composer-model-effort-select .el-select__wrapper:hover),
-:global(.composer-model-effort-select .el-select__wrapper.is-focused) {
+:global(.composer-runner-select .el-select__wrapper:not(.is-disabled):hover),
+:global(.composer-access-select .el-select__wrapper:not(.is-disabled):hover),
+:global(.composer-model-effort-select .el-select__wrapper:not(.is-disabled):hover) {
   background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-color-brand-border) inset;
+  box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
+}
+
+:global(.composer-runner-select .el-select__wrapper.is-focused:not(.is-disabled)),
+:global(.composer-access-select .el-select__wrapper.is-focused:not(.is-disabled)),
+:global(.composer-model-effort-select .el-select__wrapper.is-focused:not(.is-disabled)) {
+  background: var(--mar-fill-soft);
+  box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
 }
 
 :global(.composer-runner-select .el-select__selected-item),
@@ -761,9 +765,9 @@ function selectFiles(event: Event): void {
   line-height: var(--mar-compact-control-size);
 }
 
-:global(.composer-model-effort-popper .el-select-dropdown__item.is-selected),
 :global(
-  .composer-model-effort-popper .el-select-dropdown__item.composer-model-effort-option-selected
+  .composer-model-effort-popper
+    .el-select-dropdown__item.composer-model-effort-option-selected:not(.is-disabled)
 ) {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);

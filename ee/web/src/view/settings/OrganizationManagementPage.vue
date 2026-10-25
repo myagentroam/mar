@@ -28,6 +28,7 @@ const props = defineProps<{
 }>();
 const organizations = ref<readonly Organization[]>([]);
 const loading = ref(false);
+const saving = ref(false);
 const ready = ref(false);
 const refreshLoading = ref(false);
 const organizationOpen = ref(false);
@@ -130,7 +131,10 @@ async function refresh(): Promise<void> {
   }
 }
 async function saveOrganization(): Promise<void> {
+  if (!props.writable || saving.value || loading.value) return;
   if (!(await organizationFormRef.value?.validate().catch(() => false))) return;
+  if (!props.writable || saving.value || loading.value) return;
+  saving.value = true;
   try {
     if (editingOrganizationId.value === undefined)
       await props.request('/api/organizations', {
@@ -145,7 +149,6 @@ async function saveOrganization(): Promise<void> {
     organizationOpen.value = false;
     editingOrganizationId.value = undefined;
     organizationForm.value.name = '';
-    await load();
   } catch (error) {
     showMessage(
       error instanceof Error
@@ -154,7 +157,14 @@ async function saveOrganization(): Promise<void> {
       'error',
       error
     );
+    return;
+  } finally {
+    saving.value = false;
   }
+  await load();
+}
+function requestOrganizationClose(done: () => void): void {
+  if (!saving.value) done();
 }
 async function removeOrganization(organization: Organization): Promise<void> {
   try {
@@ -268,6 +278,10 @@ onMounted(() => {
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationOpen"
       v-model="organizationOpen"
+      :before-close="requestOrganizationClose"
+      :show-close="!saving"
+      :close-on-click-modal="!saving"
+      :close-on-press-escape="!saving"
       :title="
         editingOrganizationId === undefined
           ? translate('generated.organizationUserManagementPage.createOrganization')
@@ -279,6 +293,7 @@ onMounted(() => {
         ref="organizationFormRef"
         :model="organizationForm"
         :rules="organizationRules"
+        :disabled="saving || !writable"
         label-position="top"
         ><el-form-item
           :label="translate('generated.organizationUserManagementPage.name')"
@@ -298,14 +313,21 @@ onMounted(() => {
               translate('generated.organizationUserManagementPage.parentOrganization2')
             " /></el-form-item></el-form
       ><template #footer
-        ><el-button @click="organizationOpen = false">{{
+        ><el-button :disabled="saving" @click="organizationOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel4')
         }}</el-button
-        ><el-button type="primary" :disabled="!writable" @click="saveOrganization">{{
-          editingOrganizationId === undefined
-            ? translate('generated.organizationUserManagementPage.createOrganization2')
-            : translate('generated.organizationUserManagementPage.save')
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :disabled="!writable"
+          :loading="saving"
+          :loading-icon="marIcon('loading-action')"
+          @click="saveOrganization"
+          >{{
+            editingOrganizationId === undefined
+              ? translate('generated.organizationUserManagementPage.createOrganization2')
+              : translate('generated.organizationUserManagementPage.save')
+          }}</el-button
+        ></template
       ></el-dialog
     >
     <el-dialog

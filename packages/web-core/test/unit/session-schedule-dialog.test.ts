@@ -346,10 +346,10 @@ describe('scheduled session history pagination', () => {
       expect(request).toHaveBeenCalledOnce();
       resolve(page(1));
       await settle();
-      view.state()['saving'] = true;
+      view.state()['pendingAction'] = 'save';
       change(2);
       expect(request).toHaveBeenCalledOnce();
-      view.state()['saving'] = false;
+      view.state()['pendingAction'] = undefined;
       change(2);
       await settle();
       view.props.nodeId = 'other-node';

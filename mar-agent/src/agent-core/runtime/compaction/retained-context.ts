@@ -2,6 +2,7 @@ import type { ModelMessage } from '../../model/contracts.js';
 import { parseModelInputMetadata } from '../../session/store/execution-state.js';
 import { restoreModelContext } from '../context/projection.js';
 import type { CompactSnapshotAnchor } from '../events.js';
+import { parseModelImages } from '../../model/image.js';
 
 /** Use a public native identity, never private context text, as the visible boundary. */
 export function compactSnapshotAnchor(
@@ -45,18 +46,7 @@ export function restoreCompactTail(value: unknown): ModelMessage | undefined {
           : {}),
       ...(metadata ? { metadata } : {}),
       ...(projected?.textBlocks ? { textBlocks: projected.textBlocks } : {}),
-      ...(Array.isArray(input.images) &&
-      input.images.every(
-        (image) =>
-          image && typeof image.mimeType === 'string' && typeof image.dataBase64 === 'string'
-      )
-        ? {
-            images: input.images.map((image) => ({
-              mimeType: image.mimeType as string,
-              dataBase64: image.dataBase64 as string
-            }))
-          }
-        : {})
+      ...(parseModelImages(input.images)?.length ? { images: parseModelImages(input.images)! } : {})
     };
   }
   return restoreModelContext(input);

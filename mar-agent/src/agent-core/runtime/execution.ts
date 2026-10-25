@@ -52,7 +52,10 @@ export interface ExecutionLoopInput {
     usage: Omit<AuthoritativeModelUsage, 'historyMessages'> | undefined
   ) => void;
   readonly observeContextTokens: (tokens: number) => void;
-  readonly afterModel?: (closedPrefixLength: number) => Promise<void>;
+  readonly afterModel?: (
+    closedPrefixLength: number,
+    acceptedRequest?: ModelRequest
+  ) => Promise<void>;
   readonly checkpoint: (
     round: PreparedExecutionRound,
     usage: ModelUsage | undefined
@@ -374,15 +377,21 @@ export class ExecutionLoop {
       }
       recoveringFromContextOverflow = false;
       input.observeUsage(roundServerUsage);
-      await input.afterModel?.(pendingTools.length ? roundMessageCount : messages.length);
+      const emptyCompletion = stop === 'completed' && !sawTool && !this.finalAnswer.trim();
+      await input.afterModel?.(
+        pendingTools.length ? roundMessageCount : messages.length,
+        emptyCompletion || stop === 'cancelled' ? undefined : round.request
+      );
       const toolResults = await executeRoundTools(pendingTools, round.toolScope);
       for (const result of toolResults) {
-        if ('images' in result && result.images?.length)
+        if ('sourceImages' in result && result.sourceImages?.length)
           input.toolImages.push(
-            ...result.images.map((image) => ({
-              mimeType: image.mimeType,
-              data: Buffer.from(image.dataBase64, 'base64')
-            }))
+            ...result.sourceImages
+              .filter((image) => image.dataBase64 !== undefined)
+              .map((image) => ({
+                mimeType: image.mimeType,
+                data: Buffer.from(image.dataBase64!, 'base64')
+              }))
           );
         const toolSearchTools =
           result.call.name === 'tool_search' && !result.failed
@@ -408,6 +417,9 @@ export class ExecutionLoop {
           content: message.content,
           ...(message.calls ? { calls: message.calls } : {}),
           ...(message.observations ? { observations: message.observations } : {}),
+          ...(message.images?.length
+            ? { images: message.images.map(({ dataBase64: _bytes, ...image }) => image) }
+            : {}),
           ...(message.toolSearchTools === undefined
             ? {}
             : { toolSearchTools: message.toolSearchTools })
@@ -460,7 +472,7 @@ export class ExecutionLoop {
             'MAR_AGENT_COMPACT_FAILED',
             'Compaction returned an empty handoff.'
           );
-        if (mode !== 'compact' && !this.finalAnswer.trim()) {
+        if (mode !== 'compact' && emptyCompletion) {
           const error = new MarAgentError(
             input.sourceType === 'subagent'
               ? 'MAR_AGENT_SUBAGENT_FAILED'

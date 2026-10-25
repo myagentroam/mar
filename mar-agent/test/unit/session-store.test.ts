@@ -759,30 +759,56 @@ describe('JSONL session store', () => {
     await store.close();
   });
 
+  it('persists the optional model URL alongside restorable input image bytes', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-input-image-url-home-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({ title: 'Image URL', workspace: home });
+    const url = 'https://images.example.test/input.png?signature=stable';
+    const urlExpiresAt = Date.now() + 60_000;
+    const images = await store.persistInputImages(session.id, [
+      { name: 'input.png', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', url, urlExpiresAt }
+    ]);
+    expect(images[0]).toMatchObject({ url, urlExpiresAt });
+    const restored = await store.readInputImages(session.id, images);
+    expect(restored).toMatchObject([
+      { mimeType: 'image/png', url, urlExpiresAt, resourceId: images[0]!.resourceId }
+    ]);
+    expect(restored[0]).not.toHaveProperty('dataBase64');
+    await store.append(session.id, { type: 'turn.user', payload: { prompt: 'inspect', images } });
+    await expect(store.readResource(session.id, images[0]!.resourceId!)).resolves.toEqual({
+      mimeType: 'image/png',
+      dataBase64: 'aW1hZ2U='
+    });
+    await expect(
+      store.persistInputImages(session.id, [
+        { name: 'invalid.png', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', urlExpiresAt }
+      ])
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_INPUT_INVALID' });
+    await store.close();
+  });
+
   it('copies only user input images referenced by retained fork history', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-fork-input-images-home-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
     const source = await store.createSession({ title: 'Original', workspace: home });
-    const inputImages = join(home, '.mar', 'agent', 'sessions', source.id, 'input_images');
-    await mkdir(inputImages);
     const contents = ['retained', 'later'];
-    await writeFile(join(inputImages, 'turn-1-0.bin'), contents[0]!);
-    await writeFile(join(inputImages, 'turn-2-0.bin'), contents[1]!);
-    for (const [index, fileName] of ['turn-1-0.bin', 'turn-2-0.bin'].entries()) {
+    const resources = [];
+    for (const [index, content] of contents.entries()) {
+      const images = await store.persistInputImages(source.id, [
+        {
+          name: `image-${index + 1}.png`,
+          mimeType: 'image/png',
+          dataBase64: Buffer.from(content).toString('base64')
+        }
+      ]);
+      resources.push(images[0]!);
       await store.append(source.id, {
         type: 'turn.user',
         payload: {
           prompt: `question-${index + 1}`,
-          images: [
-            {
-              name: `image-${index + 1}.png`,
-              mimeType: 'image/png',
-              byteSize: index === 0 ? 8 : 5,
-              fileName,
-              sha256: createHash('sha256').update(contents[index]!).digest('hex')
-            }
-          ]
+          images
         },
         executionId: `execution-${index + 1}`,
         turnId: `turn-${index + 1}`
@@ -794,9 +820,15 @@ describe('JSONL session store', () => {
       title: 'Original (Copy 1)'
     });
 
-    const copied = join(home, '.mar', 'agent', 'sessions', forked.id, 'input_images');
-    await expect(readdir(copied)).resolves.toEqual(['turn-1-0.bin']);
-    await expect(readFile(join(copied, 'turn-1-0.bin'), 'utf8')).resolves.toBe('retained');
+    const copied = join(home, '.mar', 'agent', 'sessions', forked.id, 'resources');
+    await expect(readdir(copied)).resolves.toEqual([
+      `${resources[0]!.resourceId}.bin`,
+      `${resources[0]!.resourceId}.json`
+    ]);
+    await expect(store.readResource(forked.id, resources[0]!.resourceId!)).resolves.toMatchObject({
+      dataBase64: Buffer.from('retained').toString('base64')
+    });
+    await expect(store.readResource(forked.id, resources[1]!.resourceId!)).resolves.toBeUndefined();
     await store.close();
   });
 
@@ -1041,13 +1073,21 @@ describe('JSONL session store', () => {
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ title: 'Original', workspace: home });
-    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
+    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
     const generatedImages = join(home, '.mar', 'agent', 'sessions', session.id, 'generated_images');
-    await mkdir(inputImages);
     await mkdir(generatedImages);
     const inputContents = ['retained-input', 'removed-input'];
-    for (const [index, content] of inputContents.entries())
-      await writeFile(join(inputImages, `input-${index + 1}.bin`), content);
+    const inputResources = await Promise.all(
+      inputContents.map((content, index) =>
+        store.persistInputImages(session.id, [
+          {
+            name: `input-${index + 1}.png`,
+            mimeType: 'image/png',
+            dataBase64: Buffer.from(content).toString('base64')
+          }
+        ])
+      )
+    );
     await writeFile(join(generatedImages, 'retained.png'), 'retained-generated');
     await writeFile(join(generatedImages, 'removed.png'), 'removed-generated');
 
@@ -1057,15 +1097,7 @@ describe('JSONL session store', () => {
         type: 'turn.user',
         payload: {
           prompt: `question-${index + 1}`,
-          images: [
-            {
-              name: `input-${index + 1}.png`,
-              mimeType: 'image/png',
-              byteSize: Buffer.byteLength(inputContents[index]!),
-              fileName: `input-${index + 1}.bin`,
-              sha256: createHash('sha256').update(inputContents[index]!).digest('hex')
-            }
-          ]
+          images: inputResources[index]
         },
         executionId,
         turnId
@@ -1135,7 +1167,10 @@ describe('JSONL session store', () => {
         })
       ]
     });
-    expect(await readdir(inputImages)).toEqual(['input-1.bin']);
+    expect((await readdir(inputImages)).sort()).toEqual([
+      `${inputResources[0]![0]!.resourceId}.bin`,
+      `${inputResources[0]![0]!.resourceId}.json`
+    ]);
     expect(await readdir(generatedImages)).toEqual(['retained.png']);
 
     const reopened = await JsonlSessionStore.open(home);
@@ -1216,7 +1251,51 @@ describe('JSONL session store', () => {
     await reopened.close();
   });
 
-  it('keeps legacy image metadata as placeholders and rejects corrupt private references', async () => {
+  it('rejects unsafe current references and missing, changed or symlink resource files', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-current-resource-corrupt-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({ workspace: home });
+    const resource = await store.persistResource(session.id, {
+      mimeType: 'image/png',
+      dataBase64: Buffer.from('abc').toString('base64')
+    });
+    await store.append(session.id, {
+      type: 'model.context',
+      payload: {
+        role: 'tool',
+        callId: 'image',
+        images: [resource]
+      }
+    });
+    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const path = join(directory, `${resource.resourceId}.bin`);
+    await expect(
+      store.readInputImages(session.id, [
+        { ...resource, name: 'unsafe.png', fileName: '../unsafe.bin' }
+      ])
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    await expect(store.readResource(session.id, '../unsafe')).resolves.toBeUndefined();
+    await rm(path);
+    await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CORRUPT'
+    });
+    await writeFile(path, 'xyz');
+    await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CORRUPT'
+    });
+    if (process.platform !== 'win32') {
+      await rm(path);
+      await writeFile(join(directory, 'target.bin'), 'abc');
+      await symlink('target.bin', path);
+      await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_CORRUPT'
+      });
+    }
+    await store.close();
+  });
+
+  it('ignores legacy image references without reading their private paths', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-input-images-corrupt-home-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
@@ -1237,7 +1316,7 @@ describe('JSONL session store', () => {
           sha256: 'a'.repeat(64)
         }
       ])
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    ).resolves.toEqual([]);
     await expect(
       store.readInputImages(session.id, [
         {
@@ -1248,7 +1327,7 @@ describe('JSONL session store', () => {
           sha256: 'a'.repeat(64)
         }
       ])
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    ).resolves.toEqual([]);
     const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
     await mkdir(directory);
     await writeFile(join(directory, 'target.bin'), 'abc');
@@ -1262,7 +1341,7 @@ describe('JSONL session store', () => {
           sha256: 'b'.repeat(64)
         }
       ])
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    ).resolves.toEqual([]);
     if (process.platform !== 'win32') {
       await symlink('target.bin', join(directory, 'linked.bin'));
       await expect(
@@ -1275,7 +1354,7 @@ describe('JSONL session store', () => {
             sha256: createHash('sha256').update('abc').digest('hex')
           }
         ])
-      ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+      ).resolves.toEqual([]);
     }
     const mixedRecord = await store.append(session.id, {
       type: 'turn.user',
@@ -1306,7 +1385,7 @@ describe('JSONL session store', () => {
         sequence: mixedRecord.sequence,
         imageIndex: 1
       })
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    ).resolves.toBeUndefined();
     const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.history(session.id)).resolves.toMatchObject({
       entries: [
@@ -1390,25 +1469,22 @@ describe('JSONL session store', () => {
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ workspace: home });
     await store.updateTitle(session.id, 'Kept title');
-    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'input_images');
+    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
     const generatedImages = join(home, '.mar', 'agent', 'sessions', session.id, 'generated_images');
-    await mkdir(inputImages);
     await mkdir(generatedImages);
-    await writeFile(join(inputImages, 'input.bin'), 'input');
+    const images = await store.persistInputImages(session.id, [
+      {
+        name: 'input.png',
+        mimeType: 'image/png',
+        dataBase64: Buffer.from('input').toString('base64')
+      }
+    ]);
     await writeFile(join(generatedImages, 'result.png'), 'result');
     await store.append(session.id, {
       type: 'turn.user',
       payload: {
         prompt: 'remove this history',
-        images: [
-          {
-            name: 'input.png',
-            mimeType: 'image/png',
-            byteSize: 5,
-            fileName: 'input.bin',
-            sha256: createHash('sha256').update('input').digest('hex')
-          }
-        ]
+        images
       },
       executionId: 'execution',
       turnId: 'turn'

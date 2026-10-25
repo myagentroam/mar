@@ -1204,13 +1204,15 @@ describe('OpenAI Responses turn sessions', () => {
     ];
 
     try {
-      for (const messages of [firstMessages, secondMessages, thirdMessages, fourthMessages])
+      for (const messages of [firstMessages, secondMessages, thirdMessages, fourthMessages]) {
+        if (messages === fourthMessages) turn.resetContinuation();
         await collect(
           turn.start(
             { system: 'Stable SDK system.', messages, tools: [] },
             new AbortController().signal
           )
         );
+      }
 
       expect(server.connections()).toBe(1);
       expect(server.requests[0]).not.toHaveProperty('instructions');

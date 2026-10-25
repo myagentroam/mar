@@ -13,10 +13,12 @@ vi.mock('@myagentroam/agent', async (importOriginal) => {
 });
 
 import {
+  MarAgentError,
   SecretValue,
   buildCompactEvidence,
   countModelTokens,
   type CoreCompactContext,
+  type CoreExtensionSource,
   type MarAgentModelConfiguration,
   type MarAgentReasoningEffort
 } from '@myagentroam/agent';
@@ -91,6 +93,75 @@ type CompactAttachContext = {
 };
 
 describe('MAR Agent compact extension', () => {
+  it('retains a failed attempt without attributing its error to a later successful attempt', async () => {
+    const reportDiagnostic = vi.fn();
+    generateModelText.mockImplementationOnce(async (input) => {
+      await input.onAttemptDiagnostic({ state: 'STARTED' });
+      await input.onAttemptDiagnostic({
+        state: 'FAILED',
+        errorCode: 'UNAUTHORIZED',
+        transport: 'HTTP'
+      });
+      await input.onAttemptDiagnostic({ state: 'STARTED' });
+      return { text: 'recovered summary' };
+    });
+    await generateMarAgentCompact(
+      compactContext({ reportDiagnostic }),
+      selected(),
+      new AbortController().signal
+    );
+    expect(
+      reportDiagnostic.mock.calls.some(
+        ([value]) => value.state === 'FAILED' && value.errorCode === 'UNAUTHORIZED'
+      )
+    ).toBe(true);
+    expect(reportDiagnostic.mock.calls.at(-1)![0]).toMatchObject({
+      state: 'SUCCEEDED',
+      modelRequests: 2
+    });
+    expect(reportDiagnostic.mock.calls.at(-1)![0]).not.toHaveProperty('errorCode');
+  });
+
+  it.each(['manual', 'automatic'] as const)(
+    'preserves actionable failure facts without copying raw errors for %s compact',
+    async (reason) => {
+      const reportDiagnostic = vi.fn();
+      generateModelText.mockImplementationOnce(async (input) => {
+        await input.onAttemptDiagnostic({ state: 'STARTED' });
+        await input.onAttemptDiagnostic({
+          state: 'FAILED',
+          errorCode: 'MAR_AGENT_MODEL_REQUEST_FAILED',
+          errorMessage: 'SECRET_PROVIDER_ERROR',
+          causeCode: 'ECONNRESET',
+          reason: 'MODEL_TRANSPORT_FAILURE',
+          retryable: true,
+          transport: 'HTTP'
+        });
+        throw new MarAgentError('MAR_AGENT_MODEL_REQUEST_FAILED', 'SECRET_PROVIDER_ERROR', {
+          retryable: true,
+          details: { status: 503, authorization: 'SECRET_AUTH' }
+        });
+      });
+      await generateMarAgentCompact(
+        compactContext({ reason, reportDiagnostic }),
+        selected(),
+        new AbortController().signal
+      );
+      expect(reportDiagnostic.mock.calls.at(-1)![0]).toMatchObject({
+        state: 'FAILED',
+        trigger: reason,
+        errorCode: 'MAR_AGENT_MODEL_REQUEST_FAILED',
+        causeCode: 'ECONNRESET',
+        errorReason: 'MODEL_TRANSPORT_FAILURE',
+        retryable: true,
+        transport: 'HTTP',
+        httpStatus: 503,
+        modelRequests: 1
+      });
+      expect(JSON.stringify(reportDiagnostic.mock.calls)).not.toContain('SECRET_');
+    }
+  );
+
   it('reports actual attempts, selected model and input trimming without copying provider errors', async () => {
     const reportDiagnostic = vi.fn();
     generateModelText.mockImplementationOnce(async (input) => {
@@ -179,20 +250,24 @@ describe('MAR Agent compact extension', () => {
         cancel: vi.fn()
       });
       const session = { id: 'native', run: handle, plan: handle, compact: handle, cancel: vi.fn() };
-      const createAgent = vi.fn(async () => ({
-        createSession: async () => session,
-        openSession: async () => session,
-        getSession: async () => ({
-          id: 'native',
-          title: 'New session',
-          workspace: root,
-          automaticTitlePending: false
-        }),
-        setSystemInstruction: vi.fn(),
-        reconfigureModels,
-        extensionDiagnostics: () => [],
-        dispose: vi.fn()
-      }));
+      let compactSource!: CoreExtensionSource;
+      const createAgent = vi.fn(async (options: { runtimeExtensions: CoreExtensionSource }) => {
+        compactSource = options.runtimeExtensions;
+        return {
+          createSession: async () => session,
+          openSession: async () => session,
+          getSession: async () => ({
+            id: 'native',
+            title: 'New session',
+            workspace: root,
+            automaticTitlePending: false
+          }),
+          setSystemInstruction: vi.fn(),
+          reconfigureModels,
+          extensionDiagnostics: () => [],
+          dispose: vi.fn()
+        };
+      });
       const factory = new MarAgentRuntimeModelFactory({ resolve: vi.fn() });
       const createModels = vi.spyOn(factory, 'create');
       const controller = new MarAgentManagedRunController(
@@ -255,19 +330,43 @@ describe('MAR Agent compact extension', () => {
       const run = (controller as unknown as { run(input: unknown): Promise<void> }).run.bind(
         controller
       );
+      const reconfigureStarted = Promise.withResolvers<void>();
+      const reconfigureCompleted = Promise.withResolvers<void>();
       try {
         await run({ ...input, runId: 'first' });
-        await run({ ...input, runId: 'second' });
+        const sourceRevision = async () =>
+          (await compactSource.resolve({ signal: new AbortController().signal })).revision;
+        const firstRevision = await sourceRevision();
+        if (credentialType === 'RUNTIME_TICKET') {
+          reconfigureModels.mockImplementationOnce(async () => {
+            reconfigureStarted.resolve();
+            await reconfigureCompleted.promise;
+          });
+          const secondRun = run({ ...input, runId: 'second' });
+          try {
+            await reconfigureStarted.promise;
+            expect(await sourceRevision()).toBe(firstRevision);
+          } finally {
+            reconfigureCompleted.resolve();
+            await secondRun;
+          }
+        } else {
+          await run({ ...input, runId: 'second' });
+        }
+        expect(await sourceRevision()).not.toBe(firstRevision);
         expect(createAgent).toHaveBeenCalledTimes(1);
         expect(createModels).toHaveBeenCalledTimes(credentialType === 'RUNTIME_TICKET' ? 2 : 1);
         expect(reconfigureModels).toHaveBeenCalledTimes(
           credentialType === 'RUNTIME_TICKET' ? 1 : 0
         );
         if (credentialType === 'RUNTIME_TICKET') {
-          expect(createModels).toHaveBeenLastCalledWith([main, compact], {
-            runtimeScopeId: 'scope',
-            executionId: 'second'
-          });
+          expect(createModels).toHaveBeenLastCalledWith(
+            [main, { ...compact, useResourceUrl: false }],
+            {
+              runtimeScopeId: 'scope',
+              executionId: 'second'
+            }
+          );
           expect(reconfigureModels.mock.calls[0]![0]).toMatchObject({
             models: [{ id: main.id }],
             defaultModelId: main.id

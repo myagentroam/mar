@@ -1,5 +1,10 @@
 export const modelManagementEnUS = {
   marAgentModels: {
+    useResourceUrl: 'Use resource URLs',
+    resourceUrlDescription:
+      'Requires the global option too. Currently applies to images; otherwise images are provided inline for one model call. Changes apply to the next execution.',
+    globalResourceUrlDescription:
+      'Allow MAR Agent to use fixed resource URLs when the model option is also enabled. Otherwise provide images inline for one model call. Changes apply to the next execution.',
     compactTab: 'Compact',
     compactEffortOptions: {
       low: 'low',

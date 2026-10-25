@@ -1,7 +1,7 @@
 export const conversationUiEnUS = {
   conversationEmpty: {
     workspace: {
-      title: 'What would you like to work on?',
+      title: 'Where to start?',
       description: 'Describe a task, ask a question, or add files to get started.'
     },
     hosted: {
@@ -99,8 +99,7 @@ export const conversationUiEnUS = {
       elapsed: 'Time elapsed',
       steer: 'User input',
       subagent_message: 'New public subagent message'
-    },
-    truncated: 'Output truncated'
+    }
   },
   permissionStop: {
     code: 'Code',

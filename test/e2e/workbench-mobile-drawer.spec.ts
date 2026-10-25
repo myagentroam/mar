@@ -9,6 +9,59 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Touch highlights stay transparent on menus, scrims and preview overlays', async ({
+  browser
+}) => {
+  const context = await browser.newContext({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 }
+  });
+  try {
+    const page = await context.newPage();
+    for (const theme of ['daylight', 'vscode-dark-2026']) {
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      const notification = page.getByRole('button', {
+        name: 'Open notification center',
+        exact: true
+      });
+      for (const control of [
+        page.locator('html'),
+        notification,
+        page.getByRole('link', { name: 'Help', exact: true })
+      ])
+        await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+      await notification.tap();
+      const menu = page.locator('.workspace-tree.mobile-open');
+      await expect(menu).toBeVisible();
+      const scrim = page.locator('.sidebar-scrim');
+      await expect(scrim).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+      await scrim.tap({ position: { x: 380, y: 10 } });
+      await expect(menu).toHaveCount(0);
+      await expect(page.getByLabel('Opened target')).toHaveText('');
+
+      await notification.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(notification).toBeFocused();
+      await expect(notification).toHaveCSS('outline-style', 'solid');
+      await expect(notification).toHaveCSS('outline-width', '2px');
+
+      await page.getByRole('button', { name: 'Open image preview', exact: true }).tap();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(page.locator('.el-overlay').filter({ has: dialog })).toHaveCSS(
+        '-webkit-tap-highlight-color',
+        'rgba(0, 0, 0, 0)'
+      );
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 for (const theme of ['daylight', 'midnight']) {
   test(`Read-all is neutral while expanded navigation stays branded in ${theme}`, async ({
     page

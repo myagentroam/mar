@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import type { ClientToolDefinition, ModelUsage } from '../../model/contracts.js';
+import type { ClientToolDefinition, ModelMessage, ModelUsage } from '../../model/contracts.js';
 import {
   ContextGcCheckpointCache,
   contextGcMinimumUsageGrowth,
@@ -13,9 +13,11 @@ import { CONTEXT_GC_POLICY, contextGcEligibleUsage, inspectContextGc } from './g
 import { buildContextProjection, type ContextProjection } from './projection.js';
 
 export interface ContextGcRuntimeInput {
+  readonly inlineMedia?: import('../../session/inline-media.js').InlineMediaGcCandidate | undefined;
   readonly store: SessionStore;
   readonly sessionId: string;
   readonly records?: readonly SessionRecord[];
+  readonly mediaView?: (messages: readonly ModelMessage[]) => readonly ModelMessage[];
   readonly system: string;
   readonly tools: readonly ClientToolDefinition[];
   readonly modelId: string;
@@ -75,7 +77,10 @@ export class ContextGcRuntime {
       this.reset();
       this.#scope = scope;
     }
-    const usage = contextGcEligibleUsage(input.usage, input.contextWindowTokens);
+    const mediaRequired = input.inlineMedia !== undefined && input.inlineMedia.reason !== 'TEXT_GC';
+    const usage = mediaRequired
+      ? (input.usage.contextInputTokens ?? input.usage.inputTokens ?? 0)
+      : contextGcEligibleUsage(input.usage, input.contextWindowTokens);
     if (usage === undefined) {
       this.#lastUsage = undefined;
       this.#failures = 0;
@@ -90,11 +95,12 @@ export class ContextGcRuntime {
     if (this.#checkpoint) this.#rolloutsSinceCheckpoint++;
     const maximumInterval = usage / input.contextWindowTokens >= 0.8 ? 2 : 8;
     this.#remaining = Math.min(this.#remaining, maximumInterval - 1);
-    if (this.#remaining > 0) {
+    if (this.#remaining > 0 && !mediaRequired) {
       this.#remaining--;
       return false;
     }
     if (
+      !mediaRequired &&
       this.#checkpoint?.trigger.modelId === input.modelId &&
       this.#checkpoint.trigger.contextWindowTokens === input.contextWindowTokens &&
       !this.#checkpoint.protectedCandidatesPending &&
@@ -140,7 +146,10 @@ export async function tryCommitContextGc(
 }
 
 async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGcAttempt> {
-  const contextUsage = contextGcEligibleUsage(input.usage, input.contextWindowTokens);
+  const mediaRequired = input.inlineMedia !== undefined && input.inlineMedia.reason !== 'TEXT_GC';
+  const contextUsage = mediaRequired
+    ? (input.usage.contextInputTokens ?? input.usage.inputTokens ?? 0)
+    : contextGcEligibleUsage(input.usage, input.contextWindowTokens);
   if (contextUsage === undefined) return { result: false };
   let deferred: ContextGcAttempt = { result: false };
   let draft: ContextGcCheckpointDraft;
@@ -158,6 +167,7 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
       };
     }
     if (
+      !mediaRequired &&
       previous?.payload.trigger.modelId === input.modelId &&
       previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
     ) {
@@ -181,10 +191,12 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
         return deferred;
     }
     const projection = buildContextProjection(records, checkpointCache);
+    const messages = projection.entries.map((entry) => entry.message);
     const inspection = inspectContextGc({
+      ...(input.inlineMedia ? { inlineMedia: input.inlineMedia } : {}),
       records,
       checkpointCache,
-      messages: projection.entries.map((entry) => entry.message),
+      messages: input.mediaView?.(messages) ?? messages,
       messageSources: projection.entries.map((entry) => entry.record),
       system: input.system,
       tools: input.tools,
@@ -265,6 +277,7 @@ async function matchingCheckpointWasPersisted(
     !isDeepStrictEqual(latest.payload.base, draft.base) ||
     !isDeepStrictEqual(latest.payload.trigger, draft.trigger) ||
     !isDeepStrictEqual(latest.payload.economics, draft.economics) ||
+    !isDeepStrictEqual(latest.payload.inlineMedia, draft.inlineMedia) ||
     !isDeepStrictEqual(latest.payload.metrics, draft.metrics)
   )
     return false;

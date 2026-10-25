@@ -384,6 +384,48 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe('Workspace file tree root naming', () => {
+  it.each([
+    ['/home/example/my-agent-roam', 'my-agent-roam'],
+    ['/home/example/MyAgentRoam///', 'MyAgentRoam'],
+    ['/project', 'project'],
+    ['D:\\Work\\MyAgentRoam\\', 'MyAgentRoam'],
+    ['\\\\server\\share\\project\\', 'project'],
+    ['/', '/'],
+    ['C:\\', 'C:\\']
+  ])('uses the directory name and full root path for %s', async (workspacePath, name) => {
+    const html = await render({ workspacePath, workspaceName: 'Workspace alias' });
+    expect(html).toContain(`>${name}</span>`);
+    expect(html).toContain(`aria-label="${workspacePath}"`);
+    expect(html).not.toContain('Workspace alias');
+  });
+
+  it('keeps current path naming across alias changes and cached tree restoration', async () => {
+    const workspaceName = ref('Workspace alias');
+    const workspacePath = ref('/home/example/my-agent-roam');
+    const { app, inspector } = mountInspector({ enabled: false }, () => ({
+      workspaceName: workspaceName.value,
+      workspacePath: workspacePath.value
+    }));
+    const snapshot = () => inspector.value!.snapshot() as { fileTree: { root: { name: string } } };
+    try {
+      expect(snapshot().fileTree.root.name).toBe('my-agent-roam');
+      workspaceName.value = 'Renamed workspace alias';
+      await nextTick();
+      expect(snapshot().fileTree.root.name).toBe('my-agent-roam');
+      const cached = snapshot();
+      cached.fileTree.root.name = 'Stale workspace alias';
+      inspector.value!.restore(cached);
+      expect(snapshot().fileTree.root.name).toBe('my-agent-roam');
+      workspacePath.value = 'D:\\Projects\\ActualFolder\\';
+      await nextTick();
+      expect(snapshot().fileTree.root.name).toBe('ActualFolder');
+    } finally {
+      app.unmount();
+    }
+  });
+});
+
 describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (locale) => {
   it('resolves every fixed Inspector message from the public catalog', () => {
     localePreferenceService().setLocale(locale);

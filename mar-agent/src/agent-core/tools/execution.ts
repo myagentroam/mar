@@ -19,6 +19,7 @@ import {
   structuredToolFailureData
 } from './output-projection.js';
 import type { ToolRuntimeContext, ToolRuntimeImage } from './runtime-context.js';
+import { publishModelResources } from '../runtime/resource-publication.js';
 import { executeRegisteredTool } from './runtime.js';
 import { failedToolResultExtensions } from './result-extensions.js';
 import { permissionStopFromError } from './permissions.js';
@@ -30,6 +31,7 @@ export type ExecutedToolCall = {
   call: ClientToolCall;
   content: string;
   images?: ToolExecutionResult['images'];
+  sourceImages?: ToolExecutionResult['images'];
   observations?: ToolExecutionResult['observations'];
   calls?: ToolExecutionResult['calls'];
 } & ({ failed: false; output: ToolExecutionResult } | { failed: true; error: unknown });
@@ -48,7 +50,7 @@ export interface RoundToolScope {
   readonly assertExecutionLive: () => void;
   readonly emit: (event: EventPayload, assertLive?: () => void) => Promise<void>;
   readonly searchMcpTools: NonNullable<ToolRuntimeContext['searchMcpTools']>;
-  readonly recentImages: () => ToolRuntimeImage[];
+  readonly recentImages: () => Promise<ToolRuntimeImage[]>;
   readonly captureCodeContext: () => Omit<
     ToolRuntimeContext,
     'signal' | 'codeMode' | 'expectedMcpTool' | 'searchMcpTools'
@@ -67,6 +69,12 @@ export async function createRoundToolRuntimeContext(
   scope.assertLive();
   signal.throwIfAborted();
   const codeMode = await scope.codeModeContext(call);
+  const recentImages =
+    scope.extensionToolNames.has(call.name) ||
+    call.name === 'code_exec' ||
+    call.name === 'code_exec_wait'
+      ? await scope.recentImages()
+      : undefined;
   scope.assertLive();
   signal.throwIfAborted();
   const assertSessionLive = scope.assertLive;
@@ -104,7 +112,10 @@ export async function createRoundToolRuntimeContext(
             }
           }),
       invoke: createCodeToolDispatch({
-        context: scope.captureCodeContext(),
+        context: {
+          ...scope.captureCodeContext(),
+          ...(recentImages === undefined ? {} : { recentImages })
+        },
         tools: scope.tools,
         expectations: scope.expectations,
         parentCallId: call.callId,
@@ -113,7 +124,9 @@ export async function createRoundToolRuntimeContext(
         emit: (event) => emitCodeEvent(event, assertDispatchLive)
       })
     },
-    ...(scope.extensionToolNames.has(call.name) ? { recentImages: scope.recentImages() } : {})
+    ...(scope.extensionToolNames.has(call.name) && recentImages !== undefined
+      ? { recentImages }
+      : {})
   };
 }
 
@@ -148,13 +161,29 @@ export async function executeRoundTools(
         signal.throwIfAborted();
         return executeRegisteredTool(call.name, call.arguments, call.callId, context);
       };
-      const output =
+      const rawOutput =
         call.name === 'code_exec' || call.name === 'code_exec_wait'
           ? await runTool()
           : await scope.schedule(
               scope.tools.find((tool) => tool.name === call.name),
               runTool
             );
+      const publishedImages = await publishModelResources(
+        scope.context.host,
+        rawOutput.images,
+        {
+          sessionId: scope.context.sessionId,
+          executionId: scope.context.executionId
+        },
+        scope.context.imageStore
+      );
+      const output =
+        publishedImages === rawOutput.images
+          ? rawOutput
+          : {
+              ...rawOutput,
+              ...(publishedImages === undefined ? {} : { images: publishedImages })
+            };
       const modelOutput = boundedModelToolOutput(call.name, output.content, output.data);
       const eventSummary = toolEventSummary(output.content);
       const structuredData = structuredToolEventData(call.name, output.data);
@@ -174,6 +203,7 @@ export async function executeRoundTools(
         call,
         output,
         content: modelOutput.content,
+        ...(rawOutput.images?.length ? { sourceImages: rawOutput.images } : {}),
         ...(output.calls
           ? { calls: output.calls.map(({ resultExtensions: _evidence, ...call }) => call) }
           : {}),
@@ -183,7 +213,17 @@ export async function executeRoundTools(
       };
     } catch (error) {
       const diagnostic = describeMarAgentError(error, 'MAR_AGENT_HOST_OPERATION_FAILED');
-      const partial = error instanceof CodeCellExecutionError ? error.result : undefined;
+      const partialResult = error instanceof CodeCellExecutionError ? error.result : undefined;
+      const publishedPartialImages = await publishModelResources(
+        scope.context.host,
+        partialResult?.images,
+        { sessionId: scope.context.sessionId, executionId: scope.context.executionId },
+        scope.context.imageStore
+      );
+      const partial =
+        partialResult !== undefined && publishedPartialImages !== partialResult.images
+          ? { ...partialResult, images: publishedPartialImages }
+          : partialResult;
       const failureData = structuredToolFailureData(call.name, error);
       const eventData =
         failureData ??
@@ -227,6 +267,7 @@ export async function executeRoundTools(
               ).content
             : boundedModelToolOutput(call.name, partial.content, partial.data).content,
         ...(partial?.images?.length ? { images: partial.images } : {}),
+        ...(partialResult?.images?.length ? { sourceImages: partialResult.images } : {}),
         failed: true,
         ...(partial?.calls
           ? { calls: partial.calls.map(({ resultExtensions: _evidence, ...call }) => call) }

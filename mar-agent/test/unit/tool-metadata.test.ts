@@ -1,8 +1,68 @@
 import { describe, expect, it } from 'vitest';
 import { structuredToolEventData } from '../../src/agent-core/tools/output-projection.js';
 import { publicHostedToolEvents } from '../../src/agent-core/runtime/event-projection.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
 
 describe('public tool metadata', () => {
+  it('projects required image dimensions and only validated transform facts', () => {
+    const result = structuredToolEventData('view_image', {
+      path: 'capture.png',
+      mimeType: 'image/png',
+      bytes: 120,
+      width: 2,
+      height: 1,
+      sourceWidth: 4,
+      sourceHeight: 2,
+      region: { x: 2, y: 0, width: 2, height: 2 },
+      sha256: 'a'.repeat(64),
+      dataBase64: 'must not be projected'
+    });
+    expect(result).toEqual({
+      path: 'capture.png',
+      mimeType: 'image/png',
+      bytes: 120,
+      width: 2,
+      height: 1,
+      sourceWidth: 4,
+      sourceHeight: 2,
+      region: { x: 2, y: 0, width: 2, height: 2 },
+      sha256: 'a'.repeat(64)
+    });
+    expect(
+      structuredToolEventData('view_image', {
+        path: 'capture.png',
+        mimeType: 'image/png',
+        bytes: 120,
+        width: 2,
+        height: 1,
+        sourceWidth: 4,
+        sha256: 'a'.repeat(64)
+      })
+    ).toBeUndefined();
+    expect(
+      structuredToolEventData('view_image', {
+        path: 'capture.png',
+        mimeType: 'image/png',
+        bytes: 120,
+        width: 10,
+        height: 10,
+        sourceWidth: 10,
+        sourceHeight: 10,
+        region: { x: 0, y: 0, width: 2, height: 2 }
+      })
+    ).toBeUndefined();
+    expect(
+      structuredToolEventData('view_image', {
+        path: 'capture.png',
+        mimeType: 'image/png',
+        bytes: TOOL_EXECUTION_LIMITS.viewImageMaxBytes + 1,
+        width: 2,
+        height: 1,
+        sha256: 'a'.repeat(64)
+      })
+    ).toBeUndefined();
+  });
+
   it('keeps search sources structured, bounded, and separate from unrelated output', () => {
     const data = structuredToolEventData('web_search', {
       query: '原始 query',

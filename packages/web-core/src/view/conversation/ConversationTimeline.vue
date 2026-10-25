@@ -1678,7 +1678,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     .file-change-group
   )
   > details
-  > :not(summary) {
+  > :not(summary):not(details) {
   margin: 0 var(--conversation-item-inset) 8px;
 }
 
@@ -1821,10 +1821,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   padding: 0;
 }
 
-.conversation-record-group > details + details {
-  margin-top: var(--conversation-record-gap);
-}
-
 details.conversation-record-group[open] > details:last-child {
   margin-bottom: var(--conversation-record-gap);
 }
@@ -1834,7 +1830,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item details.conversation-record-group > details {
-  margin-inline: 0.5rem 0;
+  margin: var(--conversation-record-gap) 0 0 0.5rem;
 }
 
 .conversation-record-group > summary > span + span {

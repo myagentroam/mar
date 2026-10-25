@@ -43,6 +43,10 @@
   }
 }
 
+html.console-ui {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Only color aliases need to match html.dark; layout tokens must remain responsive. */
 :root,
 html.console-ui,
@@ -411,6 +415,61 @@ html.console-ui .el-dialog {
   --el-dialog-border-radius: var(--mar-radius-surface);
 }
 
+/* Dedicated previews own their viewport geometry and content scrolling. */
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)) {
+  --mar-dialog-top-gap: max(16px, var(--el-dialog-margin-top, 15vh), env(safe-area-inset-top, 0px));
+  --mar-dialog-bottom-gap: max(16px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - var(--mar-dialog-top-gap) - var(--mar-dialog-bottom-gap));
+  max-width: calc(100vw - 32px);
+  margin-block: var(--mar-dialog-top-gap) var(--mar-dialog-bottom-gap);
+  overflow: hidden;
+}
+
+html.console-ui
+  .el-dialog.is-align-center:where(
+    :not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)
+  ) {
+  --mar-dialog-top-gap: max(16px, env(safe-area-inset-top, 0px));
+  margin-block: auto;
+}
+
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
+  > :is(.el-dialog__header, .el-dialog__footer) {
+  flex: none;
+}
+
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
+  > .el-dialog__body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+html.console-ui .el-message-box {
+  display: inline-flex;
+  flex-direction: column;
+  max-height: calc(
+    100dvh - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px))
+  );
+}
+
+html.console-ui .el-message-box > :is(.el-message-box__header, .el-message-box__btns) {
+  flex: none;
+}
+
+html.console-ui .el-message-box > .el-message-box__content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 html.console-ui .el-popover {
   --el-popover-border-radius: var(--mar-radius-surface);
 }
@@ -679,10 +738,35 @@ html.console-ui :where(input, textarea)::placeholder {
   opacity: 1;
 }
 
+:where(html.console-ui, .theme-preview) .el-select {
+  --el-border-color-hover: var(--mar-border-medium);
+}
+
 .el-select-dropdown__item {
   height: var(--mar-compact-control-size);
   padding-inline: var(--mar-compact-option-padding-inline);
   line-height: var(--mar-compact-control-size);
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item:not(.is-disabled) {
+  color: var(--mar-text-primary);
+  font-weight: 400;
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-hovering:not(.is-disabled) {
+  background-color: var(--mar-fill-row-hover);
+}
+
+:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-selected:not(.is-disabled) {
+  background-color: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+  font-weight: 400;
+}
+
+:where(html.console-ui, .theme-preview)
+  .el-select-dropdown.is-multiple
+  .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
+  background-color: currentColor;
 }
 
 .el-select-group__title {
@@ -887,6 +971,21 @@ pre {
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.mar-unread-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--mar-border-medium);
+  border-radius: var(--mar-radius-marker);
+  background: transparent;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding: 0 0.1875rem;
 }
 
 .utility-control {

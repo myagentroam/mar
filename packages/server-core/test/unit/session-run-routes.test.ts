@@ -326,6 +326,97 @@ describe('shared ordinary Session and Run routes', () => {
     expect((await app.inject({ url })).statusCode).toBe(401);
   });
 
+  it('serves a model image by capability without browser authentication', async () => {
+    const { app, requestNode } = fixture();
+    const imageId = '0ed12c70-1a12-4c9a-a4c1-c4b6c03c761f';
+    const token = 'A'.repeat(43);
+    requestNode.mockResolvedValueOnce({
+      image: { mimeType: 'image/png', dataBase64: Buffer.from('pixels').toString('base64') }
+    });
+    const response = await app.inject({
+      url: `/api/nodes/node-one/model-images/${imageId}?token=${token}`
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload).toEqual(Buffer.from('pixels'));
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(requestNode).toHaveBeenCalledWith(
+      'node-one',
+      'model.image.read',
+      { imageId, token },
+      { userId: 0, sessionHash: 'model-image' }
+    );
+    requestNode.mockClear();
+    expect(
+      (await app.inject({ url: `/api/nodes/node-one/model-images/${imageId}?token=bad` }))
+        .statusCode
+    ).toBe(400);
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      kind: 'Workspace',
+      scopePath: 'workspaces/workspace-one',
+      scope: { workspaceId: 'workspace-one' }
+    },
+    {
+      kind: 'hosted conversation',
+      scopePath: 'conversations/conversation-one',
+      scope: { conversationId: 'conversation-one' }
+    }
+  ])(
+    'serves a signed Session image for $kind without browser authentication',
+    async ({ scopePath, scope }) => {
+      const { app, requestNode } = fixture();
+      const sessionId = 'session-one';
+      const resourceId = 'a'.repeat(64);
+      const expiresAt = 1_700_000_000_000;
+      const signature = 'A'.repeat(43);
+      const bytes = Buffer.from([0, 255, 137, 80, 78, 71, 13, 10, 26, 10, 65]);
+      const payload = { ...scope, sessionId, resourceId, expiresAt, signature };
+      requestNode.mockResolvedValueOnce({
+        image: { mimeType: 'image/png', dataBase64: bytes.toString('base64') }
+      });
+
+      const response = await app.inject({
+        url: `/api/nodes/node-one/${scopePath}/sessions/${sessionId}/images/${resourceId}?expiresAt=${expiresAt}&signature=${signature}`
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.rawPayload).toEqual(bytes);
+      expect(response.headers['content-type']).toContain('image/png');
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      expect(requestNode).toHaveBeenCalledWith('node-one', 'model.image.read', payload, {
+        userId: 0,
+        sessionHash: 'model-image'
+      });
+    }
+  );
+
+  it('rejects malformed or structurally ambiguous model image capability queries before Node forwarding', async () => {
+    const { app, requestNode } = fixture();
+    const baseUrl =
+      '/api/nodes/node-one/workspaces/workspace-one/sessions/session-one/images/' + 'a'.repeat(64);
+    const expiresAt = 1_700_000_000_000;
+    const signature = 'A'.repeat(43);
+    const invalidUrls = [
+      `${baseUrl}?signature=${signature}`,
+      `${baseUrl}?expiresAt=not-a-timestamp&signature=${signature}`,
+      `${baseUrl}?expiresAt=${expiresAt}.5&signature=${signature}`,
+      `${baseUrl}?expiresAt=0&signature=${signature}`,
+      `${baseUrl}?expiresAt=${Number.MAX_SAFE_INTEGER + 1}&signature=${signature}`,
+      `${baseUrl}?expiresAt=${expiresAt}&signature=short`,
+      `${baseUrl}?expiresAt=${expiresAt}&expiresAt=${expiresAt}&signature=${signature}`,
+      `${baseUrl}?expiresAt=${expiresAt}&signature=${signature}&signature=${signature}`
+    ];
+
+    for (const url of invalidUrls) {
+      const response = await app.inject({ url });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe('RUN_IMAGE_INVALID');
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
   it('preserves private conditional caching for immutable ordinary Run input images', async () => {
     const { app, requestNode, headers } = fixture();
     const url = '/api/agent-runs/run-one/images/0?nodeId=node-one';

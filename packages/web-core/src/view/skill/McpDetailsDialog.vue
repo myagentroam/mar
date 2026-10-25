@@ -29,13 +29,14 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="modelValue"
-    :title="details?.name || translate('generated.mcpDetailsDialog.mCPDetails')"
+    :title="translate('generated.mcpDetailsDialog.mCPDetails')"
     width="min(720px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
     :close-icon="marIcon('close')"
   >
     <div v-if="details" class="mcp-details">
+      <strong class="mcp-name">{{ details.name }}</strong>
       <p>
         {{
           details.description ||
@@ -105,6 +106,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 .mcp-details {
   display: grid;
   gap: 16px;
+}
+.mcp-name {
+  overflow-wrap: anywhere;
 }
 .mcp-details > p {
   margin: 0;

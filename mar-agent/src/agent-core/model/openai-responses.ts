@@ -1,9 +1,11 @@
 import { observeModelRequestUsage } from './usage-observer.js';
 import { observationModelParts } from '../tools/code-mode/observations.js';
+import { modelImageKey, modelImageUrl } from './image.js';
 import { stableToolSchema } from '../tools/definition-projection.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { describeMarAgentError, MarAgentError } from '../error.js';
+import { assertInlineMediaBudget } from '../session/inline-media.js';
 import {
   marAgentReasoningEffortSchema,
   resolveModelDefaultReasoningEffort,
@@ -68,6 +70,9 @@ interface ResponsesSessionState {
   connectionId?: string;
   proxyType?: 'DIRECT' | 'SOCKS5';
   lastRequest?: ResponsesRequestBody;
+  lastMessageCount?: number;
+  lastInputItemCount?: number;
+  lastSystem?: string;
   lastResponse?: {
     readonly responseId: string;
     readonly outputItems: readonly Record<string, unknown>[];
@@ -75,6 +80,7 @@ interface ResponsesSessionState {
 }
 
 interface PreparedResponsesRequest {
+  readonly inputItemCount: number;
   readonly fullBody: ResponsesRequestBody;
   readonly body: ResponsesRequestBody;
   readonly continuation: boolean;
@@ -177,7 +183,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         this.configuration.responsesTransport?.transport === 'WEBSOCKET' ? 'WEBSOCKET' : 'HTTP';
       const requestPrefixDiagnostic = request.onAttemptDiagnostic
         ? {
-            requestInputItems: prepared.fullBody.input.length
+            requestInputItems: prepared.inputItemCount
           }
         : {};
       const prelude: ModelEvent[] = [];
@@ -911,7 +917,6 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
   #active = false;
   #closed = false;
   #turnState: string | undefined;
-  #fullBody: ResponsesRequestBody | undefined;
   #completedResponseId: string | undefined;
   #connectionDiagnostic:
     Pick<ModelAttemptDiagnostic, 'connectionId' | 'connectionReused' | 'proxyType'> | undefined;
@@ -936,11 +941,17 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
     const outputItems: Record<string, unknown>[] = [];
     let completed = false;
     let sawUnrepresentedOutput = false;
+    let outputMessageCount = 0;
     try {
       const prepared = this.prepareRequest(request);
-      this.#fullBody = prepared.fullBody;
       this.#completedResponseId = undefined;
       for await (const event of this.adapter.startTurn(request, signal, this, prepared)) {
+        if (
+          event.type === 'response.item' ||
+          event.type === 'text.completed' ||
+          event.type === 'client_tool.call'
+        )
+          outputMessageCount++;
         if (event.type === 'response.started' && event.responseId !== 'unknown')
           responseId = event.responseId;
         else if (event.type === 'response.item')
@@ -967,7 +978,13 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
         responseId !== undefined &&
         (outputItems.length > 0 || !sawUnrepresentedOutput)
       ) {
-        this.state.lastRequest = prepared.fullBody;
+        this.state.lastRequest =
+          this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET'
+            ? { ...prepared.body, input: [] }
+            : prepared.fullBody;
+        this.state.lastMessageCount = request.messages.length + outputMessageCount;
+        this.state.lastInputItemCount = prepared.inputItemCount;
+        this.state.lastSystem = JSON.stringify([request.system, request.systemBlocks]);
         this.state.lastResponse = { responseId, outputItems };
       } else clearResponsesContinuation(this.state);
     } catch (error) {
@@ -975,7 +992,6 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       throw error;
     } finally {
       this.#completedResponseId = undefined;
-      this.#fullBody = undefined;
       this.#active = false;
     }
   }
@@ -990,11 +1006,20 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
     clearResponsesContinuation(this.state);
   }
 
+  continuationInputCount(): number {
+    return this.state.lastMessageCount ?? 0;
+  }
+
+  commitContinuationInput(messageCount: number): void {
+    if (this.state.lastResponse !== undefined) this.state.lastMessageCount = messageCount;
+  }
+
   captureCompletedResponseId(responseId: string | undefined): void {
     if (responseId !== undefined) this.#completedResponseId = responseId;
   }
 
   prepareRequest(request: ModelRequest): PreparedResponsesRequest {
+    assertInlineMediaBudget(request);
     if (
       this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET' &&
       this.state.socket !== undefined &&
@@ -1004,18 +1029,57 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       clearResponsesContinuation(this.state);
     }
     // The continuation baseline must not share mutable schemas or items with callers.
-    const fullBody = JSON.parse(
-      JSON.stringify(responsesRequestBody(this.adapter.configuration, request, request.messages))
-    ) as ResponsesRequestBody;
+    const snapshot = (body: ResponsesRequestBody) =>
+      JSON.parse(JSON.stringify(body)) as ResponsesRequestBody;
+    let full: ResponsesRequestBody | undefined;
+    const fullBody = () =>
+      (full ??= snapshot(
+        responsesRequestBody(this.adapter.configuration, request, request.messages)
+      ));
     if (responsesContinuationEnabled(this.adapter.configuration)) {
-      const incremental = incrementalResponsesInput(this.state, fullBody);
+      const websocket = this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET';
+      const suffixMessages =
+        websocket && this.state.lastMessageCount !== undefined
+          ? request.messages.slice(this.state.lastMessageCount)
+          : undefined;
+      const suffixBody =
+        websocket &&
+        this.state.lastResponse !== undefined &&
+        suffixMessages !== undefined &&
+        this.state.lastRequest !== undefined &&
+        this.state.lastSystem === JSON.stringify([request.system, request.systemBlocks]) &&
+        // Top-level images attach to the last real user, which must be in this suffix.
+        (!request.images?.length || suffixMessages.some(isRealUserMessage))
+          ? snapshot(
+              responsesRequestBody(
+                this.adapter.configuration,
+                { ...request, system: '', systemBlocks: [] },
+                suffixMessages,
+                this.state.lastResponse.outputItems
+              )
+            )
+          : undefined;
+      const incremental = websocket
+        ? suffixBody !== undefined &&
+          responsesContinuationPropertiesMatch(this.state.lastRequest!, suffixBody)
+          ? suffixBody.input
+          : undefined
+        : incrementalResponsesInput(this.state, fullBody());
       if (incremental !== undefined) {
         const responseId = this.state.lastResponse!.responseId;
+        const inputItemCount = websocket
+          ? (this.state.lastInputItemCount ?? 0) +
+            this.state.lastResponse!.outputItems.length +
+            incremental.length
+          : fullBody().input.length;
         delete this.state.lastResponse;
         return {
-          fullBody,
+          get fullBody() {
+            return fullBody();
+          },
+          inputItemCount,
           body: {
-            ...fullBody,
+            ...(suffixBody ?? fullBody()),
             input: incremental,
             previous_response_id: responseId
           },
@@ -1024,19 +1088,11 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       }
     }
     return {
-      fullBody,
-      body: fullBody,
+      fullBody: fullBody(),
+      inputItemCount: fullBody().input.length,
+      body: fullBody(),
       continuation: false
     };
-  }
-
-  fullRequestBody(): ResponsesRequestBody {
-    if (this.#fullBody === undefined)
-      throw new MarAgentError(
-        'MAR_AGENT_MODEL_PROTOCOL_ERROR',
-        'Full Responses request is unavailable.'
-      );
-    return this.#fullBody;
   }
 
   currentTurnState(): string | undefined {
@@ -1226,7 +1282,8 @@ function isLocalContinuationReset(error: unknown): boolean {
 function responsesRequestBody(
   configuration: MarAgentModelConfiguration,
   request: ModelRequest,
-  messages: ModelRequest['messages']
+  messages: ModelRequest['messages'],
+  previousOutputItems: readonly Record<string, unknown>[] = []
 ): ResponsesRequestBody {
   const systemBlocks = resolveModelTextBlocks(request.system, request.systemBlocks ?? []);
   if (
@@ -1286,7 +1343,8 @@ function responsesRequestBody(
     true,
     usesResponsesConfigurationUpdates(configuration),
     configuration.responsesOptionalParameters?.nativeTools !== false,
-    request.tools
+    request.tools,
+    previousOutputItems
   );
   const systemInput = responsesSystemInput(request, systemBlocks);
   if (systemInput !== undefined) input.unshift(systemInput);
@@ -1377,13 +1435,16 @@ function responsesContinuationPropertiesMatch(
   current: ResponsesRequestBody
 ): boolean {
   return (
-    JSON.stringify({ ...previous, input: undefined }) ===
-    JSON.stringify({ ...current, input: undefined })
+    JSON.stringify({ ...previous, input: undefined, previous_response_id: undefined }) ===
+    JSON.stringify({ ...current, input: undefined, previous_response_id: undefined })
   );
 }
 
 function clearResponsesContinuation(state: ResponsesSessionState): void {
   delete state.lastRequest;
+  delete state.lastMessageCount;
+  delete state.lastInputItemCount;
+  delete state.lastSystem;
   delete state.lastResponse;
 }
 
@@ -2411,7 +2472,8 @@ export function openAiInput(
   requireEncryptedReasoning: boolean,
   configurationUpdates = true,
   nativeTools = true,
-  tools: ModelRequest['tools'] = []
+  tools: ModelRequest['tools'] = [],
+  previousOutputItems: readonly Record<string, unknown>[] = []
 ) {
   const compatibleMessages = messages.filter(
     (message) =>
@@ -2432,6 +2494,12 @@ export function openAiInput(
   const functionCallIds = new Set<string>();
   const customCallIds = new Set<string>();
   const providerMessageTexts = new Set<string>();
+  // Incremental input omits the calls already retained by the WebSocket response.
+  for (const item of previousOutputItems) {
+    if (typeof item.call_id !== 'string') continue;
+    if (item.type === 'function_call') functionCallIds.add(item.call_id);
+    if (nativeTools && item.type === 'custom_tool_call') customCallIds.add(item.call_id);
+  }
   for (const message of compatibleMessages) {
     if (message.role !== 'provider' || !message.item) continue;
     if (message.item.type === 'function_call' && typeof message.item.call_id === 'string') {
@@ -2577,7 +2645,7 @@ function openAiInputItem(
             ? { type: 'input_text', text: part.text }
             : {
                 type: 'input_image',
-                image_url: `data:${part.image.mimeType};base64,${part.image.dataBase64}`
+                image_url: modelImageUrl(part.image)
               }
         ) ??
         (message.textBlocks !== undefined
@@ -2588,7 +2656,7 @@ function openAiInputItem(
               })),
               ...(message.images ?? []).map((image) => ({
                 type: 'input_image',
-                image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                image_url: modelImageUrl(image)
               }))
             ]
           : message.images?.length
@@ -2596,7 +2664,7 @@ function openAiInputItem(
                 { type: 'input_text', text: message.content },
                 ...message.images.map((image) => ({
                   type: 'input_image',
-                  image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                  image_url: modelImageUrl(image)
                 }))
               ]
             : message.content)
@@ -2615,7 +2683,7 @@ function openAiInputItem(
             })),
             ...userImages.map((image) => ({
               type: 'input_image',
-              image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+              image_url: modelImageUrl(image)
             }))
           ]
         : userImages.length > 0
@@ -2623,7 +2691,7 @@ function openAiInputItem(
               { type: 'input_text', text: message.content },
               ...userImages.map((image) => ({
                 type: 'input_image',
-                image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                image_url: modelImageUrl(image)
               }))
             ]
           : message.content
@@ -2681,11 +2749,11 @@ function hasOpenFunctionObject(value: unknown): boolean {
 
 function uniqueModelImages(
   ...groups: Array<ModelRequest['images'] | undefined>
-): Array<{ mimeType: string; dataBase64: string }> {
+): Array<NonNullable<ModelRequest['images']>[number]> {
   const seen = new Set<string>();
   return groups.flatMap((group) =>
     (group ?? []).flatMap((image) => {
-      const key = `${image.mimeType}\u0000${image.dataBase64}`;
+      const key = modelImageKey(image);
       if (seen.has(key)) return [];
       seen.add(key);
       return [image];

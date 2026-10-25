@@ -2,11 +2,12 @@ import type { ClientToolDefinition, ModelMessage } from '../../model/contracts.j
 import { AGENT_EXECUTION_POLICY } from '../execution-policy.js';
 import { countModelTokens } from '../token-budget.js';
 import { observationModelText } from '../../tools/code-mode/observations.js';
+import type { ModelImage } from '../../model/image.js';
 export function estimatedRequestTokens(
   system: string,
   messages: readonly ModelMessage[],
   tools: readonly ClientToolDefinition[],
-  images?: readonly { mimeType: string; dataBase64: string }[]
+  images?: readonly ModelImage[]
 ) {
   const transientImageCount = messages.reduce(
     (total, message) => total + (message.images?.length ?? 0),

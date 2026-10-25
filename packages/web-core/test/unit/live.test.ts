@@ -16,6 +16,79 @@ describe('Public Workbench Real-Time Connection', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shares readiness until the handshake, waits across reconnects, and cancels on close', async () => {
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly instances: FakeWebSocket[] = [];
+      readyState = FakeWebSocket.OPEN;
+      constructor(readonly url: string) {
+        super();
+        FakeWebSocket.instances.push(this);
+      }
+      send(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const service = createWorkbenchLiveService({
+      canConnect: () => true,
+      onEvent: vi.fn(),
+      onResyncRequired: vi.fn(),
+      onNodeConnection: vi.fn(),
+      onNodeReplaced: vi.fn(),
+      onReconnect: vi.fn(),
+      onUnauthenticated: vi.fn(),
+      onInvalidMessage: vi.fn()
+    });
+    const ready = (socket: FakeWebSocket, id: string) =>
+      socket.dispatchEvent(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'workbench.ready',
+            workbenchConnectionId: id,
+            workbenchResumeToken: `token-${id}`
+          })
+        })
+      );
+    try {
+      service.connect();
+      const initial = service.waitForReady();
+      expect(service.waitForReady()).toBe(initial);
+      const completed = vi.fn();
+      void initial.then(completed);
+      FakeWebSocket.instances[0]!.dispatchEvent(new Event('open'));
+      await Promise.resolve();
+      expect(completed).not.toHaveBeenCalled();
+      ready(FakeWebSocket.instances[0]!, 'connection-1');
+      await expect(initial).resolves.toBe(true);
+      await expect(service.waitForReady()).resolves.toBe(true);
+
+      service.reconnect();
+      const replacement = service.waitForReady();
+      const resumed = vi.fn();
+      void replacement.then(resumed);
+      ready(FakeWebSocket.instances[0]!, 'stale-connection');
+      await Promise.resolve();
+      expect(resumed).not.toHaveBeenCalled();
+      FakeWebSocket.instances[1]!.dispatchEvent(new Event('open'));
+      ready(FakeWebSocket.instances[1]!, 'connection-2');
+      await expect(replacement).resolves.toBe(true);
+
+      service.reconnect();
+      const cancelled = service.waitForReady();
+      service.close();
+      await expect(cancelled).resolves.toBe(false);
+      service.connect();
+      const reopened = service.waitForReady();
+      expect(reopened).not.toBe(cancelled);
+      FakeWebSocket.instances[3]!.dispatchEvent(new Event('open'));
+      ready(FakeWebSocket.instances[3]!, 'connection-3');
+      await expect(reopened).resolves.toBe(true);
+    } finally {
+      service.close();
+    }
+  });
+
   it('sends and receives only strict direct-transfer control frames on the ready socket', () => {
     const sent: string[] = [];
     class FakeWebSocket extends EventTarget {

@@ -65,6 +65,8 @@ interface OAuthBinding {
 }
 const oauthBindings = ref<readonly OAuthBinding[]>([]);
 const oauthLoading = ref(false);
+const oauthRefreshing = ref(false);
+let oauthLoadSequence = 0;
 watch(
   () => [props.section, props.edition] as const,
   async ([section, edition]) => {
@@ -87,21 +89,32 @@ watch(
   },
   { immediate: true }
 );
-async function loadOAuthBindings(): Promise<void> {
+async function loadOAuthBindings(refresh = false): Promise<void> {
+  const sequence = ++oauthLoadSequence;
   oauthLoading.value = true;
+  oauthRefreshing.value = refresh;
   try {
-    oauthBindings.value = (
+    const bindings = (
       await props.request<{ bindings: readonly OAuthBinding[] }>('/api/oauth-bindings')
     ).bindings;
+    if (sequence === oauthLoadSequence) oauthBindings.value = bindings;
   } catch (error) {
-    showMessage(
-      oauthErrorMessage(error, translate('generated.settingsContent.unableToLoadOAuthBindings')),
-      'error',
-      error
-    );
+    if (sequence === oauthLoadSequence)
+      showMessage(
+        oauthErrorMessage(error, translate('generated.settingsContent.unableToLoadOAuthBindings')),
+        'error',
+        error
+      );
   } finally {
-    oauthLoading.value = false;
+    if (sequence === oauthLoadSequence) {
+      oauthLoading.value = false;
+      oauthRefreshing.value = false;
+    }
   }
+}
+async function refreshOAuthBindings(): Promise<void> {
+  if (oauthLoading.value) return;
+  await loadOAuthBindings(true);
 }
 async function bindOAuth(provider: OAuthBinding): Promise<void> {
   try {
@@ -166,12 +179,20 @@ function createNodeToken(): void {
             v-tooltip="translate('generated.settingsContent.refresh')"
             class="utility-control"
             :icon="marIcon('refresh')"
+            :loading="oauthRefreshing"
+            :loading-icon="marIcon('loading-action')"
+            :disabled="oauthLoading"
             :aria-label="translate('generated.settingsContent.refresh')"
             text
-            @click="loadOAuthBindings"
+            @click="refreshOAuthBindings"
           />
         </div>
-        <el-table v-loading="oauthLoading" :data="oauthBindings" row-key="providerKey">
+        <el-table
+          v-loading="oauthLoading && !oauthRefreshing"
+          :aria-busy="oauthLoading"
+          :data="oauthBindings"
+          row-key="providerKey"
+        >
           <el-table-column
             prop="name"
             :label="translate('generated.settingsContent.identityProvider')"
@@ -193,7 +214,7 @@ function createNodeToken(): void {
                 v-if="!row.bound"
                 link
                 :icon="marIcon('link')"
-                :disabled="managementWritable !== true"
+                :disabled="managementWritable !== true || oauthLoading"
                 @click="bindOAuth(row)"
                 >{{ translate('generated.settingsContent.bind') }}</el-button
               >
@@ -202,7 +223,7 @@ function createNodeToken(): void {
                 link
                 type="danger"
                 :icon="marIcon('unlock')"
-                :disabled="managementWritable !== true"
+                :disabled="managementWritable !== true || oauthLoading"
                 @click="unbindOAuth(row)"
                 >{{ translate('generated.settingsContent.unbind') }}</el-button
               >

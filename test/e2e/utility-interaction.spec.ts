@@ -67,6 +67,90 @@ async function checkUtility(
 }
 
 for (const width of [1280, 390]) {
+  test(`Queue text keeps glyphs clear of clipped edges without increasing row height at ${width}px`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
+      await page.evaluate(() => document.fonts.ready);
+      const row = page.locator('.queue-item');
+      const originalHeight = (await row.boundingBox())!.height;
+      const actions = row.locator('.queue-item-actions');
+      await actions.getByRole('button', { name: 'Edit', exact: true }).click();
+      const text = 'g j p q y · review fix loop again, 有问题额外review一轮 commit';
+      await row.locator('textarea').fill(text);
+      await actions.getByRole('button', { name: 'Save', exact: true }).click();
+      const paragraph = row.locator('.queue-item-content > p');
+      await expect(paragraph).toHaveText(text);
+      const layout = await paragraph.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        const paragraph = element.getBoundingClientRect();
+        const content = element.parentElement!.getBoundingClientRect();
+        return {
+          top: text.top - Math.max(paragraph.top, content.top),
+          bottom: Math.min(paragraph.bottom, content.bottom) - text.bottom,
+          lineHeight: getComputedStyle(element).lineHeight
+        };
+      });
+      await testInfo.attach('queue-text-layout', {
+        body: JSON.stringify(layout),
+        contentType: 'application/json'
+      });
+      await page.mouse.move(0, 0);
+      await row.screenshot({ path: testInfo.outputPath(`queue-descenders-${width}.png`) });
+      // Leave breathing room inside both overflow clips, including fractional font metrics.
+      expect(layout.top).toBeGreaterThanOrEqual(1);
+      expect(layout.bottom).toBeGreaterThanOrEqual(1);
+      expect((await row.boundingBox())!.height).toBeCloseTo(originalHeight, 1);
+      await expect(paragraph).toHaveCSS('white-space', 'nowrap');
+      await expect(paragraph).toHaveCSS('text-overflow', 'ellipsis');
+      expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test(`Queue drag label stays compact without crowding content at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
+    const row = page.locator('.queue-item');
+    await expect(row).toBeVisible();
+    const drag = row.locator('.queue-drag');
+    if (width < 768) await expect(drag).toBeHidden();
+    else await expect(drag).toBeVisible();
+    const layout = await row.evaluate((element) => {
+      const drag = element.querySelector('.queue-drag')!.getBoundingClientRect();
+      const label = element.querySelector('.work-item-kind')!.getBoundingClientRect();
+      const content = element.querySelector('.queue-item-content')!.getBoundingClientRect();
+      const actions = element.querySelector('.queue-item-actions')!.getBoundingClientRect();
+      return {
+        dragWidth: drag.width,
+        dragGap: label.left - drag.right,
+        contentGap: content.left - label.right,
+        actionGap: actions.left - content.right,
+        right: element.getBoundingClientRect().right,
+        actionsRight: actions.right
+      };
+    });
+    if (width >= 768) {
+      expect(layout.dragWidth).toBe(12);
+      expect(layout.dragGap).toBeCloseTo(4, 0);
+    }
+    expect(layout.contentGap).toBeCloseTo(width < 768 ? 6 : 8, 0);
+    expect(layout.actionGap).toBeCloseTo(width < 768 ? 6 : 8, 0);
+    expect(layout.actionsRight).toBeLessThanOrEqual(layout.right);
+  });
+
   test(`Queue and Goal editors cancel only their own draft with Escape at ${width}px`, async ({
     browser
   }) => {
@@ -114,18 +198,32 @@ for (const width of [1280, 390]) {
         expect(prevented).toBe(false);
         await expect(input).toBeVisible();
       }
+      await queueInput.focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        queue.locator('.queue-item-actions').getByRole('button', { name: 'Save' })
+      ).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(queueInput).toBeFocused();
       await queueInput.press('Escape');
       await expect(queueInput).toHaveCount(0);
-      await expect(queueEdit).toBeFocused();
+      await expect(queueEdit).not.toBeFocused();
       await expect(queue.locator('.queue-item-content > p')).toHaveText(
         'Review the pending change'
       );
       await expect(goalInput).toHaveValue('Unsaved goal draft');
       await queueEdit.click();
       await expect(queueInput).toHaveValue('Review the pending change');
+      await goalInput.focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        queue.locator('.goal-editor-actions').getByRole('button', { name: 'Cancel' })
+      ).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(goalInput).toBeFocused();
       await goalInput.press('Escape');
       await expect(goalInput).toHaveCount(0);
-      await expect(goalEdit).toBeFocused();
+      await expect(goalEdit).not.toBeFocused();
       await expect(queue.locator('.goal-objective')).toHaveText('Review the pending goal');
       await expect(queueInput).toBeVisible();
       await goalEdit.click();
@@ -140,11 +238,11 @@ for (const width of [1280, 390]) {
       await queue.locator('.goal-editor-actions').getByRole('button', { name: 'Cancel' }).focus();
       await page.keyboard.press('Escape');
       await expect(goalInput).toHaveCount(0);
-      await expect(goalEdit).toBeFocused();
+      await expect(goalEdit).not.toBeFocused();
       await queue.locator('.queue-item-actions').getByRole('button', { name: 'Save' }).focus();
       await page.keyboard.press('Escape');
       await expect(queueInput).toHaveCount(0);
-      await expect(queueEdit).toBeFocused();
+      await expect(queueEdit).not.toBeFocused();
       await expect(page.locator('body')).toHaveAttribute('data-outer-escape', '0');
       await queueEdit.click();
       await queueInput.fill('Saved through Enter');
@@ -234,6 +332,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}`);
       await expect(page.locator('.queue-item-actions').getByRole('button')).toHaveCount(3);
+      const header = page.locator('.conversation-header');
+      await expect(header.locator('.session-activity')).toHaveCount(0);
+      await expect(header).not.toHaveAttribute('activity');
+      await expect(header).not.toHaveAttribute('activity-label');
       const controls = [
         page.getByTestId('native'),
         page.getByTestId('element'),
@@ -381,6 +483,7 @@ test.describe('touch utility feedback', () => {
     await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
     const colors = await customPalette(page);
     const control = page.getByTestId('native');
+    await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
     // Touch pseudo-class timing belongs to the browser; held :active is covered above.
     await control.tap();
     await expect(page.getByTestId('events')).toHaveText('native');

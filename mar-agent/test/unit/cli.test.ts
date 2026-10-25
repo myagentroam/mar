@@ -957,13 +957,19 @@ describe('maragent CLI', () => {
     homes.push(home);
     await writeCodexAuthModel(home, 'http://127.0.0.1:1');
 
-    await expect(
-      execute(process.execPath, ['dist/cli/main.js', '--home', home, 'run', 'Missing auth file'], {
+    const failure = await execute(
+      process.execPath,
+      ['dist/cli/main.js', '--home', home, 'run', 'Missing auth file'],
+      {
         cwd: process.cwd()
-      })
-    ).rejects.toMatchObject({
+      }
+    ).catch((error: unknown) => error);
+    expect(failure).toMatchObject({
       code: 4,
       stderr: expect.stringContaining('Codex auth file is required')
     });
+    expect(
+      (failure as { stderr: string }).stderr.match(/MAR_AGENT_MODEL_AUTH_FAILED/g)
+    ).toHaveLength(1);
   });
 });

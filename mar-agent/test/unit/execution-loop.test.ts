@@ -74,7 +74,7 @@ async function fixture(
         assertExecutionLive: () => {},
         emit: publish,
         searchMcpTools: async () => ({ summary: 'No tools.', content: 'No tools.' }),
-        recentImages: () => [],
+        recentImages: async () => [],
         captureCodeContext: () => context,
         codeModeContext: async () => ({ tools: [], state: [], supportsImages: false })
       }

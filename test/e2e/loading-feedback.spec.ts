@@ -30,6 +30,89 @@ async function expectReadIndicator(indicator: Locator, size: number) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Session cleanup uses button loading without a content mask: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}visual-alignment.html?loading-feedback=1&theme=${theme}`);
+      const controls = page.getByTestId('cleanup-controls');
+      await controls.getByRole('button', { name: 'Open cleanup', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Clean up sessions', exact: true });
+      const submit = dialog.getByRole('button', { name: 'Clean up sessions', exact: true });
+      const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
+      const days = dialog.getByRole('spinbutton');
+      await days.fill('');
+      await submit.click();
+      await expect(dialog.getByText('Enter a whole number of days from 1 to 365.')).toBeVisible();
+      await expect(controls).toHaveAttribute('data-request-count', '0');
+      await days.fill('45');
+      await submit.click();
+      await expect(controls).toHaveAttribute('data-request-count', '1');
+      await expect(controls).toHaveAttribute('data-inactive-days', '45');
+      await expect(dialog.getByText('Enter a whole number of days from 1 to 365.')).toBeHidden();
+      await expect(submit).toHaveText('Clean up sessions');
+      await expect(submit).toHaveClass(/is-loading/);
+      await expect(submit.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+      await expect(dialog.locator('.el-loading-mask')).toHaveCount(0);
+      await expect(dialog.locator('.workspace-session-cleanup-content')).toHaveAttribute(
+        'aria-busy',
+        'true'
+      );
+      await expect(days).toBeDisabled();
+      await expect(cancel).toBeDisabled();
+      await expect(dialog.locator('.el-dialog__headerbtn')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeVisible();
+      await page.mouse.click(2, 2);
+      await expect(dialog).toBeVisible();
+      await submit.dispatchEvent('click');
+      await expect(controls).toHaveAttribute('data-request-count', '1');
+      await page.screenshot({ path: testInfo.outputPath(`cleanup-loading-${width}.png`) });
+
+      // Settle the controlled request without interacting through the modal backdrop.
+      await controls
+        .getByRole('button', { name: 'Fail cleanup', exact: true })
+        .dispatchEvent('click');
+      await expect(page.locator('.el-message--error')).toContainText('Fixture cleanup failed');
+      await expect(submit).not.toHaveClass(/is-loading/);
+      await expect(days).toBeEnabled();
+      await expect(days).toHaveValue('45');
+      await expect(cancel).toBeEnabled();
+      await expect(dialog.locator('.el-dialog__headerbtn')).toBeVisible();
+      await submit.click();
+      await expect(controls).toHaveAttribute('data-request-count', '2');
+      await controls
+        .getByRole('button', { name: 'Finish cleanup', exact: true })
+        .dispatchEvent('click');
+      await expect(
+        dialog.getByRole('heading', { name: 'Cleanup complete', exact: true })
+      ).toBeVisible();
+      const result = dialog.locator('.workspace-session-cleanup-statistics');
+      for (const [label, value] of [
+        ['Deleted', '2'],
+        ['Skipped', '1'],
+        ['Failed', '0']
+      ] as const) {
+        await expect(
+          result
+            .locator('div')
+            .filter({ has: page.getByText(label, { exact: true }) })
+            .locator('dd')
+        ).toHaveText(value);
+      }
+      await expect(dialog.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await controls.getByRole('button', { name: 'Open cleanup', exact: true }).click();
+      await expect(days).toHaveValue('30');
+      await expect(submit).toBeEnabled();
+      await cancel.click();
+      await expect(dialog).toHaveCount(0);
+      await expect(controls).toHaveAttribute('data-request-count', '2');
+    }
+  });
+
   test(`File tree Load more uses neutral text and an in-button loading star: ${theme}`, async ({
     page
   }) => {

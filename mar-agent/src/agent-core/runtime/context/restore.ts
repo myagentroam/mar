@@ -2,6 +2,7 @@ import { MarAgentError } from '../../error.js';
 import type { SessionStore } from '../../session/store/contracts.js';
 import { appliedInputRecord, pendingDeferredInputs } from '../../session/deferred-input.js';
 import type { ModelMessage } from '../../model/contracts.js';
+import type { ModelImage } from '../../model/image.js';
 import {
   compactSummaryFromCheckpoint,
   replacementHistoryFromCheckpoint,
@@ -13,6 +14,28 @@ import { restoreCompactTail } from '../compaction/retained-context.js';
 import type { EnvironmentContextState } from './contracts.js';
 import { environmentContextUpdate, restoreEnvironmentState } from './environment.js';
 import { buildContextProjection, type ContextProjection } from './projection.js';
+
+export async function readResourceImages(
+  store: Pick<SessionStore, 'readResource'>,
+  sessionId: string,
+  images: readonly ModelImage[]
+): Promise<ModelImage[]> {
+  return Promise.all(
+    images.map(async (image) => {
+      const resource =
+        image.resourceId === undefined
+          ? undefined
+          : await store.readResource(sessionId, image.resourceId);
+      if (!resource)
+        throw new MarAgentError(
+          'MAR_AGENT_SESSION_CORRUPT',
+          'Session input images cannot be fully restored.'
+        );
+      return { ...image, dataBase64: resource.dataBase64 };
+    })
+  );
+}
+
 export async function restoreMessages(
   store: SessionStore,
   sessionId: string,
@@ -69,8 +92,9 @@ export async function restoreMessages(
           images = await store.readInputImages(sessionId, payload.images);
           if (
             options.strictImages &&
-            payload.images !== undefined &&
-            (!Array.isArray(payload.images) || images.length !== payload.images.length)
+            Array.isArray(payload.images) &&
+            images.length !==
+              payload.images.filter((image) => image?.resourceInputVersion === 1).length
           )
             throw new MarAgentError(
               'MAR_AGENT_SESSION_CORRUPT',
@@ -173,8 +197,12 @@ export async function restoreMessages(
         }
       }
     }
-    for (const message of messages.slice(messageStart))
+    for (const message of messages.slice(messageStart)) {
+      if (!options.includeImages) delete message.images;
+      else if (options.strictImages && message.images?.length)
+        message.images = await readResourceImages(store, sessionId, message.images);
       options.messageSources?.set(message, record);
+    }
   }
   const completedToolCalls = new Set(
     messages.filter((message) => message.role === 'tool').map((message) => message.callId)

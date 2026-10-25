@@ -17,15 +17,25 @@ import { serializeComposerTag } from '@myagentroam/protocol';
 import type { WorkspaceQueueItem } from '../../src/model/workbench.js';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
+import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
 
-async function render(component: Component, props: Record<string, unknown>) {
+async function render(
+  component: Component,
+  props: Record<string, unknown>,
+  tooltipValues?: unknown[]
+) {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
   app.use(ElementPlus);
-  app.directive('tooltip', { getSSRProps: () => ({}) });
+  app.directive('tooltip', {
+    getSSRProps: (binding) => {
+      tooltipValues?.push(binding.value);
+      return {};
+    }
+  });
   app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -488,6 +498,46 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain(i18n.global.t('generated.composerCommandPicker.commandsAndSkills'));
   });
 
+  it('keeps one full-content hint per quick-prompt or file candidate', async () => {
+    const promptHints: unknown[] = [];
+    const promptHtml = await render(
+      ComposerCommandPicker,
+      {
+        ...pickerProps,
+        pickerKind: 'quick-prompt',
+        quickPrompts: [{ id: 'review', phrase: 'review', prompt: 'Review the current changes' }]
+      },
+      promptHints
+    );
+    expect(promptHtml).toContain('#review');
+    expect(promptHtml).toContain('Review the current changes');
+    expect(promptHints.filter(Boolean)).toEqual(['Review the current changes']);
+
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    vi.stubGlobal('document', {
+      documentElement: {
+        classList: { add: vi.fn(), remove: vi.fn() },
+        setAttribute: vi.fn(),
+        removeAttribute: vi.fn()
+      }
+    });
+    const fileHints: unknown[] = [];
+    const fileHtml = await render(
+      ComposerFileReferencePicker,
+      {
+        open: true,
+        entries: [{ name: 'example.ts', path: 'src/nested/example.ts', kind: 'FILE' }],
+        activeIndex: 0,
+        loading: false,
+        query: 'example'
+      },
+      fileHints
+    );
+    expect(fileHtml).toContain('example.ts');
+    expect(fileHtml).toContain('src/nested/example.ts');
+    expect(fileHints.filter(Boolean)).toEqual(['src/nested/example.ts']);
+  });
+
   it('keeps failed quick-prompt loading distinct from empty candidates', async () => {
     const failed = await render(ComposerCommandPicker, {
       ...pickerProps,
@@ -647,6 +697,37 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
       expect(sendButton?.[1]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
   );
+
+  it('only hints command-state details that add information to the visible label', async () => {
+    const tooltipValues: unknown[] = [];
+    const html = await render(
+      ConversationComposer,
+      {
+        input: '',
+        placeholder: 'Message',
+        working: false,
+        workingLabel: '',
+        readonly: false,
+        dropTarget: false,
+        mobileViewport: false,
+        commandStates: [undefined, '', 'Plan mode', 'Additional plan details'].map(
+          (detail, index) => ({
+            commandId: `plan-${index}`,
+            label: 'Plan mode',
+            detail,
+            closable: true
+          })
+        ),
+        loading: false,
+        skillTokens: []
+      },
+      tooltipValues
+    );
+    expect(html).toContain('Plan mode');
+    expect(html).toContain('aria-label="Plan mode"');
+    expect(html).toContain('aria-label="Additional plan details"');
+    expect(tooltipValues.filter(Boolean)).toEqual(['Additional plan details']);
+  });
 
   it('keeps the submitted text read-only while the submission window is pending', async () => {
     const props = {

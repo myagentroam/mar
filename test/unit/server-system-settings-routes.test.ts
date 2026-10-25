@@ -13,6 +13,51 @@ const headers = {
 };
 
 describe('Server system settings routes', () => {
+  it('protects the default-on resource URL setting with ADMIN and CSRF checks', async () => {
+    const fixture = routeFixture();
+    const app = Fastify();
+    let useResourceUrl = true;
+    const resourceInput = {
+      read: vi.fn(async () => ({ useResourceUrl })),
+      write: vi.fn(async (value: { useResourceUrl: boolean }) => {
+        useResourceUrl = value.useResourceUrl;
+      })
+    };
+    registerSystemSettingsRoutes({
+      app,
+      database: fixture.database,
+      audits: fixture.audits,
+      network: fixture.network,
+      htmlPreviewOrigin: fixture.htmlPreviewOrigin,
+      resourceInput,
+      publicOrigin: 'https://console.example.test'
+    });
+    try {
+      expect(
+        (await app.inject({ url: '/api/system-settings', headers })).json().useResourceUrl
+      ).toBe(true);
+      const update = (payload: Record<string, unknown>, requestHeaders = headers) =>
+        app.inject({
+          method: 'PATCH',
+          url: '/api/system-settings/mar-agent-resource-input',
+          headers: requestHeaders,
+          payload
+        });
+      expect((await update({ useResourceUrl: false })).statusCode).toBe(200);
+      expect(useResourceUrl).toBe(false);
+      expect((await update({ useResourceUrl: 'true' })).statusCode).toBe(400);
+      expect(
+        (await update({ useResourceUrl: true }, { cookie: headers.cookie, 'x-csrf-token': '' }))
+          .statusCode
+      ).toBe(403);
+      fixture.session.isAdmin = false;
+      expect((await update({ useResourceUrl: true })).statusCode).toBe(403);
+      expect(resourceInput.write).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('uses the same administrator, Origin and CSRF gates for the Web Push switch', async () => {
     const fixture = routeFixture();
     const app = Fastify();

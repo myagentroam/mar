@@ -90,8 +90,7 @@ export const conversationUiZhCN = {
     requestedDuration: '请求时长',
     elapsedDuration: '实际耗时',
     wakeReason: '唤醒原因',
-    wake: { elapsed: '等待时间已到', steer: '用户输入', subagent_message: '子 Agent 新公开消息' },
-    truncated: '输出已截断'
+    wake: { elapsed: '等待时间已到', steer: '用户输入', subagent_message: '子 Agent 新公开消息' }
   },
   permissionStop: {
     code: '代码',

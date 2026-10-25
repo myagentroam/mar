@@ -17,7 +17,7 @@ import type {
   MarAgentRuntimeModelService
 } from './session-run-contracts.js';
 import { createHash } from 'node:crypto';
-import { runImageReadInputSchema } from '@myagentroam/protocol';
+import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 export function registerRunControlRoutes(input: {
   readonly app: FastifyInstance;
@@ -121,6 +121,63 @@ export function registerRunControlRoutes(input: {
       });
       return reply.code(202).send(result);
     };
+  const serveModelResource = async (nodeId: string, value: unknown, reply: FastifyReply) => {
+    const parsed = modelResourceReadInputSchema.safeParse(value);
+    if (!parsed.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+    reply.header('cache-control', 'private, no-store');
+    try {
+      const result = (await nodeControl.requestNode(nodeId, 'model.resource.read', parsed.data, {
+        userId: 0,
+        sessionHash: 'model-resource'
+      })) as { image?: { mimeType?: unknown; dataBase64?: unknown } };
+      if (
+        typeof result.image?.mimeType !== 'string' ||
+        !result.image.mimeType.startsWith('image/') ||
+        typeof result.image.dataBase64 !== 'string'
+      )
+        return sendError(reply, 502, 'RUN_IMAGE_INVALID');
+      return reply.type(result.image.mimeType).send(Buffer.from(result.image.dataBase64, 'base64'));
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  };
+  const serveResource = (
+    request: FastifyRequest<{
+      Params: {
+        nodeId: string;
+        workspaceId?: string;
+        conversationId?: string;
+        sessionId: string;
+        resourceId: string;
+      };
+      Querystring: { expiresAt?: string; signature?: string };
+    }>,
+    reply: FastifyReply
+  ) =>
+    serveModelResource(
+      request.params.nodeId,
+      {
+        ...(request.params.workspaceId === undefined
+          ? { conversationId: request.params.conversationId }
+          : { workspaceId: request.params.workspaceId }),
+        sessionId: request.params.sessionId,
+        resourceId: request.params.resourceId,
+        expiresAt:
+          request.query.expiresAt !== undefined && /^\d+$/u.test(request.query.expiresAt)
+            ? Number(request.query.expiresAt)
+            : undefined,
+        signature: request.query.signature
+      },
+      reply
+    );
+  app.get(
+    '/api/nodes/:nodeId/workspaces/:workspaceId/sessions/:sessionId/resources/:resourceId',
+    serveResource
+  );
+  app.get(
+    '/api/nodes/:nodeId/conversations/:conversationId/sessions/:sessionId/resources/:resourceId',
+    serveResource
+  );
   app.post<{
     Params: { workspaceId: string };
     Body: { nodeId?: unknown; sessionId?: unknown };

@@ -63,7 +63,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`New conversations show a responsive Composer startup layout: ${theme}`, async ({
     page
   }, testInfo) => {
-    for (const width of [390, 1280]) {
+    for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
       for (const locale of ['en-US', 'zh-CN']) {
         for (const mode of ['workspace', 'hosted']) {
@@ -78,12 +78,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
                 ? '想从哪里开始？'
                 : '有什么可以帮你？'
               : mode === 'workspace'
-                ? 'What would you like to work on?'
+                ? 'Where to start?'
                 : 'How can I help?'
           );
           await expect(welcome.locator('p')).not.toBeEmpty();
           const region = (await page.locator('.conversation-scroll').boundingBox())!;
           const title = (await heading.boundingBox())!;
+          const titleLineHeight = await heading.evaluate((element) =>
+            Number.parseFloat(getComputedStyle(element).lineHeight)
+          );
+          expect(title.height).toBeLessThanOrEqual(titleLineHeight + 1);
           const description = (await welcome.locator('p').boundingBox())!;
           const composerHost = (await page.locator('.composer-host').boundingBox())!;
           const composer = (await page.locator('.composer').boundingBox())!;

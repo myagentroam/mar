@@ -14,6 +14,7 @@ import {
 import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
 import type { MarAgent } from '../../src/agent-core/sdk/types.js';
 import type {
+  CoreExtensionSource,
   CoreRuntimeExtension,
   CoreSessionExtensionContext
 } from '../../src/agent-core/extensions/contracts.js';
@@ -128,7 +129,7 @@ afterEach(async () => {
 });
 
 async function compactFixture(input: {
-  extensions: readonly CoreRuntimeExtension[];
+  extensions: readonly CoreRuntimeExtension[] | CoreExtensionSource;
   script: Script;
   model?: Partial<MarAgentModelConfiguration>;
   rolloutBudget?: NonNullable<Parameters<typeof createMarAgentWithAdapter>[0]['rolloutBudget']>;
@@ -323,6 +324,157 @@ describe('Core compact generation extension', () => {
     }
   );
 
+  it.each([false, true])(
+    'keeps dedicated compact credentials usable with a retained cell=%s',
+    async (retained) => {
+      let revision = 1;
+      const used: number[] = [];
+      const gate = Promise.withResolvers<void>();
+      const entered = Promise.withResolvers<void>();
+      let launch = retained;
+      let joinCell = false;
+      let cellId!: string;
+      const cellExtension: CoreRuntimeExtension = {
+        id: 'compact-retained-cell',
+        apiVersion: '1.0',
+        attachSession(context) {
+          context.tools.register({
+            name: 'compact_gate',
+            description: 'Wait for release.',
+            inputSchema: { type: 'object' },
+            parallelSafety: 'safe',
+            async execute() {
+              entered.resolve();
+              await gate.promise;
+              return { content: 'released' };
+            }
+          });
+          context.hooks.intercept('model.request', async (input, _call, next) => {
+            if (launch) {
+              launch = false;
+              const result = await context.tools.invoke({
+                name: 'code_exec',
+                arguments: {
+                  code: '// @options: {"yieldMs":0}\nobserve.result(await tools.compact_gate({}));'
+                }
+              });
+              cellId = (result.data as { cellId: string }).cellId;
+              expect(result.data).toMatchObject({ status: 'running' });
+            } else if (joinCell) {
+              joinCell = false;
+              const result = await context.tools.invoke({
+                name: 'code_exec_wait',
+                arguments: { cellId, yieldMs: 1000 }
+              });
+              expect(result.data).toMatchObject({ status: 'completed' });
+            }
+            return next(input);
+          });
+        }
+      };
+      const provider = () => ({
+        closed: false,
+        acquire: vi.fn(),
+        invalidate: vi.fn(),
+        async close() {
+          this.closed = true;
+        }
+      });
+      const first = provider(),
+        second = provider(),
+        third = provider();
+      let current = first;
+      const { apiKey: _apiKey, ...withoutKey } = baseModel;
+      const dedicated = (credentialProvider: typeof first): MarAgentModelConfiguration => ({
+        ...withoutKey,
+        id: 'dedicated',
+        credentialProvider,
+        conversationModel: false
+      });
+      const source: CoreExtensionSource = {
+        async resolve() {
+          const captured = revision;
+          const capturedProvider = current;
+          return {
+            revision: `compact-${captured}`,
+            extensions: [
+              compactExtension(() => {
+                used.push(captured);
+                if (capturedProvider.closed) return undefined;
+                return { summary: `summary from generation ${captured}` };
+              }).extension,
+              ...(retained ? [cellExtension] : [])
+            ]
+          };
+        }
+      };
+      const conversation = { ...baseModel, codeMode: retained };
+      const f = await compactFixture({
+        extensions: source,
+        script: () => answer('seeded'),
+        model: conversation
+      });
+      await f.agent.reconfigureModels({
+        models: [conversation, dedicated(first)],
+        defaultModelId: baseModel.id
+      });
+      await f.session.run({ prompt: 'seed' }).result();
+      if (retained) await entered.promise;
+      try {
+        await f.agent.reconfigureModels({
+          models: [conversation, dedicated(second)],
+          defaultModelId: baseModel.id
+        });
+        revision = 2;
+        current = second;
+        expect(first.closed).toBe(!retained);
+        const result = await f.session.compact().result();
+        expect(result.status).toBe('completed');
+        expect(used).toEqual([retained ? 1 : 2]);
+        expect(f.adapter.requests).toHaveLength(1);
+        expect(
+          (await readRecords(f.home, f.session.id)).find(
+            (record) => record.type === 'compact.completed'
+          )
+        ).toMatchObject({
+          payload: { summary: `summary from generation ${retained ? 1 : 2}`, automatic: false }
+        });
+        if (retained) {
+          await f.agent.reconfigureModels({
+            models: [conversation, dedicated(third)],
+            defaultModelId: baseModel.id
+          });
+          revision = 3;
+          current = third;
+          expect(first.closed).toBe(false);
+          expect(second.closed).toBe(true);
+          expect((await f.session.compact().result()).status).toBe('completed');
+          expect(used).toEqual([1, 1]);
+          expect(f.adapter.requests).toHaveLength(1);
+          gate.resolve();
+          joinCell = true;
+          expect((await f.session.run({ prompt: 'join retained cell' }).result()).status).toBe(
+            'completed'
+          );
+          await f.agent.reconfigureModels({
+            models: [conversation, dedicated(third)],
+            defaultModelId: baseModel.id
+          });
+          expect(first.closed).toBe(true);
+          expect((await f.session.compact().result()).status).toBe('completed');
+          expect(used).toEqual([1, 1, 3]);
+          expect(f.adapter.requests).toHaveLength(2);
+        }
+        await f.agent.dispose();
+        expect(first.closed).toBe(true);
+        expect(second.closed).toBe(true);
+        if (retained) expect(third.closed).toBe(true);
+      } finally {
+        gate.resolve();
+      }
+    }
+  );
+
   it.each(['handled', 'declined', 'invalid', 'failed'] as const)(
     'persists bounded external model diagnostics and the %s outcome without publishing them',
     async (outcome) => {
@@ -336,6 +488,13 @@ describe('Core compact generation extension', () => {
           inputTokensEstimateAfter: 9_000,
           modelRequests: 1,
           elapsedMs: 10,
+          trigger: input.reason,
+          errorCode: 'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+          causeCode: 'ECONNRESET',
+          errorReason: 'MODEL_TRANSPORT_FAILURE',
+          retryable: false,
+          transport: 'HTTP',
+          httpStatus: 503,
           ...{ apiKey: 'SECRET_DIAGNOSTIC_MARKER', requestBody: 'PRIVATE_BODY' }
         });
         if (outcome === 'failed') throw new Error('PRIVATE_ERROR');
@@ -370,7 +529,14 @@ describe('Core compact generation extension', () => {
           reasoningEffort: 'high',
           modelRequests: 1,
           inputTokensEstimateBefore: 50_000,
-          inputTokensEstimateAfter: 9_000
+          inputTokensEstimateAfter: 9_000,
+          trigger: 'manual',
+          errorCode: 'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+          causeCode: 'ECONNRESET',
+          errorReason: 'MODEL_TRANSPORT_FAILURE',
+          retryable: false,
+          transport: 'HTTP',
+          httpStatus: 503
         }
       });
       expect(JSON.stringify(records)).not.toContain('SECRET_DIAGNOSTIC_MARKER');

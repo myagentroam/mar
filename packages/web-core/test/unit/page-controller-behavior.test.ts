@@ -15,6 +15,7 @@ const captured = vi.hoisted(() => ({
   live: undefined as Parameters<typeof createWorkbenchLiveService>[0] | undefined,
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
   checkVersion: undefined as (() => Promise<void>) | undefined,
+  waitForReady: vi.fn(async () => true),
   startWorkspace: vi.fn(async () => undefined),
   restartWorkspace: vi.fn(async () => undefined)
 }));
@@ -24,6 +25,7 @@ vi.mock('../../src/service/workbench-live-service.js', () => ({
     captured.live = options;
     return {
       connected: ref(false),
+      waitForReady: captured.waitForReady,
       restore: vi.fn(),
       connect: vi.fn(),
       reconnect: vi.fn(),
@@ -80,6 +82,7 @@ const node: NodeSummary = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  captured.waitForReady.mockResolvedValue(true);
   const location = new URL('https://console.example.test/console');
   const storage = { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() };
   vi.stubGlobal('localStorage', storage);
@@ -148,6 +151,69 @@ function controller() {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it.each(['ready', 'changed-target', 'hidden', 'closed'] as const)(
+    'waits for the live connection before opening session history (%s)',
+    async (outcome) => {
+      let resolveReady!: (ready: boolean) => void;
+      captured.waitForReady.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveReady = resolve;
+          })
+      );
+      const { page } = controller();
+      const session: Session = {
+        id: 'session-a',
+        workspaceId: 'workspace-a',
+        runner: 'codex',
+        externalSessionId: 'native-a',
+        activity: 'IDLE'
+      };
+      page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+      page.sessions.value = [session];
+      const watchRequests: Record<string, unknown>[] = [];
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/watch') && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body));
+          watchRequests.push(body);
+          queueMicrotask(() =>
+            captured.live!.onWatchEvent?.({
+              type: 'watch.session.snapshot',
+              watchType: 'session',
+              nodeId: 'node-a',
+              workspaceId: 'workspace-a',
+              sessionId: session.id,
+              workbenchConnectionId: 'connection-a',
+              watchId: body.watchId,
+              nodeGeneration: 'generation-a',
+              payload: { unit: 'SEGMENT', segments: [], nextCursor: null }
+            })
+          );
+          return new Response(
+            JSON.stringify({ watchId: body.watchId, nodeGeneration: 'generation-a' })
+          );
+        }
+        return new Response(JSON.stringify({ session }));
+      });
+      const opening = page.openSessionFromList(session.id);
+      await flushComponent();
+      expect(captured.waitForReady).toHaveBeenCalledOnce();
+      expect(watchRequests).toEqual([]);
+      expect(page.loadingInitialConversation.value).toBe(true);
+      expect(page.initialConversationLoadFailed.value).toBe(false);
+      if (outcome === 'changed-target')
+        page.workspaceTarget.value = { nodeId: 'node-b', workspaceId: 'workspace-b' };
+      if (outcome === 'hidden') Object.assign(document, { visibilityState: 'hidden' });
+      if (outcome === 'ready' || outcome === 'hidden')
+        captured.live!.onReady?.('connection-a', true);
+      resolveReady(outcome !== 'closed');
+      page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
+      await opening;
+      expect(watchRequests).toHaveLength(outcome === 'ready' ? 1 : 0);
+      expect(page.initialConversationLoadFailed.value).toBe(false);
+      if (outcome === 'ready') expect(page.conversationSyncPending.value).toBe(false);
+    }
+  );
   it.each(['CHILD', 'MAIN', undefined] as const)(
     'keeps a newly submitted main session reachable after opening New from %s',
     async (initialGroup) => {
@@ -327,21 +393,25 @@ describe('Workbench controller composition behavior', () => {
     };
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
     await flushComponent();
+    captured.startWorkspace.mockClear();
     captured.restartWorkspace.mockClear();
 
     page.selectWorkspaceSessionGroup('CHILD');
     await flushComponent();
-    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-a');
+    expect(captured.startWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-a');
+    expect(captured.restartWorkspace).not.toHaveBeenCalled();
 
-    captured.restartWorkspace.mockClear();
+    captured.startWorkspace.mockClear();
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-b' };
     await flushComponent();
     expect(page.workspaceSessionGroup.value).toBe('MAIN');
+    expect(captured.startWorkspace).not.toHaveBeenCalled();
     expect(captured.restartWorkspace).not.toHaveBeenCalled();
 
     page.selectWorkspaceSessionGroup('CHILD');
     await flushComponent();
-    expect(captured.restartWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
+    expect(captured.startWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
+    expect(captured.restartWorkspace).not.toHaveBeenCalled();
   });
 
   it('shows only sessions in the current group page while retaining the selected session body', async () => {

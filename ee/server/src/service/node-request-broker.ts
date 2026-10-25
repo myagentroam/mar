@@ -151,6 +151,20 @@ export class NodeRequestBroker {
       !workbenchNodeOperationSchema.safeParse(operation).success
     )
       return Promise.reject(new Error('OPERATION_UNSUPPORTED'));
+    if (
+      operation === 'model.resource.read' &&
+      user.userId === 0 &&
+      user.sessionHash === 'model-resource'
+    )
+      return this.dispatch(
+        nodeId,
+        operation,
+        data,
+        user,
+        undefined,
+        timeoutMs,
+        this.socketFor(nodeId)
+      );
     if (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
       return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));
     const connection = this.socketFor(nodeId);

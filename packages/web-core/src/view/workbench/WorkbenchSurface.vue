@@ -414,8 +414,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :terminal-ready="page.terminalReady"
                 :runner-icon="page.runnerBrandIcon"
                 :session-title="page.sessionTitle"
-                :activity="page.sessionActivity"
-                :activity-label="page.sessionActivityLabel"
                 :content-search-ready="page.contentSearchReady"
                 @open-surface="page.openMobileWorkspaceSurface"
               />

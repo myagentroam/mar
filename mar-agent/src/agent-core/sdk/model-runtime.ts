@@ -82,6 +82,8 @@ export function createModelTurnSession(adapter: ModelAdapter): ModelTurnSession 
       }
     },
     resetContinuation: () => turn.resetContinuation?.(),
+    continuationInputCount: () => turn.continuationInputCount?.() ?? 0,
+    commitContinuationInput: (count) => turn.commitContinuationInput?.(count),
     close: () => turn.close()
   };
 }

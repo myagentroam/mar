@@ -212,12 +212,17 @@ export function validUserAuthorization(
 ): boolean {
   if (typeof value !== 'object' || value === null || nodeId === undefined) return false;
   const authorization = value as Record<string, unknown>;
+  const modelResourceCapability =
+    operation === 'model.resource.read' &&
+    authorization.userId === 0 &&
+    authorization.sessionHash === 'model-resource';
   return (
-    typeof authorization.userId === 'number' &&
-    Number.isSafeInteger(authorization.userId) &&
-    authorization.userId > 0 &&
-    typeof authorization.sessionHash === 'string' &&
-    /^[A-Za-z0-9_-]{43}$/.test(authorization.sessionHash) &&
+    (modelResourceCapability ||
+      (typeof authorization.userId === 'number' &&
+        Number.isSafeInteger(authorization.userId) &&
+        authorization.userId > 0 &&
+        typeof authorization.sessionHash === 'string' &&
+        /^[A-Za-z0-9_-]{43}$/.test(authorization.sessionHash))) &&
     authorization.nodeId === nodeId &&
     authorization.operation === operation &&
     authorization.requestId === envelope.id &&

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 import type { ConversationSegmentPage } from '../../packages/web-core/src/model/workbench.js';
 
-test('Session projection stays Watch-only across target switches and fresh reconnects', async ({
+test('Session projection stays Watch-only across target switches, refreshes and fresh reconnects', async ({
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -209,4 +209,49 @@ test('Session projection stays Watch-only across target switches and fresh recon
   await expect(page.getByText('RECONNECTED_WATCH_INITIAL', { exact: true })).toBeVisible();
   await expect(page.getByText('OLD_RECONNECT_POISON', { exact: false })).toHaveCount(0);
   await expect(page.getByText('BROADCAST_POISON', { exact: false })).toHaveCount(0);
+
+  // Hold the page-level handshake across a real reload, without delaying HTTP reads.
+  await page.addInitScript(() => {
+    const dispatch = EventTarget.prototype.dispatchEvent;
+    let holding = true;
+    EventTarget.prototype.dispatchEvent = function (event) {
+      if (
+        holding &&
+        event instanceof MessageEvent &&
+        typeof event.data === 'string' &&
+        event.data.includes('"type":"workbench.ready"')
+      ) {
+        Object.assign(window, {
+          releaseWorkbenchReady: () => {
+            holding = false;
+            dispatch.call(this, event);
+          }
+        });
+        return true;
+      }
+      return dispatch.call(this, event);
+    };
+  });
+  await page.reload();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          typeof (window as unknown as { releaseWorkbenchReady?: () => void }).releaseWorkbenchReady
+      )
+    )
+    .toBe('function');
+  await settle();
+  expect(watches).toHaveLength(3);
+  await expect(page.locator('.conversation-reload')).toHaveCount(0);
+  await expect(page.locator('.el-message--error')).toHaveCount(0);
+  await page.evaluate(() =>
+    (window as unknown as { releaseWorkbenchReady: () => void }).releaseWorkbenchReady()
+  );
+  await expect.poll(() => watches.length).toBe(4);
+  expect(watches[3]!.sessionId).toBe('session-2');
+  await snapshot(watches[3]!, 'REFRESHED_WATCH_INITIAL');
+  await expect(page.getByText('REFRESHED_WATCH_INITIAL', { exact: true })).toBeVisible();
+  await expect(page.locator('.conversation-reload')).toHaveCount(0);
+  await expect(page.locator('.el-message--error')).toHaveCount(0);
 });

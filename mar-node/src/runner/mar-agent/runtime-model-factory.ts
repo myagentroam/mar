@@ -1,4 +1,5 @@
 import {
+  MarAgentError,
   SecretValue,
   type MarAgentModelConfiguration,
   type ModelCredential,
@@ -130,6 +131,7 @@ export class MarAgentRuntimeModelFactory {
             ? { fastMode: true }
             : {}),
           hostedWebSearch: configuration.hostedWebSearch,
+          useResourceUrl: configuration.useResourceUrl,
           ...(imageGeneration === undefined ? {} : { imageGeneration }),
           ...(configuration.responsesTransport === undefined
             ? {}
@@ -151,13 +153,19 @@ export class MarAgentRuntimeModelFactory {
             apiKey: new SecretValue(credential.value)
           };
         if (credential?.type !== 'RUNTIME_TICKET')
-          throw new Error('MAR_AGENT_RUNTIME_MODEL_CREDENTIAL_INVALID');
+          throw new MarAgentError(
+            'MAR_AGENT_RUNTIME_MODEL_CREDENTIAL_INVALID',
+            'The runtime model credential is invalid.'
+          );
         if (
           context.runtimeScopeId === undefined ||
           context.runtimeScopeId !== credential.ticket.runtimeScopeId ||
           !credential.ticket.allowedModelIds.includes(configuration.id)
         )
-          throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID');
+          throw new MarAgentError(
+            'MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID',
+            'The runtime credential does not authorize this execution or model.'
+          );
         const provider = runtimeProvider(
           credential,
           configuration.id,
@@ -220,7 +228,10 @@ function runtimeProvider(
     context.runtimeScopeId !== credential.ticket.runtimeScopeId ||
     !credential.ticket.allowedModelIds.includes(consumerId)
   )
-    throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID');
+    throw new MarAgentError(
+      'MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID',
+      'The runtime credential does not authorize this execution or model.'
+    );
   const key = `${credential.credentialId}\0${credential.ticket.runtimeScopeId}\0${credential.ticket.purpose ?? 'MODEL'}`;
   let state = tickets.get(key);
   if (state === undefined) {
@@ -231,7 +242,10 @@ function runtimeProvider(
     };
     tickets.set(key, state);
   } else if (!sameRuntimeCredentialTicket(state.ticket, credential.ticket))
-    throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID');
+    throw new MarAgentError(
+      'MAR_AGENT_RUNTIME_CREDENTIAL_SCOPE_INVALID',
+      'The runtime credential does not authorize this execution or model.'
+    );
   const provider = new ServerRuntimeCredentialProvider(
     control,
     state,
@@ -262,7 +276,10 @@ class ServerRuntimeCredentialProvider implements ModelCredentialProvider {
 
   async acquire(reason: ModelCredentialAcquireReason): Promise<ModelCredential> {
     if (this.#closed || this.state.released)
-      throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED');
+      throw new MarAgentError(
+        'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+        'The runtime credential provider is closed.'
+      );
     if (isReusableCredential(this.state.credential, this.now())) {
       if (isWithinRefreshWindow(this.state.ticket.expiresAt, this.now()))
         this.refreshAutomatically();
@@ -355,8 +372,12 @@ class ServerRuntimeCredentialProvider implements ModelCredentialProvider {
       },
       signal
     );
-    if (this.state.released) throw new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED');
-    if ('error' in response) throw new Error(response.error.code);
+    if (this.state.released)
+      throw new MarAgentError(
+        'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+        'The runtime credential provider is closed.'
+      );
+    if ('error' in response) throw new MarAgentError(response.error.code, response.error.message);
     this.state.ticket = response.nextTicket;
     const credential: ModelCredential = {
       revision: response.credential.revision,
@@ -441,11 +462,21 @@ function waitForCredential(
   signal: AbortSignal
 ): Promise<ModelCredential> {
   if (signal.aborted)
-    return Promise.reject(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'));
+    return Promise.reject(
+      new MarAgentError(
+        'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+        'The runtime credential provider is closed.'
+      )
+    );
   return new Promise((resolve, reject) => {
     const abort = () => {
       cleanup();
-      reject(new Error('MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED'));
+      reject(
+        new MarAgentError(
+          'MAR_AGENT_RUNTIME_CREDENTIAL_PROVIDER_CLOSED',
+          'The runtime credential provider is closed.'
+        )
+      );
     };
     const cleanup = () => signal.removeEventListener('abort', abort);
     signal.addEventListener('abort', abort, { once: true });

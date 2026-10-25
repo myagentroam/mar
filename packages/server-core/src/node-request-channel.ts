@@ -70,7 +70,14 @@ export class NodeRequestChannel {
     observe?: RequestObserver
   ): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('NODE_CONTROL_CLOSED'));
-    if (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
+    const modelResourceCapability =
+      operation === 'model.resource.read' &&
+      user.userId === 0 &&
+      user.sessionHash === 'model-resource';
+    if (
+      !modelResourceCapability &&
+      (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
+    )
       return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));
     const socket = this.socketFor(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN)

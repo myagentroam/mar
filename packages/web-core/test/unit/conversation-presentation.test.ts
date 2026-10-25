@@ -1680,12 +1680,25 @@ describe('Conversation Show Aggregation', () => {
     for (const locale of ['zh-CN', 'en-US'] as const) {
       localePreferenceService().setLocale(locale);
       expect(conversationItemText('command_execution', payload)).toBe(code);
+      expect(conversationItemDetail('command_execution', payload)).toContain(code);
       expect(conversationItemDetail('command_execution', payload)).toContain('# README');
       expect(
         conversationDisplayItems([item('code-cell', 'command_execution', payload)])[0]?.type
       ).toBe('command_group');
     }
   });
+
+  it.each(['zh-CN', 'en-US'] as const)(
+    'keeps the full command available in details before output arrives in %s',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      const command = 'printf "%s" "  Original command  "\n\n# Full command tail';
+      expect(conversationItemDetail('command_execution', { command })).toContain(command);
+      const outputOnly = conversationItemDetail('command_execution', { outputPreview: 'done' });
+      expect(outputOnly).toContain('done');
+      expect(outputOnly).not.toContain(translate('presentation.command'));
+    }
+  );
 
   it('shows hosted search input when it arrives on a running tool card', () => {
     const payload = {

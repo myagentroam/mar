@@ -74,7 +74,12 @@ export const composerTagSchemas = {
     })
     .strict(),
   mar_restart: z.object({}).strict(),
-  mar_attachments: z.object({ files: z.array(attachment).min(1).max(5) }).strict(),
+  mar_attachments: z
+    .object({
+      files: z.array(attachment).min(1).max(5),
+      instruction: z.string().min(1).max(512).optional()
+    })
+    .strict(),
   mar_schedule: z.object({ objective: z.string().min(1).max(100_000) }).strict(),
   mar_skills: z
     .object({
@@ -197,7 +202,7 @@ function parseComposerPayload(raw: string): ComposerTagPart | undefined {
           ? ['objective', 'instruction']
           : kind === 'mar_schedule'
             ? ['objective']
-            : kind === 'mar_skills' || kind === 'mar_session_origin'
+            : kind === 'mar_skills' || kind === 'mar_session_origin' || kind === 'mar_attachments'
               ? ['instruction']
               : [];
     for (const field of root.fields) {

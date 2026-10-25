@@ -13,6 +13,7 @@ import FileTypeIcon from './FileTypeIcon.vue';
 
 const props = defineProps<{
   readonly root: WorkspaceFileTreeNode;
+  readonly rootPath?: string | undefined;
   readonly filter: string;
   readonly selectedPath: string | undefined;
   readonly disabled: boolean;
@@ -363,6 +364,7 @@ defineExpose({ reveal });
           v-memo="[
             row.node,
             row.node.name,
+            rootPath,
             row.node.kind,
             row.node.expanded,
             row.node.loading,
@@ -396,8 +398,8 @@ defineExpose({ reveal });
             @contextmenu="openNodeActions(row.node.path, $event)"
           >
             <button
-              v-tooltip="row.node.path === '.' ? row.node.name : row.node.path"
-              :aria-label="row.node.path === '.' ? row.node.name : row.node.path"
+              v-tooltip="row.node.path === '.' ? (rootPath ?? row.node.name) : row.node.path"
+              :aria-label="row.node.path === '.' ? (rootPath ?? row.node.name) : row.node.path"
               class="file-tree-row"
               type="button"
               role="treeitem"

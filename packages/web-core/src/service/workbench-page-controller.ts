@@ -126,7 +126,7 @@ import {
 import { promptCompletionPreferenceService } from './prompt-completion-preference-service.js';
 import { PromptCompletionClientService } from './prompt-completion-client-service.js';
 import { supportsNodeFeature } from '../util/node-features.js';
-import { errorCode } from '../util/api-error.js';
+import { ApiError, errorCode } from '../util/api-error.js';
 import {
   CONVERSATION_RECENT_SEGMENT_LIMIT,
   CONVERSATION_SEGMENT_PAGE_SIZE,
@@ -1764,6 +1764,11 @@ export function createWorkbenchPageController<
     await refreshNodes();
     if (generation !== authenticationRestoreGeneration) return;
     connectWorkbenchLive();
+    if (
+      !(await workbenchLiveConnection.waitForReady()) ||
+      generation !== authenticationRestoreGeneration
+    )
+      return;
     await restoreWorkbenchRoute();
     if (generation !== authenticationRestoreGeneration) return;
     await restoreHostedConversationRoute();
@@ -2107,7 +2112,7 @@ export function createWorkbenchPageController<
         target.workspaceId === previousTarget?.workspaceId &&
         group !== previousGroup
       )
-        void watchCoordinator.current?.restartWorkspace(target.workspaceId);
+        void watchCoordinator.current?.startWorkspace(target.workspaceId);
     }
   );
 
@@ -2385,6 +2390,17 @@ export function createWorkbenchPageController<
     canWatch: canWatchSessionHistory,
     hasInitialSnapshot: (sessionId) => sessionWatchController.hasInitialSessionSnapshot(sessionId),
     beginWatch: async (sessionId) => {
+      const requestId = currentDetailRequest();
+      const target = workspaceTarget.value;
+      if (
+        !(await workbenchLiveConnection.waitForReady()) ||
+        requestId !== currentDetailRequest() ||
+        target !== workspaceTarget.value ||
+        selectedSessionId.value !== sessionId ||
+        view.value !== 'nodes' ||
+        document.visibilityState !== 'visible'
+      )
+        throw new ApiError('WATCH_CANCELLED', 'The session selection was stopped or replaced.');
       const coordinator = watchCoordinator.current;
       if (coordinator === undefined) return false;
       await coordinator.restartSession(sessionId);

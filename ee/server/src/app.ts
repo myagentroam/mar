@@ -76,6 +76,7 @@ import { PersonalInstructionService } from './service/personal-instruction-servi
 import { PersonalGitService } from '@myagentroam/server-core/personal-git-service';
 import { registerPersonalGitRoutes } from '@myagentroam/server-core/personal-git-routes';
 import { MarAgentModelService } from './service/mar-agent-model-service.js';
+import { MarAgentResourceInputService } from '@myagentroam/server-core/mar-agent-resource-input-service';
 import {
   MarAgentRuntimeModelService,
   MarAgentCompactService
@@ -856,6 +857,7 @@ export function createServerApp(options: ServerAppOptions = {}): ServerApplicati
       );
     registerSystemSettingsRoutes({
       app,
+      resourceInput: new MarAgentResourceInputService(database as MysqlServerDatabase),
       database: database as MysqlServerDatabase,
       audits,
       network: skillNetwork,

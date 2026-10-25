@@ -5,6 +5,7 @@ import { createHostedConversationWorkspaceService } from '../../src/service/host
 import { createHostedConversationSelectionService } from '../../src/service/hosted-conversation-selection-service.js';
 import { createHostedConversationWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import {
   flushComponent,
   renderComponent,
@@ -51,14 +52,18 @@ beforeEach(() => {
     removeEventListener() {},
     matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
   });
-  vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {} });
+  vi.stubGlobal('document', {
+    documentElement: { lang: '' },
+    addEventListener() {},
+    removeEventListener() {}
+  });
 });
 afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
-async function fixture() {
+async function fixture(hasUnread = false) {
   const request = vi.fn(async () => ({ items: [first, second], nextCursor: null })) as Parameters<
     typeof createHostedConversationWorkspaceService
   >[0]['request'];
@@ -119,7 +124,7 @@ async function fixture() {
     sidebarCollapsed: false,
     restoringRoute: false,
     routeTarget: undefined,
-    hasUnreadConversation: () => false
+    hasUnreadConversation: () => hasUnread
   });
   await flushComponent();
   const row = (title: string) =>
@@ -134,6 +139,29 @@ async function fixture() {
 }
 
 describe('Hosted history selection during initial opening', () => {
+  it.each([
+    ['en-US', 'Unread'],
+    ['zh-CN', '未读']
+  ] as const)('renders unread history as a readable label in %s', async (locale, label) => {
+    const preference = localePreferenceService();
+    const previousLocale = preference.locale.value;
+    preference.setLocale(locale);
+    const f = await fixture(true);
+    try {
+      const badges = f.view
+        .findAll('span')
+        .filter((node) => String(node.props['class']).includes('history-unread-label'));
+      expect(badges).toHaveLength(2);
+      for (const badge of badges) {
+        expect(textContent(badge)).toBe(label);
+        expect(badge.props['aria-hidden']).not.toBe(true);
+      }
+    } finally {
+      f.view.unmount();
+      preference.setLocale(previousLocale);
+    }
+  });
+
   it.each(['success', 'failure'] as const)(
     'replaces A with B, deduplicates B and isolates late A %s and cleanup',
     async (outcome) => {

@@ -72,7 +72,7 @@ function close(): void {
 
 async function submit(): Promise<void> {
   const valid = await formRef.value?.validate().catch(() => false);
-  if (!valid || form.inactiveDays === undefined) return;
+  if (!valid || loading.value || form.inactiveDays === undefined) return;
   loading.value = true;
   try {
     const nextResult = await props.cleanup(form.inactiveDays);
@@ -100,13 +100,14 @@ async function submit(): Promise<void> {
     :before-close="requestClose"
     :close-on-click-modal="!loading"
     :close-on-press-escape="!loading"
+    :show-close="!loading"
     :model-value="modelValue"
     :title="translate('generated.workspaceSessionCleanupDialog.title')"
     width="min(480px, calc(100vw - 32px))"
     @update:model-value="emit('update:modelValue', $event)"
     :close-icon="marIcon('close')"
   >
-    <div v-loading="loading" class="workspace-session-cleanup-content" :aria-busy="loading">
+    <div class="workspace-session-cleanup-content" :aria-busy="loading">
       <template v-if="result === undefined">
         <p class="workspace-session-cleanup-description">
           {{ translate('generated.workspaceSessionCleanupDialog.description') }}
@@ -163,11 +164,13 @@ async function submit(): Promise<void> {
         <el-button :disabled="loading" @click="close">{{
           translate('generated.workspaceSessionCleanupDialog.cancel')
         }}</el-button>
-        <el-button type="danger" :disabled="loading" @click="submit">{{
-          loading
-            ? translate('generated.workspaceSessionCleanupDialog.cleaning')
-            : translate('generated.workspaceSessionCleanupDialog.cleanup')
-        }}</el-button>
+        <el-button
+          type="danger"
+          :loading="loading"
+          :loading-icon="marIcon('loading-action')"
+          @click="submit"
+          >{{ translate('generated.workspaceSessionCleanupDialog.cleanup') }}</el-button
+        >
       </template>
       <el-button v-else @click="close">{{ translate('common.close') }}</el-button>
     </template>

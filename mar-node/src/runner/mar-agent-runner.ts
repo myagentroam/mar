@@ -6,7 +6,9 @@ import type {
 } from '@myagentroam/protocol';
 import {
   marAgentNodeModelSummarySchema,
-  resolveMarAgentDefaultReasoningEffort
+  parseComposerTags,
+  resolveMarAgentDefaultReasoningEffort,
+  serializeComposerTag
 } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../database.js';
 import { nodeLog } from '../operational.js';
@@ -41,6 +43,23 @@ import { captureMarAgentExecutionInput } from './mar-agent/execution-input.js';
 
 export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   readonly name = 'mar-agent' as const;
+  override prepareMessageInput(input: string, collaborationMode: 'default' | 'plan'): string {
+    const prepared = super.prepareMessageInput(input, collaborationMode);
+    return parseComposerTags(prepared)
+      .map((part) => {
+        if (part.kind === 'text') return part.text;
+        if (
+          part.kind === 'mar_attachments' &&
+          part.payload.files.some((file) => file.mime.startsWith('image/'))
+        )
+          return serializeComposerTag('mar_attachments', {
+            ...part.payload,
+            instruction: 'Images are included. Use view_image only to revisit them.'
+          });
+        return part.raw;
+      })
+      .join('');
+  }
   override prepareExecutionContext(input: Readonly<Record<string, unknown>>) {
     return { runner: this.name, runnerInput: captureMarAgentExecutionInput(input) };
   }

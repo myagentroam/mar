@@ -189,7 +189,7 @@ const emit = defineEmits<{
           class="composer-command-states"
         >
           <button
-            v-tooltip="state.detail ?? state.label"
+            v-tooltip="state.detail !== state.label ? state.detail : undefined"
             v-for="state in commandStates"
             :key="state.commandId"
             :aria-label="state.detail ?? state.label"

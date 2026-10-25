@@ -1311,12 +1311,10 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   line-height: 1.5;
 }
 
-.tree-empty {
-  margin: 1rem 0.9rem;
-}
-
+.tree-empty,
 .tree-filter-empty {
   margin: 1rem 0.9rem;
+  text-align: center;
 }
 
 .tree-foot {

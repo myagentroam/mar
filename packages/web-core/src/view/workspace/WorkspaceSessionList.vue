@@ -536,7 +536,7 @@ function submitSessionSearch(): void {
                 <span
                   v-tooltip="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
                   v-if="hasUnread(session.id)"
-                  class="session-unread-label"
+                  class="session-unread-label mar-unread-label"
                   :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
                   >{{ translate('generated.workspaceSessionList.unread') }}</span
                 >
@@ -800,7 +800,7 @@ function submitSessionSearch(): void {
               <p class="effective-mcp-meta">{{ serverName }}</p>
             </div>
             <span class="effective-skill-tags">
-              <el-tag effect="plain" type="primary">{{
+              <el-tag effect="plain" type="info">{{
                 translate('generated.workspaceSessionList.executionInjected')
               }}</el-tag>
               <el-tag effect="plain" type="info">{{
@@ -864,6 +864,10 @@ function submitSessionSearch(): void {
 
 .watch-status.failed {
   color: var(--el-color-warning);
+}
+
+.watch-status:not(.failed) {
+  text-align: center;
 }
 
 .schedule-paused {
@@ -1091,6 +1095,7 @@ function submitSessionSearch(): void {
 .sidebar-empty {
   margin: 0.9rem 0;
   font-size: var(--mar-font-size-meta);
+  text-align: center;
 }
 
 @media (max-width: 767px) {
@@ -1144,17 +1149,6 @@ function submitSessionSearch(): void {
   margin-inline: -0.12rem;
   color: var(--mar-color-warning-accent);
   font-size: 0.68rem;
-}
-.session-unread-label {
-  flex: none;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 3px;
-  background: var(--mar-bg-page);
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 3px;
 }
 .effective-skill-list {
   min-height: 96px;

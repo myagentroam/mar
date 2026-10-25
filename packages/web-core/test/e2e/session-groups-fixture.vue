@@ -165,8 +165,6 @@ const props = {
         :content-search-ready="false"
         :runner-icon="props.runnerIcon"
         :session-title="props.title"
-        :activity="props.activity"
-        :activity-label="props.activityLabel"
       />
       <p>{{ selected }}</p>
       <p>{{ translate('sessionGroups.main') }}</p>

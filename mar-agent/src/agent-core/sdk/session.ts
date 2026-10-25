@@ -1,4 +1,4 @@
-import { restoreMessages } from '../runtime/context/restore.js';
+import { readResourceImages, restoreMessages } from '../runtime/context/restore.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import { createNativeSteer } from './native-steer.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
@@ -15,6 +15,9 @@ import {
 } from '../runtime/context/world-state.js';
 import { eventForPersistence, publicModelUsage } from '../runtime/event-projection.js';
 import { ExecutionLoop, type PreparedExecutionRound } from '../runtime/execution.js';
+import type { ModelImage } from '../model/image.js';
+import { publishModelResources } from '../runtime/resource-publication.js';
+import { ResourceInputProjection } from './resource-input.js';
 import {
   closeModelAdapters,
   createExecutionModelResources,
@@ -862,6 +865,7 @@ export function createSessionOpener(services: SessionServices) {
                   ...retainedModelContext
                 );
                 pendingAppends.length = 0;
+                resourceInput.replace(messages);
                 selected.resetContinuation?.();
               },
               // Derived state follows the committed splice, never delays it past the writer window.
@@ -907,6 +911,8 @@ export function createSessionOpener(services: SessionServices) {
                   .filter((entry) => !restoredIds.has(entry.recordId))
                   .map((entry) => entry.message);
                 messages.splice(0, messages.length, ...refreshed.messages, ...lateMessages);
+                resourceInput.replace(messages);
+                resourceInput.adoptGc(committed.projection.checkpoint?.inlineMedia?.state);
                 restoreMcpDiscovery();
                 recordedEnvironment = refreshed.environmentState;
                 userMessages = [...refreshed.userMessages];
@@ -982,8 +988,24 @@ export function createSessionOpener(services: SessionServices) {
                 smartPercent !== undefined &&
                 smartPercent >= AGENT_EXECUTION_POLICY.smartCompactionPercent &&
                 smartPercent < AGENT_EXECUTION_POLICY.automaticCompactionPercent;
-              const images = content.images?.length
-                ? await store.persistInputImages(sessionId, content.images)
+              const modelImages = await publishModelResources(
+                host,
+                content.images,
+                {
+                  sessionId,
+                  executionId
+                },
+                store
+              );
+              const actualContent =
+                modelImages === content.images
+                  ? content
+                  : {
+                      ...content,
+                      ...(modelImages === undefined ? {} : { images: modelImages })
+                    };
+              const images = modelImages?.length
+                ? await store.persistInputImages(sessionId, modelImages)
                 : [];
               const record = await store.append(
                 sessionId,
@@ -1015,7 +1037,7 @@ export function createSessionOpener(services: SessionServices) {
                 content: content.modelText ?? content.text,
                 metadata: inputMetadata
               });
-              committed(content, record.recordId, inputMetadata);
+              committed(actualContent, record.recordId, inputMetadata);
               for (const text of content.modelContext ?? content.context ?? [])
                 messages.push({ role: 'user', content: text, contextKind: 'contextual' });
             });
@@ -1142,10 +1164,7 @@ export function createSessionOpener(services: SessionServices) {
                       metadata,
                       ...(actual.images?.length
                         ? {
-                            images: actual.images.map(({ mimeType, dataBase64 }) => ({
-                              mimeType,
-                              dataBase64
-                            }))
+                            images: actual.images.map((image) => ({ ...image }))
                           }
                         : {})
                     });
@@ -1165,7 +1184,8 @@ export function createSessionOpener(services: SessionServices) {
           const hasRestoredUserImages = messages.some(
             (message) => message.role === 'user' && Boolean(message.images?.length)
           );
-          let modelInputImages: { mimeType: string; dataBase64: string }[] | undefined;
+          let modelInputImages: ModelImage[] | undefined;
+          const inputImageBytes = new Map<string, ModelImage>();
           const currentExecutionToolImages: ToolRuntimeImage[] = [];
           let currentExecutionUserIndex: number | undefined;
           await emit({ type: 'execution.started', mode, permissionMode: permissionPolicy.mode });
@@ -1185,6 +1205,26 @@ export function createSessionOpener(services: SessionServices) {
             executionModels
           );
           const selectedModel = executionModels.get(input.modelId ?? executionDefaultModelId)!;
+          const restoredMessageCount = messages.length;
+          const resourceInput = new ResourceInputProjection(
+            selectedModel.useResourceUrl === true,
+            store,
+            sessionId,
+            messages,
+            {
+              records: contextRecords,
+              persist: async (state) => {
+                await withRecordProjection(() =>
+                  store.append(sessionId, {
+                    type: 'resource.window',
+                    payload: state,
+                    executionId,
+                    turnId
+                  })
+                );
+              }
+            }
+          );
           const selected = modelResources.openTurn(
             selectedAdapter,
             services.hasCustomAdapters && selectedAdapter.createTurnSession === undefined
@@ -1324,9 +1364,7 @@ export function createSessionOpener(services: SessionServices) {
             sessionId,
             controller.signal,
             sourceBindings,
-            sessionSource.type === 'user' &&
-              (mode === 'run' || mode === 'plan') &&
-              !internal.automaticInput
+            sessionSource.type === 'user' && !internal.automaticInput
           );
           executionContext.toolSources = sources;
           const operation = <T>(run: (call: CoreOperationContext) => T): T =>
@@ -1392,7 +1430,12 @@ export function createSessionOpener(services: SessionServices) {
           ): Promise<ModelRequest> => {
             let lowered = candidate;
             if (coreExtensions.hooks.hasInterceptors('model.request')) {
-              const bridge = new ExtensionRequestBridge(modelId, candidate);
+              const bridge = new ExtensionRequestBridge(
+                modelId,
+                candidate,
+                undefined,
+                selected.continuationInputCount?.() ?? 0
+              );
               const request = await operation((call) =>
                 coreExtensions.hooks.invoke(
                   'model.request',
@@ -1402,6 +1445,7 @@ export function createSessionOpener(services: SessionServices) {
                 )
               );
               lowered = bridge.lower(request);
+              if (bridge.rewroteCommittedInput) selected.resetContinuation?.();
             }
             for (const definition of lowered.tools) {
               const binding = bindings.get(definition.name);
@@ -1607,6 +1651,7 @@ export function createSessionOpener(services: SessionServices) {
                 : subagents.captureParentFrame(executionId);
             const roundSmartInput = smartInput;
             const toolContext: ToolRuntimeContext = {
+              imageStore: store,
               host: host,
               requestSmartCompact: () => {
                 controller.signal.throwIfAborted();
@@ -1672,8 +1717,21 @@ export function createSessionOpener(services: SessionServices) {
                 );
               }
             };
-            const recentImages = () =>
-              currentExecutionImages(modelInputImages, currentExecutionToolImages);
+            const recentImages = async () => {
+              const inputImages = await Promise.all(
+                (modelInputImages ?? []).map(async (image) => {
+                  if (image.dataBase64 !== undefined || image.resourceId === undefined)
+                    return image;
+                  const cached = inputImageBytes.get(image.resourceId);
+                  if (cached !== undefined) return cached;
+                  const source = await store.readResource(sessionId, image.resourceId);
+                  const restored = { ...image, ...source };
+                  inputImageBytes.set(image.resourceId, restored);
+                  return restored;
+                })
+              );
+              return currentExecutionImages(inputImages, currentExecutionToolImages);
+            };
             const toolScope: RoundToolScope = {
               context: toolContext,
               tools: roundTools,
@@ -1704,8 +1762,7 @@ export function createSessionOpener(services: SessionServices) {
               recentImages,
               captureCodeContext: () => ({
                 ...toolContext,
-                waitInterrupt: undefined,
-                recentImages: recentImages()
+                waitInterrupt: undefined
               }),
               codeModeContext: async (call) => {
                 const stateSnapshot =
@@ -1781,6 +1838,9 @@ export function createSessionOpener(services: SessionServices) {
           sources.bind(captureRoundToolScope().toolScope);
           let preparingRequestMessages: readonly ModelMessage[] | undefined;
           let preparingRequestBaseLength = 0;
+          let dispatchedInputCount = 0;
+          const completedMediaRequests = new WeakSet<readonly ModelMessage[]>();
+          let dispatchedLocalCount = 0;
           executionContext.requestMessages = {
             read: () =>
               preparingRequestMessages !== undefined
@@ -1837,14 +1897,12 @@ export function createSessionOpener(services: SessionServices) {
                 call,
                 (actual, recordId, metadata) => {
                   entered = true;
-                  modelInputImages = actual.images?.map(({ mimeType, dataBase64 }) => ({
-                    mimeType,
-                    dataBase64
-                  }));
+                  modelInputImages = actual.images?.map((image) => ({ ...image }));
                   messages.push({
                     role: 'user',
                     content: actual.modelText ?? actual.text,
-                    metadata
+                    metadata,
+                    ...(modelInputImages?.length ? { images: modelInputImages } : {})
                   });
                   currentExecutionUserIndex = messages.length - 1;
                   internal.inputCommitted?.(recordId);
@@ -1888,8 +1946,17 @@ export function createSessionOpener(services: SessionServices) {
                       'MAR_AGENT_INPUT_CAPABILITY_UNSUPPORTED',
                       'Selected model does not support image input.'
                     );
-                  const images = content.images?.length
-                    ? await store.persistInputImages(sessionId, content.images)
+                  const modelImages = await publishModelResources(
+                    host,
+                    content.images,
+                    {
+                      sessionId,
+                      executionId
+                    },
+                    store
+                  );
+                  const images = modelImages?.length
+                    ? await store.persistInputImages(sessionId, modelImages)
                     : [];
                   const record = await store.append(
                     sessionId,
@@ -2026,7 +2093,12 @@ export function createSessionOpener(services: SessionServices) {
               turnId
             });
             let lastServerContextTokens = lastServerUsage?.contextInputTokens;
-            let compactBoundary = messages.length;
+            let compactBoundary = restoredMessageCount;
+            const advanceCompactBoundary = () => {
+              // Keep a new image with its complete tool round until a model accepts it.
+              if (!resourceInput.hasPendingImages(messages.slice(compactBoundary)))
+                compactBoundary = messages.length;
+            };
             const invalidateCompactUsage = () => {
               lastServerContextTokens = undefined;
               lastServerUsage = undefined;
@@ -2056,7 +2128,9 @@ export function createSessionOpener(services: SessionServices) {
                 )
               )
                 return false;
-              const compactHistory = structuredClone(prefix);
+              const compactHistory = structuredClone(prefix).map(
+                ({ images: _images, ...message }) => message
+              );
               const prefixInputs = modelContext.compactInputs(prefix);
               const snapshotTools = structuredClone(projectTools(executionTools));
               const generation = modelContext.worldState.generation;
@@ -2167,6 +2241,7 @@ export function createSessionOpener(services: SessionServices) {
                     {
                       summary: actual,
                       replacementHistory,
+                      inlineMediaState: resourceInput.checkpoint(retainedModelContext),
                       retainedModelContext: retainedModelContext.map((message) => {
                         const source = messageSources.get(message);
                         const saved =
@@ -2187,7 +2262,16 @@ export function createSessionOpener(services: SessionServices) {
                               ...(saved as { role: 'user'; content: string }),
                               ...(message.metadata ? { metadata: message.metadata } : {})
                             }
-                          : message;
+                          : {
+                              ...message,
+                              ...(message.images?.length
+                                ? {
+                                    images: message.images.map(
+                                      ({ dataBase64: _bytes, ...image }) => image
+                                    )
+                                  }
+                                : {})
+                            };
                       }),
                       pendingInputs: [...pendingInputs.values()],
                       snapshotMessageCount: prefix.length,
@@ -2203,6 +2287,7 @@ export function createSessionOpener(services: SessionServices) {
                     options
                   );
                   modelContext.replaceCompactMessages(replacementHistory, retainedModelContext);
+                  compactBoundary = messages.length - retainedModelContext.length;
                   return record;
                 }
               );
@@ -2309,7 +2394,7 @@ export function createSessionOpener(services: SessionServices) {
                 } catch (error) {
                   controller.signal.throwIfAborted();
                   if (!hadPending) throw error;
-                  compactBoundary = messages.length;
+                  advanceCompactBoundary();
                   compacted = await compactContext();
                 }
                 if (!compacted)
@@ -2382,7 +2467,7 @@ export function createSessionOpener(services: SessionServices) {
                 updateMcpRegistry();
                 executionTools = mcpRegistry.project(baseTools());
                 await modelContext.syncMcpWorldState(messages.length);
-                compactBoundary = messages.length;
+                advanceCompactBoundary();
                 const blocking = compactRequests.drain((input) =>
                   startCompact({
                     ...(input.prompt === undefined ? {} : { focus: input.prompt }),
@@ -2454,24 +2539,67 @@ export function createSessionOpener(services: SessionServices) {
                   // Never sample the candidate assembled against the replaced context.
                   return prepareRound(pendingOutputContinuation, true);
                 }
-                return { request, toolScope };
+                resourceInput.observe(candidateRequest.messages);
+                const media =
+                  sessionSource.type === 'subagent'
+                    ? undefined
+                    : await resourceInput.gcCandidate(request, candidateRequest.images);
+                if (media?.reason === 'HARD_LIMIT') {
+                  const appendBoundary = pendingAppends.length;
+                  const committed = await contextGc.run({
+                    inlineMedia: media,
+                    mediaView: (messages) => resourceInput.historyView(messages),
+                    store,
+                    sessionId,
+                    system: request.system,
+                    tools: toolScope.tools,
+                    modelId: selectedModel.id,
+                    contextWindowTokens: selectedModel.contextWindowTokens,
+                    usage: lastServerUsage ?? {},
+                    ...modelConfiguration.contextProjection,
+                    workspace: logicalWorkspace,
+                    platform: description.platform
+                  });
+                  if (committed) {
+                    await modelContext.adoptGcCheckpoint(committed, appendBoundary);
+                    return prepareRound(pendingOutputContinuation, true);
+                  }
+                }
+                return {
+                  request: await resourceInput.prepare(
+                    request,
+                    candidateRequest.images,
+                    candidateRequest.messages
+                  ),
+                  toolScope
+                };
               },
               startModel: async function* (request) {
                 const snapshots = (sessionRuntime.requestSnapshots ??=
                   new ExtensionRequestSnapshots());
                 const snapshot = snapshots.record(selectedModel.id, request);
+                dispatchedInputCount = request.messages.length;
+                dispatchedLocalCount = messages.length;
                 yield* streamModel(async function* (nativeSignal) {
                   for await (const event of selected.start(request, nativeSignal)) {
-                    if (snapshot && event.type === 'completed' && event.reason !== 'cancelled')
-                      snapshots.complete(snapshot);
+                    if (event.type === 'completed' && event.reason !== 'cancelled') {
+                      completedMediaRequests.add(request.messages);
+                      if (snapshot) snapshots.complete(snapshot);
+                    }
                     yield event;
                   }
                 }, controller.signal);
               },
               recoverySignal: () => controller.signal,
               compactContext,
-              afterModel: async (closedPrefixLength) => {
-                compactBoundary = closedPrefixLength;
+              afterModel: async (closedPrefixLength, acceptedRequest) => {
+                selected.commitContinuationInput?.(
+                  dispatchedInputCount + messages.length - dispatchedLocalCount
+                );
+                if (acceptedRequest && completedMediaRequests.has(acceptedRequest.messages)) {
+                  await resourceInput.complete(acceptedRequest);
+                  compactBoundary = closedPrefixLength;
+                }
                 if (
                   lastServerContextTokens !== undefined &&
                   (lastServerContextTokens * 100) / selectedModel.contextWindowTokens >=
@@ -2492,7 +2620,7 @@ export function createSessionOpener(services: SessionServices) {
                 }
               },
               checkpoint: async (round, latestUsage) => {
-                compactBoundary = messages.length;
+                advanceCompactBoundary();
                 const blocking = compactRequests.drain((input) =>
                   startCompact({
                     ...(input.prompt === undefined ? {} : { focus: input.prompt }),
@@ -2504,21 +2632,19 @@ export function createSessionOpener(services: SessionServices) {
                   await compactCoordinator.checkpoint(false).catch(() => {
                     controller.signal.throwIfAborted();
                   });
-                if (
-                  !compactCoordinator.pending &&
-                  sessionSource.type !== 'subagent' &&
-                  latestUsage !== undefined
-                ) {
+                if (!compactCoordinator.pending && sessionSource.type !== 'subagent') {
                   // Only a committed GC checkpoint may replace active context and invalidate continuation.
                   const appendBoundary = pendingAppends.length;
                   const committed = await contextGc.run({
+                    inlineMedia: await resourceInput.gcCandidate(),
+                    mediaView: (messages) => resourceInput.historyView(messages),
                     store,
                     sessionId,
                     system: round.request.system,
                     tools: round.toolScope.tools,
                     modelId: selectedModel.id,
                     contextWindowTokens: selectedModel.contextWindowTokens,
-                    usage: latestUsage,
+                    usage: latestUsage ?? {},
                     ...modelConfiguration.contextProjection,
                     workspace: logicalWorkspace,
                     platform: description.platform,
@@ -2807,8 +2933,23 @@ export function createSessionOpener(services: SessionServices) {
         call.signal.throwIfAborted();
         const targetRuntime = sessionRuntimes.get(target);
         const requestMessages = targetRuntime?.execution?.requestMessages;
-        if (selection.view === 'request' && requestMessages)
-          return sessionMessagesPage(requestMessages.read(), selection);
+        if (selection.view === 'request' && requestMessages) {
+          const messages = requestMessages.read();
+          const restored = selection.includeImages
+            ? await Promise.all(
+                messages.map(async (message) =>
+                  message.images?.length
+                    ? {
+                        ...message,
+                        images: await readResourceImages(store, target, message.images)
+                      }
+                    : message
+                )
+              )
+            : messages;
+          call.signal.throwIfAborted();
+          return sessionMessagesPage(restored, selection);
+        }
         const modelState = services.modelState();
         const requestModel =
           selection.view === 'request'

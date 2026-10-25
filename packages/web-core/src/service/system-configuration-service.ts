@@ -66,6 +66,15 @@ export function createSystemConfigurationService(
 ) {
   const settings = [
     ...extensions,
+    {
+      key: 'mar-agent-resource-input',
+      field: 'useResourceUrl',
+      payloadField: 'useResourceUrl',
+      nameKey: 'marAgentModels.useResourceUrl',
+      descriptionKey: 'marAgentModels.globalResourceUrlDescription',
+      type: 'boolean' as const,
+      initialValue: true
+    },
     smtpSetting,
     webPushSetting,
     htmlPreviewOriginSetting,

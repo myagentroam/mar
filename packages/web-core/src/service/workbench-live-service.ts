@@ -59,6 +59,8 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
   let workbenchResumeToken: string | undefined;
   let reconnectingSocket = false;
   const connected = ref(false);
+  let pendingReady:
+    { readonly promise: Promise<boolean>; readonly resolve: (ready: boolean) => void } | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let nextPingId = 0;
   const pendingPings = new Map<string, number>();
@@ -96,6 +98,24 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     // Reconnects load authoritative state instead of restoring event history.
   }
 
+  function waitForReady(): Promise<boolean> {
+    if (connected.value) return Promise.resolve(true);
+    if (pendingReady === undefined) {
+      let resolve!: (ready: boolean) => void;
+      const promise = new Promise<boolean>((complete) => {
+        resolve = complete;
+      });
+      pendingReady = { promise, resolve };
+    }
+    return pendingReady.promise;
+  }
+
+  function finishReady(ready: boolean): void {
+    const pending = pendingReady;
+    pendingReady = undefined;
+    pending?.resolve(ready);
+  }
+
   function handleMessage(value: unknown): void {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
     const message = value as Record<string, unknown>;
@@ -110,6 +130,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       const resumed = message.resumed === true;
       connected.value = true;
       options.onReady?.(workbenchConnectionId, resumed);
+      finishReady(true);
       if (reconnectingSocket) options.onConnectionRestored?.(resumed);
       if (reconnectingSocket && resumed) options.onReconnect();
       reconnectingSocket = false;
@@ -213,6 +234,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       );
     });
     next.addEventListener('message', (raw) => {
+      if (socket !== next) return;
       const startedAt = performance.now();
       const text = String(raw.data);
       let message: unknown;
@@ -237,10 +259,14 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       options.diagnostics?.setConnectionState('disconnected');
       options.onDisconnected?.();
       if (event.code === 4001 && event.reason === 'UNAUTHENTICATED') {
+        finishReady(false);
         options.onUnauthenticated();
         return;
       }
-      if (!options.canConnect()) return;
+      if (!options.canConnect()) {
+        finishReady(false);
+        return;
+      }
       reconnectTimer = setTimeout(() => {
         reconnectTimer = undefined;
         connect();
@@ -255,6 +281,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     const current = socket;
     socket = undefined;
     connected.value = false;
+    finishReady(false);
     stopPing();
     options.diagnostics?.setConnectionState('disconnected');
     current?.close(1000, 'PAGE_CLOSED');
@@ -305,6 +332,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
   }
   return {
     connected: readonly(connected),
+    waitForReady,
     restore,
     connect,
     reconnect,
