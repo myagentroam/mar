@@ -472,7 +472,7 @@ describe('SDK inline media lifecycle', () => {
     ).toHaveLength(0);
   });
 
-  it.each(['usage', 'no-usage', 'model-switch'])(
+  it.each(['usage', 'no-usage', 'model-switch', 'reopen-no-usage'])(
     'hard-GCs history before dispatch while preserving fresh media (%s)',
     async (mode) => {
       const emitUsage = mode !== 'no-usage';
@@ -505,6 +505,23 @@ describe('SDK inline media lifecycle', () => {
         ).toMatchObject({ status: 'completed' });
         expect(adapter.resetContinuationCalls).toBe(0);
 
+        if (mode === 'reopen-no-usage') {
+          vi.spyOn(adapter, 'start').mockImplementationOnce(async function* () {
+            throw new Error('Simulated provider failure before usage.');
+          });
+          expect(await session.run({ prompt: 'Continue without usage.' }).result()).toMatchObject({
+            status: 'failed'
+          });
+          await agent.dispose();
+          adapter = new ScriptedAdapter(modelBase, [
+            {
+              events: [{ type: 'text.completed', itemId: 'reopened', text: 'fresh image retained' }]
+            }
+          ]);
+          agent = await create(adapter);
+          session = await agent.openSession(sessionId);
+        }
+
         if (mode === 'model-switch') {
           await agent.dispose();
           adapter = new ScriptedAdapter({ ...modelBase, id: 'new-model', modelId: 'new-model' }, [
@@ -523,7 +540,8 @@ describe('SDK inline media lifecycle', () => {
             })
             .result()
         ).toMatchObject({ status: 'completed' });
-        const dispatched = adapter.requests[mode === 'model-switch' ? 0 : 1]!;
+        const dispatched =
+          adapter.requests[mode === 'model-switch' || mode === 'reopen-no-usage' ? 0 : 1]!;
         expect(dispatched.imageHashes).toEqual([imageHash(freshImage)]);
         expect(
           dispatched.messages.some((message) => message.content.includes('protected old history'))

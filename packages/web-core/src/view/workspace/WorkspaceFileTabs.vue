@@ -38,8 +38,10 @@ const emit = defineEmits<{
   forward: [];
 }>();
 const root = ref<HTMLElement>();
+const surface = ref<InstanceType<typeof FilePreviewSurface>>();
 const pageHandles = new Map<number, WorkspaceFilePageHandle>();
 const closing = ref(false);
+const leaving = ref(false);
 const activeTab = computed(
   () => props.tabs.find((tab) => tab.id === props.activeTabId) ?? props.tabs.at(-1)
 );
@@ -105,12 +107,17 @@ async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<b
     )
       return false;
     const closesLastTab = ids.length === props.tabs.length;
+    if (closesLastTab && props.presentation !== 'window' && surface.value) {
+      leaving.value = true;
+      if (!(await surface.value.close())) return false;
+    }
     for (const handle of handles) handle?.prepareForConfirmedClose?.();
     if (all) emit('closeAll', ids);
     else emit('close', ids[0]!);
     if (closesLastTab) emit('closeLast');
     return true;
   } finally {
+    leaving.value = false;
     closing.value = false;
   }
 }
@@ -245,6 +252,7 @@ defineExpose({
 <template>
   <FilePreviewSurface
     v-if="props.tabs.length > 0"
+    ref="surface"
     :overlay="props.presentation !== 'window'"
     :label="previewLabel"
     @focus="focusActivePage"
@@ -254,6 +262,7 @@ defineExpose({
       ref="root"
       class="workspace-file-tabs"
       :class="{ 'is-window': props.presentation === 'window' }"
+      :inert="leaving"
       tabindex="-1"
       :role="props.presentation === 'window' ? 'region' : undefined"
       :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"

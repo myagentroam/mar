@@ -11,13 +11,14 @@ export interface ImageMetadata {
   width: number;
   height: number;
   pages: number;
+  mimeType: ViewImageResult['mimeType'];
 }
 
 export interface ProcessedImage {
   bytes: Buffer;
   width: number;
   height: number;
-  mimeType: 'image/png';
+  mimeType: ViewImageResult['mimeType'];
   sourceWidth?: number;
   sourceHeight?: number;
   region?: ViewImageRegion;
@@ -46,7 +47,7 @@ export async function readImageMetadata(
     const width = metadata.autoOrient?.width ?? metadata.width;
     const height = metadata.autoOrient?.height ?? metadata.height;
     assertPixelLimit(width, height);
-    return { width, height, pages: metadata.pages ?? 1 };
+    return { width, height, pages: metadata.pages ?? 1, mimeType };
   } catch (error) {
     throwIfAborted(signal);
     if (error instanceof MarAgentError) throw error;
@@ -98,7 +99,18 @@ export async function processImage(
         withoutEnlargement: true
       });
     }
-    const output = await image.png().toBuffer({ resolveWithObject: true });
+    switch (metadata.mimeType) {
+      case 'image/png':
+        image.png();
+        break;
+      case 'image/jpeg':
+        image.jpeg({ quality: 90 });
+        break;
+      case 'image/webp':
+        image.webp({ quality: 90 });
+        break;
+    }
+    const output = await image.toBuffer({ resolveWithObject: true });
     throwIfAborted(signal);
     if (output.data.byteLength > TOOL_EXECUTION_LIMITS.viewImageMaxBytes) throw imageOutputLimit();
 
@@ -113,7 +125,7 @@ export async function processImage(
       bytes: output.data,
       width: output.info.width,
       height: output.info.height,
-      mimeType: 'image/png',
+      mimeType: metadata.mimeType,
       ...(changedRegion || changedSize
         ? { sourceWidth: metadata.width, sourceHeight: metadata.height }
         : {}),

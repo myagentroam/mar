@@ -481,16 +481,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     ? translate('generated.workbenchSurface.run', {
                         value0: page.selectedRunnerCommand.id
                       })
-                    : page.composerInputDisabled
-                      ? page.nodeManifest === undefined &&
+                    : page.nodeManifest === undefined &&
                         page.workspaceHost?.connected === true &&
                         page.workspaceHost.disabled !== true
-                        ? page.nodeManifestLoading
-                          ? translate('generated.workspaceInspector.loading')
-                          : translate(
-                              'generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable'
-                            )
-                        : translate('generated.workbenchSurface.thisSessionIsReadOnly')
+                      ? page.nodeManifestLoading
+                        ? translate('generated.workspaceInspector.loading')
+                        : translate(
+                            'generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable'
+                          )
                       : translate(
                           'generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles',
                           {

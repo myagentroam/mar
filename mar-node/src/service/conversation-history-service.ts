@@ -17,10 +17,11 @@ import type { ExternalSessionActivationState } from './session-domain-state.js';
 import { nodeLog } from '../operational.js';
 
 export function hasManagedActiveRun(runtime: NodeRuntimeState, session: NodeAgentSession): boolean {
+  const current = runtime.getAgentSession(session.id) ?? session;
   return (
-    session.nativeControl === 'MAR_MANAGED' &&
+    current.nativeControl === 'MAR_MANAGED' &&
     runtime
-      .listRunsForSession(session.id)
+      .listRunsForSession(current.id)
       .some(
         (run) =>
           run.status === 'STARTING' || run.status === 'RUNNING' || run.status === 'CANCELLING'

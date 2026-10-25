@@ -265,6 +265,61 @@ describe('local image file integrity', () => {
     expect(noOpResize.data).not.toHaveProperty('sourceHeight');
   });
 
+  it.each(['jpeg', 'webp'] as const)(
+    'preserves %s encoding for path and resource transforms',
+    async (format) => {
+      const source = await sharp(await stripedPng())
+        .toFormat(format, { quality: 90 })
+        .toBuffer();
+      const { tool } = await fixture(source);
+      const input = { region: { x: 0, y: 0, width: 2, height: 2 }, resize: { maxWidth: 1 } };
+      const result = await tool.execute({ path: 'image.bin', ...input });
+      const resource = await viewResourceImage(
+        { resourceId: 'stored-image', ...input },
+        async () => ({ dataBase64: source.toString('base64') })
+      );
+      expect(result.data).toMatchObject({ mimeType: `image/${format}`, width: 1, height: 1 });
+      expect(result.images?.[0]?.mimeType).toBe(`image/${format}`);
+      expect(resource.images).toEqual(result.images);
+      const bytes = Buffer.from(result.images![0]!.dataBase64, 'base64');
+      expect((await sharp(bytes).metadata()).format).toBe(format);
+      expect(result.data).toMatchObject({
+        bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex')
+      });
+      expect((await tool.execute({ path: 'image.bin' })).images?.[0]?.dataBase64).toBe(
+        source.toString('base64')
+      );
+    }
+  );
+
+  it('does not reject a JPEG crop solely because lossless PNG would exceed the output limit', async () => {
+    const raw = Buffer.alloc(2200 * 1600 * 3);
+    let seed = 123456789;
+    for (let index = 0; index < raw.length; index++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      raw[index] = seed & 255;
+    }
+    const source = await sharp(raw, { raw: { width: 2200, height: 1600, channels: 3 } })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    const region = { x: 0, y: 0, width: 1600, height: 1200 };
+    const pngCrop = await sharp(source)
+      .extract({ left: 0, top: 0, width: region.width, height: region.height })
+      .png()
+      .toBuffer();
+    expect(source.length).toBeLessThan(TOOL_EXECUTION_LIMITS.viewImageMaxBytes);
+    expect(pngCrop.length).toBeGreaterThan(TOOL_EXECUTION_LIMITS.viewImageMaxBytes);
+    const { tool } = await fixture(source);
+    const result = await tool.execute({ path: 'image.bin', region });
+    expect(result.data).toMatchObject({ mimeType: 'image/jpeg', width: 1600, height: 1200 });
+    expect(Buffer.from(result.images![0]!.dataBase64, 'base64').length).toBeLessThanOrEqual(
+      TOOL_EXECUTION_LIMITS.viewImageMaxBytes
+    );
+  });
+
   it('uses EXIF-oriented source dimensions and crop coordinates', async () => {
     const pixels = Buffer.from([
       255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 0, 255, 128, 128, 128, 255,

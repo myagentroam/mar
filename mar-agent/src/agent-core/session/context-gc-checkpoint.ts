@@ -1175,6 +1175,7 @@ function triggerMatchesRecords(
       if (typeof record.payload.modelId === 'string') modelId = record.payload.modelId;
       if (isPositiveInteger(record.payload.contextWindowTokens))
         contextWindowTokens = record.payload.contextWindowTokens;
+      if (withoutUsage) latestMatchingUsageSequence = undefined;
     }
     const matchingConfiguration =
       modelId === payload.trigger.modelId &&

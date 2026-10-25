@@ -155,7 +155,7 @@ export class SessionCatalogService {
       workspaceId === undefined || session.workspaceId === workspaceId;
     const native = nativeSessions
       .filter(inWorkspace)
-      .map((session) => this.options.present({ ...session, externalDiscovered: true }));
+      .map((session) => ({ ...session, externalDiscovered: true }));
     const projections = this.options.projection.projectionsForNative(native);
     const sources = new Map<string, NodeAgentSession>();
     for (const candidate of native) {
@@ -199,10 +199,12 @@ export class SessionCatalogService {
     const merged = new Map(
       [
         ...projected,
-        ...native.filter(
-          (candidate) =>
-            candidate.externalSessionId === null || projections.get(candidate) === undefined
-        )
+        ...native
+          .filter(
+            (candidate) =>
+              candidate.externalSessionId === null || projections.get(candidate) === undefined
+          )
+          .map((session) => this.options.present(session))
       ].map((session) => [session.id, session] as const)
     );
     if (workspaceId !== undefined)
