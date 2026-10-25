@@ -46,7 +46,10 @@ for (const [width, theme, locale] of [
         return result;
       });
       const runningDots = page.locator('.session-activity.managed_active i');
-      await expect(runningDots).toHaveCount(3);
+      await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
+      await expect(page.locator('.workspace-tab-running i')).toHaveCount(1);
+      await expect(chats.locator('.session-activity.managed_active i')).toHaveCount(1);
+      await expect(runningDots).toHaveCount(2);
       for (const dot of await runningDots.all()) {
         await expect(dot).toHaveCSS('background-color', palette.brand);
         await expect(dot).toHaveCSS('width', '5px');

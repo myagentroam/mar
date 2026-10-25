@@ -13,8 +13,6 @@ defineProps<{
   readonly contentSearchReady: boolean;
   readonly runnerIcon: (runner: RunnerId) => string;
   readonly sessionTitle: (session: Session) => string;
-  readonly activity: (session: Session) => string;
-  readonly activityLabel: (session: Session) => string;
 }>();
 
 const emit = defineEmits<{
@@ -58,14 +56,6 @@ async function copySessionId(sessionId: string): Promise<void> {
               : sessionTitle(session!)
           }}
         </h2>
-        <span
-          v-tooltip="{ content: activityLabel(session), touch: true }"
-          v-if="session && !sessionIsDraft(session) && activity(session) === 'MANAGED_ACTIVE'"
-          :class="['session-activity', activity(session).toLocaleLowerCase()]"
-          :aria-label="activityLabel(session)"
-          role="img"
-          ><i aria-hidden="true"
-        /></span>
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button

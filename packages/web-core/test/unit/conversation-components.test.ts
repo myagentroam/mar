@@ -642,9 +642,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       terminalReady: true,
       contentSearchReady: false,
       runnerIcon: (runner: string) => `/icons/${runner}.svg`,
-      sessionTitle: () => 'must not render for draft',
-      activity: () => 'IDLE',
-      activityLabel: () => 'Ready'
+      sessionTitle: () => 'must not render for draft'
     });
 
     expect(html).toContain('conversation-header-draft');
@@ -671,15 +669,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       terminalReady: false,
       contentSearchReady: true,
       runnerIcon: (runner: string) => `/icons/${runner}.svg`,
-      sessionTitle: () => 'Original session title',
-      activity: () => 'MANAGED_ACTIVE',
-      activityLabel: () => 'Original activity'
+      sessionTitle: () => 'Original session title'
     });
 
     expect(html).toContain('Original session title');
     expect(html).toMatch(/<code(?:\s[^>]*)?>session-1<\/code>/u);
-    expect(html).toContain('aria-label="Original activity"');
-    expect(html).not.toContain('title="Original activity"');
+    expect(html).not.toContain('session-activity');
     expect(html).toContain(
       `aria-label="${i18n.global.t('generated.conversationHeader.copySessionId', {
         sessionId: 'session-1'
@@ -690,7 +685,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
   });
 
-  it('only renders an activity indicator for a managed active session', async () => {
+  it('omits duplicate header activity indicators for active and idle sessions', async () => {
     const session: Session = {
       id: 'session-1',
       workspaceId: 'workspace-1',
@@ -704,21 +699,21 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       terminalReady: false,
       contentSearchReady: false,
       runnerIcon: (runner: string) => `/icons/${runner}.svg`,
-      sessionTitle: () => 'Session title',
-      activityLabel: () => 'Session activity'
+      sessionTitle: () => 'Session title'
     };
 
     const managed = await render(ConversationHeader, {
       ...props,
-      activity: () => 'MANAGED_ACTIVE'
+      session: { ...session, activity: 'MANAGED_ACTIVE' }
     });
     const idle = await render(ConversationHeader, {
       ...props,
-      activity: () => 'IDLE'
+      session: { ...session, activity: 'IDLE' }
     });
 
-    expect(managed).toContain('session-activity managed_active');
-    expect(managed).toContain('aria-label="Session activity"');
+    expect(managed).toContain('Session title');
+    expect(managed).toContain('conversation-session-id');
+    expect(managed).not.toContain('session-activity');
     expect(idle).not.toContain('session-activity');
   });
 

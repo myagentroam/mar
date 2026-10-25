@@ -256,8 +256,6 @@ function finishPreview() {
       :content-search-ready="true"
       :runner-icon="() => ''"
       :session-title="() => 'Review session'"
-      :activity="() => (touchDetails ? 'MANAGED_ACTIVE' : 'IDLE')"
-      :activity-label="() => (touchDetails ? 'Managed by an agent' : 'Idle')"
     />
     <ConversationWorkProcess
       :block="{

@@ -193,7 +193,7 @@ test('Long reasoning history stays responsive through progressive rendering and 
   expect(Math.max(...gaps)).toBeLessThan(1000);
 });
 
-test('Touch conversation details reveal status and unavailable change reasons', async ({
+test('Touch conversation details reveal titles and unavailable change reasons', async ({
   browser
 }) => {
   const context = await browser.newContext({
@@ -207,8 +207,7 @@ test('Touch conversation details reveal status and unavailable change reasons', 
     const hint = page.locator('[role="tooltip"]:visible');
     await page.locator('.conversation-header h2').tap();
     await expect(hint).toHaveText('Review session');
-    await page.locator('.conversation-header .session-activity').tap();
-    await expect(hint).toHaveText('Managed by an agent');
+    await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
     await page.getByText('File changes', { exact: true }).tap();
     await expect(page.locator('.conversation-file-change-note')).toBeVisible();
     // Reading starts after expansion; scrolling during the height animation dismisses hints.
@@ -250,6 +249,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return {
           text: color('--mar-conversation-text'),
           muted: color('--mar-conversation-muted'),
+          primary: color('--mar-text-primary'),
           brand: color('--mar-color-brand-text'),
           canvas: color('--mar-conversation-canvas'),
           panel: color('--mar-bg-panel')
@@ -326,14 +326,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const copy = page.locator('.conversation-session-id button');
       await expect(copy).toHaveCSS('cursor', 'pointer');
       await copy.hover();
-      await expect(copy.locator('code')).toHaveCSS('color', tokens.brand);
+      await expect(copy.locator('code')).toHaveCSS('color', tokens.primary);
       for (const control of [
         page.getByTestId('native-utility'),
         page.getByTestId('element-utility')
       ]) {
         await control.hover();
         await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        await expect(control).toHaveCSS('color', tokens.brand);
+        await expect(control).toHaveCSS('color', tokens.primary);
         await control.focus();
         await page.keyboard.press('Tab');
         await page.keyboard.press('Shift+Tab');
@@ -345,7 +345,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await control.evaluate((element) => element.setAttribute('aria-expanded', 'true'));
         await page.mouse.move(0, 0);
         await control.evaluate((element) => element.blur());
-        await expect(control).toHaveCSS('color', tokens.brand);
+        await expect(control).toHaveCSS('color', tokens.primary);
         await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       }
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();

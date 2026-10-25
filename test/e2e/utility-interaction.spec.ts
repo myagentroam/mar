@@ -234,6 +234,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}`);
       await expect(page.locator('.queue-item-actions').getByRole('button')).toHaveCount(3);
+      const header = page.locator('.conversation-header');
+      await expect(header.locator('.session-activity')).toHaveCount(0);
+      await expect(header).not.toHaveAttribute('activity');
+      await expect(header).not.toHaveAttribute('activity-label');
       const controls = [
         page.getByTestId('native'),
         page.getByTestId('element'),
