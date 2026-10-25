@@ -2196,7 +2196,7 @@ export function createWorkbenchPageController<
     viewCache: workspaceViewCache,
     resetQueue: () => (workspaceQueue.value = { version: 0, paused: false, items: [] }),
     openSession,
-    openDraft: () => openNewSessionComposer(),
+    openDraft: () => openDraftSessionComposer(),
     restoreDraft: (cache) => {
       restoreWorkspaceDraft(cache);
       if (cache?.draft === undefined) restoreSessionDraft();
@@ -2415,7 +2415,7 @@ export function createWorkbenchPageController<
       );
       return result.session;
     },
-    openDraft: () => openNewSessionComposer(),
+    openDraft: () => openDraftSessionComposer(),
     notice: (error) => notice(message(error), 'error', error),
     currentSelectionRevision: () =>
       currentDetailRequest() + workbenchWorkspaceSelectionService.currentSelectionRevision(),
@@ -2472,7 +2472,7 @@ export function createWorkbenchPageController<
     replaceSession,
     refreshSessions: refreshWorkspaceSessions,
     discardNodeCaches: discardNodeViewCaches,
-    openDraft: () => openNewSessionComposer(),
+    openDraft: () => openDraftSessionComposer(),
     replaceUrl: syncWorkbenchRoute,
     clearNodeDetails
   });
@@ -2503,7 +2503,7 @@ export function createWorkbenchPageController<
     onComposerAttachmentDragLeave,
     onComposerAttachmentDrop,
     onNewSessionPaste,
-    openNewSessionComposer
+    openNewSessionComposer: openDraftSessionComposer
   } = createWorkbenchNewSessionController({
     workspaceTarget,
     selectedSessionId,
@@ -2535,6 +2535,11 @@ export function createWorkbenchPageController<
     addNewSessionFiles,
     focusInputAt: (cursor) => focusComposerInputAt(cursor)
   });
+  function openNewSessionComposer(): void {
+    // Explicit New starts a main session; restoring an empty Workspace keeps its group.
+    selectWorkspaceSessionGroup('MAIN');
+    openDraftSessionComposer();
+  }
   openNewSessionComposerShortcut = openNewSessionComposer;
 
   async function createRegistrationToken(context?: NodeRegistrationContext): Promise<void> {
