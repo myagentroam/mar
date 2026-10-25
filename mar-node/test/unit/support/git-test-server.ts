@@ -420,6 +420,7 @@ async function createCertificates(root: string): Promise<{
   await runCommand('openssl', [
     'req',
     '-x509',
+    '-sha256',
     '-newkey',
     'rsa:2048',
     '-nodes',
@@ -434,7 +435,9 @@ async function createCertificates(root: string): Promise<{
     '-addext',
     'basicConstraints=critical,CA:TRUE',
     '-addext',
-    'keyUsage=critical,keyCertSign,cRLSign'
+    'keyUsage=critical,keyCertSign,cRLSign',
+    '-addext',
+    'subjectKeyIdentifier=hash'
   ]);
   await runCommand('openssl', [
     'req',
@@ -456,12 +459,15 @@ async function createCertificates(root: string): Promise<{
       'subjectAltName=IP:127.0.0.1',
       'basicConstraints=critical,CA:FALSE',
       'keyUsage=digitalSignature,keyEncipherment',
-      'extendedKeyUsage=serverAuth'
+      'extendedKeyUsage=serverAuth',
+      'subjectKeyIdentifier=hash',
+      'authorityKeyIdentifier=keyid,issuer'
     ].join('\n')
   );
   await runCommand('openssl', [
     'x509',
     '-req',
+    '-sha256',
     '-in',
     request,
     '-CA',
@@ -475,6 +481,15 @@ async function createCertificates(root: string): Promise<{
     '1',
     '-extfile',
     extensions
+  ]);
+  await runCommand('openssl', [
+    'verify',
+    '-x509_strict',
+    '-purpose',
+    'sslserver',
+    '-CAfile',
+    authority,
+    certificate
   ]);
   return { authority, certificate, key };
 }

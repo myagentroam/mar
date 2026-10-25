@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 async function fixture(environment: NodeJS.ProcessEnv = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'mar-exec-shell-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'mar-exec-shell-')));
   roots.push(root);
   const home = join(root, 'home');
   const workspace = join(root, "workspace with 'quotes'");
