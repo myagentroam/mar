@@ -68,7 +68,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
             :max="99"
             type="primary"
           />
-          <span v-if="state[group].unread" class="group-unread">{{
+          <span v-if="state[group].unread" class="group-unread mar-unread-label">{{
             translate('sessionGroups.unread')
           }}</span>
         </span>
@@ -147,17 +147,6 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   font-variant-numeric: tabular-nums;
   border-radius: var(--mar-radius-marker);
   height: auto;
-  line-height: 1.2;
-  padding: 0 0.1875rem;
-}
-.group-unread {
-  flex: none;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-bg-page);
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 600;
   line-height: 1.2;
   padding: 0 0.1875rem;
 }

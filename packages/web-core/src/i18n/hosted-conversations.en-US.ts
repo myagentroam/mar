@@ -86,6 +86,7 @@ export const hostedConversationsEnUS = {
     pinned: 'Pinned “{title}”.',
     unpinned: 'Unpinned “{title}”.',
     pinnedLabel: 'Pinned',
+    unreadLabel: 'Unread',
     deleteNamed: 'Delete conversation “{title}”',
     deleteTitle: 'Delete conversation?',
     deleteConfirmation: 'Deleting “{title}” cannot be undone. Continue?',

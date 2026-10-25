@@ -918,6 +918,21 @@ pre {
   opacity: 0.55;
 }
 
+.mar-unread-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--mar-border-medium);
+  border-radius: var(--mar-radius-marker);
+  background: transparent;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding: 0 0.1875rem;
+}
+
 .utility-control {
   background: transparent;
   color: var(--mar-text-secondary);

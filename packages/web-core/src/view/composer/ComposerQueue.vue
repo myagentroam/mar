@@ -384,12 +384,14 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           @dragover.prevent
           @drop.prevent="emit('reorder', item.queueItemId)"
         >
-          <span class="queue-drag" aria-hidden="true">⠿</span>
-          <span class="work-item-kind">{{
-            composerMessagePresentation({ text: item.content }).restarted
-              ? translate('presentation.systemRestart')
-              : translate('generated.composerQueue.queueType', { position: index + 1 })
-          }}</span>
+          <span class="queue-item-label">
+            <span class="queue-drag" aria-hidden="true">⠿</span>
+            <span class="work-item-kind">{{
+              composerMessagePresentation({ text: item.content }).restarted
+                ? translate('presentation.systemRestart')
+                : translate('generated.composerQueue.queueType', { position: index + 1 })
+            }}</span>
+          </span>
           <div class="queue-item-content">
             <small
               v-tooltip="messageSource(item)?.title"
@@ -728,12 +730,18 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 
 .queue-item {
   display: grid;
-  grid-template-columns: 16px max-content minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
   gap: 8px;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.queue-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .queue-item .work-item-kind {
@@ -802,6 +810,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
 }
 
 .queue-drag {
+  flex: 0 0 12px;
   cursor: grab;
   color: var(--mar-text-faint);
   font-size: 14px;

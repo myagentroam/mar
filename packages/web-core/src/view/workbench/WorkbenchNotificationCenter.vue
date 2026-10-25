@@ -309,9 +309,11 @@ const emit = defineEmits<{
                 <button type="button" @click="openNotification(notification)">
                   <span class="workbench-notification-title">
                     <strong>{{ notification.title }}</strong>
-                    <span v-if="!notification.read" class="notification-unread-label">{{
-                      translate('generated.workbenchNotificationCenter.unread')
-                    }}</span>
+                    <span
+                      v-if="!notification.read"
+                      class="notification-unread-label mar-unread-label"
+                      >{{ translate('generated.workbenchNotificationCenter.unread') }}</span
+                    >
                   </span>
                   <small>{{ notification.message }}</small>
                   <time :datetime="new Date(notification.updatedAt).toISOString()">{{
@@ -574,17 +576,6 @@ const emit = defineEmits<{
 .workbench-notification-title strong {
   min-width: 0;
   color: inherit;
-}
-.notification-unread-label {
-  flex: none;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-bg-page);
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 4px;
 }
 .workbench-notification-list time {
   color: var(--mar-text-muted);

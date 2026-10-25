@@ -12,6 +12,7 @@ import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 const composerFixture = new URL(location.href).searchParams.has('composer');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
+const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const fileRootPath = ref('/home/example/my-agent-roam');
@@ -43,6 +44,15 @@ const sessions = ['active', 'idle', 'other'].map(
   (id) => ({ id, runner: 'mar', status: 'READY' }) as Session
 );
 const sessionProps = {
+  ...(unreadFixture
+    ? {
+        sessionGroup: 'MAIN' as const,
+        groupState: {
+          MAIN: { running: 1, unread: true },
+          CHILD: { running: 0, unread: true }
+        }
+      }
+    : {}),
   sessions,
   mobileViewport: mobile,
   canLoadMore: false,
@@ -71,7 +81,7 @@ const sessionProps = {
   refreshing: false,
   workspaceManageable: false,
   request: async <T,>() => ({}) as T,
-  hasUnread: () => false
+  hasUnread: () => unreadFixture
 };
 const surfacePage = {
   view: 'nodes',
@@ -171,7 +181,7 @@ if (composerFixture) {
         :direct-available="() => false"
         :direct-description="() => undefined"
         :has-active-run="() => false"
-        :has-unread="() => false"
+        :has-unread="() => unreadFixture"
         @activate="activeTab = $event.id"
       />
     </section>

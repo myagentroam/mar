@@ -1040,9 +1040,9 @@ onBeforeUnmount(() => {
               ></span>
               <span
                 v-if="hasUnreadConversation(conversation.nodeId, conversation.id)"
-                class="history-unread-indicator"
-                aria-hidden="true"
-              ></span>
+                class="history-unread-label mar-unread-label"
+                >{{ translate('hostedConversations.unreadLabel') }}</span
+              >
               <strong>{{ hostedConversationTitle(conversation) }}</strong>
             </span>
             <time :datetime="new Date(conversation.lastActivityAt).toISOString()">
@@ -1671,8 +1671,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.history-run-indicator,
-.history-unread-indicator {
+.history-run-indicator {
   width: 7px;
   height: 7px;
   flex: none;
@@ -1682,10 +1681,6 @@ onBeforeUnmount(() => {
 .history-run-indicator {
   background: var(--mar-color-success-text);
   box-shadow: 0 0 0 2px var(--mar-color-success-bg);
-}
-
-.history-unread-indicator {
-  background: var(--mar-color-brand);
 }
 
 .history-row-actions {

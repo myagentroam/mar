@@ -9,6 +9,47 @@ test.afterAll(async () => {
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Unread labels share typography, color and geometry in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&unread=1`);
+      const properties = [
+        'color',
+        'background-color',
+        'border-top-color',
+        'border-top-width',
+        'border-radius',
+        'font-size',
+        'font-weight',
+        'line-height',
+        'padding',
+        'height'
+      ];
+      const reference = page.locator('.session-unread-label').first();
+      await expect(reference).toBeVisible();
+      const expected = await reference.evaluate(
+        (element, properties) =>
+          Object.fromEntries(
+            properties.map((name) => [name, getComputedStyle(element).getPropertyValue(name)])
+          ),
+        properties
+      );
+      for (const selector of ['.workspace-tab-unread', '.group-unread', '.session-unread-label']) {
+        const badges = page.locator(`${selector}:visible`);
+        expect(await badges.count()).toBeGreaterThan(0);
+        for (const badge of await badges.all())
+          for (const [property, value] of Object.entries(expected))
+            await expect(badge).toHaveCSS(property, value);
+      }
+      await page.goto(`${fixture.url}visual-alignment.html?theme=${theme}`);
+      await page.locator('.workbench-notification-center button').first().click();
+      const notification = page.locator('.notification-unread-label').first();
+      await expect(notification).toBeVisible();
+      for (const [property, value] of Object.entries(expected))
+        await expect(notification).toHaveCSS(property, value);
+    }
+  });
+
   test(`File tree roots use the actual directory instead of the Workspace alias in ${theme}`, async ({
     page
   }) => {

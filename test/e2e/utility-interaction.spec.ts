@@ -67,6 +67,39 @@ async function checkUtility(
 }
 
 for (const width of [1280, 390]) {
+  test(`Queue drag label stays compact without crowding content at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
+    const row = page.locator('.queue-item');
+    await expect(row).toBeVisible();
+    const drag = row.locator('.queue-drag');
+    if (width < 768) await expect(drag).toBeHidden();
+    else await expect(drag).toBeVisible();
+    const layout = await row.evaluate((element) => {
+      const drag = element.querySelector('.queue-drag')!.getBoundingClientRect();
+      const label = element.querySelector('.work-item-kind')!.getBoundingClientRect();
+      const content = element.querySelector('.queue-item-content')!.getBoundingClientRect();
+      const actions = element.querySelector('.queue-item-actions')!.getBoundingClientRect();
+      return {
+        dragWidth: drag.width,
+        dragGap: label.left - drag.right,
+        contentGap: content.left - label.right,
+        actionGap: actions.left - content.right,
+        right: element.getBoundingClientRect().right,
+        actionsRight: actions.right
+      };
+    });
+    if (width >= 768) {
+      expect(layout.dragWidth).toBe(12);
+      expect(layout.dragGap).toBeCloseTo(4, 0);
+    }
+    expect(layout.contentGap).toBeCloseTo(width < 768 ? 6 : 8, 0);
+    expect(layout.actionGap).toBeCloseTo(width < 768 ? 6 : 8, 0);
+    expect(layout.actionsRight).toBeLessThanOrEqual(layout.right);
+  });
+
   test(`Queue and Goal editors cancel only their own draft with Escape at ${width}px`, async ({
     browser
   }) => {

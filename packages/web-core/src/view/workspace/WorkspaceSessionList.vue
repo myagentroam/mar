@@ -536,7 +536,7 @@ function submitSessionSearch(): void {
                 <span
                   v-tooltip="translate('generated.workspaceSessionList.hasUnreadNotifications2')"
                   v-if="hasUnread(session.id)"
-                  class="session-unread-label"
+                  class="session-unread-label mar-unread-label"
                   :aria-label="translate('generated.workspaceSessionList.hasUnreadNotifications')"
                   >{{ translate('generated.workspaceSessionList.unread') }}</span
                 >
@@ -1144,17 +1144,6 @@ function submitSessionSearch(): void {
   margin-inline: -0.12rem;
   color: var(--mar-color-warning-accent);
   font-size: 0.68rem;
-}
-.session-unread-label {
-  flex: none;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 3px;
-  background: var(--mar-bg-page);
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 3px;
 }
 .effective-skill-list {
   min-height: 96px;
