@@ -488,15 +488,28 @@ async function createCertificates(root: string): Promise<{
     '-extfile',
     extensions
   ]);
-  await runCommand('openssl', [
-    'verify',
-    '-x509_strict',
-    '-purpose',
-    'sslserver',
-    '-CAfile',
-    authority,
-    certificate
-  ]);
+  try {
+    await runCommand('openssl', [
+      'verify',
+      '-x509_strict',
+      '-purpose',
+      'sslserver',
+      '-CAfile',
+      authority,
+      certificate
+    ]);
+  } catch (error) {
+    // Only this isolated fixture's public certificates are diagnostic material, never its keys.
+    console.info(
+      'GIT_TLS_FIXTURE_PUBLIC_CHAIN',
+      JSON.stringify({
+        openssl: (await runCommand('openssl', ['version'])).trim(),
+        authority: await readFile(authority, 'utf8'),
+        certificate: await readFile(certificate, 'utf8')
+      })
+    );
+    throw error;
+  }
   return { authority, certificate, key };
 }
 
