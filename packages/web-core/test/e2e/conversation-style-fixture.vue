@@ -29,6 +29,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
 const timelineVisible = ref(true);
@@ -125,7 +126,26 @@ const turns = ref<ConversationTurn[]>([
             }
           }
         ]
-      : items
+      : spacingFixture
+        ? ['command', 'read', 'tool'].flatMap((kind) =>
+            Array.from({ length: 3 }, (_, index): ConversationItem => ({
+              id: `${kind}-${index}`,
+              kind: kind === 'command' ? 'command_execution' : 'tool_call',
+              status: 'COMPLETED',
+              processGroup: { id: 'spacing-process', isStart: kind === 'command' && index === 0 },
+              payload:
+                kind === 'command'
+                  ? { command: `echo review-${index}`, outputPreview: 'Review output' }
+                  : {
+                      toolName: kind === 'read' ? 'read' : 'review',
+                      outputSummary: 'Review output',
+                      ...(kind === 'read'
+                        ? { toolPresentation: { kind: 'READ', paths: [`src/file-${index}.ts`] } }
+                        : {})
+                    }
+            }))
+          )
+        : items
   }
 ]);
 async function loadStressHistory() {

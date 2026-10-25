@@ -231,6 +231,39 @@ test('Touch conversation details reveal titles and unavailable change reasons', 
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Grouped conversation rows keep consistent compact spacing in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
+      await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+      const groups = page.locator('.conversation-record-group');
+      await expect(groups).toHaveCount(3);
+      for (const group of await groups.all()) {
+        await group.locator(':scope > summary').click();
+        await expect(group.locator(':scope > details')).toHaveCount(3);
+        const spacing = await group.evaluate((element) => {
+          const rows = Array.from(element.children).map((child) => child.getBoundingClientRect());
+          return rows.slice(1).map((row, index) => row.top - rows[index]!.bottom);
+        });
+        for (const gap of spacing) {
+          expect(gap).toBeGreaterThanOrEqual(0);
+          expect(gap).toBeLessThanOrEqual(4);
+          expect(gap).toBeCloseTo(spacing[0]!, 1);
+        }
+        const child = group.locator(':scope > details').first();
+        await child.locator(':scope > summary').click();
+        await expect(child.locator(':scope > p')).toBeVisible();
+        await child.locator(':scope > summary').click();
+        await expect(child.locator(':scope > p')).toHaveCount(0);
+      }
+      await page.locator('.conversation-timeline').screenshot({
+        path: testInfo.outputPath(`group-spacing-${width}.png`)
+      });
+    }
+  });
+
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
     page
   }, testInfo) => {

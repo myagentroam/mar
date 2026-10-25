@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
 import {
   conversationDisplayItems,
@@ -25,6 +25,46 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'does not repeat a visible output truncation marker in %s',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      for (const kind of ['READ', 'SKILL', 'WEB_FETCH']) {
+        for (const marker of ['[tool event summary truncated]', '[truncated]']) {
+          const output = `Partial output... ${marker}\n`;
+          const detail = toolPresentationDetails({
+            ...payload({ kind }),
+            outputSummary: output,
+            truncated: true
+          });
+          expect(detail).toContain(output);
+          expect(detail).not.toContain(translate('toolPresentation.truncated'));
+        }
+        for (const output of ['Partial output…', '[truncated]\nMore output follows']) {
+          const detail = toolPresentationDetails({
+            ...payload({ kind }),
+            outputSummary: output,
+            truncated: true
+          });
+          expect(detail).toContain(translate('toolPresentation.truncated'));
+        }
+      }
+      // Search and sleep do not display output, so a hidden marker cannot replace the warning.
+      for (const kind of ['WEB_SEARCH', 'SLEEP']) {
+        expect(
+          toolPresentationDetails({
+            ...payload({ kind }),
+            outputSummary: '[tool event summary truncated]',
+            truncated: true
+          })
+        ).toContain(translate('toolPresentation.truncated'));
+      }
+      expect(toolPresentationDetails(payload({ kind: 'READ' }))).not.toContain(
+        translate('toolPresentation.truncated')
+      );
+    }
+  );
+
   it('keeps fixed-title tool rows visible even before helper facts arrive or after failure', () => {
     for (const kind of ['WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'])
       for (const status of ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'CANCELLED'])
