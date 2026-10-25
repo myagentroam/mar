@@ -5,7 +5,10 @@ import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
 import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
-import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
+import type {
+  WorkspaceFileOpenIntent,
+  WorkspaceFileTab
+} from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
@@ -59,10 +62,16 @@ function createTabs(): WorkspaceFileTab[] {
 const tabs = ref<WorkspaceFileTab[]>(createTabs());
 const active = ref(1);
 const loading = ref(true);
+const inspector = ref<{
+  openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void>;
+}>();
+const completedOpens = ref(0);
 createTooltipApp({
   render: () => {
-    if (query.has('diff-navigation'))
-      return h(Inspector, {
+    if (query.has('diff-navigation') || query.has('format-focus')) {
+      const view = h(Inspector, {
+        ref: inspector,
+        standaloneFileMode: query.has('format-focus'),
         nodeId: 'node',
         workspaceId: 'workspace',
         workspaceName: 'project',
@@ -84,6 +93,34 @@ createTooltipApp({
           files: { files: { entries: [], nextCursor: null, truncated: false } }
         }
       });
+      if (!query.has('format-focus')) return view;
+      return h('div', [
+        h(
+          'button',
+          {
+            id: 'git-format-source',
+            style: { position: 'fixed', top: '8px', right: '8px', zIndex: 3000 },
+            'data-completed-opens': completedOpens.value,
+            onClick: async () => {
+              await inspector.value?.openWorkspaceFileTab({
+                kind: query.get('format-focus') === 'history' ? 'HISTORY_TEXT' : 'WORKTREE_DIFF',
+                nodeId: 'node',
+                workspaceId: 'workspace',
+                path: 'diagram.svg',
+                repositoryPath: '',
+                worktreePath: '',
+                ...(query.get('format-focus') === 'history'
+                  ? { commit: 'b'.repeat(40), refs: ['refs/heads/main'] }
+                  : {})
+              });
+              completedOpens.value += 1;
+            }
+          },
+          'Open Git format file'
+        ),
+        view
+      ]);
+    }
     return h('div', [
       h(
         'button',

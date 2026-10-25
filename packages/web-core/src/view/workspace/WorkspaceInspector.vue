@@ -808,14 +808,32 @@ function openWorkspaceFile(
 
 async function openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void> {
   if (
-    intent.kind === 'HISTORY_TEXT' ||
-    (intent.kind === 'HISTORY_DIFF' && usesRawFilePreview(intent.path))
+    usesRawFilePreview(intent.path) &&
+    (intent.kind === 'WORKTREE_DIFF' ||
+      intent.kind === 'HISTORY_DIFF' ||
+      intent.kind === 'HISTORY_TEXT')
   ) {
-    await openHistoryText(intent);
+    if (!ready.value || (intent.kind !== 'WORKTREE_DIFF' && !intent.commit)) return;
+    const navigation = ++fileOpenGeneration;
+    const generation = inspectorGeneration;
+    const opening =
+      intent.kind === 'WORKTREE_DIFF' ? openWorktreeDiffText(intent) : openHistoryText(intent);
+    const target = workspaceFileTabService.activeTab.value;
+    await opening;
+    await nextTick();
+    if (
+      navigation === fileOpenGeneration &&
+      generation === inspectorGeneration &&
+      target !== undefined &&
+      target.nodeId === props.nodeId &&
+      target.workspaceId === props.workspaceId &&
+      workspaceFileTabService.activeTabId.value === target.id
+    )
+      workspaceFileTabsRef.value?.focusPage(target.id);
     return;
   }
-  if (intent.kind === 'WORKTREE_DIFF' && usesRawFilePreview(intent.path)) {
-    await openWorktreeDiffText(intent);
+  if (intent.kind === 'HISTORY_TEXT') {
+    await openHistoryText(intent);
     return;
   }
   const source = currentFilePosition();
@@ -1512,7 +1530,7 @@ async function openWorktreeDiffText(tab: WorkspaceFileOpenIntent): Promise<void>
           ? tab.path
           : `${tab.repositoryPath}/${tab.path}`
         : tab.path;
-  await openWorkspaceFile(
+  const opening = openWorkspaceFile(
     path,
     undefined,
     tab.worktreePath === '' ? undefined : tab.worktreePath,
@@ -1522,6 +1540,7 @@ async function openWorktreeDiffText(tab: WorkspaceFileOpenIntent): Promise<void>
   );
   const targetId = workspaceFileTabService.activeTabId.value;
   if (targetId !== undefined) recordFileNavigation(source, targetId);
+  await opening;
 }
 
 function openDiffEditor(tab: WorkspaceFileTab): void {
