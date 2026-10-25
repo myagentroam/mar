@@ -1411,6 +1411,17 @@ describe('unified inline media GC', () => {
     expect(validateContextGcCheckpoint(fixture.values, record)?.inlineMedia?.state).toEqual(
       candidate!.state
     );
+    expect(
+      validateContextGcCheckpoint(fixture.values, {
+        ...record,
+        payload: {
+          ...selected!.draft,
+          checkpointId: 'media',
+          generation: 1,
+          trigger: { ...selected!.draft.trigger, usageSequence: null, contextInputTokens: 0 }
+        }
+      })
+    ).toBeUndefined();
   });
 
   it('does not independently collect a below-trigger text hitchhike candidate', async () => {
@@ -1467,31 +1478,42 @@ describe('unified inline media GC', () => {
     );
   });
 
-  it('anchors usage-free media checkpoints without permitting new text replacements', async () => {
-    const { fixture, candidate, tokens } = await mediaFixture(3 * 1_048_576, true);
-    const combined = plan(
-      fixture.values,
-      { contextInputTokens: tokens },
-      { inlineMedia: candidate! }
-    )!;
-    expect(combined.draft.replacements.length).toBeGreaterThan(0);
-    const withoutUsage = fixture.values.filter(
-      (record) => (record.payload as { type?: string }).type !== 'usage.updated'
-    );
-    const selected = plan(withoutUsage, {}, { inlineMedia: candidate! })!;
-    expect(selected.draft.trigger.usageSequence).toBeNull();
-    expect(selected.draft.replacements).toEqual([]);
-    const record = fixture.add('context.gc.completed', {
-      ...selected.draft,
-      checkpointId: 'without-usage',
-      generation: 1
-    });
-    expect(validateContextGcCheckpoint(withoutUsage, record)).toBeDefined();
-    expect(
-      validateContextGcCheckpoint(withoutUsage, {
-        ...record,
-        payload: { ...(record.payload as object), replacements: combined.draft.replacements }
-      })
-    ).toBeUndefined();
-  });
+  it.each([false, true])(
+    'anchors usage-free media checkpoints without permitting new text replacements (historical usage=%s)',
+    async (historicalUsage) => {
+      const { fixture, candidate, tokens } = await mediaFixture(3 * 1_048_576, true);
+      const combined = plan(
+        fixture.values,
+        { contextInputTokens: tokens },
+        { inlineMedia: candidate! }
+      )!;
+      expect(combined.draft.replacements.length).toBeGreaterThan(0);
+      if (historicalUsage)
+        fixture.add('execution.header', {
+          modelId: 'coding',
+          contextWindowTokens: 10_000,
+          mode: 'run'
+        });
+      const withoutUsage = historicalUsage
+        ? fixture.values
+        : fixture.values.filter(
+            (record) => (record.payload as { type?: string }).type !== 'usage.updated'
+          );
+      const selected = plan(withoutUsage, {}, { inlineMedia: candidate! })!;
+      expect(selected.draft.trigger.usageSequence).toBeNull();
+      expect(selected.draft.replacements).toEqual([]);
+      const record = fixture.add('context.gc.completed', {
+        ...selected.draft,
+        checkpointId: 'without-usage',
+        generation: 1
+      });
+      expect(validateContextGcCheckpoint(withoutUsage, record)).toBeDefined();
+      expect(
+        validateContextGcCheckpoint(withoutUsage, {
+          ...record,
+          payload: { ...(record.payload as object), replacements: combined.draft.replacements }
+        })
+      ).toBeUndefined();
+    }
+  );
 });

@@ -318,9 +318,12 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
   const text = inspectTextGc(input);
   const media = input.inlineMedia;
   if (!media || (media.reason === 'TEXT_GC' && !text.plan)) return text;
-  const usageRecord = latestUsageRecord(input.records, input.modelId) ?? input.records.at(-1);
-  const contextUsageTokens = modelContextUsage(input.usage) ?? 0;
-  if (!usageRecord || contextUsageTokens === undefined) return text;
+  const currentUsage = modelContextUsage(input.usage);
+  const usageRecord =
+    (currentUsage === undefined ? undefined : latestUsageRecord(input.records, input.modelId)) ??
+    input.records.at(-1);
+  const contextUsageTokens = currentUsage ?? 0;
+  if (!usageRecord) return text;
   input = {
     ...input,
     tokenCache: new Map(),
@@ -831,6 +834,7 @@ function finalizePlan(
     replacements,
     trigger: {
       usageSequence:
+        modelContextUsage(input.usage) !== undefined &&
         isRecord(evaluated.usageRecord.payload) &&
         evaluated.usageRecord.payload.type === 'usage.updated'
           ? evaluated.usageRecord.sequence

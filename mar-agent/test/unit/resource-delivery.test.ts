@@ -302,7 +302,7 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
       [true, 'add'],
       [true, 'replace']
     ] as const)(
-      'delivers top-level hook images once without replaying attachment mirrors (URL=%s, %s)',
+      'delivers top-level hook images once while retaining attachment history without duplicate mirrors (URL=%s, %s)',
       async (useResourceUrl, operation) => {
         const { baseUrl, requests } = await startProtocolServer(protocol, [
           { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
@@ -371,7 +371,7 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
           : protocol === 'OPENAI_RESPONSES'
             ? `data:image/png;base64,${imageABase64}`
             : imageABase64;
-        const retained = useResourceUrl && operation === 'replace' ? [expectedAttachment] : [];
+        const retained = operation === 'replace' ? [expectedAttachment] : [];
         expect(requests.map((body) => imagePayloads(body, protocol))).toEqual([
           [...(operation === 'replace' ? [expectedAttachment] : []), expectedHook],
           retained,
@@ -466,7 +466,7 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
           [wireImage],
           [],
           [wireImage],
-          []
+          [wireImage]
         ]);
       }
     );
@@ -501,7 +501,7 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
         [wireImage],
         [],
         [wireImage],
-        []
+        [wireImage]
       ]);
     });
 
@@ -532,11 +532,11 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
       expect(requests.map((body) => imagePayloads(body, protocol))).toEqual([
         [wireImage],
         [wireImage],
-        []
+        [wireImage]
       ]);
     });
 
-    it('sends only images delivered by each model call and never restores old pixels', async () => {
+    it('retains the bounded image window across model calls, executions, and SDK reopen', async () => {
       const actions: ToolAction[] = [
         { type: 'tool', name: 'view_image', arguments: { path: 'image-a.png' } },
         { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
@@ -611,38 +611,51 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
         protocol === 'OPENAI_RESPONSES' ? `data:image/png;base64,${imageBBase64}` : imageBBase64;
       expect(requests.map((body) => imagePayloads(body, protocol))).toEqual([
         [wireImage],
-        [wireImage],
-        [],
-        [wireImage],
-        [wireImageB],
-        [],
-        []
+        [wireImage, wireImage],
+        [wireImage, wireImage],
+        [wireImage, wireImage, wireImage],
+        [wireImage, wireImage, wireImage, wireImageB],
+        [wireImage, wireImage, wireImage, wireImageB],
+        [wireImage, wireImage, wireImage, wireImageB]
       ]);
       expect(requests[0]).not.toHaveProperty('images');
       expect(requests.every((body) => !Object.hasOwn(body, 'images'))).toBe(true);
 
       const toolResultType =
         protocol === 'OPENAI_RESPONSES' ? 'function_call_output' : 'tool_result';
-      for (const [requestIndex, expectedImage] of [
-        [1, wireImage],
-        [3, wireImage],
-        [4, wireImageB]
+      for (const [requestIndex, expectedImages] of [
+        [1, [wireImage]],
+        [2, [wireImage]],
+        [3, [wireImage, wireImage]],
+        [4, [wireImage, wireImage, wireImageB]],
+        [5, [wireImage, wireImage, wireImageB]],
+        [6, [wireImage, wireImage, wireImageB]]
       ] as const) {
         const imageToolResults = objectsOfType(requests[requestIndex], toolResultType).filter(
           (item) => imagePayloads(item, protocol).length > 0
         );
-        expect(imageToolResults).toHaveLength(1);
-        expect(imagePayloads(imageToolResults, protocol)).toEqual([expectedImage]);
+        expect(imageToolResults).toHaveLength(expectedImages.length);
+        expect(imagePayloads(imageToolResults, protocol)).toEqual(expectedImages);
       }
-      expect(imagePayloads(requests[2], protocol)).toEqual([]);
-      expect(imagePayloads(requests[5], protocol)).toEqual([]);
-      expect(imagePayloads(requests[6], protocol)).toEqual([]);
+      expect(imagePayloads(requests[2], protocol)).toEqual([wireImage, wireImage]);
+      expect(imagePayloads(requests[5], protocol)).toEqual([
+        wireImage,
+        wireImage,
+        wireImage,
+        wireImageB
+      ]);
+      expect(imagePayloads(requests[6], protocol)).toEqual([
+        wireImage,
+        wireImage,
+        wireImage,
+        wireImageB
+      ]);
     });
   }
 );
 
 describe('SDK Code Mode inline image delivery over Responses HTTP', () => {
-  it('sends only the image from each new code cell and never replays completed cell images', async () => {
+  it('retains completed code cell images within the bounded visual window', async () => {
     const actions: ToolAction[] = [
       {
         type: 'code',
@@ -690,30 +703,26 @@ describe('SDK Code Mode inline image delivery over Responses HTTP', () => {
     expect(requests.map((body) => imagePayloads(body, 'OPENAI_RESPONSES'))).toEqual([
       [],
       [wireImageA],
-      [],
-      [wireImageB],
       [wireImageA],
-      []
+      [wireImageA, wireImageB],
+      [wireImageA, wireImageB, wireImageA],
+      [wireImageA, wireImageB, wireImageA]
     ]);
     expect(requests.every((body) => !Object.hasOwn(body, 'images'))).toBe(true);
 
-    for (const [requestIndex, expectedImage] of [
-      [1, wireImageA],
-      [2, undefined],
-      [3, wireImageB],
-      [4, wireImageA],
-      [5, undefined]
+    for (const [requestIndex, expectedImages] of [
+      [1, [wireImageA]],
+      [2, [wireImageA]],
+      [3, [wireImageA, wireImageB]],
+      [4, [wireImageA, wireImageB, wireImageA]],
+      [5, [wireImageA, wireImageB, wireImageA]]
     ] as const) {
       const outputs = objectsOfType(requests[requestIndex], 'custom_tool_call_output');
       const imageOutputs = outputs.filter(
         (item) => imagePayloads(item, 'OPENAI_RESPONSES').length > 0
       );
-      if (expectedImage === undefined) {
-        expect(imageOutputs).toHaveLength(0);
-      } else {
-        expect(imageOutputs).toHaveLength(1);
-        expect(imagePayloads(imageOutputs, 'OPENAI_RESPONSES')).toEqual([expectedImage]);
-      }
+      expect(imageOutputs).toHaveLength(expectedImages.length);
+      expect(imagePayloads(imageOutputs, 'OPENAI_RESPONSES')).toEqual(expectedImages);
     }
   });
 });
@@ -777,7 +786,7 @@ describe('SDK inline image delivery over Responses WebSocket', () => {
     }
   );
 
-  it('continues on a healthy socket and fully replays only the newly viewed image after disconnect', async () => {
+  it('continues incrementally on a healthy socket and replays the retained visual window after disconnect', async () => {
     const actions: ToolAction[] = [
       { type: 'tool', name: 'view_image', arguments: { path: 'image-a.png' } },
       { type: 'tool', name: 'read', arguments: { reads: [{ path: 'plain.txt' }] } },
@@ -823,7 +832,7 @@ describe('SDK inline image delivery over Responses WebSocket', () => {
       [wireImage],
       [wireImage],
       [],
-      [wireImage],
+      [wireImage, wireImage, wireImage],
       [wireImageB]
     ]);
     expect(server.requests[1]).toHaveProperty('previous_response_id', 'response-0');
@@ -835,17 +844,17 @@ describe('SDK inline image delivery over Responses WebSocket', () => {
     );
     expect(server.requests.every((body) => !Object.hasOwn(body, 'images'))).toBe(true);
 
-    for (const [requestIndex, expectedImage] of [
-      [1, wireImage],
-      [3, wireImage],
-      [4, wireImageB]
+    for (const [requestIndex, expectedImages] of [
+      [1, [wireImage]],
+      [3, [wireImage, wireImage]],
+      [4, [wireImageB]]
     ] as const) {
       const imageToolResults = objectsOfType(
         server.requests[requestIndex],
         'function_call_output'
       ).filter((item) => imagePayloads(item, 'OPENAI_RESPONSES').length > 0);
-      expect(imageToolResults).toHaveLength(1);
-      expect(imagePayloads(imageToolResults, 'OPENAI_RESPONSES')).toEqual([expectedImage]);
+      expect(imageToolResults).toHaveLength(expectedImages.length);
+      expect(imagePayloads(imageToolResults, 'OPENAI_RESPONSES')).toEqual(expectedImages);
     }
   });
 });
