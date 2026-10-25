@@ -2550,10 +2550,8 @@ onBeforeUnmount(() => filePreviews.reset());
 
 .upload-dialog-list {
   display: grid;
-  max-height: min(45vh, 320px);
   margin: 0;
   padding: 0;
-  overflow: auto;
   list-style: none;
 }
 

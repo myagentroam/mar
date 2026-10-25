@@ -29,13 +29,14 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="modelValue"
-    :title="details?.name || translate('generated.skillDetailsDialog.skillDetails')"
+    :title="translate('generated.skillDetailsDialog.skillDetails')"
     width="min(720px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
     :close-icon="marIcon('close')"
   >
     <div v-if="details" class="skill-details">
+      <strong class="skill-name">{{ details.name }}</strong>
       <p class="skill-description">
         {{
           details.description ||
@@ -105,6 +106,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 .skill-details {
   display: grid;
   gap: 16px;
+}
+.skill-name {
+  overflow-wrap: anywhere;
 }
 .skill-description {
   margin: 0;

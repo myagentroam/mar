@@ -315,6 +315,8 @@ function onKeydown(event: KeyboardEvent): void {
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="open"
     :title="translate('generated.quickOpenDialog.quickOpen')"
+    class="quick-open-dialog"
+    :class="{ 'has-status-notices': statusNotices.length > 0 }"
     width="min(680px, calc(100vw - 32px))"
     :show-close="false"
     @close="emit('close')"
@@ -461,8 +463,22 @@ function onKeydown(event: KeyboardEvent): void {
 </template>
 
 <style scoped>
+:global(.quick-open-dialog > .el-dialog__body) {
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-open-tabs,
+.quick-open-input {
+  flex: none;
+}
+
 .quick-open-statuses {
   display: grid;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(40dvh, 20rem);
+  overflow: auto;
   gap: 0.4rem;
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-body);
@@ -475,11 +491,13 @@ function onKeydown(event: KeyboardEvent): void {
   gap: 0.5rem;
 }
 
+.quick-open-dialog.has-status-notices .quick-open-statuses {
+  min-height: min(2rem, 10dvh);
+}
+
 .quick-open-status pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 10rem;
-  overflow: auto;
 }
 
 .quick-open-tabs {
@@ -542,6 +560,8 @@ function onKeydown(event: KeyboardEvent): void {
 }
 .quick-open-results {
   display: grid;
+  flex: 0 1 auto;
+  min-height: min(5rem, 20dvh);
   gap: 0.15rem;
   max-height: min(48vh, 360px);
   margin: 0.4rem 0 0;

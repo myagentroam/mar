@@ -415,6 +415,61 @@ html.console-ui .el-dialog {
   --el-dialog-border-radius: var(--mar-radius-surface);
 }
 
+/* Dedicated previews own their viewport geometry and content scrolling. */
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)) {
+  --mar-dialog-top-gap: max(16px, var(--el-dialog-margin-top, 15vh), env(safe-area-inset-top, 0px));
+  --mar-dialog-bottom-gap: max(16px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - var(--mar-dialog-top-gap) - var(--mar-dialog-bottom-gap));
+  max-width: calc(100vw - 32px);
+  margin-block: var(--mar-dialog-top-gap) var(--mar-dialog-bottom-gap);
+  overflow: hidden;
+}
+
+html.console-ui
+  .el-dialog.is-align-center:where(
+    :not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)
+  ) {
+  --mar-dialog-top-gap: max(16px, env(safe-area-inset-top, 0px));
+  margin-block: auto;
+}
+
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
+  > :is(.el-dialog__header, .el-dialog__footer) {
+  flex: none;
+}
+
+html.console-ui
+  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
+  > .el-dialog__body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+html.console-ui .el-message-box {
+  display: inline-flex;
+  flex-direction: column;
+  max-height: calc(
+    100dvh - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px))
+  );
+}
+
+html.console-ui .el-message-box > :is(.el-message-box__header, .el-message-box__btns) {
+  flex: none;
+}
+
+html.console-ui .el-message-box > .el-message-box__content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 html.console-ui .el-popover {
   --el-popover-border-radius: var(--mar-radius-surface);
 }

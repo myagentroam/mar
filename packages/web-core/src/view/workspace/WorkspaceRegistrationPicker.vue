@@ -452,6 +452,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   list-style: none;
 }
 
+.el-dialog__body .workspace-directory-list {
+  max-height: none;
+  overflow: visible;
+}
+
 .workspace-picker-filter {
   width: 100%;
 }
