@@ -546,7 +546,7 @@ function activate(tab: WorkspaceTab): void {
   height: 100%;
   min-height: 0;
   align-items: center;
-  padding: 5px 6px 5px 2px;
+  padding: 4px 6px 4px 2px;
 }
 
 .workspace-tab-strip-header .workspace-tab {
@@ -570,6 +570,7 @@ function activate(tab: WorkspaceTab): void {
   align-items: stretch;
   gap: var(--workspace-tab-gap);
   overflow-x: auto;
+  overflow-y: hidden;
   margin: 0;
   padding: 4px 6px;
   scrollbar-width: none;

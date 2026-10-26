@@ -8,6 +8,7 @@ import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
 import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
 import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
 import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 
 type Protocol = MarAgentModelConfiguration['protocol'];
@@ -506,6 +507,8 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
     });
 
     it('retains inline images across empty completed retries', async () => {
+      const readResource = vi.spyOn(JsonlSessionStore.prototype, 'readResource');
+      const releaseBytes = vi.spyOn(ResourceInputProjection.prototype, 'releaseBytes');
       const { baseUrl, requests } = await startProtocolServer(protocol, [
         { type: 'final', text: '' },
         { type: 'final' },
@@ -522,9 +525,13 @@ describe.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
           })
           .result()
       ).resolves.toMatchObject({ status: 'completed' });
+      expect(readResource).not.toHaveBeenCalled();
+      expect(releaseBytes).toHaveBeenCalledTimes(1);
       await expect(
         session.run({ prompt: 'Continue without new images.' }).result()
       ).resolves.toMatchObject({ status: 'completed' });
+      expect(readResource).toHaveBeenCalledTimes(1);
+      expect(releaseBytes).toHaveBeenCalledTimes(2);
 
       expect(requests).toHaveLength(3);
       const wireImage =

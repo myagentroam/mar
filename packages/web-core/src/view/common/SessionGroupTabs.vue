@@ -103,7 +103,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   padding: 0.25rem;
   border: 0;
   border-radius: calc(var(--mar-radius-control) - 2px);
-  background: transparent;
+  background: var(--mar-bg-panel);
   color: var(--mar-text-secondary);
   font-family: inherit;
   font-size: var(--mar-font-size-meta);

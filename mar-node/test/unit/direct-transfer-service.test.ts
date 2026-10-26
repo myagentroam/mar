@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RTCPeerConnection as NodeRTCPeerConnection } from 'node-datachannel/polyfill';
 import {
   DirectTransferService,
+  loopbackHostCandidate,
   probeUdp4Port,
   type DirectTransferServiceOptions
 } from '../../src/service/direct-transfer-service.js';
@@ -53,7 +54,7 @@ class FakePeerConnection extends EventTarget {
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   ondatachannel: RTCPeerConnection['ondatachannel'] = null;
   onconnectionstatechange: RTCPeerConnection['onconnectionstatechange'] = null;
-  constructor(private readonly answerSdp = `v=0\r\na=fingerprint:${nodeFingerprint}\r\n`) {
+  constructor(public answerSdp = `v=0\r\na=fingerprint:${nodeFingerprint}\r\n`) {
     super();
   }
   async setRemoteDescription(value: RTCSessionDescriptionInit): Promise<void> {
@@ -80,6 +81,14 @@ class FakePeerConnection extends EventTarget {
     this.onconnectionstatechange?.call(
       this as unknown as RTCPeerConnection,
       new Event('connectionstatechange')
+    );
+  }
+  emitCandidate(candidate: string): void {
+    this.onicecandidate?.call(
+      this as unknown as RTCPeerConnection,
+      {
+        candidate: { candidate, toJSON: () => ({ candidate }) }
+      } as unknown as RTCPeerConnectionIceEvent
     );
   }
 }
@@ -168,6 +177,73 @@ function prepareTransfer(
 }
 
 describe('Node direct transfer service', () => {
+  it('derives prioritized loopback candidates without replacing the LAN candidate', async () => {
+    const source = 'candidate:1 1 UDP 2114977791 192.168.1.20 50000 typ host';
+    expect(loopbackHostCandidate(source)).toBe(
+      'candidate:1 1 UDP 2130706431 127.0.0.1 50000 typ host'
+    );
+    expect(loopbackHostCandidate(source.replace('192.168.1.20', '2001:db8::1'))).toBe(
+      'candidate:1 1 UDP 2130706431 ::1 50000 typ host'
+    );
+    expect(loopbackHostCandidate('candidate:1 1 UDP 2114977791 host.local 50000 typ host')).toBe(
+      undefined
+    );
+
+    const f = await createFixture();
+    try {
+      await connectTransport(f);
+      f.peer.emitCandidate(source);
+      expect(f.events).toContainEqual(
+        expect.objectContaining({
+          signal: {
+            kind: 'CANDIDATE',
+            candidate: expect.objectContaining({ candidate: loopbackHostCandidate(source) })
+          }
+        })
+      );
+      expect(f.events).toContainEqual(
+        expect.objectContaining({
+          signal: {
+            kind: 'CANDIDATE',
+            candidate: expect.objectContaining({ candidate: source })
+          }
+        })
+      );
+    } finally {
+      f.service.dispose();
+    }
+  });
+
+  it('includes loopback and LAN candidates in the answer SDP', async () => {
+    const source = 'candidate:1 1 UDP 2114977791 192.168.1.20 50000 typ host';
+    const f = await createFixture();
+    try {
+      f.peer.answerSdp = `v=0\r\na=fingerprint:${nodeFingerprint}\r\na=${source}\r\n`;
+      await connectTransport(f);
+      const answer = f.events.find(
+        (event) =>
+          typeof event === 'object' &&
+          event !== null &&
+          'signal' in event &&
+          typeof event.signal === 'object' &&
+          event.signal !== null &&
+          'kind' in event.signal &&
+          event.signal.kind === 'ANSWER'
+      );
+      expect(answer).toMatchObject({
+        signal: {
+          kind: 'ANSWER',
+          sdp: expect.stringContaining(`a=${loopbackHostCandidate(source)}`)
+        }
+      });
+      expect(answer).toMatchObject({
+        signal: { kind: 'ANSWER', sdp: expect.stringContaining(`a=${source}`) }
+      });
+    } finally {
+      f.service.dispose();
+    }
+  });
+
   it('drops queued upload work when its transfer has ended', async () => {
     let finishWrite!: (offset: number) => void;
     const write = vi.fn(

@@ -28,36 +28,38 @@ export async function resourceMetadata(
   resourceId: string
 ): Promise<SessionResource | undefined> {
   if (!idPattern.test(resourceId)) return undefined;
-  let text: string;
   try {
-    text = await readFile(join(directory, `${resourceId}.json`), 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw error;
+    const value = JSON.parse(
+      await readFile(join(directory, `${resourceId}.json`), 'utf8')
+    ) as unknown;
+    const resource = value as Partial<SessionResource>;
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      typeof resource.resourceId !== 'string' ||
+      typeof resource.mimeType !== 'string' ||
+      typeof resource.byteSize !== 'number' ||
+      typeof resource.sha256 !== 'string' ||
+      (resource.url !== undefined &&
+        (typeof resource.url !== 'string' ||
+          !isModelImageUrl(resource.url) ||
+          !Number.isSafeInteger(resource.urlExpiresAt) ||
+          resource.urlExpiresAt! <= 0)) ||
+      (resource.url === undefined && resource.urlExpiresAt !== undefined)
+    )
+      throw new Error('Invalid Session image resource metadata.');
+    return value as SessionResource;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new MarAgentError(
+      'MAR_AGENT_IMAGE_UNAVAILABLE',
+      'Session image resource is unavailable.',
+      {
+        cause
+      }
+    );
   }
-  let value: SessionResource | undefined;
-  try {
-    value = JSON.parse(text) as SessionResource;
-  } catch {
-    // Invalid JSON is reported below without exposing metadata contents.
-  }
-  if (
-    !value ||
-    value.resourceId !== resourceId ||
-    !mimeTypes.has(value.mimeType) ||
-    !Number.isSafeInteger(value.byteSize) ||
-    value.byteSize <= 0 ||
-    value.byteSize > 20 * 1024 * 1024 ||
-    !idPattern.test(value.sha256) ||
-    resourceIdentity(value.mimeType, value.sha256) !== resourceId ||
-    (value.url !== undefined &&
-      (!isModelImageUrl(value.url) ||
-        !Number.isSafeInteger(value.urlExpiresAt) ||
-        value.urlExpiresAt! <= 0)) ||
-    (value.url === undefined && value.urlExpiresAt !== undefined)
-  )
-    throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is corrupt.');
-  return value;
 }
 
 export async function persistResource(
@@ -67,7 +69,7 @@ export async function persistResource(
   if (image.resourceId !== undefined && image.dataBase64 === undefined) {
     const existing = await resourceMetadata(directory, image.resourceId);
     if (existing !== undefined && existing.mimeType === image.mimeType) return existing;
-    throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
+    throw new MarAgentError('MAR_AGENT_IMAGE_UNAVAILABLE', 'Session image resource is missing.');
   }
   const data = Buffer.from(image.dataBase64 ?? '', 'base64');
   if (data.toString('base64') !== image.dataBase64)
@@ -87,9 +89,15 @@ export async function persistResource(
       'MAR_AGENT_SESSION_INPUT_INVALID',
       'Image resource identity does not match its bytes.'
     );
-  const existing = await resourceMetadata(directory, resourceId);
-  if (existing !== undefined) return existing;
+  let existing: SessionResource | undefined;
+  try {
+    existing = await resourceMetadata(directory, resourceId);
+  } catch (error) {
+    if (!(error instanceof MarAgentError) || error.code !== 'MAR_AGENT_IMAGE_UNAVAILABLE')
+      throw error;
+  }
   const resource: SessionResource = {
+    ...existing,
     resourceInputVersion: 1,
     resourceId,
     mimeType: image.mimeType,
@@ -110,7 +118,7 @@ export async function setResourceUrl(
 ): Promise<SessionResource> {
   const resource = await resourceMetadata(directory, resourceId);
   if (!resource)
-    throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
+    throw new MarAgentError('MAR_AGENT_IMAGE_UNAVAILABLE', 'Session image resource is missing.');
   if (resource.url !== undefined) return resource;
   if (
     !isModelImageUrl(published.url) ||
@@ -170,7 +178,7 @@ export async function copyResources(
     const resourceId = file.slice(0, -4);
     const resource = await resourceMetadata(join(source, 'resources'), resourceId);
     if (resource === undefined)
-      throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session image resource is missing.');
+      throw new MarAgentError('MAR_AGENT_IMAGE_UNAVAILABLE', 'Session image resource is missing.');
     const bytes = await readInputImageBytes(join(source, 'resources'), {
       ...resource,
       name: 'image',

@@ -738,7 +738,7 @@ button.history-refresh {
   min-height: 20px;
   overflow: hidden;
   padding: 1px 2px;
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-meta);
   line-height: 18px;
 }
 

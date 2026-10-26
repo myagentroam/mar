@@ -89,6 +89,10 @@ export class WorkspaceWorkbenchService {
       'workspace.file.direct.metadata': (data) => this.directFileMetadata(record(data)),
       'workspace.files.search': (data) => this.searchFiles(record(data)),
       'workspace.files.mutate': (data) => this.mutateFile(record(data)),
+      'workspace.files.reveal': (data) => {
+        const input = record(data);
+        return this.options.files.reveal(this.options.requireWorkspace(input.workspaceId), input);
+      },
       'workspace.content.search': (data) => this.searchContent(record(data)),
       'workspace.symbol.prepare': (data) => this.prepareSymbolIndex(record(data)),
       'workspace.symbol.definition': (data) => this.symbolDefinition(record(data)),

@@ -21,6 +21,7 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
+import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
 import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
 import { RunnerService } from '../../src/service/runner-service.js';
@@ -763,6 +764,112 @@ describe('MAR Agent Node Runner', () => {
     ]);
   });
 
+  it.each(['calls', 'observations'] as const)(
+    'keeps Code Mode file changes independent of outer cells in live and historical %s',
+    (source) => {
+      const events = [1, 2]
+        .flatMap((index) => {
+          const call = {
+            callId: `patch-${index}`,
+            toolName: 'apply_patch',
+            input:
+              '*** Begin Patch\n*** Update File: shared.ts\n@@\n-before\n+after\n*** End Patch',
+            status: 'completed',
+            result: {
+              content: 'Patch applied.',
+              data: {
+                files: [
+                  { path: 'shared.ts', operation: 'modified', addedLines: 1, deletedLines: 1 }
+                ],
+                totals: { files: 1, addedLines: 1, deletedLines: 1 }
+              }
+            }
+          };
+          const observation = {
+            type: 'tool_result',
+            id: `observation-${index}`,
+            source: { callId: call.callId, toolName: call.toolName, input: call.input },
+            outcome: 'completed',
+            result: call.result
+          };
+          return codeModeEvents(
+            index === 1 ? 'code_exec' : 'code_exec_wait',
+            `outer-${index}`,
+            'completed',
+            source === 'observations' ? [observation] : [],
+            { executionId: 'execution', ...(source === 'calls' ? { calls: [call] } : {}) }
+          );
+        })
+        .map((event, index) => ({ ...event, turnId: 'turn', sequence: index + 1 }));
+      const normalizer = new MarAgentConversationNormalizer();
+      const live = events
+        .flatMap((event) => normalizer.normalize(event))
+        .filter((item) => item.kind === 'file_change');
+      expect(live.map((item) => item.itemId)).toEqual([
+        'mar-agent-tool:patch-1',
+        'mar-agent-tool:patch-2'
+      ]);
+      for (const item of live) {
+        expect(item).not.toHaveProperty('parentItemId');
+        expect(item.payload).toMatchObject({
+          changes: [{ path: 'shared.ts', change: 'MODIFIED' }]
+        });
+      }
+      const project = (projectionEvents: readonly MarAgentEvent[]) =>
+        projectMarAgentHistory({ id: 'node-session', runner: 'mar-agent' } as NodeAgentSession, [
+          {
+            kind: 'user',
+            sequence: 0,
+            timestamp: events[0]!.timestamp,
+            sessionId: 'session',
+            executionId: 'execution',
+            turnId: 'turn',
+            text: 'Update shared.ts twice.'
+          },
+          ...projectionEvents.map((event) => ({
+            kind: 'event' as const,
+            sequence: event.sequence,
+            event
+          }))
+        ]).map(projectConversationWorkProcesses);
+      const historical = project(events)
+        .flatMap((turn) => turn.items)
+        .filter((item) => item.kind === 'file_change');
+      expect(historical.map((item) => item.id)).toEqual(live.map((item) => item.itemId));
+      expect(historical.map((item) => item.parentItemId)).toEqual([null, null]);
+      expect(historical.map((item) => item.payload)).toEqual(live.map((item) => item.payload));
+      expect(historical[0]!.processGroup?.id).toBeDefined();
+      expect(historical[1]!.processGroup?.id).toBe(historical[0]!.processGroup?.id);
+
+      const boundary: MarAgentEvent = {
+        type: 'message.completed',
+        eventId: 'public-boundary',
+        sequence: 4,
+        timestamp: events[0]!.timestamp,
+        sessionId: 'session',
+        executionId: 'execution',
+        turnId: 'turn',
+        itemId: 'public-boundary',
+        phase: 'commentary',
+        modelId: 'test-model',
+        modelName: 'Test Model',
+        text: 'Continue with the next edit.'
+      };
+      const acrossBoundary = project(
+        [...events.slice(0, 3), boundary, ...events.slice(3)].map((event, index) => ({
+          ...event,
+          sequence: index + 1
+        }))
+      )
+        .flatMap((turn) => turn.items)
+        .filter((item) => item.kind === 'file_change');
+      expect(acrossBoundary.map((item) => item.id)).toEqual(historical.map((item) => item.id));
+      expect(acrossBoundary[0]!.processGroup?.id).toBe(historical[0]!.processGroup?.id);
+      expect(acrossBoundary[1]!.processGroup?.id).toBeDefined();
+      expect(acrossBoundary[1]!.processGroup?.id).not.toBe(acrossBoundary[0]!.processGroup?.id);
+    }
+  );
+
   it('prefers personalized Code Mode calls and deduplicates them against observations', () => {
     const normalizer = new MarAgentConversationNormalizer();
     const patchInput = '*** Begin Patch\n*** Add File: ledger.txt\n+ledger\n*** End Patch';
@@ -853,6 +960,10 @@ describe('MAR Agent Node Runner', () => {
       status: 'COMPLETED',
       payload: { subagentOperation: 'START', subagentId: 'ledger-agent' }
     });
+    for (const item of items.filter((item) =>
+      ['mar-agent-tool:ledger-patch', 'mar-agent-tool:ledger-subagent'].includes(item.itemId)
+    ))
+      expect(item).not.toHaveProperty('parentItemId');
     expect(
       items.some((item) =>
         [

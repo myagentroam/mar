@@ -517,6 +517,49 @@ test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs
   await expect(page.locator('.mar-tooltip:visible')).toHaveText('Workspace one');
 });
 
+test('Workspace header tabs scroll horizontally without vertical overflow or clipped labels', async ({
+  page
+}, testInfo) => {
+  for (const layout of ['static', 'dynamic']) {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.goto(
+      `${fixture.url}workspace-tabs.html?locale=en-US&placement=header&layout=${layout}`
+    );
+    const list = page.getByRole('tablist');
+    await expect(list).toBeVisible();
+    const geometry = await list.evaluate((element) => ({
+      height: element.clientHeight,
+      contentHeight: element.scrollHeight,
+      width: element.clientWidth,
+      contentWidth: element.scrollWidth
+    }));
+    expect(geometry.contentHeight).toBeLessThanOrEqual(geometry.height);
+    expect(geometry.contentWidth).toBeGreaterThan(geometry.width);
+    await list.hover();
+    await page.mouse.wheel(0, 150);
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
+    await page.getByRole('button', { name: 'Browse next workspace tabs' }).click();
+    await expect.poll(() => list.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    const lastTab = page.getByRole('tab', {
+      name: layout === 'dynamic' ? 'Workspace three' : 'Workspace two',
+      exact: true
+    });
+    await lastTab.click();
+    await expect(lastTab).toHaveAttribute('aria-selected', 'true');
+    const bounds = (await list.boundingBox())!;
+    for (const label of await lastTab
+      .locator('.workspace-tab-content > span, .workspace-tab-node-label')
+      .all()) {
+      const box = (await label.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    }
+    await page.locator('.workbench-header').screenshot({
+      path: testInfo.outputPath(`workspace-header-${layout}.png`)
+    });
+  }
+});
+
 test('Performance hover displays the details panel without a second hint', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
   const trigger = page.locator('.web-performance-indicator');

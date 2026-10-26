@@ -7,6 +7,7 @@ for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'en-US'],
   [320, 'vscode-dark-2026', 'en-US'],
   [390, 'daylight', 'en-US'],
+  [1280, 'daylight', 'zh-CN'],
   [1280, 'custom', 'zh-CN'],
   [1280, 'vscode-dark-2026', 'zh-CN'],
   [390, 'vscode-dark-2026', 'zh-CN']
@@ -39,6 +40,7 @@ for (const [width, theme, locale] of [
         };
         const result = {
           brand: color('--mar-color-brand'),
+          panel: color('--mar-bg-panel'),
           link: color('--mar-control-link-text'),
           success: color('--mar-color-success-text')
         };
@@ -70,6 +72,8 @@ for (const [width, theme, locale] of [
         return { actual: style.backgroundColor, expected };
       });
       expect(selectedBackground.actual).toBe(selectedBackground.expected);
+      await expect(tabs.nth(1)).toHaveCSS('background-color', palette.panel);
+      expect(selectedBackground.actual).not.toBe(palette.panel);
       await tabs.nth(0).hover();
       await expect(tabs.nth(0)).toHaveCSS('background-color', selectedBackground.expected);
       for (const tab of await tabs.all()) {
@@ -154,6 +158,7 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
+      await expect(recent.getByRole('tab').nth(1)).toHaveCSS('background-color', palette.panel);
       await expect(page.locator('.recent-sessions-badge')).toHaveCSS(
         'background-color',
         palette.brand

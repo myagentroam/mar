@@ -1,6 +1,4 @@
-import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, open } from 'node:fs/promises';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { MarAgentError } from '../../error.js';
 import type { SessionRecord } from './types.js';
@@ -121,62 +119,13 @@ export async function readInputImageBytes(
   directory: string,
   reference: InputImageReference
 ): Promise<Buffer> {
-  const path = join(directory, reference.fileName);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let handle;
-    try {
-      const before = await lstat(path);
-      if (!before.isFile() || before.size !== reference.byteSize)
-        throw corruptInputImageReference();
-      const flags =
-        process.platform === 'win32'
-          ? constants.O_RDONLY
-          : constants.O_RDONLY | constants.O_NOFOLLOW;
-      handle = await open(path, flags);
-      const opened = await handle.stat();
-      if (
-        !opened.isFile() ||
-        opened.size !== reference.byteSize ||
-        opened.dev !== before.dev ||
-        opened.ino !== before.ino
-      )
-        continue;
-      const data = await readExactBytes(handle, reference.byteSize);
-      const after = await handle.stat();
-      if (
-        after.size !== opened.size ||
-        after.mtimeMs !== opened.mtimeMs ||
-        after.ctimeMs !== opened.ctimeMs
-      )
-        continue;
-      if (createHash('sha256').update(data).digest('hex') !== reference.sha256)
-        throw corruptInputImageReference();
-      return data;
-    } catch (cause) {
-      if (cause instanceof MarAgentError) throw cause;
-      throw corruptInputImageReference(cause);
-    } finally {
-      await handle?.close();
-    }
+  try {
+    return await readFile(join(directory, reference.fileName));
+  } catch (cause) {
+    throw new MarAgentError('MAR_AGENT_IMAGE_UNAVAILABLE', 'Session input image is unavailable.', {
+      cause
+    });
   }
-  throw corruptInputImageReference();
-}
-
-async function readExactBytes(
-  handle: Awaited<ReturnType<typeof open>>,
-  byteSize: number
-): Promise<Buffer> {
-  const data = Buffer.alloc(byteSize);
-  let offset = 0;
-  while (offset < byteSize) {
-    const { bytesRead } = await handle.read(data, offset, byteSize - offset, offset);
-    if (bytesRead === 0) throw corruptInputImageReference();
-    offset += bytesRead;
-  }
-  const extra = Buffer.allocUnsafe(1);
-  if ((await handle.read(extra, 0, 1, byteSize)).bytesRead !== 0)
-    throw corruptInputImageReference();
-  return data;
 }
 
 function corruptInputImageReference(cause?: unknown): MarAgentError {

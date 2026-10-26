@@ -115,6 +115,41 @@ describe('immutable tool resource storage', () => {
     });
   });
 
+  it.each(['+new\n', '+longer text\n'])(
+    'reads trusted tool resource bytes without comparing stored size or checksum (%j)',
+    async (text) => {
+      await fixture(async (store, sessionId, folder) => {
+        const diff = await store.writeToolResultResource(sessionId, '+old\n');
+        await store.append(sessionId, { type: 'tool.completed', payload: payload(diff) });
+        await writeFile(join(folder, `${diff.resourceRef}.diff`), text);
+        expect(
+          (await store.readToolResultResource(sessionId, { resourceRef: diff.resourceRef })).content
+        ).toBe(text);
+      });
+    }
+  );
+
+  it('continues paging trusted tool resource bytes after their stored size changes', async () => {
+    await fixture(async (store, sessionId, folder) => {
+      const diff = await store.writeToolResultResource(sessionId, '+old\n');
+      await store.append(sessionId, { type: 'tool.completed', payload: payload(diff) });
+      const text = '+longer text\n';
+      await writeFile(join(folder, `${diff.resourceRef}.diff`), text);
+      let cursor: string | undefined;
+      let content = '';
+      do {
+        const page = await store.readToolResultResource(sessionId, {
+          resourceRef: diff.resourceRef,
+          maxBytes: 4,
+          ...(cursor === undefined ? {} : { cursor })
+        });
+        content += page.content;
+        cursor = page.nextCursor;
+      } while (cursor !== undefined);
+      expect(content).toBe(text);
+    });
+  });
+
   it('cleans orphan resources on the next exclusive lease while retaining committed evidence', async () => {
     await fixture(async (store, sessionId, folder) => {
       const saved = await store.writeToolResultResource(sessionId, '+saved\n');

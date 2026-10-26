@@ -1347,6 +1347,17 @@ async function resolveWorkspaceEntryMetadata(
   return { path: candidate, metadata };
 }
 
+export async function resolveWorkspaceFileManagerTarget(
+  workspaceRoot: string,
+  requestedPath: string
+): Promise<{ readonly path: string; readonly kind: 'FILE' | 'DIRECTORY' }> {
+  const root = await resolveRegisteredWorkspaceRoot(workspaceRoot);
+  const entry = await resolveWorkspaceEntryMetadata(root, requestedPath);
+  if (entry.metadata.isDirectory()) return { path: entry.path, kind: 'DIRECTORY' };
+  if (entry.metadata.isFile()) return { path: entry.path, kind: 'FILE' };
+  throw new Error('FILE_NOT_REGULAR');
+}
+
 async function inspectWorkspaceIndexEntry(
   root: string,
   requestedPath: string,

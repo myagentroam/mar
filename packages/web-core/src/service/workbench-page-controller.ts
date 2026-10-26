@@ -1427,6 +1427,16 @@ export function createWorkbenchPageController<
     });
   };
 
+  const workspaceLocalFileManagerAvailable = computed(() => {
+    void workspaceDirectProbeRevision.value;
+    const nodeId = workspaceNodeId.value;
+    return (
+      nodeId !== undefined &&
+      directTransport.networkInfo(nodeId)?.scope === 'LOOPBACK' &&
+      supportsNodeFeature(workspaceHost.value?.nodeAppVersion ?? '', 'LOCAL_FILE_MANAGER')
+    );
+  });
+
   function workspaceDirectFile(path: string, worktreePath?: string, repositoryPath?: string) {
     if (isComposerAttachmentResourcePath(path)) return undefined;
     const nodeId = workspaceNodeId.value;
@@ -3674,6 +3684,7 @@ export function createWorkbenchPageController<
     directGitFileReadRange,
     workspaceDirectAvailable,
     workspaceDirectDescription,
+    workspaceLocalFileManagerAvailable,
     workspaceFilesRevision,
     workspaceInspector,
     workspaceKindLabel,

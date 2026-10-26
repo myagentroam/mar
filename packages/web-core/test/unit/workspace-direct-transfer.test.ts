@@ -821,4 +821,46 @@ describe('Workspace direct transport network description', () => {
       interfaceType: 'VPN'
     });
   });
+
+  it('recognizes a local Node from the remote loopback candidate when local IP is hidden', () => {
+    const stats = new Map<string, unknown>([
+      [
+        'pair',
+        {
+          id: 'pair',
+          type: 'candidate-pair',
+          state: 'succeeded',
+          nominated: true,
+          localCandidateId: 'local',
+          remoteCandidateId: 'remote'
+        }
+      ],
+      [
+        'local',
+        {
+          id: 'local',
+          type: 'local-candidate',
+          address: '',
+          protocol: 'udp',
+          networkType: 'vpn'
+        }
+      ],
+      [
+        'remote',
+        {
+          id: 'remote',
+          type: 'remote-candidate',
+          address: '127.0.0.1',
+          protocol: 'udp'
+        }
+      ]
+    ]);
+
+    expect(classifySelectedCandidatePair(stats as unknown as RTCStatsReport)).toEqual({
+      scope: 'LOOPBACK',
+      ipVersion: 'IPV4',
+      protocol: 'UDP',
+      interfaceType: 'LOOPBACK'
+    });
+  });
 });

@@ -137,6 +137,21 @@ describe('Workspace file operations service', () => {
     });
   });
 
+  it('requests a local file manager reveal without refreshing Workspace content', async () => {
+    const { service, request, refresh } = createHarness(async () => ({ revealed: true }));
+
+    await service.reveal(defaultTarget, 'folder with space/notes.txt');
+
+    const [path, init] = request.mock.calls[0]!;
+    expect(requestUrl(path).pathname).toBe('/api/workspaces/workspace-1/files/reveal');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      nodeId: 'node-1',
+      path: 'folder with space/notes.txt'
+    });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('distinguishes a failed mutation from a failed follow-up refresh', async () => {
     const refreshError = new Error('REFRESH_FAILED');
     const successful = createHarness(

@@ -144,6 +144,7 @@ const props = defineProps<{
   readonly standaloneFileMode?: boolean;
   readonly historyCapability: boolean | undefined;
   readonly fileWriteEnabled: boolean;
+  readonly localFileManagerEnabled?: boolean;
   readonly directFileDownload?: (
     path: string,
     worktreePath?: string,
@@ -1089,6 +1090,7 @@ async function onFileTreeAction(
     | 'DOWNLOAD'
     | 'COPY_PATH'
     | 'COPY_ABSOLUTE_PATH'
+    | 'REVEAL_LOCAL'
     | 'RENAME'
     | 'DELETE'
     | 'UPLOAD',
@@ -1114,6 +1116,12 @@ async function onFileTreeAction(
       if (!props.workspacePath) return;
       await navigator.clipboard.writeText(workspaceAbsolutePath(props.workspacePath, node.path));
       emit('notice', translate('generated.workspaceInspector.absolutePathCopied'), 'info');
+      return;
+    }
+    if (action === 'REVEAL_LOCAL') {
+      const target = fileOperationTarget();
+      if (target !== undefined && props.localFileManagerEnabled === true)
+        await fileOperations.reveal(target, node.path);
       return;
     }
     if (action === 'DOWNLOAD') {
@@ -2036,6 +2044,7 @@ onBeforeUnmount(() => filePreviews.reset());
             :selected-path="fileTree.selectedPath.value"
             :disabled="filesBusy"
             :mutations-enabled="true"
+            :local-file-manager-enabled="localFileManagerEnabled"
             :mobile-viewport="mobileViewport"
             @toggle="fileTree.toggle"
             @open="openTreeFile"
