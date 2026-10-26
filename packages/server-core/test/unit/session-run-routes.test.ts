@@ -326,30 +326,17 @@ describe('shared ordinary Session and Run routes', () => {
     expect((await app.inject({ url })).statusCode).toBe(401);
   });
 
-  it('serves a model image by capability without browser authentication', async () => {
+  it('does not expose legacy model-image capability routes', async () => {
     const { app, requestNode } = fixture();
     const imageId = '0ed12c70-1a12-4c9a-a4c1-c4b6c03c761f';
     const token = 'A'.repeat(43);
-    requestNode.mockResolvedValueOnce({
-      image: { mimeType: 'image/png', dataBase64: Buffer.from('pixels').toString('base64') }
-    });
-    const response = await app.inject({
-      url: `/api/nodes/node-one/model-images/${imageId}?token=${token}`
-    });
-    expect(response.statusCode).toBe(200);
-    expect(response.rawPayload).toEqual(Buffer.from('pixels'));
-    expect(response.headers['cache-control']).toBe('private, no-store');
-    expect(requestNode).toHaveBeenCalledWith(
-      'node-one',
-      'model.image.read',
-      { imageId, token },
-      { userId: 0, sessionHash: 'model-image' }
-    );
-    requestNode.mockClear();
-    expect(
-      (await app.inject({ url: `/api/nodes/node-one/model-images/${imageId}?token=bad` }))
-        .statusCode
-    ).toBe(400);
+    for (const url of [
+      `/api/nodes/node-one/model-images/${imageId}?token=${token}`,
+      `/api/nodes/node-one/model-images/${imageId}?token=bad`,
+      `/api/nodes/node-one/workspaces/workspace-one/sessions/session-one/images/${'a'.repeat(64)}?expiresAt=1700000000000&signature=${token}`
+    ]) {
+      expect((await app.inject({ url })).statusCode).toBe(404);
+    }
     expect(requestNode).not.toHaveBeenCalled();
   });
 
@@ -379,15 +366,15 @@ describe('shared ordinary Session and Run routes', () => {
       });
 
       const response = await app.inject({
-        url: `/api/nodes/node-one/${scopePath}/sessions/${sessionId}/images/${resourceId}?expiresAt=${expiresAt}&signature=${signature}`
+        url: `/api/nodes/node-one/${scopePath}/sessions/${sessionId}/resources/${resourceId}?expiresAt=${expiresAt}&signature=${signature}`
       });
       expect(response.statusCode).toBe(200);
       expect(response.rawPayload).toEqual(bytes);
       expect(response.headers['content-type']).toContain('image/png');
       expect(response.headers['cache-control']).toBe('private, no-store');
-      expect(requestNode).toHaveBeenCalledWith('node-one', 'model.image.read', payload, {
+      expect(requestNode).toHaveBeenCalledWith('node-one', 'model.resource.read', payload, {
         userId: 0,
-        sessionHash: 'model-image'
+        sessionHash: 'model-resource'
       });
     }
   );
@@ -395,7 +382,8 @@ describe('shared ordinary Session and Run routes', () => {
   it('rejects malformed or structurally ambiguous model image capability queries before Node forwarding', async () => {
     const { app, requestNode } = fixture();
     const baseUrl =
-      '/api/nodes/node-one/workspaces/workspace-one/sessions/session-one/images/' + 'a'.repeat(64);
+      '/api/nodes/node-one/workspaces/workspace-one/sessions/session-one/resources/' +
+      'a'.repeat(64);
     const expiresAt = 1_700_000_000_000;
     const signature = 'A'.repeat(43);
     const invalidUrls = [
@@ -429,6 +417,76 @@ describe('shared ordinary Session and Run routes', () => {
       (await app.inject({ url, headers: { ...headers, 'if-none-match': first.headers.etag! } }))
         .statusCode
     ).toBe(304);
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
+  it('isolates Run image validators by preview dimensions and rejects incomplete or invalid sizes', async () => {
+    const { app, requestNode, headers } = fixture();
+    const originalUrl = '/api/agent-runs/run-one/images/0?nodeId=node-one';
+    requestNode.mockResolvedValueOnce({
+      image: { mime: 'image/png', dataBase64: Buffer.from('original').toString('base64') }
+    });
+    const original = await app.inject({ url: originalUrl, headers });
+    expect(original.statusCode).toBe(200);
+    expect(original.rawPayload).toEqual(Buffer.from('original'));
+    expect(original.headers['x-mar-image-resized']).toBeUndefined();
+
+    const previewUrl = `${originalUrl}&maxWidth=320&maxHeight=240`;
+    requestNode.mockResolvedValueOnce({
+      image: {
+        mime: 'image/webp',
+        dataBase64: Buffer.from('preview').toString('base64'),
+        resized: true
+      }
+    });
+    const preview = await app.inject({
+      url: previewUrl,
+      headers: { ...headers, 'if-none-match': original.headers.etag! }
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('image/webp');
+    expect(preview.headers['x-mar-image-resized']).toBe('1');
+    expect(preview.rawPayload).toEqual(Buffer.from('preview'));
+    expect(preview.headers.etag).not.toBe(original.headers.etag);
+    expect(requestNode).toHaveBeenLastCalledWith(
+      'node-one',
+      'run.image.read',
+      { runId: 'run-one', imageIndex: 0, preview: { maxWidth: 320, maxHeight: 240 } },
+      expect.anything(),
+      undefined
+    );
+
+    requestNode.mockResolvedValueOnce({
+      image: {
+        mime: 'image/webp',
+        dataBase64: Buffer.from('small-preview').toString('base64'),
+        resized: false
+      }
+    });
+    const otherSize = await app.inject({
+      url: `${originalUrl}&maxWidth=160&maxHeight=120`,
+      headers
+    });
+    expect(otherSize.statusCode).toBe(200);
+    expect(otherSize.headers.etag).not.toBe(preview.headers.etag);
+    expect(otherSize.headers['x-mar-image-resized']).toBe('0');
+
+    requestNode.mockClear();
+    const cached = await app.inject({
+      url: previewUrl,
+      headers: { ...headers, 'if-none-match': preview.headers.etag! }
+    });
+    expect(cached.statusCode).toBe(304);
+    expect(requestNode).not.toHaveBeenCalled();
+
+    for (const invalidUrl of [
+      `${originalUrl}&maxWidth=320`,
+      `${originalUrl}&maxWidth=4097&maxHeight=240`
+    ]) {
+      const invalid = await app.inject({ url: invalidUrl, headers });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('RUN_IMAGE_INVALID');
+    }
     expect(requestNode).not.toHaveBeenCalled();
   });
 

@@ -6,6 +6,11 @@ import {
   workspaceSymbolIndexPreparationSchema
 } from '@myagentroam/protocol';
 import { Readable } from 'node:stream';
+import {
+  parseImagePreviewQuery,
+  sendImageResource,
+  type ImageResourceResponse
+} from './image-resource-response.js';
 import { resourceOwnershipSchema } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import type { CurrentUserSession, SessionLookup } from './session.js';
@@ -606,6 +611,8 @@ export function registerWorkspaceRoutes(input: {
       worktreePath?: string;
       repositoryPath?: string;
       download?: string;
+      maxWidth?: string;
+      maxHeight?: string;
     };
   }>('/api/workspaces/:workspaceId/files/content', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
@@ -616,7 +623,31 @@ export function registerWorkspaceRoutes(input: {
       return sendError(reply, 400, 'GIT_REPOSITORY_INVALID');
     if (request.query.download !== undefined && request.query.download !== '1')
       return sendError(reply, 400, 'FILE_RANGE_INVALID');
+    const preview = parseImagePreviewQuery(request.query);
+    if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
+      return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     try {
+      if (preview.data !== undefined) {
+        const result = (await requestUserNode(
+          nodeControl,
+          admin,
+          request.query.nodeId,
+          'workspace.file.content.read',
+          {
+            workspaceId: request.params.workspaceId,
+            path: request.query.path,
+            ...(request.query.repositoryPath === undefined
+              ? {}
+              : { repositoryPath: request.query.repositoryPath }),
+            ...(request.query.worktreePath === undefined
+              ? {}
+              : { worktreePath: request.query.worktreePath }),
+            preview: preview.data
+          }
+        )) as ImageResourceResponse;
+        reply.header('cache-control', 'private, no-store');
+        return sendImageResource(reply, result, true);
+      }
       return await sendWorkspaceFileContent({
         reply,
         method: request.method,

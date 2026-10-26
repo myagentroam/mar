@@ -12,6 +12,7 @@ import 'highlight.js/styles/github.css';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
+import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 
 const props = defineProps<{
   readonly content: string;
@@ -132,6 +133,9 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
   const source = String(token.attrGet('src') ?? '');
   const label = self.renderInlineAsText(token.children ?? [], options, environment);
   const renderImage = () => {
+    const fullSource = String(token.attrGet('src') ?? '');
+    token.attrSet('src', conversationThumbnailUrl(fullSource));
+    token.attrSet('data-image-source', fullSource);
     token.attrSet('loading', 'lazy');
     const image = defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
     // Preserve explicit image links rather than nesting a button inside an anchor.
@@ -211,6 +215,7 @@ const html = computed(() => {
       'data-code-block',
       'data-code-copy',
       'data-image-preview',
+      'data-image-source',
       'data-workspace-file',
       'data-workspace-line',
       'data-workspace-column'
@@ -252,7 +257,7 @@ async function onCopyClick(event: MouseEvent): Promise<void> {
 function onMarkdownClick(event: MouseEvent): void {
   if (event.target instanceof Element) {
     const image = event.target.closest('[data-image-preview]')?.querySelector('img');
-    const source = image?.getAttribute('src');
+    const source = image?.getAttribute('data-image-source');
     if (source) {
       event.preventDefault();
       emit(

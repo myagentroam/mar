@@ -437,7 +437,7 @@ export function createWorkbenchPageController<
         const target = workspaceTarget.value;
         return target === undefined
           ? undefined
-          : JSON.stringify([target.nodeId, target.workspaceId]);
+          : JSON.stringify([target.nodeId, target.workspaceId, selectedSessionId.value]);
       }),
       revalidate: (file) => {
         const target = workspaceTarget.value!;

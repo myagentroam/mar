@@ -5,6 +5,11 @@ export const filePreviewZhCN = {
     gitDiff: 'Git 差异'
   },
   generated: {
+    imagePreview: {
+      loadFailed: '图片加载失败。',
+      viewOriginal: '查看原图',
+      retry: '重试'
+    },
     gitDiffViewer: {
       gitDiffHasNoDisplayableTextContent: 'Git Diff 没有可显示的文本内容。',
       gitDiffLoadFailed: 'Git Diff 加载失败。',

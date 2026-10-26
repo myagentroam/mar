@@ -28,6 +28,29 @@ function fileOptions(
 afterEach(() => vi.restoreAllMocks());
 
 describe('Web Conversation Image State', () => {
+  it('closes generated-image previews when the selected conversation target changes', () => {
+    const target = ref('node:workspace:session-1');
+    const state = createConversationImageService(ref('node'), {
+      fileAttachments: {
+        target,
+        revalidate: vi.fn(async () => ({})),
+        sourceUrl: () => '/api/workspaces/workspace/files/content?path=picture.png',
+        onError: vi.fn()
+      }
+    });
+    try {
+      state.open({
+        name: 'Generated picture',
+        previewUrl: '/api/agent-runs/run/images/0?nodeId=node'
+      });
+      expect(state.previewOpen.value).toBe(true);
+      target.value = 'node:workspace:session-2';
+      expect(state.previewOpen.value).toBe(false);
+      expect(state.preview.value).toBeUndefined();
+    } finally {
+      state.dispose();
+    }
+  });
   it('uses a fresh image URL on reopening and ignores a failed previous image', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async () => ({}));
@@ -92,7 +115,7 @@ describe('Web Conversation Image State', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('reports decode failures normally and ignores errors from replaced previews', async () => {
+  it('keeps a valid attachment open for retry and ignores errors from replaced previews', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
     const onError = vi.fn();
@@ -108,19 +131,47 @@ describe('Web Conversation Image State', () => {
       await state.openFileAttachment(file);
       const url = state.preview.value!.url;
       await state.previewFailed(url);
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'IMAGE_PREVIEW_FAILED' }),
-        file.path
-      );
+      expect(state.previewOpen.value).toBe(true);
+      expect(state.preview.value?.url).toBe(url);
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(onError).not.toHaveBeenCalled();
       await state.openFileAttachment(file);
       state.open({ name: 'generated.png', previewUrl: '/api/agent-runs/run-1/images/0' });
       await state.previewFailed(url);
       expect(state.preview.value?.name).toBe('generated.png');
-      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).not.toHaveBeenCalled();
     } finally {
       state.dispose();
     }
   });
+  it('ignores source revalidation failures after a different image is opened', async () => {
+    const target = ref('node-1:workspace-1');
+    const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
+    const onError = vi.fn();
+    const state = createConversationImageService(ref('node-1'), {
+      fileAttachments: fileOptions(target, request, onError)
+    });
+    try {
+      await state.openFileAttachment({ name: 'photo.png', mime: 'image/png', path: 'photo.png' });
+      let reject!: (error: unknown) => void;
+      request.mockImplementationOnce(
+        () =>
+          new Promise((_, fail) => {
+            reject = fail;
+          })
+      );
+      const pending = state.previewFailed(state.preview.value!.url);
+      state.open({ name: 'generated.png', previewUrl: '/api/agent-runs/run-1/images/0' });
+      reject(new ApiError('FILE_NOT_FOUND', 'File not found.'));
+      await pending;
+      expect(state.previewOpen.value).toBe(true);
+      expect(state.preview.value?.name).toBe('generated.png');
+      expect(onError).not.toHaveBeenCalled();
+    } finally {
+      state.dispose();
+    }
+  });
+
   it('revalidates each Workspace attachment click and uses the shared URL-backed dialog', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));

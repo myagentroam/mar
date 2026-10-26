@@ -44,11 +44,9 @@ export function createConversationImageService(
           options.fileAttachments.target,
           () => {
             previewGeneration += 1;
-            if (filePreview !== undefined) {
-              filePreview = undefined;
-              previewOpen.value = false;
-              preview.value = undefined;
-            }
+            filePreview = undefined;
+            previewOpen.value = false;
+            preview.value = undefined;
           },
           { flush: 'sync' }
         );
@@ -94,9 +92,10 @@ export function createConversationImageService(
     const source = filePreview;
     if (files === undefined || source?.url !== url || !previewOpen.value) return;
     const generation = ++previewGeneration;
-    let failure: unknown = new Error('IMAGE_PREVIEW_FAILED');
+    let failure: unknown;
     try {
       await files.revalidate(source.file);
+      return;
     } catch (error) {
       failure = error;
     }

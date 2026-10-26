@@ -7,6 +7,12 @@ import { effectiveSkills } from './skill-target-routes.js';
 import { parseFileRange, parseResourcePage, isSafeResourceText } from './workspace-http-support.js';
 import { sendWorkspaceFileContent, type FileContentChunk } from './file-content-stream.js';
 import { sendError } from './http-errors.js';
+import {
+  parseImagePreviewQuery,
+  sendImageResource,
+  type ImagePreviewQuery,
+  type ImageResourceResponse
+} from './image-resource-response.js';
 
 type Request = FastifyRequest<{ Params: { shareId: string } }>;
 type Resolved = Awaited<ReturnType<SessionShares['resolve']>>;
@@ -65,38 +71,49 @@ export function registerSessionShareResourceRoutes(input: {
         await call(request, 'workspace.file.read', { path: request.query.path, ...range })
       );
     });
-    app.get<{ Params: { shareId: string }; Querystring: { path?: string; download?: string } }>(
-      '/files/content',
-      async (request, reply) => {
-        if (
-          !isSafeResourceText(request.query.path) ||
-          (request.query.download !== undefined && request.query.download !== '1')
-        )
-          return sendError(reply, 400, 'FILE_RANGE_INVALID');
-        return sendWorkspaceFileContent({
-          reply,
-          method: request.method,
-          range: request.headers.range,
+    app.get<{
+      Params: { shareId: string };
+      Querystring: { path?: string; download?: string } & ImagePreviewQuery;
+    }>('/files/content', async (request, reply) => {
+      if (
+        !isSafeResourceText(request.query.path) ||
+        (request.query.download !== undefined && request.query.download !== '1')
+      )
+        return sendError(reply, 400, 'FILE_RANGE_INVALID');
+      const preview = parseImagePreviewQuery(request.query);
+      if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
+        return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+      if (preview.data !== undefined) {
+        const result = (await call(request, 'workspace.file.content.read', {
           path: request.query.path,
-          download: request.query.download === '1',
-          read: async (offset, limit) => {
-            access.set(request, await input.resolve(request));
-            const result = (await call(request, 'workspace.file.content.read', {
-              path: request.query.path,
-              offset,
-              limit
-            })) as { file?: FileContentChunk };
-            if (
-              !Number.isSafeInteger(result.file?.size) ||
-              !Number.isSafeInteger(result.file?.offset) ||
-              typeof result.file?.contentBase64 !== 'string'
-            )
-              throw new Error('NODE_RESPONSE_INVALID');
-            return result.file;
-          }
-        });
+          preview: preview.data
+        })) as ImageResourceResponse;
+        reply.header('cache-control', 'private, no-store');
+        return sendImageResource(reply, result, true);
       }
-    );
+      return sendWorkspaceFileContent({
+        reply,
+        method: request.method,
+        range: request.headers.range,
+        path: request.query.path,
+        download: request.query.download === '1',
+        read: async (offset, limit) => {
+          access.set(request, await input.resolve(request));
+          const result = (await call(request, 'workspace.file.content.read', {
+            path: request.query.path,
+            offset,
+            limit
+          })) as { file?: FileContentChunk };
+          if (
+            !Number.isSafeInteger(result.file?.size) ||
+            !Number.isSafeInteger(result.file?.offset) ||
+            typeof result.file?.contentBase64 !== 'string'
+          )
+            throw new Error('NODE_RESPONSE_INVALID');
+          return result.file;
+        }
+      });
+    });
     app.get<{
       Querystring: {
         q?: string;
@@ -297,37 +314,30 @@ export function registerSessionShareResourceRoutes(input: {
           .send(await call(request, 'run.interrupt', { runId: request.params.runId }));
       }
     );
-    app.get<{ Params: { shareId: string; runId: string; selector: string } }>(
-      '/runs/:runId/images/:selector',
-      async (request, reply) => {
-        const { context } = access.get(request)!;
-        const { runId, selector } = request.params;
-        const native = runId.startsWith('native-history:');
-        if (native && runId !== `native-history:${context.sessionId}`)
-          return sendError(reply, 400, 'RUN_IMAGE_INVALID');
-        const value = runImageReadInputSchema.safeParse({
-          runId,
-          ...(native ? { imageRef: selector } : { imageIndex: Number(selector) })
-        });
-        if (!value.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
-        if (!native) await requireRun(request, runId);
-        const result = (await nodeControl.requestNode(
-          context.nodeId,
-          'run.image.read',
-          value.data,
-          {
-            userId: context.user.userId,
-            sessionHash: context.user.sessionHash,
-            workspaceId: context.workspaceId
-          }
-        )) as { image?: { mime?: string; dataBase64?: string } };
-        if (
-          !result.image?.mime?.startsWith('image/') ||
-          typeof result.image.dataBase64 !== 'string'
-        )
-          return sendError(reply, 502, 'RUN_IMAGE_INVALID');
-        return reply.type(result.image.mime).send(Buffer.from(result.image.dataBase64, 'base64'));
-      }
-    );
+    app.get<{
+      Params: { shareId: string; runId: string; selector: string };
+      Querystring: ImagePreviewQuery;
+    }>('/runs/:runId/images/:selector', async (request, reply) => {
+      const { context } = access.get(request)!;
+      const { runId, selector } = request.params;
+      const native = runId.startsWith('native-history:');
+      if (native && runId !== `native-history:${context.sessionId}`)
+        return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+      const preview = parseImagePreviewQuery(request.query);
+      if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+      const value = runImageReadInputSchema.safeParse({
+        runId,
+        ...(preview.data === undefined ? {} : { preview: preview.data }),
+        ...(native ? { imageRef: selector } : { imageIndex: Number(selector) })
+      });
+      if (!value.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+      if (!native) await requireRun(request, runId);
+      const result = (await nodeControl.requestNode(context.nodeId, 'run.image.read', value.data, {
+        userId: context.user.userId,
+        sessionHash: context.user.sessionHash,
+        workspaceId: context.workspaceId
+      })) as ImageResourceResponse;
+      return sendImageResource(reply, result, preview.data !== undefined);
+    });
   });
 }

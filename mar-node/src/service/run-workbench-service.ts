@@ -7,6 +7,7 @@ import { isTerminalRunStatus } from '../util/node-operation-parsers.js';
 import { isPlainRecord } from '../util/node-operation-parsers.js';
 import { isHostedConversationImageRunId } from '../runner/mar-agent/generated-images.js';
 import { assertRunOwner } from './run-ownership-policy.js';
+import { imagePreviews } from './image-preview-service.js';
 
 export interface RunWorkbenchServiceOptions {
   readonly runtime: NodeRuntimeState;
@@ -69,7 +70,12 @@ export class RunWorkbenchService {
     const selector = 'imageRef' in reference ? reference.imageRef : reference.imageIndex;
     const image = await this.options.readImage(reference.runId, selector);
     if (image === undefined) throw new Error('RUN_IMAGE_NOT_FOUND');
-    return { image };
+    return {
+      image:
+        reference.preview === undefined
+          ? image
+          : await imagePreviews.fromImage(image, reference.preview)
+    };
   }
 
   private respond(input: Record<string, unknown>): unknown {

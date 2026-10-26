@@ -234,6 +234,9 @@ export class WorkspaceWorkbenchService {
     if (typeof input.workspaceId !== 'string') throw new Error('WORKSPACE_NOT_FOUND');
     const workspace = this.options.requireWorkspace(input.workspaceId);
     const repository = await this.fileRepository(workspace, input);
+    if (input.preview !== undefined) {
+      return { image: await this.options.files.previewImage(workspace, input, repository) };
+    }
     return {
       file: await this.options.files.readContent(workspace, input, repository),
       ...(input.previewDirectory === undefined ? {} : { previewBoundaryVerified: true })

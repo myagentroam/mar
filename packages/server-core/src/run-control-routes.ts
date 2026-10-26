@@ -18,6 +18,13 @@ import type {
 } from './session-run-contracts.js';
 import { createHash } from 'node:crypto';
 import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
+import type { ImagePreviewOptions } from '@myagentroam/protocol';
+import {
+  parseImagePreviewQuery,
+  sendImageResource,
+  type ImagePreviewQuery,
+  type ImageResourceResponse
+} from './image-resource-response.js';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 export function registerRunControlRoutes(input: {
   readonly app: FastifyInstance;
@@ -473,7 +480,7 @@ export function registerRunControlRoutes(input: {
 
   app.get<{
     Params: { runId: string; imageSelector: string };
-    Querystring: { nodeId?: string };
+    Querystring: { nodeId?: string } & ImagePreviewQuery;
   }>('/api/agent-runs/:runId/images/:imageSelector', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
@@ -482,8 +489,11 @@ export function registerRunControlRoutes(input: {
       return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     const native = request.params.runId.startsWith('native-history:');
     if (native) reply.header('cache-control', 'private, no-store');
+    const preview = parseImagePreviewQuery(request.query);
+    if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     const parsed = runImageReadInputSchema.safeParse({
       runId: request.params.runId,
+      ...(preview.data === undefined ? {} : { preview: preview.data }),
       ...(native
         ? { imageRef: request.params.imageSelector }
         : { imageIndex: Number(request.params.imageSelector) })
@@ -492,7 +502,12 @@ export function registerRunControlRoutes(input: {
     const requestData = parsed.data;
     const etag =
       'imageIndex' in requestData
-        ? runImageEtag(request.query.nodeId, request.params.runId, requestData.imageIndex)
+        ? runImageEtag(
+            request.query.nodeId,
+            request.params.runId,
+            requestData.imageIndex,
+            requestData.preview
+          )
         : undefined;
     try {
       if (
@@ -521,19 +536,13 @@ export function registerRunControlRoutes(input: {
         request.query.nodeId,
         'run.image.read',
         requestData
-      )) as { readonly image?: { readonly mime?: unknown; readonly dataBase64?: unknown } };
-      if (
-        typeof result.image?.mime !== 'string' ||
-        !result.image.mime.startsWith('image/') ||
-        typeof result.image.dataBase64 !== 'string'
-      )
-        return sendError(reply, 502, 'RUN_IMAGE_INVALID');
+      )) as ImageResourceResponse;
       if (etag !== undefined) {
         reply
           .header('cache-control', 'private, max-age=3600, must-revalidate')
           .header('etag', etag);
       }
-      return reply.type(result.image.mime).send(Buffer.from(result.image.dataBase64, 'base64'));
+      return sendImageResource(reply, result, preview.data !== undefined);
     } catch (error) {
       return databaseError(reply, error);
     }
@@ -651,9 +660,16 @@ export function registerRunControlRoutes(input: {
   });
 }
 
-function runImageEtag(nodeId: string, runId: string, imageIndex: number): string {
+function runImageEtag(
+  nodeId: string,
+  runId: string,
+  imageIndex: number,
+  preview?: ImagePreviewOptions
+): string {
   const digest = createHash('sha256')
-    .update(`${nodeId}\0${runId}\0${imageIndex}`)
+    .update(
+      `${nodeId}\0${runId}\0${imageIndex}${preview === undefined ? '' : `\0preview-v1:${preview.maxWidth}x${preview.maxHeight}`}`
+    )
     .digest('base64url');
   return `"${digest}"`;
 }

@@ -2925,9 +2925,28 @@ export const hostedConversationRollbackInputSchema = hostedConversationIdInputSc
   .strict();
 export type HostedConversationRollbackInput = z.infer<typeof hostedConversationRollbackInputSchema>;
 
+export const imagePreviewOptionsSchema = z
+  .object({
+    maxWidth: z.number().int().min(1).max(4096),
+    maxHeight: z.number().int().min(1).max(4096)
+  })
+  .strict();
+export type ImagePreviewOptions = z.infer<typeof imagePreviewOptionsSchema>;
 export const runImageReadInputSchema = z.union([
-  z.object({ runId: protocolIdSchema, imageIndex: z.number().int().nonnegative() }).strict(),
-  z.object({ runId: protocolIdSchema, imageRef: imageRefSchema }).strict()
+  z
+    .object({
+      runId: protocolIdSchema,
+      imageIndex: z.number().int().nonnegative(),
+      preview: imagePreviewOptionsSchema.optional()
+    })
+    .strict(),
+  z
+    .object({
+      runId: protocolIdSchema,
+      imageRef: imageRefSchema,
+      preview: imagePreviewOptionsSchema.optional()
+    })
+    .strict()
 ]);
 export type RunImageReadInput = z.infer<typeof runImageReadInputSchema>;
 
@@ -2946,7 +2965,8 @@ export type ModelResourceReadInput = z.infer<typeof modelResourceReadInputSchema
 export const hostedConversationImageReadInputSchema = hostedConversationIdInputSchema
   .extend({
     runId: protocolIdSchema,
-    imageRef: imageRefSchema
+    imageRef: imageRefSchema,
+    preview: imagePreviewOptionsSchema.optional()
   })
   .strict();
 export type HostedConversationImageReadInput = z.infer<
@@ -3052,6 +3072,7 @@ export type HostedConversationFiles = z.infer<typeof hostedConversationFilesSche
 export const hostedConversationFileReadInputSchema = hostedConversationIdInputSchema
   .extend({
     fileId: protocolIdSchema,
+    preview: imagePreviewOptionsSchema.optional(),
     offset: z.number().int().nonnegative().optional(),
     limit: z
       .number()
