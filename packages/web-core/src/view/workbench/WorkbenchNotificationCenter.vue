@@ -199,10 +199,7 @@ const emit = defineEmits<{
         }}</span>
       </button></span
     >
-    <Teleport
-      :to="mobileMode && !autoPreview ? (mobilePanelTarget ?? 'body') : 'body'"
-      :disabled="!mobileMode"
-    >
+    <Teleport :to="mobileMode && !autoPreview ? (mobilePanelTarget ?? 'body') : 'body'">
       <Transition name="workbench-notification-panel">
         <aside
           v-if="

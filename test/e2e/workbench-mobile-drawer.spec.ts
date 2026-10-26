@@ -9,6 +9,53 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Desktop notification panels cover resize handles without disabling uncovered dragging', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 800, height: 800 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+  await page.locator('html').evaluate((element) => {
+    element.style.setProperty('--mar-workbench-sidebar-width', '400px');
+    element.style.setProperty('--mar-workbench-sidebar-total-width', '448px');
+  });
+  const handle = page.locator('.workspace-tree-resize');
+  await expect(handle).toBeVisible();
+  await page.getByRole('button', { name: 'Open notification center', exact: true }).click();
+  const panel = page.locator('.workbench-notification-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveCSS('transform', 'none');
+  const handleBounds = (await handle.boundingBox())!;
+  const panelBounds = (await panel.boundingBox())!;
+  const x = handleBounds.x + handleBounds.width / 2;
+  const y = panelBounds.y + 20;
+  expect(x).toBeGreaterThan(panelBounds.x);
+  expect(x).toBeLessThan(panelBounds.x + panelBounds.width);
+  await page.mouse.move(x, y);
+  expect(
+    await panel.evaluate(
+      (element, point) => element.contains(document.elementFromPoint(point.x, point.y)),
+      { x, y }
+    )
+  ).toBe(true);
+  await expect
+    .poll(() => handle.evaluate((element) => getComputedStyle(element, '::before').backgroundColor))
+    .toBe('rgba(0, 0, 0, 0)');
+  await page.mouse.down();
+  await expect(handle).not.toHaveClass(/dragging/);
+  await page.mouse.up();
+  await expect(panel).toBeVisible();
+
+  const uncoveredY = panelBounds.y + panelBounds.height + 3;
+  expect(uncoveredY).toBeLessThan(handleBounds.y + handleBounds.height);
+  await page.mouse.move(x, uncoveredY);
+  await page.mouse.down();
+  await expect(handle).toHaveClass(/dragging/);
+  await page.mouse.move(x + 10, uncoveredY);
+  await page.mouse.up();
+  await expect(handle).not.toHaveClass(/dragging/);
+  await expect(panel).toHaveCount(0);
+});
+
 test('Touch highlights stay transparent on menus, scrims and preview overlays', async ({
   browser
 }) => {
