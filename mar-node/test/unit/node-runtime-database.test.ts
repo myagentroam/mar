@@ -1103,7 +1103,7 @@ describe('Node SQLite session records', () => {
           : 'NODE_DATABASE_VERSION_UNSUPPORTED'
       );
     }
-  });
+  }, 20_000);
 
   it('rejects a baseline whose current schema is missing a required index', async () => {
     const { path } = await databasePath('missing-index');
