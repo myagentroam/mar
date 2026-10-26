@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readReleaseVersions, validateVersionGroups } from '../../scripts/product-versions.mjs';
 import { productCheckCommands } from '../../scripts/product-ci.mjs';
 import { cleanBuildOutput } from '../../scripts/clean-build-output.mjs';
+import { unexpectedNpmPackageFiles } from '../../scripts/check-release-artifacts.mjs';
 import {
   stageAllComputerUseRuntimes,
   stageComputerUseRuntime
@@ -24,6 +25,29 @@ import {
 import { computerRuntimeTargets } from '../../scripts/computer-runtime-packages.mjs';
 
 const ossRoot = fileURLToPath(new URL('../..', import.meta.url));
+
+test('Node packages allow only the declared public config type and reject other source artifacts', () => {
+  assert.deepEqual(
+    unexpectedNpmPackageFiles('@myagentroam/node', [
+      'package.json',
+      'dist/main.js',
+      'dist/config.d.ts',
+      'dist/internal.d.ts',
+      'dist/config.ts',
+      'dist/main.js.map'
+    ]),
+    ['dist/internal.d.ts', 'dist/config.ts', 'dist/main.js.map']
+  );
+  assert.deepEqual(unexpectedNpmPackageFiles('@myagentroam/server', ['dist/config.d.ts']), [
+    'dist/config.d.ts'
+  ]);
+  for (const name of ['agent', 'protocol', 'code-navigation']) {
+    assert.deepEqual(
+      unexpectedNpmPackageFiles(`@myagentroam/${name}`, ['dist/index.js', 'dist/index.d.ts']),
+      []
+    );
+  }
+});
 
 test('public product build and version checks remain separate from release orchestration', async () => {
   const packageJson = JSON.parse(await readFile(join(ossRoot, 'package.json'), 'utf8'));
