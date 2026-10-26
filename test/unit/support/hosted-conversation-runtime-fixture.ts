@@ -294,7 +294,7 @@ export async function seedVersion(
     .digest('hex');
   const manifest = {
     schemaVersion: 2,
-    templateId: 'template-1',
+    templateId: versionDraft.templateId,
     versionId: id,
     versionNumber: version,
     draftRevision: versionDraft.revision,
@@ -328,7 +328,7 @@ export async function seedVersion(
     )
     .run(
       id,
-      'template-1',
+      versionDraft.templateId,
       version,
       versionDraft.revision,
       status,

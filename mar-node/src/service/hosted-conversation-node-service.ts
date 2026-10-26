@@ -12,6 +12,8 @@ import {
   conversationTurnSchema,
   conversationTemplateSummarySchema,
   hostedConversationConfigUpdateInputSchema,
+  hostedConversationTemplateSwitchInputSchema,
+  hostedConversationTemplateSwitchResultSchema,
   hostedConversationCreateInputSchema,
   hostedConversationDeleteResultSchema,
   hostedConversationFileDeleteInputSchema,
@@ -332,6 +334,7 @@ export class HostedConversationNodeService {
       'conversation.hosted.rollback': (raw) => this.rollback(raw),
       'conversation.hosted.interrupt': (raw) => this.interrupt(raw),
       'conversation.hosted.config.update': (raw) => this.updateConfiguration(raw),
+      'conversation.hosted.template.switch': (raw) => this.switchTemplate(raw),
       'conversation.hosted.metadata.update': (raw) => this.updateMetadata(raw),
       'conversation.hosted.image.read': (raw) => this.readImage(raw),
       'conversation.hosted.tool-resource.read': (raw) => this.readToolResource(raw),
@@ -443,7 +446,11 @@ export class HostedConversationNodeService {
       payload.userId,
       input.clientRequestId
     );
-    if (existing !== undefined) return this.snapshot(payload.userId, existing.id, models);
+    if (existing !== undefined) {
+      if (existing.templateId !== input.templateId)
+        throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
+      return this.snapshot(payload.userId, existing.id, models);
+    }
     const operation = this.createConversation(
       payload.userId,
       input.clientRequestId,
@@ -556,11 +563,18 @@ export class HostedConversationNodeService {
   private async get(raw: unknown): Promise<unknown> {
     const payload = hostedRequest(raw);
     const input = hostedConversationIdInputSchema.parse(payload.data);
+    this.assertTemplateContext(
+      payload,
+      this.options.store.requireConversation(payload.userId, input.conversationId)
+    );
     return this.snapshot(
       payload.userId,
       input.conversationId,
       runtimeModels(payload.models),
-      payload.templateDeleted
+      payload.templateDeleted,
+      false,
+      undefined,
+      payload.sourceTemplateId
     );
   }
 
@@ -589,7 +603,8 @@ export class HostedConversationNodeService {
     availableModels: readonly MarAgentRuntimeModelConfiguration[],
     templateDeleted = false,
     includeActiveHistoryMutation = false,
-    historyOverride?: HostedConversationRuntimeHistoryPage
+    historyOverride?: HostedConversationRuntimeHistoryPage,
+    sourceTemplateId?: string
   ): Promise<unknown> {
     if (includeActiveHistoryMutation)
       return this.readSnapshot(
@@ -597,7 +612,8 @@ export class HostedConversationNodeService {
         conversationId,
         availableModels,
         templateDeleted,
-        historyOverride
+        historyOverride,
+        sourceTemplateId
       );
     while (true) {
       const version = this.historyVersions.get(conversationId) ?? 0;
@@ -610,7 +626,9 @@ export class HostedConversationNodeService {
         userId,
         conversationId,
         availableModels,
-        templateDeleted
+        templateDeleted,
+        undefined,
+        sourceTemplateId
       );
       if (
         !this.historyMutations.has(conversationId) &&
@@ -625,14 +643,20 @@ export class HostedConversationNodeService {
     conversationId: string,
     availableModels: readonly MarAgentRuntimeModelConfiguration[],
     templateDeleted: boolean,
-    historyOverride?: HostedConversationRuntimeHistoryPage
+    historyOverride?: HostedConversationRuntimeHistoryPage,
+    sourceTemplateId?: string
   ): Promise<unknown> {
     let conversation = this.options.store.requireConversation(userId, conversationId);
+    if (sourceTemplateId !== undefined && conversation.templateId !== sourceTemplateId)
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
+    const templateId = conversation.templateId;
+    const activeVersionId = conversation.activeVersionId;
     if (templateDeleted)
       conversation = await this.options.store.retainConversationTemplate(
         userId,
         conversationId,
-        this.now()
+        this.now(),
+        sourceTemplateId ?? templateId
       );
     const latestVersionId = conversation.templateDeleted
       ? undefined
@@ -652,7 +676,11 @@ export class HostedConversationNodeService {
       const selected = selectModel(version, availableModels, conversation.modelId);
       if (selected.id !== conversation.modelId)
         conversation = await this.options.store.updateConversation(conversation.id, (current) =>
-          current.modelId === configuredModelId ? { ...current, modelId: selected.id } : current
+          current.templateId === templateId &&
+          current.activeVersionId === activeVersionId &&
+          current.modelId === configuredModelId
+            ? { ...current, modelId: selected.id }
+            : current
         );
     }
     const paths = this.options.store.pathsForConversation(userId, conversation.id);
@@ -665,6 +693,9 @@ export class HostedConversationNodeService {
         modelId: conversation.modelId,
         limit: 10
       }));
+    const current = this.options.store.requireConversation(userId, conversationId);
+    if (current.templateId !== templateId || current.activeVersionId !== activeVersionId)
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
     return hostedConversationSnapshotSchema.parse({
       nodeAppVersion: this.options.nodeAppVersion?.() ?? 'unknown',
       conversation: this.summary(conversation),
@@ -687,6 +718,7 @@ export class HostedConversationNodeService {
       payload.userId,
       input.conversationId
     );
+    this.assertTemplateContext(payload, conversation);
     if (this.cleanupLocks.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const sessionHash = requireWatchSessionHash(payload.sessionHash);
@@ -877,6 +909,10 @@ export class HostedConversationNodeService {
     if (this.disablePrepared) return Promise.reject(new Error('CONVERSATION_HOSTING_UNAVAILABLE'));
     const payload = hostedRequest(raw);
     const input = hostedConversationMessageInputSchema.parse(payload.data);
+    this.assertTemplateContext(
+      payload,
+      this.options.store.requireConversation(payload.userId, input.conversationId)
+    );
     if (this.historyMutations.has(input.conversationId))
       return Promise.reject(new Error('HOSTED_CONVERSATION_STATE_INVALID'));
     const key = `${input.conversationId}\0${input.clientMessageId}`;
@@ -988,6 +1024,7 @@ export class HostedConversationNodeService {
     steerPrompt?: string
   ): Promise<unknown> {
     let conversation = this.options.store.requireConversation(payload.userId, input.conversationId);
+    this.assertTemplateContext(payload, conversation);
     if (this.cleanupLocks.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     if (this.historyMutations.has(conversation.id))
@@ -1248,6 +1285,7 @@ export class HostedConversationNodeService {
       payload.userId,
       input.conversationId
     );
+    this.assertTemplateContext(payload, conversation);
     if (
       conversation.status !== 'ACTIVE' ||
       this.cleanupLocks.has(conversation.id) ||
@@ -1474,13 +1512,116 @@ export class HostedConversationNodeService {
     }
   }
 
-  private async updateConfiguration(raw: unknown): Promise<unknown> {
+  private switchTemplate(raw: unknown): Promise<unknown> {
+    if (this.closing || this.disablePrepared) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
+    const payload = hostedRequest(raw);
+    const input = hostedConversationTemplateSwitchInputSchema.parse(payload.data);
+    const conversation = this.requireWritableConversation(payload.userId, input.conversationId);
+    if (
+      this.fileWrites.has(conversation.id) ||
+      [...this.uploads.values()].some(
+        (upload) => upload.conversationId === conversation.id && upload.status === 'UPLOADING'
+      )
+    )
+      throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
+    if (
+      this.activeRuns.has(conversation.id) ||
+      this.runSettlements.has(conversation.id) ||
+      [...this.pendingMessages.keys()].some((key) => key.startsWith(`${conversation.id}\0`))
+    )
+      throw new Error('HOSTED_CONVERSATION_RUN_ACTIVE');
+    const template = conversationTemplateSummarySchema.parse(payload.template);
+    if (
+      template.id !== input.templateId ||
+      template.nodeId !== conversation.nodeId ||
+      template.status !== 'ACTIVE' ||
+      !template.available ||
+      template.currentVersionId === null
+    )
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_UNAVAILABLE');
+    return this.withConversationChange(conversation.id, async () => {
+      const current = this.options.store.requireConversation(payload.userId, conversation.id);
+      const unchanged = current.templateId === input.templateId;
+      if (!unchanged && current.templateId !== input.expectedTemplateId)
+        throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
+      const version = await this.loadTemplateVersion(
+        unchanged ? current.activeVersionId : template.currentVersionId!,
+        template.id
+      );
+      const models = networkModels(
+        allowedModels(version, runtimeModels(payload.models)),
+        version.draft.networkMode
+      ).filter((model) => model.conversationModel !== false);
+      let saved = current;
+      if (!unchanged) {
+        const selected = selectModel(version, models, current.modelId);
+        resolveMcpServers(version, this.options.secretEnvironment ?? process.env);
+        const paths = this.options.store.pathsForConversation(payload.userId, current.id);
+        this.pathMounts(paths, version);
+        this.processExecutor(paths, version);
+        if (current.quota.usedBytes > version.draft.quotas.maxStorageBytes)
+          throw new Error('HOSTED_CONVERSATION_QUOTA_EXCEEDED');
+        const updatedAt = this.now();
+        saved = await this.options.store.updateConversation(current.id, (latest) => ({
+          ...latest,
+          templateId: template.id,
+          templateName: template.name,
+          templateDeleted: false,
+          activeVersionId: version.id,
+          modelId: selected.id,
+          quota: { ...latest.quota, maxBytes: version.draft.quotas.maxStorageBytes },
+          updatedAt,
+          lastActivityAt: updatedAt
+        }));
+        try {
+          this.publishHostedEvent(saved.id, { conversationId: saved.id, kind: 'template-changed' });
+        } catch {
+          // Committed configuration does not depend on best-effort Watch delivery.
+        } finally {
+          for (const [key, lease] of this.watchLeases)
+            if (lease.conversationId === saved.id) this.removeWatchLease(key);
+        }
+      }
+      return hostedConversationTemplateSwitchResultSchema.parse({
+        conversation: this.summary(saved),
+        template: templateSummary(saved, version.draft),
+        models: models.map(modelSummary)
+      });
+    });
+  }
+
+  private withConversationChange(
+    conversationId: string,
+    change: () => Promise<unknown>
+  ): Promise<unknown> {
+    if (this.historyMutations.has(conversationId))
+      throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
+    const operation = Promise.resolve().then(change);
+    this.historyMutations.set(conversationId, operation);
+    void operation
+      .finally(() => {
+        if (this.historyMutations.get(conversationId) === operation)
+          this.historyMutations.delete(conversationId);
+      })
+      .catch(() => undefined);
+    return operation;
+  }
+
+  private updateConfiguration(raw: unknown): Promise<unknown> {
     const payload = hostedRequest(raw);
     const input = hostedConversationConfigUpdateInputSchema.parse(payload.data);
-    const conversation = this.options.store.requireConversation(
-      payload.userId,
-      input.conversationId
+    const conversation = this.requireWritableConversation(payload.userId, input.conversationId);
+    this.assertTemplateContext(payload, conversation);
+    return this.withConversationChange(conversation.id, () =>
+      this.saveConfiguration(payload, input, conversation)
     );
+  }
+
+  private async saveConfiguration(
+    payload: HostedRequestPayload,
+    input: ReturnType<typeof hostedConversationConfigUpdateInputSchema.parse>,
+    conversation: HostedConversationManifest
+  ): Promise<unknown> {
     if (this.cleanupLocks.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const latestVersionId = conversation.templateDeleted
@@ -1916,6 +2057,7 @@ export class HostedConversationNodeService {
       const snapshot = await this.get({
         conversationId: lease.conversationId,
         __requestUserId: lease.userId,
+        __sourceTemplateId: lease.templateId,
         __marAgentModels: lease.models
       });
       if (this.watchLeases.get(lease.ownerKey) !== lease) return;
@@ -2174,10 +2316,21 @@ export class HostedConversationNodeService {
     conversationId: string
   ): HostedConversationManifest {
     const conversation = this.options.store.requireConversation(userId, conversationId);
-    if (this.cleanupLocks.has(conversation.id))
+    if (this.cleanupLocks.has(conversation.id) || this.historyMutations.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     if (conversation.status !== 'ACTIVE') throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     return conversation;
+  }
+
+  private assertTemplateContext(
+    payload: HostedRequestPayload,
+    conversation: HostedConversationManifest
+  ): void {
+    if (
+      payload.sourceTemplateId !== undefined &&
+      payload.sourceTemplateId !== conversation.templateId
+    )
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
   }
 
   private requireUpload(userId: number, conversationId: string, uploadId: string): ActiveUpload {
@@ -2469,6 +2622,7 @@ interface HostedRequestPayload {
   readonly runtimeScopeId?: string;
   readonly sessionHash?: unknown;
   readonly templateDeleted?: boolean;
+  readonly sourceTemplateId?: string;
 }
 
 function hostedRequest(raw: unknown): HostedRequestPayload {
@@ -2483,6 +2637,7 @@ function hostedRequest(raw: unknown): HostedRequestPayload {
     __marAgentRuntimeScopeId,
     __workspaceWatchSessionHash,
     __templateDeleted,
+    __sourceTemplateId,
     ...data
   } = raw;
   if (
@@ -2494,12 +2649,18 @@ function hostedRequest(raw: unknown): HostedRequestPayload {
   if (__templateDeleted !== undefined && __templateDeleted !== true)
     throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
   if (
+    __sourceTemplateId !== undefined &&
+    (typeof __sourceTemplateId !== 'string' || __sourceTemplateId.length === 0)
+  )
+    throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
+  if (
     __marAgentRuntimeScopeId !== undefined &&
     (typeof __marAgentRuntimeScopeId !== 'string' || __marAgentRuntimeScopeId.length === 0)
   )
     throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
   return {
     data,
+    ...(__sourceTemplateId === undefined ? {} : { sourceTemplateId: __sourceTemplateId }),
     ...(__usageGrant === undefined
       ? {}
       : { usageGrant: modelUsageGrantSchema.parse(__usageGrant) }),

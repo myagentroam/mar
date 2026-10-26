@@ -3007,6 +3007,36 @@ export type HostedConversationConfigUpdateInput = z.infer<
   typeof hostedConversationConfigUpdateInputSchema
 >;
 
+export const hostedConversationTemplateSwitchInputSchema = z
+  .object({
+    conversationId: protocolIdSchema,
+    templateId: protocolIdSchema,
+    expectedTemplateId: protocolIdSchema
+  })
+  .strict();
+export type HostedConversationTemplateSwitchInput = z.infer<
+  typeof hostedConversationTemplateSwitchInputSchema
+>;
+
+export const hostedConversationTemplateSwitchResultSchema = z
+  .object({
+    conversation: hostedConversationSummarySchema,
+    template: conversationTemplateSummarySchema,
+    models: z.array(marAgentNodeModelSummarySchema)
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.conversation.templateId !== value.template.id ||
+      value.conversation.nodeId !== value.template.nodeId ||
+      value.conversation.activeVersionId !== value.template.currentVersionId
+    )
+      context.addIssue({ code: 'custom', message: 'Inconsistent conversation template binding' });
+  });
+export type HostedConversationTemplateSwitchResult = z.infer<
+  typeof hostedConversationTemplateSwitchResultSchema
+>;
+
 export const hostedConversationMetadataUpdateInputSchema = z
   .object({
     conversationId: protocolIdSchema,
@@ -3685,6 +3715,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'conversation.hosted.rollback',
   'conversation.hosted.interrupt',
   'conversation.hosted.config.update',
+  'conversation.hosted.template.switch',
   'conversation.hosted.metadata.update',
   'conversation.hosted.image.read',
   'conversation.hosted.tool-resource.read',
@@ -4023,6 +4054,7 @@ export const nodeErrorSchema = z.object({
     'HOSTED_CONVERSATION_NOT_AUTHORIZED',
     'HOSTED_CONVERSATION_UPGRADE_FAILED',
     'HOSTED_CONVERSATION_QUOTA_EXCEEDED',
+    'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
     'HOSTED_CONVERSATION_FILE_INVALID',
     'HOSTED_CONVERSATION_FILE_NOT_FOUND',
     'HOSTED_CONVERSATION_FILE_CONFLICT',

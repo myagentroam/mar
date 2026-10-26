@@ -9,6 +9,12 @@ export const hostedConversationsZhCN = {
     workingElapsed: '运行中 · {duration}'
   },
   hostedConversations: {
+    switchTemplate: '切换模板',
+    templateSwitchTitle: '切换对话模板？',
+    templateSwitchConfirmation:
+      '切换到“{name}”？现有历史和文件将保留，新指令和运行环境从下一轮生效。',
+    templateOptionsFailed: '模板加载失败，请重新打开菜单重试。',
+    noSameNodeTemplates: '此 Node 暂无可用模板。',
     eyebrow: '对话',
     title: '从已发布模板开始对话',
     summary:

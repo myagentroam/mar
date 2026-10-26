@@ -8,6 +8,7 @@ import {
   hostedConversationHistoryPageSchema,
   hostedConversationSnapshotSchema,
   hostedConversationSummarySchema,
+  hostedConversationTemplateSwitchResultSchema,
   hostedConversationUploadPreflightResultSchema,
   hostedConversationUploadSchema,
   watchAcceptedSchema,
@@ -19,13 +20,15 @@ import {
   type HostedConversationUpload,
   type HostedConversationActivity
 } from '@myagentroam/protocol';
-import { ref, type Ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import type {
   ConversationItem as WorkbenchConversationItem,
   ConversationTurn as WorkbenchConversationTurn
 } from '../model/workbench.js';
 import { limitConversationHistory } from '../util/conversation-history.js';
 import { errorCode } from '../util/api-error.js';
+import { supportsNodeFeature } from '../util/node-features.js';
+import { listAvailableConversationTemplates } from './hosted-conversation-entry-service.js';
 import { createConversationProjectionService } from './conversation-projection-service.js';
 import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
 import { createWorkbenchSubmissionService } from './workbench-submission-service.js';
@@ -118,6 +121,11 @@ export function createHostedConversationWorkspaceService(
     limitHistory: limitConversationHistory
   });
   const messageSubmission = createWorkbenchSubmissionService();
+  const templateChanges = ref(new Set<string>());
+  const templateChanging = computed(() => {
+    const target = selectedTarget();
+    return target !== undefined && templateChanges.value.has(target);
+  });
   let listSequence = 0;
   let loadMoreOperation = 0;
   let watchId: string | undefined;
@@ -420,6 +428,7 @@ export function createHostedConversationWorkspaceService(
         const code = errorCode(error);
         if (code !== undefined)
           return [
+            'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
             'SESSION_WATCH_NOT_FOUND',
             'HOSTED_CONVERSATION_WATCH_INITIAL_FAILED',
             'NODE_OFFLINE',
@@ -769,6 +778,10 @@ export function createHostedConversationWorkspaceService(
   function applyHostedPayload(payload: Record<string, unknown>, sourceSequence: number): void {
     const current = snapshot.value;
     if (current === undefined) return;
+    if (payload.kind === 'template-changed' && payload.conversationId === current.conversation.id) {
+      void refreshTemplateBinding(requireSelectedContext(), watchId);
+      return;
+    }
     if (payload.kind === 'runtime' && record(payload.runtimeEvent)) {
       applyRuntimeEvent(current, payload.runtimeEvent, sourceSequence);
       return;
@@ -1118,6 +1131,7 @@ export function createHostedConversationWorkspaceService(
     readonly deliveryIntent?: 'REPLACE_CURRENT';
   }): Promise<NonNullable<HostedConversationSnapshot['run']>> {
     const context = requireSelectedContext();
+    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     if (!watchReady.value) throw new Error('HOSTED_CONVERSATION_WATCH_NOT_READY');
     const finishSubmission = messageSubmission.begin(
       hostedConversationSubmissionContext(context.nodeId, context.conversationId)
@@ -1267,6 +1281,7 @@ export function createHostedConversationWorkspaceService(
     readonly modelId: string;
   }): Promise<HostedConversationSummary> {
     const context = requireSelectedContext();
+    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const response = await options.request<unknown>(`${conversationBasePath(context)}/config`, {
       method: 'PATCH',
       body: JSON.stringify({ modelId: input.modelId })
@@ -1286,6 +1301,7 @@ export function createHostedConversationWorkspaceService(
     itemId?: string
   ): Promise<HostedConversationSnapshot> {
     const context = requireSelectedContext();
+    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const parsed = hostedConversationSnapshotSchema.safeParse(
       await options.request<unknown>(`${conversationBasePath(context)}/rollback`, {
         method: 'POST',
@@ -1411,8 +1427,96 @@ export function createHostedConversationWorkspaceService(
     return { deletedConversationId };
   }
 
+  async function listTemplateOptions() {
+    const context = requireSelectedContext();
+    const templates = await listAvailableConversationTemplates(options.request);
+    return templates.filter((template) => template.nodeId === context.nodeId && template.available);
+  }
+
+  async function refreshTemplateBinding(
+    context: { readonly nodeId: string; readonly conversationId: string },
+    originalWatchId: string | undefined
+  ): Promise<void> {
+    if (!sameSelectedContext(context) || watchId !== originalWatchId) return;
+    try {
+      await restartSelectedConversationWatch();
+    } catch (error) {
+      if (sameSelectedContext(context)) {
+        watchReady.value = false;
+        watchFailureCode.value = errorCode(error) ?? 'HOSTED_CONVERSATION_WATCH_EXPIRED';
+      }
+    }
+  }
+
+  async function switchTemplate(templateId: string, expectedTemplateId: string): Promise<void> {
+    const context = requireSelectedContext();
+    const conversation = context.snapshot.conversation;
+    if (conversation.templateId === templateId) return;
+    if (conversation.templateId !== expectedTemplateId)
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
+    if (
+      !supportsNodeFeature(
+        context.snapshot.nodeAppVersion ?? '',
+        'HOSTED_CONVERSATION_TEMPLATE_SWITCH'
+      ) ||
+      conversation.status !== 'ACTIVE' ||
+      !watchReady.value ||
+      context.snapshot.run !== null ||
+      conversation.activity.status !== 'IDLE' ||
+      templateChanging.value ||
+      (messageSubmission.pending.value &&
+        messageSubmission.context.value ===
+          hostedConversationSubmissionContext(context.nodeId, context.conversationId))
+    )
+      throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
+    const key = targetKey(context.nodeId, context.conversationId);
+    const originalWatchId = watchId;
+    templateChanges.value.add(key);
+    try {
+      const parsed = hostedConversationTemplateSwitchResultSchema.safeParse(
+        await options.request<unknown>(`${conversationBasePath(context)}/template`, {
+          method: 'POST',
+          body: JSON.stringify({ templateId, expectedTemplateId })
+        })
+      );
+      if (
+        !parsed.success ||
+        parsed.data.conversation.id !== context.conversationId ||
+        parsed.data.conversation.nodeId !== context.nodeId ||
+        parsed.data.conversation.sessionId !== conversation.sessionId ||
+        parsed.data.template.id !== templateId
+      )
+        throw responseInvalid();
+      await refreshTemplateBinding(context, originalWatchId);
+    } catch (error) {
+      const code = errorCode(error);
+      if (
+        code === undefined ||
+        [
+          'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
+          'HOSTED_CONVERSATION_RESPONSE_INVALID',
+          'NODE_REQUEST_TIMEOUT',
+          'NODE_OFFLINE',
+          'NODE_SEND_FAILED',
+          'NODE_CONTROL_CLOSED',
+          'NODE_RESPONSE_INVALID',
+          'INTERNAL_ERROR',
+          'REQUEST_FAILED_500',
+          'REQUEST_FAILED_502',
+          'REQUEST_FAILED_503',
+          'REQUEST_FAILED_504'
+        ].includes(code)
+      )
+        await refreshTemplateBinding(context, originalWatchId);
+      throw error;
+    } finally {
+      templateChanges.value.delete(key);
+    }
+  }
+
   async function deleteFile(fileId: string): Promise<HostedConversationFileDeleteResult> {
     const context = requireSelectedContext();
+    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const parsed = hostedConversationFileDeleteResultSchema.safeParse(
       await options.request<unknown>(
         `${conversationBasePath(context)}/files/${encodeURIComponent(fileId)}`,
@@ -1482,6 +1586,7 @@ export function createHostedConversationWorkspaceService(
     signal?: AbortSignal
   ): Promise<HostedConversationUpload> {
     const context = requireSelectedContext();
+    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const mimeType = file.type.trim() || 'application/octet-stream';
     signal?.throwIfAborted();
     const preflight = hostedConversationUploadPreflightResultSchema.safeParse(
@@ -1586,8 +1691,12 @@ export function createHostedConversationWorkspaceService(
     olderHistoryError,
     watchReady,
     watchFailureCode,
+    selectedWatchId: () => watchId,
     messageSubmitting: messageSubmission.pending,
     messageSubmissionContext: messageSubmission.context,
+    templateChanging,
+    listTemplateOptions,
+    switchTemplate,
     loadConversations,
     loadMoreConversations,
     projectActivityMessage,

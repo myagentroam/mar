@@ -78,7 +78,7 @@ interface WorkbenchWatchClient {
   readonly connectionId: string;
 }
 
-test('Real Server and Node cover template publication, user isolation, Run-boundary upgrades, index rebuilding, and permanent deletion', async ({
+test('Real Server and Node cover template publication, user isolation, Run-boundary upgrades, template switching, index rebuilding, and permanent deletion', async ({
   browser,
   browserName
 }, testInfo) => {
@@ -769,6 +769,113 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
     const retainedRunRequest = JSON.stringify(modelRequests.at(requestsBeforeRetainedRun));
     expect(retainedRunRequest).toContain('Use template version two.');
     expect(retainedRunRequest).not.toContain('Use template version three.');
+
+    const beforeSwitch = await readJson<HostedConversationSnapshot>(
+      admin.context,
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}`
+    );
+    await writeFile(join(workspace, 'AGENTS.template.md'), 'Use the switched office template.\n');
+    await writeFile(join(knowledge, 'guide.md'), 'switched template guide\n');
+    const switchTarget = await writeJson<{ template: { id: string }; draft: { revision: number } }>(
+      admin,
+      'POST',
+      '/api/admin/conversation-templates',
+      { ...draft, name: 'Hosted E2E Switch Target' },
+      201
+    );
+    const targetVersion = await publishTemplate(
+      admin,
+      switchTarget.template.id,
+      switchTarget.draft.revision,
+      'hosted-e2e-switch-publish',
+      1
+    );
+    await writeJson(
+      admin,
+      'POST',
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/template`,
+      { expectedTemplateId: templateId, templateId: switchTarget.template.id },
+      403
+    );
+    await resources.createGrant(adminUserId, 'TEMPLATE', switchTarget.template.id, null, {
+      targetType: 'ORGANIZATION',
+      targetOrganizationId: rootOrganizationId
+    });
+    await startHostedWatch(
+      admin,
+      nodeId,
+      adminConversation.id,
+      adminWatch.connectionId,
+      'hosted-e2e-template-switch-watch'
+    );
+    await waitForWatchFrame(
+      adminWatch.page,
+      (frame) =>
+        frame.type === 'watch.event' &&
+        record(frame.event)?.type === 'watch.hosted-conversation.snapshot' &&
+        record(frame.event)?.watchId === 'hosted-e2e-template-switch-watch'
+    );
+    const switched = await writeJson<{
+      conversation: { id: string; templateId: string; activeVersionId: string };
+    }>(
+      admin,
+      'POST',
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/template`,
+      { expectedTemplateId: templateId, templateId: switchTarget.template.id }
+    );
+    expect(switched.conversation).toMatchObject({
+      id: adminConversation.id,
+      templateId: switchTarget.template.id,
+      activeVersionId: targetVersion
+    });
+    await waitForWatchFrame(
+      adminWatch.page,
+      (frame) => hostedWatchPayload(frame, adminConversation.id)?.kind === 'template-changed'
+    );
+    const afterSwitch = await readJson<HostedConversationSnapshot>(
+      admin.context,
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}`
+    );
+    expect(afterSwitch.turns).toEqual(beforeSwitch.turns);
+    expect(afterSwitch.files).toEqual(beforeSwitch.files);
+    const requestsBeforeSwitchedRun = modelRequests.length;
+    await sendMessage(
+      admin,
+      nodeId,
+      adminConversation.id,
+      modelId,
+      'hosted-e2e-switched-template-message',
+      '验证切换模板'
+    );
+    const switchedRun = await waitForSnapshot(
+      admin.context,
+      nodeId,
+      adminConversation.id,
+      (snapshot) =>
+        snapshot.conversation.templateId === switchTarget.template.id &&
+        JSON.stringify(snapshot).includes('Switched template reply')
+    );
+    const switchedCommand = switchedRun.turns
+      .flatMap((turn) => turn.items)
+      .find(
+        (item) =>
+          item.kind === 'command_execution' && item.payload.command.includes('HOSTED_SWITCH_GUIDE')
+      );
+    expect(switchedCommand).toMatchObject({
+      status: 'COMPLETED',
+      payload: {
+        exitCode: 0,
+        outputPreview: expect.stringContaining('HOSTED_SWITCH_GUIDE=switched template guide')
+      }
+    });
+    expect(JSON.stringify(modelRequests.at(requestsBeforeSwitchedRun))).toContain(
+      'Use the switched office template.'
+    );
+    const switchedDiskSessions = await expectUserDirectories(hostedRoot, [
+      adminConversation.id,
+      memberConversation.id
+    ]);
+    expect(switchedDiskSessions.get(adminConversation.id)).toEqual(adminDiskSession);
 
     const deleted = await writeJson<{ deletedConversationId: string }>(
       member,

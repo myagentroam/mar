@@ -4,7 +4,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
-import type { HostedConversationUpload } from '@myagentroam/protocol';
+import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createComposerAttachmentInputService } from '../../service/composer-attachment-input-service.js';
@@ -19,6 +19,7 @@ import type {
   createHostedConversationEntryService
 } from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
+import { supportsNodeFeature } from '../../util/node-features.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
@@ -32,6 +33,7 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly readonly: boolean;
   readonly readonlyReason: string;
+  readonly templateChangeBlocked?: boolean;
   readonly draft?: boolean;
   readonly entry?: ReturnType<typeof createHostedConversationEntryService>;
   readonly reloadTemplates?: (visible: boolean) => void;
@@ -48,6 +50,10 @@ const attachments =
 const draggingAttachments = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const configurationUpdating = ref(false);
+const existingTemplates = ref<readonly ConversationTemplateSummary[]>([]);
+let disposed = false;
+const templatesLoading = ref(false);
+const templatesFailed = ref(false);
 let messageIntent:
   | {
       readonly fingerprint: string;
@@ -142,6 +148,8 @@ const canStopCurrent = computed(
 const composerReadonly = computed(
   () =>
     props.readonly ||
+    props.workspace.templateChanging.value ||
+    (!props.draft && snapshot.value !== undefined && !props.workspace.watchReady.value) ||
     (props.draft === true && props.entry?.writable.value === false) ||
     submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
@@ -174,6 +182,7 @@ const modelSelectionDisabled = computed(
     submitting.value ||
     activeRun.value !== undefined ||
     configurationUpdating.value ||
+    props.workspace.templateChanging.value ||
     modelUnavailable.value ||
     (props.draft === true &&
       snapshot.value === undefined &&
@@ -192,7 +201,35 @@ const draftTemplateLabel = computed(
     draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
     translate('hostedConversations.templatePlaceholder')
 );
-const templateSelectionDisabled = computed(() => props.readonly || submitting.value);
+const templateSwitchSupported = computed(
+  () =>
+    !props.draft &&
+    supportsNodeFeature(snapshot.value?.nodeAppVersion ?? '', 'HOSTED_CONVERSATION_TEMPLATE_SWITCH')
+);
+const templateSelectionDisabled = computed(() =>
+  props.draft
+    ? props.readonly || submitting.value
+    : props.readonly ||
+      props.connected === false ||
+      props.templateChangeBlocked === true ||
+      !props.workspace.watchReady.value ||
+      snapshot.value?.conversation.status !== 'ACTIVE' ||
+      snapshot.value.conversation.activity.status !== 'IDLE' ||
+      activeRun.value !== undefined ||
+      submitting.value ||
+      pendingAttachments.value ||
+      configurationUpdating.value ||
+      props.workspace.templateChanging.value
+);
+const menuTemplates = computed(() =>
+  props.draft ? draftTemplates.value : existingTemplates.value
+);
+const menuTemplateId = computed(() =>
+  props.draft ? draftTemplateId.value : snapshot.value?.conversation.templateId
+);
+const menuTemplateLabel = computed(() =>
+  props.draft ? draftTemplateLabel.value : templateName.value
+);
 const loadedTemplateLabel = computed(() =>
   templateName.value === ''
     ? ''
@@ -333,18 +370,81 @@ function messageFingerprint(): string {
     input: input.value,
     attachments: completedAttachmentIds.value,
     modelId: selectedModelId.value,
-    templateId: draftTemplateId.value
+    templateId: snapshot.value?.conversation.templateId ?? draftTemplateId.value
   });
 }
 
-function selectTemplate(templateId: string): void {
-  props.entry?.selectTemplate(templateId);
-  messageIntent = undefined;
-  props.reloadModels?.(true);
+async function selectTemplate(templateId: string): Promise<void> {
+  if (props.draft) {
+    props.entry?.selectTemplate(templateId);
+    messageIntent = undefined;
+    props.reloadModels?.(true);
+    return;
+  }
+  const conversation = snapshot.value?.conversation;
+  const target = existingTemplates.value.find((template) => template.id === templateId);
+  if (
+    templateSelectionDisabled.value ||
+    conversation === undefined ||
+    target === undefined ||
+    templateId === conversation.templateId
+  )
+    return;
+  const watchId = props.workspace.selectedWatchId();
+  try {
+    await ElMessageBox.confirm(
+      translate('hostedConversations.templateSwitchConfirmation', { name: target.name }),
+      translate('hostedConversations.templateSwitchTitle'),
+      {
+        closeIcon: marIcon('close'),
+        confirmButtonText: translate('hostedConversations.switchTemplate'),
+        cancelButtonText: translate('common.cancel')
+      }
+    );
+  } catch {
+    return;
+  }
+  if (
+    disposed ||
+    templateSelectionDisabled.value ||
+    props.workspace.selectedWatchId() !== watchId ||
+    snapshot.value?.conversation.id !== conversation.id ||
+    snapshot.value.conversation.nodeId !== conversation.nodeId ||
+    snapshot.value.conversation.templateId !== conversation.templateId ||
+    snapshot.value.conversation.activeVersionId !== conversation.activeVersionId
+  )
+    return;
+  try {
+    await props.workspace.switchTemplate(templateId, conversation.templateId);
+    messageIntent = undefined;
+  } catch (error) {
+    showMessage(hostedErrorMessage(error), 'error', error);
+  }
 }
 
-function refreshDraftTemplates(visible: boolean): void {
-  if (visible) props.reloadTemplates?.(true);
+async function refreshDraftTemplates(visible: boolean): Promise<void> {
+  if (!visible) return;
+  if (props.draft) {
+    props.reloadTemplates?.(true);
+    return;
+  }
+  const conversation = snapshot.value?.conversation;
+  if (conversation === undefined || templatesLoading.value) return;
+  templatesLoading.value = true;
+  templatesFailed.value = false;
+  try {
+    const templates = await props.workspace.listTemplateOptions();
+    if (
+      snapshot.value?.conversation.id === conversation.id &&
+      snapshot.value.conversation.nodeId === conversation.nodeId
+    )
+      existingTemplates.value = templates;
+  } catch (error) {
+    templatesFailed.value = true;
+    showMessage(hostedErrorMessage(error), 'error', error);
+  } finally {
+    templatesLoading.value = false;
+  }
 }
 
 async function confirmDroppedAttachments(files: readonly File[]): Promise<boolean> {
@@ -514,6 +614,7 @@ function hostedErrorMessage(error: unknown): string {
 }
 
 onBeforeUnmount(() => {
+  disposed = true;
   if (props.draft && props.entry) return;
   for (const attachment of attachments.value) {
     attachment.controller.abort();
@@ -547,7 +648,7 @@ onBeforeUnmount(() => {
     :drop-target="draggingAttachments"
     :mobile-viewport="mobileViewport"
     :command-states="[]"
-    :loading="submitting || configurationUpdating"
+    :loading="submitting || configurationUpdating || workspace.templateChanging.value"
     :skill-tokens="[]"
     @keydown="onKeydown"
     @submit="send"
@@ -629,7 +730,7 @@ onBeforeUnmount(() => {
           <MarIcon name="attachment" />
         </button>
         <el-dropdown
-          v-if="draft && !snapshot"
+          v-if="(draft && !snapshot) || templateSwitchSupported"
           class="hosted-template-menu hosted-model-menu"
           :disabled="templateSelectionDisabled"
           trigger="click"
@@ -641,33 +742,54 @@ onBeforeUnmount(() => {
             type="button"
             :disabled="templateSelectionDisabled"
             :aria-label="translate('hostedConversations.chooseTemplate')"
-            :aria-description="draftTemplateLabel"
+            :aria-description="menuTemplateLabel"
           >
-            <span>{{ draftTemplateLabel }}</span>
+            <MarIcon name="document" aria-hidden="true" />
+            <span>{{ menuTemplateLabel }}</span>
             <MarIcon name="chevron-down" aria-hidden="true" />
           </button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item v-if="templatesLoading" disabled>
+                {{ translate('common.loading') }}
+              </el-dropdown-item>
+              <el-dropdown-item v-else-if="templatesFailed" disabled>
+                {{ translate('hostedConversations.templateOptionsFailed') }}
+              </el-dropdown-item>
               <el-dropdown-item
-                v-for="template in draftTemplates"
+                v-for="template in templatesLoading || templatesFailed ? [] : menuTemplates"
                 :key="template.id"
                 :command="template.id"
-                :disabled="!template.available"
-                :class="{ 'is-selected': template.id === draftTemplateId }"
+                :disabled="!template.available || (!draft && template.id === menuTemplateId)"
+                :class="{ 'is-selected': template.id === menuTemplateId }"
               >
                 {{ template.name }}
               </el-dropdown-item>
-              <el-dropdown-item v-if="draftTemplates.length === 0" disabled>
-                {{ translate('hostedConversations.noTemplates') }}
+              <el-dropdown-item
+                v-if="!templatesLoading && !templatesFailed && menuTemplates.length === 0"
+                disabled
+              >
+                {{
+                  translate(
+                    draft
+                      ? 'hostedConversations.noTemplates'
+                      : 'hostedConversations.noSameNodeTemplates'
+                  )
+                }}
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <div
-          v-if="snapshot || (draft && draftTemplateId)"
-          class="hosted-model-slot"
-          :class="{ 'draft-model-slot': draft && !snapshot }"
+        <span
+          v-tooltip="loadedTemplateLabel"
+          v-else-if="templateName"
+          class="hosted-template-name"
+          :aria-label="loadedTemplateLabel"
         >
+          <MarIcon name="document" aria-hidden="true" />
+          <span>{{ templateName }}</span>
+        </span>
+        <div v-if="snapshot || (draft && draftTemplateId)" class="hosted-model-slot">
           <el-dropdown
             class="hosted-model-menu"
             :disabled="modelSelectionDisabled"
@@ -698,15 +820,6 @@ onBeforeUnmount(() => {
             </template>
           </el-dropdown>
         </div>
-        <span
-          v-tooltip="loadedTemplateLabel"
-          v-if="templateName"
-          class="hosted-template-name"
-          :aria-label="loadedTemplateLabel"
-        >
-          <MarIcon name="document" aria-hidden="true" />
-          <span>{{ templateName }}</span>
-        </span>
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
@@ -874,9 +987,16 @@ onBeforeUnmount(() => {
 
 .hosted-model-trigger,
 .hosted-template-name {
+  display: inline-flex;
   min-height: var(--mar-compact-control-size);
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.35rem;
   box-sizing: border-box;
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  padding: 0 0.55rem;
   background: var(--mar-bg-panel);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
@@ -884,23 +1004,20 @@ onBeforeUnmount(() => {
 }
 
 .hosted-model-trigger {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 0.35rem;
-  border: 0;
-  padding: 0 0.35rem 0 0.55rem;
+  padding-right: 0.35rem;
   cursor: pointer;
 }
 
-.hosted-model-trigger > span {
+.hosted-model-trigger > span,
+.hosted-template-name > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.hosted-model-trigger > .mar-icon {
+.hosted-model-trigger > .mar-icon,
+.hosted-template-name > .mar-icon {
   flex: none;
   color: var(--mar-text-tertiary);
 }
@@ -920,27 +1037,14 @@ onBeforeUnmount(() => {
   opacity: 0.45;
 }
 
+.hosted-template-menu,
 .hosted-template-name {
-  display: inline-flex;
-  min-width: 0;
   max-width: min(22rem, 42%);
-  align-items: center;
-  gap: 5px;
+}
+
+.hosted-template-name {
   overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
-  padding: 0 0.55rem;
   white-space: nowrap;
-}
-
-.hosted-template-name > .mar-icon {
-  flex: none;
-  color: var(--mar-text-tertiary);
-}
-
-.hosted-template-name > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .hosted-model-unavailable {
@@ -970,6 +1074,7 @@ onBeforeUnmount(() => {
 
   .hosted-model-slot {
     width: 100%;
+    grid-column: 3;
   }
 
   .hosted-model-menu,
@@ -977,23 +1082,15 @@ onBeforeUnmount(() => {
     width: 100%;
   }
 
-  .hosted-template-name {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-  }
-
+  .hosted-template-name,
   .hosted-template-menu {
     width: 100%;
+    max-width: 100%;
     grid-column: 2;
   }
 
   .hosted-template-trigger {
     width: 100%;
-  }
-
-  .draft-model-slot {
-    grid-column: 3;
   }
 
   .hosted-send-button,

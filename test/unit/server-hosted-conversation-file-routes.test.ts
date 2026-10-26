@@ -333,7 +333,7 @@ describe('Server hosted conversation routes', () => {
       url: '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-changing/content',
       headers: { cookie: headers.cookie }
     });
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(502);
     expect(response.json()).toMatchObject({
       error: { code: 'NODE_RESPONSE_INVALID' }
     });
@@ -355,6 +355,7 @@ describe('Server hosted conversation routes', () => {
       updatedAt: 1_000
     } as const;
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         deletedFileId: 'file-output',
@@ -383,7 +384,7 @@ describe('Server hosted conversation routes', () => {
       files: [remainingFile]
     });
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.file.delete',
       {
@@ -409,6 +410,7 @@ describe('Server hosted conversation routes', () => {
     const fixture = routeFixture();
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({ deletedConversationId: 'conversation-1' });
     const app = Fastify();
     registerHostedConversationRoutes({
@@ -430,7 +432,7 @@ describe('Server hosted conversation routes', () => {
     expect(deleted.statusCode).toBe(200);
     expect(deleted.json()).toEqual({ deletedConversationId: 'conversation-1' });
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.delete',
       { conversationId: 'conversation-1' },
@@ -497,6 +499,7 @@ describe('Server hosted conversation routes', () => {
       {
         conversationId: 'conversation-1',
         __marAgentModels: [model],
+        __sourceTemplateId: 'template-1',
         __templateDeleted: true
       },
       expect.objectContaining({ userId: 7 }),

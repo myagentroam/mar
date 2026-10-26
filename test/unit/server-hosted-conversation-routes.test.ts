@@ -1,5 +1,5 @@
 import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ConversationTemplateSummary,
   HostedConversationSummary,
@@ -12,12 +12,23 @@ import { registerHostedConversationRoutes } from '../../ee/server/src/route/host
 import type { ConversationTemplateService } from '../../ee/server/src/service/conversation-template-service.js';
 import type { MarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
 import type { MarAgentRuntimeModelService } from '../../ee/server/src/service/mar-agent-runtime-model-service.js';
+import {
+  cleanupHostedConversationRuntimeFixtures,
+  createConversation,
+  draft as runtimeDraft,
+  modelOne as nodeModelOne,
+  modelTwo as nodeModelTwo,
+  runtimeFixture,
+  seedVersion
+} from './support/hosted-conversation-runtime-fixture.js';
 
 const csrfToken = 'csrf-token';
 const headers = {
   cookie: 'mar_user_session=session-id',
   'x-csrf-token': csrfToken
 };
+
+afterEach(cleanupHostedConversationRuntimeFixtures);
 
 describe('Server hosted conversation routes', () => {
   it('aggregates valid Node pages with stable ordering and forwards each Node cursor', async () => {
@@ -471,6 +482,7 @@ describe('Server hosted conversation routes', () => {
     const fixture = routeFixture();
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         accepted: true,
         watchId: 'watch-hosted-1',
@@ -503,15 +515,24 @@ describe('Server hosted conversation routes', () => {
       1,
       'node-1',
       'conversation.hosted.get',
+      { conversationId: 'conversation-1', __marAgentModels: [] },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.get',
       {
         conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
       undefined
     );
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.watch',
       {
@@ -519,6 +540,7 @@ describe('Server hosted conversation routes', () => {
         mode: 'initial',
         workbenchConnectionId: 'connection-hosted',
         watchId: 'watch-hosted-1',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
@@ -678,11 +700,351 @@ describe('Server hosted conversation routes', () => {
       {
         conversationId: 'conversation-1',
         __marAgentRuntimeScopeId: 'scope-existing',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
       undefined
     );
+  });
+
+  it('authorizes the existing binding and prepares target-template runtime models before switching', async () => {
+    const fixture = routeFixture();
+    const target = { ...template, id: 'template-2', name: 'Office', currentVersionId: 'version-2' };
+    fixture.templates.requireForCreate.mockResolvedValue(target);
+    fixture.templates.runtimeContext.mockImplementation(async (_userId, templateId) => ({
+      template: templateId === target.id ? target : template,
+      nodeId: 'node-1',
+      workspaceId: templateId === target.id ? 'workspace-target' : 'workspace-source'
+    }));
+    const prepare = vi.fn(async ({ workspaceId }: { workspaceId: string }) => ({
+      runtimeScopeId: workspaceId === 'workspace-target' ? 'scope-target' : 'scope-source',
+      models: [model]
+    }));
+    const result = hostedTemplateSwitchResult(target);
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(result);
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      marAgentRuntimeModels: { prepare } as unknown as MarAgentRuntimeModelService,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1/template',
+      headers,
+      payload: { expectedTemplateId: 'template-1', templateId: target.id }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject(result);
+    expect(fixture.templates.runtimeContext).toHaveBeenCalledWith(7, 'template-1');
+    expect(fixture.templates.requireForCreate).toHaveBeenCalledWith(7, target.id);
+    expect(fixture.templates.runtimeContext).toHaveBeenCalledWith(7, target.id);
+    expect(prepare).toHaveBeenNthCalledWith(1, {
+      userId: 7,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-source'
+    });
+    expect(prepare).toHaveBeenCalledWith({
+      userId: 7,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-target'
+    });
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      1,
+      'node-1',
+      'conversation.hosted.get',
+      { conversationId: 'conversation-1', __marAgentModels: [] },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.get',
+      {
+        conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
+        __marAgentRuntimeScopeId: 'scope-source',
+        __marAgentModels: [model]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      3,
+      'node-1',
+      'conversation.hosted.template.switch',
+      {
+        conversationId: 'conversation-1',
+        expectedTemplateId: 'template-1',
+        templateId: target.id,
+        __template: target,
+        __marAgentRuntimeScopeId: 'scope-target',
+        __marAgentModels: [model]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(
+      JSON.stringify(fixture.nodeControl.requestHostedConversationNode.mock.calls)
+    ).not.toContain('workspace-target');
+  });
+
+  it('persists a routed template switch through the real Node service and exposes it on the next GET', async () => {
+    const node = await runtimeFixture();
+    let closeApp: (() => Promise<void>) | undefined;
+    try {
+      const targetDraft = {
+        ...runtimeDraft,
+        templateId: 'template-2',
+        workspaceId: 'workspace-target',
+        name: 'Office',
+        description: 'Office template',
+        allowedModels: [{ modelId: nodeModelTwo.modelId, name: nodeModelTwo.name }],
+        defaultModelId: nodeModelTwo.modelId
+      };
+      await seedVersion(node, 'office-v1', 2, targetDraft);
+      const original = await createConversation(node, [nodeModelOne, nodeModelTwo]);
+      const target = {
+        ...template,
+        id: targetDraft.templateId,
+        name: targetDraft.name,
+        description: targetDraft.description,
+        currentVersionId: 'office-v1'
+      };
+      const fixture = routeFixture();
+      fixture.models.runtimeConfigurationsForUser.mockResolvedValue([nodeModelOne, nodeModelTwo]);
+      fixture.templates.requireForCreate.mockResolvedValue(target);
+      fixture.templates.runtimeContext.mockImplementation(async (_userId, templateId) => ({
+        template: templateId === target.id ? target : template,
+        nodeId: 'node-1',
+        workspaceId: templateId === target.id ? 'workspace-target' : 'workspace-source'
+      }));
+      fixture.nodeControl.requestHostedConversationNode.mockImplementation(
+        async (_nodeId, operation, data, authorization) => {
+          const handler = node.service.operations()[operation];
+          if (handler === undefined) throw new Error('FIXTURE_NODE_OPERATION_NOT_FOUND');
+          if (data === null || typeof data !== 'object' || Array.isArray(data))
+            throw new Error('FIXTURE_NODE_INPUT_INVALID');
+          const actor = authorization as { userId: number; sessionHash: string };
+          return handler({
+            ...(data as Record<string, unknown>),
+            __requestUserId: actor.userId,
+            __workspaceWatchSessionHash: actor.sessionHash
+          });
+        }
+      );
+      const app = Fastify();
+      closeApp = () => app.close();
+      registerHostedConversationRoutes({
+        app,
+        database: fixture.database,
+        templates: fixture.templates,
+        models: fixture.models,
+        nodeControl: fixture.nodeControl,
+        publicOrigin: undefined
+      });
+
+      const switched = await app.inject({
+        method: 'POST',
+        url: `/api/nodes/node-1/hosted-conversations/${original.id}/template`,
+        headers,
+        payload: { expectedTemplateId: original.templateId, templateId: target.id }
+      });
+
+      expect(switched.statusCode).toBe(200);
+      expect(switched.json()).toMatchObject({
+        conversation: {
+          id: original.id,
+          nodeId: original.nodeId,
+          sessionId: original.sessionId,
+          templateId: target.id,
+          templateName: target.name,
+          activeVersionId: 'office-v1',
+          modelId: nodeModelTwo.id
+        },
+        template: { id: target.id, name: target.name, currentVersionId: 'office-v1' },
+        models: [expect.objectContaining({ id: nodeModelTwo.id })]
+      });
+      expect(node.store.requireConversation(7, original.id)).toMatchObject({
+        id: original.id,
+        nodeId: original.nodeId,
+        sessionId: original.sessionId,
+        templateId: target.id,
+        templateName: target.name,
+        activeVersionId: 'office-v1',
+        modelId: nodeModelTwo.id
+      });
+
+      const rebound = await app.inject({
+        method: 'GET',
+        url: `/api/nodes/node-1/hosted-conversations/${original.id}`,
+        headers: { cookie: headers.cookie }
+      });
+
+      expect(rebound.statusCode).toBe(200);
+      expect(rebound.json()).toMatchObject({
+        conversation: {
+          id: original.id,
+          sessionId: original.sessionId,
+          templateId: target.id,
+          activeVersionId: 'office-v1',
+          modelId: nodeModelTwo.id
+        },
+        template: { id: target.id, name: target.name, currentVersionId: 'office-v1' },
+        models: [expect.objectContaining({ id: nodeModelTwo.id })]
+      });
+      expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+        5,
+        'node-1',
+        'conversation.hosted.get',
+        {
+          conversationId: original.id,
+          __sourceTemplateId: target.id,
+          __marAgentModels: [nodeModelOne, nodeModelTwo]
+        },
+        expect.objectContaining({ userId: 7 }),
+        undefined
+      );
+    } finally {
+      await closeApp?.();
+      await node.service.dispose();
+    }
+  });
+
+  it('rejects a target template hosted by another Node before relaying a switch', async () => {
+    const fixture = routeFixture();
+    fixture.templates.requireForCreate.mockResolvedValue({
+      ...template,
+      id: 'template-remote',
+      nodeId: 'node-2'
+    });
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1/template',
+      headers,
+      payload: { expectedTemplateId: 'template-1', templateId: 'template-remote' }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: { code: 'CONVERSATION_TEMPLATE_NOT_AUTHORIZED' }
+    });
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+    expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalledWith(
+      'node-1',
+      'conversation.hosted.template.switch',
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('rejects browser-supplied internal fields on the template-switch request', async () => {
+    const fixture = routeFixture();
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1/template',
+      headers,
+      payload: {
+        expectedTemplateId: 'template-1',
+        templateId: 'template-2',
+        __template: template,
+        __marAgentModels: [model]
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
+    expect(fixture.templates.requireForCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a switch result that changes the existing Session identity', async () => {
+    const fixture = routeFixture();
+    const target = { ...template, id: 'template-2', name: 'Office', currentVersionId: 'version-2' };
+    fixture.templates.requireForCreate.mockResolvedValue(target);
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedTemplateSwitchResult(target, { sessionId: 'session-forged' }));
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1/template',
+      headers,
+      payload: { expectedTemplateId: 'template-1', templateId: target.id }
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+  });
+
+  it('maps an invalid Node template-switch response to an upstream failure', async () => {
+    const fixture = routeFixture();
+    const target = { ...template, id: 'template-2', name: 'Office', currentVersionId: 'version-2' };
+    fixture.templates.requireForCreate.mockResolvedValue(target);
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce({ conversation: { id: 'conversation-1' } });
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1/template',
+      headers,
+      payload: { expectedTemplateId: 'template-1', templateId: target.id }
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
   });
 
   it('rejects an incomplete Node result instead of returning a successful create response', async () => {
@@ -802,10 +1164,7 @@ describe('Server hosted conversation routes', () => {
       1,
       'node-1',
       'conversation.hosted.get',
-      {
-        conversationId: 'conversation-1',
-        __marAgentModels: [model]
-      },
+      { conversationId: 'conversation-1', __marAgentModels: [] },
       expect.objectContaining({ userId: 7 }),
       undefined
     );
@@ -813,6 +1172,18 @@ describe('Server hosted conversation routes', () => {
     expect(fixture.models.runtimeForUser).toHaveBeenCalledWith(7, 'model-1');
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
       2,
+      'node-1',
+      'conversation.hosted.get',
+      {
+        conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
+        __marAgentModels: [model]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      3,
       'node-1',
       'conversation.hosted.message',
       {
@@ -822,6 +1193,7 @@ describe('Server hosted conversation routes', () => {
         attachmentIds: [],
         modelId: 'model-1',
         deliveryIntent: 'REPLACE_CURRENT',
+        __sourceTemplateId: 'template-1',
         __marAgentModel: model,
         __marAgentModels: [model]
       },
@@ -870,6 +1242,7 @@ describe('Server hosted conversation routes', () => {
     });
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot({ nodeAppVersion: '0.9.55' }))
+      .mockResolvedValueOnce(hostedSnapshot({ nodeAppVersion: '0.9.55' }))
       .mockResolvedValueOnce(rolledBack);
     const app = Fastify();
     registerHostedConversationRoutes({
@@ -898,10 +1271,7 @@ describe('Server hosted conversation routes', () => {
       1,
       'node-1',
       'conversation.hosted.get',
-      {
-        conversationId: 'conversation-1',
-        __marAgentModels: [model]
-      },
+      { conversationId: 'conversation-1', __marAgentModels: [] },
       expect.objectContaining({ userId: 7 }),
       undefined
     );
@@ -909,12 +1279,25 @@ describe('Server hosted conversation routes', () => {
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
       2,
       'node-1',
+      'conversation.hosted.get',
+      {
+        conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
+        __marAgentModels: [model]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      3,
+      'node-1',
       'conversation.hosted.rollback',
       {
         conversationId: 'conversation-1',
         turnId: 'turn-2',
         boundary: 'turn-1',
         itemId: 'steered-user-item',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
@@ -933,7 +1316,7 @@ describe('Server hosted conversation routes', () => {
       }
     });
     expect(invalid.statusCode).toBe(400);
-    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(3);
 
     for (const itemId of ['', 'x'.repeat(129)]) {
       const invalidItemId = await app.inject({
@@ -944,9 +1327,10 @@ describe('Server hosted conversation routes', () => {
       });
       expect(invalidItemId.statusCode).toBe(400);
     }
-    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(3);
 
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot({ nodeAppVersion: '0.9.55' }))
       .mockResolvedValueOnce(hostedSnapshot({ nodeAppVersion: '0.9.55' }))
       .mockRejectedValueOnce(new Error('HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID'));
     const staleBoundary = await app.inject({
@@ -967,6 +1351,7 @@ describe('Server hosted conversation routes', () => {
   it('rejects a hosted rollback response whose Node, template, or Session identity changes', async () => {
     const fixture = routeFixture();
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(
         hostedSnapshot({
@@ -998,6 +1383,7 @@ describe('Server hosted conversation routes', () => {
 
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot({ conversation: { sessionId: 'session-forged' } }));
     const changedSession = await app.inject({
       method: 'POST',
@@ -1017,6 +1403,7 @@ describe('Server hosted conversation routes', () => {
     fixture.models.runtimeConfigurationsForUser.mockResolvedValue([alternative]);
     fixture.models.runtimeForUser.mockRejectedValue(new Error('MAR_AGENT_MODEL_FORBIDDEN'));
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(
         hostedSnapshot({
           conversation: {
@@ -1053,6 +1440,18 @@ describe('Server hosted conversation routes', () => {
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
       2,
       'node-1',
+      'conversation.hosted.get',
+      {
+        conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
+        __marAgentModels: [alternative]
+      },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      3,
+      'node-1',
       'conversation.hosted.message',
       {
         conversationId: 'conversation-1',
@@ -1060,6 +1459,7 @@ describe('Server hosted conversation routes', () => {
         prompt: 'Continue with the available upstream configuration.',
         attachmentIds: [],
         modelId: 'model-old',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [alternative]
       },
       expect.objectContaining({ userId: 7 }),
@@ -1110,6 +1510,7 @@ describe('Server hosted conversation routes', () => {
     const fixture = routeFixture();
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         conversation: {
           ...hostedSnapshot().conversation,
@@ -1140,7 +1541,7 @@ describe('Server hosted conversation routes', () => {
       conversation: { title: 'Renamed conversation', pinnedAt: 3_000 }
     });
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.metadata.update',
       {
@@ -1163,6 +1564,7 @@ describe('Server hosted conversation routes', () => {
       dataBase64: Buffer.from('hosted-image').toString('base64')
     };
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({ image });
     const app = Fastify();
@@ -1187,7 +1589,7 @@ describe('Server hosted conversation routes', () => {
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.headers.etag).toBeUndefined();
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.image.read',
       {
@@ -1203,6 +1605,7 @@ describe('Server hosted conversation routes', () => {
     fixture.nodeControl.requestHostedConversationNode.mockClear();
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({ image });
     const cached = await app.inject({
       method: 'GET',
@@ -1214,12 +1617,22 @@ describe('Server hosted conversation routes', () => {
     });
     expect(cached.statusCode).toBe(200);
     expect(cached.headers['cache-control']).toBe('private, no-store');
-    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
-    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledWith(
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(3);
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      1,
+      'node-1',
+      'conversation.hosted.get',
+      { conversationId: 'conversation-1', __marAgentModels: [] },
+      expect.objectContaining({ userId: 7 }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
       'node-1',
       'conversation.hosted.get',
       {
         conversationId: 'conversation-1',
+        __sourceTemplateId: 'template-1',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
@@ -1242,12 +1655,14 @@ describe('Server hosted conversation routes', () => {
     const url = `/api/nodes/node-1/hosted-conversations/conversation-1/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(imageRef)}`;
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         image: {
           mime: 'image/png',
           dataBase64: Buffer.from('original').toString('base64')
         }
       })
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         image: {
@@ -1275,7 +1690,7 @@ describe('Server hosted conversation routes', () => {
     expect(original.headers['x-mar-image-resized']).toBeUndefined();
     expect(original.rawPayload).toEqual(Buffer.from('original'));
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.image.read',
       { conversationId: 'conversation-1', runId, imageRef },
@@ -1292,7 +1707,7 @@ describe('Server hosted conversation routes', () => {
     expect(preview.headers['x-mar-image-resized']).toBe('1');
     expect(preview.rawPayload).toEqual(Buffer.from('preview'));
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      4,
+      6,
       'node-1',
       'conversation.hosted.image.read',
       {
@@ -1337,6 +1752,7 @@ describe('Server hosted conversation routes', () => {
     };
     fixture.nodeControl.requestHostedConversationNode
       .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         image: {
           mime: 'image/webp',
@@ -1364,7 +1780,7 @@ describe('Server hosted conversation routes', () => {
     expect(preview.headers['cache-control']).toBe('private, no-store');
     expect(preview.rawPayload).toEqual(Buffer.from('preview'));
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.file.read',
       { conversationId: 'conversation-1', fileId, preview: { maxWidth: 320, maxHeight: 240 } },
@@ -1374,6 +1790,7 @@ describe('Server hosted conversation routes', () => {
 
     fixture.nodeControl.requestHostedConversationNode.mockClear();
     fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         file,
@@ -1400,7 +1817,7 @@ describe('Server hosted conversation routes', () => {
     expect(originalRange.headers['x-mar-image-resized']).toBeUndefined();
     expect(originalRange.rawPayload).toEqual(Buffer.from('cde'));
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      2,
+      3,
       'node-1',
       'conversation.hosted.file.read',
       { conversationId: 'conversation-1', fileId, offset: 0, limit: 1 },
@@ -1408,7 +1825,7 @@ describe('Server hosted conversation routes', () => {
       undefined
     );
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
-      3,
+      4,
       'node-1',
       'conversation.hosted.file.read',
       { conversationId: 'conversation-1', fileId, offset: 2, limit: 3 },
@@ -1500,6 +1917,43 @@ function hostedSnapshot(
   };
 }
 
+function hostedTemplateSwitchResult(
+  target: ConversationTemplateSummary,
+  conversationOverrides: Partial<HostedConversationSummary> = {}
+) {
+  if (target.currentVersionId === null)
+    throw new Error('Target template requires a published version');
+  return {
+    conversation: hostedSummary('node-1', 'conversation-1', {
+      sessionId: 'session-1',
+      templateId: target.id,
+      templateName: target.name,
+      activeVersionId: target.currentVersionId,
+      ...conversationOverrides
+    }),
+    template: target,
+    models: [
+      {
+        id: 'model-1',
+        name: 'Model One',
+        protocol: 'OPENAI_RESPONSES',
+        baseUrl: 'https://models.example.test/v1',
+        modelId: 'model-one',
+        contextWindowTokens: 100_000,
+        maxOutputTokens: 4096,
+        inputCapabilities: ['TEXT'],
+        outputCapabilities: ['TEXT'],
+        reasoningEfforts: ['high'],
+        hostedWebSearch: false,
+        responsesPreviousResponseId: false,
+        titleGeneration: false,
+        enabled: true,
+        sortOrder: 0
+      }
+    ]
+  };
+}
+
 function hostedSummary(
   nodeId: string,
   id: string,
@@ -1580,11 +2034,18 @@ function routeFixture() {
     audit: vi.fn(async () => undefined)
   } as unknown as MysqlServerDatabase;
   const nodeControl = {
-    requestHostedConversationNode: vi.fn(async (_nodeId: string, operation: string) => {
-      if (operation === 'conversation.hosted.get') return hostedSnapshot();
-      if (operation === 'conversation.hosted.create') return hostedSnapshot();
-      return { run: { id: 'run-1' } };
-    }),
+    requestHostedConversationNode: vi.fn(
+      async (
+        _nodeId: string,
+        operation: string,
+        _data?: unknown,
+        _user?: unknown
+      ): Promise<unknown> => {
+        if (operation === 'conversation.hosted.get') return hostedSnapshot();
+        if (operation === 'conversation.hosted.create') return hostedSnapshot();
+        return { run: { id: 'run-1' } };
+      }
+    ),
     requestNode: vi.fn(async () => {
       throw new Error('NODE_ACCESS_DENIED');
     }),

@@ -1,5 +1,7 @@
 export const errorPresentationEnUS = {
   errors: {
+    HOSTED_CONVERSATION_TEMPLATE_CONFLICT:
+      'The conversation template changed. Wait for the refresh, then select again.',
     SESSION_PAGINATION_NO_PROGRESS:
       'Could not load more sessions because the page did not advance. Retry to continue.',
     SESSION_SHARE_CREDENTIAL_INVALID:

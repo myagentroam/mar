@@ -9,6 +9,12 @@ export const hostedConversationsEnUS = {
     workingElapsed: 'Working · {duration}'
   },
   hostedConversations: {
+    switchTemplate: 'Switch template',
+    templateSwitchTitle: 'Switch conversation template?',
+    templateSwitchConfirmation:
+      'Switch to “{name}”? Existing history and files will be kept. The new instructions and environment apply to the next run.',
+    templateOptionsFailed: 'Unable to load templates. Reopen the menu to retry.',
+    noSameNodeTemplates: 'No available templates on this Node.',
     eyebrow: 'Chat',
     title: 'Start from a published template',
     summary:

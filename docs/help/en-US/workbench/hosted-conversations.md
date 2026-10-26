@@ -17,6 +17,14 @@ lastUpdated: 2026-10-26
 
 Creation binds the template version available at that time. Later draft edits do not affect the conversation, and publishing a new version does not switch it immediately. Before each new Run, Node queries and fully validates the latest available version, then starts the Run with that candidate. The switch becomes atomic only after the Run starts successfully and the message is accepted. Disabling, archiving, or deleting a template does not rewrite the template-name snapshot or last active version of an existing conversation.
 
+## Switch an existing conversation's template
+
+While the conversation is idle, select its template name in the Composer, choose another published template granted to you on the same Node, and confirm. The new template applies to the next run. History, uploads, outputs, and unsent drafts stay in the conversation, and the new template can read its existing content. Template files, instructions, MCP servers, and network settings change; paths to template files in older replies may no longer be valid.
+
+The current model is retained when the target allows it; otherwise the target's allowed default is selected. Insufficient storage quota, no available model, or a definitive request failure leaves the original binding unchanged. Switching is unavailable during a run, sending, uploading, rollback, or another conflicting write. After saving, wait for realtime updates to become ready. If the response is interrupted, wait for the page to confirm the binding instead of submitting again.
+
+Only templates on the same Node can be selected; the conversation is not moved to another host. Switching does not change the recent-template preference for new conversations. Older Nodes show the template name without a switch menu and must be upgraded. Automatic version upgrades within the same template still happen at new-run boundaries; choosing the current template does not force an upgrade.
+
 ## Use the three-pane workspace
 
 Opening an existing conversation displays three areas:

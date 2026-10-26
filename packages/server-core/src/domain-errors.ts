@@ -2,6 +2,7 @@ import type { FastifyReply } from 'fastify';
 import { safePublicError, sendError, errorResponseOptions } from './http-errors.js';
 
 export function domainErrorStatus(code: string): number {
+  if (code === 'NODE_RESPONSE_INVALID') return 502;
   if (code === 'SESSION_SHARE_NOT_FOUND') return 404;
   if (code === 'SESSION_SHARE_EXPIRED') return 410;
   if (code === 'SESSION_SHARE_CREDENTIAL_INVALID') return 401;
@@ -79,6 +80,7 @@ export function domainErrorStatus(code: string): number {
         code === 'HOSTED_CONVERSATION_UPGRADE_FAILED' ||
         code === 'HOSTED_CONVERSATION_QUOTA_EXCEEDED' ||
         code === 'HOSTED_CONVERSATION_STATE_INVALID' ||
+        code === 'HOSTED_CONVERSATION_TEMPLATE_CONFLICT' ||
         code === 'HOSTED_CONVERSATION_RUN_ACTIVE' ||
         code === 'HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID' ||
         code === 'HOSTED_CONVERSATION_FILE_CONFLICT' ||

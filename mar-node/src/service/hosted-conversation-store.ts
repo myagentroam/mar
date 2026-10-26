@@ -572,11 +572,25 @@ export class HostedConversationStore {
   async retainConversationTemplate(
     userId: number,
     conversationId: string,
-    updatedAt: number
+    updatedAt: number,
+    expectedTemplateId?: string
+  ): Promise<HostedConversationManifest> {
+    return this.withConversationMutation(conversationId, () =>
+      this.retainConversationTemplateUnlocked(userId, conversationId, updatedAt, expectedTemplateId)
+    );
+  }
+
+  private async retainConversationTemplateUnlocked(
+    userId: number,
+    conversationId: string,
+    updatedAt: number,
+    expectedTemplateId?: string
   ): Promise<HostedConversationManifest> {
     if (!Number.isSafeInteger(updatedAt) || updatedAt < 0)
       throw new Error('HOSTED_CONVERSATION_INPUT_INVALID');
     const current = this.requireConversation(userId, conversationId);
+    if (expectedTemplateId !== undefined && current.templateId !== expectedTemplateId)
+      throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
     const version = this.options.database.raw
       .prepare('SELECT status FROM conversation_template_versions WHERE id=? AND template_id=?')
       .get(current.activeVersionId, current.templateId) as SqlRow | undefined;

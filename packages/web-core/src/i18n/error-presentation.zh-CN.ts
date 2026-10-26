@@ -1,5 +1,6 @@
 export const errorPresentationZhCN = {
   errors: {
+    HOSTED_CONVERSATION_TEMPLATE_CONFLICT: '对话模板已变更，请等待刷新后重新选择。',
     SESSION_PAGINATION_NO_PROGRESS: '会话分页未推进，无法继续加载。请重试。',
     SESSION_SHARE_CREDENTIAL_INVALID: '密码错误或保存的分享凭据已失效，请重新输入密码。',
     SESSION_SHARE_RATE_LIMITED: '密码尝试次数过多，请稍后重试。',

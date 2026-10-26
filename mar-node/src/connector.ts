@@ -176,6 +176,7 @@ const HOSTED_CONVERSATION_OPERATIONS = [
   'conversation.hosted.rollback',
   'conversation.hosted.interrupt',
   'conversation.hosted.config.update',
+  'conversation.hosted.template.switch',
   'conversation.hosted.metadata.update',
   'conversation.hosted.image.read',
   'conversation.hosted.tool-resource.read',

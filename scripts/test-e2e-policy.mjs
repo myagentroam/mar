@@ -2,6 +2,7 @@ export const integrationTestFiles = [
   'agent-session.spec.ts',
   'codex-credential-scope.spec.ts',
   'fake-runner-recovery.spec.ts',
+  'hosted-conversation-flow.spec.ts',
   'mar-agent-image-generation-flow.spec.ts',
   'mar-agent-tool-change-flow.spec.ts',
   'mar-agent-warm-recovery/mar-agent-warm-recovery.spec.ts',

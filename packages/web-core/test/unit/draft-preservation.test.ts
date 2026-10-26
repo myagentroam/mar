@@ -228,8 +228,9 @@ interface HostedBindings {
   >;
   readonly composerReadonly: Ref<boolean>;
   send(): Promise<void>;
+  selectTemplate(id: string): Promise<void>;
   retryAttachment(id: string): void;
-  refreshDraftTemplates(visible: boolean): void;
+  refreshDraftTemplates(visible: boolean): Promise<void>;
 }
 
 function hostedFixture() {
@@ -253,13 +254,25 @@ function hostedFixture() {
     }
   );
   const workspace = {
+    templateChanging: shallowRef(false),
+    watchReady: shallowRef(true),
+    selectedWatchId: vi.fn(() => 'watch-1'),
+    listTemplateOptions: vi.fn(async () => [
+      { id: 'template-2', nodeId: 'node-1', name: 'Second template' }
+    ]),
+    switchTemplate: vi.fn(async () => undefined),
     snapshot: shallowRef({
+      nodeAppVersion: '0.11.31',
       conversation: {
         id: 'conversation-1',
         nodeId: 'node-1',
         sessionId: 'session-1',
         modelId: 'model-1',
-        templateName: 'Template'
+        templateName: 'Template',
+        templateId: 'template-1',
+        activeVersionId: 'version-1',
+        status: 'ACTIVE',
+        activity: { status: 'IDLE' }
       },
       run: null,
       models: []
@@ -275,10 +288,65 @@ function hostedFixture() {
     readonlyReason: ''
   });
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-  return { composer, responses, sendMessage, revoke };
+  return { composer, responses, sendMessage, revoke, workspace };
 }
 
 describe('hosted message draft preservation', () => {
+  it('does not reuse an uncertain send identity after another client changes the template', async () => {
+    const { composer, workspace, responses, sendMessage } = hostedFixture();
+    composer.input.value = 'Unsent draft';
+    await nextTick();
+    const first = composer.send();
+    responses[0]!.reject(new TypeError('Connection lost'));
+    await first;
+    workspace.snapshot.value = {
+      ...workspace.snapshot.value,
+      conversation: { ...workspace.snapshot.value.conversation, templateId: 'template-2' }
+    };
+    const second = composer.send();
+    expect(sendMessage.mock.calls[1]![0].clientMessageId).not.toBe(
+      sendMessage.mock.calls[0]![0].clientMessageId
+    );
+    responses[1]!.resolve();
+    await second;
+  });
+
+  it('preserves text and completed attachments after a template switch', async () => {
+    const { composer, workspace, revoke } = hostedFixture();
+    composer.input.value = 'Unsent draft';
+    composer.attachments.value = [attachment('first')];
+    await composer.refreshDraftTemplates(true);
+    await composer.selectTemplate('template-2');
+    expect(workspace.switchTemplate).toHaveBeenCalledExactlyOnceWith('template-2', 'template-1');
+    expect(composer.input.value).toBe('Unsent draft');
+    expect(composer.attachments.value.map((item) => item.id)).toEqual(['first']);
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancel', 'watch-replaced', 'binding-replaced', 'unmounted'])(
+    'does not apply a stale template confirmation: %s',
+    async (reason) => {
+      const { composer, workspace } = hostedFixture();
+      const confirmation = deferred<MessageBoxData>();
+      vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
+      await composer.refreshDraftTemplates(true);
+      const pending = composer.selectTemplate('template-2');
+      expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
+      if (reason === 'watch-replaced') workspace.selectedWatchId.mockReturnValue('watch-2');
+      if (reason === 'binding-replaced') {
+        workspace.snapshot.value = {
+          ...workspace.snapshot.value,
+          conversation: { ...workspace.snapshot.value.conversation, activeVersionId: 'version-new' }
+        };
+      }
+      if (reason === 'unmounted') apps.pop()!.unmount();
+      if (reason === 'cancel') confirmation.reject(new Error('cancel'));
+      else confirmation.resolve('confirm' as MessageBoxData);
+      await pending;
+      expect(workspace.switchTemplate).not.toHaveBeenCalled();
+    }
+  );
+
   it.each([0, 5_001])('clears an unchanged draft after success delayed by %i ms', async (delay) => {
     const { composer, responses, sendMessage, revoke } = hostedFixture();
     composer.input.value = 'submitted';
