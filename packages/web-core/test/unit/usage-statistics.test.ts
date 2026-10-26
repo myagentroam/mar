@@ -606,6 +606,101 @@ describe('usage statistics service', () => {
 });
 
 describe('usage statistics settings contract', () => {
+  it.each([
+    ['period', '7d'],
+    ['runner', 'codex'],
+    ['model', 'model-a'],
+    ['mode', 'work'],
+    ['purpose', 'compact']
+  ])('shows page loading when changing %s after the initial read', async (field, value) => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    vi.stubGlobal('document', {});
+    vi.stubGlobal('HTMLElement', class {});
+    const pendingOverview = deferred<PersonalUsageOverview>();
+    const pendingRecords = deferred<PersonalUsageRecords>();
+    const request = vi.fn<Requester>(
+      async <T>(path: string) =>
+        (path.includes('/overview') ? overview() : { records: [], total: '0', page: 1 }) as T
+    );
+    const service = new UsageStatisticsService(request, vi.fn());
+    vi.spyOn(service, 'startAutoRefresh').mockImplementation(() => undefined);
+    vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
+      function () {
+        return service;
+      }
+    );
+    const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
+    const panel = () =>
+      view.findAll('section').find((node) => node.props['data-testid'] === 'usage-statistics')!;
+    const refreshButton = () => view.findAll('ElButton').find((node) => node.props['onClick'])!;
+    try {
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(false);
+      request.mockImplementation(
+        <T>(path: string) =>
+          (path.includes('/overview')
+            ? pendingOverview.promise
+            : pendingRecords.promise) as Promise<T>
+      );
+      const changeFilter = () => {
+        if (field === 'purpose') {
+          const button = view
+            .findAll('button')
+            .find(
+              (node) =>
+                textContent(node) ===
+                commonMessages[localePreferenceService().locale.value].usageStatistics.purposes
+                  .compact
+            )!;
+          (button.props['onClick'] as () => void)();
+        } else {
+          const index = ['period', 'runner', 'model', 'mode'].indexOf(field);
+          const select = view.findAll('ElSelect')[index]!;
+          (select.props['onUpdate:modelValue'] as (value: string) => void)(value);
+          (select.props['onChange'] as () => void)();
+        }
+      };
+      changeFilter();
+      await flushComponent();
+      expect(service.state.loading).toBe(true);
+      expect(panel().props['aria-busy']).toBe(true);
+      expect(refreshButton().props['loading']).toBe(false);
+      expect(refreshButton().props['disabled']).toBe(true);
+      pendingOverview.resolve(overview());
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(true);
+      pendingRecords.resolve({ records: [], total: '0', page: 1 });
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(false);
+
+      const failedRead = deferred<PersonalUsageOverview>();
+      request.mockImplementation(<T>() => failedRead.promise as Promise<T>);
+      (refreshButton().props['onClick'] as () => void)();
+      await flushComponent();
+      expect(service.state.overview).toBeDefined();
+      expect(panel().props['aria-busy']).toBe(false);
+      expect(refreshButton().props['loading']).toBe(true);
+      failedRead.reject(new Error('Usage unavailable'));
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(false);
+      expect(refreshButton().props['loading']).toBe(false);
+
+      const failedFilter = deferred<PersonalUsageOverview>();
+      request.mockImplementation(<T>() => failedFilter.promise as Promise<T>);
+      changeFilter();
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(true);
+      failedFilter.reject(new Error('Usage unavailable'));
+      await flushComponent();
+      expect(panel().props['aria-busy']).toBe(false);
+      expect(refreshButton().props['disabled']).toBe(false);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it.each(['en-US', 'zh-CN'] as const)('renders missing usage as zero in %s', async (locale) => {
     localePreferenceService().setLocale(locale);
     const request = vi.fn();
