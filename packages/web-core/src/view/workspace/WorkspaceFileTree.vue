@@ -694,12 +694,14 @@ defineExpose({ reveal });
   font-size: 0.875rem;
 }
 
-.tree-chevron svg {
-  transition: transform 100ms ease;
+.tree-chevron.expanded {
+  transform: rotate(90deg);
 }
 
-.tree-chevron svg.expanded {
-  transform: rotate(90deg);
+@media (prefers-reduced-motion: no-preference) {
+  .tree-chevron {
+    transition: transform 100ms ease;
+  }
 }
 
 .tree-name {
