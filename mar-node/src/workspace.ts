@@ -1610,6 +1610,7 @@ export interface CurrentChangesRepository {
   readonly repositoryPath: string;
   readonly repositoryName: string;
   readonly branch: string | null;
+  readonly head?: string;
   readonly tracking?: WorkspaceGitTracking;
   readonly changes: readonly CurrentChange[];
 }
@@ -1749,6 +1750,7 @@ export async function readCurrentChangesSummary(
   isolateSubmoduleFailures = false
 ): Promise<{
   readonly branch: string | null;
+  readonly head?: string;
   readonly tracking?: WorkspaceGitTracking;
   readonly changes: readonly CurrentChange[];
 }> {
@@ -1793,8 +1795,14 @@ export async function readCurrentChangesSummary(
       index += 1;
   }
   const tracking = trackingFromStatusHeader(header);
+  const branch = header.startsWith('## ') ? currentBranchFromStatusHeader(header) : null;
+  const head =
+    branch === null
+      ? (await runReadOnlyGit(workspacePath, ['rev-parse', '--verify', 'HEAD'])).text.trim()
+      : undefined;
   return {
-    branch: header.startsWith('## ') ? currentBranchFromStatusHeader(header) : null,
+    branch,
+    ...(head === undefined ? {} : { head }),
     ...(tracking === undefined ? {} : { tracking }),
     changes: output
   };

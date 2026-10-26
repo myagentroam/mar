@@ -122,6 +122,7 @@ export class WorkspaceChangeService {
             repositoryName:
               repositoryPath === '' ? basename(repository) : posix.basename(repositoryPath),
             branch: summary.branch,
+            ...(summary.head === undefined ? {} : { head: summary.head }),
             ...(summary.tracking === undefined ? {} : { tracking: summary.tracking }),
             dirty: summary.changes.length > 0,
             status: summary.changes.length > 0 ? 'DIRTY' : 'CLEAN',
