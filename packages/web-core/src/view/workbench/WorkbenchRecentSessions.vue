@@ -33,6 +33,9 @@ const emit = defineEmits<{
 const desktopOpen = ref(false);
 const sessionGroup = ref<import('@myagentroam/protocol').SessionGroup>('MAIN');
 const groupState = computed(() => props.service.sessionGroupState());
+const hasUnreadSessions = computed(
+  () => groupState.value.MAIN.unread || groupState.value.CHILD.unread
+);
 const visibleRuns = computed(() =>
   props.service.recentRuns.value.filter(
     (run) => (run.sessionGroup ?? 'MAIN') === sessionGroup.value
@@ -55,6 +58,16 @@ watch(
 const currentTime = ref(Date.now());
 const activeSessionCount = computed(
   () => props.service.recentRuns.value.filter((run) => activeRecentRunStatus(run.status)).length
+);
+const entryDescription = computed(() =>
+  [
+    translate('workbenchNotificationCenter.recentSessionsCount', {
+      count: activeSessionCount.value
+    }),
+    hasUnreadSessions.value ? translate('sessionGroups.unread') : ''
+  ]
+    .filter(Boolean)
+    .join(', ')
 );
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -137,7 +150,7 @@ function runTime(run: RecentRun): string {
     <span ref="trigger" class="recent-sessions-reference">
       <span
         v-tooltip="{
-          content: translate('workbenchNotificationCenter.recentSessionsShortcut'),
+          content: `${translate('workbenchNotificationCenter.recentSessionsShortcut')}\n${entryDescription}`,
           placement: mobileMode ? 'bottom' : 'right'
         }"
         class="mar-tooltip-control"
@@ -145,11 +158,7 @@ function runTime(run: RecentRun): string {
           type="button"
           :class="['recent-sessions-trigger', { active: open }]"
           :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-          :aria-description="
-            translate('workbenchNotificationCenter.recentSessionsCount', {
-              count: activeSessionCount
-            })
-          "
+          :aria-description="entryDescription"
           :aria-expanded="open"
           @click="mobileMode && (open = !open)"
           @keydown.esc.stop="open = false"
@@ -158,7 +167,7 @@ function runTime(run: RecentRun): string {
           <SessionStateBadge
             class="recent-sessions-badge"
             :running="activeSessionCount"
-            :unread="false"
+            :unread="hasUnreadSessions"
           /></button
       ></span>
     </span>
@@ -225,7 +234,18 @@ function runTime(run: RecentRun): string {
 .recent-sessions-badge {
   position: absolute;
   top: calc(50% - 15px);
-  right: calc(50% - 14px);
+  right: 0;
+  max-width: calc(100% + 2px);
+  pointer-events: none;
+}
+.recent-sessions-badge :deep(.session-state-count) {
+  flex: none;
+}
+.recent-sessions-badge :deep(.session-state-unread) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mobile-mode {
   width: 36px;
@@ -243,6 +263,13 @@ function runTime(run: RecentRun): string {
 }
 .mobile-mode .recent-sessions-trigger .mar-icon {
   font-size: 22px;
+}
+.mobile-mode .recent-sessions-badge {
+  right: auto;
+  left: calc(100% - 12px);
+  max-width: none;
+  /* Use the menu gap and empty icon inset without covering the next icon. */
+  transform: translateX(min(0px, calc(12px + 0.25rem + 5px - 100%)));
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

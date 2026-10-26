@@ -866,7 +866,9 @@ for (const mobile of [false, true]) {
         const badge = trigger.locator('.recent-sessions-badge');
         await expect(badge).toHaveText(String(count));
         const badgeBounds = await badge.boundingBox();
-        expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+        expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(
+          bounds!.x + bounds!.width + (mobile ? 9 : 0)
+        );
       } else await expect(trigger.locator('.recent-sessions-badge')).toHaveCount(0);
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
@@ -885,6 +887,81 @@ for (const mobile of [false, true]) {
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       }
     }
+  });
+}
+
+for (const { theme, locale } of [
+  { theme: 'dark', locale: 'zh-CN' },
+  { theme: 'light', locale: 'en-US' }
+]) {
+  test(`Recent-session unread badges do not move or cover navigation icons: ${theme} ${locale}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [320, 390, 430, 1024, 1280]) {
+      const mobile = width < 768;
+      await page.setViewportSize({ width, height: 900 });
+      const url = `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=${locale}${mobile ? '&mobile=1' : ''}`;
+      await page.goto(`${url}&count=0`);
+      const buttons = page.locator('.activity-rail nav button');
+      const trigger = page.locator('.recent-sessions-trigger');
+      await expect(trigger).toBeVisible();
+      const baseline = await buttons.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON())
+      );
+      await page.goto(`${url}&count=99&unread=1`);
+      const badge = trigger.locator('.recent-sessions-badge');
+      await expect(badge.locator('.session-state-count')).toHaveText('99');
+      await expect(badge.locator('.session-state-unread')).toHaveText(
+        locale === 'zh-CN' ? '未读' : 'Unread'
+      );
+      const positions = await buttons.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON())
+      );
+      expect(positions).toEqual(baseline);
+      const bounds = (await badge.boundingBox())!;
+      const navigation = (await page.locator('.activity-rail nav').boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(navigation.x);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(navigation.x + navigation.width);
+      const otherIcons = await buttons
+        .locator('.mar-icon:not([data-mar-icon="recent-sessions"])')
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().toJSON())
+        );
+      for (const icon of otherIcons) {
+        const overlaps =
+          bounds.x < icon.right &&
+          bounds.x + bounds.width > icon.left &&
+          bounds.y < icon.bottom &&
+          bounds.y + bounds.height > icon.top;
+        expect(overlaps).toBe(false);
+      }
+      if (mobile) {
+        await expect(trigger).toHaveCSS('width', '36px');
+        const unread = badge.locator('.session-state-unread');
+        expect(await unread.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`recent-sessions-${width}.png`),
+          clip: { x: 0, y: 0, width, height: 84 }
+        });
+      } else {
+        await trigger.hover();
+        await expect(page.locator('.mar-tooltip:visible')).toContainText(
+          locale === 'zh-CN' ? '未读' : 'Unread'
+        );
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(
+      `${fixture.url}icon-system.html?navigation=1&mobile=1&count=0&unread=1&theme=${theme}&locale=${locale}`
+    );
+    const badge = page.locator('.recent-sessions-badge');
+    await expect(badge.locator('.session-state-count')).toHaveCount(0);
+    await expect(badge.locator('.session-state-unread')).toBeVisible();
+    await page.locator('.workbench-notification-trigger').click();
+    await page.locator('.workbench-notification-mark-all').click();
+    await expect(badge).toHaveCount(0);
   });
 }
 
