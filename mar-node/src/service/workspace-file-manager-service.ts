@@ -37,7 +37,9 @@ export function fileManagerInvocation(
         `on run argv
            tell application "Finder"
              activate
-             reveal (POSIX file (item 1 of argv) as alias)
+             set finderItem to POSIX file (item 1 of argv) as alias
+             reveal finderItem
+             select finderItem
            end tell
          end run`,
         target.path
