@@ -19,7 +19,7 @@ const env = {
   MAR_CTL_SESSION_ID: 'source'
 };
 
-test('renames sessions and manages schedules with explicit revisions and bounded input', async () => {
+test('renames sessions, manages prompts and schedules, and decides approvals', async () => {
   const calls = [];
   const invoke = (args) =>
     main(['sessions', ...args, '--json'], {
@@ -35,6 +35,37 @@ test('renames sessions and manages schedules with explicit revisions and bounded
   assert.equal(await invoke(['rename', 'other', '--title', '  fixer#42 New title  ']), 0);
   assert.equal(await invoke(['schedule', 'list', '--limit', '2']), 0);
   assert.equal(await invoke(['schedule', 'get', 'other']), 0);
+  assert.equal(await invoke(['prompt', 'get']), 0);
+  assert.equal(await invoke(['prompt', 'set', '-m', '  Agent role  ']), 0);
+  assert.equal(await invoke(['prompt', 'clear']), 0);
+  assert.equal(
+    await invoke([
+      'approval',
+      'decide',
+      'other',
+      '--run',
+      'run-1',
+      '--approval',
+      'approval-1',
+      '--decision',
+      'approve'
+    ]),
+    0
+  );
+  assert.equal(
+    await invoke([
+      'approval',
+      'decide',
+      'other',
+      '--run',
+      'run-2',
+      '--approval',
+      'approval-2',
+      '--decision',
+      'reject'
+    ]),
+    0
+  );
   assert.equal(
     await invoke(['schedule', 'create', 'other', '--cron', '0 9 * * *', '-m', 'Check build']),
     0
@@ -47,6 +78,23 @@ test('renames sessions and manages schedules with explicit revisions and bounded
     { action: 'rename', sessionId: 'other', title: 'fixer#42 New title' },
     { action: 'schedule.list', limit: 2 },
     { action: 'schedule.get', sessionId: 'other' },
+    { action: 'prompt.get', sessionId: 'source' },
+    { action: 'prompt.set', sessionId: 'source', content: '  Agent role  ' },
+    { action: 'prompt.clear', sessionId: 'source' },
+    {
+      action: 'approval.decide',
+      sessionId: 'other',
+      runId: 'run-1',
+      approvalId: 'approval-1',
+      decision: 'APPROVED'
+    },
+    {
+      action: 'approval.decide',
+      sessionId: 'other',
+      runId: 'run-2',
+      approvalId: 'approval-2',
+      decision: 'REJECTED'
+    },
     { action: 'schedule.create', sessionId: 'other', cron: '0 9 * * *', content: 'Check build' },
     { action: 'schedule.update', sessionId: 'other', expectedRevision: 3, content: 'Check tests' }
   ]);
@@ -195,6 +243,86 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
     );
     assert.equal(calls, 1);
     assert.equal(JSON.parse(output).error.code, 'MARCTL_OUTCOME_UNKNOWN');
+  }
+});
+
+test('prompt set reports invalid UTF-8 input and rejects missing context before reading stdin', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'marctl-prompt-'));
+  const invalidUtf8 = join(root, 'invalid.txt');
+  const validUtf8 = join(root, 'valid.txt');
+  await writeFile(invalidUtf8, Buffer.from([0xff]));
+  await writeFile(validUtf8, 'instructions 日本語');
+  try {
+    for (const args of [
+      ['prompt', 'set', 's', '-m', ' \n\t'],
+      ['prompt', 'set', 's', '-m', 'x'.repeat(20_001)],
+      ['prompt', 'set', 's', '--message-file', invalidUtf8]
+    ]) {
+      let output = '';
+      let calls = 0;
+      assert.equal(
+        await main(['sessions', ...args, '--json'], {
+          env,
+          stdout: { write: (value) => (output += value) },
+          client: { sessionCommand: async () => (calls++, {}) }
+        }),
+        2
+      );
+      const error = JSON.parse(output).error;
+      assert.equal(error.code, 'MARCTL_SESSION_INPUT_INVALID');
+      assert.match(error.details, /at most 20000 characters/u);
+      assert.equal(calls, 0);
+    }
+
+    const submitted = [];
+    const client = { sessionCommand: async (body) => (submitted.push(body), {}) };
+    assert.equal(
+      await main(['sessions', 'prompt', 'set', 's', '--message-file', validUtf8, '--json'], {
+        env,
+        stdout: { write() {} },
+        client
+      }),
+      0
+    );
+    assert.equal(
+      await main(['sessions', 'prompt', 'set', 's', '--message-file', '-', '--json'], {
+        env,
+        stdin: (async function* () {
+          yield Buffer.from('stdin instructions');
+        })(),
+        stdout: { write() {} },
+        client
+      }),
+      0
+    );
+    assert.deepEqual(
+      submitted.map(({ action, sessionId, content }) => ({ action, sessionId, content })),
+      [
+        { action: 'prompt.set', sessionId: 's', content: 'instructions 日本語' },
+        { action: 'prompt.set', sessionId: 's', content: 'stdin instructions' }
+      ]
+    );
+
+    let consumed = false;
+    let output = '';
+    let calls = 0;
+    assert.equal(
+      await main(['sessions', 'prompt', 'set', '--message-file', '-', '--json'], {
+        env: { ...env, MAR_CTL_SESSION_ID: '' },
+        stdin: (async function* () {
+          consumed = true;
+          yield Buffer.from('private prompt');
+        })(),
+        stdout: { write: (value) => (output += value) },
+        client: { sessionCommand: async () => (calls++, {}) }
+      }),
+      1
+    );
+    assert.equal(JSON.parse(output).error.code, 'MARCTL_SESSION_CONTEXT_REQUIRED');
+    assert.equal(consumed, false);
+    assert.equal(calls, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -592,12 +720,25 @@ test('parses closed Session commands including creation and rejects scope overri
     }
   );
   assert.equal(parseArgs(['sessions', 'goal', 'clear', 's']).action, 'goal.clear');
+  assert.deepEqual(parseArgs(['sessions', 'prompt', 'get']), {
+    command: 'sessions',
+    action: 'prompt.get'
+  });
+  assert.equal(
+    parseArgs(['sessions', 'wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'approval'])
+      .until,
+    'approval'
+  );
   for (const args of [
     ['list', '--workspace', 'w'],
     ['send', 's'],
     ['wait', 's', '--run', 'r', '--timeout', '0s'],
     ['list', '--limit', '101'],
-    ['show', 's', '--run', 'r']
+    ['show', 's', '--run', 'r'],
+    ['prompt', 'set', 's'],
+    ['approval', 'decide', 's', '--run', 'r', '--approval', 'a'],
+    ['approval', 'decide', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
+    ['wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'anything']
   ])
     assert.throws(() => parseArgs(['sessions', ...args]));
 });
@@ -823,6 +964,121 @@ test('wait uses the existing owned Watch and releases it on a terminal Run', asy
   assert.equal(socket.closed, true);
 });
 
+test('wait returns pending approvals from initial or incremental progress and always releases its Watch', async () => {
+  const ownApproval = { id: 'approval-1', runId: 'r', prompt: 'Allow tool?' };
+  const cases = [
+    {
+      initial: { runId: 'r', pendingApprovals: [ownApproval, { id: 'other', runId: 'other' }] },
+      expected: {
+        sessionId: 's',
+        runId: 'r',
+        stopReason: 'APPROVAL_REQUIRED',
+        pendingApprovals: [ownApproval]
+      }
+    },
+    {
+      initial: { runId: 'r', pendingApprovals: [] },
+      update: { runId: 'r', pendingApprovals: [ownApproval] },
+      expected: {
+        sessionId: 's',
+        runId: 'r',
+        stopReason: 'APPROVAL_REQUIRED',
+        pendingApprovals: [ownApproval]
+      }
+    },
+    {
+      initial: { runId: 'r', pendingApprovals: [ownApproval] },
+      status: 'SUCCEEDED',
+      expected: { run: { id: 'r', sessionId: 's', status: 'SUCCEEDED' } }
+    },
+    { initial: { runId: 'r' }, error: 'NODE_OPERATION_UNSUPPORTED' }
+  ];
+
+  for (const scenario of cases) {
+    class Socket extends EventEmitter {
+      send(raw) {
+        assert.deepEqual(JSON.parse(raw), { type: 'resume' });
+        queueMicrotask(() =>
+          this.emit(
+            'message',
+            JSON.stringify({ type: 'workbench.ready', workbenchConnectionId: 'c' })
+          )
+        );
+      }
+      close() {
+        this.closed = true;
+      }
+    }
+    const socket = new Socket();
+    const calls = [];
+    const client = {
+      openWorkbenchWebSocket: () => {
+        queueMicrotask(() => socket.emit('open'));
+        return socket;
+      },
+      sessionCommand: async (command) => {
+        calls.push(command);
+        if (command.mode === 'initial')
+          setImmediate(() => {
+            socket.emit(
+              'message',
+              watchEnvelope({
+                type: 'watch.session.snapshot',
+                watchId: command.watchId,
+                payload: {
+                  session: { id: 's' },
+                  runs: [{ id: 'r', sessionId: 's', status: scenario.status ?? 'RUNNING' }],
+                  progress: scenario.initial
+                },
+                expiresAt: Date.now() + 30_000
+              })
+            );
+            if (scenario.update)
+              socket.emit(
+                'message',
+                watchEnvelope({
+                  type: 'watch.session.event',
+                  watchId: command.watchId,
+                  event: { payload: { sessionId: 's', progress: scenario.update } }
+                })
+              );
+          });
+        return { accepted: true };
+      }
+    };
+
+    if (scenario.error) {
+      await assert.rejects(
+        waitForSessionRun({
+          client,
+          sessionId: 's',
+          runId: 'r',
+          timeoutMs: 1000,
+          until: 'approval'
+        }),
+        { code: scenario.error, stage: 'approval' }
+      );
+    } else {
+      assert.deepEqual(
+        await waitForSessionRun({
+          client,
+          sessionId: 's',
+          runId: 'r',
+          timeoutMs: 1000,
+          until: 'approval'
+        }),
+        scenario.expected
+      );
+    }
+    assert.deepEqual(
+      calls.map((call) => call.mode),
+      ['initial', 'stop']
+    );
+    assert.equal(socket.closed, true);
+    assert.equal(socket.listenerCount('message'), 0);
+  }
+});
+
 test('message text does not select JSON error output', async () => {
   for (const json of [false, true]) {
     let output = '';
@@ -903,9 +1159,36 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       }
       assert.ok(output.includes('Additional context: focus on the resume path.'));
       assert.ok(!output.includes('--forced'));
-      assert.ok(!output.toLowerCase().includes('interrupt'));
       assert.ok(!output.toLowerCase().includes('urgent'));
-      assert.ok(!output.includes('打断'));
+      const deliveryStart = output.indexOf(
+        locale.startsWith('zh') ? '投递与等待：' : 'Delivery and waiting:'
+      );
+      const scopeStart = output.indexOf(
+        locale.startsWith('zh') ? '凭据与范围：' : 'Credentials and scope:'
+      );
+      assert.ok(deliveryStart >= 0 && scopeStart > deliveryStart);
+      const delivery = output.slice(deliveryStart, scopeStart).replace(/\s+/gu, ' ').toLowerCase();
+      const steerStart = delivery.indexOf(
+        locale.startsWith('zh') ? '--steer 优先补充新信息' : '--steer prioritizes new context'
+      );
+      const queueStart = delivery.indexOf(
+        locale.startsWith('zh') ? '--queue 排入后续轮次' : '--queue schedules a subsequent turn'
+      );
+      assert.ok(steerStart >= 0 && queueStart > steerStart);
+      const steering = delivery.slice(steerStart, queueStart);
+      assert.ok(
+        steering.includes(
+          locale.startsWith('zh') ? '可能切换当前执行' : 'may switch the current execution'
+        )
+      );
+      assert.ok(!steering.includes(locale.startsWith('zh') ? '打断' : 'interrupt'));
+      assert.ok(
+        delivery
+          .slice(queueStart)
+          .includes(
+            locale.startsWith('zh') ? '不打断活动执行' : 'without interrupting active execution'
+          )
+      );
       for (const line of output.split('\n')) {
         // Count CJK glyphs as two columns; other help characters occupy one.
         const columns = [...line].reduce(
@@ -927,7 +1210,7 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
   });
 }
 
-test('Session help is local in both languages and excludes removed prompt commands', async () => {
+test('Session help documents prompts and approvals without supporting --prompt-file', async () => {
   for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
     let output = '';
     assert.equal(
@@ -943,6 +1226,11 @@ test('Session help is local in both languages and excludes removed prompt comman
     assert.ok(output.includes('--image <path>'));
     assert.ok(output.includes('fixer#42'));
     assert.ok(output.includes('reviewer#42'));
+    assert.ok(output.includes('prompt get'));
+    assert.ok(output.includes('prompt set'));
+    assert.ok(output.includes('sessions prompt get|clear'));
+    assert.ok(output.includes('approval decide'));
+    assert.ok(output.includes('--until approval'));
     assert.ok(!output.includes('--prompt-file'));
   }
   assert.throws(() => parseArgs(['sessions', 'prompt', 'set', 's', '--file', '-']));
@@ -1019,6 +1307,29 @@ test('keeps structured authorization failures and reports unknown mutation outco
   assert.equal(JSON.parse(output).error.code, 'MARCTL_OUTCOME_UNKNOWN');
   assert.ok(!output.includes('Private task input'));
   assert.ok(!output.includes(env.MAR_CTL_USER_TOKEN));
+  for (const args of [
+    ['prompt', 'set', 's', '-m', 'new instructions'],
+    ['prompt', 'clear', 's'],
+    ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve']
+  ]) {
+    let mutationCalls = 0;
+    let mutationOutput = '';
+    assert.equal(
+      await main(['sessions', ...args, '--json'], {
+        env,
+        stdout: { write: (value) => (mutationOutput += value) },
+        client: {
+          sessionCommand: async () => {
+            mutationCalls++;
+            throw new MarctlError('Network failure', { code: 'MARCTL_REQUEST_TIMEOUT' });
+          }
+        }
+      }),
+      6
+    );
+    assert.equal(mutationCalls, 1);
+    assert.equal(JSON.parse(mutationOutput).error.code, 'MARCTL_OUTCOME_UNKNOWN');
+  }
 });
 
 test('wait timeout and unknown Run release observation without cancelling any Run', async () => {

@@ -51,6 +51,9 @@ ${configurationHelp}
   {program} config [<session-id>]
     [--model <id>] [--effort <value>] [--json]
   {program} rename [<session-id>] --title <name> [--json]
+  {program} prompt get|clear [<session-id>] [--json]
+  {program} prompt set [<session-id>]
+    (-m <text> | --message-file <file|->) [--json]
   {program} schedule list [--cursor <cursor>] [--limit <1..100>] [--json]
   {program} schedule get [<session-id>] [--json]
   {program} schedule create [<session-id>] --cron <cron>
@@ -77,12 +80,14 @@ ${configurationHelp}
   {program} goal set <session-id>
     (-m <text> | --message-file <file|->) [--json]
   {program} wait <session-id>
-    --run <run-id> --timeout <30s|5m> [--json]
+    --run <run-id> --timeout <30s|5m> [--until approval] [--json]
+  {program} approval decide <session-id> --run <run-id>
+    --approval <approval-id> --decision <approve|reject> [--json]
 
 输入：
-  show/config/history/graph/rename 和 schedule get/create/update 可省略 ID，
-  使用当前会话；没有当前会话时请显式指定 ID。
-  send/goal/stop/wait 始终要求显式会话 ID。
+  show/config/history/graph/rename、prompt 和 schedule get/create/update
+  可省略 ID，使用当前会话；没有当前会话时请显式指定 ID。
+  send/goal/stop/wait/approval 始终要求显式会话 ID。
   Runner：mar-agent、codex、claude-code、opencode，操作以实际能力为准。
   -m / --message 直接传文本，与 --message-file 互斥；
   文件用 UTF-8，- 从 stdin 读取。
@@ -90,6 +95,7 @@ ${configurationHelp}
   最多 5 张，单张 5 MiB、合计 10 MiB；goal set 只接受文本。
   config 至少指定 model 或 effort；未指定字段和权限不变。
   --effort "" 使用 Runner 默认值，不重启当前执行。
+  prompt 读取、设置或清除持久指令，从后续执行生效。
 
 标题与定时任务：
   rename 复用现有标题更新，不限制 parent 树、不重启执行。
@@ -103,6 +109,8 @@ ${configurationHelp}
   show：session.status、session.title、session.runId，
     session.model、session.effort、session.queuedCount，
     session.latestMessage、session.recentTools（最多三条摘要）。
+    session.pendingApprovals 展示当前审批；pendingApprovalsTruncated 标记
+    摘要未完整列出，完整证据仍查 history。
   状态为 RUNNING/IDLE/SLEEPING；工具保留原有生命周期。
   history：segments[].items[] 中按 kind === "assistant_message"
     筛选，读取 payload.text。
@@ -113,6 +121,7 @@ ${configurationHelp}
   --steer 优先补充新信息，可能切换当前执行；
     Node 按实际状态裁决，仅用于影响当前工作的必要更新。
   --queue 排入后续轮次；有活动 Goal 时可能等待 Goal 退出才处理。
+    新输入自动恢复暂停的 FIFO，不打断活动执行；取消收敛后才恢复。
   示例：
     marctl sessions send <session-id> --steer \\
       -m "Additional context: focus on the resume path." --json
@@ -120,6 +129,9 @@ ${configurationHelp}
   需按 queueItemId/clientMessageId 与可见历史核对。
   wait 通过 Watch 等待指定 Run；超时不会停止任务，
   超时错误可附 progress，表示最后观察到的有界快照。
+  --until approval 在需要审批决定时也提前返回。
+  approval decide 显式批准或拒绝单个请求，沿用实际用户授权；
+    决定被接受不代表任务完成。
   Run 成功不等于业务完成。Worker 完成不自动唤醒 Coordinator。
   投递结果未知时先查状态/历史，不盲目重发。
 
@@ -250,6 +262,7 @@ ${configurationHelp}`,
     sessionWaitUnknown: '无法确认指定 Run，请查看会话状态和历史。',
     sessionWaitCancelled: '已取消等待，未停止目标 Run。',
     sessionWaitTimeout: '等待超时，未停止目标 Run。',
+    sessionApprovalUnsupported: '此 Node 不支持待审批状态观察。',
 
     userContextUnavailable: '此 Node 会话没有有效的 marctl 用户授权。',
     sessionContextRequired: '当前上下文没有会话，请显式指定会话 ID。',

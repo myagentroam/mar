@@ -162,6 +162,84 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
+test('Initial layout and cached synchronization preserve complete process facts without mounting details', async ({
+  browser
+}, testInfo) => {
+  for (const width of [1280, 390]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?loading-lifecycle=1`);
+      await page.clock.install();
+      await page.clock.pauseAt(new Date());
+      await page.getByTestId('load-lifecycle-history').click();
+      const timeline = page.locator('.conversation-timeline');
+      const process = page.locator('[data-process-id="loading-process-initial-session"]');
+      await expect(timeline).toBeHidden();
+      await expect(timeline).toHaveAttribute('inert', '');
+      await expect(process.locator('.process-heading')).not.toContainText('Partial history');
+      const duration = await process.locator('.process-duration').textContent();
+      await page.clock.runFor(100);
+      await expect(page.getByTestId('rendered-version')).toHaveText('1');
+      await expect(timeline).toBeHidden();
+      await page.getByTestId('finish-lifecycle-initial').click();
+      await page.clock.runFor(1_500);
+      await expect(timeline).toBeVisible();
+      await expect(process.locator('.process-duration')).toHaveText(duration!);
+      await expect(process.locator('.process-heading')).not.toContainText('Partial history');
+      await expect(timeline.locator('.process-summary')).toHaveCount(0);
+      await page.getByTestId('switch-cached-history').click();
+      const cached = page.locator('[data-process-id="loading-process-cached-session"]');
+      await expect(timeline).toBeVisible();
+      await expect(cached.locator('.process-heading')).not.toContainText('Partial history');
+      await expect(timeline.locator('.process-summary')).toHaveCount(0);
+      await page.clock.runFor(1_500);
+      await page.getByTestId('synchronize-history').click();
+      await expect(cached.locator('.process-summary')).toHaveText('Current public progress');
+      await expect(cached.locator('.command-group')).toHaveCount(1);
+      await expect(cached.locator('.command-group > details > summary')).toContainText('64');
+      await expect(cached.locator('.conversation-command-detail')).toHaveCount(0);
+      expect(await timeline.locator('*').count()).toBeLessThan(160);
+      await cached.screenshot({
+        path: testInfo.outputPath(`cached-process-${width}.png`),
+        animations: 'disabled'
+      });
+      await page.getByTestId('omit-process-start').click();
+      await expect(cached.locator('.process-heading')).toContainText('Partial history');
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test('Cached session changes retain the progressive DOM budget', async ({ page }) => {
+  await page.goto(`${fixture.url}conversation-style.html?reasoning-stress=1`);
+  await page.getByTestId('load-stress-history').click();
+  const processes = page.locator('[data-process-id^="stress-process-"]');
+  await expect(processes).toHaveCount(80);
+  const initialCount = await page.getByTestId('switch-stress-session').evaluate(async (button) => {
+    (button as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    return document.querySelectorAll('[data-process-id^="stress-process-"]').length;
+  });
+  expect(initialCount).toBeGreaterThan(0);
+  // Session changes must retain the 40-record first-frame cap rather than mount all 80.
+  expect(initialCount).toBeLessThanOrEqual(40);
+  await expect(processes).toHaveCount(80);
+  await expect(page.locator('.reasoning-group')).toHaveCount(0);
+  expect(await page.locator('.conversation-timeline *').count()).toBeLessThan(1_500);
+  await page.getByTestId('toggle-cached-stress-timeline').click();
+  await expect(processes).toHaveCount(0);
+  await page.getByTestId('toggle-cached-stress-timeline').click();
+  await expect(processes).toHaveCount(80);
+  await expect(page.locator('.reasoning-group')).toHaveCount(0);
+});
+
 test('Long reasoning history stays responsive through progressive rendering and remounts', async ({
   page
 }, testInfo) => {
@@ -205,6 +283,15 @@ test('Long reasoning history stays responsive through progressive rendering and 
   });
   await testInfo.attach('main-thread-gaps', {
     body: JSON.stringify(gaps),
+    contentType: 'application/json'
+  });
+  await testInfo.attach('progressive-render-metrics', {
+    body: JSON.stringify({
+      maximumEventLoopGapMs: Math.max(...gaps),
+      processCount: await processes.count(),
+      timelineDomNodes: await page.locator('.conversation-timeline *').count(),
+      mountedReasoningDetails: await page.locator('.reasoning-group').count()
+    }),
     contentType: 'application/json'
   });
   expect(gaps.length).toBeGreaterThan(0);

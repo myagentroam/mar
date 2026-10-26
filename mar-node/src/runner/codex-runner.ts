@@ -756,6 +756,11 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   }
 
   releaseEnvironment(runId: string): void {
+    for (const [id, approval] of this.execution.approvals) {
+      if (approval.runId !== runId) continue;
+      clearTimeout(approval.timer);
+      this.execution.approvals.delete(id);
+    }
     const client = this.runClients.get(runId);
     if (client === undefined) return;
     this.runClients.delete(runId);
@@ -767,6 +772,8 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   }
 
   stop(): void {
+    for (const approval of this.execution.approvals.values()) clearTimeout(approval.timer);
+    this.execution.approvals.clear();
     this.profileGeneration += 1;
     for (const profileClient of this.profileClients) profileClient.stop();
     this.profileClients.clear();
@@ -1057,7 +1064,11 @@ export class CodexExecutionState {
   readonly managedTurns = new Map<string, { sessionId: string; runId: string }>();
   readonly approvals = new Map<
     string,
-    { readonly runId: string; readonly requestId: string | number }
+    {
+      readonly runId: string;
+      readonly requestId: string | number;
+      readonly timer?: ReturnType<typeof setTimeout>;
+    }
   >();
   readonly userInputs = new Map<
     string,

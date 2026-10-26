@@ -11,6 +11,9 @@ const currentSessionActions = new Set([
   'history',
   'graph',
   'rename',
+  'prompt.get',
+  'prompt.set',
+  'prompt.clear',
   'schedule.get',
   'schedule.create',
   'schedule.update'
@@ -33,6 +36,10 @@ const commands = {
   ],
   config: ['model', 'effort'],
   rename: ['title'],
+  'prompt.get': [],
+  'prompt.set': ['message', 'message-file'],
+  'prompt.clear': [],
+  'approval.decide': ['run', 'approval', 'decision'],
   'schedule.list': ['cursor', 'limit'],
   'schedule.get': [],
   'schedule.create': ['cron', 'message', 'message-file'],
@@ -42,7 +49,7 @@ const commands = {
   'goal.get': [],
   'goal.set': ['message', 'message-file'],
   'goal.clear': [],
-  wait: ['run', 'timeout']
+  wait: ['run', 'timeout', 'until']
 };
 const fieldNames = {
   parent: 'parentSessionId',
@@ -50,13 +57,23 @@ const fieldNames = {
   'message-file': 'messageFile',
   'client-message-id': 'clientMessageId',
   run: 'runId',
+  approval: 'approvalId',
   timeout: 'timeoutMs',
   image: 'images'
 };
 
 export function parseSessionArgs(argv, translate = createTranslator()) {
-  const invalid = (key = 'errors.invalidArguments') =>
-    new MarctlError(translate(key), { code: 'MARCTL_SESSION_INPUT_INVALID' });
+  const invalid = (key = 'errors.invalidArguments', details) =>
+    new MarctlError(translate(key), {
+      code: 'MARCTL_SESSION_INPUT_INVALID',
+      details:
+        details ??
+        (argv[0] === 'prompt'
+          ? 'Use prompt get|clear [session-id], or prompt set [session-id] with exactly one of -m/--message or --message-file.'
+          : argv[0] === 'approval'
+            ? 'Use approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve|reject.'
+            : undefined)
+    });
   if (
     argv.length === 0 ||
     argv.some(
@@ -67,7 +84,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     return { command: 'sessions', help: true };
   const input = [...argv];
   let action = input.shift();
-  if (action === 'goal' || action === 'schedule') action += '.' + input.shift();
+  if (['goal', 'schedule', 'prompt', 'approval'].includes(action)) action += '.' + input.shift();
   if (!Object.hasOwn(commands, action)) throw invalid();
   const args = { command: 'sessions', action };
   if (!['current', 'list', 'start', 'schedule.list'].includes(action)) {
@@ -125,7 +142,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     throw invalid('errors.sessionDeliveryRequired');
   if (args.message !== undefined && args.messageFile !== undefined) throw invalid();
   if (
-    ['start', 'send', 'goal.set', 'schedule.create'].includes(action) &&
+    ['start', 'send', 'goal.set', 'schedule.create', 'prompt.set'].includes(action) &&
     args.messageFile === undefined &&
     args.message === undefined &&
     !args.images?.length
@@ -138,6 +155,16 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     throw invalid();
   if (action === 'wait' && (args.runId === undefined || args.timeoutMs === undefined))
     throw invalid();
+  if (args.until !== undefined && args.until !== 'approval')
+    throw invalid(undefined, '--until: expected approval.');
+  if (
+    action === 'approval.decide' &&
+    (!args.runId || !args.approvalId || !['approve', 'reject'].includes(args.decision))
+  )
+    throw invalid(
+      undefined,
+      'Approval decisions require --run, --approval and --decision approve|reject.'
+    );
   if (action === 'rename' && args.title !== undefined) args.title = args.title.trim();
   if (args.title !== undefined && args.title.length > 160) throw invalid();
   if (args.model !== undefined && (args.model.trim().length === 0 || args.model.length > 120))
@@ -180,6 +207,7 @@ export async function runSessionCommand({ args, client, env, stdin, WebSocketCla
         sessionId,
         runId: args.runId,
         timeoutMs: args.timeoutMs,
+        until: args.until,
         WebSocketClass,
         translate,
         signal: controller.signal
@@ -201,6 +229,7 @@ export async function runSessionCommand({ args, client, env, stdin, WebSocketCla
     'limit',
     'query',
     'runId',
+    'approvalId',
     'cron',
     'expectedRevision'
   ])
@@ -215,9 +244,16 @@ export async function runSessionCommand({ args, client, env, stdin, WebSocketCla
     body.content = await messageContent(
       args,
       stdin,
-      args.action === 'goal.set' || args.action.startsWith('schedule.') ? 20000 : 100000,
-      translate
+      args.action === 'goal.set' ||
+        args.action.startsWith('schedule.') ||
+        args.action === 'prompt.set'
+        ? 20000
+        : 100000,
+      translate,
+      args.action === 'prompt.set'
     );
+  if (args.action === 'approval.decide')
+    body.decision = args.decision === 'approve' ? 'APPROVED' : 'REJECTED';
   if (args.images !== undefined) {
     body.attachments = await imageAttachments(args.images, translate);
     body.content ??= '';
@@ -242,6 +278,9 @@ export async function runSessionCommand({ args, client, env, stdin, WebSocketCla
         'send',
         'config',
         'rename',
+        'prompt.set',
+        'prompt.clear',
+        'approval.decide',
         'schedule.create',
         'schedule.update',
         'stop',
@@ -259,7 +298,13 @@ export async function runSessionCommand({ args, client, env, stdin, WebSocketCla
   }
 }
 
-async function messageContent({ message, messageFile: path }, stdin, limit, translate) {
+async function messageContent(
+  { message, messageFile: path },
+  stdin,
+  limit,
+  translate,
+  diagnostic = false
+) {
   let file;
   try {
     let content = message;
@@ -280,9 +325,14 @@ async function messageContent({ message, messageFile: path }, stdin, limit, tran
     }
     if (content.trim().length === 0 || content.length > limit) throw new Error('MESSAGE_INVALID');
     return content;
-  } catch {
+  } catch (error) {
     throw new MarctlError(translate('errors.sessionMessageInvalid'), {
-      code: 'MARCTL_SESSION_INPUT_INVALID'
+      code: 'MARCTL_SESSION_INPUT_INVALID',
+      ...(diagnostic
+        ? {
+            details: `${path === undefined ? 'message' : path === '-' ? 'stdin' : 'message-file'}: provide non-blank UTF-8 text of at most ${limit} characters.${typeof error.code === 'string' && /^[A-Z_]+$/u.test(error.code) ? ' File error: ' + error.code + '.' : ''}`
+          }
+        : {})
     });
   } finally {
     await file?.close();
@@ -339,6 +389,7 @@ export async function waitForSessionRun({
   sessionId,
   runId,
   timeoutMs,
+  until,
   WebSocketClass,
   translate = createTranslator(),
   signal
@@ -425,6 +476,27 @@ export async function waitForSessionRun({
       accept({ run });
     }
   };
+  const checkApproval = () => {
+    if (settled || until !== 'approval' || progress === undefined) return;
+    if (!Array.isArray(progress.pendingApprovals)) {
+      fail('NODE_OPERATION_UNSUPPORTED', 'errors.sessionApprovalUnsupported', {
+        stage: 'approval'
+      });
+      return;
+    }
+    const pendingApprovals = progress.pendingApprovals.filter(
+      (approval) => approval.runId === runId
+    );
+    if (pendingApprovals.length === 0) return;
+    settled = true;
+    accept({
+      sessionId,
+      runId,
+      stopReason: 'APPROVAL_REQUIRED',
+      pendingApprovals,
+      ...(progress.pendingApprovalsTruncated ? { pendingApprovalsTruncated: true } : {})
+    });
+  };
   const onMessage = (raw) => {
     if (settled) return;
     let message;
@@ -463,6 +535,12 @@ export async function waitForSessionRun({
       if (message.payload?.session?.id === sessionId && message.payload?.progress?.runId === runId)
         progress = message.payload.progress;
       check(run);
+      if (!settled && until === 'approval' && progress === undefined) {
+        fail('NODE_OPERATION_UNSUPPORTED', 'errors.sessionApprovalUnsupported', {
+          stage: 'approval'
+        });
+      }
+      checkApproval();
     } else if (message.type === 'watch.session.event') {
       const payload = message.event?.payload;
       if (
@@ -471,6 +549,7 @@ export async function waitForSessionRun({
       )
         progress = payload.progress;
       check(payload?.run);
+      checkApproval();
     }
     if (!settled && message.expiresAt !== undefined) scheduleRenewal(message.expiresAt);
   };

@@ -8,6 +8,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const scenario of [
+  {
+    width: 1280,
+    locale: 'en-US',
+    copy: 'Copy absolute path',
+    relative: 'Copy relative path',
+    refresh: 'Refresh files'
+  },
+  {
+    width: 390,
+    locale: 'zh-CN',
+    copy: '复制绝对路径',
+    relative: '复制相对路径',
+    refresh: '刷新文件'
+  }
+]) {
+  test(`File tree copies absolute paths for files, folders and the root at ${scenario.width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: scenario.width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.route('**/api/workspaces/workspace/**', (route) =>
+      route.fulfill({
+        json: {
+          files: {
+            entries: [
+              { path: 'notes.txt', name: 'notes.txt', kind: 'FILE', size: 24 },
+              { path: 'src', name: 'src', kind: 'DIRECTORY', size: null }
+            ],
+            nextCursor: null
+          }
+        }
+      })
+    );
+    await page.goto(`${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    const feedback = inspector.getByLabel('File operation feedback');
+    await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
+    const menu = async (path: string) => {
+      await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toBeHidden();
+      const row = inspector.locator(`[data-file-path="${path}"]`);
+      await row.hover();
+      await row.locator('..').locator('.file-tree-more').click();
+    };
+    for (const [path, absolute] of [
+      ['.', '/home/example/my-agent-roam'],
+      ['src', '/home/example/my-agent-roam/src'],
+      ['notes.txt', '/home/example/my-agent-roam/notes.txt']
+    ]) {
+      await test.step(`Copy ${path}`, async () => {
+        await menu(path!);
+        await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(absolute);
+        await expect(feedback).toHaveAttribute('data-type', 'info');
+      });
+    }
+    await menu('notes.txt');
+    await page.getByRole('menuitem', { name: scenario.relative, exact: true }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('notes.txt');
+    await inspector.getByRole('button', { name: 'Switch root path', exact: true }).click();
+    await menu('.');
+    await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('/home/other/my-agent-roam');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async () => {
+            throw new DOMException('Clipboard access denied', 'NotAllowedError');
+          }
+        }
+      });
+    });
+    await menu('.');
+    await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+    await expect(feedback).toHaveAttribute('data-type', 'error');
+    await inspector.getByRole('button', { name: 'Clear root path', exact: true }).click();
+    await menu('notes.txt');
+    await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    await expect(
+      page.getByRole('menuitem', { name: scenario.relative, exact: true })
+    ).not.toHaveAttribute('aria-disabled', 'true');
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
     test(`List empty and initial loading states are centered in ${theme} at ${width}px`, async ({
@@ -389,6 +479,53 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Offline Workspace uses a static disconnected icon in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1`);
+      const offline = page.locator('.workspace-offline-placeholder');
+      await expect(offline).toBeVisible();
+      await expect(offline).toHaveAttribute('role', 'status');
+      const offlineIcon = offline.locator('[data-mar-icon="connection-off"]');
+      await expect(offlineIcon).toBeVisible();
+      await expect(offlineIcon).toBeInViewport({ ratio: 1 });
+      await expect(offline.locator('svg')).toHaveCount(1);
+      await expect(offlineIcon).toHaveAttribute('aria-hidden', 'true');
+      await expect(offlineIcon).toHaveCSS('animation-name', 'none');
+      const geometry = await offlineIcon.evaluate((element) => {
+        const bounds = (element as SVGSVGElement).getBBox();
+        const viewportBounds = element.getBoundingClientRect();
+        const hitTarget = document.elementFromPoint(
+          viewportBounds.x + viewportBounds.width / 2,
+          viewportBounds.y + viewportBounds.height / 2
+        );
+        const style = getComputedStyle(element);
+        const stroke = parseFloat(style.strokeWidth);
+        return {
+          color: style.color,
+          stroke: style.stroke,
+          width: parseFloat(style.width),
+          height: parseFloat(style.height),
+          rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          min: Math.min(bounds.x, bounds.y) - stroke / 2,
+          max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2,
+          unobscured: hitTarget === element || element.contains(hitTarget),
+          pseudoContent: getComputedStyle(element, '::after').content
+        };
+      });
+      const expectedSize = geometry.rootFontSize * (width < 768 ? 1.5 : 1.75);
+      expect(geometry.width).toBeCloseTo(expectedSize, 1);
+      expect(geometry.height).toBeCloseTo(expectedSize, 1);
+      expect(geometry.stroke).toBe(geometry.color);
+      expect(geometry.min).toBeGreaterThan(0);
+      expect(geometry.max).toBeLessThan(24);
+      expect(geometry.unobscured).toBe(true);
+      expect(['none', 'normal']).toContain(geometry.pseudoContent);
+      await offline.screenshot({ path: testInfo.outputPath('offline-connection-icon.png') });
+    });
+
     test(`Session row feedback stays immediate in ${theme} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));

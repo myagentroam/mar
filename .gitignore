@@ -2,6 +2,7 @@ node_modules/
 dist/
 mar-server/web/
 **/.vitepress/cache/
+**/.vitepress/.temp/
 .env
 .env.*
 !.env.example

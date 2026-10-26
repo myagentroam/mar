@@ -29,9 +29,7 @@ const service = new UsageStatisticsService(props.request, (error) =>
   showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
-const busy = computed(() => state.loading || state.loadingPage);
-const initialized = ref(false);
-const pageLoading = computed(() => busy.value && !initialized.value);
+const pageLoading = computed(() => state.loading && !state.overview);
 const pagination = createManagementPaginationService(20);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
@@ -109,7 +107,6 @@ async function refresh(reset = false, purpose?: (typeof purposes)[number]): Prom
   if (reset) recordsSorted = false;
   const loaded = await service.load(query(), { reset, rolling: draft.period !== 'custom' });
   if (loaded) {
-    initialized.value = true;
     expandedRecords.value = [];
     service.setRecordsInteracting(recordsSorted);
   }

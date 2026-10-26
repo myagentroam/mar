@@ -196,6 +196,270 @@ describe('Workspace-bound marctl sessions', () => {
     expect(secrets.resolve).not.toHaveBeenCalled();
   });
 
+  it('gets, sets and clears a capability-backed prompt with a minimal response', async () => {
+    const { app, headers, requestNode } = await fixture(true, false);
+    requestNode.mockImplementation(async (_node, operation, data) => {
+      if (operation === 'session.get')
+        return {
+          session: {
+            id: data.sessionId,
+            workspaceId: 'workspace',
+            runtime: { capabilities: ['session.prompt'] },
+            sessionPrompt: 'Existing instructions',
+            internalExecutionId: 'DO_NOT_RETURN'
+          }
+        };
+      if (operation === 'session.metadata.update')
+        return {
+          session: {
+            sessionPrompt: data.sessionPrompt,
+            executionPayload: 'DO_NOT_RETURN'
+          }
+        };
+      return {};
+    });
+
+    for (const [payload, expected] of [
+      [
+        { action: 'prompt.get', sessionId: 'target' },
+        { sessionId: 'target', sessionPrompt: 'Existing instructions' }
+      ],
+      [
+        { action: 'prompt.set', sessionId: 'target', content: 'Updated instructions' },
+        { sessionId: 'target', sessionPrompt: 'Updated instructions' }
+      ],
+      [
+        { action: 'prompt.clear', sessionId: 'target' },
+        { sessionId: 'target', sessionPrompt: null }
+      ]
+    ] as const) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(expected);
+      expect(response.body).not.toContain('DO_NOT_RETURN');
+    }
+    expect(requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.metadata.update',
+      { sessionId: 'target', workspaceId: 'workspace', sessionPrompt: 'Updated instructions' },
+      expect.any(Object)
+    );
+    expect(requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.metadata.update',
+      { sessionId: 'target', workspaceId: 'workspace', sessionPrompt: null },
+      expect.any(Object)
+    );
+    expect(
+      requestNode.mock.calls.filter(([, operation]) => operation === 'session.get')
+    ).toHaveLength(3);
+  });
+
+  it('decides only approvals for a Run owned by the authorized Session', async () => {
+    const { app, headers, requestNode } = await fixture(true, false, {
+      session: { runtime: { capabilities: ['approval.respond'] } }
+    });
+    const fixtureRequest = requestNode.getMockImplementation()!;
+    requestNode.mockImplementation(async (_node, operation, data) => {
+      if (operation === 'session.runs')
+        return {
+          runs: [
+            { id: 'foreign-run', sessionId: 'another-session' },
+            { id: 'target-run', sessionId: 'target' }
+          ]
+        };
+      if (operation === 'run.approval.decide')
+        return {
+          approval: {
+            id: data.approvalId,
+            status: data.decision,
+            payload: 'DO_NOT_RETURN',
+            internalExecutionId: 'DO_NOT_RETURN'
+          }
+        };
+      return fixtureRequest(_node, operation, data);
+    });
+
+    const foreign = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'approval.decide',
+        sessionId: 'target',
+        runId: 'foreign-run',
+        approvalId: 'approval-1',
+        decision: 'APPROVED'
+      }
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.json().error.code).toBe('RUN_NOT_FOUND');
+    expect(
+      requestNode.mock.calls.some(([, operation]) => operation === 'run.approval.decide')
+    ).toBe(false);
+
+    for (const [decision, expected] of [
+      ['APPROVED', 'APPROVED'],
+      ['REJECTED', 'REJECTED']
+    ] as const) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'approval.decide',
+          sessionId: 'target',
+          runId: 'target-run',
+          approvalId: 'approval-1',
+          decision
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        sessionId: 'target',
+        runId: 'target-run',
+        approvalId: 'approval-1',
+        decision: expected
+      });
+      expect(response.body).not.toContain('DO_NOT_RETURN');
+    }
+    expect(requestNode).toHaveBeenCalledWith(
+      'node',
+      'session.runs',
+      expect.objectContaining({ sessionId: 'target', workspaceId: 'workspace' }),
+      expect.any(Object)
+    );
+    expect(requestNode).toHaveBeenCalledWith(
+      'node',
+      'run.approval.decide',
+      {
+        runId: 'target-run',
+        approvalId: 'approval-1',
+        decision: 'APPROVED',
+        workspaceId: 'workspace'
+      },
+      expect.any(Object)
+    );
+  });
+
+  it('rejects unsupported, unauthorized, foreign-Workspace and malformed prompt/approval commands', async () => {
+    const unsupported = await fixture(true, false, { session: { runtime: { capabilities: [] } } });
+    for (const payload of [
+      { action: 'prompt.get', sessionId: 'target' },
+      { action: 'prompt.set', sessionId: 'target', content: 'instructions' },
+      { action: 'prompt.clear', sessionId: 'target' },
+      {
+        action: 'approval.decide',
+        sessionId: 'target',
+        runId: 'run',
+        approvalId: 'approval',
+        decision: 'APPROVED'
+      }
+    ]) {
+      const response = await unsupported.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: unsupported.headers,
+        payload
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe('NODE_OPERATION_UNSUPPORTED');
+    }
+    expect(
+      unsupported.requestNode.mock.calls.some(([, operation]) =>
+        ['session.metadata.update', 'session.runs', 'run.approval.decide'].includes(operation)
+      )
+    ).toBe(false);
+
+    const malformed = await fixture();
+    for (const payload of [
+      { action: 'prompt.set', sessionId: 'target', content: ' \t ' },
+      { action: 'prompt.set', sessionId: 'target', content: 'x'.repeat(20_001) },
+      { action: 'prompt.clear', sessionId: 'target', promptFile: 'role.txt' },
+      {
+        action: 'approval.decide',
+        sessionId: 'target',
+        runId: 'run',
+        approvalId: 'approval',
+        decision: 'approve'
+      }
+    ])
+      expect(
+        (
+          await malformed.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: malformed.headers,
+            payload
+          })
+        ).statusCode
+      ).toBe(400);
+    expect(malformed.requestNode).not.toHaveBeenCalled();
+
+    const denied = await fixture(true, false, { authorizedNode: false });
+    for (const payload of [
+      { action: 'prompt.get', sessionId: 'target' },
+      {
+        action: 'approval.decide',
+        sessionId: 'target',
+        runId: 'run',
+        approvalId: 'approval',
+        decision: 'APPROVED'
+      }
+    ])
+      expect(
+        (
+          await denied.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: denied.headers,
+            payload
+          })
+        ).statusCode
+      ).toBe(403);
+    expect(denied.requestNode).not.toHaveBeenCalled();
+
+    const foreign = await fixture(true, false, {
+      session: {
+        workspaceId: 'foreign',
+        runtime: { capabilities: ['session.prompt', 'approval.respond'] }
+      }
+    });
+    for (const payload of [
+      { action: 'prompt.set', sessionId: 'target', content: 'instructions' },
+      {
+        action: 'approval.decide',
+        sessionId: 'target',
+        runId: 'run',
+        approvalId: 'approval',
+        decision: 'APPROVED'
+      }
+    ])
+      expect(
+        (
+          await foreign.app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers: foreign.headers,
+            payload
+          })
+        ).statusCode
+      ).toBe(403);
+    expect(
+      foreign.requestNode.mock.calls.filter(([, operation]) => operation === 'session.get')
+    ).toHaveLength(2);
+    expect(
+      foreign.requestNode.mock.calls.some(([, operation]) =>
+        ['session.metadata.update', 'session.runs', 'run.approval.decide'].includes(operation)
+      )
+    ).toBe(false);
+  });
+
   it.each([false, true])(
     'forwards normal schedule reads and agent edits (scheduled=%s)',
     async (scheduled) => {

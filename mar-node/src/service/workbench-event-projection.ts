@@ -113,9 +113,13 @@ export function projectWorkbenchPayload(
       payload = {
         sessionId: turn.sessionId,
         runId: turn.runId,
-        ...(['assistant_message', 'tool_call', 'command_execution', 'file_change'].includes(
-          item.kind
-        ) &&
+        ...([
+          'assistant_message',
+          'tool_call',
+          'command_execution',
+          'file_change',
+          'approval_request'
+        ].includes(item.kind) &&
         (rawPayload?.append === undefined || item.status !== 'IN_PROGRESS')
           ? { progress: queries.progress(turn.sessionId) }
           : {}),

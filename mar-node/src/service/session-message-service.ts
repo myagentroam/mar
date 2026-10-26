@@ -283,6 +283,7 @@ export class SessionMessageService {
           ? input.__queueItemId
           : randomUUID();
       const queueBeforeCreate = this.options.runtime.sessionQueue(session.id);
+      const queuePauseVersion = this.options.runtime.sessionQueuePauseVersion(session.id);
       const active = this.options.runtime.activeSessionRun(session.id);
       if (internalSchedule && (active !== undefined || queueBeforeCreate.itemIds.length > 0))
         throw new Error('SCHEDULE_SESSION_BUSY');
@@ -469,6 +470,8 @@ export class SessionMessageService {
                 },
                 submissionId,
                 intent,
+                externalInput: userMessage,
+                ...(queuePauseVersion === undefined ? {} : { queuePauseVersion }),
                 queueBefore: queueBeforeCreate,
                 ...(steerTarget === undefined ? {} : { steerTarget }),
                 ...(replaceCurrentRun === undefined ? {} : { activeRunId: replaceCurrentRun.id })

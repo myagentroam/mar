@@ -471,6 +471,7 @@ export class NodeConnector {
       this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
     onTerminalRun: (run, status) => {
       if (this.database !== undefined) this.scheduledSessions.executionTerminated(run, status);
+      this.continuousRunCoordinator.runTerminated(run.sessionId);
     },
     dispatchQueue: async (sessionId, delayMs = 0) => {
       if (this.upgradeCoordinator.pending()) return;
@@ -668,7 +669,7 @@ export class NodeConnector {
       nativeGoalUpdated: (runId, goal) => this.goalCoordinator.handleNativeGoalUpdate(runId, goal),
       cancel: (runId, threadId, turnId, cwd, status) =>
         this.runnerInteractionService.cancelCodexTurn(runId, threadId, turnId, cwd, status),
-      createApproval: (input) => this.runtime.createApproval(input),
+      createApproval: (input) => this.runnerInteractionService.createCodexApproval(input),
       publishApproval: (input) => this.runnerInteractionService.publishApproval(input),
       emitItem: (runId, item) => this.emitConversationItem(runId, item),
       appendImages: (runId, images) =>

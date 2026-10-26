@@ -33,6 +33,7 @@ const emit = defineEmits<{
       | 'CREATE_DIRECTORY'
       | 'DOWNLOAD'
       | 'COPY_PATH'
+      | 'COPY_ABSOLUTE_PATH'
       | 'RENAME'
       | 'DELETE'
       | 'UPLOAD',
@@ -292,6 +293,7 @@ function action(command: string, node: WorkspaceFileTreeNode): void {
     command === 'CREATE_DIRECTORY' ||
     command === 'DOWNLOAD' ||
     command === 'COPY_PATH' ||
+    command === 'COPY_ABSOLUTE_PATH' ||
     command === 'RENAME' ||
     command === 'DELETE' ||
     command === 'UPLOAD'
@@ -493,6 +495,11 @@ defineExpose({ reveal });
                   <el-dropdown-item command="COPY_PATH"
                     ><MarIcon name="copy" />{{
                       translate('generated.workspaceFileTree.copyRelativePath')
+                    }}</el-dropdown-item
+                  >
+                  <el-dropdown-item command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
+                    ><MarIcon name="copy" />{{
+                      translate('generated.workspaceFileTree.copyAbsolutePath')
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item

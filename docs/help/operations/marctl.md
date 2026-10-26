@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-25
+lastUpdated: 2026-10-26
 ---
 
 # 使用 marctl 管理节点
@@ -48,7 +48,7 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 ## 协同工作区会话
 
-`show/config/history/graph/rename` 及 `schedule get/create/update` 可省略会话 ID，默认使用执行上下文中的当前会话；显式 ID 优先，没有当前会话时明确报错，不猜测最近会话。`send/goal/stop/wait` 始终要求显式目标 ID；`list` 和 `schedule list` 仍查询当前 Workspace。
+`show/config/history/graph/rename/prompt` 及 `schedule get/create/update` 可省略会话 ID，默认使用执行上下文中的当前会话；显式 ID 优先，没有当前会话时明确报错，不猜测最近会话。`send/goal/stop/wait/approval` 始终要求显式目标 ID；`list` 和 `schedule list` 仍查询当前 Workspace。
 
 使用 `marctl sessions rename [<session-id>] --title 'fixer#42 Updated title' --json` 修改标题，首尾空白会去除，标题须非空且最多 160 字符。不限制 parent 关系，沿用 Web 改名链路，不启动或打断执行。查询当前标题使用 `sessions current --json`。
 
@@ -64,7 +64,7 @@ marctl sessions schedule get <session-id> --json
 
 `schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Runner。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
-`show --json` 的状态字段为 `session.activity`、`session.model`、`session.effort`、`session.customTitle` / `session.runnerTitle`、`runs[]`（`id` / `status`）、`queue.items[]` 和 `goal.status`（`goal` 可为空）；Run 状态与 Goal 状态分开读取。`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`。
+`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
 已有会话可用 `marctl sessions config <session-id> --model <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`sessions start` 也支持 `--effort`。
 
@@ -74,9 +74,17 @@ marctl sessions schedule get <session-id> --json
 
 会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。置顶会话优先排序，但仍遵守分页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
 
-`list` 每个会话只返回 `id`、`title`、`runner`、`status`、`runId` 和一条有界 `latestActivity`。`show` 返回精简 `session`，保留相同身份与状态，另带 `model`、`effort`、`queuedCount`、`latestMessage` 和最多三条 `recentTools`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。model/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
+`list` 每个会话只返回 `id`、`title`、`runner`、`status`、`runId` 和一条有界 `latestActivity`。`show` 返回精简 `session`，保留相同身份与状态，另带 `model`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。model/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
 会话 `status` 只有 `RUNNING`、`IDLE`、`SLEEPING`。SLEEPING 必须来自当前 Run 的真实前台 sleep 等待，不按工具名或 Goal 是否 active 推断；工具 `state` 仍为原有 `IN_PROGRESS`、`COMPLETED` 等生命周期。活动会话尚无新公开动作时返回空动态，不借用上一 Run；IDLE 可保留既有内存中的活动及观察时间。摘要最多 100 个 Unicode 字符，工具名最多 128 个，最新消息最多 300 个；`truncated` 标明内容截断，完整证据仍查 history。
+
+## 持久指令与审批
+
+已有普通 Workspace 会话可用 `prompt get/set/clear` 读取、设置和清除 Session Prompt；省略 ID 时使用当前会话。`set` 使用 `-m` 或 `--message-file`（支持 stdin），空白输入不能代替清除。修改沿用原有元数据与提示词注入链路，不改标题或权限，从后续执行生效；已排队输入在实际启动时读取最新值，不打断当前执行，也不删除原生历史中的旧指令。
+
+`show` 的 `pendingApprovals` 只列当前活动 Run 的待审批摘要，包括公开 `runId`、`approvalId`、`name`、`summary`、`truncated`；`pendingApprovalsTruncated` 表示未完整列出，完整证据查 history，不含原始工具参数。它与既有 Watch progress 同源，不是独立审批存储。`wait --until approval` 也会在待审批时提前返回 `stopReason: APPROVAL_REQUIRED` 和摘要，不停止 Run；终态优先，旧 Node 不支持时明确报错。
+
+审批决定必须显式指定会话、公开根 Run ID、审批 ID 和 approve/reject。既有用户与操作授权仍生效；不要把协作消息当成批准授权。决定响应只确认决定被接受，不代表任务完成；继续观察状态或等待。过期、重复及不匹配的请求会拒绝。网络中断导致写入结果不明时先核对状态/历史，不自动重发；待审批消失不等于已批准。
 
 ```text
 marctl help sessions
@@ -93,6 +101,11 @@ marctl sessions send <session-id> --message-file followup.txt --queue --json
 marctl sessions send <session-id> --queue -m 'Review this screenshot' --image screenshot.png --json
 marctl sessions send <session-id> --queue --image first.png --image second.jpg --json
 marctl sessions wait <session-id> --run <run-id> --timeout 30s --json
+marctl sessions prompt get <session-id> --json
+marctl sessions prompt set <session-id> --message-file instructions.txt --json
+marctl sessions prompt clear <session-id> --json
+marctl sessions wait <session-id> --run <run-id> --until approval --timeout 5m --json
+marctl sessions approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
 marctl sessions stop <session-id> --run <run-id> --json
 marctl sessions goal get <session-id> --json
 marctl sessions goal set <session-id> --message-file objective.txt --json
@@ -106,9 +119,9 @@ marctl sessions goal clear <session-id> --json
 
 Agent 内执行 `start` 时，CLI 自动携带当前会话作为创建来源，Node 校验同一 Workspace 后以正式 ID 保存 `parentSessionId`；没有来源则为空，不支持手动指定或修改 parent。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它，删除父会话不删除子会话，旧会话不补推关系。
 
-按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池或 Session custom 提示词设置；角色、范围和验收条件放入首条普通消息。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
+按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
-`send` 必须显式选择 `--steer` 或 `--queue`，即使空闲也需指定；遗漏、冲突、重复或旧选项会在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，MAR Agent 可原生接收时会立即回显，并在完整回复及工具批次后生效；受管等待可提前返回，后台任务继续，其他工具仍正常完成；其他情况可能切换当前执行，Node 按实际状态裁决；仅用于影响当前工作的必要更新，而非例行汇报。`--queue` 将输入排入后续轮次，有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。`delivery` 为 `ACCEPTED` 表示优先补充已接受，`QUEUED` 表示排队，`STARTED` 表示已进入启动流程；回执不区分原生接管或内部执行切换，也不代表模型已处理或业务已完成。排队回执的 `runId` 可能属于其他活动输入，应以 `queueItemId`/`clientMessageId` 和历史核对。仅在需要时沿历史 `nextCursor` 翻页。
+`send` 必须显式选择 `--steer` 或 `--queue`，即使空闲也需指定；遗漏、冲突、重复或旧选项会在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，MAR Agent 可原生接收时会立即回显，并在完整回复及工具批次后生效；受管等待可提前返回，后台任务继续，其他工具仍正常完成；其他情况可能切换当前执行，Node 按实际状态裁决；仅用于影响当前工作的必要更新，而非例行汇报。`--queue` 将输入排入后续轮次，不打断当前执行；暂停时新输入自动按普通发送恢复队列，取消收敛后才恢复，后来的显式停止仍有效。有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。`delivery` 为 `ACCEPTED` 表示优先补充已接受，`QUEUED` 表示排队，`STARTED` 表示已进入启动流程；回执不区分原生接管或内部执行切换，也不代表模型已处理或业务已完成。排队回执的 `runId` 可能属于其他活动输入，应以 `queueItemId`/`clientMessageId` 和历史核对。仅在需要时沿历史 `nextCursor` 翻页。
 
 Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。Workbench 终端没有当前会话时显示 `来自 marctl`，无额外提示。内部来源标记不会出现在消息正文中。
 

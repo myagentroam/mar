@@ -143,6 +143,13 @@ export class RunWorkbenchService {
     const current = this.options.runtime.getApproval(input.approvalId);
     if (current === undefined || this.options.runtime.canonicalRunId(current.runId) !== input.runId)
       throw new Error('APPROVAL_NOT_FOUND');
+    const run = this.options.runtime.activeSessionRun(this.requireRun(input.runId).sessionId);
+    if (
+      run?.id !== input.runId ||
+      (current.runId !== run.id &&
+        current.runId !== this.options.runtime.currentExecutionId(run.id))
+    )
+      throw new Error('APPROVAL_NOT_FOUND');
     this.assertRunOwner(current.runId, input.__requestUserId);
     const approval = this.options.runtime.decideApproval(input.approvalId, input.decision);
     this.options.emitRun(approval.runId, 'approval.decided', {

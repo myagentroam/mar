@@ -184,6 +184,7 @@ export class RunEventService {
       manuallyInterrupted = interrupted;
       const queue = this.options.runtime.sessionQueue(run.sessionId);
       const continues =
+        run.status !== 'CANCELLING' &&
         permissionStop === undefined &&
         ((!queue.paused && queue.itemIds.length > 0) ||
           this.options.keepRunActive?.(run.sessionId) === true);

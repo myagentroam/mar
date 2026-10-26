@@ -10,6 +10,7 @@ import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue'
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const composerFixture = new URL(location.href).searchParams.has('composer');
+const offlineFixture = new URL(location.href).searchParams.has('offline');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
@@ -18,6 +19,7 @@ const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref('/home/example/my-agent-roam');
+const fileFeedback = ref({ message: '', type: '' });
 const inspectorFixture =
   fileRootFixture ||
   contentSearchFixture ||
@@ -169,7 +171,7 @@ if (composerFixture) {
 </script>
 
 <template>
-  <Surface v-if="composerFixture" :page="surfacePage as never" />
+  <Surface v-if="composerFixture || offlineFixture" :page="surfacePage as never" />
   <main v-else>
     <section aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
@@ -261,6 +263,9 @@ if (composerFixture) {
       >
         Switch root path
       </button>
+      <button v-if="fileRootFixture" type="button" @click="fileRootPath = ''">
+        Clear root path
+      </button>
       <WorkspaceInspector
         :node-id="inspectorFixture ? 'node' : undefined"
         :workspace-id="inspectorFixture ? 'workspace' : undefined"
@@ -278,7 +283,15 @@ if (composerFixture) {
         changes-watch-status="idle"
         :history-capability="true"
         :file-write-enabled="false"
+        @notice="(message, type) => (fileFeedback = { message, type: type ?? 'info' })"
       />
+      <output
+        v-if="fileRootFixture"
+        aria-label="File operation feedback"
+        :data-type="fileFeedback.type"
+      >
+        {{ fileFeedback.message }}
+      </output>
     </section>
     <section aria-label="Terminal fixture">
       <TerminalDock

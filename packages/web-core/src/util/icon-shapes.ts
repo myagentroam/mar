@@ -39,6 +39,9 @@ export const iconShapes = {
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',
   connection: '<path d="M8 3.5v4m8-4v4M6 7.5h12v4a6 6 0 0 1-12 0v-4Zm6 10v3" />',
+  // Tabler Icons link-off (MIT); see icon-shapes.NOTICE.txt.
+  'connection-off':
+    '<path d="M9 15l3-3m2-2 1-1"/><path d="M11 6l.463-.536a5 5 0 0 1 7.071 7.072l-.534 .464"/><path d="M3 3l18 18"/><path d="M13 18l-.397 .534a5.068 5.068 0 0 1-7.127 0a4.972 4.972 0 0 1 0-7.071l.524-.463"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.2 15.2 5.3 5.3" />',
   plus: '<path d="M12 4.5v15M4.5 12h15" />',
   close: '<path d="m6 6 12 12M18 6 6 18" />',

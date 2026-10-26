@@ -670,6 +670,8 @@ describe('Workbench event delivery decisions', () => {
       runId: run.id,
       recentTools: [],
       latestMessage: null,
+      pendingApprovals: [],
+      pendingApprovalsTruncated: false,
       observedAt: 123
     };
     const projection = {

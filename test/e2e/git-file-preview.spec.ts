@@ -12,6 +12,79 @@ test.afterAll(async () => {
 for (const width of [1280, 390]) {
   test.describe(`Git preview at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768 });
+    for (const theme of ['daylight', 'vscode-dark-2026']) {
+      test(`Git History expansions share the list surface in ${theme} at ${width}px`, async ({
+        page
+      }) => {
+        const commits = ['a', 'b'].map((character, index) => ({
+          hash: character.repeat(40),
+          parents: index === 0 ? ['b'.repeat(40)] : [],
+          subject: index === 0 ? 'Update source' : 'Empty commit',
+          authorName: 'Example',
+          authorEmail: 'example@example.com',
+          committedAt: 2 - index,
+          refs: []
+        }));
+        await page.route('**/api/workspaces/workspace/**', async (route) => {
+          const path = new URL(route.request().url()).pathname;
+          if (path.endsWith('/changes')) {
+            await route.fulfill({
+              json: {
+                workspace: { id: 'workspace', kind: 'GIT_WORKSPACE', path: '/project' },
+                changes: [],
+                worktrees: [],
+                repositories: [
+                  {
+                    repositoryPath: '',
+                    repositoryName: 'project',
+                    source: 'ROOT',
+                    current: true,
+                    branch: 'main',
+                    changes: []
+                  }
+                ]
+              }
+            });
+          } else if (path.endsWith('/git/refs')) {
+            await route.fulfill({ json: { refs: [] } });
+          } else if (path.endsWith('/git/history')) {
+            await route.fulfill({ json: { commits, nextCursor: null } });
+          } else if (path.endsWith('/files') && path.includes('/git/commits/')) {
+            await route.fulfill({
+              json: {
+                files: path.includes(commits[0]!.hash)
+                  ? [{ path: 'src/app.ts', change: 'MODIFIED' }]
+                  : []
+              }
+            });
+          } else {
+            await route.fulfill({ json: { entries: [], nextCursor: null } });
+          }
+        });
+        await page.goto(`${fixture.url}workbench-style.html?git-previews=1&theme=${theme}`);
+        const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+        await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+        const populatedCommit = inspector
+          .locator('.history-commit')
+          .filter({ hasText: 'Update source' });
+        await populatedCommit.locator('.history-commit-row').click();
+        await expect(populatedCommit.locator('.history-directory')).toContainText('src');
+        await populatedCommit.locator('.history-directory').click();
+        await expect(populatedCommit.locator('.history-file-path')).toHaveText('app.ts');
+        const emptyCommit = inspector
+          .locator('.history-commit')
+          .filter({ hasText: 'Empty commit' });
+        await emptyCommit.locator('.history-commit-row').click();
+        await expect(emptyCommit.locator('[role="status"]')).toHaveCount(0);
+        await expect(emptyCommit.locator('.history-files > li')).toHaveCount(0);
+        await expect(emptyCommit.locator('.history-expanded')).toHaveCSS('height', '0px');
+        for (const commit of [populatedCommit, emptyCommit]) {
+          const files = commit.locator('.history-files');
+          await expect(files).toHaveCSS('border-top-width', '0px');
+          await expect(files).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        }
+      });
+    }
     test(`Git Changes and History open versioned image previews at ${width}px`, async ({
       page
     }, testInfo) => {

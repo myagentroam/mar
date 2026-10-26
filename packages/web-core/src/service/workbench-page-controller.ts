@@ -3482,7 +3482,7 @@ export function createWorkbenchPageController<
     loading,
     loadingMoreWorkspaceSessions: loadingMoreVisibleWorkspaceSessions,
     loadingOlderConversation,
-    loadingInitialConversation,
+    loadingInitialConversation: workbenchSessionSelectionService.loadingInitialContent,
     initialConversationLoadFailed,
     loadingWorkspaceDirectory,
     pendingWorkspaceDirectoryName,

@@ -52,6 +52,9 @@ Usage:
   {program} config [<session-id>]
     [--model <id>] [--effort <value>] [--json]
   {program} rename [<session-id>] --title <name> [--json]
+  {program} prompt get|clear [<session-id>] [--json]
+  {program} prompt set [<session-id>]
+    (-m <text> | --message-file <file|->) [--json]
   {program} schedule list [--cursor <cursor>] [--limit <1..100>] [--json]
   {program} schedule get [<session-id>] [--json]
   {program} schedule create [<session-id>] --cron <cron>
@@ -78,13 +81,15 @@ Usage:
   {program} goal set <session-id>
     (-m <text> | --message-file <file|->) [--json]
   {program} wait <session-id>
-    --run <run-id> --timeout <30s|5m> [--json]
+    --run <run-id> --timeout <30s|5m> [--until approval] [--json]
+  {program} approval decide <session-id> --run <run-id>
+    --approval <approval-id> --decision <approve|reject> [--json]
 
 Input:
-  show/config/history/graph/rename may omit the ID.
+  show/config/history/graph/rename and prompt may omit the ID.
   schedule get/create/update follow the same rule.
   They use the current Session; without one, specify an ID explicitly.
-  send/goal/stop/wait always require an explicit Session ID.
+  send/goal/stop/wait/approval always require an explicit Session ID.
   Runners: mar-agent, codex, claude-code, opencode; actual capabilities apply.
   -m / --message supplies text; it is mutually exclusive with --message-file.
   Files use UTF-8; - reads stdin. Repeat --image for PNG/JPEG/GIF/WebP files.
@@ -92,6 +97,7 @@ Input:
   Goal set accepts text only.
   Config requires model or effort; other fields and permissions are unchanged.
   Use --effort "" for the Runner default. Active execution is not restarted.
+  Prompt reads, sets or clears persistent instructions for future executions.
 
 Titles and scheduled tasks:
   rename uses the existing title update; no parent-tree restriction.
@@ -106,6 +112,8 @@ Reading JSON:
   show: session.status, session.title, session.runId,
     session.model, session.effort, session.queuedCount,
     session.latestMessage, session.recentTools (up to three summaries).
+    session.pendingApprovals shows current requests; pendingApprovalsTruncated
+    marks an incomplete summary. Full evidence remains in history.
   Status is RUNNING/IDLE/SLEEPING; tools keep their original states.
   history: segments[].items[]; select kind === "assistant_message",
     read payload.text.
@@ -117,7 +125,8 @@ Delivery and waiting:
     Node decides from actual state; reserve it for updates
     affecting current work.
   --queue schedules a subsequent turn; an active Goal can delay it
-    until the Goal exits.
+    until the Goal exits. New input resumes a paused FIFO without interrupting
+    active execution; cancellation settles before resuming.
   Example:
     marctl sessions send <session-id> --steer \\
       -m "Additional context: focus on the resume path." --json
@@ -125,6 +134,9 @@ Delivery and waiting:
   active input: correlate queueItemId/clientMessageId with visible history.
   Wait observes the specified Run through Watch. Timeout does not stop it;
   timeout errors may include progress, the last observed bounded snapshot.
+  --until approval also returns when the Run needs an approval decision.
+  Approval decide explicitly approves or rejects one request, subject to
+    existing user authorization. Accepted decisions do not prove completion.
   Run success is not proof of task success.
   Completion never wakes a Coordinator.
   On an unknown delivery outcome, inspect state/history; do not blindly resend.
@@ -265,6 +277,7 @@ or Server connection is required.`
     sessionWaitUnknown: 'The specified Run could not be confirmed. Inspect Session state/history.',
     sessionWaitCancelled: 'Waiting was cancelled; the target Run was not stopped.',
     sessionWaitTimeout: 'Waiting timed out; the target Run was not stopped.',
+    sessionApprovalUnsupported: 'This Node does not provide pending approval observations.',
 
     userContextUnavailable: 'This Node session has no valid marctl user authorization.',
     sessionContextRequired: 'No current Session is available; specify a Session ID explicitly.',

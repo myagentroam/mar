@@ -10,6 +10,7 @@ import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
 import type { CodexComposerInput, CodexRunConfiguration } from '../../codex-app-server.js';
 import type { FakeRunnerStatus } from '../../fake-runner.js';
 import { extractId } from './conversation-parser.js';
+import { normalizeCodexApproval } from './tool-normalizer.js';
 import { parseSecretEnvironment } from '../../util/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
 import { runnerErrorProjection } from '../../util/runner-error.js';
@@ -710,6 +711,11 @@ export class CodexManagedRunController<TAttachment> {
   ): void {
     const approvalId = `codex:${runId}:${notification.requestId}`;
     const expiresAt = Date.now() + 10 * 60_000;
+    const payload = {
+      method: notification.method,
+      params: notification.params,
+      ...normalizeCodexApproval(notification.method)
+    };
     this.runner.execution.approvals.set(approvalId, {
       runId,
       requestId: notification.requestId
@@ -718,7 +724,7 @@ export class CodexManagedRunController<TAttachment> {
       this.host.createApproval({
         runId,
         approvalId,
-        payload: { method: notification.method, params: notification.params },
+        payload,
         expiresAt
       });
     } catch {
@@ -728,7 +734,7 @@ export class CodexManagedRunController<TAttachment> {
     this.host.publishApproval({
       runId,
       approvalId,
-      payload: { method: notification.method, params: notification.params },
+      payload,
       expiresAt
     });
   }

@@ -299,7 +299,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           role="status"
         >
           <div class="workspace-offline-message">
-            <MarIcon name="connection" class="workspace-offline-icon" aria-hidden="true" />
+            <MarIcon name="connection-off" class="workspace-offline-icon" aria-hidden="true" />
             <p>{{ translate('generated.workbenchSurface.offlineWorkspace') }}</p>
           </div>
         </section>
@@ -912,19 +912,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .workspace-offline-icon {
-  position: relative;
   color: var(--mar-text-muted);
   font-size: 1.75rem;
-}
-
-.workspace-offline-icon::after {
-  position: absolute;
-  width: 115%;
-  height: 1px;
-  border-radius: 1px;
-  background: currentColor;
-  content: '';
-  transform: rotate(-45deg);
 }
 
 .workspace-offline-message p {

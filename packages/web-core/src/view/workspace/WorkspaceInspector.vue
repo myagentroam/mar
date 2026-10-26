@@ -65,7 +65,7 @@ import { loadToolChangeDiff } from '../../service/tool-change-review-service.js'
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { createTrailingTask } from '../../util/trailing-task.js';
-import { fileSizeLabel } from '../../util/file-presentation.js';
+import { fileSizeLabel, workspaceAbsolutePath } from '../../util/file-presentation.js';
 import { errorMessage, filePreviewErrorMessage } from '../../util/error-presentation.js';
 import { ApiError, errorCode } from '../../util/api-error.js';
 import {
@@ -1088,6 +1088,7 @@ async function onFileTreeAction(
     | 'CREATE_DIRECTORY'
     | 'DOWNLOAD'
     | 'COPY_PATH'
+    | 'COPY_ABSOLUTE_PATH'
     | 'RENAME'
     | 'DELETE'
     | 'UPLOAD',
@@ -1107,6 +1108,12 @@ async function onFileTreeAction(
     if (action === 'COPY_PATH') {
       await navigator.clipboard.writeText(node.path);
       emit('notice', translate('generated.workspaceInspector.relativePathCopied'), 'info');
+      return;
+    }
+    if (action === 'COPY_ABSOLUTE_PATH') {
+      if (!props.workspacePath) return;
+      await navigator.clipboard.writeText(workspaceAbsolutePath(props.workspacePath, node.path));
+      emit('notice', translate('generated.workspaceInspector.absolutePathCopied'), 'info');
       return;
     }
     if (action === 'DOWNLOAD') {
