@@ -16,6 +16,17 @@ for (const width of [1280, 390]) {
       test(`Git History expansions share the list surface in ${theme} at ${width}px`, async ({
         page
       }) => {
+        const changes = [
+          {
+            repositoryPath: '',
+            repositoryName: 'project',
+            source: 'ROOT',
+            path: 'src/app.ts',
+            state: 'UNSTAGED',
+            change: 'MODIFIED',
+            diffAvailable: true
+          }
+        ];
         const commits = ['a', 'b'].map((character, index) => ({
           hash: character.repeat(40),
           parents: index === 0 ? ['b'.repeat(40)] : [],
@@ -31,7 +42,7 @@ for (const width of [1280, 390]) {
             await route.fulfill({
               json: {
                 workspace: { id: 'workspace', kind: 'GIT_WORKSPACE', path: '/project' },
-                changes: [],
+                changes,
                 worktrees: [],
                 repositories: [
                   {
@@ -40,7 +51,7 @@ for (const width of [1280, 390]) {
                     source: 'ROOT',
                     current: true,
                     branch: 'main',
-                    changes: []
+                    changes
                   }
                 ]
               }
@@ -63,14 +74,28 @@ for (const width of [1280, 390]) {
         });
         await page.goto(`${fixture.url}workbench-style.html?git-previews=1&theme=${theme}`);
         const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+        await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+        const changeFile = inspector.locator('.change-file-name').first();
+        await expect(changeFile).toHaveText('app.ts');
+        const fileFontSize = await changeFile.evaluate(
+          (element) => getComputedStyle(element).fontSize
+        );
         await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
         const populatedCommit = inspector
           .locator('.history-commit')
           .filter({ hasText: 'Update source' });
         await populatedCommit.locator('.history-commit-row').click();
         await expect(populatedCommit.locator('.history-directory')).toContainText('src');
+        await expect(populatedCommit.locator('.history-directory')).toHaveCSS(
+          'font-size',
+          fileFontSize
+        );
         await populatedCommit.locator('.history-directory').click();
         await expect(populatedCommit.locator('.history-file-path')).toHaveText('app.ts');
+        await expect(populatedCommit.locator('.history-file-path')).toHaveCSS(
+          'font-size',
+          fileFontSize
+        );
         const emptyCommit = inspector
           .locator('.history-commit')
           .filter({ hasText: 'Empty commit' });
