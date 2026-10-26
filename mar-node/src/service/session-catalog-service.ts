@@ -1,3 +1,4 @@
+import { resolveSessionRollbackTarget } from './session-rollback-target.js';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
@@ -273,6 +274,7 @@ export class SessionCatalogService {
     if (
       !validRewindId(input.sessionId, 128) ||
       !validRewindId(input.turnId, 128) ||
+      (input.itemId !== undefined && !validRewindId(input.itemId, 128)) ||
       (input.boundary !== null && !validRewindId(input.boundary, 256))
     )
       throw new Error('SESSION_ROLLBACK_INVALID');
@@ -292,13 +294,14 @@ export class SessionCatalogService {
       throw new Error('SESSION_QUEUE_NOT_EMPTY');
 
     const turn = await this.findTurn(source, input.turnId);
-    const userMessage = turn?.items.find(
-      (item) => item.kind === 'user_message' && item.status === 'COMPLETED'
-    );
+    const target =
+      turn === undefined
+        ? undefined
+        : resolveSessionRollbackTarget(turn, input.itemId as string | undefined);
     if (
       turn === undefined ||
       !terminalConversationStatus(turn.status) ||
-      userMessage === undefined ||
+      target === undefined ||
       turn.rewind?.before !== input.boundary
     )
       throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
@@ -307,7 +310,8 @@ export class SessionCatalogService {
       const lastActivityAt = await runner.rollbackNative(
         source,
         input.boundary as string | null,
-        turn.rewind?.after
+        turn.rewind?.after,
+        target.clientMessageId
       );
       const runtimeSession = this.options.runtime.getAgentSession(source.id);
       const session =

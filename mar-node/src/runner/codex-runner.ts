@@ -926,9 +926,11 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   override async rollbackNative(
     session: NodeAgentSession,
     boundary: string | null,
-    targetTurnBoundary?: string
+    targetTurnBoundary?: string,
+    targetClientMessageId?: string
   ): Promise<number> {
     void boundary;
+    if (targetClientMessageId !== undefined) throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
     if (!this.supportsRollback(session) || targetTurnBoundary === undefined)
       throw new Error('SESSION_ROLLBACK_UNAVAILABLE');
     const threadId = session.externalSessionId!;

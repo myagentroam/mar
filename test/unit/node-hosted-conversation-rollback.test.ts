@@ -73,6 +73,98 @@ describe('Node hosted conversation runtime', () => {
     });
   });
 
+  it('forwards the selected steered user identity to the Hosted SDK runtime', async () => {
+    const fixture = await runtimeFixture();
+    const conversation = await createConversation(fixture);
+    const target = hostedTurn('turn-2', 'Original message.', 'turn-1');
+    const steeredItem = {
+      ...target.items[0]!,
+      id: 'steered-user-item',
+      payload: { ...target.items[0]!.payload, clientMessageId: 'steered-message' }
+    };
+    const turn = { ...target, items: [...target.items, steeredItem] };
+    fixture.runtime.history.mockResolvedValueOnce(hostedHistoryPage([turn]));
+
+    await fixture.service.operations()['conversation.hosted.rollback']!({
+      conversationId: conversation.id,
+      turnId: 'turn-2',
+      itemId: 'steered-user-item',
+      boundary: 'turn-1',
+      __requestUserId: 7,
+      __marAgentModels: [modelOne]
+    });
+
+    expect(fixture.runtime.rollback).toHaveBeenCalledWith({
+      conversationId: conversation.id,
+      sessionId: conversation.sessionId,
+      homeDirectory: expect.stringMatching(/\/home$/u),
+      modelId: conversation.modelId,
+      boundaryTurnId: 'turn-1',
+      beforeInput: { turnId: 'turn-2', clientMessageId: 'steered-message' }
+    });
+  });
+
+  it('rejects ambiguous or invalid Hosted message selectors before calling the SDK runtime', async () => {
+    const fixture = await runtimeFixture();
+    const conversation = await createConversation(fixture);
+    const target = hostedTurn('turn-2', 'Original message.', 'turn-1');
+    const steeredItem = {
+      ...target.items[0]!,
+      id: 'steered-user-item',
+      payload: { ...target.items[0]!.payload, clientMessageId: 'steered-message' }
+    };
+    const assistantItem = {
+      ...target.items[0]!,
+      id: 'assistant-item',
+      kind: 'assistant_message' as const,
+      payload: { text: 'Assistant response.', format: 'markdown', model: null }
+    };
+    const multiInputTurn = {
+      ...target,
+      items: [...target.items, steeredItem, assistantItem]
+    };
+    const missingIdentityTurn = {
+      ...multiInputTurn,
+      items: multiInputTurn.items.map((item) =>
+        item.id === steeredItem.id
+          ? { ...item, payload: { ...steeredItem.payload, clientMessageId: null } }
+          : item
+      )
+    };
+    const crossTurnUser = { ...target.items[0]!, id: 'user-from-another-turn', turnId: 'turn-3' };
+    const otherTurn = {
+      ...target,
+      id: 'turn-3',
+      userItemId: crossTurnUser.id,
+      rewind: { before: 'turn-2', after: 'turn-3' },
+      items: [crossTurnUser]
+    };
+    const rollback = fixture.service.operations()['conversation.hosted.rollback']!;
+    const cases = [
+      { turns: [multiInputTurn], itemId: undefined },
+      { turns: [multiInputTurn], itemId: 'forged-item' },
+      { turns: [multiInputTurn], itemId: 'assistant-item' },
+      { turns: [multiInputTurn, otherTurn], itemId: 'user-from-another-turn' },
+      { turns: [missingIdentityTurn], itemId: 'steered-user-item' }
+    ];
+
+    for (const { turns, itemId } of cases) {
+      fixture.runtime.history.mockResolvedValueOnce(hostedHistoryPage(turns));
+      await expect(
+        rollback({
+          conversationId: conversation.id,
+          turnId: 'turn-2',
+          ...(itemId === undefined ? {} : { itemId }),
+          boundary: 'turn-1',
+          __requestUserId: 7,
+          __marAgentModels: [modelOne]
+        })
+      ).rejects.toThrow('HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID');
+    }
+
+    expect(fixture.runtime.rollback).not.toHaveBeenCalled();
+  });
+
   it('rejects rollback while the authoritative activity remains non-idle', async () => {
     const fixture = await runtimeFixture();
     const conversation = await createConversation(fixture);

@@ -117,6 +117,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
     const body = {
       nodeId: source.nodeId,
       turnId: turn.turnId ?? turn.id,
+      itemId: item.id,
       boundary: turn.rewind.before
     };
     if (

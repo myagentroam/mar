@@ -1,3 +1,4 @@
+import { resolveSessionRollbackTarget } from './session-rollback-target.js';
 import { assertMcpServerNames } from '../mcp/naming.js';
 import { modelUsageGrantSchema, steerComposerMessage } from '@myagentroam/protocol';
 import { randomUUID } from 'node:crypto';
@@ -142,6 +143,7 @@ export interface HostedConversationRuntimeHistoryPage {
 
 export interface HostedConversationRuntimeRollbackInput extends HostedConversationRuntimeHistoryInput {
   readonly boundaryTurnId: string | null;
+  readonly beforeInput?: { readonly turnId: string; readonly clientMessageId: string };
 }
 
 export interface HostedConversationRuntimeRunInput {
@@ -1278,13 +1280,12 @@ export class HostedConversationNodeService {
     const turns = await this.readAllHistory(conversation, paths);
     const targetIndex = turns.findIndex((turn) => turn.id === input.turnId);
     const target = turns[targetIndex];
-    const userMessage = target?.items.find(
-      (item) => item.kind === 'user_message' && item.status === 'COMPLETED'
-    );
+    const selectedInput =
+      target === undefined ? undefined : resolveSessionRollbackTarget(target, input.itemId);
     if (
       target === undefined ||
       !terminalHostedTurnStatus(target.status) ||
-      userMessage === undefined ||
+      selectedInput === undefined ||
       target.rewind?.before !== input.boundary
     )
       throw new Error('HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID');
@@ -1295,7 +1296,15 @@ export class HostedConversationNodeService {
         sessionId: conversation.sessionId,
         homeDirectory: paths.homeDirectory,
         modelId: conversation.modelId,
-        boundaryTurnId: input.boundary
+        boundaryTurnId: input.boundary,
+        ...(selectedInput.clientMessageId === undefined
+          ? {}
+          : {
+              beforeInput: {
+                turnId: target.rewind!.after,
+                clientMessageId: selectedInput.clientMessageId
+              }
+            })
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'MAR_AGENT_ROLLBACK_TARGET_INVALID')

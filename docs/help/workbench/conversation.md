@@ -1,6 +1,6 @@
 ---
 title: 阅读对话、工具调用与通知
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-26
 ---
 
 # 阅读对话、工具调用与通知
@@ -28,6 +28,8 @@ MAR Agent、Codex、Claude Code 和 OpenCode 的终态用户消息与 Agent 回�
 Rewind 不修改原会话，也不回滚 Workspace 文件。Working、消息提交或会话变更期间，页面隐藏 Rewind 和 Rollback；模型、推理强度、权限和手动整理上下文也不可修改，需要空闲的命令不会出现在命令列表中。复制、排队、停止和允许运行中执行的状态命令不受影响。确认弹窗后若会话开始运行或选择发生变化，不会提交操作。页面不按 Session capability 或 App Server 探测结果限制 Rewind；如果 Runner、版本或其他客户端持有的会话锁仍拒绝分支，当前会话和草稿保持不变，并显示 Node 返回的实际错误。
 
 声明原生历史截断能力的会话，会在终态用户消息的 Rewind 后显示 Rollback。MAR Agent 支持；Codex 仅支持原生 `paginated` 会话，不支持旧式 legacy 历史；Claude Code 和当前接入的 OpenCode 历史 API 没有兼容的仅历史截断操作。Rollback 不创建分支，而是在确认后永久删除所选用户消息及其后的当前会话历史，并把原消息回填到 Composer；它不会回滚 Workspace 文件。会话必须空闲且没有排队消息；请求失败时显示实际错误，不乐观改写当前展示的历史或草稿。
+
+对 MAR Agent 运行中补充的 steer 消息回滚时，会保留该消息收到之前的普通消息与执行记录；停止前是否已经生效不改变这一边界。
 
 ## 实时性能
 

@@ -244,9 +244,12 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     await this.releaseSession(input);
     const catalog = await this.#openCatalog({ homeDirectory: input.homeDirectory });
     try {
-      const rolledBack = await catalog.rollback(input.sessionId, {
-        boundaryTurnId: input.boundaryTurnId
-      });
+      const rolledBack = await catalog.rollback(
+        input.sessionId,
+        input.beforeInput === undefined
+          ? { boundaryTurnId: input.boundaryTurnId }
+          : { beforeInput: input.beforeInput }
+      );
       return { lastActivityAt: Date.parse(rolledBack.lastActivityAt) };
     } catch (error) {
       if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });

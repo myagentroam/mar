@@ -2910,6 +2910,7 @@ export type HostedConversationHistoryPage = z.infer<typeof hostedConversationHis
 export const hostedConversationRollbackInputSchema = hostedConversationIdInputSchema
   .extend({
     turnId: z.string().min(1).max(128),
+    itemId: z.string().min(1).max(128).optional(),
     boundary: z.string().min(1).max(256).nullable()
   })
   .strict();

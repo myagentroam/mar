@@ -887,7 +887,8 @@ describe('Server hosted conversation routes', () => {
       headers,
       payload: {
         turnId: 'turn-2',
-        boundary: 'turn-1'
+        boundary: 'turn-1',
+        itemId: 'steered-user-item'
       }
     });
 
@@ -913,6 +914,7 @@ describe('Server hosted conversation routes', () => {
         conversationId: 'conversation-1',
         turnId: 'turn-2',
         boundary: 'turn-1',
+        itemId: 'steered-user-item',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
@@ -931,6 +933,17 @@ describe('Server hosted conversation routes', () => {
       }
     });
     expect(invalid.statusCode).toBe(400);
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+
+    for (const itemId of ['', 'x'.repeat(129)]) {
+      const invalidItemId = await app.inject({
+        method: 'POST',
+        url: '/api/nodes/node-1/hosted-conversations/conversation-1/rollback',
+        headers,
+        payload: { turnId: 'turn-2', boundary: 'turn-1', itemId }
+      });
+      expect(invalidItemId.statusCode).toBe(400);
+    }
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
 
     fixture.nodeControl.requestHostedConversationNode

@@ -1250,11 +1250,12 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const rollbackResponse = deferred<unknown>();
     const current = hostedTurn('turn-current', 20, 'Current');
     const older = hostedTurn('turn-older', 10, 'Older');
-    const workspace = service(async (path) => {
+    const request = vi.fn(async (path: string, _init?: RequestInit) => {
       if (path.includes('/history?')) return olderResponse.promise as never;
       if (path.endsWith('/rollback')) return rollbackResponse.promise as never;
       throw new Error(`unexpected request: ${path}`);
     });
+    const workspace = service(request as HostedConversationRequest);
     workspace.selectConversation('node-1', 'conversation-1', {
       ...snapshot,
       turns: [current],
@@ -1263,7 +1264,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
 
     const loading = workspace.loadOlderHistory();
     expect(workspace.loadingOlderHistory.value).toBe(true);
-    const rollback = workspace.rollback(current.id, null);
+    const rollback = workspace.rollback(current.id, null, 'turn-current:user');
     rollbackResponse.resolve({
       ...snapshot,
       turns: [current],
@@ -1277,6 +1278,15 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(workspace.turns.value.map((turn) => turn.id)).toEqual(['turn-current']);
     expect(workspace.historyNextCursor.value).toBe('fresh-cursor');
     expect(workspace.loadingOlderHistory.value).toBe(false);
+    const rollbackCall = request.mock.calls.find(([path]) => path.endsWith('/rollback'));
+    expect(rollbackCall?.[0]).toBe(
+      '/api/nodes/node-1/hosted-conversations/conversation-1/rollback'
+    );
+    expect(JSON.parse(rollbackCall?.[1]?.body as string)).toEqual({
+      turnId: 'turn-current',
+      boundary: null,
+      itemId: 'turn-current:user'
+    });
   });
 
   it('Merge by Stable Turn, Item, File ID and do not infer files from message text', async () => {

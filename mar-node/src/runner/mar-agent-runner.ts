@@ -410,15 +410,24 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   }
   override async rollbackNative(
     session: NodeAgentSession,
-    boundary: string | null
+    boundary: string | null,
+    targetTurnBoundary?: string,
+    targetClientMessageId?: string
   ): Promise<number> {
     if (session.externalSessionId === null) throw new Error('SESSION_ROLLBACK_UNAVAILABLE');
     await this.#releaseSessionResources?.(session.externalSessionId);
     const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
-      const rolledBack = await catalog.rollback(session.externalSessionId, {
-        boundaryTurnId: boundary
-      });
+      if (targetClientMessageId !== undefined && targetTurnBoundary === undefined)
+        throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
+      const rolledBack = await catalog.rollback(
+        session.externalSessionId,
+        targetClientMessageId === undefined
+          ? { boundaryTurnId: boundary }
+          : {
+              beforeInput: { turnId: targetTurnBoundary!, clientMessageId: targetClientMessageId }
+            }
+      );
       return Date.parse(rolledBack.lastActivityAt);
     } catch (error) {
       if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });

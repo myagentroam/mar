@@ -240,9 +240,10 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
   async rollbackNative(
     session: NodeAgentSession,
     boundary: string | null,
-    targetTurnBoundary?: string
+    targetTurnBoundary?: string,
+    targetClientMessageId?: string
   ): Promise<number> {
-    void [session, boundary, targetTurnBoundary];
+    void [session, boundary, targetTurnBoundary, targetClientMessageId];
     throw new RunnerCapabilityError(this.name, 'session.rollback');
   }
 
