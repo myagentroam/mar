@@ -179,10 +179,10 @@ const revealGroupName = computed(() => {
 watch(
   [() => props.revealTarget, revealGroupName],
   ([target, groupName]) => {
-    if (target === undefined || !groupName) return;
-    const key = workspaceGroupKey(target.nodeId, groupName);
-    if (!expandedWorkspaceGroupKeys.value.includes(key))
-      expandedWorkspaceGroupKeys.value = [...expandedWorkspaceGroupKeys.value, key];
+    if (target === undefined || groupName === undefined) return;
+    expandedWorkspaceGroupKeys.value = groupName
+      ? [workspaceGroupKey(target.nodeId, groupName)]
+      : [];
   },
   { immediate: true }
 );

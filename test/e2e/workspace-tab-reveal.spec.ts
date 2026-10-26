@@ -9,7 +9,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-test('Workspace Tabs reveal ancestors and the selected row without moving focus or collapsing peers', async ({
+test('Workspace Tabs reveal the target and collapse other Nodes and groups without moving focus', async ({
   page
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -24,9 +24,31 @@ test('Workspace Tabs reveal ancestors and the selected row without moving focus 
   await expect(target).toBeInViewport();
   await expect(targetTab).toBeFocused();
   await expect(target).toHaveClass(/selected/);
+  await expect(remote).toBeHidden();
+  await expect(page.locator('.node-expand-button.expanded')).toHaveCount(1);
+  await expect(page.locator('.workspace-group-toggle.expanded')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'other', exact: true }).click();
+  await expect(remote).toBeHidden();
+  await page
+    .getByRole('button', { name: 'Expand Workspace group Other team', exact: true })
+    .click();
+  await expect(remote).toBeVisible();
   await expect(remote).not.toHaveClass(/selected/);
   await expect(page.locator('.node-expand-button.expanded')).toHaveCount(2);
   await expect(page.locator('.workspace-group-toggle.expanded')).toHaveCount(2);
+  await targetTab.click();
+  await expect(remote).toBeHidden();
+  await expect(page.locator('.node-expand-button.expanded')).toHaveCount(1);
+
+  await page.getByRole('tab', { name: 'Second', exact: true }).click();
+  await expect(page.getByRole('button', { name: '/second-target', exact: true })).toBeInViewport();
+  await expect(target).toBeHidden();
+  await expect(page.locator('.workspace-group-toggle.expanded')).toHaveCount(1);
+  await page.getByRole('tab', { name: 'Plain', exact: true }).click();
+  await expect(page.locator('.workspace-group-toggle.expanded')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '/plain', exact: true })).toBeInViewport();
+  await targetTab.click();
 
   await group.click();
   await expect(target).toBeHidden();
@@ -84,6 +106,8 @@ test('Editing a matching tree filter does not scroll away from the input', async
   await page.getByRole('tab', { name: 'Target', exact: true }).click();
   await page.getByRole('tab', { name: 'Remote', exact: true }).click();
   const remote = page.getByRole('button', { name: '/remote', exact: true });
+  await page.getByRole('button', { name: 'node', exact: true }).click();
+  await remote.scrollIntoViewIfNeeded();
   await expect(remote).toBeInViewport();
   const filter = page.getByRole('textbox', { name: 'Filter Nodes and Workspaces' });
   await filter.fill('/');
