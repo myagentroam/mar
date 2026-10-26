@@ -99,7 +99,7 @@ export const personalSettingsZhCN = {
   keyboardShortcuts: {
     platformHint:
       'macOS 的工作区和文件快捷键请将 Ctrl 换为 Command、Alt 换为 Option；工作区 Ctrl+Tab、Ctrl+W 系列及消息输入框和队列的 Ctrl+Enter 仍使用 Control。',
-    openNotificationCenter: '全局：打开或关闭通知中心',
+    openRecentSessions: '全局：打开或关闭最近会话',
     cycleWorkspaceTabs: '工作区：切换到前一个或后一个标签（首尾循环）',
     cycleWorkspaceTabsWithCtrlTab: '工作区：切换到下一个或前一个标签（首尾循环）',
     selectWorkspaceTab: '工作区：按序号切换标签（0 表示第十个）',

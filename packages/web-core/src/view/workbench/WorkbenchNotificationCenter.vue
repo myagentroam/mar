@@ -115,7 +115,7 @@ function openNotification(notification: WorkbenchNotification): void {
   emit('openNotification', notification);
 }
 
-function closeWhenClickOutside(event: PointerEvent): void {
+function closeWhenOutside(event: Event): void {
   if (props.mobileMode && !autoPreview.value) return;
   const target = event.target;
   if (
@@ -131,28 +131,14 @@ function closeWhenClickOutside(event: PointerEvent): void {
   open.value = false;
 }
 
-function onNotificationShortcut(event: KeyboardEvent): void {
-  const target = event.target;
-  if (
-    event.isComposing ||
-    !event.shiftKey ||
-    (!event.ctrlKey && !event.metaKey) ||
-    event.key.toLowerCase() !== 'e' ||
-    (target instanceof Element && target.closest('.terminal-dock') !== null)
-  )
-    return;
-  event.preventDefault();
-  toggle();
-}
-
 onMounted(() => {
-  document.addEventListener('pointerdown', closeWhenClickOutside);
-  window.addEventListener('keydown', onNotificationShortcut, true);
+  document.addEventListener('pointerdown', closeWhenOutside);
+  document.addEventListener('focusin', closeWhenOutside);
 });
 onBeforeUnmount(() => {
   if (dismissTimer !== undefined) clearTimeout(dismissTimer);
-  document.removeEventListener('pointerdown', closeWhenClickOutside);
-  window.removeEventListener('keydown', onNotificationShortcut, true);
+  document.removeEventListener('pointerdown', closeWhenOutside);
+  document.removeEventListener('focusin', closeWhenOutside);
 });
 
 watch(

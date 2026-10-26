@@ -471,7 +471,7 @@ async function confirmLogout(): Promise<void> {
         <dl class="shortcut-list">
           <div>
             <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>E</kbd></dt>
-            <dd>{{ translate('keyboardShortcuts.openNotificationCenter') }}</dd>
+            <dd>{{ translate('keyboardShortcuts.openRecentSessions') }}</dd>
           </div>
           <div>
             <dt><kbd>Alt</kbd><span>+</span><kbd>←/→</kbd></dt>

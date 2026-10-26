@@ -1,5 +1,5 @@
 import { nextTick, ref } from 'vue';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type { RecentRun } from '../../src/service/workbench-notification-service.js';
 import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue?unit-render';
@@ -13,8 +13,10 @@ import {
 const originalLocale = localePreferenceService().locale.value;
 const mountedApps: { unmount(): void }[] = [];
 
+beforeEach(() => vi.stubGlobal('window', new EventTarget()));
 afterEach(() => {
   for (const app of mountedApps.splice(0)) app.unmount();
+  vi.unstubAllGlobals();
   localePreferenceService().setLocale(originalLocale);
 });
 

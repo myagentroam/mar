@@ -183,13 +183,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           ),
         properties
       );
-      for (const selector of ['.workspace-tab-unread', '.group-unread', '.session-unread-label']) {
+      for (const selector of ['.workspace-tab-unread', '.session-unread-label']) {
         const badges = page.locator(`${selector}:visible`);
         expect(await badges.count()).toBeGreaterThan(0);
         for (const badge of await badges.all())
           for (const [property, value] of Object.entries(expected))
             await expect(badge).toHaveCSS(property, value);
       }
+      const combinedUnread = page.locator('.session-state-unread:visible');
+      expect(await combinedUnread.count()).toBeGreaterThan(0);
+      for (const badge of await combinedUnread.all())
+        for (const property of ['color', 'font-size', 'font-weight'])
+          await expect(badge).toHaveCSS(property, expected[property]!);
       await page.goto(`${fixture.url}visual-alignment.html?theme=${theme}`);
       await page.locator('.workbench-notification-center button').first().click();
       const notification = page.locator('.notification-unread-label').first();

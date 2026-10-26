@@ -2,7 +2,8 @@
 import MarIcon from '../common/MarIcon.vue';
 import { ElPopover } from 'element-plus';
 import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import SessionStateBadge from '../common/SessionStateBadge.vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type {
   RecentRun,
@@ -73,6 +74,25 @@ watch(open, (visible) => {
 });
 onBeforeUnmount(stopElapsedTimer);
 
+function onRecentSessionsShortcut(event: KeyboardEvent): void {
+  if (
+    event.isComposing ||
+    event.altKey ||
+    !event.shiftKey ||
+    (!event.ctrlKey && !event.metaKey) ||
+    event.key.toLowerCase() !== 'e' ||
+    (event.target instanceof Element && event.target.closest('.terminal-dock') !== null)
+  )
+    return;
+  event.preventDefault();
+  if (event.repeat) return;
+  if (!props.mobileMode && !open.value) trigger.value?.querySelector('button')?.focus();
+  open.value = !open.value;
+}
+
+onMounted(() => window.addEventListener('keydown', onRecentSessionsShortcut, true));
+onBeforeUnmount(() => window.removeEventListener('keydown', onRecentSessionsShortcut, true));
+
 function openSession(run: RecentRun): void {
   open.value = false;
   emit('openRecentRun', run);
@@ -117,7 +137,7 @@ function runTime(run: RecentRun): string {
     <span ref="trigger" class="recent-sessions-reference">
       <span
         v-tooltip="{
-          content: translate('workbenchNotificationCenter.recentSessions'),
+          content: translate('workbenchNotificationCenter.recentSessionsShortcut'),
           placement: mobileMode ? 'bottom' : 'right'
         }"
         class="mar-tooltip-control"
@@ -135,11 +155,12 @@ function runTime(run: RecentRun): string {
           @keydown.esc.stop="open = false"
         >
           <MarIcon name="recent-sessions" aria-hidden="true" />
-          <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
-            activeSessionCount
-          }}</span>
-        </button></span
-      >
+          <SessionStateBadge
+            class="recent-sessions-badge"
+            :running="activeSessionCount"
+            :unread="false"
+          /></button
+      ></span>
     </span>
     <Teleport
       v-if="mobileMode && (mobilePresented ?? open) && mobilePanelTarget"
@@ -205,14 +226,6 @@ function runTime(run: RecentRun): string {
   position: absolute;
   top: calc(50% - 15px);
   right: calc(50% - 14px);
-  min-width: 14px;
-  border: 1px solid var(--mar-bg-panel);
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
-  font-size: var(--mar-font-size-nano);
-  line-height: 13px;
-  text-align: center;
 }
 .mobile-mode {
   width: 36px;

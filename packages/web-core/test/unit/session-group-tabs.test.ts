@@ -4,6 +4,7 @@ import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
 import SessionGroupTabs from '../../src/view/common/SessionGroupTabs.vue';
+import SessionStateBadge from '../../src/view/common/SessionStateBadge.vue';
 import InteractiveSessionGroupTabs from '../../src/view/common/SessionGroupTabs.vue?unit-render';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { mountSessionGroupTestComponent } from './support/session-group-tabs-renderer.js';
@@ -18,6 +19,29 @@ afterEach(() => {
 });
 
 describe('Session group tabs', () => {
+  it.each([
+    { running: 3, unread: true, count: '3', label: true },
+    { running: 3, unread: false, count: '3', label: false },
+    { running: 0, unread: true, count: '', label: true },
+    { running: 120, unread: true, count: '99+', label: true },
+    { running: 0, unread: false, count: '', label: false }
+  ])(
+    'renders one state badge for running=$running unread=$unread',
+    async ({ running, unread, count, label }) => {
+      localePreferenceService().setLocale('en-US');
+      const app = createSSRApp({ render: () => h(SessionStateBadge, { running, unread }) });
+      app.use(i18n);
+      const html = await renderToString(app);
+      expect(html.includes('class="session-state-badge"')).toBe(running > 0 || unread);
+      expect(html.includes('class="session-state-count"')).toBe(count !== '');
+      expect(html.includes('class="session-state-unread"')).toBe(label);
+      if (count) expect(html).toContain(`>${count}</span>`);
+      if (label) expect(html).toContain('>Unread</span>');
+      if (running > 0 || unread) expect(html).toContain('aria-hidden="true"');
+      expect(html).not.toContain('<button');
+    }
+  );
+
   it('renders independent running and unread states and caps large running counts', async () => {
     localePreferenceService().setLocale('en-US');
     const app = createSSRApp({

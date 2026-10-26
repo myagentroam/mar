@@ -1,6 +1,7 @@
 export const notificationsZhCN = {
   workbenchNotificationCenter: {
     recentSessions: '最近会话',
+    recentSessionsShortcut: '最近会话（Ctrl/Cmd+Shift+E）',
     noRecentSessions: '暂无最近会话',
     recentSessionsCount: '{count} 个进行中的会话',
     webPush: {
