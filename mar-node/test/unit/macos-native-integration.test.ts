@@ -169,6 +169,16 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
             )
             .toBe(true);
         } catch (error) {
+          const { stdout: frontmost } = await command('/usr/bin/osascript', [
+            '-e',
+            'tell application "System Events" to get name of first process whose frontmost is true'
+          ]);
+          const screenshot = join(root, 'finder-selection.png');
+          await command('/usr/sbin/screencapture', ['-x', screenshot]);
+          console.error(`FINDER_FRONTMOST ${frontmost.trim()}`);
+          console.error(
+            `FINDER_SCREENSHOT_BASE64 ${(await readFile(screenshot)).toString('base64')}`
+          );
           throw new Error(
             `Finder file selection mismatch: ${JSON.stringify(await finderState())}`,
             {
