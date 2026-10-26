@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
+import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import type { WorkspaceTab } from '../../src/model/workbench.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 
@@ -12,6 +13,7 @@ const connected = ref(true);
 const parameters = new URLSearchParams(location.search);
 const locale = parameters.get('locale');
 const dynamicLayout = parameters.get('layout') === 'dynamic';
+const inHeader = parameters.get('placement') === 'header';
 const hasStatus = ref(!dynamicLayout);
 localePreferenceService().setLocale(locale === 'en-US' ? 'en-US' : 'zh-CN');
 const tabs = [
@@ -42,9 +44,9 @@ if (dynamicLayout) {
     pinned: false
   });
 }
-createApp({
+const app = createApp({
   render: () =>
-    h('main', { style: { maxWidth: dynamicLayout ? '640px' : '350px' } }, [
+    h('main', { style: { maxWidth: dynamicLayout ? (inHeader ? '480px' : '640px') : '350px' } }, [
       h(
         'button',
         {
@@ -55,26 +57,45 @@ createApp({
         'Toggle connection'
       ),
       h('button', { onClick: () => (hasStatus.value = !hasStatus.value) }, 'Toggle status'),
-      h(WorkspaceTabs, {
-        placement: 'body',
-        tabs,
-        activeTabId: activeTabId.value,
-        nodeLabel: () =>
-          dynamicLayout
-            ? 'Medium Node display'
-            : 'A very long Node name that must truncate before status indicators',
-        directAvailable: () => connected.value,
-        directDescription: () => 'Peer-to-peer connection available (Private network IPv4 UDP)',
-        hasActiveRun: (_nodeId: string, workspaceId: string) =>
-          hasStatus.value && workspaceId === 'workspace-1',
-        hasUnread: (_nodeId: string, workspaceId: string) =>
-          !dynamicLayout && hasStatus.value && workspaceId === 'workspace-1',
-        onActivate: (tab: WorkspaceTab) => {
-          activeTabId.value = tab.id;
-        }
-      })
+      renderWorkspaceTabs()
     ])
-})
-  .use(i18n)
-  .use(ElementPlus)
-  .mount('#app');
+});
+
+function renderWorkspaceTabs() {
+  const content = h(WorkspaceTabs, {
+    placement: inHeader ? 'header' : 'body',
+    tabs,
+    activeTabId: activeTabId.value,
+    nodeLabel: () =>
+      dynamicLayout
+        ? 'Medium Node display'
+        : 'A very long Node name that must truncate before status indicators',
+    directAvailable: () => connected.value,
+    directDescription: () => 'Peer-to-peer connection available (Private network IPv4 UDP)',
+    hasActiveRun: (_nodeId: string, workspaceId: string) =>
+      hasStatus.value && workspaceId === 'workspace-1',
+    hasUnread: (_nodeId: string, workspaceId: string) =>
+      !dynamicLayout && hasStatus.value && workspaceId === 'workspace-1',
+    onActivate: (tab: WorkspaceTab) => {
+      activeTabId.value = tab.id;
+    }
+  });
+  return inHeader
+    ? h(
+        WorkbenchHeader,
+        {
+          mobileViewport: false,
+          view: 'nodes',
+          sidebarCollapsed: false,
+          settingsSection: 'account',
+          managementSection: '',
+          settingsItems: [],
+          managementItems: [],
+          conversationTitle: undefined
+        },
+        { 'workspace-tabs': () => content }
+      )
+    : content;
+}
+
+app.use(i18n).use(ElementPlus).mount('#app');

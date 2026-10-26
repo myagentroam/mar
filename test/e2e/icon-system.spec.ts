@@ -428,10 +428,10 @@ for (const theme of ['dark', 'light']) {
         const colors = await badge.evaluate((element) => {
           const probe = document.createElement('span');
           element.append(probe);
-          probe.style.color = 'var(--mar-text-primary)';
+          probe.style.color = 'var(--mar-text-secondary)';
           const text = getComputedStyle(probe).color;
-          probe.style.color = 'var(--mar-border-medium)';
-          const border = getComputedStyle(probe).color;
+          probe.className = 'mar-unread-label';
+          const border = getComputedStyle(probe).borderTopColor;
           probe.remove();
           return { text, border };
         });
@@ -439,6 +439,7 @@ for (const theme of ['dark', 'light']) {
           await tab.getByRole('tab').click();
           await expect(badge).toHaveCSS('color', colors.text);
           await expect(badge).toHaveCSS('border-top-color', colors.border);
+          await expect(badge).toHaveCSS('border-top-width', '1px');
           await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         }
         if (locale === 'en-US') {
