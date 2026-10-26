@@ -13,7 +13,7 @@ export async function startCustomThemeFixture(entry?: string) {
     root: productRoot,
     configFile: false,
     plugins: [vue.default()],
-    ...(entry === undefined ? {} : { optimizeDeps: { entries: [entry] } }),
+    optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: {
         vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
@@ -24,7 +24,12 @@ export async function startCustomThemeFixture(entry?: string) {
         )
       }
     },
-    server: { host: '127.0.0.1', port: 0, fs: { allow: [productRoot] } },
+    server: {
+      host: '127.0.0.1',
+      port: 0,
+      fs: { allow: [productRoot] },
+      watch: { ignored: [resolve(productRoot, 'test/runs/**')] }
+    },
     logLevel: 'error'
   });
   await server.listen();

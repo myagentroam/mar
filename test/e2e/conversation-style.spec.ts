@@ -634,25 +634,25 @@ function contrast(foreground: string, background: string) {
   return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
 }
 
-test('uses the porcelain daylight palette with accessible interactive and text colors', async ({
+test('uses the bright daylight palette with accessible interactive and text colors', async ({
   page
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=daylight');
   const daylight = await paletteColors(page);
-  expect(daylight['--mar-bg-page']).toBe('#f7f8fa');
+  expect(daylight['--mar-bg-page']).toBe('#f7f9fd');
   expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-  expect(daylight['--mar-bg-tab-inactive']).toBe('#e7ecf2');
-  expect(daylight['--mar-border-default']).toBe('#c7d1dd');
-  expect(daylight['--mar-color-brand']).toBe('#245fa8');
-  expect(daylight['--mar-color-brand-text']).toBe('#245994');
-  expect(daylight['--mar-color-brand-selected']).toBe('#dce8f7');
-  expect(daylight['--mar-color-accent']).toBe('#386b80');
-  expect(daylight['--mar-control-color-success']).toBe('#21694f');
-  expect(daylight['--mar-text-primary']).toBe('#202b3b');
-  expect(daylight['--mar-text-secondary']).toBe('#4f6073');
-  expect(daylight['--mar-text-tertiary']).toBe('#5d6d80');
-  expect(daylight['--mar-text-muted']).toBe('#5d6d80');
-  expect(daylight['--mar-text-faint']).toBe('#5d6d80');
+  expect(daylight['--mar-bg-tab-inactive']).toBe('#e7eef7');
+  expect(daylight['--mar-border-default']).toBe('#cbd6e4');
+  expect(daylight['--mar-color-brand']).toBe('#0969e8');
+  expect(daylight['--mar-color-brand-text']).toBe('#075fc7');
+  expect(daylight['--mar-color-brand-selected']).toBe('#d9e9ff');
+  expect(daylight['--mar-color-accent']).toBe('#067493');
+  expect(daylight['--mar-control-color-success']).toBe('#067551');
+  expect(daylight['--mar-text-primary']).toBe('#172033');
+  expect(daylight['--mar-text-secondary']).toBe('#52627a');
+  expect(daylight['--mar-text-tertiary']).toBe('#5f6f86');
+  expect(daylight['--mar-text-muted']).toBe('#5f6f86');
+  expect(daylight['--mar-text-faint']).toBe('#5f6f86');
 
   for (const state of [
     '--mar-color-brand',
