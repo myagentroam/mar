@@ -16,6 +16,7 @@ export async function startCustomThemeFixture(entry?: string) {
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: {
+        '@': resolve(productRoot, 'ee/web/src'),
         vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
         'element-plus': dirname(webRequire.resolve('element-plus/package.json')),
         '@element-plus/icons-vue': resolve(
