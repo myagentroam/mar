@@ -9,6 +9,120 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const width of [1280, 390]) {
+  test(`Cached conversation restoration follows layout changes and preserves manual reading at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1`);
+      const region = page.locator('.conversation-scroll');
+      await page.getByTestId('restore-cache').click();
+      await expect(page.getByTestId('positioning')).toHaveText('false');
+      await expect(page.getByTestId('loading')).toHaveText('true');
+      await expect(page.getByTestId('following')).toHaveText('true');
+      await expect
+        .poll(() => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+        .toBeLessThan(2);
+      await expect(page.getByText('Latest cached message')).toBeInViewport();
+      await expect(page.getByTestId('older-requests')).toHaveText('0');
+
+      await region.hover();
+      await page.mouse.wheel(0, -300);
+      await expect(page.getByTestId('following')).toHaveText('false');
+      const readingTop = await region.evaluate((el) => el.scrollTop);
+      await page.getByTestId('grow-content').click();
+      await page.getByTestId('finish-watch').click();
+      await expect(page.getByTestId('opened')).toHaveText('true');
+      await expect(page.getByTestId('loading')).toHaveText('false');
+      await expect(page.getByTestId('following')).toHaveText('false');
+      expect(await region.evaluate((el) => el.scrollTop)).toBe(readingTop);
+      await page.getByRole('button', { name: 'Jump to latest' }).click();
+      await expect(page.getByTestId('following')).toHaveText('true');
+      await expect
+        .poll(() => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+        .toBeLessThan(2);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test('Conversation padding clicks and drags preserve bottom following', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1`);
+    const region = page.locator('.conversation-scroll');
+    await page.getByTestId('restore-cache').click();
+    await expect(page.getByTestId('positioning')).toHaveText('false');
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await region.click({ position: { x: 2, y: 100 } });
+    await expect(page.getByTestId('following')).toHaveText('true');
+    const bounds = (await region.boundingBox())!;
+    await page.mouse.move(bounds.x + 2, bounds.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 2, bounds.y + 100, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await page.getByTestId('grow-content').click();
+    await expect
+      .poll(() => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+      .toBeLessThan(2);
+  } finally {
+    await context.close();
+  }
+});
+
+for (const { width, input, phase } of [
+  { width: 1280, input: 'wheel', phase: 'before' },
+  { width: 1280, input: 'wheel', phase: 'during' },
+  { width: 390, input: 'touch', phase: 'before' },
+  { width: 390, input: 'touch', phase: 'during' },
+  { width: 1280, input: 'keyboard', phase: 'during' },
+  { width: 1280, input: 'pointer', phase: 'during' },
+  { width: 1280, input: 'overlay', phase: 'during' }
+]) {
+  test(`Cached calibration respects ${input} reading intent ${phase} positioning`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}conversation-style.html?cached-scroll=1&interrupt=${phase}&input=${input}`
+      );
+      const region = page.locator('.conversation-scroll');
+      await page.getByTestId('restore-cache').click();
+      await expect(page.getByTestId('guarded-interruption')).toHaveText('true');
+      await expect(page.getByTestId('positioning')).toHaveText('false');
+      await expect(page.getByTestId('following')).toHaveText('false');
+      await page.getByTestId('finish-watch').click();
+      await expect(page.getByTestId('opened')).toHaveText('true');
+      await expect.poll(() => region.evaluate((el) => el.scrollTop)).toBe(500);
+      await page.getByTestId('grow-content').click();
+      await expect(page.getByTestId('following')).toHaveText('false');
+      expect(await region.evaluate((el) => el.scrollTop)).toBe(500);
+      await page.getByRole('button', { name: 'Jump to latest' }).click();
+      await expect(page.getByTestId('following')).toHaveText('true');
+      await expect
+        .poll(() => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+        .toBeLessThan(2);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Read groups expand individual files lazily and preserve raw call details in ${theme}`, async ({
     browser

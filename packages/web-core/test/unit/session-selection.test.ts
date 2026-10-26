@@ -1,6 +1,6 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createWorkbenchSessionSelectionService } from '../../src/service/workbench-session-selection-service.js';
 import type { WorkbenchSessionSelectionOptions } from '../../src/service/workbench-session-selection-service.js';
 import type { Session } from '../../src/model/workbench.js';
@@ -199,6 +199,128 @@ it.each([false, true])(
 );
 
 describe('Shared session selection', () => {
+  it.each([true, false])(
+    'protects cached positioning while Watch is pending: %s',
+    async (watchPending) => {
+      const f = tabSessionFixture();
+      const cachedTurns = [
+        turn('cached-turn', {
+          items: [{ id: 'reply', kind: 'assistant_message', payload: { text: 'Cached reply' } }]
+        })
+      ];
+      vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
+        f.options.turns.value = cachedTurns;
+        return {
+          sessionId: f.session.id,
+          runs: [],
+          turns: cachedTurns,
+          nextCursor: null,
+          contextUsage: null,
+          lastAccessedAt: 1
+        };
+      });
+      let finishPositioning!: () => void;
+      vi.mocked(f.options.scrollLatest).mockImplementation(
+        () => new Promise<void>((resolve) => (finishPositioning = resolve))
+      );
+      let finishWatch!: (loaded: boolean) => void;
+      vi.mocked(f.options.beginWatch).mockImplementation(() =>
+        watchPending
+          ? new Promise<boolean>((resolve) => (finishWatch = resolve))
+          : Promise.resolve(true)
+      );
+
+      const opening = f.service.openSession(f.session.id);
+      expect(f.options.positioning.value).toBe(true);
+      expect(f.options.scrollLatest).not.toHaveBeenCalled();
+      await nextTick();
+      expect(f.options.scrollLatest).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+      expect(f.service.loadingInitialContent.value).toBe(false);
+      expect(f.options.positioning.value).toBe(true);
+      finishPositioning();
+      await nextTick();
+      expect(f.options.positioning.value).toBe(false);
+      if (watchPending) {
+        expect(f.options.loadingInitial.value).toBe(true);
+        finishWatch(true);
+      }
+      await opening;
+      expect(f.options.scrollLatest).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each([true, false])(
+    'releases cached positioning only when it still owns the guard (new cache: %s)',
+    async (openAnotherCache) => {
+      const f = tabSessionFixture();
+      vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation((sessionId) => {
+        const turns = [
+          turn('cached-turn', {
+            sessionId,
+            items: [{ id: 'reply', kind: 'assistant_message', payload: { text: 'Cached reply' } }]
+          })
+        ];
+        f.options.turns.value = turns;
+        return {
+          sessionId,
+          runs: [],
+          turns,
+          nextCursor: null,
+          contextUsage: null,
+          lastAccessedAt: 1
+        };
+      });
+      const finishPositioning: (() => void)[] = [];
+      vi.mocked(f.options.scrollLatest).mockImplementation(
+        () => new Promise<void>((resolve) => finishPositioning.push(resolve))
+      );
+      const first = f.service.openSession(f.session.id);
+      await nextTick();
+      let second: Promise<void> | undefined;
+      if (openAnotherCache) {
+        second = f.service.openSession('another-session');
+        await nextTick();
+      } else {
+        // Opening a draft invalidates the detail request without opening another session.
+        f.options.nextRequest();
+        f.options.selectedSessionId.value = undefined;
+        f.options.turns.value = [];
+      }
+      finishPositioning[0]!();
+      await first;
+      expect(f.options.positioning.value).toBe(openAnotherCache);
+      if (second !== undefined) {
+        finishPositioning[1]!();
+        await second;
+        expect(f.options.positioning.value).toBe(false);
+      }
+    }
+  );
+
+  it('does not start cached calibration after reading intent cancels the pre-layout guard', async () => {
+    const f = tabSessionFixture();
+    vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
+      f.options.turns.value = [
+        turn('cached-turn', {
+          items: [{ id: 'reply', kind: 'assistant_message', payload: { text: 'Cached reply' } }]
+        })
+      ];
+      return {
+        sessionId: f.session.id,
+        runs: [],
+        turns: f.options.turns.value,
+        nextCursor: null,
+        contextUsage: null,
+        lastAccessedAt: 1
+      };
+    });
+    const opening = f.service.openSession(f.session.id);
+    f.options.positioning.value = false;
+    await opening;
+    expect(f.options.scrollLatest).not.toHaveBeenCalled();
+  });
+
   it('keeps restored content readable and preserves reading position across Watch synchronization', async () => {
     const f = tabSessionFixture();
     let scrollTop = 0;

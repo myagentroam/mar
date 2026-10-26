@@ -27,6 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   scrollElement: [element: HTMLElement | undefined];
   scroll: [];
+  scrollIntent: [];
   loadOlder: [];
   latest: [];
   reload: [];
@@ -42,6 +43,64 @@ let composerAnimation: Animation | undefined;
 let motionPreference: MediaQueryList | undefined;
 const reloading = ref(false);
 const olderAction = ref<'retry' | 'load'>();
+let touchY: number | undefined;
+let scrollbarPointerY: number | undefined;
+
+function onWheel(event: WheelEvent): void {
+  if (event.deltaY < 0) emit('scrollIntent');
+}
+
+function onTouchStart(event: TouchEvent): void {
+  touchY = event.touches[0]?.clientY;
+}
+
+function onTouchMove(event: TouchEvent): void {
+  const nextY = event.touches[0]?.clientY;
+  if (nextY !== undefined && touchY !== undefined && nextY > touchY) emit('scrollIntent');
+  touchY = nextY;
+}
+
+function onScrollKeydown(event: KeyboardEvent): void {
+  const target = event.target;
+  if (
+    event.defaultPrevented ||
+    (target instanceof HTMLElement &&
+      (target.isContentEditable || target.closest('input, textarea, select')))
+  )
+    return;
+  if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey))
+    emit('scrollIntent');
+}
+
+function onScrollbarPointerdown(event: PointerEvent): void {
+  scrollbarPointerY = undefined;
+  const current = element.value;
+  if (
+    event.button !== 0 ||
+    event.pointerType === 'touch' ||
+    current === undefined ||
+    event.target !== current
+  )
+    return;
+  const scrollbarWidth = current.offsetWidth - current.clientWidth - current.clientLeft;
+  const right = current.getBoundingClientRect().right;
+  if (scrollbarWidth <= 0) {
+    // Overlay scrollbars have no gutter; a click alone must not pause following.
+    const overlayWidth =
+      Number.parseFloat(getComputedStyle(current, '::-webkit-scrollbar').width) || 8;
+    if (event.clientX >= right - overlayWidth && event.clientX < right)
+      scrollbarPointerY = event.clientY;
+    return;
+  }
+  if (event.clientX >= right - scrollbarWidth && event.clientX < right) emit('scrollIntent');
+}
+
+function onScrollbarPointermove(event: PointerEvent): void {
+  if (scrollbarPointerY === undefined) return;
+  if (event.buttons === 1 && event.clientY < scrollbarPointerY) emit('scrollIntent');
+  scrollbarPointerY = event.buttons === 1 ? event.clientY : undefined;
+}
+
 const showEmptyPrompt = computed(
   () =>
     props.emptyPrompt !== undefined &&
@@ -161,7 +220,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="region" class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
-    <div ref="element" class="conversation-scroll" @scroll="emit('scroll')">
+    <div
+      ref="element"
+      class="conversation-scroll"
+      @scroll="emit('scroll')"
+      @wheel.passive="onWheel"
+      @touchstart.passive="onTouchStart"
+      @touchmove.passive="onTouchMove"
+      @keydown="onScrollKeydown"
+      @pointerdown="onScrollbarPointerdown"
+      @pointermove="onScrollbarPointermove"
+      @pointerup="scrollbarPointerY = undefined"
+      @pointercancel="scrollbarPointerY = undefined"
+    >
       <div
         ref="content"
         class="conversation-scroll-content"

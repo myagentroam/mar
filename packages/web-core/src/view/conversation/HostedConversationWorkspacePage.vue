@@ -1215,6 +1215,7 @@ onBeforeUnmount(() => {
           :empty-prompt="interactionReady && !workspace.snapshot.value.run ? 'hosted' : undefined"
           @scroll-element="setConversationScrollElement"
           @scroll="handleConversationScroll"
+          @scroll-intent="conversationScrollService.stopFollowing"
           @load-older="loadOlderConversationHistory"
           @latest="conversationScrollService.scrollToLatest"
         >

@@ -2392,7 +2392,12 @@ export function createWorkbenchPageController<
     restoreProjection: restoreConversationProjection,
     resetProjection: resetConversationProjection,
     openRun,
-    scrollLatest: scrollConversationToLatestAfterLayout,
+    scrollLatest: () => {
+      const requestId = currentDetailRequest();
+      return conversationScrollService.scrollToLatestAfterLayout(
+        () => currentDetailRequest() === requestId
+      );
+    },
     beginInitialRender: beginConversationInitialRender,
     request,
     sessionPathId: agentSessionPathId,
@@ -3532,6 +3537,7 @@ export function createWorkbenchPageController<
     onComposerInput,
     onComposerKeydown,
     onComposerScroll,
+    stopFollowingConversation: conversationScrollService.stopFollowing,
     onNewSessionPaste,
     onlineNodeCount,
     openAgentWorkspaceFile,
