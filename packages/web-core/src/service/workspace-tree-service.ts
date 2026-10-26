@@ -94,8 +94,8 @@ export function createWorkspaceTreeService(options: WorkspaceTreeStateOptions) {
   }
 
   function revealWorkspace(target: WorkspaceTarget): void {
-    if (!expandedNodeIds.value.includes(target.nodeId))
-      expandedNodeIds.value = [...expandedNodeIds.value, target.nodeId];
+    if (expandedNodeIds.value.length !== 1 || expandedNodeIds.value[0] !== target.nodeId)
+      expandedNodeIds.value = [target.nodeId];
     // A fresh intent also reveals an already active Tab without reactivating it.
     revealTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId };
   }

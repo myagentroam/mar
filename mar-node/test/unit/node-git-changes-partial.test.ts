@@ -65,6 +65,46 @@ async function gitlink(path: string, name: string, mapped = false) {
 }
 
 describe('Git Changes partial success', () => {
+  it.each(['CLEAN', 'DIRTY'] as const)(
+    'returns the actual detached HEAD for a %s submodule and preserves named branches',
+    async (status) => {
+      const path = await repository();
+      const source = await repository();
+      await git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', source, 'child');
+      const child = join(path, 'child');
+      const recordedHead = await git(child, 'rev-parse', 'HEAD');
+      await git(child, 'checkout', '--detach');
+      await git(
+        child,
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'detached commit'
+      );
+      const head = await git(child, 'rev-parse', 'HEAD');
+      expect(head).not.toBe(recordedHead);
+      if (status === 'DIRTY') await writeFile(join(child, 'root.txt'), 'child changes\n');
+
+      const result = await current(path);
+      const group = result.repositories.find((entry) => entry.repositoryPath === 'child');
+      expect(result.partial).toBe(false);
+      expect(group).toMatchObject({ source: 'SUBMODULE', branch: null, head, status });
+      expect(group?.tracking).toBeUndefined();
+      expect(group?.changes).toEqual(
+        status === 'CLEAN' ? [] : [expect.objectContaining({ path: 'root.txt', state: 'UNSTAGED' })]
+      );
+
+      await git(child, 'checkout', 'main');
+      expect(
+        (await current(path)).repositories.find((entry) => entry.repositoryPath === 'child')
+      ).toMatchObject({ branch: 'main', status });
+    }
+  );
+
   it('reports local upstream counts for root, submodule and linked worktree groups without fetching', async () => {
     const path = await repository();
     await git(path, 'add', 'root.txt');

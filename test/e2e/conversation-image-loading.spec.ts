@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { ImagePreviewService } from '../../mar-node/src/service/image-preview-service.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -14,6 +14,7 @@ let thumbnail: Buffer;
 let detail: Buffer;
 let small: Buffer;
 let smallDetail: Buffer;
+const variants = new Map<string, { full: Buffer; detail: Buffer; thumbnail: Buffer }>();
 let requests: string[] = [];
 let halfSent = false;
 let finishTransfer = () => {};
@@ -37,21 +38,46 @@ test.beforeAll(async () => {
   const smallPreview = await previews.create(small, { maxWidth: 2560, maxHeight: 2560 });
   expect(smallPreview.resized).toBe(false);
   smallDetail = Buffer.from(smallPreview.dataBase64, 'base64');
+  for (const [name, width, height] of [
+    ['portrait', 1800, 3600],
+    ['long', 1200, 12000]
+  ] as const) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#dce8f5"/><circle cx="${width / 2}" cy="${height / 2}" r="${width / 4}" fill="#6694c5"/><text x="30" y="60" font-size="40">Top of ${name} image</text><text x="30" y="${height - 30}" font-size="40">Bottom of ${name} image</text></svg>`;
+    const original = await sharp(Buffer.from(svg)).png().toBuffer();
+    variants.set(name, {
+      full: original,
+      detail: Buffer.from(
+        (await previews.create(original, { maxWidth: 2560, maxHeight: 2560 })).dataBase64,
+        'base64'
+      ),
+      thumbnail: Buffer.from(
+        (await previews.create(original, { maxWidth: 320, maxHeight: 240 })).dataBase64,
+        'base64'
+      )
+    });
+  }
   images = createServer((request, response) => {
     requests.push(request.url!);
     const url = new URL(request.url!, 'http://localhost');
     response.setHeader('cache-control', 'no-store');
     response.setHeader('access-control-allow-origin', '*');
     response.setHeader('access-control-expose-headers', 'x-mar-image-resized');
+    const variant = variants.get(url.pathname.split('/').at(-1)!);
     if (url.searchParams.get('maxWidth') === '320') {
       response.writeHead(200, { 'content-type': 'image/webp', 'x-mar-image-resized': '1' });
-      response.end(thumbnail);
+      response.end(variant?.thumbnail ?? thumbnail);
     } else if (url.pathname.endsWith('/retry') && retries++ === 0) {
       response.writeHead(503).end();
     } else {
       const preview = url.searchParams.has('maxWidth');
       const isSmall = url.pathname.endsWith('/small');
-      const bytes = isSmall ? (preview ? smallDetail : small) : preview ? detail : full;
+      const bytes = isSmall
+        ? preview
+          ? smallDetail
+          : small
+        : preview
+          ? (variant?.detail ?? detail)
+          : (variant?.full ?? full);
       response.writeHead(200, {
         'content-type': !preview ? 'image/png' : 'image/webp',
         'content-length': bytes.length,
@@ -130,6 +156,32 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(() => finishTransfer());
 
+async function expectImageFits(image: Locator): Promise<void> {
+  const metrics = await image.evaluate((element: HTMLImageElement) => {
+    const area = element.parentElement!;
+    const bounds = element.getBoundingClientRect();
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      naturalWidth: element.naturalWidth,
+      naturalHeight: element.naturalHeight,
+      availableWidth: area.clientWidth,
+      availableHeight: area.clientHeight,
+      scrollWidth: area.scrollWidth,
+      scrollHeight: area.scrollHeight
+    };
+  });
+  const scale = Math.min(
+    1,
+    metrics.availableWidth / metrics.naturalWidth,
+    metrics.availableHeight / metrics.naturalHeight
+  );
+  expect(Math.abs(metrics.width - metrics.naturalWidth * scale)).toBeLessThan(1);
+  expect(Math.abs(metrics.height - metrics.naturalHeight * scale)).toBeLessThan(1);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.availableWidth + 1);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.availableHeight + 1);
+}
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 }
@@ -188,21 +240,48 @@ for (const viewport of [
     finishTransfer();
     await expect(image).toBeVisible();
     expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(3600);
-    expect(
-      await dialog
-        .locator('.decoded-preview-image')
-        .evaluate((element) => element.scrollWidth > element.clientWidth)
-    ).toBe(true);
+    await expectImageFits(image);
     expect(new URL(requests.at(-1)!, imageOrigin).searchParams.has('maxWidth')).toBe(false);
     await expect(original).toHaveCount(0);
-    const originalArea = dialog.locator('.decoded-preview-image');
-    await originalArea.focus();
-    await page.keyboard.press('ArrowDown');
-    await expect
-      .poll(() => originalArea.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(0);
     await page.screenshot({ path: info.outputPath('original.png'), animations: 'disabled' });
   });
+}
+
+for (const [name, width, height] of [
+  ['portrait', 1800, 3600],
+  ['long', 1200, 12000]
+] as const) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 }
+  ]) {
+    test(`original ${name} image fits without scrolling at ${viewport.width}px`, async ({
+      page
+    }, info) => {
+      await page.setViewportSize(viewport);
+      await page.goto(
+        `${fixture.url}conversation-image-loading.html?first=${name}&theme=${viewport.width === 390 ? 'daylight' : 'dark'}`
+      );
+      await page.evaluate(() => {
+        (window as unknown as { imageDecodeState: { block: boolean } }).imageDecodeState.block =
+          false;
+      });
+      await page.locator('.conversation-user-image').click();
+      const dialog = page.getByRole('dialog', { name: 'Image preview', exact: true });
+      const image = dialog.locator('img');
+      await expect(image).toBeVisible();
+      await expectImageFits(image);
+      await dialog.getByRole('button', { name: 'View original', exact: true }).click();
+      await expect(image).toBeVisible();
+      await expect
+        .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalHeight))
+        .toBe(height);
+      expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(width);
+      await expectImageFits(image);
+      expect(new URL(requests.at(-1)!, imageOrigin).searchParams.has('maxWidth')).toBe(false);
+      await page.screenshot({ path: info.outputPath('original-fit.png'), animations: 'disabled' });
+    });
+  }
 }
 
 test('late decode cannot replace a different image or a closed dialog', async ({ page }) => {

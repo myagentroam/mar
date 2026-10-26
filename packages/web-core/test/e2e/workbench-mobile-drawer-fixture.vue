@@ -110,7 +110,8 @@ tree.cacheWorkspaces('node', [
     path: `/folder-${index}`,
     kind: 'DIRECTORY' as const
   })),
-  { id: 'shared', path: '/target', kind: 'DIRECTORY', groupName: 'Team' }
+  { id: 'shared', path: '/target', kind: 'DIRECTORY', groupName: 'Team' },
+  { id: 'second', path: '/second-target', kind: 'DIRECTORY', groupName: 'Second team' }
 ]);
 tree.cacheWorkspaces('other', [
   { id: 'shared', path: '/remote', kind: 'DIRECTORY', groupName: 'Other team' }
@@ -118,7 +119,8 @@ tree.cacheWorkspaces('other', [
 const treeTabs = [
   { id: 'plain', nodeId: 'node', workspaceId: 'plain', label: 'Plain', lastActiveAt: 0 },
   { id: 'target', nodeId: 'node', workspaceId: 'shared', label: 'Target', lastActiveAt: 0 },
-  { id: 'remote', nodeId: 'other', workspaceId: 'shared', label: 'Remote', lastActiveAt: 0 }
+  { id: 'remote', nodeId: 'other', workspaceId: 'shared', label: 'Remote', lastActiveAt: 0 },
+  { id: 'second', nodeId: 'node', workspaceId: 'second', label: 'Second', lastActiveAt: 0 }
 ];
 function activateTreeTarget(target: WorkspaceTarget): void {
   treeTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId };

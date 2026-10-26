@@ -172,12 +172,12 @@ describe('Public Workspace tree controller', () => {
     f.tree.toggleNode('node-2');
     await f.controller.openWorkspaceTab(tab);
     const firstIntent = f.tree.revealTarget.value;
-    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-1']);
     expect(firstIntent).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
 
     f.tree.toggleNode('node-1');
     await f.controller.openWorkspaceTab(tab);
-    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-1']);
     expect(f.tree.revealTarget.value).not.toBe(firstIntent);
     expect(f.activateWorkspace).not.toHaveBeenCalled();
     expect(f.openWorkspaceTabSession).not.toHaveBeenCalled();
@@ -210,7 +210,7 @@ describe('Public Workspace tree controller', () => {
     finish(true);
     await first;
     expect(f.tree.revealTarget.value).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
-    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-1']);
     expect(f.request).not.toHaveBeenCalled();
   });
 
