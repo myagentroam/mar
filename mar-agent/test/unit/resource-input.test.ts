@@ -411,6 +411,27 @@ describe('ResourceInputProjection', () => {
     expect(prepared.messages[0]?.content).toBe(healthy.content);
   });
 
+  it('plans hard-limit GC from actual bytes when stored image sizes are stale', async () => {
+    const MiB = 1024 * 1024;
+    const store = createStore({ historical: 'a'.repeat(8 * MiB), fresh: 'b'.repeat(5 * MiB) });
+    const historical = {
+      ...imageMessage('historical', { callId: 'historical' }),
+      images: [{ ...image('historical'), byteSize: 1 }]
+    };
+    const projection = new ResourceInputProjection(false, store, 'session-1', [historical]);
+    const candidate = await projection.gcCandidate(
+      request([historical], { images: [image('fresh')] })
+    );
+    expect(candidate).toMatchObject({
+      reason: 'HARD_LIMIT',
+      state: { evictedThrough: { sourceId: 'tool:historical', imageIndex: 0 } }
+    });
+    projection.adoptGc(candidate?.state);
+    const prepared = await projection.prepare(request([historical], { images: [image('fresh')] }));
+    expect(prepared.messages[0]?.images).toEqual([]);
+    expect(prepared.images).toMatchObject([{ resourceId: 'fresh' }]);
+  });
+
   it('removes only unavailable Code Mode images and remaps their observation positions', async () => {
     const store = createStore({ available: 'Yg==' });
     const projection = new ResourceInputProjection(false, store, 'session-1', []);

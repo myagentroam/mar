@@ -29,9 +29,27 @@ export async function resourceMetadata(
 ): Promise<SessionResource | undefined> {
   if (!idPattern.test(resourceId)) return undefined;
   try {
-    return JSON.parse(
+    const value = JSON.parse(
       await readFile(join(directory, `${resourceId}.json`), 'utf8')
-    ) as SessionResource;
+    ) as unknown;
+    const resource = value as Partial<SessionResource>;
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      typeof resource.resourceId !== 'string' ||
+      typeof resource.mimeType !== 'string' ||
+      typeof resource.byteSize !== 'number' ||
+      typeof resource.sha256 !== 'string' ||
+      (resource.url !== undefined &&
+        (typeof resource.url !== 'string' ||
+          !isModelImageUrl(resource.url) ||
+          !Number.isSafeInteger(resource.urlExpiresAt) ||
+          resource.urlExpiresAt! <= 0)) ||
+      (resource.url === undefined && resource.urlExpiresAt !== undefined)
+    )
+      throw new Error('Invalid Session image resource metadata.');
+    return value as SessionResource;
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw new MarAgentError(

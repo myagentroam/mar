@@ -275,6 +275,7 @@ export async function readToolResultResource(
       : undefined;
   if (!resource)
     throw resourceError('NOT_FOUND', 'Tool resource is not part of this session history.');
+  const bytes = await readResourceBytes(directory, resource);
   let offset = 0;
   if (input.cursor !== undefined) {
     try {
@@ -291,7 +292,7 @@ export async function readToolResultResource(
         cursor.sha256 !== resource.sha256 ||
         !Number.isSafeInteger(cursor.offset) ||
         cursor.offset < 0 ||
-        cursor.offset >= resource.byteSize
+        cursor.offset >= bytes.length
       )
         throw new Error('cursor');
       offset = cursor.offset;
@@ -299,7 +300,6 @@ export async function readToolResultResource(
       throw resourceError('INPUT_INVALID', 'Invalid tool resource cursor.');
     }
   }
-  const bytes = await readResourceBytes(directory, resource);
   if (offset > 0 && (bytes[offset]! & 0xc0) === 0x80)
     throw resourceError('INPUT_INVALID', 'Invalid tool resource cursor boundary.');
   let end = Math.min(bytes.length, offset + (input.maxBytes ?? 256 * 1024));

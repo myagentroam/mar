@@ -317,6 +317,10 @@ export class ResourceInputProjection {
           : await this.#project(image, entry);
       return sized ? inlineMediaBytes(sized) : 0;
     };
+    const actualSize = async (image: ModelImage, entry?: Entry) => {
+      const projected = await this.#project(image, entry);
+      return projected ? inlineMediaBytes(projected) : 0;
+    };
     const history = await Promise.all(
       this.#entries.map(async (entry, index) => ({
         index,
@@ -329,11 +333,6 @@ export class ResourceInputProjection {
     let beforeBytes = history.reduce((sum, entry) => sum + entry.bytes, 0);
     let freshBytes = 0;
     let requestBytes = 0;
-    const requestImages: {
-      image: ModelImage;
-      entry?: Entry;
-      historyPosition?: number;
-    }[] = [];
     const requestHistory = new Map<number, number>();
     if (request) {
       for (const message of request.messages)
@@ -342,44 +341,21 @@ export class ResourceInputProjection {
           const entry = position === undefined ? undefined : this.#entries[position];
           const original = entry && isDeepStrictEqual(entry.image, image);
           if (original && position! <= this.#evicted) continue;
-          const bytes = await size(image, entry);
+          const bytes = await actualSize(image, entry);
           requestBytes += bytes;
           if (original && position! <= this.#considered) {
             requestHistory.set(position!, (requestHistory.get(position!) ?? 0) + bytes);
-            requestImages.push({ image, entry, historyPosition: position! });
-          } else {
-            freshBytes += bytes;
-            requestImages.push({ image, ...(entry ? { entry } : {}) });
-          }
+            history[position!]!.bytes = bytes;
+          } else freshBytes += bytes;
         }
       for (const image of request.images ?? []) {
         if (mirroredImages.some((mirror) => isDeepStrictEqual(image, mirror))) continue;
-        const bytes = await size(image);
+        const bytes = await actualSize(image);
         freshBytes += bytes;
         requestBytes += bytes;
-        requestImages.push({ image });
       }
-      if (requestBytes > policy.requestInlineMediaHardLimit && requestImages.length) {
-        const unavailableHistory = new Set<number>();
-        freshBytes = 0;
-        requestBytes = 0;
-        requestHistory.clear();
-        for (const { image, entry, historyPosition } of requestImages) {
-          const projected = await this.#project(image, entry);
-          if (!projected) {
-            if (historyPosition !== undefined) unavailableHistory.add(historyPosition);
-            continue;
-          }
-          const bytes = inlineMediaBytes(projected);
-          requestBytes += bytes;
-          if (historyPosition === undefined) freshBytes += bytes;
-          else
-            requestHistory.set(historyPosition, (requestHistory.get(historyPosition) ?? 0) + bytes);
-        }
-        for (const position of unavailableHistory) history[position]!.bytes = 0;
-        beforeBytes = history.reduce((sum, item) => sum + item.bytes, 0);
-        if (freshBytes > policy.requestInlineMediaHardLimit) inlineMediaLimit();
-      }
+      beforeBytes = history.reduce((sum, item) => sum + item.bytes, 0);
+      if (freshBytes > policy.requestInlineMediaHardLimit) inlineMediaLimit();
     }
     const hard = requestBytes > policy.requestInlineMediaHardLimit;
     if (!hard && beforeBytes <= policy.historicalInlineMediaTarget) return undefined;

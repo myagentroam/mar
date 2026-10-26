@@ -186,6 +186,40 @@ describe('unified Session image resources', () => {
     });
   });
 
+  it.each(['null', '{}'])(
+    'reports structurally unusable resource metadata with a stable code (%s)',
+    async (metadata) => {
+      const { store, session, directory } = await fixture();
+      const image = await store.persistResource(session.id, {
+        mimeType: 'image/png',
+        dataBase64: pixel
+      });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
+      });
+      await writeFile(join(directory, `${image.resourceId}.json`), metadata);
+      await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
+        code: 'MAR_AGENT_IMAGE_UNAVAILABLE'
+      });
+    }
+  );
+
+  it('repairs invalid published URL metadata when the same bytes are attached again', async () => {
+    const { store, session, directory } = await fixture();
+    const input = { mimeType: 'image/png', dataBase64: pixel };
+    const image = await store.persistResource(session.id, input);
+    await writeFile(
+      join(directory, `${image.resourceId}.json`),
+      JSON.stringify({ ...image, url: 'ftp://invalid.example.test/image.png', urlExpiresAt: 1 })
+    );
+    const repaired = await store.persistResource(session.id, input);
+    expect(repaired).not.toHaveProperty('url');
+    await expect(
+      store.setResourceUrl(session.id, image.resourceId, { url, urlExpiresAt: 1 })
+    ).resolves.toMatchObject({ url, urlExpiresAt: 1 });
+  });
+
   it('does not expose uncommitted bytes and accepts a committed surviving pending marker', async () => {
     const { store, session, directory } = await fixture();
     const image = await store.persistResource(session.id, {
