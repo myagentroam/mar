@@ -465,14 +465,16 @@ test('Shared tooltip switches between touch, keyboard and mouse without stale in
   }
 });
 
-test('Hosted model hints preserve dropdown semantics and keyboard selection', async ({ page }) => {
+test('Hosted model labels preserve dropdown semantics and keyboard selection', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?hosted=1`);
   const trigger = page.locator('.hosted-model-trigger');
   await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await expect(trigger).toHaveAccessibleDescription('Model One');
   await trigger.locator('span').first().hover();
-  await expect(page.locator('.mar-tooltip:visible')).toContainText('Model One');
+  // Model selectors expose their visible label and ARIA description without a redundant tooltip.
+  await expect(trigger).toContainText('Model One');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await page.mouse.move(0, 0);
   await trigger.focus();
   await trigger.press('Enter');

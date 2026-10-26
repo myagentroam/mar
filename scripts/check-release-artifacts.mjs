@@ -111,6 +111,24 @@ async function checkBuildDirectory(directory) {
   );
 }
 
+export function unexpectedNpmPackageFiles(packageName, files) {
+  const isAgent = packageName === '@myagentroam/agent';
+  const isProtocol = packageName === '@myagentroam/protocol';
+  const isCodeNavigation = packageName === '@myagentroam/code-navigation';
+  const isNode = packageName === '@myagentroam/node';
+  return files.filter(
+    (path) =>
+      !['package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE'].includes(path) &&
+      !(isNode && path === 'scripts/install-web-browser.mjs') &&
+      !(isNode && path === 'dist/config.d.ts') &&
+      !(isNode && nodeVendorAllowlist.has(path)) &&
+      (!path.startsWith('dist/') ||
+        sourceMap.test(path) ||
+        rawTypeScript.test(path) ||
+        (!isAgent && !isProtocol && !isCodeNavigation && declaration.test(path)))
+  );
+}
+
 async function checkNpmPackage(directory) {
   const result = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
     cwd: directory,
@@ -124,16 +142,7 @@ async function checkNpmPackage(directory) {
   const isProtocol = packageName === '@myagentroam/protocol';
   const isCodeNavigation = packageName === '@myagentroam/code-navigation';
   const isNode = packageName === '@myagentroam/node';
-  const unexpected = files.filter(
-    (path) =>
-      !['package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE'].includes(path) &&
-      !(isNode && path === 'scripts/install-web-browser.mjs') &&
-      !(isNode && nodeVendorAllowlist.has(path)) &&
-      (!path.startsWith('dist/') ||
-        sourceMap.test(path) ||
-        rawTypeScript.test(path) ||
-        (!isAgent && !isProtocol && !isCodeNavigation && declaration.test(path)))
-  );
+  const unexpected = unexpectedNpmPackageFiles(packageName, files);
   check(
     unexpected.length === 0,
     `${directory} contains files outside the release allowlist: ${unexpected.join(', ')}`
