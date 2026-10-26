@@ -4,6 +4,8 @@ import {
   conversationErrorCodeVisible,
   conversationErrorPresentation,
   conversationFileChangeEntries,
+  conversationToolEntries,
+  conversationReadFileCount,
   conversationItemDetail,
   conversationItemLabel,
   conversationItemText,
@@ -825,6 +827,64 @@ describe('Conversation Show Aggregation', () => {
         text: 'Then check the status'
       }
     ]);
+  });
+
+  it('expands Read calls into ordered file rows without merging separate calls or changing details', () => {
+    const first = item('read-first', 'tool_call', {
+      toolName: 'read',
+      toolPresentation: {
+        kind: 'READ',
+        paths: ['src/a.ts', 'src/a.ts', 'test/a.ts', 'C:\\src\\b.ts', '目录/c.ts']
+      },
+      inputSummary: 'Original ranges',
+      outputSummary: 'Original batch output'
+    });
+    const second = item('read-second', 'tool_call', {
+      toolName: 'Read',
+      toolPresentation: { kind: 'READ', paths: ['src/a.ts'] }
+    });
+    const calls = [first, second];
+    const original = structuredClone(calls);
+    const entries = conversationToolEntries(calls);
+    expect(entries.map(({ path }) => path)).toEqual([
+      'src/a.ts',
+      'test/a.ts',
+      'C:\\src\\b.ts',
+      '目录/c.ts',
+      'src/a.ts'
+    ]);
+    expect(conversationReadFileCount(calls)).toBe(5);
+    expect(new Set(entries.map(({ id }) => id)).size).toBe(5);
+    expect(entries.slice(0, 4).every(({ item }) => item === first)).toBe(true);
+    expect(entries[4]?.item).toBe(second);
+    expect(conversationItemDetail(first.kind, first.payload)).toContain('Original batch output');
+    expect(conversationToolEntries([second])[0]?.id).toBe(entries[4]?.id);
+    expect(calls).toEqual(original);
+  });
+
+  it('retains pathless and failed Read calls without inventing files or inferring ordinary tools', () => {
+    const calls = [
+      item('missing', 'tool_call', { toolPresentation: { kind: 'READ' } }),
+      item(
+        'failed',
+        'tool_call',
+        {
+          toolPresentation: { kind: 'READ', paths: ['', 'missing.ts'] },
+          errorCode: 'READ_FAILED'
+        },
+        'FAILED'
+      ),
+      item('ordinary', 'tool_call', {
+        toolName: 'read',
+        inputSummary: '{"path":"not-inferred.ts"}'
+      })
+    ];
+    const entries = conversationToolEntries(calls);
+    expect(entries.map(({ path }) => path)).toEqual([undefined, 'missing.ts', undefined]);
+    expect(entries[0]?.id).toBe('missing');
+    expect(entries[1]?.item.status).toBe('FAILED');
+    expect(entries[2]?.id).toBe('ordinary');
+    expect(conversationReadFileCount(calls)).toBe(1);
   });
 
   it('aggregates eligible categories only within explicit process groups with stable identities', () => {

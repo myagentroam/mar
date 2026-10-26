@@ -14,6 +14,32 @@ async function requestPrompt<T>(): Promise<T> {
 }
 const message =
   'Body text with **emphasis** and `inline code`.\n\n### Section heading\n\n| Item | Value |\n| --- | --- |\n| Example | Readable content |';
+const linkMessage = [
+  '[Windows protocol](E:/project/docs/design/BLE_PROTOCOL.md#L7)',
+  'README.md:10',
+  '[Relative file](docs/guide.md#L3)',
+  '[Temporary file](sandbox:/tmp/note.txt)',
+  '[External website](https://example.com/help)',
+  '[Unsafe](javascript:alert(1))'
+].join('\n\n');
+const openedMarkdownFiles = ref<
+  {
+    path: string;
+    line: number | undefined;
+    column: number | undefined;
+    external: boolean;
+  }[]
+>([]);
+
+function recordMarkdownFile(
+  path: string,
+  line: number | undefined,
+  column: number | undefined,
+  external: boolean
+): void {
+  openedMarkdownFiles.value.push({ path, line, column, external });
+}
+
 const dialogOpen = ref(false);
 const longFeedback = Array.from(
   { length: 36 },
@@ -81,6 +107,14 @@ function saveFeedbackDialog(): void {
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">
     <AgentMarkdown :content="message" />
     <p class="conversation-metadata">Run duration 11s</p>
+  </section>
+  <section aria-label="Conversation file links">
+    <AgentMarkdown
+      :content="linkMessage"
+      workspace-root="E:/project"
+      @open-file="recordMarkdownFile"
+    />
+    <output aria-label="Opened Markdown files">{{ JSON.stringify(openedMarkdownFiles) }}</output>
   </section>
   <section aria-label="Message feedback controls">
     <button

@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-26
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -14,6 +14,8 @@ Every Workspace uses the same activation path: its tab activates and restores ca
 Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, first opens its first valid unread session. A successful open marks only that session read; unread indicators remain for other sessions, and another click opens the next unread session. With no unread sessions, active tasks take priority: if the Workspace's last selected session still has an active task, the tab keeps that session instead of switching to another active session. Otherwise, it opens the first active session. With no active tasks, the tab restores its last selected session, or keeps the existing empty or draft behavior when none is available. Other candidates follow their existing order, regardless of session-list pagination or search. A failed open does not clear unread state. Background notifications and task changes never switch sessions automatically, and navigation never starts or stops tasks. Tree navigation, shortcuts, and fallback after closing a tab keep their existing behavior.
 
 Workspace registration uses an explicit host target in a dialog; closing it leaves the active Workspace unchanged. Open Workspaces appear as tabs and retain their order in the current browser.
+
+Clicking a Workspace tab also expands its Node and group in the resource tree and scrolls the selected Workspace into view without moving keyboard focus or collapsing other branches. A closed sidebar or mobile drawer stays closed; the target is located when it next opens. Existing filters remain in place, so a nonmatching target stays hidden until the filter changes. You can still collapse branches manually and click the tab again to reveal them. This does not trigger additional session, file, or Git refreshes.
 
 On desktop, drag the divider at the right edge of the Workspace tree or the left edge of the files panel to resize it within its minimum, maximum, and available space. Widths are saved in the current browser's localStorage and restored after a refresh. First-time use or invalid saved values use the default widths. Horizontal resizing is unavailable when the files panel stacks below the conversation on a narrow screen or panels use mobile drawers; these layouts do not overwrite your desktop preferences.
 

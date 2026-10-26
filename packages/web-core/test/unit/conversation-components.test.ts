@@ -1400,6 +1400,51 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(partialHtml).not.toContain('process-activity-indicator');
   });
 
+  it('counts Read file rows rather than calls without mounting closed batch details', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
+      turns: [
+        conversationTurn(
+          [
+            conversationItem('batch', 'tool_call', {
+              toolName: 'read',
+              toolPresentation: { kind: 'READ', paths: ['src/a.ts', 'src/a.ts', 'test/a.ts'] },
+              outputSummary: 'Unopened batch output'
+            }),
+            conversationItem('repeat', 'tool_call', {
+              toolName: 'Read',
+              toolPresentation: { kind: 'READ', paths: ['src/a.ts'] }
+            }),
+            conversationItem('pathless', 'tool_call', { toolPresentation: { kind: 'READ' } })
+          ].map((item, index) => ({
+            ...item,
+            processGroup: { id: 'read-process', ...(index === 0 ? { isStart: true as const } : {}) }
+          }))
+        )
+      ]
+    });
+    expect(html).toContain(i18n.global.t('toolPresentation.files', { count: 3 }));
+    expect(html).not.toContain(i18n.global.t('toolPresentation.calls', { count: 3 }));
+    expect(html).not.toContain('conversation-tool-detail');
+    expect(html).not.toContain('src/a.ts');
+    expect(html).not.toContain('Unopened batch output');
+  });
+
+  it('omits an unknown Read file count instead of claiming zero files', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [
+        conversationTurn([
+          conversationItem('pathless', 'tool_call', { toolPresentation: { kind: 'READ' } })
+        ])
+      ]
+    });
+    expect(html).toContain(i18n.global.t('toolPresentation.title.READ'));
+    expect(html).not.toContain(i18n.global.t('toolPresentation.files', { count: 0 }));
+  });
+
   it.each([
     ['command_execution', { command: 'echo test' }],
     ['tool_call', { toolName: 'lookup' }],
@@ -1412,7 +1457,14 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toMatch(/<details class="conversation-record-group"[^>]*>/u);
     expect(html).not.toMatch(/<details class="conversation-record-group"[^>]*\bopen\b/u);
     expect(html).not.toContain('<div class="conversation-record-group"');
-    expect(html).toContain(i18n.global.t('toolPresentation.calls', { count: 1 }));
+    expect(html).toContain(
+      i18n.global.t(
+        (payload as { toolPresentation?: unknown }).toolPresentation
+          ? 'toolPresentation.files'
+          : 'toolPresentation.calls',
+        { count: 1 }
+      )
+    );
   });
 
   it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(

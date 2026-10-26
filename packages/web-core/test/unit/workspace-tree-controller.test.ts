@@ -160,6 +160,60 @@ afterEach(() => {
 });
 
 describe('Public Workspace tree controller', () => {
+  it('reveals the active Tab on every click without reloading or replacing its session', async () => {
+    const f = fixture();
+    const tab: WorkspaceTab = {
+      id: 'node-1:workspace-1',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      label: 'one',
+      lastActiveAt: 1
+    };
+    f.tree.toggleNode('node-2');
+    await f.controller.openWorkspaceTab(tab);
+    const firstIntent = f.tree.revealTarget.value;
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(firstIntent).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+
+    f.tree.toggleNode('node-1');
+    await f.controller.openWorkspaceTab(tab);
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(f.tree.revealTarget.value).not.toBe(firstIntent);
+    expect(f.activateWorkspace).not.toHaveBeenCalled();
+    expect(f.openWorkspaceTabSession).not.toHaveBeenCalled();
+    expect(f.request).not.toHaveBeenCalled();
+    expect(f.selectedSessionId.value).toBe('session-1');
+  });
+
+  it('keeps the newest reveal intent when an earlier Tab activation finishes late', async () => {
+    const f = fixture();
+    let finish!: (value: boolean) => void;
+    f.activateWorkspace.mockImplementationOnce((target) => {
+      f.selectedNodeId.value = target.nodeId;
+      f.selectedWorkspaceId.value = target.workspaceId;
+      return new Promise((resolve) => (finish = resolve));
+    });
+    const first = f.controller.openWorkspaceTab({
+      id: 'node-2:workspace-2',
+      nodeId: 'node-2',
+      workspaceId: 'workspace-2',
+      label: 'two',
+      lastActiveAt: 1
+    });
+    await f.controller.openWorkspaceTab({
+      id: 'node-1:workspace-1',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      label: 'one',
+      lastActiveAt: 2
+    });
+    finish(true);
+    await first;
+    expect(f.tree.revealTarget.value).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+    expect(f.tree.expandedNodeIds.value).toEqual(['node-2', 'node-1']);
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
   it('passes the current or remembered session from the full Workspace identity on Tab clicks', async () => {
     const f = fixture();
     const tab = {

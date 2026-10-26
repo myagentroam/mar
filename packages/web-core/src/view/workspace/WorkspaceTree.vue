@@ -5,7 +5,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { filterWorkspaceTree, groupWorkspaceTree } from '../../util/workspace-tree-filter.js';
@@ -14,6 +14,8 @@ const props = defineProps<{
   readonly nodes: readonly NodeSummary[];
   readonly expandedNodeIds: readonly string[];
   readonly workspaceTarget: WorkspaceTarget | undefined;
+  readonly revealTarget?: WorkspaceTarget | undefined;
+  readonly visible?: boolean;
   readonly draggingWorkspace: { readonly nodeId: string; readonly workspaceId: string } | undefined;
   readonly mobileViewport: boolean;
   readonly loading: boolean;
@@ -22,6 +24,7 @@ const props = defineProps<{
   readonly workspaces: (nodeId: string) => readonly Workspace[];
 }>();
 const filterQuery = ref('');
+const nodeTreeElement = ref<HTMLElement>();
 const animateBranches = ref(false);
 
 function enableBranchMotion(): void {
@@ -158,6 +161,47 @@ function toggleGroup(nodeId: string, groupName: string): void {
     ? expandedWorkspaceGroupKeys.value.filter((value) => value !== key)
     : [...expandedWorkspaceGroupKeys.value, key];
 }
+
+const revealGroupName = computed(() => {
+  const target = props.revealTarget;
+  if (
+    target === undefined ||
+    target.nodeId !== props.workspaceTarget?.nodeId ||
+    target.workspaceId !== props.workspaceTarget.workspaceId
+  )
+    return undefined;
+  const workspace = props
+    .workspaces(target.nodeId)
+    .find((value) => value.id === target.workspaceId);
+  return workspace === undefined ? undefined : workspace.groupName?.trim() || '';
+});
+
+watch(
+  [() => props.revealTarget, revealGroupName],
+  ([target, groupName]) => {
+    if (target === undefined || !groupName) return;
+    const key = workspaceGroupKey(target.nodeId, groupName);
+    if (!expandedWorkspaceGroupKeys.value.includes(key))
+      expandedWorkspaceGroupKeys.value = [...expandedWorkspaceGroupKeys.value, key];
+  },
+  { immediate: true }
+);
+
+watch(
+  [() => props.revealTarget, revealGroupName, () => props.visible],
+  async (_value, _previous, onCleanup) => {
+    let cancelled = false;
+    onCleanup(() => (cancelled = true));
+    await nextTick();
+    if (cancelled || props.visible === false || revealGroupName.value === undefined) return;
+    const row = nodeTreeElement.value?.querySelector<HTMLElement>(
+      '.workspace-branches li.selected > .workspace-branch-button'
+    );
+    if (row?.getClientRects().length)
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  },
+  { immediate: true, flush: 'post' }
+);
 
 const workspaceGroupMoveOptions = computed(() => {
   const target = workspaceGroupMoveTarget.value;
@@ -392,7 +436,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         <template #prefix><MarIcon name="search" /></template>
       </el-input>
     </div>
-    <ul v-if="filteredNodes.length" class="node-tree">
+    <ul v-if="filteredNodes.length" ref="nodeTreeElement" class="node-tree">
       <li v-for="(result, nodeIndex) in groupedNodes" :key="result.node.id">
         <div
           :class="[
@@ -551,7 +595,11 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   <button
                     v-tooltip="workspaceLabel(workspace)"
                     :aria-label="workspaceLabel(workspace)"
-                    :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
+                    :class="{
+                      selected:
+                        workspaceTarget?.nodeId === result.node.id &&
+                        workspaceTarget.workspaceId === workspace.id
+                    }"
                     class="workspace-branch-button"
                     type="button"
                     @click="selectWorkspace(result.node.id, workspace.id)"
@@ -717,7 +765,11 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       <button
                         v-tooltip="workspaceLabel(workspace)"
                         :aria-label="workspaceLabel(workspace)"
-                        :class="{ selected: workspaceTarget?.workspaceId === workspace.id }"
+                        :class="{
+                          selected:
+                            workspaceTarget?.nodeId === result.node.id &&
+                            workspaceTarget.workspaceId === workspace.id
+                        }"
                         class="workspace-branch-button"
                         type="button"
                         @click="selectWorkspace(result.node.id, workspace.id)"

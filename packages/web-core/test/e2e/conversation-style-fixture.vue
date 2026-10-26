@@ -12,6 +12,7 @@ import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotif
 import ThemePreview from '../../src/view/settings/ThemePreview.vue';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const following = ref(false);
 const input = ref('Review the result');
@@ -30,6 +31,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
+const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
 const loadingFixture = new URL(location.href).searchParams.has('loading-lifecycle');
@@ -157,6 +159,81 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (readFilesFixture) {
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      items: [
+        {
+          id: 'read-batch',
+          kind: 'tool_call',
+          status: 'COMPLETED',
+          processGroup: { id: 'read-files-process', isStart: true },
+          payload: {
+            toolName: 'read',
+            toolPresentation: {
+              kind: 'READ',
+              paths: [
+                'src/a.ts',
+                'src/a.ts',
+                'test/a.ts',
+                'C:\\src\\b.ts',
+                `目录/${'long-file-name-'.repeat(12)}.md`
+              ]
+            },
+            inputSummary: 'Original batch ranges: offset 2, limit 8',
+            outputSummary: 'Original batch output'
+          }
+        },
+        {
+          id: 'read-repeated',
+          kind: 'tool_call',
+          status: 'FAILED',
+          processGroup: { id: 'read-files-process' },
+          payload: {
+            toolName: 'Read',
+            toolPresentation: { kind: 'READ', paths: ['src/a.ts'] },
+            outputSummary: 'Original repeated read failure',
+            errorCode: 'READ_FAILED'
+          }
+        },
+        {
+          id: 'read-pathless',
+          kind: 'tool_call',
+          status: 'FAILED',
+          processGroup: { id: 'read-files-process' },
+          payload: {
+            toolName: 'read',
+            toolPresentation: { kind: 'READ' },
+            outputSummary: 'Original pathless read failure',
+            errorCode: 'READ_FAILED'
+          }
+        }
+      ]
+    }
+  ];
+}
+
+function appendReadFile() {
+  turns.value = turns.value.map((turn) => ({
+    ...turn,
+    items: [
+      ...turn.items,
+      {
+        id: 'read-appended',
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        processGroup: { id: 'read-files-process' },
+        payload: {
+          toolName: 'read',
+          toolPresentation: { kind: 'READ', paths: ['src/appended.ts'] },
+          outputSummary: 'Appended read output'
+        }
+      }
+    ]
+  }));
+}
+
 async function loadStressHistory() {
   initializing.value = true;
   renderVersion.value++;
@@ -380,6 +457,15 @@ function finishPreview() {
       </button>
       <output data-testid="rendered-version">{{ renderedVersion }}</output>
     </template>
+    <template v-if="readFilesFixture">
+      <button data-testid="append-read-file" @click="appendReadFile">Append read</button>
+      <button
+        data-testid="read-files-chinese"
+        @click="localePreferenceService().setLocale('zh-CN')"
+      >
+        Chinese
+      </button>
+    </template>
     <template v-if="stressFixture">
       <button data-testid="load-stress-history" @click="loadStressHistory">Load history</button>
       <button data-testid="toggle-stress-timeline" @click="toggleTimeline">Toggle timeline</button>
@@ -420,6 +506,7 @@ function finishPreview() {
       </ConversationScroll>
     </section>
     <ConversationComposer
+      v-if="!readFilesFixture"
       v-model:input="input"
       placeholder="Message"
       :working="true"

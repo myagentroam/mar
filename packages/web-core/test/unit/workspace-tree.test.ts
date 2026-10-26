@@ -17,6 +17,26 @@ describe('Web Workspace Resource Tree State', () => {
 
   const nodes = ['a', 'b', 'c'].map((id) => ({ id }) as NodeSummary);
 
+  it('reveals a Workspace without collapsing other Nodes or changing cached resources', () => {
+    const { tree, persist } = fixture();
+    tree.restore(['a'], {});
+    tree.cacheWorkspaces('b', [workspace('target')]);
+    tree.revealWorkspace({ nodeId: 'b', workspaceId: 'target' });
+    const firstIntent = tree.revealTarget.value;
+    expect(tree.expandedNodeIds.value).toEqual(['a', 'b']);
+    expect(firstIntent).toEqual({ nodeId: 'b', workspaceId: 'target' });
+    expect(tree.workspacesForNode('b')).toEqual([workspace('target')]);
+
+    tree.toggleNode('b');
+    expect(tree.expandedNodeIds.value).toEqual(['a']);
+    tree.revealWorkspace({ nodeId: 'b', workspaceId: 'target' });
+    expect(tree.expandedNodeIds.value).toEqual(['a', 'b']);
+    expect(tree.revealTarget.value).not.toBe(firstIntent);
+    tree.revealWorkspace({ nodeId: 'b', workspaceId: 'target' });
+    expect(tree.expandedNodeIds.value).toEqual(['a', 'b']);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
   it('reads each host resource cache without any foreground Node selection', () => {
     const { tree } = fixture();
     tree.cacheWorkspaces('a', [workspace('workspace-a')]);
