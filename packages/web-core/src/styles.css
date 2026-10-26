@@ -977,7 +977,7 @@ pre {
   display: inline-flex;
   flex: none;
   align-items: center;
-  border: 1px solid var(--mar-border-medium);
+  border: 1px solid color-mix(in srgb, currentColor 60%, var(--mar-border-medium));
   border-radius: var(--mar-radius-marker);
   background: transparent;
   color: var(--mar-text-secondary);
