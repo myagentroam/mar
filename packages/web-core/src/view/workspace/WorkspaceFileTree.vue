@@ -18,6 +18,7 @@ const props = defineProps<{
   readonly selectedPath: string | undefined;
   readonly disabled: boolean;
   readonly mutationsEnabled: boolean;
+  readonly localFileManagerEnabled?: boolean;
   readonly mobileViewport: boolean;
 }>();
 const locale = localePreferenceService().locale;
@@ -34,6 +35,7 @@ const emit = defineEmits<{
       | 'DOWNLOAD'
       | 'COPY_PATH'
       | 'COPY_ABSOLUTE_PATH'
+      | 'REVEAL_LOCAL'
       | 'RENAME'
       | 'DELETE'
       | 'UPLOAD',
@@ -294,6 +296,7 @@ function action(command: string, node: WorkspaceFileTreeNode): void {
     command === 'DOWNLOAD' ||
     command === 'COPY_PATH' ||
     command === 'COPY_ABSOLUTE_PATH' ||
+    command === 'REVEAL_LOCAL' ||
     command === 'RENAME' ||
     command === 'DELETE' ||
     command === 'UPLOAD'
@@ -500,6 +503,11 @@ defineExpose({ reveal });
                   <el-dropdown-item command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
                     ><MarIcon name="copy" />{{
                       translate('generated.workspaceFileTree.copyAbsolutePath')
+                    }}</el-dropdown-item
+                  >
+                  <el-dropdown-item v-if="localFileManagerEnabled" command="REVEAL_LOCAL"
+                    ><MarIcon name="folder-open" />{{
+                      translate('generated.workspaceFileTree.openInLocalFileManager')
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item

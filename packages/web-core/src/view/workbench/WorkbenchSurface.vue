@@ -692,6 +692,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               :code-navigation-enabled="page.codeNavigationReady"
               :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
               :file-write-enabled="page.fileWriteReady"
+              :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
               :files-revision="page.workspaceFilesRevision"
               :changes-revision="page.workspaceChangesRevision"
               :subscription-snapshot="page.workspaceWatchSnapshot"

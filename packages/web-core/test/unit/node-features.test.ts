@@ -26,7 +26,8 @@ describe('Public Node Feature Gating', () => {
       'prompt-completion': { introducedIn: '0.10.21' },
       [FEATURE_DEMO]: { introducedIn: '0.9.119' },
       WORKSPACE_INDEX_PREPARATION: { introducedIn: '0.9.143' },
-      SESSION_GROUPS: { introducedIn: '0.11.19' }
+      SESSION_GROUPS: { introducedIn: '0.11.19' },
+      LOCAL_FILE_MANAGER: { introducedIn: '0.11.25' }
     });
     expect(supportsNodeFeature('0.9.119', FEATURE_DEMO)).toBe(true);
     expect(supportsNodeFeature('0.10.25', 'MAR_AGENT_AUTO')).toBe(true);
@@ -47,6 +48,9 @@ describe('Public Node Feature Gating', () => {
     expect(supportsNodeFeature('0.11.19', 'SESSION_GROUPS')).toBe(true);
     for (const version of ['0.11.18', 'unknown', '', '0.11.19-beta.1'])
       expect(supportsNodeFeature(version, 'SESSION_GROUPS')).toBe(false);
+    expect(supportsNodeFeature('0.11.25', 'LOCAL_FILE_MANAGER')).toBe(true);
+    for (const version of ['0.11.24', 'unknown', '', '0.11.25-beta.1'])
+      expect(supportsNodeFeature(version, 'LOCAL_FILE_MANAGER')).toBe(false);
   });
 
   it('Rejects unknown, invalid, prerelease, and out-of-range versions conservatively', () => {

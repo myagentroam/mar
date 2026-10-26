@@ -86,7 +86,17 @@ export function createWorkspaceFileOperationService(input: {
     }
     return typeof result.file?.path === 'string' ? result.file.path : undefined;
   }
-  return { list, preflight, mutate };
+  async function reveal(target: WorkspaceFileOperationTarget, path: string): Promise<void> {
+    target = { ...target };
+    await input.http.request(
+      `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/reveal`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ nodeId: target.nodeId, path })
+      }
+    );
+  }
+  return { list, preflight, mutate, reveal };
 }
 
 export function isFilePage(

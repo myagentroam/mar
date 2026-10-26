@@ -369,6 +369,29 @@ export function registerWorkspaceRoutes(input: {
     }
   });
 
+  app.post<{
+    Params: { workspaceId: string };
+    Body: { nodeId?: unknown; path?: unknown };
+  }>('/api/workspaces/:workspaceId/files/reveal', async (request, reply) => {
+    if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+    const admin = protectedAdmin(database, request, reply);
+    if (admin === undefined) return;
+    if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
+    const body = request.body ?? {};
+    if (!isNonEmptyString(body.nodeId) || !isSafeResourceText(body.path))
+      return sendError(reply, 400, 'FILE_REVEAL_INVALID');
+    try {
+      return reply.send(
+        await requestUserNode(nodeControl, admin, body.nodeId, 'workspace.files.reveal', {
+          workspaceId: request.params.workspaceId,
+          path: body.path
+        })
+      );
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  });
+
   app.get<{
     Params: { workspaceId: string };
     Querystring: { nodeId?: string; path?: string; cursor?: string; limit?: string };

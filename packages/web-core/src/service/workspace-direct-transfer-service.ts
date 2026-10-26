@@ -924,12 +924,12 @@ export function classifySelectedCandidatePair(
   const remoteScope = classifyCandidateAddress(remoteAddress);
   const interfaceType = classifyInterfaceType(local.networkType);
   const scope =
-    interfaceType === 'VPN' || localScope.scope === 'VPN_TUN' || remoteScope.scope === 'VPN_TUN'
-      ? 'VPN_TUN'
-      : localScope.scope === 'PUBLIC' || remoteScope.scope === 'PUBLIC'
-        ? 'PUBLIC'
-        : localScope.scope === 'LOOPBACK' && remoteScope.scope === 'LOOPBACK'
-          ? 'LOOPBACK'
+    remoteScope.scope === 'LOOPBACK'
+      ? 'LOOPBACK'
+      : interfaceType === 'VPN' || localScope.scope === 'VPN_TUN' || remoteScope.scope === 'VPN_TUN'
+        ? 'VPN_TUN'
+        : localScope.scope === 'PUBLIC' || remoteScope.scope === 'PUBLIC'
+          ? 'PUBLIC'
           : localScope.scope === 'PRIVATE' || remoteScope.scope === 'PRIVATE'
             ? 'PRIVATE'
             : 'UNKNOWN';
@@ -944,7 +944,7 @@ export function classifySelectedCandidatePair(
     scope,
     ipVersion,
     protocol: protocol === 'UDP' || protocol === 'TCP' ? protocol : 'UNKNOWN',
-    interfaceType
+    interfaceType: scope === 'LOOPBACK' ? 'LOOPBACK' : interfaceType
   };
 }
 

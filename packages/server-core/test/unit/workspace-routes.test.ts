@@ -583,6 +583,32 @@ describe('Shared Workspace HTTP routes', () => {
     expect(reply.statusCode).toBe(401);
     expect(requestNode).not.toHaveBeenCalled();
   });
+  it('relays a validated local file manager reveal with Workspace authorization', async () => {
+    const { app, requestNode, headers } = fixture();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-1/files/reveal',
+      headers,
+      payload: { nodeId: 'node-1', path: 'folder/notes.txt' }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(requestNode).toHaveBeenCalledExactlyOnceWith(
+      'node-1',
+      'workspace.files.reveal',
+      { workspaceId: 'workspace-1', path: 'folder/notes.txt' },
+      { userId: 1, sessionHash: 'session-hash', workspaceId: 'workspace-1' },
+      undefined
+    );
+    requestNode.mockClear();
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-1/files/reveal',
+      headers,
+      payload: { nodeId: 'node-1', path: '' }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(requestNode).not.toHaveBeenCalled();
+  });
   it('preserves user and workspace authorization context', async () => {
     const { app, requestNode, headers } = fixture();
     const reply = await app.inject({

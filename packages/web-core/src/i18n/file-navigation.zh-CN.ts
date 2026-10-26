@@ -16,6 +16,7 @@ export const fileNavigationZhCN = {
       uploadFiles: '上传文件',
       copyRelativePath: '复制相对路径',
       copyAbsolutePath: '复制绝对路径',
+      openInLocalFileManager: '在本机文件管理器中打开',
       rename: '重命名',
       delete: '删除',
       loading: '加载中…',

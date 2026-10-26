@@ -1,4 +1,5 @@
 import { createSocket } from 'node:dgram';
+import { isIP } from 'node:net';
 import {
   directDataControlFrameSchema,
   type DirectNodeCommand,
@@ -81,6 +82,7 @@ interface ActiveTransfer {
 }
 
 const MAX_HOST_CANDIDATES = 32;
+const LOOPBACK_CANDIDATE_PRIORITY = '2130706431';
 const MAX_ACTIVE_TRANSPORTS = 128;
 const MAX_ACTIVE_TRANSFERS = 128;
 const DATA_CHANNEL_HIGH_WATER_BYTES = 4 * 1024 * 1024;
@@ -252,6 +254,7 @@ export class DirectTransferService {
       () => this.removeTransport(transport, 'DIRECT_TRANSFER_CONTROL_UNAVAILABLE')
     );
     this.transports.set(command.directSessionId, transport);
+    const sentLoopbackAddresses = new Set<string>();
     peer.onicecandidate = (event) => {
       const candidate = event.candidate;
       if (candidate === null) {
@@ -263,11 +266,30 @@ export class DirectTransferService {
         return;
       }
       const json = candidate.toJSON();
+      if (typeof json.candidate !== 'string') return;
+      const loopback = loopbackHostCandidate(json.candidate);
+      const loopbackAddress = loopback?.trim().split(/\s+/u)[4];
       if (
-        typeof json.candidate !== 'string' ||
-        !acceptHostCandidate(json.candidate, transport.sentCandidateKeys)
-      )
-        return;
+        loopback !== undefined &&
+        loopbackAddress !== undefined &&
+        !sentLoopbackAddresses.has(loopbackAddress)
+      ) {
+        sentLoopbackAddresses.add(loopbackAddress);
+        if (acceptHostCandidate(loopback, transport.sentCandidateKeys))
+          this.emit(command.directSessionId, {
+            type: 'direct.signal',
+            directSessionId: command.directSessionId,
+            signal: {
+              kind: 'CANDIDATE',
+              candidate: {
+                candidate: loopback,
+                sdpMid: json.sdpMid ?? null,
+                sdpMLineIndex: json.sdpMLineIndex ?? null
+              }
+            }
+          });
+      }
+      if (!acceptHostCandidate(json.candidate, transport.sentCandidateKeys)) return;
       this.emit(command.directSessionId, {
         type: 'direct.signal',
         directSessionId: command.directSessionId,
@@ -653,6 +675,18 @@ export function probeUdp4Port(port: number): Promise<void> {
   });
 }
 
+export function loopbackHostCandidate(candidate: string): string | undefined {
+  if (!safeHostCandidate(candidate)) return undefined;
+  const address = candidate.trim().split(/\s+/u)[4];
+  const family = isIP(address ?? '');
+  const loopback = family === 4 ? '127.0.0.1' : family === 6 ? '::1' : undefined;
+  if (loopback === undefined || address === loopback) return undefined;
+  const fields = candidate.trim().split(/\s+/u);
+  fields[3] = LOOPBACK_CANDIDATE_PRIORITY;
+  fields[4] = loopback;
+  return fields.join(' ');
+}
+
 export function fingerprint(sdp: string | undefined): string | undefined {
   const match = sdp?.match(/^a=fingerprint:(sha-256 [A-F0-9:]+)\r?$/imu);
   return match?.[1];
@@ -697,16 +731,22 @@ function filterIceCandidates(
 } {
   if (sdp === undefined) return { sdp: undefined };
   const included = new Set<string>();
-  const lines = sdp.split(/\r?\n/u).filter((line) => {
-    if (!line.startsWith('a=candidate:')) return true;
+  const lines = sdp.split(/\r?\n/u).flatMap((line) => {
+    if (!line.startsWith('a=candidate:')) return [line];
     const candidate = line.slice(2);
-    if (!safeHostCandidate(candidate)) return false;
-    const key = candidateKey(candidate);
-    if (key === undefined || included.has(key)) return false;
-    if (!accepted.has(key) && accepted.size >= MAX_HOST_CANDIDATES) return false;
-    accepted.add(key);
-    included.add(key);
-    return true;
+    if (!safeHostCandidate(candidate)) return [];
+    const loopback = loopbackHostCandidate(candidate);
+    const candidates = loopback === undefined ? [candidate] : [loopback, candidate];
+    const retained: string[] = [];
+    for (const value of candidates) {
+      const key = candidateKey(value);
+      if (key === undefined || included.has(key)) continue;
+      if (!accepted.has(key) && accepted.size >= MAX_HOST_CANDIDATES) continue;
+      accepted.add(key);
+      included.add(key);
+      retained.push(`a=${value}`);
+    }
+    return retained;
   });
   return { sdp: lines.join('\r\n') };
 }

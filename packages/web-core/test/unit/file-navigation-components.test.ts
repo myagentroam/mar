@@ -437,6 +437,56 @@ describe('public file navigation components', () => {
   });
 
   describe('file tree action menu', () => {
+    it('emits the local file manager action for eligible file rows', () => {
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          disconnect(): void {}
+        }
+      );
+      vi.stubGlobal('HTMLElement', TestHostNode);
+      vi.stubGlobal('Node', TestHostNode);
+      const root = fileTreeNode('.', 'workspace', 'DIRECTORY', {
+        expanded: true,
+        children: [fileTreeNode('notes.txt', 'notes.txt', 'FILE')]
+      });
+      const action = vi.fn();
+      let setupState: Record<string, unknown> | undefined;
+      const app = createTestRenderer().createApp({
+        render: () =>
+          h(WorkspaceFileTree, {
+            root,
+            filter: '',
+            selectedPath: undefined,
+            disabled: false,
+            mutationsEnabled: false,
+            localFileManagerEnabled: true,
+            mobileViewport: false,
+            onAction: action,
+            onVnodeMounted: (vnode) => {
+              setupState = (
+                vnode.component as unknown as {
+                  readonly setupState: Record<string, unknown>;
+                } | null
+              )?.setupState;
+            }
+          })
+      });
+      app.provide(ssrContextKey, { modules: new Set<string>() });
+      app.config.warnHandler = () => {};
+      app.mount(new TestHostNode('container'));
+      try {
+        const command = setupState?.['action'] as (
+          action: string,
+          node: WorkspaceFileTreeNode
+        ) => void;
+        command('REVEAL_LOCAL', root.children![0]!);
+        expect(action).toHaveBeenCalledWith('REVEAL_LOCAL', root.children![0]!);
+      } finally {
+        app.unmount();
+      }
+    });
+
     it('keeps the opened row action visible after hover leaves and ignores another menu closing', () => {
       vi.stubGlobal(
         'ResizeObserver',

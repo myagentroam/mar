@@ -14,6 +14,7 @@ import {
   WorkspaceFileIndex
 } from '../workspace.js';
 import { WorkspaceDomainState } from './workspace-domain-state.js';
+import { revealWorkspaceFileInFileManager } from './workspace-file-manager-service.js';
 
 const INDEX_CACHE_LIMIT = 32;
 const INDEX_CACHE_BYTE_LIMIT = 128 * 1024 * 1024;
@@ -345,6 +346,11 @@ export class WorkspaceFileService {
       this.onInvalidated(workspace.id);
       return result;
     });
+  }
+
+  async reveal(workspace: NodeWorkspace, input: Record<string, unknown>): Promise<unknown> {
+    if (typeof input.path !== 'string') throw new Error('FILE_REVEAL_INVALID');
+    return revealWorkspaceFileInFileManager(workspace.path, input.path);
   }
 
   private async serializeMutation<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {

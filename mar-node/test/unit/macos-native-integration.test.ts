@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,6 +10,7 @@ import { ManagedComputerUseRuntime } from '../../src/computer-use-runtime.js';
 import { bundledCtagsPath, repairBundledCtagsExecutable } from '../../src/ctags-binary.js';
 import { probeComputerUse } from '../../src/runner/mar-agent/computer-use.js';
 import { runCtags } from '../../src/service/code-navigation/ctags-index-storage.js';
+import { revealWorkspaceFileInFileManager } from '../../src/service/workspace-file-manager-service.js';
 import { removeServiceDefinition, writeServiceDefinition } from '../../src/service.js';
 
 const execFile = promisify(execFileCallback);
@@ -119,6 +120,58 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
       expect(output).toMatch(/^macosNativeProbe\t/mu);
       expect(output).toContain(source);
     });
+
+    it('opens Workspace directories and selects files in Finder', async () => {
+      const root = await realpath(await directory());
+      const folder = join(root, 'folder with space');
+      await mkdir(folder);
+      await writeFile(join(folder, 'notes.txt'), 'notes');
+      const finderState = async () => {
+        const { stdout } = await command('/usr/bin/osascript', [
+          '-e',
+          `tell application "Finder"
+             if (count of Finder windows) is 0 then return ""
+             set folderPath to POSIX path of (target of front Finder window as alias)
+             set selectedName to ""
+             if (count of selection) > 0 then set selectedName to name of item 1 of selection
+             return folderPath & linefeed & selectedName
+           end tell`
+        ]);
+        const [currentFolder = '', selectedName = ''] = stdout.trimEnd().split('\n');
+        return { currentFolder, selectedName };
+      };
+      const closeFinderWindows = () =>
+        command('/usr/bin/osascript', [
+          '-e',
+          `tell application "Finder"
+             repeat with finderWindow in (get Finder windows)
+               try
+                 if POSIX path of (target of finderWindow as alias) starts with "${root}/" then close finderWindow
+               end try
+             end repeat
+           end tell`
+        ]);
+      try {
+        await revealWorkspaceFileInFileManager(root, 'folder with space');
+        await expect
+          .poll(async () => (await finderState()).currentFolder, { timeout: 15_000 })
+          .toBe(`${folder}/`);
+        await closeFinderWindows();
+
+        await revealWorkspaceFileInFileManager(root, 'folder with space/notes.txt');
+        await expect
+          .poll(
+            async () => {
+              const state = await finderState();
+              return state.currentFolder === `${folder}/` && state.selectedName === 'notes.txt';
+            },
+            { timeout: 15_000 }
+          )
+          .toBe(true);
+      } finally {
+        await closeFinderWindows();
+      }
+    }, 45_000);
 
     it('loads the managed native Python runtime and checks desktop permissions without injecting input', async () => {
       const root = await directory();
