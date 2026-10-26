@@ -692,9 +692,6 @@ button.history-refresh {
   grid-column: 2;
   min-width: 0;
   margin: 0;
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 5px;
-  padding: 3px 0;
 }
 
 .history-files > .empty {
