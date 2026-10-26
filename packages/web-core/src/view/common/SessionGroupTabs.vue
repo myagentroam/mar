@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SessionGroup } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
+import SessionStateBadge from './SessionStateBadge.vue';
 
 const props = defineProps<{
   modelValue: SessionGroup;
@@ -56,22 +57,11 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
         <span class="group-label">{{
           translate(group === 'MAIN' ? 'sessionGroups.mainTab' : 'sessionGroups.childTab')
         }}</span>
-        <span
-          v-if="state[group].running || state[group].unread"
+        <SessionStateBadge
           class="group-markers"
-          aria-hidden="true"
-        >
-          <el-badge
-            v-if="state[group].running"
-            class="group-running"
-            :value="state[group].running"
-            :max="99"
-            type="primary"
-          />
-          <span v-if="state[group].unread" class="group-unread mar-unread-label">{{
-            translate('sessionGroups.unread')
-          }}</span>
-        </span>
+          :running="state[group].running"
+          :unread="state[group].unread"
+        />
       </button>
     </div>
   </div>
@@ -127,28 +117,6 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   outline-offset: -2px;
 }
 .group-markers {
-  display: inline-flex;
-  flex: none;
   margin-inline-start: 0.125rem;
-  align-items: center;
-  gap: 2px;
-  transform: translateY(-0.25rem);
-}
-.group-running {
-  display: inline-flex;
-  flex: none;
-}
-.group-running :deep(.el-badge__content) {
-  min-width: 14px;
-  background: var(--mar-color-brand);
-  border: 1px solid var(--mar-bg-panel);
-  color: var(--mar-color-on-accent);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  border-radius: var(--mar-radius-marker);
-  height: auto;
-  line-height: 1.2;
-  padding: 0 0.1875rem;
 }
 </style>

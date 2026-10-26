@@ -235,7 +235,9 @@ const rollbackEnabled = computed(
     props.workspace.snapshot.value?.conversation.activity.status === 'IDLE' &&
     props.workspace.snapshot.value !== undefined
 );
-const filesWritable = computed(() => interactionReady.value);
+const filesWritable = computed(
+  () => interactionReady.value && !props.workspace.templateChanging.value
+);
 const readonlyVisible = computed(() => {
   if (selectedSummary.value === undefined) return false;
   if (props.workspace.watchFailureCode.value !== undefined) return true;
@@ -1213,6 +1215,7 @@ onBeforeUnmount(() => {
           :empty-prompt="interactionReady && !workspace.snapshot.value.run ? 'hosted' : undefined"
           @scroll-element="setConversationScrollElement"
           @scroll="handleConversationScroll"
+          @scroll-intent="conversationScrollService.stopFollowing"
           @load-older="loadOlderConversationHistory"
           @latest="conversationScrollService.scrollToLatest"
         >
@@ -1249,6 +1252,7 @@ onBeforeUnmount(() => {
           :mobile-viewport="mobileViewport"
           :readonly="!interactionReady || rollbackPending"
           :readonly-reason="readonlyReason"
+          :template-change-blocked="rollbackPending || uploadingDroppedFiles"
         />
       </template>
     </main>

@@ -99,15 +99,26 @@ for (const [width, theme, locale] of [
           0
         );
         expect(markerBounds.y).toBeGreaterThanOrEqual(bounds!.y);
-        expect(markerBounds.y).toBeLessThanOrEqual(labelBounds.y - 2);
+        expect(markerBounds.y + markerBounds.height / 2).toBeCloseTo(
+          labelBounds.y + labelBounds.height / 2,
+          0
+        );
         expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(
           bounds!.y + bounds!.height
         );
         expect(markerBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width);
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
-        const badge = tab.locator('.el-badge__content');
-        await expect(badge).toHaveCSS('border-top-width', '1px');
+        const badge = tab.locator('.session-state-count');
+        await expect(tab.locator('.session-state-badge')).toHaveCSS('border-top-width', '1px');
         await expect(badge).toHaveCSS('background-color', palette.brand);
+        const unread = tab.locator('.session-state-unread');
+        await expect(unread).toHaveCSS('background-color', palette.panel);
+        await expect(unread).toHaveCSS('border-inline-start-width', '1px');
+        await expect(unread).toHaveCSS('border-top-width', '0px');
+        const countBounds = (await badge.boundingBox())!;
+        const unreadBounds = (await unread.boundingBox())!;
+        expect(countBounds.height).toBeCloseTo(unreadBounds.height, 1);
+        expect(countBounds.x + countBounds.width).toBeCloseTo(unreadBounds.x, 1);
         const markerColor = await badge.evaluate((element) => {
           const probe = document.createElement('span');
           probe.style.color = 'var(--mar-color-on-accent)';
@@ -175,7 +186,7 @@ for (const [width, theme, locale] of [
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
       await expect(recent.getByRole('tab').nth(1)).toHaveCSS('background-color', palette.inactive);
-      await expect(page.locator('.recent-sessions-badge')).toHaveCSS(
+      await expect(page.locator('.recent-sessions-badge .session-state-count')).toHaveCSS(
         'background-color',
         palette.brand
       );
@@ -210,7 +221,7 @@ for (const [width, theme, locale] of [
       await expect(statuses.last()).toHaveClass(/el-tag--primary/);
       await expect(statuses.last()).toHaveCSS('color', palette.link);
       for (const list of [chats.getByRole('tablist'), recent.getByRole('tablist')]) {
-        await expect(list.locator('.group-unread')).toHaveCount(2);
+        await expect(list.locator('.session-state-unread')).toHaveCount(2);
         expect(
           await list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
         ).toBe(true);
@@ -218,7 +229,7 @@ for (const [width, theme, locale] of [
         const optionBounds = await Promise.all(options.map((option) => option.boundingBox()));
         expect(optionBounds[0]!.width).toBeCloseTo(optionBounds[1]!.width, 0);
         for (const option of options) {
-          await expect(option.locator('.el-badge__content')).toHaveCSS(
+          await expect(option.locator('.session-state-count')).toHaveCSS(
             'background-color',
             palette.brand
           );
@@ -242,8 +253,8 @@ for (const [width, theme, locale] of [
               (element, name) => getComputedStyle(element).getPropertyValue(name),
               property
             );
-          for (const unread of await list.locator('.group-unread').all())
-            await expect(unread).toHaveCSS(property, expected);
+          for (const badge of await list.locator('.session-state-badge').all())
+            await expect(badge).toHaveCSS(property, expected);
           await expect(recent.locator('.recent-session-unread')).toHaveCSS(property, expected);
         }
       }

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ApiError } from '../../src/util/api-error.js';
 import {
   createHostedConversationWorkspaceService,
   type HostedConversationRequest
@@ -867,3 +868,178 @@ function recordRequest(
 ): void {
   requests.push(init === undefined ? { path } : { path, init });
 }
+
+describe('Hosted template changes', () => {
+  const cleanups: Array<() => void> = [];
+  afterEach(() => cleanups.splice(0).forEach((cleanup) => cleanup()));
+  const target = {
+    ...template,
+    id: 'template-2',
+    name: 'Second template',
+    currentVersionId: 'version-2'
+  };
+  const initial = { ...snapshot, nodeAppVersion: '0.11.31' };
+  const changed = {
+    ...initial,
+    conversation: {
+      ...conversation,
+      templateId: target.id,
+      templateName: target.name,
+      activeVersionId: 'version-2',
+      title: 'Latest Watch title',
+      updatedAt: 3
+    },
+    template: target,
+    snapshotSequence: 2
+  };
+
+  function harness(
+    options: { pending?: Promise<unknown>; failure?: Error; commit?: boolean } = {}
+  ) {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    const watches: Array<Record<string, unknown>> = [];
+    let committed = false;
+    const result = {
+      conversation: { ...changed.conversation, title: 'Older HTTP title' },
+      template: target,
+      models: initial.models
+    };
+    const workspace = service(async (path, init) => {
+      recordRequest(requests, path, init);
+      if (path === '/api/conversation-templates')
+        return {
+          templates: [template, target, { ...target, id: 'foreign-template', nodeId: 'other-node' }]
+        } as never;
+      if (path.endsWith('/template')) {
+        committed = options.commit !== false;
+        await options.pending;
+        if (options.failure) throw options.failure;
+        return result as never;
+      }
+      if (path.endsWith('/watch') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        if (body['mode'] === 'initial') {
+          const frame = {
+            type: 'watch.hosted-conversation.snapshot',
+            workbenchConnectionId: 'connection-current',
+            watchId: body['watchId'],
+            nodeGeneration: 'generation-current',
+            nodeId: 'node-1',
+            conversationId: 'conversation-1',
+            revision: 1,
+            snapshotSequence: committed ? 2 : 1,
+            expiresAt: Date.now() + 60_000,
+            payload: committed ? changed : initial
+          };
+          watches.push(frame);
+          queueMicrotask(() => workspace.handleWatchEvent(frame));
+          return {
+            accepted: true,
+            watchId: body['watchId'],
+            nodeGeneration: 'generation-current',
+            expiresAt: Date.now() + 60_000
+          } as never;
+        }
+      }
+      return undefined as never;
+    });
+    workspace.selectConversation('node-1', 'conversation-1', initial as never);
+    cleanups.push(() => workspace.stopSelectedConversationWatch());
+    return { workspace, requests, watches };
+  }
+
+  it('filters options to the selected Node without changing the selected model', async () => {
+    const h = harness();
+    expect((await h.workspace.listTemplateOptions()).map((item) => item.id)).toEqual([
+      'template-1',
+      'template-2'
+    ]);
+    expect(h.workspace.snapshot.value?.conversation.modelId).toBe(conversation.modelId);
+    expect(h.requests.map((item) => item.path)).toEqual(['/api/conversation-templates']);
+  });
+
+  it('submits only the source and target, then restores one Watch instead of installing the HTTP snapshot', async () => {
+    const h = harness();
+    await h.workspace.beginSelectedConversationWatch();
+    await h.workspace.switchTemplate(target.id, template.id);
+    expect(
+      h.requests
+        .filter((item) => item.path.endsWith('/template'))
+        .map((item) => JSON.parse(String(item.init?.body)))
+    ).toEqual([{ expectedTemplateId: template.id, templateId: target.id }]);
+    expect(h.watches).toHaveLength(2);
+    expect(h.workspace.watchReady.value).toBe(true);
+    expect(h.workspace.snapshot.value?.conversation).toMatchObject(changed.conversation);
+    expect(h.workspace.templateChanging.value).toBe(false);
+  });
+
+  it('coalesces the invalidation signal and the late successful HTTP response', async () => {
+    const pending = deferred<unknown>();
+    const h = harness({ pending: pending.promise });
+    await h.workspace.beginSelectedConversationWatch();
+    const sending = h.workspace.switchTemplate(target.id, template.id);
+    expect(h.workspace.templateChanging.value).toBe(true);
+    await expect(h.workspace.updateConfiguration({ modelId: 'model-1' })).rejects.toThrow(
+      'HOSTED_CONVERSATION_STATE_INVALID'
+    );
+    const old = h.watches[0]!;
+    h.workspace.handleWatchEvent({
+      ...old,
+      type: 'watch.hosted-conversation.event',
+      event: {
+        sequence: 2,
+        category: 'hosted-conversation',
+        payload: { kind: 'template-changed', conversationId: conversation.id }
+      }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    pending.resolve(undefined);
+    await sending;
+    expect(h.watches).toHaveLength(2);
+    expect(h.workspace.snapshot.value?.conversation.title).toBe('Latest Watch title');
+  });
+
+  it('does not select the old conversation again when its write completes after navigation', async () => {
+    const pending = deferred<unknown>();
+    const h = harness({ pending: pending.promise });
+    await h.workspace.beginSelectedConversationWatch();
+    const sending = h.workspace.switchTemplate(target.id, template.id);
+    h.workspace.selectConversation('node-1', 'conversation-other', {
+      ...initial,
+      conversation: { ...conversation, id: 'conversation-other', sessionId: 'session-other' }
+    } as never);
+    pending.resolve(undefined);
+    await sending;
+    expect(h.workspace.selectedConversationId.value).toBe('conversation-other');
+    expect(h.workspace.snapshot.value?.conversation.templateId).toBe(template.id);
+    expect(h.watches).toHaveLength(1);
+  });
+
+  it.each([
+    'quota',
+    'transport',
+    'NODE_RESPONSE_INVALID',
+    'INTERNAL_ERROR',
+    'NODE_SEND_FAILED',
+    'NODE_CONTROL_CLOSED'
+  ])('does not retry a failed write; reconciles only an uncertain result: %s', async (kind) => {
+    const uncertain = kind !== 'quota';
+    const failure =
+      kind === 'transport'
+        ? new TypeError('Connection lost')
+        : new ApiError(
+            kind === 'quota' ? 'HOSTED_CONVERSATION_QUOTA_EXCEEDED' : kind,
+            'Request failed.'
+          );
+    const h = harness({ failure, commit: uncertain });
+    await h.workspace.beginSelectedConversationWatch();
+    await expect(h.workspace.switchTemplate(target.id, template.id)).rejects.toBe(failure);
+    expect(h.requests.filter((item) => item.path.endsWith('/template'))).toHaveLength(1);
+    expect(h.watches).toHaveLength(uncertain ? 2 : 1);
+    expect(h.workspace.snapshot.value?.conversation.templateId).toBe(
+      uncertain ? target.id : template.id
+    );
+    expect(h.workspace.templateChanging.value).toBe(false);
+  });
+});

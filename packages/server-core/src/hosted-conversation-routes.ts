@@ -11,6 +11,8 @@ import {
   toolResultResourceInputSchema,
   toolResultResourcePageSchema,
   hostedConversationConfigUpdateInputSchema,
+  hostedConversationTemplateSwitchInputSchema,
+  hostedConversationTemplateSwitchResultSchema,
   hostedConversationCreateInputSchema,
   hostedConversationDeleteResultSchema,
   hostedConversationDirectoryPageSchema,
@@ -378,10 +380,50 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
         'conversation.hosted.watch',
         {
           ...data,
-          ...hostedRuntimePayload(runtime)
+          ...hostedRuntimePayload(runtime, authorized.snapshot.conversation.templateId)
         }
       );
       return data.mode === 'renew' ? reply.code(204).send() : reply.send(result);
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  });
+
+  app.post<{
+    Params: { nodeId: string; conversationId: string };
+    Body: unknown;
+  }>('/api/nodes/:nodeId/hosted-conversations/:conversationId/template', async (request, reply) => {
+    const actor = writableActor(database, request, reply, publicOrigin);
+    if (actor === undefined) return;
+    try {
+      const data = parseBodyWithPath(hostedConversationTemplateSwitchInputSchema, request.body, {
+        conversationId: request.params.conversationId
+      });
+      const authorized = await authorizeExistingConversation(input, actor, request.params);
+      const { template, runtime } = await prepareTemplateRuntime(
+        actor,
+        request.params.nodeId,
+        data.templateId
+      );
+      const parsed = hostedConversationTemplateSwitchResultSchema.safeParse(
+        await requestHostedConversationNode(
+          nodeControl,
+          actor,
+          request.params.nodeId,
+          'conversation.hosted.template.switch',
+          { ...data, __template: template, ...hostedRuntimePayload(runtime) }
+        )
+      );
+      if (!parsed.success) throw new Error('NODE_RESPONSE_INVALID');
+      const result = parsed.data;
+      if (
+        result.conversation.id !== request.params.conversationId ||
+        result.conversation.nodeId !== request.params.nodeId ||
+        result.conversation.sessionId !== authorized.snapshot.conversation.sessionId ||
+        result.template.id !== template.id
+      )
+        throw new Error('NODE_RESPONSE_INVALID');
+      return reply.send(result);
     } catch (error) {
       return databaseError(reply, error);
     }
@@ -445,7 +487,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           'conversation.hosted.message',
           {
             ...data,
-            ...hostedRuntimePayload(runtime)
+            ...hostedRuntimePayload(runtime, authorized.snapshot.conversation.templateId)
           }
         )
       );
@@ -473,7 +515,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           'conversation.hosted.rollback',
           {
             ...data,
-            ...hostedRuntimePayload(authorized.runtime)
+            ...hostedRuntimePayload(authorized.runtime, authorized.snapshot.conversation.templateId)
           }
         )
       );
@@ -545,7 +587,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           'conversation.hosted.config.update',
           {
             ...data,
-            ...hostedRuntimePayload(runtime)
+            ...hostedRuntimePayload(runtime, authorized.snapshot.conversation.templateId)
           }
         )
       );
@@ -1053,26 +1095,28 @@ async function authorizeExistingConversation(
   let template: ConversationTemplateSummary;
   let workspaceId: string | undefined;
   let runtime: Awaited<ReturnType<typeof hostedRuntimeModels>>;
+  const probe = hostedConversationSnapshotSchema.parse(
+    await requestHostedConversationNode(
+      input.nodeControl,
+      actor,
+      identifiers.nodeId,
+      'conversation.hosted.get',
+      {
+        ...conversation,
+        __marAgentModels: []
+      }
+    )
+  );
+  assertHostedSnapshotIdentity(probe, identifiers);
+
   if (input.marAgentRuntimeModels === undefined) {
+    template = await input.templates.assertCanUse(actor.userId, probe.conversation.templateId);
     runtime = await hostedRuntimeModels({
       userId: actor.userId,
       nodeId: identifiers.nodeId,
       models: input.models
     });
   } else {
-    const probe = hostedConversationSnapshotSchema.parse(
-      await requestHostedConversationNode(
-        input.nodeControl,
-        actor,
-        identifiers.nodeId,
-        'conversation.hosted.get',
-        {
-          ...conversation,
-          __marAgentModels: []
-        }
-      )
-    );
-    assertHostedSnapshotIdentity(probe, identifiers);
     const context = await input.templates.runtimeContext(
       actor.userId,
       probe.conversation.templateId
@@ -1101,7 +1145,8 @@ async function authorizeExistingConversation(
       'conversation.hosted.get',
       {
         ...conversation,
-        ...hostedRuntimePayload(runtime)
+        ...hostedRuntimePayload(runtime, template.id),
+        ...(template.status === 'DELETED' ? { __templateDeleted: true } : {})
       }
     )
   );
@@ -1118,7 +1163,7 @@ async function authorizeExistingConversation(
         'conversation.hosted.get',
         {
           ...conversation,
-          ...hostedRuntimePayload(runtime),
+          ...hostedRuntimePayload(runtime, template.id),
           __templateDeleted: true
         }
       )
@@ -1194,13 +1239,17 @@ async function hostedRuntimeModels(input: {
   };
 }
 
-function hostedRuntimePayload(runtime: {
-  readonly compact?: import('@myagentroam/protocol').MarAgentRuntimeCompactConfiguration;
-  readonly runtimeScopeId?: string;
-  readonly model?: MarAgentRuntimeModelConfiguration;
-  readonly modelCatalog: readonly MarAgentRuntimeModelConfiguration[];
-}): object {
+function hostedRuntimePayload(
+  runtime: {
+    readonly compact?: import('@myagentroam/protocol').MarAgentRuntimeCompactConfiguration;
+    readonly runtimeScopeId?: string;
+    readonly model?: MarAgentRuntimeModelConfiguration;
+    readonly modelCatalog: readonly MarAgentRuntimeModelConfiguration[];
+  },
+  sourceTemplateId?: string
+): object {
   return {
+    ...(sourceTemplateId === undefined ? {} : { __sourceTemplateId: sourceTemplateId }),
     ...(runtime.runtimeScopeId === undefined
       ? {}
       : { __marAgentRuntimeScopeId: runtime.runtimeScopeId }),

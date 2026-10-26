@@ -137,4 +137,48 @@ describe('Web session scrolling status', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('cancels pending calibration when the conversation changes on the same scroll element', async () => {
+    vi.useFakeTimers();
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    try {
+      const state = createConversationScrollService();
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: 0, clientHeight: 200 });
+      state.setElement(element);
+      let current = true;
+      const positioning = state.scrollToLatestAfterLayout(() => current);
+      await Promise.resolve();
+      await Promise.resolve();
+      current = false;
+      element.scrollTop = 120;
+      animationFrames.shift()?.(0);
+      await vi.runAllTimersAsync();
+      await positioning;
+      expect(element.scrollTop).toBe(120);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('lets explicit reading intent cancel protected calibration before the next frame', async () => {
+    const state = createConversationScrollService();
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    state.setElement(element);
+    state.positioningInitialConversation.value = true;
+    const pending = state.scrollToLatestAfterLayout();
+
+    state.stopFollowing();
+    element.scrollTop = 400;
+    state.handleScroll(vi.fn());
+    await pending;
+
+    expect(state.following.value).toBe(false);
+    expect(state.positioningInitialConversation.value).toBe(false);
+    expect(element.scrollTop).toBe(400);
+  });
 });

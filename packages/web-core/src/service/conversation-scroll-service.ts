@@ -55,6 +55,13 @@ export function createConversationScrollService() {
     void scrollToLatestAfterLayout();
   }
 
+  function stopFollowing(): void {
+    const current = element.value;
+    if (current === undefined || current.scrollHeight <= current.clientHeight) return;
+    following.value = false;
+    positioningInitialConversation.value = false;
+  }
+
   function scrollToLatest(): void {
     const current = element.value;
     if (current === undefined) return;
@@ -63,18 +70,18 @@ export function createConversationScrollService() {
     following.value = true;
   }
 
-  async function scrollToLatestAfterLayout(): Promise<void> {
+  async function scrollToLatestAfterLayout(isCurrent: () => boolean = () => true): Promise<void> {
     const target = element.value;
-    if (target === undefined) return;
+    if (target === undefined || !isCurrent()) return;
     scrollToLatest();
     await nextTick();
-    if (element.value !== target || !following.value) return;
+    if (element.value !== target || !following.value || !isCurrent()) return;
     scrollToLatest();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    if (element.value !== target || !following.value) return;
+    if (element.value !== target || !following.value || !isCurrent()) return;
     scrollToLatest();
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
-    if (element.value !== target || !following.value) return;
+    if (element.value !== target || !following.value || !isCurrent()) return;
     scrollToLatest();
   }
 
@@ -85,6 +92,7 @@ export function createConversationScrollService() {
     setElement,
     handleScroll,
     handleResize,
+    stopFollowing,
     scrollToLatest,
     scrollToLatestAfterLayout
   };

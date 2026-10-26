@@ -1,6 +1,7 @@
 export const notificationsEnUS = {
   workbenchNotificationCenter: {
     recentSessions: 'Recent Sessions',
+    recentSessionsShortcut: 'Recent Sessions (Ctrl/Cmd+Shift+E)',
     noRecentSessions: 'No recent sessions',
     recentSessionsCount: '{count} active sessions',
     webPush: {

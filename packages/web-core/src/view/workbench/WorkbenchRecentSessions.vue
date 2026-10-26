@@ -2,7 +2,8 @@
 import MarIcon from '../common/MarIcon.vue';
 import { ElPopover } from 'element-plus';
 import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import SessionStateBadge from '../common/SessionStateBadge.vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type {
   RecentRun,
@@ -32,6 +33,9 @@ const emit = defineEmits<{
 const desktopOpen = ref(false);
 const sessionGroup = ref<import('@myagentroam/protocol').SessionGroup>('MAIN');
 const groupState = computed(() => props.service.sessionGroupState());
+const hasUnreadSessions = computed(
+  () => groupState.value.MAIN.unread || groupState.value.CHILD.unread
+);
 const visibleRuns = computed(() =>
   props.service.recentRuns.value.filter(
     (run) => (run.sessionGroup ?? 'MAIN') === sessionGroup.value
@@ -55,6 +59,16 @@ const currentTime = ref(Date.now());
 const activeSessionCount = computed(
   () => props.service.recentRuns.value.filter((run) => activeRecentRunStatus(run.status)).length
 );
+const entryDescription = computed(() =>
+  [
+    translate('workbenchNotificationCenter.recentSessionsCount', {
+      count: activeSessionCount.value
+    }),
+    hasUnreadSessions.value ? translate('sessionGroups.unread') : ''
+  ]
+    .filter(Boolean)
+    .join(', ')
+);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
 function stopElapsedTimer(): void {
@@ -72,6 +86,25 @@ watch(open, (visible) => {
   void props.service.load().catch(() => undefined);
 });
 onBeforeUnmount(stopElapsedTimer);
+
+function onRecentSessionsShortcut(event: KeyboardEvent): void {
+  if (
+    event.isComposing ||
+    event.altKey ||
+    !event.shiftKey ||
+    (!event.ctrlKey && !event.metaKey) ||
+    event.key.toLowerCase() !== 'e' ||
+    (event.target instanceof Element && event.target.closest('.terminal-dock') !== null)
+  )
+    return;
+  event.preventDefault();
+  if (event.repeat) return;
+  if (!props.mobileMode && !open.value) trigger.value?.querySelector('button')?.focus();
+  open.value = !open.value;
+}
+
+onMounted(() => window.addEventListener('keydown', onRecentSessionsShortcut, true));
+onBeforeUnmount(() => window.removeEventListener('keydown', onRecentSessionsShortcut, true));
 
 function openSession(run: RecentRun): void {
   open.value = false;
@@ -117,7 +150,7 @@ function runTime(run: RecentRun): string {
     <span ref="trigger" class="recent-sessions-reference">
       <span
         v-tooltip="{
-          content: translate('workbenchNotificationCenter.recentSessions'),
+          content: `${translate('workbenchNotificationCenter.recentSessionsShortcut')}\n${entryDescription}`,
           placement: mobileMode ? 'bottom' : 'right'
         }"
         class="mar-tooltip-control"
@@ -125,21 +158,18 @@ function runTime(run: RecentRun): string {
           type="button"
           :class="['recent-sessions-trigger', { active: open }]"
           :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-          :aria-description="
-            translate('workbenchNotificationCenter.recentSessionsCount', {
-              count: activeSessionCount
-            })
-          "
+          :aria-description="entryDescription"
           :aria-expanded="open"
           @click="mobileMode && (open = !open)"
           @keydown.esc.stop="open = false"
         >
           <MarIcon name="recent-sessions" aria-hidden="true" />
-          <span v-if="activeSessionCount" class="recent-sessions-badge" aria-hidden="true">{{
-            activeSessionCount
-          }}</span>
-        </button></span
-      >
+          <SessionStateBadge
+            class="recent-sessions-badge"
+            :running="activeSessionCount"
+            :unread="hasUnreadSessions"
+          /></button
+      ></span>
     </span>
     <Teleport
       v-if="mobileMode && (mobilePresented ?? open) && mobilePanelTarget"
@@ -204,15 +234,18 @@ function runTime(run: RecentRun): string {
 .recent-sessions-badge {
   position: absolute;
   top: calc(50% - 15px);
-  right: calc(50% - 14px);
-  min-width: 14px;
-  border: 1px solid var(--mar-bg-panel);
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
-  font-size: var(--mar-font-size-nano);
-  line-height: 13px;
-  text-align: center;
+  right: 0;
+  max-width: calc(100% + 2px);
+  pointer-events: none;
+}
+.recent-sessions-badge :deep(.session-state-count) {
+  flex: none;
+}
+.recent-sessions-badge :deep(.session-state-unread) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mobile-mode {
   width: 36px;
@@ -230,6 +263,13 @@ function runTime(run: RecentRun): string {
 }
 .mobile-mode .recent-sessions-trigger .mar-icon {
   font-size: 22px;
+}
+.mobile-mode .recent-sessions-badge {
+  right: auto;
+  left: calc(100% - 12px);
+  max-width: none;
+  /* Use the menu gap and empty icon inset without covering the next icon. */
+  transform: translateX(min(0px, calc(12px + 0.25rem + 5px - 100%)));
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

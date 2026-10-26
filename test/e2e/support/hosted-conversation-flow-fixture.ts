@@ -43,6 +43,7 @@ export async function startResponsesServer(
   const sandboxHomeCallId = 'hosted-home-check-1';
   const outputWorkResumeCallId = 'hosted-output-work-resume-2';
   const generatedImageCopyCallId = 'hosted-generated-image-copy-1';
+  const templateSwitchCallId = 'hosted-template-switch-check-1';
   const sourceGuide = shellQuote(join(workspace, 'knowledge', 'guide.md'));
   const sourceTool = shellQuote(join(workspace, '.venv', 'bin', 'template-tool'));
   const sourceOutput = shellQuote(join(workspace, 'output', 'alias-result.txt'));
@@ -67,6 +68,10 @@ export async function startResponsesServer(
       const parsed = JSON.parse(body) as unknown;
       requests.push(parsed);
       const serialized = JSON.stringify(parsed);
+      const requestsTemplateSwitchCheck =
+        serialized.includes('验证切换模板') &&
+        serialized.includes('"name":"exec"') &&
+        !serialized.includes(`"call_id":"${templateSwitchCallId}"`);
       const requestsSandboxHomeCheck =
         (serialized.includes('第一轮') || serialized.includes('release-smoke-tool')) &&
         serialized.includes('"name":"exec"') &&
@@ -142,47 +147,66 @@ export async function startResponsesServer(
                 }
               }
             : undefined;
-      const text = serialized.includes('删除后保留轮')
-        ? 'Retained after delete reply'
-        : serialized.includes('成员恢复轮')
-          ? 'Recovered member reply'
-          : serialized.includes('第二轮')
-            ? 'Second hosted reply'
-            : serialized.includes('复制之前生成的图片')
-              ? 'Copied previous generated image'
-              : serialized.includes('第一轮')
-                ? 'First hosted reply'
-                : 'Hosted conversation';
+      const text = serialized.includes('验证切换模板')
+        ? 'Switched template reply'
+        : serialized.includes('删除后保留轮')
+          ? 'Retained after delete reply'
+          : serialized.includes('成员恢复轮')
+            ? 'Recovered member reply'
+            : serialized.includes('第二轮')
+              ? 'Second hosted reply'
+              : serialized.includes('复制之前生成的图片')
+                ? 'Copied previous generated image'
+                : serialized.includes('第一轮')
+                  ? 'First hosted reply'
+                  : 'Hosted conversation';
       const requestNumber = requests.length;
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end(
         [
           { type: 'response.created', response: { id: `response-${requestNumber}` } },
-          ...(toolCall === undefined
+          ...(requestsTemplateSwitchCheck
             ? [
                 {
-                  type: 'response.output_item.added',
+                  type: 'response.output_item.done',
                   item: {
-                    id: `message-${requestNumber}`,
-                    type: 'message',
-                    role: 'assistant',
-                    phase: 'final_answer'
+                    id: `function-${requests.length}`,
+                    type: 'function_call',
+                    call_id: templateSwitchCallId,
+                    name: 'exec',
+                    arguments: JSON.stringify({
+                      action: 'start',
+                      command: `test "$(cat ${sourceGuide})" = 'switched template guide' && test -f ${sourceOutput} && printf 'HOSTED_SWITCH_GUIDE=%s\\n' "$(cat ${sourceGuide})"`,
+                      yieldMs: 5_000
+                    })
                   }
-                },
-                {
-                  type: 'response.output_text.delta',
-                  item_id: `message-${requestNumber}`,
-                  phase: 'final_answer',
-                  delta: text
-                },
-                {
-                  type: 'response.output_text.done',
-                  item_id: `message-${requestNumber}`,
-                  phase: 'final_answer',
-                  text
                 }
               ]
-            : [toolCall]),
+            : toolCall === undefined
+              ? [
+                  {
+                    type: 'response.output_item.added',
+                    item: {
+                      id: `message-${requestNumber}`,
+                      type: 'message',
+                      role: 'assistant',
+                      phase: 'final_answer'
+                    }
+                  },
+                  {
+                    type: 'response.output_text.delta',
+                    item_id: `message-${requestNumber}`,
+                    phase: 'final_answer',
+                    delta: text
+                  },
+                  {
+                    type: 'response.output_text.done',
+                    item_id: `message-${requestNumber}`,
+                    phase: 'final_answer',
+                    text
+                  }
+                ]
+              : [toolCall]),
           {
             type: 'response.completed',
             response: {

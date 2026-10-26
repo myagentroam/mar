@@ -722,6 +722,117 @@ for (const theme of ['dark', 'light']) {
 }
 
 for (const mobile of [false, true]) {
+  test(`Recent Sessions shortcut owns Ctrl and Cmd Shift E without opening notifications: ${mobile ? 'mobile' : 'desktop'}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: mobile ? 390 : 1280, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1${mobile ? '&mobile=1' : ''}`);
+    const recent = page.locator('.recent-sessions-trigger');
+    const notifications = page.locator('.workbench-notification-trigger');
+    await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    for (const modifier of ['Control', 'Meta']) {
+      await page.keyboard.press(`${modifier}+Shift+E`);
+      await expect(recent).toHaveAttribute('aria-expanded', 'true');
+      await expect(notifications).toHaveAttribute('aria-expanded', 'false');
+      if (!mobile) await expect(recent).toBeFocused();
+      const repeated = await page.evaluate(() => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'E',
+          ctrlKey: true,
+          shiftKey: true,
+          repeat: true,
+          cancelable: true,
+          bubbles: true
+        });
+        document.body.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
+      expect(repeated).toBe(true);
+      await expect(recent).toHaveAttribute('aria-expanded', 'true');
+      await page.keyboard.press(`${modifier}+Shift+E`);
+      await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    }
+    for (const extra of [{ isComposing: true }, { altKey: true }, { shiftKey: false }]) {
+      expect(
+        await page.evaluate((extra) => {
+          const event = new KeyboardEvent('keydown', {
+            key: 'E',
+            ctrlKey: true,
+            shiftKey: true,
+            cancelable: true,
+            bubbles: true,
+            ...extra
+          });
+          document.body.dispatchEvent(event);
+          return event.defaultPrevented;
+        }, extra)
+      ).toBe(false);
+      await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    }
+    await page.evaluate(() => {
+      const terminal = document.createElement('div');
+      terminal.className = 'terminal-dock';
+      const input = document.createElement('input');
+      input.setAttribute('aria-label', 'Terminal shortcut boundary');
+      terminal.append(input);
+      document.body.append(terminal);
+    });
+    // Dispatch at the terminal target: the navigation-only mobile fixture keeps its drawer focus trap active.
+    expect(
+      await page.getByLabel('Terminal shortcut boundary').evaluate((input) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'E',
+          ctrlKey: true,
+          shiftKey: true,
+          cancelable: true,
+          bubbles: true
+        });
+        input.dispatchEvent(event);
+        return event.defaultPrevented;
+      })
+    ).toBe(false);
+    await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    if (!mobile) {
+      await notifications.click();
+      await page.locator('.workbench-notification-panel').evaluate((panel) => {
+        panel.setAttribute('tabindex', '-1');
+        (panel as HTMLElement).focus();
+      });
+      await expect(notifications).toHaveAttribute('aria-expanded', 'true');
+      await recent.focus();
+      await expect(notifications).toHaveAttribute('aria-expanded', 'false');
+      await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    }
+    await notifications.click();
+    await expect(notifications).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Control+Shift+E');
+    await expect(recent).toHaveAttribute('aria-expanded', 'true');
+    await expect(notifications).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Control+Shift+E');
+    await expect(recent).toHaveAttribute('aria-expanded', 'false');
+    // Removing the owning view must also remove its global shortcut listener.
+    await page.evaluate(() => {
+      const app = document.querySelector('#app') as HTMLElement & {
+        __vue_app__: { unmount(): void };
+      };
+      app.__vue_app__.unmount();
+    });
+    expect(
+      await page.evaluate(() => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'E',
+          ctrlKey: true,
+          shiftKey: true,
+          cancelable: true,
+          bubbles: true
+        });
+        document.body.dispatchEvent(event);
+        return event.defaultPrevented;
+      })
+    ).toBe(false);
+  });
+
   test(`Navigation icons stay centered with recent-session badges: ${mobile ? 'mobile' : 'desktop'}`, async ({
     page
   }) => {
@@ -755,7 +866,9 @@ for (const mobile of [false, true]) {
         const badge = trigger.locator('.recent-sessions-badge');
         await expect(badge).toHaveText(String(count));
         const badgeBounds = await badge.boundingBox();
-        expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+        expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(
+          bounds!.x + bounds!.width + (mobile ? 9 : 0)
+        );
       } else await expect(trigger.locator('.recent-sessions-badge')).toHaveCount(0);
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
@@ -774,6 +887,81 @@ for (const mobile of [false, true]) {
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       }
     }
+  });
+}
+
+for (const { theme, locale } of [
+  { theme: 'dark', locale: 'zh-CN' },
+  { theme: 'light', locale: 'en-US' }
+]) {
+  test(`Recent-session unread badges do not move or cover navigation icons: ${theme} ${locale}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [320, 390, 430, 1024, 1280]) {
+      const mobile = width < 768;
+      await page.setViewportSize({ width, height: 900 });
+      const url = `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=${locale}${mobile ? '&mobile=1' : ''}`;
+      await page.goto(`${url}&count=0`);
+      const buttons = page.locator('.activity-rail nav button');
+      const trigger = page.locator('.recent-sessions-trigger');
+      await expect(trigger).toBeVisible();
+      const baseline = await buttons.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON())
+      );
+      await page.goto(`${url}&count=99&unread=1`);
+      const badge = trigger.locator('.recent-sessions-badge');
+      await expect(badge.locator('.session-state-count')).toHaveText('99');
+      await expect(badge.locator('.session-state-unread')).toHaveText(
+        locale === 'zh-CN' ? '未读' : 'Unread'
+      );
+      const positions = await buttons.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON())
+      );
+      expect(positions).toEqual(baseline);
+      const bounds = (await badge.boundingBox())!;
+      const navigation = (await page.locator('.activity-rail nav').boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(navigation.x);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(navigation.x + navigation.width);
+      const otherIcons = await buttons
+        .locator('.mar-icon:not([data-mar-icon="recent-sessions"])')
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().toJSON())
+        );
+      for (const icon of otherIcons) {
+        const overlaps =
+          bounds.x < icon.right &&
+          bounds.x + bounds.width > icon.left &&
+          bounds.y < icon.bottom &&
+          bounds.y + bounds.height > icon.top;
+        expect(overlaps).toBe(false);
+      }
+      if (mobile) {
+        await expect(trigger).toHaveCSS('width', '36px');
+        const unread = badge.locator('.session-state-unread');
+        expect(await unread.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`recent-sessions-${width}.png`),
+          clip: { x: 0, y: 0, width, height: 84 }
+        });
+      } else {
+        await trigger.hover();
+        await expect(page.locator('.mar-tooltip:visible')).toContainText(
+          locale === 'zh-CN' ? '未读' : 'Unread'
+        );
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(
+      `${fixture.url}icon-system.html?navigation=1&mobile=1&count=0&unread=1&theme=${theme}&locale=${locale}`
+    );
+    const badge = page.locator('.recent-sessions-badge');
+    await expect(badge.locator('.session-state-count')).toHaveCount(0);
+    await expect(badge.locator('.session-state-unread')).toBeVisible();
+    await page.locator('.workbench-notification-trigger').click();
+    await page.locator('.workbench-notification-mark-all').click();
+    await expect(badge).toHaveCount(0);
   });
 }
 

@@ -201,7 +201,7 @@ describe('Shared personal settings components', () => {
       expect(shortcuts.html).toContain(commonMessages[locale].keyboardShortcuts.saveEditor);
       expect(shortcuts.html).toContain(commonMessages[locale].keyboardShortcuts.platformHint);
       const groups = [
-        ['workspace', 9, 'openNotificationCenter'],
+        ['workspace', 9, 'openRecentSessions'],
         ['files', 10, 'quickOpenWorkspaceFile'],
         ['editing', 9, 'findInPreview'],
         ['composer', 10, 'saveQueuedMessage']

@@ -428,6 +428,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :empty-prompt="page.draftSessionOpen ? 'workspace' : undefined"
                 @scroll-element="page.conversationScroll = $event"
                 @scroll="page.onComposerScroll"
+                @scroll-intent="page.stopFollowingConversation"
                 @load-older="page.loadOlderConversationTurns"
                 @latest="page.scrollConversationToLatest"
                 @reload="page.reloadSelectedSession"

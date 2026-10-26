@@ -22,14 +22,16 @@ import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
-import type { PersonalUsageOverview, UsageTotals } from '@myagentroam/protocol';
+import type { PersonalUsageOverview, ServerNotification, UsageTotals } from '@myagentroam/protocol';
 import type { Session } from '../../src/model/workbench.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import type { NodeSummary, Workspace } from '../../src/model/workbench.js';
 
-localePreferenceService().setLocale('en-US');
+localePreferenceService().setLocale(
+  new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
+);
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026'
 );
@@ -297,11 +299,33 @@ const app = createApp({
       const mobile = new URL(location.href).searchParams.has('mobile');
       const mobileUtilityPanel = ref<'recent-sessions' | 'notifications'>();
       const count = Number(new URL(location.href).searchParams.get('count') ?? 6);
+      let unread = new URL(location.href).searchParams.has('unread');
       const now = Date.now();
       const service = createWorkbenchNotificationService(ref('fixture'), {
-        request: async <T>() =>
-          ({
-            notifications: [],
+        request: async <T>(path: string) => {
+          if (path === '/api/notifications/read-all') unread = false;
+          return {
+            notifications: unread
+              ? [
+                  {
+                    id: 'navigation-unread',
+                    kind: 'run',
+                    title: 'Completed session',
+                    message: 'Run completed. Open the related session.',
+                    createdAt: now,
+                    updatedAt: now,
+                    expiresAt: now + 60_000,
+                    read: false,
+                    target: {
+                      targetType: 'WORKSPACE_SESSION',
+                      nodeId: 'host',
+                      workspaceId: 'project',
+                      sessionId: 'unread-session',
+                      sessionGroup: 'CHILD'
+                    }
+                  } satisfies ServerNotification
+                ]
+              : [],
             recentRuns: Array.from({ length: count }, (_, i) => ({
               nodeId: 'host',
               runId: `run-${i}`,
@@ -317,7 +341,8 @@ const app = createApp({
               updatedAt: now,
               version: 1
             }))
-          }) as T
+          } as T;
+        }
       });
       void service.load();
       const diagnostics = createWebPerformanceDiagnostics();

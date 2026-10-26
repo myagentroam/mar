@@ -48,7 +48,7 @@ export const zhCN = {
     searchAction: workbenchShellZhCN.workspaceSessions.searchAction
   },
   keyboardShortcuts: {
-    openNotificationCenter: personalSettingsZhCN.keyboardShortcuts.openNotificationCenter,
+    openRecentSessions: personalSettingsZhCN.keyboardShortcuts.openRecentSessions,
     openMarkdownPreview: personalSettingsZhCN.keyboardShortcuts.openMarkdownPreview,
     quickOpenWorkspaceFile: personalSettingsZhCN.keyboardShortcuts.quickOpenWorkspaceFile,
     openGitChanges: personalSettingsZhCN.keyboardShortcuts.openGitChanges,

@@ -80,7 +80,7 @@ const hostedSnapshot = ref({
     nodeId: 'node',
     sessionId: 'session',
     modelId: 'one',
-    templateName: 'Template'
+    templateName: new URLSearchParams(location.search).get('template-name') ?? 'Template'
   },
   run: null,
   models: [
@@ -89,6 +89,7 @@ const hostedSnapshot = ref({
   ]
 });
 const hostedWorkspace = {
+  templateChanging: ref(false),
   snapshot: hostedSnapshot,
   messageSubmitting: ref(false),
   messageSubmissionContext: ref(undefined),

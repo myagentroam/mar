@@ -1,6 +1,6 @@
 ---
 title: 键盘快捷键
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-26
 ---
 
 # 键盘快捷键
@@ -19,7 +19,7 @@ lastUpdated: 2026-10-17
 | 新建会话                     | Ctrl+N / Alt+N                                    | Control+N / Option+N                                    | 打开当前工作区的新建会话草稿       | 当前 Node 与工作区可用；Composer 内也生效；其他输入框、编辑器、终端或弹窗除外 |
 | 工作区 Tab                   | Ctrl+W / Alt+W                                    | Ctrl+W / Option+W                                       | 关闭当前非固定工作区标签           | 工作模式；固定标签保留；Composer 内也生效；其他输入框、编辑器、终端或弹窗除外 |
 | 工作区 Tab                   | Ctrl+Shift+W / Alt+Shift+W                        | Ctrl+Shift+W / Option+Shift+W                           | 关闭全部非固定工作区标签           | 工作模式；固定标签保留；Composer 内也生效；其他输入框、编辑器、终端或弹窗除外 |
-| 全局                         | Ctrl+Shift+E                                      | Cmd+Shift+E                                             | 打开或关闭通知中心                 | 页面已打开                                                                    |
+| 全局                         | Ctrl+Shift+E                                      | Cmd+Shift+E                                             | 打开或关闭最近会话                 | 页面已打开                                                                    |
 | 工作区                       | Ctrl+Shift+O                                      | Cmd+Shift+O                                             | 快速打开工作区、会话、符号或文件   | 工作模式下存在可用 Node                                                       |
 | 快速打开                     | ↑/↓、Enter/Esc                                    | ↑/↓、Enter/Esc                                          | 选择、打开结果或关闭浮层           | 快速打开浮层已打开                                                            |
 | 快速打开                     | Ctrl+Enter                                        | Cmd+Enter                                               | 在独立预览窗口打开选中符号或文件   | 快速打开浮层已打开且选中的是符号或文件                                        |

@@ -99,7 +99,7 @@ export const personalSettingsEnUS = {
   keyboardShortcuts: {
     platformHint:
       'On macOS, use Command instead of Ctrl for Workspace and file shortcuts, and Option instead of Alt. Workspace Ctrl+Tab and Ctrl+W combinations, and Composer and queue Ctrl+Enter, still use Control.',
-    openNotificationCenter: 'Global: Open or close the notification center',
+    openRecentSessions: 'Global: Open or close Recent Sessions',
     cycleWorkspaceTabs: 'Workspace: Switch to the previous or next tab (wraps around)',
     cycleWorkspaceTabsWithCtrlTab: 'Workspace: Switch to the next or previous tab (wraps around)',
     selectWorkspaceTab: 'Workspace: Select a tab by number (0 selects the tenth)',

@@ -48,7 +48,7 @@ export const enUS = {
     searchAction: workbenchShellEnUS.workspaceSessions.searchAction
   },
   keyboardShortcuts: {
-    openNotificationCenter: personalSettingsEnUS.keyboardShortcuts.openNotificationCenter,
+    openRecentSessions: personalSettingsEnUS.keyboardShortcuts.openRecentSessions,
     openMarkdownPreview: personalSettingsEnUS.keyboardShortcuts.openMarkdownPreview,
     quickOpenWorkspaceFile: personalSettingsEnUS.keyboardShortcuts.quickOpenWorkspaceFile,
     openGitChanges: personalSettingsEnUS.keyboardShortcuts.openGitChanges,

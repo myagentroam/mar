@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-26
 ---
 
 # Keyboard Shortcuts
@@ -19,7 +19,7 @@ lastUpdated: 2026-10-17
 | New session                   | `Ctrl+N / Alt+N`                                            | `Control+N / Option+N`                                            | Open a new-session draft in the current Workspace             | The Node and Workspace are ready; also in Composer; other inputs, editors, terminals, and dialogs excluded  |
 | Workspace tabs                | `Ctrl+W / Alt+W`                                            | `Ctrl+W / Option+W`                                               | Close the active unpinned Workspace tab                       | Work mode; pinned tabs remain; also in Composer; other inputs, editors, terminals, and dialogs excluded     |
 | Workspace tabs                | `Ctrl+Shift+W / Alt+Shift+W`                                | `Ctrl+Shift+W / Option+Shift+W`                                   | Close all unpinned Workspace tabs                             | Work mode; pinned tabs remain; also in Composer; other inputs, editors, terminals, and dialogs excluded     |
-| Global                        | `Ctrl+Shift+E`                                              | `Cmd+Shift+E`                                                     | Open or close the notification center                         | The Console is open                                                                                         |
+| Global                        | `Ctrl+Shift+E`                                              | `Cmd+Shift+E`                                                     | Open or close Recent Sessions                                 | The Console is open                                                                                         |
 | Workspace                     | `Ctrl+Shift+O`                                              | `Cmd+Shift+O`                                                     | Quick open a Workspace, Session, symbol, or file              | An available Node exists in Work mode                                                                       |
 | Quick Open                    | `↑/↓`, `Enter/Esc`                                          | `↑/↓`, `Enter/Esc`                                                | Select or open a result, or close the dialog                  | Quick Open is visible                                                                                       |
 | Quick Open                    | `Ctrl+Enter`                                                | `Cmd+Enter`                                                       | Open the selected symbol or file in a separate preview window | Quick Open is visible and a symbol or file can be selected                                                  |

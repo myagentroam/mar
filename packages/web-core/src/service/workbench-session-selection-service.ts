@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { computed, ref, type Ref } from 'vue';
+import { computed, nextTick, ref, type Ref } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
@@ -83,6 +83,7 @@ export interface WorkbenchSessionSelectionOptions {
 const EMPTY_QUEUE: WorkspaceQueue = { version: 0, paused: false, items: [] };
 export function createWorkbenchSessionSelectionService(options: WorkbenchSessionSelectionOptions) {
   const restoredContent = ref(false);
+  let positioningRequest: number | undefined;
   const loadingInitialContent = computed(
     () => options.loadingInitial.value && !restoredContent.value
   );
@@ -103,6 +104,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
   function prepare(sessionId: string, nodeId: string, openOptions: OpenSessionOptions) {
     if (!openOptions.preserveMobileWorkspaceSurface) options.closeMobileSurface();
     const switching = options.selectedSessionId.value !== sessionId;
+    let restored = false;
     const session = options.sessions.value.find(
       (item) =>
         item.id === sessionId &&
@@ -137,10 +139,10 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       const cached = options.restoreCachedDetail(sessionId);
       options.selectedRunId.value = undefined;
       if (cached !== undefined) {
+        restored = true;
         options.restoreProjection(options.turns.value);
         const active = activeRun(options.runs.value, sessionId);
         if (active !== undefined) options.openRun(active.id);
-        if (!openOptions.deferInitialScroll) void options.scrollLatest();
       } else {
         options.turns.value = [];
         options.nextCursor.value = null;
@@ -149,7 +151,25 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         options.runs.value = [];
       }
     }
-    return { switching };
+    return { switching, restored };
+  }
+
+  async function positionRestoredContent(
+    requestId: number,
+    isCurrent: () => boolean
+  ): Promise<void> {
+    positioningRequest = requestId;
+    options.positioning.value = true;
+    try {
+      // The shared scroll element may still contain the previous conversation.
+      await nextTick();
+      if (isCurrent() && options.positioning.value) await options.scrollLatest();
+    } finally {
+      if (positioningRequest === requestId) {
+        positioningRequest = undefined;
+        options.positioning.value = false;
+      }
+    }
   }
 
   async function openSession(
@@ -160,9 +180,11 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     if (nodeId === undefined) return;
     const requestId = options.nextRequest();
+    positioningRequest = undefined;
+    options.positioning.value = false;
     options.loadingInitial.value = true;
     options.initialLoadFailed.value = false;
-    const { switching } = prepare(sessionId, nodeId, openOptions);
+    const { switching, restored } = prepare(sessionId, nodeId, openOptions);
     const hasContent = options.turns.value.some((turn) => turn.items.length > 0);
     // Cached content stays readable; Watch synchronization has its own status.
     restoredContent.value = hasContent;
@@ -173,6 +195,10 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         sessionId,
         openOptions.markReadAfterOpen ? workspaceId : undefined
       );
+    const cachedPositioning =
+      restored && hasContent && !openOptions.deferInitialScroll
+        ? positionRestoredContent(requestId, isCurrent)
+        : undefined;
     try {
       const encodedId = options.sessionPathId(sessionId);
       const sessionResult = await options.request<{ session: Session }>(
@@ -225,10 +251,13 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         options.positioning.value = true;
         await options.scrollLatest();
       }
+      await cachedPositioning;
+      if (!isCurrent()) return;
       options.positioning.value = false;
       if (openOptions.markReadAfterOpen && isCurrent())
         await options.markSessionRead(nodeId, workspaceId!, sessionResult.session.id);
     } catch (error) {
+      await cachedPositioning;
       if (!isCurrent()) return;
       options.positioning.value = false;
       if (errorCode(error) === 'WATCH_CANCELLED') {
