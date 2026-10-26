@@ -90,12 +90,12 @@ describe('inline media window', () => {
     expect(a.images).toHaveLength(1);
   });
 
-  it('rejects three maximum legal images before reading their resource bytes', async () => {
+  it('rejects three available maximum legal images before they can be sent', async () => {
     const { projection, store } = fixture();
     await expect(
       projection.prepare(request(['a', 'b', 'c'].map((id) => imageMessage(id))))
     ).rejects.toMatchObject({ code: 'MAR_AGENT_INLINE_MEDIA_LIMIT' });
-    expect(store.readResource).not.toHaveBeenCalled();
+    expect(store.readResource).toHaveBeenCalledTimes(3);
     expect(projection.hasPendingImages([imageMessage('a')])).toBe(true);
   });
 

@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MarAgentError } from '../error.js';
 import {
@@ -129,12 +128,8 @@ async function bindToolResultResource(
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     try {
-      const info = await handle.stat();
-      if (!info.isFile() || info.size > 1024)
-        throw resourceError('CORRUPT', 'Invalid tool resource locator.');
-      const locator = JSON.parse(await handle.readFile('utf8')) as {
+      const locator = JSON.parse(await readFile(path, 'utf8')) as {
         sequence: number;
         recordId: string;
       };
@@ -154,8 +149,6 @@ async function bindToolResultResource(
         throw resourceError('CORRUPT', 'Tool resource locator conflicts with committed history.');
     } catch (cause) {
       throw normalizedResourceError(cause);
-    } finally {
-      await handle.close();
     }
   }
 }
@@ -265,15 +258,7 @@ export async function readToolResultResource(
   let locator: { sequence: number; recordId: string };
   try {
     const file = join(directory, 'tool_results', `${input.resourceRef}.json`);
-    const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    try {
-      const info = await handle.stat();
-      if (!info.isFile() || info.size > 1024)
-        throw resourceError('CORRUPT', 'Invalid tool resource locator.');
-      locator = JSON.parse(await handle.readFile('utf8')) as typeof locator;
-    } finally {
-      await handle.close();
-    }
+    locator = JSON.parse(await readFile(file, 'utf8')) as typeof locator;
   } catch (error) {
     throw normalizedResourceError(error);
   }
@@ -349,21 +334,7 @@ async function readResourceBytes(
   resource: AvailableToolResultResource
 ): Promise<Buffer> {
   try {
-    const handle = await open(
-      join(directory, 'tool_results', `${resource.resourceRef}.diff`),
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
-    );
-    try {
-      const stat = await handle.stat();
-      if (!stat.isFile() || stat.size !== resource.byteSize || stat.size > MAX_BYTES)
-        throw resourceError('CORRUPT', 'Tool resource size does not match its history.');
-      const bytes = await handle.readFile();
-      if (createHash('sha256').update(bytes).digest('hex') !== resource.sha256)
-        throw resourceError('CORRUPT', 'Tool resource checksum does not match its history.');
-      return bytes;
-    } finally {
-      await handle.close();
-    }
+    return await readFile(join(directory, 'tool_results', `${resource.resourceRef}.diff`));
   } catch (error) {
     throw normalizedResourceError(error);
   }

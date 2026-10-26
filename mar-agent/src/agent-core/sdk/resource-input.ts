@@ -26,6 +26,7 @@ interface Entry {
   source: Source;
   imageIndex: number;
   image?: ModelImage;
+  unavailable?: boolean;
   active: boolean;
   rollout: number;
 }
@@ -34,9 +35,14 @@ interface Options {
   persist?: (state: InlineMediaState) => Promise<void>;
 }
 
-function releasedImageNotice(message: ModelMessage, indices: readonly number[]): string {
+function releasedImageNotice(
+  message: ModelMessage,
+  indices: readonly number[],
+  unavailable?: ReadonlySet<number>
+): string {
   return indices
     .map((index) => {
+      if (unavailable?.has(index)) return 'Image unavailable; omitted from context.';
       const resourceId = message.images?.[index]?.resourceId;
       const hint = resourceId
         ? ` Reopen with view_image(${JSON.stringify({ resourceId })}) if needed.`
@@ -49,14 +55,15 @@ function releasedImageNotice(message: ModelMessage, indices: readonly number[]):
 function projectRetainedImages(
   message: ModelMessage,
   images: ModelImage[],
-  removed: ReadonlySet<number>
+  removed: ReadonlySet<number>,
+  unavailable?: ReadonlySet<number>
 ): ModelMessage {
   if (!removed.size) return { ...message, images };
   if (message.observations) {
     const observations = message.observations.map((observation) => {
       const removedIndices = observationImages(observation).filter((index) => removed.has(index));
       if (!removedIndices.length) return observation;
-      const notice = releasedImageNotice(message, removedIndices);
+      const notice = releasedImageNotice(message, removedIndices, unavailable);
       return observation.type === 'tool_result'
         ? {
             ...observation,
@@ -71,7 +78,7 @@ function projectRetainedImages(
       content: renderObservationResult(selected.observations, message.content)
     };
   }
-  const notice = releasedImageNotice(message, [...removed]);
+  const notice = releasedImageNotice(message, [...removed], unavailable);
   return {
     ...message,
     images: images.filter(Boolean),
@@ -85,6 +92,8 @@ export class ResourceInputProjection {
   readonly #entries: Entry[] = [];
   readonly #sources = new Map<Source, number[]>();
   readonly #candidates = new WeakMap<readonly ModelMessage[], number>();
+  readonly #resourceReads = new Map<string, ReturnType<SessionStore['readResource']>>();
+  #cachedBytes = 0;
   #considered = -1;
   #rollout = 0;
   #evicted = -1;
@@ -131,6 +140,7 @@ export class ResourceInputProjection {
     for (const message of messages)
       for (const [index, image] of (message.images ?? []).entries()) {
         const entry = this.#entries[this.#entry(inlineMediaSource(message), index)]!;
+        if (entry.image && !isDeepStrictEqual(entry.image, image)) delete entry.unavailable;
         entry.image = image;
         entry.active = true;
       }
@@ -138,6 +148,7 @@ export class ResourceInputProjection {
 
   /** Called only at an explicit context replacement, never as a history diff detector. */
   replace(messages: readonly ModelMessage[]): void {
+    this.releaseBytes();
     for (const entry of this.#entries) {
       entry.active = false;
       delete entry.image;
@@ -176,9 +187,15 @@ export class ResourceInputProjection {
         });
       if (!images?.length) return message;
       const removed = new Set<number>();
+      const unavailable = new Set<number>();
       const retained: ModelImage[] = [];
       images.forEach((image, index) => {
-        if (
+        const position = positions?.[index];
+        const entry = position === undefined ? undefined : this.#entries[position];
+        if (entry?.unavailable && isDeepStrictEqual(entry.image, image)) {
+          removed.add(index);
+          unavailable.add(index);
+        } else if (
           !this.useResourceUrl &&
           positions?.[index] !== undefined &&
           positions[index]! <= evicted
@@ -186,7 +203,7 @@ export class ResourceInputProjection {
           removed.add(index);
         else retained[index] = image;
       });
-      return projectRetainedImages({ ...message, images }, retained, removed);
+      return projectRetainedImages({ ...message, images }, retained, removed, unavailable);
     });
   }
 
@@ -216,40 +233,28 @@ export class ResourceInputProjection {
   ): Promise<ModelRequest> {
     this.observe(canonicalMessages);
     const through = this.#entries.length - 1;
-    const cached = new Map<ModelImage, Promise<ModelImage>>();
-    const project = (image: ModelImage) => {
-      let value = cached.get(image);
-      if (!value) cached.set(image, (value = this.#project(image)));
+    const cached = new Map<Entry | ModelImage, Promise<ModelImage | undefined>>();
+    const project = (image: ModelImage, entry?: Entry) => {
+      const key = entry && isDeepStrictEqual(entry.image, image) ? entry : image;
+      let value = cached.get(key);
+      if (!value) cached.set(key, (value = this.#project(image, entry)));
       return value;
     };
-    const sized = async (image: ModelImage) =>
-      image.dataBase64 !== undefined || image.byteSize !== undefined ? image : project(image);
     const top = (request.images ?? []).filter(
       (image) => !mirroredImages.some((mirror) => isDeepStrictEqual(image, mirror))
     );
     const evicted = this.#evicted;
-    if (!this.useResourceUrl) {
-      let total = 0;
-      for (const message of request.messages)
-        for (const [index, image] of (message.images ?? []).entries()) {
-          const position = this.#sources.get(inlineMediaSource(message))?.[index];
-          const original = position === undefined ? undefined : this.#entries[position]?.image;
-          if (position !== undefined && position <= evicted && isDeepStrictEqual(original, image))
-            continue;
-          total += inlineMediaBytes(await sized(image));
-        }
-      for (const image of top) total += inlineMediaBytes(await sized(image));
-      if (total > policy.requestInlineMediaHardLimit) inlineMediaLimit();
-    }
     const messages = await Promise.all(
       request.messages.map(async (message) => {
         if (!message.images?.length) return message;
         const removed = new Set<number>();
+        const unavailable = new Set<number>();
         const images: ModelImage[] = [];
         await Promise.all(
           message.images.map(async (image, index) => {
             const position = this.#sources.get(inlineMediaSource(message))?.[index];
-            const original = position === undefined ? undefined : this.#entries[position]?.image;
+            const entry = position === undefined ? undefined : this.#entries[position];
+            const original = entry?.image;
             if (
               !this.useResourceUrl &&
               position !== undefined &&
@@ -257,14 +262,23 @@ export class ResourceInputProjection {
               isDeepStrictEqual(original, image)
             )
               removed.add(index);
-            else images[index] = await project(image);
+            else {
+              const projected = await project(image, entry);
+              if (projected) images[index] = projected;
+              else {
+                removed.add(index);
+                unavailable.add(index);
+              }
+            }
           })
         );
-        return projectRetainedImages(message, images, removed);
+        return projectRetainedImages(message, images, removed, unavailable);
       })
     );
     const { images: _topImages, ...retained } = request;
-    const images = await Promise.all(top.map(project));
+    const images = (await Promise.all(top.map((image) => project(image)))).filter(
+      (image): image is ModelImage => image !== undefined
+    );
     const result = { ...retained, messages, ...(images.length ? { images } : {}) };
     if (!this.useResourceUrl) assertInlineMediaBudget(result);
     this.#candidates.set(result.messages, through);
@@ -295,24 +309,31 @@ export class ResourceInputProjection {
     mirroredImages: readonly ModelImage[] = []
   ): Promise<InlineMediaGcCandidate | undefined> {
     if (this.useResourceUrl) return undefined;
-    const size = async (image: ModelImage) =>
-      inlineMediaBytes(
+    const size = async (image: ModelImage, entry?: Entry) => {
+      if (entry?.unavailable && isDeepStrictEqual(entry.image, image)) return 0;
+      const sized =
         image.byteSize !== undefined || image.dataBase64 !== undefined
           ? image
-          : await this.#project(image)
-      );
+          : await this.#project(image, entry);
+      return sized ? inlineMediaBytes(sized) : 0;
+    };
     const history = await Promise.all(
       this.#entries.map(async (entry, index) => ({
         index,
         bytes:
           entry.active && entry.image && index > this.#evicted && index <= this.#considered
-            ? await size(entry.image)
+            ? await size(entry.image, entry)
             : 0
       }))
     );
-    const beforeBytes = history.reduce((sum, entry) => sum + entry.bytes, 0);
+    let beforeBytes = history.reduce((sum, entry) => sum + entry.bytes, 0);
     let freshBytes = 0;
     let requestBytes = 0;
+    const requestImages: {
+      image: ModelImage;
+      entry?: Entry;
+      historyPosition?: number;
+    }[] = [];
     const requestHistory = new Map<number, number>();
     if (request) {
       for (const message of request.messages)
@@ -321,19 +342,44 @@ export class ResourceInputProjection {
           const entry = position === undefined ? undefined : this.#entries[position];
           const original = entry && isDeepStrictEqual(entry.image, image);
           if (original && position! <= this.#evicted) continue;
-          const bytes = await size(image);
+          const bytes = await size(image, entry);
           requestBytes += bytes;
-          if (original && position! <= this.#considered)
+          if (original && position! <= this.#considered) {
             requestHistory.set(position!, (requestHistory.get(position!) ?? 0) + bytes);
-          else freshBytes += bytes;
+            requestImages.push({ image, entry, historyPosition: position! });
+          } else {
+            freshBytes += bytes;
+            requestImages.push({ image, ...(entry ? { entry } : {}) });
+          }
         }
       for (const image of request.images ?? []) {
         if (mirroredImages.some((mirror) => isDeepStrictEqual(image, mirror))) continue;
         const bytes = await size(image);
         freshBytes += bytes;
         requestBytes += bytes;
+        requestImages.push({ image });
       }
-      if (freshBytes > policy.requestInlineMediaHardLimit) inlineMediaLimit();
+      if (requestBytes > policy.requestInlineMediaHardLimit && requestImages.length) {
+        const unavailableHistory = new Set<number>();
+        freshBytes = 0;
+        requestBytes = 0;
+        requestHistory.clear();
+        for (const { image, entry, historyPosition } of requestImages) {
+          const projected = await this.#project(image, entry);
+          if (!projected) {
+            if (historyPosition !== undefined) unavailableHistory.add(historyPosition);
+            continue;
+          }
+          const bytes = inlineMediaBytes(projected);
+          requestBytes += bytes;
+          if (historyPosition === undefined) freshBytes += bytes;
+          else
+            requestHistory.set(historyPosition, (requestHistory.get(historyPosition) ?? 0) + bytes);
+        }
+        for (const position of unavailableHistory) history[position]!.bytes = 0;
+        beforeBytes = history.reduce((sum, item) => sum + item.bytes, 0);
+        if (freshBytes > policy.requestInlineMediaHardLimit) inlineMediaLimit();
+      }
     }
     const hard = requestBytes > policy.requestInlineMediaHardLimit;
     if (!hard && beforeBytes <= policy.historicalInlineMediaTarget) return undefined;
@@ -373,10 +419,42 @@ export class ResourceInputProjection {
   }
 
   adoptGc(state: InlineMediaState | undefined): void {
-    if (state) this.#evicted = this.#position(state.evictedThrough);
+    if (state) {
+      this.#evicted = this.#position(state.evictedThrough);
+      this.releaseBytes();
+    }
   }
 
-  async #project(image: ModelImage): Promise<ModelImage> {
+  releaseBytes(): void {
+    this.#resourceReads.clear();
+    this.#cachedBytes = 0;
+  }
+
+  #readBytes(resourceId: string): ReturnType<SessionStore['readResource']> {
+    const cached = this.#resourceReads.get(resourceId);
+    if (cached) return cached;
+    const pending = this.store.readResource(this.sessionId, resourceId).then(
+      (resource) => {
+        if (this.#resourceReads.get(resourceId) === pending) {
+          const bytes = resource?.dataBase64 ? inlineMediaBytes(resource) : 0;
+          if (!bytes || this.#cachedBytes + bytes > policy.requestInlineMediaHardLimit)
+            this.#resourceReads.delete(resourceId);
+          else this.#cachedBytes += bytes;
+        }
+        return resource;
+      },
+      (error: unknown) => {
+        if (this.#resourceReads.get(resourceId) === pending) this.#resourceReads.delete(resourceId);
+        throw error;
+      }
+    );
+    this.#resourceReads.set(resourceId, pending);
+    return pending;
+  }
+
+  async #project(image: ModelImage, entry?: Entry): Promise<ModelImage | undefined> {
+    const original = entry && isDeepStrictEqual(entry.image, image);
+    if (original && entry.unavailable) return undefined;
     if (this.useResourceUrl) {
       if (!isModelImageUrl(image.url))
         throw new MarAgentError(
@@ -386,14 +464,22 @@ export class ResourceInputProjection {
       const { dataBase64: _bytes, ...reference } = image;
       return reference;
     }
-    const bytes =
-      image.dataBase64 !== undefined
-        ? image
-        : image.resourceId === undefined
-          ? undefined
-          : await this.store.readResource(this.sessionId, image.resourceId);
-    if (!bytes?.dataBase64)
-      throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Resource bytes are unavailable.');
+    let bytes;
+    try {
+      bytes =
+        image.dataBase64 !== undefined
+          ? image
+          : image.resourceId === undefined
+            ? undefined
+            : await this.#readBytes(image.resourceId);
+    } catch (error) {
+      if (!(error instanceof MarAgentError) || error.code !== 'MAR_AGENT_IMAGE_UNAVAILABLE')
+        throw error;
+    }
+    if (!bytes?.dataBase64) {
+      if (original) entry.unavailable = true;
+      return undefined;
+    }
     const { url: _url, urlExpiresAt: _expires, ...reference } = image;
     return { ...reference, dataBase64: bytes.dataBase64 };
   }

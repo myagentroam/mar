@@ -11,6 +11,7 @@ import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
 
 const imageIo = vi.hoisted(() => ({
   appendPath: '',
+  windowsImagePath: '',
   pendingPath: '',
   pendingStats: 0,
   syncEntered: null as null | (() => void),
@@ -25,7 +26,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...fs,
     lstat: async (...args: Parameters<typeof fs.lstat>) => {
       if (imageIo.pendingPath !== '' && args[0] === imageIo.pendingPath) imageIo.pendingStats++;
-      return fs.lstat(...args);
+      const info = await fs.lstat(...args);
+      return args[0] === imageIo.windowsImagePath ? Object.assign(info, { dev: 0 }) : info;
     },
     open: async (...args: Parameters<typeof fs.open>) => {
       const handle = await fs.open(...args);
@@ -51,6 +53,7 @@ const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   Object.assign(imageIo, {
     appendPath: '',
+    windowsImagePath: '',
     pendingPath: '',
     pendingStats: 0,
     syncEntered: null,
@@ -75,8 +78,69 @@ async function fixture() {
 }
 
 describe('unified Session image resources', () => {
+  it.each(['binary', 'metadata'] as const)(
+    'repairs an unavailable resource when the same image bytes are attached again (%s)',
+    async (missing) => {
+      const { store, session, directory } = await fixture();
+      const input = { mimeType: 'image/png', dataBase64: pixel };
+      const image = await store.persistResource(session.id, input);
+      await store.setResourceUrl(session.id, image.resourceId, { url, urlExpiresAt: 1 });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
+      });
+      if (missing === 'binary') await rm(join(directory, `${image.resourceId}.bin`));
+      else await writeFile(join(directory, `${image.resourceId}.json`), '{');
+
+      const restored = await store.persistResource(session.id, input);
+      expect(restored.resourceId).toBe(image.resourceId);
+      if (missing === 'binary') expect(restored).toMatchObject({ url, urlExpiresAt: 1 });
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
+        dataBase64: pixel
+      });
+    }
+  );
+
+  it('reads trusted image bytes when Windows path and handle device numbers differ', async () => {
+    const { store, session, directory } = await fixture();
+    const image = await store.persistResource(session.id, {
+      mimeType: 'image/png',
+      dataBase64: pixel
+    });
+    await store.append(session.id, {
+      type: 'model.context',
+      payload: { role: 'tool', callId: 'view', images: [image] }
+    });
+    imageIo.windowsImagePath = join(directory, `${image.resourceId}.bin`);
+    await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
+      dataBase64: pixel
+    });
+  });
+
+  it.each(['same size', 'different size'])(
+    'reads trusted image files without comparing stored size or checksum (%s)',
+    async (change) => {
+      const { store, session, directory } = await fixture();
+      const image = await store.persistResource(session.id, {
+        mimeType: 'image/png',
+        dataBase64: pixel
+      });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: { role: 'tool', callId: 'view', images: [image] }
+      });
+      const bytes = Buffer.from(pixel, 'base64');
+      bytes[0] = bytes[0]! ^ 1;
+      const stored = change === 'same size' ? bytes : Buffer.concat([bytes, Buffer.from('extra')]);
+      await writeFile(join(directory, `${image.resourceId}.bin`), stored);
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
+        dataBase64: stored.toString('base64')
+      });
+    }
+  );
+
   it.each(['bytes', 'mimeType'] as const)(
-    'rejects metadata whose %s no longer matches its content-addressed resource ID',
+    'reads trusted resource metadata without recalculating its identity (%s)',
     async (change) => {
       const { store, session, directory } = await fixture();
       const image = await store.persistResource(session.id, {
@@ -99,30 +163,28 @@ describe('unified Session image resources', () => {
         await writeFile(join(directory, `${image.resourceId}.bin`), bytes);
       } else metadata.mimeType = 'image/jpeg';
       await writeFile(metadataPath, JSON.stringify(metadata));
-      await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
-        code: 'MAR_AGENT_SESSION_CORRUPT'
+      await expect(store.readResource(session.id, image.resourceId)).resolves.toMatchObject({
+        mimeType: metadata.mimeType,
+        dataBase64: (await readFile(join(directory, `${image.resourceId}.bin`))).toString('base64')
       });
     }
   );
 
-  it.each(['{', 'null', '{}'])(
-    'rejects corrupt resource metadata with a stable code (%s)',
-    async (metadata) => {
-      const { store, session, directory } = await fixture();
-      const image = await store.persistResource(session.id, {
-        mimeType: 'image/png',
-        dataBase64: pixel
-      });
-      await store.append(session.id, {
-        type: 'model.context',
-        payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
-      });
-      await writeFile(join(directory, `${image.resourceId}.json`), metadata);
-      await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
-        code: 'MAR_AGENT_SESSION_CORRUPT'
-      });
-    }
-  );
+  it('reports unparseable resource metadata with a stable code', async () => {
+    const { store, session, directory } = await fixture();
+    const image = await store.persistResource(session.id, {
+      mimeType: 'image/png',
+      dataBase64: pixel
+    });
+    await store.append(session.id, {
+      type: 'model.context',
+      payload: { role: 'tool', callId: 'view', content: 'seen', images: [image] }
+    });
+    await writeFile(join(directory, `${image.resourceId}.json`), '{');
+    await expect(store.readResource(session.id, image.resourceId)).rejects.toMatchObject({
+      code: 'MAR_AGENT_IMAGE_UNAVAILABLE'
+    });
+  });
 
   it('does not expose uncommitted bytes and accepts a committed surviving pending marker', async () => {
     const { store, session, directory } = await fixture();
@@ -321,6 +383,114 @@ describe('unified Session image resources', () => {
     });
     expect(textOnly.messages.every((message) => message.images === undefined)).toBe(true);
   });
+
+  it.each([
+    { source: 'user', failure: 'missing bytes' },
+    { source: 'tool', failure: 'missing bytes' },
+    { source: 'user', failure: 'invalid metadata' },
+    { source: 'tool', failure: 'invalid metadata' }
+  ])(
+    'continues and reopens a Session after an image becomes unavailable (%j)',
+    async ({ source, failure }) => {
+      const { home, store, session, directory } = await fixture();
+      let resourceId: string;
+      if (source === 'user') {
+        const images = await store.persistInputImages(session.id, [
+          { name: 'pixel.png', mimeType: 'image/png', dataBase64: pixel }
+        ]);
+        resourceId = images[0]!.resourceId!;
+        await store.append(session.id, {
+          type: 'turn.user',
+          payload: { prompt: 'Keep the original text.', images }
+        });
+      } else {
+        const resource = await store.persistResource(session.id, {
+          mimeType: 'image/png',
+          dataBase64: pixel
+        });
+        resourceId = resource.resourceId;
+        await store.append(session.id, {
+          type: 'model.context',
+          payload: {
+            role: 'tool_call',
+            callId: 'view',
+            name: 'view_image',
+            arguments: {},
+            content: ''
+          }
+        });
+        await store.append(session.id, {
+          type: 'model.context',
+          payload: {
+            role: 'tool',
+            callId: 'view',
+            content: 'Keep the original text.',
+            images: [resource]
+          }
+        });
+      }
+      const model: MarAgentModelConfiguration = {
+        id: 'vision',
+        name: 'Vision',
+        protocol: 'OPENAI_RESPONSES',
+        modelId: 'vision',
+        baseUrl: 'https://example.test',
+        apiKey: new SecretValue('test'),
+        contextWindowTokens: 100_000,
+        maxOutputTokens: 1000,
+        inputCapabilities: ['TEXT', 'IMAGE'],
+        outputCapabilities: ['TEXT'],
+        reasoningEfforts: [],
+        enabled: true,
+        titleGeneration: false,
+        useResourceUrl: false
+      };
+      const requests: ModelRequest[] = [];
+      const create = () =>
+        createMarAgentWithAdapter({
+          mode: 'normal',
+          models: [model],
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          adapterFactory: () => ({
+            configuration: model,
+            async *start(request) {
+              requests.push(request);
+              yield { type: 'text.completed' as const, itemId: 'answer', text: 'continued' };
+              yield { type: 'completed' as const, reason: 'completed' as const };
+            }
+          })
+        });
+      let agent = await create();
+      cleanups.push(() => agent.dispose());
+      let live = await agent.openSession(session.id);
+      expect(await live.run({ prompt: 'Inspect.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(requests[0]!.messages.some((message) => message.images?.length)).toBe(true);
+      if (failure === 'missing bytes') await rm(join(directory, `${resourceId}.bin`));
+      else await writeFile(join(directory, `${resourceId}.json`), '{');
+      for (let turn = 0; turn < 2; turn++)
+        expect(await live.run({ prompt: 'Continue with the text.' }).result()).toMatchObject({
+          status: 'completed'
+        });
+      await agent.dispose();
+      agent = await create();
+      live = await agent.openSession(session.id);
+      expect(await live.run({ prompt: 'Continue after reopening.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      for (const request of requests.slice(1)) {
+        const original = request.messages.find((message) =>
+          message.content.includes('Keep the original text.')
+        )!;
+        expect(original.images ?? []).toEqual([]);
+        expect(original.content).toContain('Image unavailable');
+      }
+      expect(
+        (await store.read(session.id)).some((record) => record.type === 'execution.failed')
+      ).toBe(false);
+    }
+  );
 
   it.each([
     { codeMode: false, partial: false },

@@ -676,6 +676,7 @@ export function createSessionOpener(services: SessionServices) {
         let finalAnswer = '';
         let executionLoop: ExecutionLoop | undefined;
         let executionToolSources: ExecutionToolSources | undefined;
+        let releaseImageBytes: (() => void) | undefined;
         const contextGc = new ContextGcRuntime();
         let selectedAdapter: ModelAdapter | undefined;
         const modelResources = createExecutionModelResources(activeExecutionAdapters);
@@ -1225,6 +1226,7 @@ export function createSessionOpener(services: SessionServices) {
               }
             }
           );
+          releaseImageBytes = () => resourceInput.releaseBytes();
           const selected = modelResources.openTurn(
             selectedAdapter,
             services.hasCustomAdapters && selectedAdapter.createTurnSession === undefined
@@ -2739,6 +2741,7 @@ export function createSessionOpener(services: SessionServices) {
             errorMessage: diagnostic.message
           };
         } finally {
+          releaseImageBytes?.();
           // Revoke this Execution's request and input bindings, not Session warm resources.
           delete executionContext.requestMessages;
           compactRequests.close(new MarAgentError('MAR_AGENT_CANCELLED', 'Execution ended.'));

@@ -6,7 +6,7 @@ import type {
   SessionRecordInput,
   SessionStoreCompactInput
 } from './contracts.js';
-import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { MarAgentError } from '../../error.js';
@@ -536,26 +536,17 @@ export class JsonlSessionStore implements SessionStore {
   async readContextualWorldState(sessionId: string): Promise<unknown | undefined> {
     const path = join(this.#sessionDirectory(sessionId), CONTEXTUAL_WORLD_STATE_FILE);
     try {
-      const pathInfo = await lstat(path);
-      if (!pathInfo.isFile()) return undefined;
-      const file = await open(path, 'r');
-      try {
-        const info = await file.stat();
-        if (!info.isFile() || info.size > MAX_CONTEXTUAL_WORLD_STATE_BYTES) return undefined;
-        const envelope = JSON.parse(await file.readFile('utf8')) as Record<string, unknown>;
-        const meta = this.#shared.index.sessions.find((item) => item.id === sessionId);
-        if (
-          envelope.version !== 1 ||
-          !Number.isSafeInteger(envelope.historySequence) ||
-          (envelope.historySequence as number) < 1 ||
-          meta === undefined ||
-          (envelope.historySequence as number) >= meta.nextSequence
-        )
-          return undefined;
-        return envelope.state;
-      } finally {
-        await file.close();
-      }
+      const envelope = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+      const meta = this.#shared.index.sessions.find((item) => item.id === sessionId);
+      if (
+        envelope.version !== 1 ||
+        !Number.isSafeInteger(envelope.historySequence) ||
+        (envelope.historySequence as number) < 1 ||
+        meta === undefined ||
+        (envelope.historySequence as number) >= meta.nextSequence
+      )
+        return undefined;
+      return envelope.state;
     } catch {
       return undefined;
     }
@@ -648,16 +639,26 @@ export class JsonlSessionStore implements SessionStore {
     const directory = join(this.#sessionDirectory(sessionId), 'resources');
     if (!/^[a-f0-9]{64}$/u.test(resourceId)) return undefined;
     return this.#serializeRecordOperation(sessionId, async () => {
+      let pending = false;
       try {
         await lstat(join(directory, `.${resourceId}.pending`));
-        if (
-          this.#shared.writerLeases.get(sessionId)?.appendFailure !== undefined ||
-          !resourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`)
-        )
-          return undefined;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        pending = true;
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== 'ENOENT')
+          throw new MarAgentError(
+            'MAR_AGENT_IMAGE_UNAVAILABLE',
+            'Session image resource is unavailable.',
+            {
+              cause
+            }
+          );
       }
+      if (
+        pending &&
+        (this.#shared.writerLeases.get(sessionId)?.appendFailure !== undefined ||
+          !resourceFiles(await this.#readRecords(sessionId)).has(`${resourceId}.bin`))
+      )
+        return undefined;
       return readResource(directory, resourceId);
     });
   }

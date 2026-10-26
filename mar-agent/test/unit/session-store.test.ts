@@ -1251,7 +1251,7 @@ describe('JSONL session store', () => {
     await reopened.close();
   });
 
-  it('rejects unsafe current references and missing, changed or symlink resource files', async () => {
+  it('rejects unsafe requests and reports missing files without revalidating trusted resources', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-current-resource-corrupt-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
@@ -1278,18 +1278,18 @@ describe('JSONL session store', () => {
     await expect(store.readResource(session.id, '../unsafe')).resolves.toBeUndefined();
     await rm(path);
     await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
-      code: 'MAR_AGENT_SESSION_CORRUPT'
+      code: 'MAR_AGENT_IMAGE_UNAVAILABLE'
     });
     await writeFile(path, 'xyz');
-    await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
-      code: 'MAR_AGENT_SESSION_CORRUPT'
+    await expect(store.readResource(session.id, resource.resourceId)).resolves.toMatchObject({
+      dataBase64: Buffer.from('xyz').toString('base64')
     });
     if (process.platform !== 'win32') {
       await rm(path);
       await writeFile(join(directory, 'target.bin'), 'abc');
       await symlink('target.bin', path);
-      await expect(store.readResource(session.id, resource.resourceId)).rejects.toMatchObject({
-        code: 'MAR_AGENT_SESSION_CORRUPT'
+      await expect(store.readResource(session.id, resource.resourceId)).resolves.toMatchObject({
+        dataBase64: Buffer.from('abc').toString('base64')
       });
     }
     await store.close();
