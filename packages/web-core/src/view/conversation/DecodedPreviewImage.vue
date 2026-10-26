@@ -82,12 +82,7 @@ async function loaded(event: Event): Promise<void> {
 </script>
 
 <template>
-  <div
-    class="decoded-preview-image"
-    :class="{ 'is-original': original }"
-    :aria-busy="loading"
-    :tabindex="original ? 0 : undefined"
-  >
+  <div class="decoded-preview-image" :aria-busy="loading">
     <FilePreviewLoading v-if="loading" />
     <img
       v-if="preview && !failed"
@@ -126,15 +121,6 @@ async function loaded(event: Event): Promise<void> {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-}
-.decoded-preview-image.is-original {
-  display: block;
-  overflow: auto;
-}
-.is-original .attachment-preview-image {
-  max-width: none;
-  max-height: none;
-  margin: auto;
 }
 .image-preview-failure {
   display: flex;
