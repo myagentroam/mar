@@ -1648,7 +1648,12 @@ describe('local workspace tools', () => {
       expect(await poll).toMatchObject({ status: 'running' });
       const next = tool.execute({ action: 'poll', processId: started.processId });
       state.stdout.write('ready');
-      expect(await next).toMatchObject({ status: 'running', stdout: 'ready' });
+      await vi.advanceTimersByTimeAsync(TOOL_EXECUTION_LIMITS.execDefaultYieldMs);
+      expect(await next).toMatchObject({
+        status: 'running',
+        stdout: 'ready',
+        waitOutcome: 'timeout'
+      });
     } finally {
       state.exitCode = 0;
       state.emit('close', 0, null);

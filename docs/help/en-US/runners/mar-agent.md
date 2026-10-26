@@ -178,7 +178,9 @@ Background cells are Session warm resources. The initial `code_exec` wait defaul
 
 Temporary resource handles have type prefixes: a `cellId` is `c_` followed by 12 lowercase hexadecimal characters, and a `processId` is `p_` followed by 12 lowercase hexadecimal characters. Copy the complete returned ID unchanged; do not shorten or interchange IDs. Use `code_exec_wait` for cells and `exec_wait` for processes. A wrong-type handle returns `MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH` with the appropriate tool hint; it never redirects the operation automatically. A prefix does not prove that a resource is still available or accessible. Existing Session ownership and cleanup rules remain unchanged.
 
-The Web conversation displays each `code_exec` call as a command card with its original JavaScript and call output, without expanding nested tools. `code_exec_wait` remains an ordinary tool card for waiting or cancellation results. A returned command card does not mean a yielded background cell has finished.
+Process waits aggregate stdout/stderr until output closes after termination or the wait window ends. New logs do not end the model's wait early. Web command cards can show bounded live previews without extra model requests or consuming the final tool output. Cancellation and user follow-up messages can still end a wait early while the process keeps running.
+
+The Web conversation displays each `code_exec` call as a command card with its original JavaScript and call output, without expanding nested tools. Live logs from nested processes appear on the outer code card. After a cell returns running, an active wait card in the same execution continues showing its progress; the final tool result replaces that temporary preview. `code_exec_wait` also uses a command card for waiting or cancellation results. A returned command card does not mean a yielded background cell has finished.
 
 ## Local SDK and CLI
 

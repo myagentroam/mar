@@ -20,8 +20,11 @@ import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limi
 import { createToolWaitInterrupt } from '../../src/agent-core/tools/wait.js';
 
 const hosts: LocalAgentHost[] = [];
+const children: ChildProcessWithoutNullStreams[] = [];
 const roots: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
+  for (const child of children.splice(0)) child.emit('close', 0, null);
   await Promise.all(hosts.splice(0).map((host) => host.dispose()));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -37,7 +40,17 @@ async function fixture(processExecutor?: LocalProcessExecutor) {
   const host = new LocalAgentHost({
     homeDirectory: root,
     workspace: root,
-    ...(processExecutor === undefined ? {} : { processExecutor })
+    ...(processExecutor === undefined
+      ? {}
+      : {
+          processExecutor: {
+            async spawn(request) {
+              const child = await processExecutor.spawn(request);
+              children.push(child);
+              return child;
+            }
+          }
+        })
   });
   hosts.push(host);
   const call = async (name: string, args: unknown, ctx = context()) =>
@@ -48,7 +61,7 @@ const command = (script: string) => `"${process.execPath}" -e ${JSON.stringify(s
 
 describe('exec_wait', () => {
   it.each(['stdout', 'stderr'] as const)(
-    'returns already buffered %s before a pending steer, without replaying consumed output',
+    'returns buffered %s with a pending steer, without treating output as completion or replaying it',
     async (stream) => {
       const child = Object.assign(new EventEmitter(), {
         stdin: new PassThrough(),
@@ -67,7 +80,12 @@ describe('exec_wait', () => {
         const ctx = { ...context(), waitInterrupt: createToolWaitInterrupt(() => true) };
         expect(
           await call('exec_wait', { processId: started.processId, yieldMs: 300000 }, ctx)
-        ).toMatchObject({ status: 'running', waitOutcome: 'yield', [stream]: 'ready' });
+        ).toMatchObject({
+          status: 'running',
+          waitOutcome: 'interrupted',
+          reason: 'steer',
+          [stream]: 'ready'
+        });
         expect(
           await call('exec_wait', { processId: started.processId, yieldMs: 300000 }, ctx)
         ).toMatchObject({
@@ -80,6 +98,238 @@ describe('exec_wait', () => {
         child.exitCode = 0;
         child.emit('close', 0, null);
       }
+    }
+  );
+
+  it.each(['exec', 'exec_wait'])(
+    'aggregates output throughout the %s wait while publishing live snapshots without consuming it',
+    async (name) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const started =
+        name === 'exec_wait' ? await call('exec', { command: 'fixture', yieldMs: 0 }) : undefined;
+      vi.useFakeTimers();
+      const snapshots: unknown[] = [];
+      const ctx = {
+        ...context(),
+        onOutput: async (output: unknown) => {
+          snapshots.push(output);
+        }
+      };
+      let settled = false;
+      const waiting = call(
+        name,
+        name === 'exec'
+          ? { command: 'fixture', yieldMs: 1000 }
+          : { processId: started!.processId, yieldMs: 1000 },
+        ctx
+      ).then((result) => {
+        settled = true;
+        return result;
+      });
+      await vi.waitFor(() => expect(child.stdout.listenerCount('data')).toBe(1));
+      await vi.advanceTimersByTimeAsync(0);
+      child.stdout.write('first');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(settled).toBe(false);
+      expect(snapshots).toContainEqual(expect.objectContaining({ stdout: 'first', stderr: '' }));
+      child.stderr.write('warning');
+      child.stdout.write('-second');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(settled).toBe(false);
+      expect(snapshots.at(-1)).toMatchObject({ stdout: 'first-second', stderr: 'warning' });
+      child.exitCode = 0;
+      child.emit('exit', 0, null);
+      child.stdout.write('-tail');
+      await vi.advanceTimersByTimeAsync(20);
+      expect(settled).toBe(false);
+      child.emit('close', 0, null);
+      expect(await waiting).toMatchObject({
+        status: 'completed',
+        waitOutcome: 'completion',
+        stdout: 'first-second-tail',
+        stderr: 'warning',
+        exitCode: 0
+      });
+      const count = snapshots.length;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(snapshots).toHaveLength(count);
+    }
+  );
+
+  it('keeps a fixed poll deadline despite output, then returns only new bounded output on the next poll', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const { call } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+    vi.useFakeTimers();
+    const onOutput = vi.fn(async () => {});
+    const waiting = call(
+      'exec_wait',
+      { processId: started.processId, yieldMs: 1000 },
+      { ...context(), onOutput }
+    );
+    for (let i = 0; i < 10; i++) {
+      child.stdout.write('🙂'.repeat(5000));
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    const result = await waiting;
+    expect(result).toMatchObject({
+      status: 'running',
+      waitOutcome: 'timeout',
+      stdoutBytes: 200000,
+      truncated: false
+    });
+    expect(result.stdout).toBe('🙂'.repeat(50000));
+    expect(onOutput.mock.calls.length).toBeLessThanOrEqual(10);
+    expect(onOutput.mock.calls.length).toBeGreaterThan(0);
+    for (const [snapshot] of onOutput.mock.calls as unknown as [ExecResult][]) {
+      expect(Buffer.byteLength(snapshot.stdout)).toBeLessThanOrEqual(
+        TOOL_EXECUTION_LIMITS.execProgressMaxOutputBytes
+      );
+      expect(snapshot.stdout).not.toContain('�');
+      expect(snapshot.truncated).toBe(true);
+    }
+    child.stdout.write('next');
+    expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
+      stdout: 'next',
+      waitOutcome: 'snapshot'
+    });
+    child.exitCode = 0;
+    child.emit('close', 0, null);
+  });
+
+  it.each(['cancel', 'steer'] as const)(
+    'coalesces slow display observers and releases a %s wait without losing output',
+    async (reason) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+      vi.useFakeTimers();
+      let release!: () => void;
+      const onOutput = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          })
+      );
+      const abort = new AbortController();
+      let pending = false;
+      const waitInterrupt = createToolWaitInterrupt(() => pending);
+      const waiting = call(
+        'exec_wait',
+        { processId: started.processId, yieldMs: 10000 },
+        { ...context(), signal: abort.signal, waitInterrupt, onOutput }
+      );
+      const result =
+        reason === 'cancel' ? expect(waiting).rejects.toThrow('stop waiting') : waiting;
+      child.stdout.write('first');
+      await vi.advanceTimersByTimeAsync(100);
+      for (let i = 0; i < 10; i++) {
+        child.stdout.write('.');
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      expect(onOutput).toHaveBeenCalledTimes(1);
+      if (reason === 'cancel') abort.abort(new Error('stop waiting'));
+      else {
+        pending = true;
+        waitInterrupt.notify();
+      }
+      const output = await result;
+      if (reason === 'steer')
+        expect(output).toMatchObject({
+          waitOutcome: 'interrupted',
+          reason: 'steer',
+          stdout: 'first..........'
+        });
+      release();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onOutput).toHaveBeenCalledTimes(1);
+      expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
+        stdout: reason === 'cancel' ? 'first..........' : '',
+        status: 'running'
+      });
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+    }
+  );
+
+  it.each(['slow', 'rejected'] as const)(
+    'does not extend a wait deadline or fail a process for a %s display observer',
+    async (delivery) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+      vi.useFakeTimers();
+      let release = () => {};
+      const onOutput = vi.fn(() =>
+        delivery === 'rejected'
+          ? Promise.reject(new Error('display unavailable'))
+          : new Promise<void>((resolve) => {
+              release = resolve;
+            })
+      );
+      const waiting = call(
+        'exec_wait',
+        { processId: started.processId, yieldMs: 1000 },
+        { ...context(), onOutput }
+      );
+      child.stdout.write('progress');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await waiting).toMatchObject({
+        status: 'running',
+        waitOutcome: 'timeout',
+        stdout: 'progress'
+      });
+      release();
+      child.stdout.write('tail');
+      child.exitCode = 7;
+      child.emit('close', 7, null);
+      expect(
+        await call('exec_wait', { processId: started.processId, yieldMs: 1000 })
+      ).toMatchObject({
+        status: 'completed',
+        waitOutcome: 'completion',
+        stdout: 'tail',
+        exitCode: 7
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onOutput).toHaveBeenCalledTimes(1);
     }
   );
 

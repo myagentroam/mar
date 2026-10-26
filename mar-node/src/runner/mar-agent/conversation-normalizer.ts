@@ -49,9 +49,36 @@ type ToolState = {
   readonly input: unknown;
   readonly itemId: string;
   readonly structured: boolean;
+  readonly executionId: string;
+  readonly turnId?: string;
+  active: boolean;
   readonly commandOrigin?: string;
   readonly subagentTitle?: string;
   readonly subagentDetails?: SubagentDetails;
+};
+
+type ToolOutputSnapshot = {
+  readonly commandOrigin: string;
+  readonly outputPreview: string;
+  readonly truncated: boolean;
+};
+
+type CodeModeOutputCall = {
+  readonly parentCallId: string;
+  readonly executionId: string;
+  readonly turnId?: string;
+  readonly toolName: 'exec' | 'exec_wait';
+  readonly input: unknown;
+};
+
+type CodeModeOutputSnapshot = {
+  readonly outputPreview: string;
+  readonly truncated: boolean;
+};
+
+type RunningCodeModeCell = {
+  readonly cellId: string;
+  readonly executionId: string;
 };
 
 type SubagentDetails = {
@@ -140,6 +167,11 @@ export class MarAgentConversationNormalizer {
   readonly #subagentDetails = new Map<string, SubagentDetails>();
   readonly #codeModeObservationIds = new Set<string>();
   readonly #codeModeSourceCallIds = new Set<string>();
+  readonly #toolOutputSnapshots = new Map<string, ToolOutputSnapshot>();
+  readonly #codeModeOutputCalls = new Map<string, CodeModeOutputCall>();
+  readonly #codeModeOutputSnapshots = new Map<string, Map<string, CodeModeOutputSnapshot>>();
+  readonly #runningCodeModeCells = new Map<string, RunningCodeModeCell>();
+  readonly #codeModeCellWaiters = new Map<string, Set<string>>();
 
   messageItemId(nativeItemId: string): string {
     return itemId('message', nativeItemId);
@@ -149,6 +181,11 @@ export class MarAgentConversationNormalizer {
     event: MarAgentEvent,
     options: { readonly publicItemIdPrefix?: string } = {}
   ): readonly MarAgentNormalizedItem[] {
+    if (event.type === 'tool.output') return this.#toolOutput(event);
+    if (event.type === 'execution.started') {
+      this.#startExecution(event.executionId);
+      return [];
+    }
     if (event.type === 'input.received') return [this.input(event.entry)];
     if (event.type === 'execution.failed') {
       const projected = runnerErrorProjection(
@@ -212,6 +249,14 @@ export class MarAgentConversationNormalizer {
       event.type === 'tool.completed' ||
       event.type === 'tool.failed'
     ) {
+      if (
+        event.parentCallId !== undefined &&
+        (event.toolName === 'exec' || event.toolName === 'exec_wait')
+      ) {
+        if (event.type === 'tool.started') this.#trackCodeModeOutputCall(event);
+        else this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
+        return [];
+      }
       // Read/web calls and generated artifacts stay visible independently of cell observations.
       if (
         event.parentCallId !== undefined &&
@@ -219,9 +264,12 @@ export class MarAgentConversationNormalizer {
         event.toolName !== 'web_search' &&
         event.toolName !== 'web_fetch' &&
         !isImageGenerationTool(event.toolName)
-      )
+      ) {
+        this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
         return [];
+      }
       if (event.type === 'tool.started') return this.#toolStarted(event);
+      this.#finishToolCall(event);
       const permissionStop = permissionStopForToolEvent(event);
       const outerItems =
         event.type === 'tool.completed' ? this.#toolCompleted(event) : this.#toolFailed(event);
@@ -280,6 +328,10 @@ export class MarAgentConversationNormalizer {
 
   #toolStarted(event: Extract<MarAgentEvent, { type: 'tool.started' }>) {
     const ownItemId = itemId('tool', event.callId);
+    this.#clearRetainedCodeModeCellsForOtherExecutions(event.executionId);
+    this.#toolOutputSnapshots.delete(event.callId);
+    this.#codeModeOutputCalls.delete(event.callId);
+    this.#clearCodeModeOutputSnapshots(event.callId);
     if (event.toolName === 'exec' || event.toolName === 'exec_wait') {
       const input = record(event.input) ?? {};
       const action =
@@ -306,6 +358,9 @@ export class MarAgentConversationNormalizer {
           input: event.input,
           itemId: ownItemId,
           structured: true,
+          executionId: event.executionId,
+          ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+          active: true,
           commandOrigin: event.callId
         });
         return [commandItem(command, 'IN_PROGRESS')];
@@ -335,6 +390,9 @@ export class MarAgentConversationNormalizer {
               input: event.input,
               itemId: ownItemId,
               structured: true,
+              executionId: event.executionId,
+              ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+              active: true,
               commandOrigin: event.callId
             });
             return [];
@@ -344,6 +402,9 @@ export class MarAgentConversationNormalizer {
             input: event.input,
             itemId: ownItemId,
             structured: true,
+            executionId: event.executionId,
+            ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+            active: true,
             commandOrigin: origin
           });
           return [];
@@ -360,10 +421,14 @@ export class MarAgentConversationNormalizer {
       input: event.input,
       itemId: ownItemId,
       structured: 'input' in event,
+      executionId: event.executionId,
+      ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+      active: true,
       ...(event.data === undefined ? {} : { presentationData: event.data }),
       ...(subagentTitle === undefined ? {} : { subagentTitle }),
       ...(subagentDetails === undefined ? {} : { subagentDetails })
     });
+    if (event.toolName === 'code_exec_wait') this.#trackCodeModeWait(event);
     if (event.toolName === 'apply_patch' && 'input' in event)
       return [fileChangeItem(ownItemId, 'IN_PROGRESS', [])];
     return [
@@ -380,6 +445,267 @@ export class MarAgentConversationNormalizer {
         subagentDetails
       )
     ];
+  }
+
+  #toolOutput(
+    event: Extract<MarAgentEvent, { type: 'tool.output' }>
+  ): readonly MarAgentNormalizedItem[] {
+    const { callId, toolName, executionId, turnId, parentCallId, output } = event;
+    const inputOutput = [output.stdout, output.stderr].filter(Boolean).join('\n');
+    const snapshot = {
+      outputPreview: compactRunnerText(inputOutput, 10_000),
+      truncated: output.truncated || inputOutput.length > 10_000
+    };
+
+    if (parentCallId !== undefined)
+      return this.#codeModeToolOutput(
+        callId,
+        parentCallId,
+        toolName,
+        executionId,
+        turnId,
+        output.processId,
+        snapshot
+      );
+
+    const state = this.#tools.get(callId);
+    if (
+      state === undefined ||
+      !state.active ||
+      state.toolName !== toolName ||
+      state.executionId !== executionId ||
+      (state.turnId !== undefined && turnId !== undefined && state.turnId !== turnId) ||
+      state.commandOrigin === undefined
+    )
+      return [];
+    const input = record(state.input);
+    if (typeof input?.processId === 'string' && input.processId !== output.processId) return [];
+
+    const command = this.#commands.get(state.commandOrigin);
+    if (command === undefined || command.status !== 'IN_PROGRESS') return [];
+    this.#toolOutputSnapshots.set(callId, {
+      commandOrigin: state.commandOrigin,
+      ...snapshot
+    });
+    return [
+      commandItem(
+        commandWithOutputSnapshots(
+          command,
+          [...this.#toolOutputSnapshots.values()].filter(
+            (entry) => entry.commandOrigin === state.commandOrigin
+          )
+        ),
+        'IN_PROGRESS'
+      )
+    ];
+  }
+
+  #codeModeToolOutput(
+    callId: string,
+    parentCallId: string,
+    toolName: 'exec' | 'exec_wait',
+    executionId: string,
+    turnId: string | undefined,
+    processId: string,
+    snapshot: CodeModeOutputSnapshot
+  ): readonly MarAgentNormalizedItem[] {
+    const parent = this.#tools.get(parentCallId);
+    const child = this.#codeModeOutputCalls.get(callId);
+    if (
+      parent === undefined ||
+      (parent.toolName !== 'code_exec' && parent.toolName !== 'code_exec_wait') ||
+      parent.executionId !== executionId ||
+      (parent.turnId !== undefined && turnId !== undefined && parent.turnId !== turnId) ||
+      child === undefined ||
+      child.parentCallId !== parentCallId ||
+      child.toolName !== toolName ||
+      child.executionId !== executionId ||
+      (child.turnId !== undefined && turnId !== undefined && child.turnId !== turnId)
+    )
+      return [];
+
+    const target = parent.active
+      ? parent
+      : this.#runningCodeModeCells.get(parentCallId)?.executionId === executionId
+        ? this.#activeCodeModeWaiter(this.#runningCodeModeCells.get(parentCallId)!)
+        : undefined;
+    if (target === undefined) return [];
+    const input = record(child.input);
+    if (typeof input?.processId === 'string' && input.processId !== processId) return [];
+
+    const snapshots = this.#codeModeOutputSnapshots.get(parentCallId) ?? new Map();
+    snapshots.set(callId, snapshot);
+    this.#codeModeOutputSnapshots.set(parentCallId, snapshots);
+    const combined = [...snapshots.values()]
+      .map((entry) => entry.outputPreview)
+      .filter(Boolean)
+      .join('\n');
+    const truncated =
+      [...snapshots.values()].some((entry) => entry.truncated) || combined.length > 10_000;
+    return [
+      genericToolItem(
+        target.itemId,
+        target.toolName,
+        'IN_PROGRESS',
+        target.input,
+        compactRunnerText(combined, 10_000),
+        null,
+        truncated
+      )
+    ];
+  }
+
+  #trackCodeModeOutputCall(event: Extract<MarAgentEvent, { type: 'tool.started' }>): void {
+    const parentCallId = event.parentCallId;
+    if (parentCallId === undefined || (event.toolName !== 'exec' && event.toolName !== 'exec_wait'))
+      return;
+    const parent = this.#tools.get(parentCallId);
+    const retainedCell = this.#runningCodeModeCells.get(parentCallId);
+    const canResumeRetainedCell =
+      parent !== undefined && !parent.active && retainedCell?.executionId === event.executionId;
+    if (
+      parent === undefined ||
+      (parent.toolName !== 'code_exec' && parent.toolName !== 'code_exec_wait') ||
+      parent.executionId !== event.executionId ||
+      (parent.turnId !== undefined && event.turnId !== undefined && parent.turnId !== event.turnId)
+    )
+      return;
+    if (!parent.active && !canResumeRetainedCell) return;
+    this.#codeModeOutputCalls.delete(event.callId);
+    const snapshots = this.#codeModeOutputSnapshots.get(parentCallId);
+    snapshots?.delete(event.callId);
+    this.#codeModeOutputCalls.set(event.callId, {
+      parentCallId,
+      executionId: event.executionId,
+      ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+      toolName: event.toolName,
+      input: event.input
+    });
+  }
+
+  #finishCodeModeOutputCall(callId: string, parentCallId: string): void {
+    const call = this.#codeModeOutputCalls.get(callId);
+    if (call?.parentCallId === parentCallId) {
+      this.#codeModeOutputCalls.delete(callId);
+      this.#codeModeOutputSnapshots.get(parentCallId)?.delete(callId);
+    }
+  }
+
+  #trackCodeModeWait(event: Extract<MarAgentEvent, { type: 'tool.started' }>): void {
+    const cellId = record(event.input)?.cellId;
+    if (typeof cellId !== 'string' || cellId.length === 0) return;
+    const cell = [...this.#runningCodeModeCells.values()].find(
+      (candidate) => candidate.cellId === cellId && candidate.executionId === event.executionId
+    );
+    if (cell === undefined) return;
+    const waiters = this.#codeModeCellWaiters.get(cellId) ?? new Set<string>();
+    waiters.add(event.callId);
+    this.#codeModeCellWaiters.set(cellId, waiters);
+  }
+
+  #activeCodeModeWaiter(cell: RunningCodeModeCell): ToolState | undefined {
+    const waiters = this.#codeModeCellWaiters.get(cell.cellId);
+    if (waiters === undefined) return undefined;
+    for (const callId of [...waiters].reverse()) {
+      const state = this.#tools.get(callId);
+      const input = record(state?.input);
+      if (
+        state?.active === true &&
+        state.toolName === 'code_exec_wait' &&
+        state.executionId === cell.executionId &&
+        input?.cellId === cell.cellId
+      )
+        return state;
+      waiters.delete(callId);
+    }
+    if (waiters.size === 0) this.#codeModeCellWaiters.delete(cell.cellId);
+    return undefined;
+  }
+
+  #finishToolCall(event: Extract<MarAgentEvent, { type: 'tool.completed' | 'tool.failed' }>): void {
+    const state = this.#tools.get(event.callId);
+    if (state !== undefined) state.active = false;
+    this.#toolOutputSnapshots.delete(event.callId);
+    const data = record(event.data);
+    const cellId = typeof data?.cellId === 'string' ? data.cellId : undefined;
+    const status = data?.status;
+
+    if (state?.toolName === 'code_exec') {
+      if (
+        event.type === 'tool.completed' &&
+        event.toolName === 'code_exec' &&
+        status === 'running' &&
+        cellId !== undefined &&
+        cellId.length > 0
+      ) {
+        this.#runningCodeModeCells.set(event.callId, {
+          cellId,
+          executionId: event.executionId
+        });
+        return;
+      }
+      this.#clearRunningCodeModeCell(event.callId);
+      return;
+    }
+
+    if (state?.toolName === 'code_exec_wait') {
+      const inputCellId = record(state.input)?.cellId;
+      if (typeof inputCellId === 'string') this.#removeCodeModeWaiter(inputCellId, event.callId);
+      if (
+        (status === 'completed' || status === 'failed' || status === 'cancelled') &&
+        typeof (cellId ?? inputCellId) === 'string'
+      ) {
+        const finishedCellId = (cellId ?? inputCellId) as string;
+        for (const [sourceCallId, cell] of this.#runningCodeModeCells)
+          if (cell.cellId === finishedCellId && cell.executionId === event.executionId)
+            this.#clearRunningCodeModeCell(sourceCallId);
+      }
+      this.#clearCodeModeOutputSnapshots(event.callId);
+      return;
+    }
+
+    this.#clearCodeModeOutputSnapshots(event.callId);
+  }
+
+  #clearCodeModeOutputSnapshots(parentCallId: string): void {
+    this.#codeModeOutputSnapshots.delete(parentCallId);
+    for (const [callId, state] of this.#codeModeOutputCalls)
+      if (state.parentCallId === parentCallId) this.#codeModeOutputCalls.delete(callId);
+  }
+
+  #removeCodeModeWaiter(cellId: string, callId: string): void {
+    const waiters = this.#codeModeCellWaiters.get(cellId);
+    waiters?.delete(callId);
+    if (waiters?.size === 0) this.#codeModeCellWaiters.delete(cellId);
+  }
+
+  #clearRunningCodeModeCell(sourceCallId: string): void {
+    const cell = this.#runningCodeModeCells.get(sourceCallId);
+    if (cell !== undefined) {
+      this.#runningCodeModeCells.delete(sourceCallId);
+      this.#codeModeCellWaiters.delete(cell.cellId);
+    }
+    this.#clearCodeModeOutputSnapshots(sourceCallId);
+  }
+
+  #startExecution(executionId: string): void {
+    for (const [callId, state] of this.#tools)
+      if (state.executionId !== executionId) {
+        state.active = false;
+        this.#toolOutputSnapshots.delete(callId);
+      }
+    for (const [callId, state] of this.#codeModeOutputCalls)
+      if (state.executionId !== executionId) this.#codeModeOutputCalls.delete(callId);
+    for (const [sourceCallId, cell] of this.#runningCodeModeCells)
+      if (cell.executionId !== executionId) this.#clearRunningCodeModeCell(sourceCallId);
+    for (const parentCallId of this.#codeModeOutputSnapshots.keys())
+      if (this.#tools.get(parentCallId)?.executionId !== executionId)
+        this.#codeModeOutputSnapshots.delete(parentCallId);
+  }
+
+  #clearRetainedCodeModeCellsForOtherExecutions(executionId: string): void {
+    for (const [sourceCallId, cell] of this.#runningCodeModeCells)
+      if (cell.executionId !== executionId) this.#clearRunningCodeModeCell(sourceCallId);
   }
 
   #compactAnchorItemId(
@@ -1037,6 +1363,26 @@ function commandItem(
       truncated: command.truncated
     },
     merge: true
+  };
+}
+
+function commandWithOutputSnapshots(
+  command: CommandState,
+  snapshots: readonly ToolOutputSnapshot[]
+): CommandState {
+  const outputPreview = [
+    command.outputPreview,
+    ...snapshots.map((snapshot) => snapshot.outputPreview)
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    ...command,
+    outputPreview: compactRunnerText(outputPreview, 10_000),
+    truncated:
+      command.truncated ||
+      snapshots.some((snapshot) => snapshot.truncated) ||
+      outputPreview.length > 10_000
   };
 }
 

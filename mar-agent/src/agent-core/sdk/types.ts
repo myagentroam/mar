@@ -32,6 +32,7 @@ export type { MarAgentEvent, MarAgentEventBase } from '../runtime/events.js';
 export type { CompactInput, ExecutionHandle } from '../runtime/execution-handle.js';
 export type {
   CodeCellEventData,
+  ExecOutputSnapshot,
   MarAgentToolArtifact,
   MarAgentToolImageArtifact,
   McpCatalogTool,

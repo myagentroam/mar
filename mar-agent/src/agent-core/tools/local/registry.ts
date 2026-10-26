@@ -152,7 +152,8 @@ export class LocalToolRegistry {
                           : { ownerInstanceId: context.operation.ownerInstanceId })
                       })
                 },
-                context.waitInterrupt
+                context.waitInterrupt,
+                context.onOutput
               );
               return formatExecResult(result);
             }

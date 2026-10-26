@@ -178,7 +178,9 @@ Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host �
 
 临时资源句柄带类型前缀：`cellId` 为 `c_` 加 12 位小写十六进制字符，`processId` 为 `p_` 加 12 位小写十六进制字符。请完整原样使用工具返回的 ID，不要截断或互换。cell 仅通过 `code_exec_wait` 接管，进程仅通过 `exec_wait` 控制；传错类型会返回 `MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH` 和对应工具提示，不会自动转调。前缀不代表资源仍存活或有权访问，原有 Session 归属和清理规则不变。
 
-Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和本次调用输出，不拆解内部工具。`code_exec_wait` 仍以普通工具卡显示等待或取消结果；命令卡返回不表示 yield 后的后台 cell 已结束。
+进程等待会在窗口内聚合 stdout/stderr，直到进程完成输出收尾或等待到期；新日志不会提前结束模型等待。Web 命令卡可实时显示有界日志预览，不增加模型往返，也不消费最终工具输出。取消与用户补充仍可提前结束等待，进程继续运行。
+
+Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和本次调用输出，不拆解内部工具；内部进程的实时日志在外层代码卡上显示，cell 返回 running 后由同次执行的活动等待卡接续显示，最终以本次正式工具结果为准。`code_exec_wait` 同样以命令卡显示等待或取消结果；命令卡返回不表示 yield 后的后台 cell 已结束。
 
 ## 本地 SDK 与 CLI
 

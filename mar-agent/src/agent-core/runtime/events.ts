@@ -95,6 +95,13 @@ export type MarAgentEvent = MarAgentEventBase &
         truncated?: boolean;
       }
     | {
+        type: 'tool.output';
+        toolName: 'exec' | 'exec_wait';
+        callId: string;
+        parentCallId?: string;
+        output: import('../tools/contracts.js').ExecOutputSnapshot;
+      }
+    | {
         type: 'tool.completed';
         resultExtensions?: readonly import('../tools/result-extensions.js').ToolResultExtension[];
         toolName: string;

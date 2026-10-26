@@ -9,7 +9,7 @@ import {
   type LocalProcessSpawnRequest
 } from '../../host/local-process-executor.js';
 import type { ClientToolDefinition } from '../../model/contracts.js';
-import type { ExecResult, ToolExecutionResult } from '../contracts.js';
+import type { ExecOutputSnapshot, ExecResult, ToolExecutionResult } from '../contracts.js';
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 import { waitForToolCondition, waitMetadata, type ToolWaitInterrupt } from '../wait.js';
 import { WorkspacePathResolver } from '../shared/path-resolver.js';
@@ -104,7 +104,7 @@ export const execToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, call exec_wait directly with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, timeout, and yield. A foreground wait may return interrupted with reason=steer; the process keeps running.',
+    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, call exec_wait directly with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, and timeout. A foreground wait may return interrupted with reason=steer; the process keeps running.',
   outputSchema: {
     type: 'object',
     required: ['content', 'data'],
@@ -183,7 +183,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Wait for or control a managed process by processId. action defaults to poll: wait for new output or termination and return incremental stdout/stderr. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Supports direct and programmatic calls; in Code Mode use tools.exec_wait. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends, then return incremental stdout/stderr. New output does not end the wait. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Supports direct and programmatic calls; in Code Mode use tools.exec_wait. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',
@@ -246,7 +246,8 @@ export class ExecTool {
     owner?: NonNullable<
       import('../../host/local-process-executor.js').LocalProcessSpawnRequest['owner']
     >,
-    waitInterrupt?: ToolWaitInterrupt
+    waitInterrupt?: ToolWaitInterrupt,
+    onOutput?: (output: ExecOutputSnapshot) => Promise<void>
   ): Promise<ExecResult> {
     if (signal?.aborted) throw executionAbortReason(signal);
     const input = parseExecInput(arguments_);
@@ -279,11 +280,13 @@ export class ExecTool {
         throw new MarAgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
       let outcome: 'ready' | 'timeout' | 'interrupted' | undefined;
       if (input.action === 'poll' && input.yieldMs)
-        outcome = await waitForProcessChange(
+        outcome = await waitForProcessCompletion(
+          input.processId,
           process,
           Math.min(Math.max(input.yieldMs, 0), TOOL_EXECUTION_LIMITS.execMaxPollYieldMs),
           signal,
-          waitInterrupt
+          waitInterrupt,
+          onOutput
         );
       if (input.action === 'write') {
         if (process.status !== 'running')
@@ -309,9 +312,7 @@ export class ExecTool {
                   ? 'completion'
                   : outcome === 'interrupted'
                     ? 'interrupted'
-                    : outcome === 'ready'
-                      ? 'yield'
-                      : 'timeout'
+                    : 'timeout'
             )
           : {})
       };
@@ -350,18 +351,7 @@ export class ExecTool {
     const outcome =
       yieldMs === 0
         ? undefined
-        : await waitForToolCondition({
-            ready: () => managed.finalized,
-            subscribe: (notify) => {
-              managed.waiters.add(notify);
-              return () => {
-                managed.waiters.delete(notify);
-              };
-            },
-            waitMs: yieldMs,
-            signal,
-            interrupt: waitInterrupt
-          });
+        : await waitForProcessCompletion(id, managed, yieldMs, signal, waitInterrupt, onOutput);
     const result = this.#result(id, managed);
     if (managed.status !== 'running') this.#retainCompleted(id, managed);
     return {
@@ -965,33 +955,94 @@ function notifyProcessChange(managed: ManagedProcess): void {
   for (const resolve of managed.waiters) resolve();
 }
 
-async function waitForProcessChange(
+async function waitForProcessCompletion(
+  processId: string,
   managed: ManagedProcess,
   waitMs: number,
   signal?: AbortSignal,
-  interrupt?: ToolWaitInterrupt
+  interrupt?: ToolWaitInterrupt,
+  onOutput?: (output: ExecOutputSnapshot) => Promise<void>
 ) {
-  let changed = false;
-  return waitForToolCondition({
-    ready: () =>
-      managed.status !== 'running' ||
-      managed.stdout.bytes > 0 ||
-      managed.stderr.bytes > 0 ||
-      changed,
-    subscribe: (notify) => {
-      const listener = () => {
-        changed = true;
-        notify();
-      };
-      managed.waiters.add(listener);
-      return () => {
-        managed.waiters.delete(listener);
-      };
-    },
-    waitMs,
-    signal,
-    interrupt
-  });
+  const stopOutput = onOutput && watchProcessOutput(processId, managed, onOutput);
+  try {
+    return await waitForToolCondition({
+      ready: () => managed.finalized,
+      subscribe: (notify) => {
+        managed.waiters.add(notify);
+        return () => {
+          managed.waiters.delete(notify);
+        };
+      },
+      waitMs,
+      signal,
+      interrupt
+    });
+  } finally {
+    stopOutput?.();
+  }
+}
+
+/** Coalesce display snapshots without consuming output or queueing behind a slow observer. */
+function watchProcessOutput(
+  processId: string,
+  managed: ManagedProcess,
+  onOutput: (output: ExecOutputSnapshot) => Promise<void>
+) {
+  let stopped = false;
+  let dirty = false;
+  let timer: NodeJS.Timeout | undefined;
+  let inFlight: Promise<void> | undefined;
+  let failed = false;
+  const publish = () => {
+    dirty = false;
+    const preview = (output: OutputBuffer) => {
+      const bounded = createOutputBuffer();
+      for (const chunk of output.chunks)
+        appendOutput(bounded, chunk, TOOL_EXECUTION_LIMITS.execProgressMaxOutputBytes);
+      const result = consumeOutput(bounded);
+      return { ...result, droppedBytes: result.droppedBytes + output.droppedBytes };
+    };
+    const stdout = preview(managed.stdout);
+    const stderr = preview(managed.stderr);
+    inFlight = Promise.resolve()
+      .then(() => {
+        if (stopped) return;
+        return onOutput({
+          processId,
+          stdout: stdout.value,
+          stderr: stderr.value,
+          truncated: stdout.droppedBytes > 0 || stderr.droppedBytes > 0
+        });
+      })
+      .catch(() => {
+        // Display delivery must not change the process result or wait deadline.
+        failed = true;
+      })
+      .finally(() => {
+        inFlight = undefined;
+        if (dirty) schedule();
+      });
+  };
+  const schedule = () => {
+    if (stopped || failed || timer || inFlight) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      publish();
+    }, TOOL_EXECUTION_LIMITS.execProgressIntervalMs);
+    timer.unref();
+  };
+  const changed = () => {
+    if (managed.stdout.bytes === 0 && managed.stderr.bytes === 0) return;
+    dirty = true;
+    schedule();
+  };
+  managed.waiters.add(changed);
+  changed();
+  return () => {
+    stopped = true;
+    managed.waiters.delete(changed);
+    if (timer) clearTimeout(timer);
+  };
 }
 
 function executionAbortReason(signal?: AbortSignal): unknown {
