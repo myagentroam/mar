@@ -193,6 +193,7 @@ export function createWorkbenchWorkspaceTreeController(
         : restoreSession
           ? options.activateWorkspace(target)
           : options.activateWorkspace(target, false);
+    options.tree.revealWorkspace(target);
     options.closeMobileSidebar();
     options.showWorkbench();
     return activation;

@@ -8,13 +8,19 @@ import { ElMessageBox } from '../../src/service/message-box-service.js';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
+import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
+import { createWorkspaceTreeService } from '../../src/service/workspace-tree-service.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import { captureMobileLayerRoute } from '../../src/service/mobile-layer-history-service.js';
 import { createMobileMenuHistoryService } from '../../src/service/mobile-menu-history-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
-import type { ComposerAttachment } from '../../src/model/workbench.js';
+import type {
+  ComposerAttachment,
+  NodeSummary,
+  WorkspaceTarget
+} from '../../src/model/workbench.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 
 const navigation = createWorkbenchNavigationService({
@@ -91,6 +97,33 @@ const detailsOpen = ref(false);
 const imageOpen = ref(false);
 const draft = ref('Keep this draft');
 const previewQuery = new URLSearchParams(location.search);
+const treeRevealFixture = previewQuery.has('tree-reveal');
+const tree = createWorkspaceTreeService({ persist: () => undefined });
+const treeTarget = ref<WorkspaceTarget>({ nodeId: 'node', workspaceId: 'plain' });
+const treeNodes = ['node', 'other'].map(
+  (id) => ({ id, connected: true, disabled: false }) as NodeSummary
+);
+tree.cacheWorkspaces('node', [
+  { id: 'plain', path: '/plain', kind: 'DIRECTORY' },
+  ...Array.from({ length: 35 }, (_, index) => ({
+    id: `folder-${index}`,
+    path: `/folder-${index}`,
+    kind: 'DIRECTORY' as const
+  })),
+  { id: 'shared', path: '/target', kind: 'DIRECTORY', groupName: 'Team' }
+]);
+tree.cacheWorkspaces('other', [
+  { id: 'shared', path: '/remote', kind: 'DIRECTORY', groupName: 'Other team' }
+]);
+const treeTabs = [
+  { id: 'plain', nodeId: 'node', workspaceId: 'plain', label: 'Plain', lastActiveAt: 0 },
+  { id: 'target', nodeId: 'node', workspaceId: 'shared', label: 'Target', lastActiveAt: 0 },
+  { id: 'remote', nodeId: 'other', workspaceId: 'shared', label: 'Remote', lastActiveAt: 0 }
+];
+function activateTreeTarget(target: WorkspaceTarget): void {
+  treeTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId };
+  tree.revealWorkspace(target);
+}
 const attachmentPreview = previewQuery.has('attachment');
 const imageSize = previewQuery.get('image');
 const [imageWidth, imageHeight] =
@@ -170,14 +203,15 @@ onBeforeUnmount(() => {
       :sidebar-content-visible="
         !navigation.sidebarCollapsed.value || navigation.mobileSidebarOpen.value
       "
-      :nodes="[]"
-      :expanded-node-ids="[]"
-      :workspace-target="undefined"
+      :nodes="treeRevealFixture ? treeNodes : []"
+      :expanded-node-ids="tree.expandedNodeIds.value"
+      :workspace-target="treeRevealFixture ? treeTarget : undefined"
+      :workspace-tree-reveal-target="tree.revealTarget.value"
       :dragging-workspace="undefined"
       :loading="false"
       :node-label="(node) => node.id"
       :workspace-label="(workspace) => workspace.path"
-      :workspaces="() => []"
+      :workspaces="tree.workspacesForNode"
       :mobile-viewport="navigation.mobileViewport.value"
       :notification-service="service"
       :performance-diagnostics="diagnostics"
@@ -188,8 +222,55 @@ onBeforeUnmount(() => {
       @close-mobile-sidebar="navigation.closeMobileSidebar"
       @open-recent-run="opened = $event.sessionId"
       @open-notification="opened = $event.id"
+      @toggle-node="tree.toggleNode"
     />
-    <section class="fixture-workspace">
+    <section class="fixture-workspace" :class="{ 'tree-reveal-fixture': treeRevealFixture }">
+      <template v-if="treeRevealFixture">
+        <WorkspaceTabs
+          placement="body"
+          :tabs="treeTabs"
+          :active-tab-id="
+            treeTabs.find(
+              (tab) =>
+                tab.nodeId === treeTarget.nodeId && tab.workspaceId === treeTarget.workspaceId
+            )?.id
+          "
+          :node-label="(tab) => tab.nodeId"
+          :direct-available="() => false"
+          :direct-description="() => undefined"
+          :has-active-run="() => false"
+          :has-unread="() => false"
+          @activate="activateTreeTarget"
+        />
+        <button
+          type="button"
+          @click="navigation.sidebarCollapsed.value = !navigation.sidebarCollapsed.value"
+        >
+          Toggle resource sidebar
+        </button>
+        <button
+          type="button"
+          @click="
+            activateTreeTarget(treeTabs[1]!);
+            activateTreeTarget(treeTabs[2]!);
+          "
+        >
+          Switch targets quickly
+        </button>
+        <button type="button" @click="tree.cacheWorkspaces('other', [])">
+          Unload remote resources
+        </button>
+        <button
+          type="button"
+          @click="
+            tree.cacheWorkspaces('other', [
+              { id: 'shared', path: '/remote', kind: 'DIRECTORY', groupName: 'Other team' }
+            ])
+          "
+        >
+          Load remote resources
+        </button>
+      </template>
       <input aria-label="Background input" />
       <button type="button" @click="preview">Preview notification</button>
       <button type="button" @click="quickOpen = true">Open quick open</button>
@@ -238,6 +319,11 @@ onBeforeUnmount(() => {
 <style scoped>
 .fixture-workspace {
   margin: 96px 72px;
+}
+@media (min-width: 768px) {
+  .tree-reveal-fixture {
+    margin-left: calc(var(--mar-workbench-sidebar-total-width) + 24px);
+  }
 }
 .sidebar-scrim {
   position: fixed;

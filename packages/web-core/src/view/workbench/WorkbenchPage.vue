@@ -146,6 +146,7 @@ function closeStandaloneFileWindow(): void {
         :mobile-utility-panel="page.mobileUtilityPanel"
         :mobile-history-open="page.hostedConversationMobileHistoryOpen"
         :expanded-node-ids="page.expandedNodeIds"
+        :workspace-tree-reveal-target="page.workspaceTreeRevealTarget"
         :workspace-target="page.workspaceTarget"
         :dragging-workspace="page.draggingWorkspace"
         :loading="page.loading"

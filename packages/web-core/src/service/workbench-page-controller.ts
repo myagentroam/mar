@@ -3466,6 +3466,7 @@ export function createWorkbenchPageController<
     effortLabel,
     executeQueuedMessage,
     expandedNodeIds,
+    workspaceTreeRevealTarget: workspaceTreeService.revealTarget,
     fileReferenceEntries,
     fileReferenceLoading,
     fileReferencePickerOpen,

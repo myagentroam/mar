@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { NodeSummary, Workspace } from '../model/workbench.js';
+import type { NodeSummary, Workspace, WorkspaceTarget } from '../model/workbench.js';
 
 export interface WorkspaceTreeStateOptions {
   readonly persist: () => void;
@@ -7,6 +7,7 @@ export interface WorkspaceTreeStateOptions {
 
 export function createWorkspaceTreeService(options: WorkspaceTreeStateOptions) {
   const expandedNodeIds = ref<string[]>([]);
+  const revealTarget = ref<WorkspaceTarget>();
   const nodeOrder = ref<readonly string[]>([]);
   const workspacesByNode = ref<Record<string, readonly Workspace[]>>({});
   const workspaceOrderByNode = ref<Record<string, readonly string[]>>({});
@@ -92,6 +93,13 @@ export function createWorkspaceTreeService(options: WorkspaceTreeStateOptions) {
     return true;
   }
 
+  function revealWorkspace(target: WorkspaceTarget): void {
+    if (!expandedNodeIds.value.includes(target.nodeId))
+      expandedNodeIds.value = [...expandedNodeIds.value, target.nodeId];
+    // A fresh intent also reveals an already active Tab without reactivating it.
+    revealTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId };
+  }
+
   function startDrag(event: DragEvent, nodeId: string, workspaceId: string): void {
     draggingWorkspace.value = { nodeId, workspaceId };
     const transfer = event.dataTransfer;
@@ -156,6 +164,8 @@ export function createWorkspaceTreeService(options: WorkspaceTreeStateOptions) {
 
   return {
     expandedNodeIds,
+    revealTarget,
+    revealWorkspace,
     nodeOrder,
     orderedNodes,
     moveNode,

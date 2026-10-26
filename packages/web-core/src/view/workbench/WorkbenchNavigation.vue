@@ -47,6 +47,7 @@ const props = defineProps<{
   readonly sidebarContentVisible: boolean;
   readonly nodes: readonly NodeSummary[];
   readonly expandedNodeIds: readonly string[];
+  readonly workspaceTreeRevealTarget?: WorkspaceTarget | undefined;
   readonly workspaceTarget: WorkspaceTarget | undefined;
   readonly draggingWorkspace: { readonly nodeId: string; readonly workspaceId: string } | undefined;
   readonly loading: boolean;
@@ -336,6 +337,8 @@ function openBlankMenu(event: MouseEvent): void {
           v-if="sidebarContentVisible || mobileViewport"
           :nodes="nodes"
           :expanded-node-ids="expandedNodeIds"
+          :reveal-target="workspaceTreeRevealTarget"
+          :visible="mobileViewport ? mobileSidebarOpen : !sidebarCollapsed"
           :workspace-target="workspaceTarget"
           :dragging-workspace="draggingWorkspace"
           :mobile-viewport="mobileViewport"
