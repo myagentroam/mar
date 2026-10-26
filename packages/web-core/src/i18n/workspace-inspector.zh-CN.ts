@@ -13,6 +13,7 @@ export const workspaceInspectorZhCN = {
       cancel: '取消',
       enterAValidSingleLevelName: '请输入有效的单级名称',
       relativePathCopied: '已复制相对路径。',
+      absolutePathCopied: '已复制绝对路径。',
       newFile: '新建文件',
       newFolder: '新建文件夹',
       rename: '重命名',

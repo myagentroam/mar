@@ -16,6 +16,7 @@ export const workspaceInspectorEnUS = {
       cancel: 'Cancel',
       enterAValidSingleLevelName: 'Enter a valid single-level name',
       relativePathCopied: 'Relative path copied.',
+      absolutePathCopied: 'Absolute path copied.',
       newFile: 'New file',
       newFolder: 'New folder',
       rename: 'Rename',

@@ -8,6 +8,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const scenario of [
+  {
+    width: 1280,
+    locale: 'en-US',
+    copy: 'Copy absolute path',
+    relative: 'Copy relative path',
+    refresh: 'Refresh files'
+  },
+  {
+    width: 390,
+    locale: 'zh-CN',
+    copy: '复制绝对路径',
+    relative: '复制相对路径',
+    refresh: '刷新文件'
+  }
+]) {
+  test(`File tree copies absolute paths for files, folders and the root at ${scenario.width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: scenario.width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.route('**/api/workspaces/workspace/**', (route) =>
+      route.fulfill({
+        json: {
+          files: {
+            entries: [
+              { path: 'notes.txt', name: 'notes.txt', kind: 'FILE', size: 24 },
+              { path: 'src', name: 'src', kind: 'DIRECTORY', size: null }
+            ],
+            nextCursor: null
+          }
+        }
+      })
+    );
+    await page.goto(`${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    const feedback = inspector.getByLabel('File operation feedback');
+    await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
+    const menu = async (path: string) => {
+      await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toBeHidden();
+      const row = inspector.locator(`[data-file-path="${path}"]`);
+      await row.hover();
+      await row.locator('..').locator('.file-tree-more').click();
+    };
+    for (const [path, absolute] of [
+      ['.', '/home/example/my-agent-roam'],
+      ['src', '/home/example/my-agent-roam/src'],
+      ['notes.txt', '/home/example/my-agent-roam/notes.txt']
+    ]) {
+      await test.step(`Copy ${path}`, async () => {
+        await menu(path!);
+        await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(absolute);
+        await expect(feedback).toHaveAttribute('data-type', 'info');
+      });
+    }
+    await menu('notes.txt');
+    await page.getByRole('menuitem', { name: scenario.relative, exact: true }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('notes.txt');
+    await inspector.getByRole('button', { name: 'Switch root path', exact: true }).click();
+    await menu('.');
+    await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('/home/other/my-agent-roam');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async () => {
+            throw new DOMException('Clipboard access denied', 'NotAllowedError');
+          }
+        }
+      });
+    });
+    await menu('.');
+    await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
+    await expect(feedback).toHaveAttribute('data-type', 'error');
+    await inspector.getByRole('button', { name: 'Clear root path', exact: true }).click();
+    await menu('notes.txt');
+    await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    await expect(
+      page.getByRole('menuitem', { name: scenario.relative, exact: true })
+    ).not.toHaveAttribute('aria-disabled', 'true');
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
     test(`List empty and initial loading states are centered in ${theme} at ${width}px`, async ({

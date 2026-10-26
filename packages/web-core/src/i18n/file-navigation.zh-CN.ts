@@ -15,6 +15,7 @@ export const fileNavigationZhCN = {
       newFolder: '新建文件夹',
       uploadFiles: '上传文件',
       copyRelativePath: '复制相对路径',
+      copyAbsolutePath: '复制绝对路径',
       rename: '重命名',
       delete: '删除',
       loading: '加载中…',

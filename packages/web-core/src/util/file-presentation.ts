@@ -6,6 +6,13 @@ export function currentChangesBranch(value: unknown): string | null | undefined 
   return typeof branch === 'string' && branch.length > 0 ? branch : null;
 }
 
+export function workspaceAbsolutePath(root: string, path: string): string {
+  if (path === '.') return root;
+  const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/';
+  const parent = root.replace(separator === '\\' ? /\\+$/u : /\/+$/u, '');
+  return `${parent}${separator}${path.replaceAll('/', separator)}`;
+}
+
 export function fileSizeLabel(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB'] as const;
   let value = Math.max(0, bytes);

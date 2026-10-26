@@ -15,6 +15,7 @@ export const fileNavigationEnUS = {
       newFolder: 'New folder',
       uploadFiles: 'Upload files',
       copyRelativePath: 'Copy relative path',
+      copyAbsolutePath: 'Copy absolute path',
       rename: 'Rename',
       delete: 'Delete',
       loading: 'Loading…',

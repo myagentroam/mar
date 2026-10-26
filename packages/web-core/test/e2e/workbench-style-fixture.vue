@@ -19,6 +19,7 @@ const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref('/home/example/my-agent-roam');
+const fileFeedback = ref({ message: '', type: '' });
 const inspectorFixture =
   fileRootFixture ||
   contentSearchFixture ||
@@ -262,6 +263,9 @@ if (composerFixture) {
       >
         Switch root path
       </button>
+      <button v-if="fileRootFixture" type="button" @click="fileRootPath = ''">
+        Clear root path
+      </button>
       <WorkspaceInspector
         :node-id="inspectorFixture ? 'node' : undefined"
         :workspace-id="inspectorFixture ? 'workspace' : undefined"
@@ -279,7 +283,15 @@ if (composerFixture) {
         changes-watch-status="idle"
         :history-capability="true"
         :file-write-enabled="false"
+        @notice="(message, type) => (fileFeedback = { message, type: type ?? 'info' })"
       />
+      <output
+        v-if="fileRootFixture"
+        aria-label="File operation feedback"
+        :data-type="fileFeedback.type"
+      >
+        {{ fileFeedback.message }}
+      </output>
     </section>
     <section aria-label="Terminal fixture">
       <TerminalDock
