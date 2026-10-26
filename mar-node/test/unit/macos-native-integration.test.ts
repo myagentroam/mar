@@ -159,15 +159,24 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
         await closeFinderWindows();
 
         await revealWorkspaceFileInFileManager(root, 'folder with space/notes.txt');
-        await expect
-          .poll(
-            async () => {
-              const state = await finderState();
-              return state.currentFolder === `${folder}/` && state.selectedName === 'notes.txt';
-            },
-            { timeout: 15_000 }
-          )
-          .toBe(true);
+        try {
+          await expect
+            .poll(
+              async () => {
+                const state = await finderState();
+                return state.currentFolder === `${folder}/` && state.selectedName === 'notes.txt';
+              },
+              { timeout: 15_000 }
+            )
+            .toBe(true);
+        } catch (error) {
+          throw new Error(
+            `Finder file selection mismatch: ${JSON.stringify(await finderState())}`,
+            {
+              cause: error
+            }
+          );
+        }
       } finally {
         await closeFinderWindows();
       }
