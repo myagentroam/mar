@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { reactive } from 'vue';
+import { reactive, ref } from 'vue';
 import DecodedPreviewImage from '../../src/view/conversation/DecodedPreviewImage.vue?unit-render';
 import ConversationImageThumbnail from '../../src/view/conversation/ConversationImageThumbnail.vue?unit-render';
 import { conversationThumbnailUrl } from '../../src/util/conversation-image-url.js';
+import { createConversationImageService } from '../../src/service/conversation-image-service.js';
+import type { ConversationTurn } from '../../src/model/workbench.js';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
 
 describe('Conversation image loading', () => {
@@ -37,6 +39,104 @@ describe('Conversation image loading', () => {
       await trigger(state.findAll('button')[0]!, 'onClick', {});
       expect(onClick).toHaveBeenCalledOnce();
       expect(state.findAll('img')[0]!.props.src).toContain('maxWidth=320&maxHeight=240');
+    } finally {
+      state.unmount();
+    }
+  });
+
+  it.each(['ordinary', 'Hosted'])(
+    'retains the original %s source after a thumbnail error until its Turn is evicted',
+    async (kind) => {
+      const service = createConversationImageService(
+        ref('node /1'),
+        kind === 'Hosted'
+          ? {
+              sourceUrl: ({ nodeId, runId, imageSelector }) =>
+                `/api/nodes/${encodeURIComponent(nodeId)}/hosted-conversations/chat/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(imageSelector)}?revision=source%2F1&mode=inline`
+            }
+          : {}
+      );
+      const runId = kind === 'Hosted' ? 'native-history:hosted:chat' : 'run-1';
+      const payload = {
+        attachments: [
+          {
+            name: 'Picture',
+            mime: 'image/png',
+            ...(kind === 'Hosted' ? { imageRef: 'file:picture.png' } : { imageIndex: 0 })
+          }
+        ]
+      };
+      const turn: ConversationTurn = {
+        id: 'turn-1',
+        sessionId: 'session-1',
+        runId,
+        status: 'COMPLETED',
+        items: [{ id: 'user-1', kind: 'user_message', status: 'COMPLETED', payload }]
+      };
+      const attachment = service.attachments(runId, payload)[0]!;
+      const source = attachment.previewUrl!;
+      const onUnavailable = vi.fn(service.markUnavailable);
+      let state = renderComponent(ConversationImageThumbnail, {
+        source,
+        name: attachment.name,
+        onUnavailable
+      });
+      try {
+        const thumbnail = new URL(String(state.findAll('img')[0]!.props.src), 'http://localhost');
+        for (const [key, value] of new URL(source, thumbnail.origin).searchParams) {
+          expect(thumbnail.searchParams.get(key)).toBe(value);
+        }
+        expect(thumbnail.searchParams.get('maxWidth')).toBe('320');
+        expect(thumbnail.searchParams.get('maxHeight')).toBe('240');
+
+        await trigger(state.findAll('img')[0]!, 'onError');
+        expect(state.findAll('img')).toHaveLength(0);
+        expect(service.attachments(runId, payload)[0]!.previewUrl).toBeUndefined();
+        expect(onUnavailable).toHaveBeenCalledExactlyOnceWith(source);
+
+        service.retain([turn]);
+        const retained = service.attachments(runId, payload)[0]!;
+        expect(retained.previewUrl).toBeUndefined();
+        state.unmount();
+        state = renderComponent(ConversationImageThumbnail, {
+          source: retained.previewUrl ?? '',
+          name: retained.name,
+          onUnavailable
+        });
+        expect(state.findAll('img')).toHaveLength(0);
+        expect(onUnavailable).toHaveBeenCalledOnce();
+
+        service.retain([]);
+        expect(service.attachments(runId, payload)[0]!.previewUrl).toBe(source);
+      } finally {
+        state.unmount();
+        service.dispose();
+      }
+    }
+  );
+
+  it('resets a failed thumbnail when its source changes and reports the replacement source', async () => {
+    const onUnavailable = vi.fn();
+    const onClick = vi.fn();
+    const props = reactive({
+      source: '/api/agent-runs/run/images/0?nodeId=node&revision=old',
+      name: 'Picture',
+      onUnavailable,
+      onClick
+    });
+    const state = renderComponent(ConversationImageThumbnail, props);
+    try {
+      await trigger(state.findAll('img')[0]!, 'onError');
+      expect(state.findAll('img')).toHaveLength(0);
+      props.source = '/api/agent-runs/run/images/1?nodeId=node&revision=new%2F1';
+      await flushComponent();
+      expect(state.findAll('img')[0]!.props.src).toBe(conversationThumbnailUrl(props.source));
+      const event = { ctrlKey: true };
+      await trigger(state.findAll('button')[0]!, 'onClick', event);
+      expect(onClick).toHaveBeenCalledExactlyOnceWith(event);
+      await trigger(state.findAll('img')[0]!, 'onError');
+      expect(onUnavailable).toHaveBeenLastCalledWith(props.source);
+      expect(state.findAll('img')).toHaveLength(0);
     } finally {
       state.unmount();
     }

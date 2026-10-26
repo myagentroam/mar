@@ -145,7 +145,7 @@ describe('Web Conversation Image State', () => {
     }
   });
   it('ignores source revalidation failures after a different image is opened', async () => {
-    const target = ref('node-1:workspace-1');
+    const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
     const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {

@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { permissionStopFromError } from '../permissions.js';
+import { RuntimeResourceHandles } from '../runtime-resource-handles.js';
 import { MarAgentError, describeMarAgentError } from '../../error.js';
 import { truncateModelText } from '../../runtime/token-budget.js';
 import type { ToolExecutionContext, ToolExecutionResult } from '../contracts.js';
@@ -82,6 +82,7 @@ function options(value: unknown, wait: boolean) {
 /** Session-owned execution, separate from the cancellable model-tool wait. */
 export class CodeCells {
   readonly #cells = new Map<string, Cell>();
+  readonly #handles = new RuntimeResourceHandles('cell', (id) => this.#cells.has(id));
   #closed = false;
   readonly #disposing = new Set<string>();
 
@@ -142,7 +143,7 @@ export class CodeCells {
       );
     const controller = new AbortController();
     const cell: Cell = {
-      cellId: randomUUID(),
+      cellId: this.#handles.create(),
       sessionId: context.sessionId,
       executionId: context.executionId,
       controller,
@@ -247,6 +248,7 @@ export class CodeCells {
   async wait(value: unknown, context: ToolExecutionContext) {
     const input = options(value, true);
     context.signal.throwIfAborted();
+    this.#handles.assertType(input.cellId);
     const cell = this.#cells.get(input.cellId);
     if (!cell || cell.sessionId !== context.sessionId)
       throw new MarAgentError(

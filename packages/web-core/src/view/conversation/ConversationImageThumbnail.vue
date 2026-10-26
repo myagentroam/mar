@@ -22,7 +22,7 @@ function open(event: MouseEvent): void {
 }
 function unavailable(): void {
   failed.value = true;
-  emit('unavailable', thumbnail.value);
+  emit('unavailable', props.source);
 }
 </script>
 
