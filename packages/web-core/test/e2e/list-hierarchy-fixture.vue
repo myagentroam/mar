@@ -127,6 +127,7 @@ async function request<T>(path: string): Promise<T> {
       session-group="MAIN"
       :group-state="{ MAIN: { running: 1, unread: false }, CHILD: { running: 0, unread: false } }"
       :runs="runs"
+      :has-unread-session="() => false"
       :mobile-mode="false"
       :run-time="() => 'Just now'"
       @open-recent-run="opened = $event.sessionId"

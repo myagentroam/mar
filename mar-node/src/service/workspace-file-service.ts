@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, relative, resolve, win32 } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
-import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
+import { imagePreviewOptionsSchema, isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type { NodeWorkspace } from '../database.js';
 import {
   listWorkspaceFiles,
@@ -15,6 +15,11 @@ import {
 } from '../workspace.js';
 import { WorkspaceDomainState } from './workspace-domain-state.js';
 import { revealWorkspaceFileInFileManager } from './workspace-file-manager-service.js';
+import {
+  imagePreviews,
+  MAX_IMAGE_PREVIEW_SOURCE_BYTES,
+  type ImagePreview
+} from './image-preview-service.js';
 
 const INDEX_CACHE_LIMIT = 32;
 const INDEX_CACHE_BYTE_LIMIT = 128 * 1024 * 1024;
@@ -153,6 +158,38 @@ export class WorkspaceFileService {
     return isFilePreviewAbsolutePath(path)
       ? readAbsoluteFileContentRange(path, offset, limit)
       : readWorkspaceFileContentRange(workspacePath, path, offset, limit);
+  }
+
+  async previewImage(
+    workspace: NodeWorkspace,
+    input: Record<string, unknown>,
+    workspacePath = workspace.path
+  ): Promise<ImagePreview> {
+    const preview = imagePreviewOptionsSchema.parse(input.preview);
+    const chunks: Buffer[] = [];
+    let offset = 0;
+    let revision: string | undefined;
+    for (;;) {
+      const chunk = (await this.readContent(
+        workspace,
+        { ...input, offset, limit: 512 * 1024 },
+        workspacePath
+      )) as {
+        readonly size: number;
+        readonly sourceRevision: string;
+        readonly contentBase64: string;
+        readonly nextOffset: number | null;
+      };
+      if (chunk.size > MAX_IMAGE_PREVIEW_SOURCE_BYTES) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+      if (revision !== undefined && revision !== chunk.sourceRevision)
+        throw new Error('FILE_CHANGED');
+      revision = chunk.sourceRevision;
+      chunks.push(Buffer.from(chunk.contentBase64, 'base64'));
+      if (chunk.nextOffset === null) break;
+      if (chunk.nextOffset <= offset) throw new Error('FILE_RANGE_INVALID');
+      offset = chunk.nextOffset;
+    }
+    return imagePreviews.create(Buffer.concat(chunks), preview);
   }
 
   private async resolveAttachmentResource(workspaceId: string, path: string): Promise<string> {

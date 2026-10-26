@@ -5,6 +5,11 @@ export const filePreviewEnUS = {
     gitDiff: 'Git Diff'
   },
   generated: {
+    imagePreview: {
+      loadFailed: 'The image could not be loaded.',
+      viewOriginal: 'View original',
+      retry: 'Retry'
+    },
     gitDiffViewer: {
       gitDiffHasNoDisplayableTextContent: 'Git Diff has no displayable text content.',
       gitDiffLoadFailed: 'Git Diff failed to load.',

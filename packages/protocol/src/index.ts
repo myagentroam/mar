@@ -436,6 +436,8 @@ export const workspaceSessionCleanupResultSchema = z
     deleted: nonnegativeSafeIntegerSchema,
     skipped: nonnegativeSafeIntegerSchema,
     failed: nonnegativeSafeIntegerSchema,
+    timedOut: z.literal(true).optional(),
+    remaining: nonnegativeSafeIntegerSchema.optional(),
     deletedByRunner: z
       .object({
         codex: nonnegativeSafeIntegerSchema,
@@ -448,6 +450,12 @@ export const workspaceSessionCleanupResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
+    if (result.remaining !== undefined && result.timedOut !== true)
+      context.addIssue({
+        code: 'custom',
+        path: ['remaining'],
+        message: 'Remaining candidates are only reported for a time-limited cleanup'
+      });
     const runnerDeleted = Object.values(result.deletedByRunner).reduce<number>(
       (total, count) => total + (count ?? 0),
       0
@@ -1595,6 +1603,7 @@ export const recentRunSchema = z.object({
   userMessage: z.string().max(500).optional(),
   runner: runnerNameSchema,
   status: agentRunStatusSchema,
+  interruptionReason: z.literal('USER_STOP').optional(),
   createdAt: z.number().int().nonnegative(),
   startedAt: z.number().int().nonnegative(),
   completedAt: z.number().int().nonnegative().nullable(),
@@ -2910,14 +2919,34 @@ export type HostedConversationHistoryPage = z.infer<typeof hostedConversationHis
 export const hostedConversationRollbackInputSchema = hostedConversationIdInputSchema
   .extend({
     turnId: z.string().min(1).max(128),
+    itemId: z.string().min(1).max(128).optional(),
     boundary: z.string().min(1).max(256).nullable()
   })
   .strict();
 export type HostedConversationRollbackInput = z.infer<typeof hostedConversationRollbackInputSchema>;
 
+export const imagePreviewOptionsSchema = z
+  .object({
+    maxWidth: z.number().int().min(1).max(4096),
+    maxHeight: z.number().int().min(1).max(4096)
+  })
+  .strict();
+export type ImagePreviewOptions = z.infer<typeof imagePreviewOptionsSchema>;
 export const runImageReadInputSchema = z.union([
-  z.object({ runId: protocolIdSchema, imageIndex: z.number().int().nonnegative() }).strict(),
-  z.object({ runId: protocolIdSchema, imageRef: imageRefSchema }).strict()
+  z
+    .object({
+      runId: protocolIdSchema,
+      imageIndex: z.number().int().nonnegative(),
+      preview: imagePreviewOptionsSchema.optional()
+    })
+    .strict(),
+  z
+    .object({
+      runId: protocolIdSchema,
+      imageRef: imageRefSchema,
+      preview: imagePreviewOptionsSchema.optional()
+    })
+    .strict()
 ]);
 export type RunImageReadInput = z.infer<typeof runImageReadInputSchema>;
 
@@ -2936,7 +2965,8 @@ export type ModelResourceReadInput = z.infer<typeof modelResourceReadInputSchema
 export const hostedConversationImageReadInputSchema = hostedConversationIdInputSchema
   .extend({
     runId: protocolIdSchema,
-    imageRef: imageRefSchema
+    imageRef: imageRefSchema,
+    preview: imagePreviewOptionsSchema.optional()
   })
   .strict();
 export type HostedConversationImageReadInput = z.infer<
@@ -3042,6 +3072,7 @@ export type HostedConversationFiles = z.infer<typeof hostedConversationFilesSche
 export const hostedConversationFileReadInputSchema = hostedConversationIdInputSchema
   .extend({
     fileId: protocolIdSchema,
+    preview: imagePreviewOptionsSchema.optional(),
     offset: z.number().int().nonnegative().optional(),
     limit: z
       .number()

@@ -30,7 +30,8 @@ export class NativeSessionProjectionService {
 
   async discover(
     runnerName: NodeAgentSession['runner'],
-    workspaceId?: string
+    workspaceId?: string,
+    cleanup = false
   ): Promise<readonly NodeAgentSession[]> {
     const database = this.requireDatabase();
     const workspace = workspaceId === undefined ? undefined : database.getWorkspace(workspaceId);
@@ -41,13 +42,14 @@ export class NativeSessionProjectionService {
       throw new Error('RUNNER_UNAVAILABLE');
     const sessions = await runner.discoverSessions(
       {
+        ...(cleanup ? { cleanup: true } : {}),
         workspaces: database.listWorkspaces(),
         createProjection: (input) => this.project(input)
       },
       workspace
     );
     const ordered = deduplicateDirectSessions(sessions);
-    this.remember(ordered);
+    if (!cleanup) this.remember(ordered);
     return ordered;
   }
 
@@ -75,7 +77,8 @@ export class NativeSessionProjectionService {
     onRunnerDiscovered?: (
       runner: NodeAgentSession['runner'],
       sessions: readonly NodeAgentSession[]
-    ) => void
+    ) => void,
+    cleanup = false
   ): Promise<readonly NodeAgentSession[]> {
     const discovered = await Promise.allSettled(
       this.options.runners
@@ -83,7 +86,7 @@ export class NativeSessionProjectionService {
         .filter((runner) => runner.available(this.options.capabilities()))
         .map(async (runner) => {
           const name = runner.name as NodeAgentSession['runner'];
-          const sessions = await this.discover(name, workspaceId);
+          const sessions = await this.discover(name, workspaceId, cleanup);
           onRunnerDiscovered?.(name, sessions);
           return sessions;
         })
@@ -93,7 +96,7 @@ export class NativeSessionProjectionService {
     const sessions = deduplicateDirectSessions(
       discovered.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
     );
-    this.remember(sessions);
+    if (!cleanup) this.remember(sessions);
     return sessions;
   }
 

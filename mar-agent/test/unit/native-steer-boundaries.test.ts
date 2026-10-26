@@ -257,6 +257,42 @@ describe('native steer acceptance boundaries', () => {
     ).toEqual(['read-first', 'read-gated']);
     expect(f.requests).toHaveLength(2);
     expect(userContents(f.requests[1]!)).toContain('model guidance after tools');
+
+    // The receipt can bisect a tool batch. Rollback keeps earlier completed work,
+    // while recovery must not re-execute calls whose results were truncated.
+    if (receipt.status !== 'accepted') throw new Error('Steer was not accepted.');
+    await f.agent.dispose();
+    await f.catalog.rollback(f.session.id, {
+      beforeInput: { turnId: receipt.entry.turnId, clientMessageId: 'tool-batch-steer' }
+    });
+    const history = await f.catalog.history(f.session.id, { limit: 1000 });
+    expect(
+      history.entries.filter((entry) => entry.kind === 'user').map((entry) => entry.text)
+    ).toEqual(['initial']);
+    expect(
+      history.entries.some(
+        (entry) =>
+          entry.kind === 'event' &&
+          entry.event.type === 'tool.completed' &&
+          entry.event.callId === 'read-first'
+      )
+    ).toBe(true);
+    expect(
+      history.entries.some(
+        (entry) =>
+          entry.kind === 'event' &&
+          entry.event.type === 'tool.completed' &&
+          entry.event.callId === 'read-gated'
+      )
+    ).toBe(false);
+    const reopened = await f.create();
+    cleanups.push(() => reopened.dispose());
+    const resumed = await reopened.openSession(f.session.id);
+    const continued = resumed.run({ prompt: 'continue after rollback', permissionMode: 'auto' });
+    const continuedEvents = collectEvents(continued);
+    expect(await continued.result()).toMatchObject({ status: 'completed' });
+    expect((await continuedEvents).filter((event) => event.type === 'tool.started')).toEqual([]);
+    expect(userContents(f.requests.at(-1)!)).not.toContain('model guidance after tools');
   });
 
   it('runs prompt.submit once at admission and does not rerun it when cancellation recovery applies the input', async () => {

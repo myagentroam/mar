@@ -217,6 +217,25 @@ describe('Workbench protocol contracts', () => {
     ).toBe(false);
   });
 
+  it('accepts accurate partial cleanup counts without treating unfinished candidates as failures', () => {
+    const partial = {
+      deleted: 2,
+      skipped: 3,
+      failed: 0,
+      deletedByRunner: { codex: 2 },
+      timedOut: true,
+      remaining: 4
+    };
+    expect(workspaceSessionCleanupResultSchema.parse(partial)).toEqual(partial);
+    const { remaining: _remaining, ...unknownTotal } = partial;
+    expect(workspaceSessionCleanupResultSchema.parse(unknownTotal)).toEqual(unknownTotal);
+    const { timedOut: _timedOut, ...invalid } = partial;
+    expect(workspaceSessionCleanupResultSchema.safeParse(invalid).success).toBe(false);
+    expect(workspaceSessionCleanupResultSchema.safeParse({ ...partial, deleted: 3 }).success).toBe(
+      false
+    );
+  });
+
   it('requires a bounded Node failure summary and preserves diagnostics and correlation', () => {
     expect(nodeResponseErrorPayloadSchema.safeParse({ error: 'FILE_NOT_FOUND' }).success).toBe(
       false

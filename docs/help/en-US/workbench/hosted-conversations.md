@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-26
 ---
 
 # Start a Conversation from a Template
@@ -44,6 +44,8 @@ After an explicit request error, correct the input and retry. If the network dis
 History loading, inline retry, and Run duration follow the [session reading behavior](sessions.md). Sending appears beside the send controls without replacing an active Run's status. Connection hints use the page connection state; they do not mean the Agent failed or restarted.
 
 ## Roll back conversation history
+
+A steer message added during a run has its own rollback boundary. Rolling it back preserves ordinary messages and execution records from before it was received, even when they belong to the same turn.
 
 When the hosting Node supports hosted-conversation Rollback, a **Rollback conversation** action appears beside terminal user messages. Hosted conversations do not provide a Rewind branch action. After confirmation, the system permanently deletes that user message and all later history in the current conversation's original Session, then restores the message text to the composer so you can edit and send it again.
 

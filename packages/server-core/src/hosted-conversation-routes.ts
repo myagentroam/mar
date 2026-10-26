@@ -2,6 +2,12 @@ import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
 import {
+  parseImagePreviewQuery,
+  sendImageResource,
+  type ImagePreviewQuery,
+  type ImageResourceResponse
+} from './image-resource-response.js';
+import {
   toolResultResourceInputSchema,
   toolResultResourcePageSchema,
   hostedConversationConfigUpdateInputSchema,
@@ -77,7 +83,9 @@ const HISTORY_QUERY_SCHEMA = z
   .strict();
 const FILE_CONTENT_QUERY_SCHEMA = z
   .object({
-    download: z.literal('1').optional()
+    download: z.literal('1').optional(),
+    maxWidth: z.string().optional(),
+    maxHeight: z.string().optional()
   })
   .strict();
 const FILE_CONTENT_CHUNK_BYTES = 512 * 1024;
@@ -548,16 +556,20 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
 
   app.get<{
     Params: { nodeId: string; conversationId: string; runId: string; imageRef: string };
+    Querystring: ImagePreviewQuery;
   }>(
     '/api/nodes/:nodeId/hosted-conversations/:conversationId/runs/:runId/images/:imageRef',
     async (request, reply) => {
       const actor = protectedAdmin(database, request, reply);
       if (actor === undefined) return;
       reply.header('cache-control', 'private, no-store');
+      const preview = parseImagePreviewQuery(request.query);
+      if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
       const parsed = hostedConversationImageReadInputSchema.safeParse({
         conversationId: request.params.conversationId,
         runId: request.params.runId,
-        imageRef: request.params.imageRef
+        imageRef: request.params.imageRef,
+        ...(preview.data === undefined ? {} : { preview: preview.data })
       });
       if (!parsed.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
       try {
@@ -568,17 +580,8 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           request.params.nodeId,
           'conversation.hosted.image.read',
           parsed.data
-        )) as { readonly image?: { readonly mime?: unknown; readonly dataBase64?: unknown } };
-        if (
-          typeof result.image?.mime !== 'string' ||
-          !result.image.mime.startsWith('image/') ||
-          typeof result.image.dataBase64 !== 'string'
-        )
-          return sendError(reply, 502, 'RUN_IMAGE_INVALID');
-        return reply
-          .header('cache-control', 'private, no-store')
-          .type(result.image.mime)
-          .send(Buffer.from(result.image.dataBase64, 'base64'));
+        )) as ImageResourceResponse;
+        return sendImageResource(reply, result, preview.data !== undefined);
       } catch (error) {
         return databaseError(reply, error);
       }
@@ -610,15 +613,33 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
 
   app.get<{
     Params: { nodeId: string; conversationId: string; fileId: string };
-    Querystring: { download?: string };
+    Querystring: { download?: string } & ImagePreviewQuery;
   }>(
     '/api/nodes/:nodeId/hosted-conversations/:conversationId/files/:fileId/content',
     async (request, reply) => {
       const actor = protectedAdmin(database, request, reply);
       if (actor === undefined) return;
       try {
+        const preview = parseImagePreviewQuery(request.query);
+        if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
+          return sendError(reply, 400, 'RUN_IMAGE_INVALID');
         const query = parsePublic(FILE_CONTENT_QUERY_SCHEMA, request.query);
         await authorizeExistingConversation(input, actor, request.params);
+        if (preview.data !== undefined) {
+          const result = (await requestHostedConversationNode(
+            nodeControl,
+            actor,
+            request.params.nodeId,
+            'conversation.hosted.file.read',
+            {
+              conversationId: request.params.conversationId,
+              fileId: request.params.fileId,
+              preview: preview.data
+            }
+          )) as ImageResourceResponse;
+          reply.header('cache-control', 'private, no-store');
+          return sendImageResource(reply, result, true);
+        }
         const first = await readHostedFileContentChunk({
           nodeControl,
           actor,

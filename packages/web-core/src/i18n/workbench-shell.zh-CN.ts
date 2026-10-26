@@ -35,6 +35,10 @@ export const workbenchShellZhCN = {
       cleaning: '清理中…',
       cleanupFailed: '无法清理会话。',
       completed: '清理完成',
+      partiallyCompleted: '已完成部分清理',
+      timeLimitReached:
+        '已达到本次清理的时间预算，以下为已完成的统计，未处理的会话不计为失败。可再次发起清理，处理剩余会话。',
+      remaining: '待处理',
       deleted: '已删除',
       skipped: '已跳过',
       failed: '失败',

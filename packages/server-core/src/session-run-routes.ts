@@ -629,7 +629,9 @@ export function registerSessionRunRoutes(input: {
         {
           workspaceId: request.params.workspaceId,
           inactiveDays
-        }
+        },
+        undefined,
+        30_000
       );
       return reply.send(workspaceSessionCleanupResultSchema.parse(result));
     } catch (error) {
@@ -680,6 +682,7 @@ export function registerSessionRunRoutes(input: {
     Body: {
       nodeId?: unknown;
       turnId?: unknown;
+      itemId?: unknown;
       boundary?: unknown;
     };
   }>('/api/agent-sessions/:sessionId/rollback', async (request, reply) => {
@@ -694,6 +697,7 @@ export function registerSessionRunRoutes(input: {
       !isNonEmptyString(body.nodeId) ||
       !isNonEmptyString(body.turnId) ||
       body.turnId.length > 128 ||
+      (body.itemId !== undefined && (!isNonEmptyString(body.itemId) || body.itemId.length > 128)) ||
       !Object.hasOwn(body, 'boundary') ||
       (body.boundary !== null && (!isNonEmptyString(body.boundary) || body.boundary.length > 256))
     )
@@ -703,6 +707,7 @@ export function registerSessionRunRoutes(input: {
         await requestUserNode(nodeControl, admin, body.nodeId, 'session.rollback', {
           sessionId: request.params.sessionId,
           turnId: body.turnId,
+          ...(body.itemId === undefined ? {} : { itemId: body.itemId }),
           boundary: body.boundary
         })
       );

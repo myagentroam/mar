@@ -2122,6 +2122,64 @@ describe('MAR Agent Node Runner', () => {
     }
   });
 
+  it('rolls back before the selected steered user message within a native Turn', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-runner-steer-rollback-home-'));
+    try {
+      const store = await JsonlSessionStore.open(home);
+      const native = await store.createSession({
+        title: 'Steer rollback',
+        workspace: '/workspace'
+      });
+      for (const [executionId, turnId, prompt, clientMessageId] of [
+        ['execution-1', 'turn-1', 'keep previous turn', 'previous-message'],
+        ['execution-2a', 'turn-2', 'keep first input', 'first-message'],
+        ['execution-2b', 'turn-2', 'remove selected steer', 'steer-message'],
+        ['execution-2c', 'turn-2', 'remove later input', 'later-message']
+      ] as const) {
+        await store.append(native.id, {
+          type: 'turn.user',
+          payload: { prompt, clientMessageId },
+          executionId,
+          turnId
+        });
+      }
+      await store.close();
+      const runner = new MarAgentRunner(home);
+      const session = {
+        id: native.id,
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        runner: 'mar-agent',
+        externalSessionId: native.id,
+        nativeControl: 'EXTERNAL',
+        channelToken: null,
+        cwd: '/workspace',
+        model: null,
+        effort: null,
+        access: null,
+        customTitle: null,
+        runnerTitle: 'Steer rollback',
+        pinnedAt: null,
+        titleSource: 'RUNNER',
+        lastActivityAt: 0,
+        createdAt: 0
+      } as const;
+
+      await expect(
+        runner.rollbackNative(session, 'turn-1', 'turn-2', 'steer-message')
+      ).resolves.toEqual(expect.any(Number));
+      const history = await runner.readOfficialConversation(session, {});
+      if (history === undefined) throw new Error('Native history was not returned.');
+      const retained = history.turns.find((turn) => turn.id === 'turn-2');
+      expect(retained?.items.filter((item) => item.kind === 'user_message')).toHaveLength(1);
+      expect(JSON.stringify(retained?.items)).toContain('keep first input');
+      expect(JSON.stringify(history.turns)).not.toContain('remove selected steer');
+      expect(JSON.stringify(history.turns)).not.toContain('remove later input');
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
   it('enters Goal without changing the fixed MAR Agent access configuration', async () => {
     const database = new NodeDatabase(':memory:', 'node-mar-agent-goal');
     const workspace = database.saveWorkspace({

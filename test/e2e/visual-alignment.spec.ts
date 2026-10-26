@@ -562,6 +562,105 @@ test('Workspace header tabs scroll horizontally without vertical overflow or cli
   }
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Workspace pinned boundary masks scrolled tabs and preserves keyboard focus: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    for (const placement of ['header', 'body']) {
+      await page.goto(
+        `${fixture.url}workspace-tabs.html?locale=en-US&layout=boundary&placement=${placement}&theme=${theme}`
+      );
+      if (theme === 'vscode-dark-2026')
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      else await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+      const list = page.getByRole('tablist');
+      const pinned = list.locator('.sticky-pinned');
+      await expect(pinned).toHaveCount(2);
+      const lastPinned = pinned.last();
+      const normal = list.locator('.workspace-tab:not(.pinned)');
+      await normal.evaluateAll((elements) => {
+        for (const element of elements)
+          (element as HTMLElement).style.background = 'rgb(255, 0, 255)';
+      });
+      await list.evaluate((element) => {
+        element.scrollLeft = 52;
+      });
+      await expect.poll(() => list.evaluate((element) => element.scrollLeft)).toBe(52);
+      await page.mouse.move(1200, 800);
+      const bounds = (await list.boundingBox())!;
+      const edge = (await lastPinned.boundingBox())!;
+      const clip = {
+        x: bounds.x,
+        y: bounds.y,
+        width: edge.x + edge.width + 3 - bounds.x,
+        height: bounds.height
+      };
+      const visible = await page.screenshot({
+        clip,
+        animations: 'disabled',
+        path: testInfo.outputPath(`${placement}-boundary.png`)
+      });
+      await normal.evaluateAll((elements) => {
+        for (const element of elements) (element as HTMLElement).style.visibility = 'hidden';
+      });
+      const hidden = await page.screenshot({ clip, animations: 'disabled' });
+      expect(
+        visible.equals(hidden),
+        'Ordinary tabs must not bleed through the fixed region or its corners'
+      ).toBe(true);
+      await normal.evaluateAll((elements) => {
+        for (const element of elements) {
+          (element as HTMLElement).style.removeProperty('visibility');
+          (element as HTMLElement).style.removeProperty('background');
+        }
+      });
+      await list.evaluate((element) => {
+        element.scrollLeft = 0;
+      });
+      const tab = page.getByRole('tab', { name: 'Workspace three', exact: true });
+      await tab.focus();
+      await tab.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(tab).toBeFocused();
+      await tab.press('Enter');
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      const focus = await tab.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          visible: element.matches(':focus-visible'),
+          width: parseFloat(style.outlineWidth),
+          offset: parseFloat(style.outlineOffset)
+        };
+      });
+      expect(focus.visible).toBe(true);
+      expect(focus.width).toBeGreaterThan(0);
+      expect(focus.offset + focus.width).toBeLessThanOrEqual(0);
+      await list.screenshot({
+        path: testInfo.outputPath(`${placement}-focus.png`),
+        animations: 'disabled'
+      });
+    }
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 850 });
+      await page.locator('main').evaluate((element) => {
+        element.style.maxWidth = '440px';
+      });
+      const list = page.getByRole('tablist');
+      await expect(list.locator('.sticky-pinned')).toHaveCount(0);
+      await list.evaluate((element) => {
+        element.scrollLeft = 0;
+      });
+      const first = list.locator('.pinned').first();
+      const before = (await first.boundingBox())!;
+      await list.evaluate((element) => {
+        element.scrollLeft = 52;
+      });
+      await expect.poll(async () => (await first.boundingBox())!.x).toBeLessThan(before.x - 40);
+    }
+  });
+}
+
 test('Performance hover displays the details panel without a second hint', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
   const trigger = page.locator('.web-performance-indicator');

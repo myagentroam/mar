@@ -93,8 +93,13 @@ describe('AgentMarkdown workspace images', () => {
       '/home/runner/.mar/agent/sessions/session-id/generated_images/image.png',
       'C:/Users/runner/AppData/Local/Temp/capture.png'
     ]);
-    expect(html).toContain('src="/api/workspace-image?path=output%2Fchart.png"');
-    expect(html).toContain('src="/api/workspace-image?path=%2Ftmp%2Fcapture.png"');
+    expect(html).toContain(
+      'src="/api/workspace-image?path=output%2Fchart.png&amp;maxWidth=320&amp;maxHeight=240"'
+    );
+    expect(html).toContain(
+      'src="/api/workspace-image?path=%2Ftmp%2Fcapture.png&amp;maxWidth=320&amp;maxHeight=240"'
+    );
+    expect(html).toContain('data-image-source="/api/workspace-image?path=output%2Fchart.png"');
     expect(html).toContain('src="/api/workspace-image?path=C%3A%2FUsers%2Frunner');
     expect(html).toContain('data-workspace-file="C:/Windows/Temp/note.txt"');
     expect(html).not.toContain('src="/home/runner/project');

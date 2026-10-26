@@ -91,7 +91,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   gap: 2px;
   padding: 2px;
   border-radius: var(--mar-radius-control);
-  background: var(--mar-fill-hover);
+  background: var(--mar-bg-subtle);
 }
 .session-group-tabs button {
   flex: 1 1 0;
@@ -103,7 +103,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   padding: 0.25rem;
   border: 0;
   border-radius: calc(var(--mar-radius-control) - 2px);
-  background: var(--mar-bg-panel);
+  background: transparent;
   color: var(--mar-text-secondary);
   font-family: inherit;
   font-size: var(--mar-font-size-meta);
@@ -120,6 +120,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 .session-group-tabs button[aria-selected='true'] {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
+  box-shadow: inset 0 0 0 1px var(--mar-border-medium);
 }
 .session-group-tabs button:focus-visible {
   outline: 2px solid var(--mar-color-brand);

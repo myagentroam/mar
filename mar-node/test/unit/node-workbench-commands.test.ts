@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import sharp from 'sharp';
 import { createEnvelope } from '@myagentroam/protocol';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
@@ -42,6 +43,46 @@ describe('Node Workbench Manifest and command control', () => {
     await expect(
       image({ runId: 'native-history:session', imageRef: 'file:missing.png' })
     ).rejects.toThrow('RUN_IMAGE_NOT_FOUND');
+  });
+
+  it('serves original Run image bytes unchanged and rechecks the resource before preview cache hits', async () => {
+    const sourceBytes = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 70, g: 90, b: 110 } }
+    })
+      .png()
+      .toBuffer();
+    const source = { mime: 'image/png', dataBase64: sourceBytes.toString('base64') };
+    const original = { ...source };
+    const readImage = vi.fn(async () => source);
+    const operation = new RunWorkbenchService({ readImage } as never).operations()[
+      'run.image.read'
+    ]!;
+    const request = { runId: 'run-thumbnail-check', imageIndex: 0 };
+    const preview = { maxWidth: 320, maxHeight: 240 };
+
+    const detail = (await operation(request)) as { image: typeof source };
+    expect(detail.image).toBe(source);
+    expect(source).toEqual(original);
+
+    const [first, second] = await Promise.all([
+      operation({ ...request, preview }),
+      operation({ ...request, preview })
+    ]);
+    expect(first).toEqual(second);
+    const resized = first as { image: { mime: string; dataBase64: string; resized: boolean } };
+    expect(resized.image.mime).toBe('image/webp');
+    expect(resized.image.resized).toBe(true);
+    expect(await sharp(Buffer.from(resized.image.dataBase64, 'base64')).metadata()).toMatchObject({
+      format: 'webp',
+      width: 320,
+      height: 240
+    });
+    expect(readImage).toHaveBeenCalledTimes(3);
+    expect(source).toEqual(original);
+
+    readImage.mockResolvedValueOnce(undefined as never);
+    await expect(operation({ ...request, preview })).rejects.toThrow('RUN_IMAGE_NOT_FOUND');
+    expect(readImage).toHaveBeenCalledTimes(4);
   });
 
   it('invalidates Workspace session projections after lifecycle configuration changes', async () => {

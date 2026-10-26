@@ -548,6 +548,97 @@ describe('Session-share resource routes', () => {
     );
   });
 
+  it('relays validated image previews only while the Session share remains authorized', async () => {
+    const f = await fixture();
+    const runImage = await f.app.inject({
+      url: '/api/session-shares/share-one/runs/run-current/images/0'
+    });
+    expect(runImage.statusCode).toBe(200);
+    expect(runImage.headers['content-type']).toContain('image/png');
+    expect(runImage.rawPayload).toEqual(Buffer.from('png'));
+    expect(runImage.headers['x-mar-image-resized']).toBeUndefined();
+    expect(f.requestNode).toHaveBeenLastCalledWith(
+      'node-fixed',
+      'run.image.read',
+      { runId: 'run-current', imageIndex: 0 },
+      { userId: 7, sessionHash: 'share-session', workspaceId: 'workspace-fixed' }
+    );
+
+    f.requestNode
+      .mockResolvedValueOnce({
+        run: { sessionId: 'session-current', workspaceId: 'workspace-fixed' }
+      })
+      .mockResolvedValueOnce({
+        image: {
+          mime: 'image/webp',
+          dataBase64: Buffer.from('preview').toString('base64'),
+          resized: true
+        }
+      });
+    const runPreview = await f.app.inject({
+      url: '/api/session-shares/share-one/runs/run-current/images/0?maxWidth=320&maxHeight=240'
+    });
+    expect(runPreview.statusCode).toBe(200);
+    expect(runPreview.headers['x-mar-image-resized']).toBe('1');
+    expect(f.requestNode).toHaveBeenLastCalledWith(
+      'node-fixed',
+      'run.image.read',
+      { runId: 'run-current', imageIndex: 0, preview: { maxWidth: 320, maxHeight: 240 } },
+      { userId: 7, sessionHash: 'share-session', workspaceId: 'workspace-fixed' }
+    );
+
+    f.requestNode.mockClear();
+    f.requestNode.mockResolvedValueOnce({
+      image: {
+        mime: 'image/webp',
+        dataBase64: Buffer.from('preview').toString('base64'),
+        resized: false
+      }
+    });
+    const fileImage = await f.app.inject({
+      url: '/api/session-shares/share-one/files/content?path=images%2Fsource.png&maxWidth=320&maxHeight=240'
+    });
+    expect(fileImage.statusCode).toBe(200);
+    expect(fileImage.headers['cache-control']).toBe('private, no-store');
+    expect(fileImage.headers['x-mar-image-resized']).toBe('0');
+    expect(f.requestNode).toHaveBeenLastCalledWith(
+      'node-fixed',
+      'workspace.file.content.read',
+      {
+        path: 'images/source.png',
+        preview: { maxWidth: 320, maxHeight: 240 },
+        workspaceId: 'workspace-fixed',
+        sessionId: 'session-current'
+      },
+      {
+        userId: 7,
+        username: 'Owner',
+        sessionHash: 'share-session',
+        channel: true,
+        workspaceId: 'workspace-fixed'
+      }
+    );
+
+    f.requestNode.mockClear();
+    for (const url of [
+      '/api/session-shares/share-one/runs/run-current/images/0?maxWidth=320',
+      '/api/session-shares/share-one/files/content?path=images%2Fsource.png&maxWidth=4097&maxHeight=240'
+    ]) {
+      const invalid = await f.app.inject({ url });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('RUN_IMAGE_INVALID');
+    }
+    expect(f.requestNode).not.toHaveBeenCalled();
+
+    f.setActive(false);
+    const revoked = await f.app.inject({
+      url: '/api/session-shares/share-one/runs/run-current/images/0?maxWidth=320&maxHeight=240'
+    });
+    expect(revoked.statusCode).toBe(404);
+    expect(revoked.json().error.code).toBe('SESSION_SHARE_NOT_FOUND');
+    expect(f.requestNode).not.toHaveBeenCalled();
+  });
+
   it('rejects new file reads after share authorization is revoked', async () => {
     const f = await fixture();
     f.setActive(false);

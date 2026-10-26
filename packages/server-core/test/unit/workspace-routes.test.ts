@@ -126,6 +126,72 @@ describe('Shared Workspace HTTP routes', () => {
       undefined
     );
   });
+  it('forwards validated preview dimensions and preserves unpreviewed file content', async () => {
+    const { app, requestNode, headers } = fixture();
+    const path = 'images/source.png';
+    requestNode.mockResolvedValueOnce({
+      image: {
+        mime: 'image/webp',
+        dataBase64: Buffer.from('preview').toString('base64'),
+        resized: false
+      }
+    });
+    const preview = await app.inject({
+      url: `/api/workspaces/workspace-1/files/content?nodeId=node-1&path=${path}&maxWidth=320&maxHeight=240`,
+      headers
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['cache-control']).toBe('private, no-store');
+    expect(preview.headers['content-type']).toBe('image/webp');
+    expect(preview.headers['x-mar-image-resized']).toBe('0');
+    expect(preview.rawPayload).toEqual(Buffer.from('preview'));
+    expect(requestNode).toHaveBeenCalledWith(
+      'node-1',
+      'workspace.file.content.read',
+      expect.objectContaining({
+        workspaceId: 'workspace-1',
+        path,
+        preview: { maxWidth: 320, maxHeight: 240 }
+      }),
+      expect.objectContaining({ userId: 1, workspaceId: 'workspace-1' }),
+      undefined
+    );
+
+    requestNode.mockClear();
+    for (const query of ['maxWidth=320', 'maxWidth=0&maxHeight=240']) {
+      const invalid = await app.inject({
+        url: `/api/workspaces/workspace-1/files/content?nodeId=node-1&path=${path}&${query}`,
+        headers
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('RUN_IMAGE_INVALID');
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+
+    requestNode.mockImplementation(async (...args: unknown[]) => {
+      const request = args[2] as { offset?: number; limit?: number };
+      const original = Buffer.from('original');
+      const offset = request.offset ?? 0;
+      const limit = request.limit ?? 512 * 1024;
+      return {
+        file: {
+          path,
+          size: original.length,
+          offset,
+          contentBase64: original.subarray(offset, offset + limit).toString('base64')
+        }
+      };
+    });
+    const detail = await app.inject({
+      url: `/api/workspaces/workspace-1/files/content?nodeId=node-1&path=${path}`,
+      headers
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.rawPayload).toEqual(Buffer.from('original'));
+    expect(detail.headers['x-mar-image-resized']).toBeUndefined();
+    expect(requestNode.mock.calls.at(-1)?.[2]).not.toHaveProperty('preview');
+  });
+
   it.each(['clip.mp4', 'sound.mp3'])(
     'streams %s larger than 20 MiB without requiring an initial Range header',
     async (path) => {

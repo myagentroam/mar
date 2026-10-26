@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { rollbackBoundaryIndex, type MarAgentSessionRollbackInput } from '../rollback.js';
 import { inlineMediaHistory } from '../inline-media.js';
 import type {
   SessionStore,
@@ -934,7 +935,7 @@ export class JsonlSessionStore implements SessionStore {
     }
   }
   /** Replace history under a journal; the indexed transaction ID decides the commit side. */
-  async rollbackSession(sessionId: string, input: { readonly boundaryTurnId: string | null }) {
+  async rollbackSession(sessionId: string, input: MarAgentSessionRollbackInput) {
     this.#assertOpen();
     const release = await this.acquireSessionLease(sessionId);
     try {
@@ -943,15 +944,7 @@ export class JsonlSessionStore implements SessionStore {
       const records = await this.read(sessionId);
       if (records[0]?.type !== 'session.created')
         throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session history is corrupt.');
-      const boundaryIndex =
-        input.boundaryTurnId === null
-          ? 0
-          : records.findLastIndex((record) => record.turnId === input.boundaryTurnId);
-      if (input.boundaryTurnId !== null && boundaryIndex < 0)
-        throw new MarAgentError(
-          'MAR_AGENT_ROLLBACK_TARGET_INVALID',
-          'Session rollback target was not found.'
-        );
+      const boundaryIndex = rollbackBoundaryIndex(records, input);
       const retained = records
         .slice(0, boundaryIndex + 1)
         .filter((record) => record.type !== 'responses.continuation');

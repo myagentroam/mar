@@ -35,6 +35,10 @@ export const workbenchShellEnUS = {
       cleaning: 'Cleaning…',
       cleanupFailed: 'Unable to clean up sessions.',
       completed: 'Cleanup complete',
+      partiallyCompleted: 'Cleanup partially complete',
+      timeLimitReached:
+        'This cleanup reached its time budget. The counts show completed work; unprocessed sessions are not counted as failures. Run cleanup again to process the remaining sessions.',
+      remaining: 'Not processed',
       deleted: 'Deleted',
       skipped: 'Skipped',
       failed: 'Failed',

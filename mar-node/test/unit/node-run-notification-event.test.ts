@@ -86,6 +86,61 @@ function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
 }
 
 describe('Node Run notification attachment events', () => {
+  it.each(['CANCELLED', 'INTERRUPTED', 'SUCCEEDED'] as const)(
+    'projects a manually stopped Run as INTERRUPTED after the Runner reports %s',
+    (status) => {
+      const { runtime, state, service, createRun, startExecution, notifications, events } =
+        fixture();
+      const run = createRun('manually-stopped');
+      const execution = startExecution(run.id);
+      runtime.transitionRun(run.id, 'CANCELLING');
+      state.interruptRequested.add(execution.id);
+
+      service.emit(execution.id, 'run.completed', {}, status);
+
+      expect(events).toContainEqual({
+        category: 'run',
+        payload: {
+          run: expect.objectContaining({
+            id: run.id,
+            status: 'INTERRUPTED',
+            interruptionReason: 'USER_STOP'
+          })
+        }
+      });
+      expect(notifications()).toEqual([]);
+    }
+  );
+
+  it.each(['STARTING', 'RUNNING'] as const)(
+    'keeps the user stop reason when a late Runner %s event arrives before completion',
+    (status) => {
+      const { runtime, state, service, createRun, startExecution, notifications, events } =
+        fixture();
+      const run = createRun('stopped-before-runner-start');
+      const execution = startExecution(run.id);
+      runtime.transitionRun(run.id, 'CANCELLING');
+      state.interruptRequested.add(execution.id);
+
+      service.emit(execution.id, status === 'STARTING' ? 'run.started' : 'run.running', {}, status);
+      expect(runtime.getRun(run.id)?.status).toBe('CANCELLING');
+
+      service.emit(execution.id, 'run.completed', {}, 'CANCELLED');
+      expect(events).toContainEqual({
+        category: 'run',
+        payload: {
+          run: expect.objectContaining({
+            id: run.id,
+            status: 'INTERRUPTED',
+            interruptionReason: 'USER_STOP'
+          })
+        }
+      });
+      expect(runtime.getRun(run.id)).toBeUndefined();
+      expect(notifications()).toEqual([]);
+    }
+  );
+
   it('restores terminal notifications when manual FIFO input takes over a delegated Run', async () => {
     const { runtime, service, createRun, startExecution, notifications } = fixture();
     const run = createRun('delegated', undefined, true);

@@ -75,6 +75,7 @@ export interface RecentRun {
   readonly runner: string;
   readonly status:
     'STARTING' | 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
+  readonly interruptionReason?: 'USER_STOP';
   readonly createdAt: number;
   readonly startedAt: number;
   readonly completedAt: number | null;
@@ -945,6 +946,7 @@ function isRecentRun(value: unknown): value is RecentRun {
       'CANCELLED',
       'INTERRUPTED'
     ].includes(String(value.status)) &&
+    (value.interruptionReason === undefined || value.interruptionReason === 'USER_STOP') &&
     typeof value.createdAt === 'number' &&
     typeof value.startedAt === 'number' &&
     (value.completedAt === null || typeof value.completedAt === 'number') &&

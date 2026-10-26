@@ -48,6 +48,68 @@ function run(status: NodeAgentRun['status'], version: number, updatedAt: number)
 
 describe('Node recent Run lightweight projection', () => {
   it.each([
+    { manuallyStopped: true, status: 'INTERRUPTED' as const, reason: 'USER_STOP' },
+    { manuallyStopped: false, status: 'INTERRUPTED' as const, reason: undefined },
+    { manuallyStopped: true, status: 'FAILED' as const, reason: undefined }
+  ])(
+    'preserves the terminal stop reason for manual=$manuallyStopped status=$status',
+    ({ manuallyStopped, status, reason }) => {
+      const service = new RecentRunProjectionService(vi.fn(), () => 1_000);
+      let now = 100;
+      const runtime = new NodeRuntimeState(
+        () => 'node-1',
+        () => ({
+          id: 'workspace-1',
+          path: '/workspace',
+          kind: 'DIRECTORY',
+          gitSummary: null,
+          createdAt: 1,
+          updatedAt: 1
+        }),
+        () => now++,
+        (changedRun, changedSession, userMessage) =>
+          service.record(changedRun, changedSession, userMessage)
+      );
+      try {
+        const activeSession = runtime.createAgentSession({
+          workspaceId: 'workspace-1',
+          runner: 'codex',
+          externalSessionId: 'session-1',
+          cwd: '/workspace'
+        });
+        const created = runtime.createMessageRun({
+          sessionId: activeSession.id,
+          clientMessageId: 'stopped-message',
+          content: 'Please work',
+          initiatedByUserId: 7
+        });
+        runtime.transitionRun(created.run.id, 'RUNNING');
+        if (manuallyStopped) runtime.transitionRun(created.run.id, 'CANCELLING');
+        expect(service.snapshot()[0]).not.toHaveProperty('interruptionReason');
+
+        const completed = runtime.finishRun(created.run.id, status);
+        expect(completed.status).toBe(status);
+        expect(completed.interruptionReason).toBe(reason);
+        expect(service.snapshot()[0]).toEqual(
+          expect.objectContaining({ runId: created.run.id, status })
+        );
+        expect(service.snapshot()[0]?.interruptionReason).toBe(reason);
+
+        runtime.createMessageRun({
+          sessionId: activeSession.id,
+          clientMessageId: 'next-message',
+          content: 'Continue',
+          initiatedByUserId: 7
+        });
+        expect(service.snapshot()[0]?.status).toBe('STARTING');
+        expect(service.snapshot()[0]).not.toHaveProperty('interruptionReason');
+      } finally {
+        service.dispose();
+      }
+    }
+  );
+
+  it.each([
     {
       name: 'session origin longer than the preview limit',
       input: `${serializeComposerTag('mar_session_origin', {

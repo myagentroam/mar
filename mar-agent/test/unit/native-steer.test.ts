@@ -24,7 +24,8 @@ afterEach(async () => {
 
 async function fixture(
   protocol: MarAgentModelConfiguration['protocol'],
-  publishModelResource?: MarAgentHost['publishModelResource']
+  publishModelResource?: MarAgentHost['publishModelResource'],
+  pauseAfterApply = false
 ) {
   const root = await mkdtemp(join(tmpdir(), 'mar-steer-'));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
@@ -50,6 +51,7 @@ async function fixture(
     enabled: true
   };
   const started = Promise.withResolvers<void>(),
+    afterApply = Promise.withResolvers<void>(),
     release = Promise.withResolvers<void>();
   const requests: ModelRequest[] = [];
   let aborted = 0;
@@ -64,6 +66,12 @@ async function fixture(
           async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
             requests.push({ ...request, messages: structuredClone(request.messages) });
             if (requests.length === 1) {
+              yield {
+                type: 'text.completed',
+                itemId: 'prior-work',
+                phase: 'commentary',
+                text: 'Work completed before guidance'
+              };
               signal.addEventListener(
                 'abort',
                 () => {
@@ -78,6 +86,12 @@ async function fixture(
                   signal.addEventListener('abort', () => reject(signal.reason), { once: true })
                 )
               ]);
+            }
+            if (requests.length === 2 && pauseAfterApply) {
+              afterApply.resolve();
+              await new Promise<void>((_, reject) =>
+                signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+              );
             }
             yield {
               type: 'text.completed',
@@ -101,6 +115,7 @@ async function fixture(
     catalog,
     home,
     started: started.promise,
+    afterApply: afterApply.promise,
     release: () => release.resolve(),
     requests,
     create,
@@ -111,6 +126,77 @@ async function fixture(
 describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
   'native steer %s',
   (protocol) => {
+    it.each([false, true])(
+      'rolls back only the selected steer and preserves earlier work and pending input (applied=%s)',
+      async (applied) => {
+        const f = await fixture(protocol, undefined, applied);
+        const handle = f.session.run({ prompt: 'initial' });
+        await f.started;
+        await f.session.steer({
+          expectedExecutionId: handle.executionId,
+          prompt: 'keep guidance',
+          clientMessageId: 'keep-guidance'
+        });
+        const store = await JsonlSessionStore.open(f.home);
+        cleanups.push(() => store.close());
+        const prefix = await store.read(f.session.id);
+        const receipt = await f.session.steer({
+          expectedExecutionId: handle.executionId,
+          prompt: 'remove guidance',
+          clientMessageId: 'remove-guidance'
+        });
+        if (receipt.status !== 'accepted') throw new Error('Missing receipt');
+        if (applied) {
+          f.release();
+          await Promise.race([
+            f.afterApply,
+            handle.result().then(() => {
+              throw new Error('Execution ended before applying steer');
+            })
+          ]);
+        }
+        handle.cancel();
+        expect(await handle.result()).toMatchObject({ status: 'cancelled' });
+        await f.agent.dispose();
+        await f.catalog.rollback(f.session.id, {
+          beforeInput: { turnId: receipt.entry.turnId, clientMessageId: 'remove-guidance' }
+        });
+        expect(await store.read(f.session.id)).toEqual(
+          prefix.filter((record) => record.type !== 'responses.continuation')
+        );
+        const history = await f.catalog.history(f.session.id, { limit: 100 });
+        expect(
+          history.entries.filter((entry) => entry.kind === 'user').map((entry) => entry.text)
+        ).toEqual(['initial', 'keep guidance']);
+        expect(
+          history.entries.some(
+            (entry) =>
+              entry.kind === 'event' &&
+              entry.event.type === 'message.completed' &&
+              entry.event.text === 'Work completed before guidance'
+          )
+        ).toBe(true);
+        const reopened = await f.create();
+        cleanups.push(() => reopened.dispose());
+        const session = await reopened.openSession(f.session.id);
+        expect(await session.run({ prompt: 'continue' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        expect(
+          f.requests
+            .at(-1)!
+            .messages.filter((message) => message.role === 'user' && !message.contextKind)
+            .map((message) => message.content)
+        ).toEqual(['initial', 'keep guidance', 'continue']);
+        await session.run({ prompt: 'continue again' }).result();
+        expect(
+          f.requests.at(-1)!.messages.filter((message) => message.content === 'keep guidance')
+        ).toHaveLength(1);
+        expect(
+          f.requests.at(-1)!.messages.some((message) => message.content === 'remove guidance')
+        ).toBe(false);
+      }
+    );
     it('forks a receive/apply difference without duplicating or losing its input', async () => {
       const f = await fixture(protocol);
       const handle = f.session.run({ prompt: 'initial' });

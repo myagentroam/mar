@@ -2,6 +2,7 @@
 import { h, ref } from 'vue';
 import type { NodeSummary } from '../../src/model/node.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import WorkspaceSessionCleanupDialog from '../../src/view/workspace/WorkspaceSessionCleanupDialog.vue';
 import SkillDetailsDialog from '../../src/view/skill/SkillDetailsDialog.vue';
 import McpDetailsDialog from '../../src/view/skill/McpDetailsDialog.vue';
 import ThemeTokenHelp from '../../src/view/settings/ThemeTokenHelp.vue';
@@ -144,6 +145,21 @@ function showMessageBox(): void {
   />
   <button v-else-if="kind === 'message'" @click="showMessageBox">Open content</button>
   <button v-else @click="open = true">Open content</button>
+
+  <WorkspaceSessionCleanupDialog
+    v-if="kind === 'cleanup' && open"
+    v-model="open"
+    :cleanup="
+      async () => ({
+        deleted: 3,
+        skipped: 2,
+        failed: 0,
+        deletedByRunner: { codex: 3 },
+        timedOut: true,
+        remaining: 7
+      })
+    "
+  />
 
   <SkillDetailsDialog
     v-if="kind === 'details'"

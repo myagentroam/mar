@@ -14,6 +14,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostedConversationRuntime } from '../../src/service/hosted-conversation-node-service.js';
 import { HostedConversationNodeService } from '../../src/service/hosted-conversation-node-service.js';
@@ -1092,6 +1093,96 @@ describe('Node hosted conversation files', () => {
       code: 'ENOENT'
     });
   });
+
+  it('authorizes Hosted image reads before returning a cached preview', async () => {
+    const fixture = await fileFixture();
+    const conversationId = await createConversation(fixture);
+    const runId = `native-history:hosted:${conversationId}`;
+    const sourceBytes = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 30, g: 80, b: 130 } }
+    })
+      .png()
+      .toBuffer();
+    const source = {
+      name: 'generated.png',
+      mime: 'image/png',
+      dataBase64: sourceBytes.toString('base64')
+    };
+    const original = { ...source };
+    fixture.readImage.mockResolvedValue(source);
+    const operation = fixture.service.operations()['conversation.hosted.image.read']!;
+    const request = {
+      conversationId,
+      runId,
+      imageRef: 'file:session%3Agenerated.png',
+      __requestUserId: 7
+    };
+    const preview = { maxWidth: 320, maxHeight: 240 };
+
+    const detail = (await operation(request)) as { image: typeof source };
+    expect(detail.image).toBe(source);
+    expect(source).toEqual(original);
+
+    const resized = (await operation({ ...request, preview })) as {
+      image: { mime: string; dataBase64: string; resized: boolean };
+    };
+    expect(resized.image.mime).toBe('image/webp');
+    expect(resized.image.resized).toBe(true);
+    expect(await sharp(Buffer.from(resized.image.dataBase64, 'base64')).metadata()).toMatchObject({
+      format: 'webp',
+      width: 320,
+      height: 240
+    });
+    expect(fixture.readImage).toHaveBeenCalledTimes(2);
+    expect(source).toEqual(original);
+
+    fixture.readImage.mockResolvedValueOnce(undefined);
+    await expect(operation({ ...request, preview })).rejects.toThrow('RUN_IMAGE_NOT_FOUND');
+    expect(fixture.readImage).toHaveBeenCalledTimes(3);
+    await expect(
+      operation({ ...request, runId: 'native-history:hosted:other', preview })
+    ).rejects.toThrow('HOSTED_CONVERSATION_NOT_AUTHORIZED');
+    expect(fixture.readImage).toHaveBeenCalledTimes(3);
+    await fixture.service.dispose();
+  });
+
+  it('revalidates a Hosted file projection before returning a cached preview', async () => {
+    const fixture = await fileFixture();
+    const conversationId = await createConversation(fixture);
+    const paths = fixture.store.pathsForConversation(7, conversationId);
+    const target = join(paths.outputDirectory, 'preview.png');
+    const source = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 195, g: 70, b: 40 } }
+    })
+      .png()
+      .toBuffer();
+    await writeFile(target, source);
+    const [projected] = await fixture.store.reconcileFiles(7, conversationId);
+    expect(projected).toBeDefined();
+
+    const operation = fixture.service.operations()['conversation.hosted.file.read']!;
+    const input = {
+      conversationId,
+      fileId: projected!.id,
+      preview: { maxWidth: 320, maxHeight: 240 },
+      __requestUserId: 7
+    };
+    const result = (await operation(input)) as {
+      image: { mime: string; dataBase64: string; resized: boolean };
+    };
+
+    expect(result.image.mime).toBe('image/webp');
+    expect(result.image.resized).toBe(true);
+    expect(await sharp(Buffer.from(result.image.dataBase64, 'base64')).metadata()).toMatchObject({
+      width: 320,
+      height: 240
+    });
+    expect(await readFile(target)).toEqual(source);
+
+    fixture.database.raw.prepare('DELETE FROM conversation_files WHERE id=?').run(projected!.id);
+    await expect(operation(input)).rejects.toThrow('HOSTED_CONVERSATION_FILE_NOT_FOUND');
+    await fixture.service.dispose();
+  });
 });
 
 const model: MarAgentRuntimeModelConfiguration = {
@@ -1148,6 +1239,7 @@ async function fileFixture(
   } satisfies HostedConversationRuntime;
   let id = 0;
   let currentNow: number | undefined;
+  const readImage = vi.fn(async (): Promise<unknown | undefined> => undefined);
   const service = new HostedConversationNodeService({
     database,
     store,
@@ -1156,7 +1248,7 @@ async function fileFixture(
     now: () => currentNow ?? 2_000 + id,
     id: () => `id-${++id}`,
     processExecutorFactory: vi.fn(() => ({ spawn: vi.fn() }) as never),
-    readImage: vi.fn(async () => undefined)
+    readImage
   });
   const templateDraft: ConversationTemplateDraft = {
     templateId: 'template-1',
@@ -1240,6 +1332,7 @@ async function fileFixture(
     runtime,
     pending,
     service,
+    readImage,
     setNow(value: number) {
       currentNow = value;
     }

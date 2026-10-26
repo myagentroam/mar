@@ -41,6 +41,8 @@ for (const [width, theme, locale] of [
         const result = {
           brand: color('--mar-color-brand'),
           panel: color('--mar-bg-panel'),
+          border: color('--mar-border-medium'),
+          track: color('--mar-bg-subtle'),
           link: color('--mar-control-link-text'),
           success: color('--mar-color-success-text')
         };
@@ -72,7 +74,10 @@ for (const [width, theme, locale] of [
         return { actual: style.backgroundColor, expected };
       });
       expect(selectedBackground.actual).toBe(selectedBackground.expected);
-      await expect(tabs.nth(1)).toHaveCSS('background-color', palette.panel);
+      await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(tabs.nth(1)).toHaveCSS('box-shadow', 'none');
+      await expect(chats.getByRole('tablist')).toHaveCSS('background-color', palette.track);
+      await expect(tabs.nth(0)).toHaveCSS('box-shadow', `${palette.border} 0px 0px 0px 1px inset`);
       expect(selectedBackground.actual).not.toBe(palette.panel);
       await tabs.nth(0).hover();
       await expect(tabs.nth(0)).toHaveCSS('background-color', selectedBackground.expected);
@@ -136,6 +141,10 @@ for (const [width, theme, locale] of [
       await expect(tabs.nth(1)).toHaveCSS('outline-style', 'solid');
       await expect(tabs.nth(1)).toBeFocused();
       await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+      await expect(tabs.nth(1)).toHaveCSS('background-color', selectedBackground.expected);
+      await expect(tabs.nth(1)).toHaveCSS('box-shadow', `${palette.border} 0px 0px 0px 1px inset`);
+      await expect(tabs.nth(0)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(tabs.nth(0)).toHaveCSS('box-shadow', 'none');
       await expect(chats.locator('.session-link')).toHaveCount(1);
       await chats.locator('.session-link').click();
       await expect(page.locator('.conversation')).toContainText('child');
@@ -158,14 +167,29 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
-      await expect(recent.getByRole('tab').nth(1)).toHaveCSS('background-color', palette.panel);
+      await expect(recent.getByRole('tab').nth(1)).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)'
+      );
       await expect(page.locator('.recent-sessions-badge')).toHaveCSS(
         'background-color',
         palette.brand
       );
       await expect(recent.getByRole('tab').nth(0)).toHaveAttribute('aria-selected', 'true');
+      await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
+      await expect(recent.locator('.recent-sessions-list > li').first()).toContainText(
+        locale === 'zh-CN' ? '未读' : 'Unread'
+      );
       await recent.getByRole('tab').nth(1).click();
       await expect(recent.locator('.recent-sessions-list > li')).toHaveCount(102);
+      await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
+      await expect(
+        recent.locator('.recent-sessions-list > li').nth(1).locator('.mar-unread-label')
+      ).toHaveCount(0);
+      const heading = recent.locator('.recent-session-heading').first();
+      expect(
+        await heading.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+      ).toBe(true);
       const statuses = recent.locator('.recent-sessions-list .el-tag');
       await expect(statuses.first()).toHaveClass(/el-tag--success/);
       await expect(statuses.first()).toHaveCSS('color', palette.success);
@@ -206,6 +230,7 @@ for (const [width, theme, locale] of [
             );
           for (const unread of await list.locator('.group-unread').all())
             await expect(unread).toHaveCSS(property, expected);
+          await expect(recent.locator('.recent-session-unread')).toHaveCSS(property, expected);
         }
       }
       await page.screenshot({
@@ -214,6 +239,40 @@ for (const [width, theme, locale] of [
       });
       await recent.locator('.recent-sessions-list > li > button').first().click();
       await expect(page.locator('.conversation')).toContainText('child-1');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
+for (const [width, theme, locale] of [
+  [1280, 'daylight', 'en-US'],
+  [390, 'vscode-dark-2026', 'en-US'],
+  [1280, 'vscode-dark-2026', 'zh-CN'],
+  [390, 'daylight', 'zh-CN']
+] as const) {
+  test(`Recent session stops distinguish Canceled from Interrupted at ${width}px ${locale}`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto(
+        `${fixture.url}session-groups.html?theme=${theme}&locale=${locale}&stop-statuses`
+      );
+      if (width === 1280) await page.locator('.recent-sessions-trigger').click();
+      const recent = page.locator('.recent-sessions-panel');
+      const statuses = recent.locator('.recent-sessions-list .el-tag');
+      await expect(statuses).toHaveText(
+        locale === 'zh-CN' ? ['已取消', '已中断'] : ['Canceled', 'Interrupted']
+      );
+      await expect(statuses.first()).toHaveClass(/el-tag--info/);
+      await expect(statuses.last()).toHaveClass(/el-tag--warning/);
+      const directory = resolve(process.env.MAR_TEST_RUN_DIR ?? 'test/runs');
+      await mkdir(directory, { recursive: true });
+      await recent.screenshot({
+        path: resolve(directory, `recent-session-stops-${width}-${theme}-${locale}.png`)
+      });
     } finally {
       await fixture.close();
     }

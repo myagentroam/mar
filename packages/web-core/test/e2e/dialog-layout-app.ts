@@ -7,7 +7,9 @@ import DialogLayoutFixture from './dialog-layout-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
-localePreferenceService().setLocale('en-US');
+localePreferenceService().setLocale(
+  new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
+);
 themePreferenceService().setTheme(
   new URLSearchParams(location.search).get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );

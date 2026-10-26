@@ -7,6 +7,7 @@ import type { MarAgentSessionPage, MarAgentSessionSummary } from '../catalog.js'
 import type { ContextGcCheckpointDraft } from '../context-gc-checkpoint.js';
 import type { ToolResultResourceInput, ToolResultResourcePage } from '../tool-result-resources.js';
 import type { SessionListInput, SessionSource, SessionTitleUpdateInput } from '../types.js';
+import type { MarAgentSessionRollbackInput } from '../rollback.js';
 import type {
   CompactHistoryMessage,
   RestoredSessionInputImage,
@@ -242,9 +243,7 @@ export interface SessionStore {
   ): Promise<SessionStoreSession>;
   rollbackSession(
     sessionId: string,
-    input: {
-      readonly boundaryTurnId: string | null;
-    }
+    input: MarAgentSessionRollbackInput
   ): Promise<MarAgentSessionSummary>;
   clearSession(
     sessionId: string,

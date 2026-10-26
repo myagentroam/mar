@@ -1,4 +1,5 @@
 export { MarAgentError } from './agent-core/error.js';
+export type { MarAgentSessionRollbackInput } from './agent-core/session/rollback.js';
 export {
   MAR_AGENT_HOST_API_VERSION,
   negotiateHost,

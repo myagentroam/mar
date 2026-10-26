@@ -210,11 +210,6 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     });
   }
 
-  async isNativeSessionMissing(session: NodeAgentSession): Promise<boolean> {
-    void session;
-    return false;
-  }
-
   async removeNative(
     session: NodeAgentSession,
     nativeSessionId: string
@@ -240,9 +235,10 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
   async rollbackNative(
     session: NodeAgentSession,
     boundary: string | null,
-    targetTurnBoundary?: string
+    targetTurnBoundary?: string,
+    targetClientMessageId?: string
   ): Promise<number> {
-    void [session, boundary, targetTurnBoundary];
+    void [session, boundary, targetTurnBoundary, targetClientMessageId];
     throw new RunnerCapabilityError(this.name, 'session.rollback');
   }
 
@@ -428,6 +424,7 @@ export interface RunnerApprovalDecision {
 }
 
 export interface RunnerDiscoveryContext {
+  readonly cleanup?: boolean;
   readonly workspaces: readonly NodeWorkspace[];
   createProjection(input: {
     readonly workspace: NodeWorkspace;

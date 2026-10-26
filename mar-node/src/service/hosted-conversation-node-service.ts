@@ -1,4 +1,6 @@
+import { resolveSessionRollbackTarget } from './session-rollback-target.js';
 import { assertMcpServerNames } from '../mcp/naming.js';
+import { imagePreviews, MAX_IMAGE_PREVIEW_SOURCE_BYTES } from './image-preview-service.js';
 import { modelUsageGrantSchema, steerComposerMessage } from '@myagentroam/protocol';
 import { randomUUID } from 'node:crypto';
 import { constants, type Stats } from 'node:fs';
@@ -142,6 +144,7 @@ export interface HostedConversationRuntimeHistoryPage {
 
 export interface HostedConversationRuntimeRollbackInput extends HostedConversationRuntimeHistoryInput {
   readonly boundaryTurnId: string | null;
+  readonly beforeInput?: { readonly turnId: string; readonly clientMessageId: string };
 }
 
 export interface HostedConversationRuntimeRunInput {
@@ -1278,13 +1281,12 @@ export class HostedConversationNodeService {
     const turns = await this.readAllHistory(conversation, paths);
     const targetIndex = turns.findIndex((turn) => turn.id === input.turnId);
     const target = turns[targetIndex];
-    const userMessage = target?.items.find(
-      (item) => item.kind === 'user_message' && item.status === 'COMPLETED'
-    );
+    const selectedInput =
+      target === undefined ? undefined : resolveSessionRollbackTarget(target, input.itemId);
     if (
       target === undefined ||
       !terminalHostedTurnStatus(target.status) ||
-      userMessage === undefined ||
+      selectedInput === undefined ||
       target.rewind?.before !== input.boundary
     )
       throw new Error('HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID');
@@ -1295,7 +1297,15 @@ export class HostedConversationNodeService {
         sessionId: conversation.sessionId,
         homeDirectory: paths.homeDirectory,
         modelId: conversation.modelId,
-        boundaryTurnId: input.boundary
+        boundaryTurnId: input.boundary,
+        ...(selectedInput.clientMessageId === undefined
+          ? {}
+          : {
+              beforeInput: {
+                turnId: target.rewind!.after,
+                clientMessageId: selectedInput.clientMessageId
+              }
+            })
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'MAR_AGENT_ROLLBACK_TARGET_INVALID')
@@ -1558,7 +1568,10 @@ export class HostedConversationNodeService {
       throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
     const image = await this.options.readImage(input.runId, input.imageRef);
     if (image === undefined) throw new Error('RUN_IMAGE_NOT_FOUND');
-    return { image };
+    return {
+      image:
+        input.preview === undefined ? image : await imagePreviews.fromImage(image, input.preview)
+    };
   }
 
   private async readFile(raw: unknown): Promise<unknown> {
@@ -1566,7 +1579,7 @@ export class HostedConversationNodeService {
     const input = hostedConversationFileReadInputSchema.parse(payload.data);
     const file = this.options.store.requireFile(payload.userId, input.conversationId, input.fileId);
     const path = this.options.store.filePath(payload.userId, file);
-    const offset = input.offset ?? 0;
+    const offset = input.preview === undefined ? (input.offset ?? 0) : 0;
     const limit = Math.min(input.limit ?? MAX_FILE_READ_BYTES, MAX_FILE_READ_BYTES);
     const handle = await openRegularFile(path);
     try {
@@ -1576,12 +1589,32 @@ export class HostedConversationNodeService {
       if (!sameFileIdentity(before, pathMetadata))
         throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
       if (offset > before.size) throw new Error('HOSTED_CONVERSATION_FILE_RANGE_INVALID');
-      const buffer = Buffer.alloc(Math.min(limit, Math.max(0, before.size - offset)));
+      if (input.preview !== undefined && before.size > MAX_IMAGE_PREVIEW_SOURCE_BYTES)
+        throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+      const buffer = Buffer.alloc(
+        input.preview === undefined
+          ? Math.min(limit, Math.max(0, before.size - offset))
+          : before.size
+      );
       const read = await handle.read(buffer, 0, buffer.length, offset);
+      if (input.preview !== undefined) {
+        while (read.bytesRead < buffer.length) {
+          const next = await handle.read(
+            buffer,
+            read.bytesRead,
+            buffer.length - read.bytesRead,
+            read.bytesRead
+          );
+          if (next.bytesRead === 0) throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
+          read.bytesRead += next.bytesRead;
+        }
+      }
       const after = await handle.stat();
       const currentPathMetadata = await regularFileMetadata(path);
       if (!sameFileSnapshot(before, after) || !sameFileSnapshot(after, currentPathMetadata))
         throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
+      if (input.preview !== undefined)
+        return { image: await imagePreviews.create(buffer, input.preview) };
       const next = offset + read.bytesRead;
       const eof = next >= after.size;
       const currentFile: ConversationFileProjection = {

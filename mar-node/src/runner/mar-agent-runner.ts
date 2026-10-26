@@ -351,6 +351,32 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const activeCatalog = catalog;
       const listed = await activeCatalog.list({ limit: 200 });
+      if (context.cleanup) {
+        const sessions = [...listed.sessions];
+        let cursor = listed.nextCursor;
+        while (cursor !== undefined) {
+          const next = await activeCatalog.list({ limit: 200, cursor });
+          sessions.push(...next.sessions);
+          cursor = next.nextCursor;
+        }
+        const workspaces = workspace ? [workspace] : context.workspaces;
+        return sessions.flatMap((session) => {
+          const target = workspaces.find(
+            (candidate) => resolve(candidate.path) === resolve(session.workspace)
+          );
+          return target
+            ? [
+                context.createProjection({
+                  workspace: target,
+                  runner: this.name,
+                  externalSessionId: session.id,
+                  cwd: session.workspace,
+                  lastActivityAt: Date.parse(session.lastActivityAt)
+                })
+              ]
+            : [];
+        });
+      }
       const workspaces = workspace ? [workspace] : context.workspaces;
       return (
         await Promise.all(
@@ -385,7 +411,8 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
           })
         )
       ).flat();
-    } catch {
+    } catch (error) {
+      if (context.cleanup) throw error;
       return [];
     } finally {
       await catalog?.close().catch(() => undefined);
@@ -410,15 +437,24 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   }
   override async rollbackNative(
     session: NodeAgentSession,
-    boundary: string | null
+    boundary: string | null,
+    targetTurnBoundary?: string,
+    targetClientMessageId?: string
   ): Promise<number> {
     if (session.externalSessionId === null) throw new Error('SESSION_ROLLBACK_UNAVAILABLE');
     await this.#releaseSessionResources?.(session.externalSessionId);
     const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
-      const rolledBack = await catalog.rollback(session.externalSessionId, {
-        boundaryTurnId: boundary
-      });
+      if (targetClientMessageId !== undefined && targetTurnBoundary === undefined)
+        throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
+      const rolledBack = await catalog.rollback(
+        session.externalSessionId,
+        targetClientMessageId === undefined
+          ? { boundaryTurnId: boundary }
+          : {
+              beforeInput: { turnId: targetTurnBoundary!, clientMessageId: targetClientMessageId }
+            }
+      );
       return Date.parse(rolledBack.lastActivityAt);
     } catch (error) {
       if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });

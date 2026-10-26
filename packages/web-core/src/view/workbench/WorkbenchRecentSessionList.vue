@@ -11,6 +11,7 @@ defineProps<{
     { running: number; unread: boolean }
   >;
   readonly runs: readonly RecentRun[];
+  readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
 }>();
@@ -28,9 +29,14 @@ const RUN_STATUS_KEYS = {
   INTERRUPTED: 'workbenchNotificationCenter.runStatus.INTERRUPTED'
 } as const satisfies Record<RecentRun['status'], string>;
 
-function runStatusType(
-  status: RecentRun['status']
-): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
+function runDisplayStatus(run: RecentRun): RecentRun['status'] {
+  return run.status === 'INTERRUPTED' && run.interruptionReason === 'USER_STOP'
+    ? 'CANCELLED'
+    : run.status;
+}
+
+function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
+  const status = runDisplayStatus(run);
   if (status === 'SUCCEEDED') return 'success';
   if (status === 'FAILED') return 'danger';
   if (status === 'STARTING' || status === 'RUNNING') return 'primary';
@@ -69,14 +75,21 @@ function runStatusType(
           type="button"
           @click="emit('openRecentRun', run)"
         >
-          <span class="recent-session-title">{{
-            translate('workbenchNotificationCenter.recentRunTitle', {
-              value0: run.workspaceName ?? run.workspaceId,
-              value1: run.sessionTitle
-            })
-          }}</span>
-          <el-tag size="small" :type="runStatusType(run.status)">{{
-            translate(RUN_STATUS_KEYS[run.status])
+          <span class="recent-session-heading">
+            <span class="recent-session-title">{{
+              translate('workbenchNotificationCenter.recentRunTitle', {
+                value0: run.workspaceName ?? run.workspaceId,
+                value1: run.sessionTitle
+              })
+            }}</span>
+            <span
+              v-if="hasUnreadSession(run.nodeId, run.workspaceId, run.sessionId)"
+              class="recent-session-unread mar-unread-label"
+              >{{ translate('sessionGroups.unread') }}</span
+            >
+          </span>
+          <el-tag size="small" :type="runStatusType(run)">{{
+            translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
           }}</el-tag>
           <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
           <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{
@@ -152,6 +165,12 @@ function runStatusType(
 .recent-sessions-list button:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
+}
+.recent-session-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
 }
 .recent-session-title,
 .recent-sessions-list small {

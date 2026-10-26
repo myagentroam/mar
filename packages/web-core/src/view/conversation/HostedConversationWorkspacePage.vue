@@ -650,7 +650,7 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
     return;
   rollbackPending.value = true;
   try {
-    await props.workspace.rollback(turn.id, boundary);
+    await props.workspace.rollback(turn.id, boundary, item.id);
     if (selectedConversationKey.value === conversationKeyAtConfirmation)
       composer.value?.restoreMessage(text);
   } catch (error) {

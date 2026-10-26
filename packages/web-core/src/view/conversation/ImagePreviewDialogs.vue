@@ -4,9 +4,10 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
+import DecodedPreviewImage from './DecodedPreviewImage.vue';
 
 const props = defineProps<{
   readonly attachmentOpen: boolean;
@@ -28,6 +29,16 @@ const attachmentTitle = computed(
 );
 const conversationTitle = computed(
   () => props.conversation?.name ?? translate('generated.imagePreviewDialogs.imagePreview')
+);
+const original = ref(false);
+const resized = ref(false);
+watch(
+  [() => props.conversation?.url, () => props.conversationOpen],
+  () => {
+    original.value = false;
+    resized.value = false;
+  },
+  { flush: 'sync' }
 );
 
 watch(
@@ -63,11 +74,10 @@ watch(
         attachmentTitle
       }}</span>
     </template>
-    <img
+    <DecodedPreviewImage
       v-if="attachment?.previewUrl"
-      class="attachment-preview-image"
-      :src="attachment.previewUrl"
-      :alt="attachment.file.name"
+      :source="attachment.previewUrl"
+      :name="attachment.file.name"
     />
   </el-dialog>
   <el-dialog
@@ -84,24 +94,45 @@ watch(
     :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
-      <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
-        conversationTitle
-      }}</span>
+      <div class="image-preview-heading">
+        <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
+          conversationTitle
+        }}</span>
+        <el-button
+          v-if="resized && !original"
+          size="small"
+          :icon="marIcon('image')"
+          @click="original = true"
+          >{{ translate('generated.imagePreview.viewOriginal') }}</el-button
+        >
+      </div>
     </template>
-    <img
+    <DecodedPreviewImage
       v-if="conversation !== undefined"
       :key="conversation.url"
-      class="attachment-preview-image"
-      :src="conversation.url"
-      :alt="conversation.name"
-      @error="
-        emit('conversationError', ($event.target as HTMLImageElement).getAttribute('src') ?? '')
-      "
+      :source="conversation.url"
+      :name="conversation.name"
+      :original="original"
+      @ready="resized = $event"
+      @error="emit('conversationError', $event)"
     />
   </el-dialog>
 </template>
 
 <style scoped>
+.image-preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.image-preview-heading .el-dialog__title {
+  min-width: 0;
+  flex: 1;
+}
+.image-preview-heading .el-button {
+  flex-shrink: 0;
+}
 :global(.attachment-preview-dialog.el-dialog) {
   --preview-left: max(16px, env(safe-area-inset-left, 0px));
   --preview-right: max(16px, env(safe-area-inset-right, 0px));
@@ -138,15 +169,6 @@ watch(
   justify-content: center;
   overflow: hidden;
   padding-top: 0;
-}
-
-.attachment-preview-image {
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
 }
 
 @media (max-width: 767px) {

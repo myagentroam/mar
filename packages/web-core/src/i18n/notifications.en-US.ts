@@ -49,7 +49,7 @@ export const notificationsEnUS = {
       CANCELLING: 'Stopping',
       SUCCEEDED: 'Completed',
       FAILED: 'Failed',
-      CANCELLED: 'Cancelled',
+      CANCELLED: 'Canceled',
       INTERRUPTED: 'Interrupted'
     }
   },
@@ -73,7 +73,7 @@ export const notificationsEnUS = {
       uploadingFile: 'Uploading file',
       runCompleted: 'Run completed',
       runFailed: 'Run failed',
-      runCancelled: 'Run cancelled',
+      runCancelled: 'Run canceled',
       runInterrupted: 'Run interrupted',
       clickToOpenTheRelatedSession: 'Click to open the related session.',
       approvalRequired: 'Approval required',

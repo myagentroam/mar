@@ -16,6 +16,7 @@ export interface NodeAgentRun {
   readonly workspaceId: string;
   readonly runner: RunnerName;
   readonly status: AgentRunStatus;
+  readonly interruptionReason?: 'USER_STOP';
   readonly recoveryState: RunRecoveryState;
   readonly version: number;
   readonly clientMessageId: string;

@@ -887,7 +887,8 @@ describe('Server hosted conversation routes', () => {
       headers,
       payload: {
         turnId: 'turn-2',
-        boundary: 'turn-1'
+        boundary: 'turn-1',
+        itemId: 'steered-user-item'
       }
     });
 
@@ -913,6 +914,7 @@ describe('Server hosted conversation routes', () => {
         conversationId: 'conversation-1',
         turnId: 'turn-2',
         boundary: 'turn-1',
+        itemId: 'steered-user-item',
         __marAgentModels: [model]
       },
       expect.objectContaining({ userId: 7 }),
@@ -931,6 +933,17 @@ describe('Server hosted conversation routes', () => {
       }
     });
     expect(invalid.statusCode).toBe(400);
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+
+    for (const itemId of ['', 'x'.repeat(129)]) {
+      const invalidItemId = await app.inject({
+        method: 'POST',
+        url: '/api/nodes/node-1/hosted-conversations/conversation-1/rollback',
+        headers,
+        payload: { turnId: 'turn-2', boundary: 'turn-1', itemId }
+      });
+      expect(invalidItemId.statusCode).toBe(400);
+    }
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
 
     fixture.nodeControl.requestHostedConversationNode
@@ -1219,6 +1232,189 @@ describe('Server hosted conversation routes', () => {
     });
     expect(legacy.statusCode).toBe(400);
     expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('forwards Hosted preview dimensions only after conversation authorization', async () => {
+    const fixture = routeFixture();
+    const runId = 'native-history:hosted:conversation-1';
+    const imageRef = 'file:session%3Agenerated.png';
+    const url = `/api/nodes/node-1/hosted-conversations/conversation-1/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(imageRef)}`;
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce({
+        image: {
+          mime: 'image/png',
+          dataBase64: Buffer.from('original').toString('base64')
+        }
+      })
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce({
+        image: {
+          mime: 'image/webp',
+          dataBase64: Buffer.from('preview').toString('base64'),
+          resized: true
+        }
+      });
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const original = await app.inject({
+      url,
+      headers: { cookie: headers.cookie }
+    });
+    expect(original.statusCode).toBe(200);
+    expect(original.headers['content-type']).toContain('image/png');
+    expect(original.headers['x-mar-image-resized']).toBeUndefined();
+    expect(original.rawPayload).toEqual(Buffer.from('original'));
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.image.read',
+      { conversationId: 'conversation-1', runId, imageRef },
+      expect.objectContaining({ userId: 7, sessionHash: 'session-hash' }),
+      undefined
+    );
+
+    const preview = await app.inject({
+      url: `${url}?maxWidth=320&maxHeight=240`,
+      headers: { cookie: headers.cookie }
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('image/webp');
+    expect(preview.headers['x-mar-image-resized']).toBe('1');
+    expect(preview.rawPayload).toEqual(Buffer.from('preview'));
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      4,
+      'node-1',
+      'conversation.hosted.image.read',
+      {
+        conversationId: 'conversation-1',
+        runId,
+        imageRef,
+        preview: { maxWidth: 320, maxHeight: 240 }
+      },
+      expect.objectContaining({ userId: 7, sessionHash: 'session-hash' }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestNode).not.toHaveBeenCalled();
+
+    fixture.nodeControl.requestHostedConversationNode.mockClear();
+    for (const query of ['maxWidth=320', 'maxWidth=0&maxHeight=240']) {
+      const invalid = await app.inject({
+        url: `${url}?${query}`,
+        headers: { cookie: headers.cookie }
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.code).toBe('RUN_IMAGE_INVALID');
+    }
+    expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('previews Hosted file content while preserving original HTTP byte ranges', async () => {
+    const fixture = routeFixture();
+    const fileId = 'file-1';
+    const url = `/api/nodes/node-1/hosted-conversations/conversation-1/files/${fileId}/content`;
+    const file = {
+      id: fileId,
+      conversationId: 'conversation-1',
+      category: 'OUTPUT',
+      relativePath: 'output/data.txt',
+      displayName: 'data.txt',
+      mimeType: 'text/plain',
+      size: 6,
+      source: 'AGENT',
+      createdAt: 1_000,
+      updatedAt: 2_000
+    };
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce({
+        image: {
+          mime: 'image/webp',
+          dataBase64: Buffer.from('preview').toString('base64'),
+          resized: false
+        }
+      });
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+
+    const preview = await app.inject({
+      url: `${url}?maxWidth=320&maxHeight=240`,
+      headers: { cookie: headers.cookie }
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('image/webp');
+    expect(preview.headers['x-mar-image-resized']).toBe('0');
+    expect(preview.headers['cache-control']).toBe('private, no-store');
+    expect(preview.rawPayload).toEqual(Buffer.from('preview'));
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.file.read',
+      { conversationId: 'conversation-1', fileId, preview: { maxWidth: 320, maxHeight: 240 } },
+      expect.objectContaining({ userId: 7, sessionHash: 'session-hash' }),
+      undefined
+    );
+
+    fixture.nodeControl.requestHostedConversationNode.mockClear();
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(hostedSnapshot())
+      .mockResolvedValueOnce({
+        file,
+        encoding: 'base64',
+        content: Buffer.from('a').toString('base64'),
+        offset: 0,
+        nextOffset: 1,
+        eof: false
+      })
+      .mockResolvedValueOnce({
+        file,
+        encoding: 'base64',
+        content: Buffer.from('cde').toString('base64'),
+        offset: 2,
+        nextOffset: 5,
+        eof: false
+      });
+    const originalRange = await app.inject({
+      url,
+      headers: { cookie: headers.cookie, range: 'bytes=2-4' }
+    });
+    expect(originalRange.statusCode).toBe(206);
+    expect(originalRange.headers['content-range']).toBe('bytes 2-4/6');
+    expect(originalRange.headers['x-mar-image-resized']).toBeUndefined();
+    expect(originalRange.rawPayload).toEqual(Buffer.from('cde'));
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      2,
+      'node-1',
+      'conversation.hosted.file.read',
+      { conversationId: 'conversation-1', fileId, offset: 0, limit: 1 },
+      expect.objectContaining({ userId: 7, sessionHash: 'session-hash' }),
+      undefined
+    );
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(
+      3,
+      'node-1',
+      'conversation.hosted.file.read',
+      { conversationId: 'conversation-1', fileId, offset: 2, limit: 3 },
+      expect.objectContaining({ userId: 7, sessionHash: 'session-hash' }),
+      undefined
+    );
     await app.close();
   });
 });

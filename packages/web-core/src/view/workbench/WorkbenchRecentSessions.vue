@@ -16,7 +16,10 @@ import {
 import { formatDateTime } from '../../util/time-presentation.js';
 
 const props = defineProps<{
-  readonly service: Pick<WorkbenchNotificationService, 'recentRuns' | 'load' | 'sessionGroupState'>;
+  readonly service: Pick<
+    WorkbenchNotificationService,
+    'recentRuns' | 'load' | 'sessionGroupState' | 'hasUnreadSession'
+  >;
   readonly mobileMode: boolean;
   readonly mobileOpen?: boolean;
   readonly mobilePresented?: boolean;
@@ -102,6 +105,7 @@ function runTime(run: RecentRun): string {
     >
       <WorkbenchRecentSessionList
         :runs="visibleRuns"
+        :has-unread-session="service.hasUnreadSession"
         :session-group="sessionGroup"
         :group-state="groupState"
         @select-group="sessionGroup = $event"
@@ -143,6 +147,7 @@ function runTime(run: RecentRun): string {
     >
       <WorkbenchRecentSessionList
         :runs="visibleRuns"
+        :has-unread-session="service.hasUnreadSession"
         :session-group="sessionGroup"
         :group-state="groupState"
         @select-group="sessionGroup = $event"

@@ -12,6 +12,7 @@ const turn = {
   rewind: { before: 'previous', after: 'current' }
 } as ConversationTurn;
 const user = {
+  id: 'user-item-1',
   kind: 'user_message',
   status: 'COMPLETED',
   payload: { text: 'Original user text' }
@@ -241,6 +242,12 @@ describe('Session history mutations', () => {
       session: source
     });
     expect(f.request).toHaveBeenCalledOnce();
+    expect(JSON.parse(f.request.mock.calls[0]![1]!.body as string)).toEqual({
+      nodeId: 'node',
+      turnId: 'native-turn',
+      itemId: 'user-item-1',
+      boundary: 'previous'
+    });
     expect(f.invalidate.mock.invocationCallOrder[0]).toBeLessThan(
       f.clear.mock.invocationCallOrder[0]!
     );

@@ -43,6 +43,22 @@ service.recentRuns.value = Array.from({ length: 103 }, (_, index) => ({
   updatedAt: now,
   version: 1
 }));
+if (new URL(location.href).searchParams.has('stop-statuses')) {
+  service.recentRuns.value = [
+    {
+      ...service.recentRuns.value[0]!,
+      status: 'INTERRUPTED',
+      interruptionReason: 'USER_STOP',
+      completedAt: now
+    },
+    {
+      ...service.recentRuns.value[1]!,
+      sessionGroup: 'MAIN',
+      status: 'INTERRUPTED',
+      completedAt: now
+    }
+  ];
+}
 service.notifications.value = ['MAIN', 'CHILD'].map((sessionGroup) => ({
   id: sessionGroup,
   source: 'server',
@@ -57,7 +73,7 @@ service.notifications.value = ['MAIN', 'CHILD'].map((sessionGroup) => ({
     targetType: 'WORKSPACE_SESSION',
     nodeId: 'node',
     workspaceId: 'workspace',
-    sessionId: sessionGroup,
+    sessionId: sessionGroup === 'MAIN' ? 'main' : 'child-1',
     sessionGroup,
     sessionTitle: 'Project'
   }

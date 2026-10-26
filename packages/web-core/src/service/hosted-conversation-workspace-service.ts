@@ -1282,13 +1282,14 @@ export function createHostedConversationWorkspaceService(
 
   async function rollback(
     turnId: string,
-    boundary: string | null
+    boundary: string | null,
+    itemId?: string
   ): Promise<HostedConversationSnapshot> {
     const context = requireSelectedContext();
     const parsed = hostedConversationSnapshotSchema.safeParse(
       await options.request<unknown>(`${conversationBasePath(context)}/rollback`, {
         method: 'POST',
-        body: JSON.stringify({ turnId, boundary })
+        body: JSON.stringify({ turnId, boundary, ...(itemId === undefined ? {} : { itemId }) })
       })
     );
     if (

@@ -5,6 +5,7 @@ import { publicHostedToolEvents } from '../runtime/event-projection.js';
 import { JsonlSessionStore } from './store/jsonl-store.js';
 import type { SessionStore } from './store/contracts.js';
 import type { SessionListInput, SessionSource } from './types.js';
+import type { MarAgentSessionRollbackInput } from './rollback.js';
 
 const MAX_INPUT_IMAGE_BYTES = 5 * 1024 * 1024;
 const INPUT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -99,10 +100,7 @@ export interface MarAgentSessionCatalog {
     sessionId: string,
     input: { readonly boundaryTurnId: string | null; readonly title: string }
   ): Promise<MarAgentSessionSummary>;
-  rollback(
-    sessionId: string,
-    input: { readonly boundaryTurnId: string | null }
-  ): Promise<MarAgentSessionSummary>;
+  rollback(sessionId: string, input: MarAgentSessionRollbackInput): Promise<MarAgentSessionSummary>;
   clear(sessionId: string): Promise<MarAgentSessionSummary>;
   delete(sessionId: string): Promise<MarAgentSessionDeleteResult>;
   close(): Promise<void>;

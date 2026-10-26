@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 
 const props = defineProps<{ source: string; name: string }>();
 const emit = defineEmits<{
@@ -8,6 +9,7 @@ const emit = defineEmits<{
   unavailable: [source: string];
 }>();
 const failed = ref(false);
+const thumbnail = computed(() => conversationThumbnailUrl(props.source));
 watch(
   () => props.source,
   () => {
@@ -20,7 +22,7 @@ function open(event: MouseEvent): void {
 }
 function unavailable(): void {
   failed.value = true;
-  emit('unavailable', props.source);
+  emit('unavailable', thumbnail.value);
 }
 </script>
 
@@ -34,7 +36,7 @@ function unavailable(): void {
     <img
       v-if="source && !failed"
       class="conversation-user-image"
-      :src="source"
+      :src="thumbnail"
       :alt="name"
       loading="lazy"
       @error="unavailable"
