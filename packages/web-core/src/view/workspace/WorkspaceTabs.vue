@@ -668,9 +668,20 @@ function activate(tab: WorkspaceTab): void {
 .workspace-tab.sticky-pinned::before {
   content: '';
   position: absolute;
+  z-index: -2;
   inset: calc(-1 * var(--workspace-tab-gap));
-  border: var(--workspace-tab-gap) solid var(--workspace-tab-base-bg);
-  border-radius: calc(var(--mar-radius-selection) + var(--workspace-tab-gap));
+  background: var(--workspace-tab-base-bg);
+  pointer-events: none;
+}
+
+.workspace-tab.sticky-pinned::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  box-shadow: inherit;
   pointer-events: none;
 }
 
@@ -702,6 +713,11 @@ function activate(tab: WorkspaceTab): void {
   padding: 3px 34px 2px 8px;
   text-align: left;
   cursor: pointer;
+}
+
+.workspace-tab > button:first-child:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
 }
 
 .workspace-tab:not(.active):hover {
