@@ -49,6 +49,9 @@ describe('shared third-party notices generation', () => {
         readFileSync(new URL(`../../src/icon-themes/${file}`, import.meta.url), 'utf8').trim()
       );
     }
+    expect(result).toContain(
+      readFileSync(new URL('../../src/util/icon-shapes.NOTICE.txt', import.meta.url), 'utf8').trim()
+    );
     expect(result).not.toContain('packages/enterprise-web');
   });
 

@@ -61,6 +61,15 @@ describe('shared MAR icons', () => {
     expect(iconShapes.administration).not.toEqual(iconShapes.adjustments);
   });
 
+  it('keeps a disconnected Node distinct from connection actions', async () => {
+    expect(iconShapes['connection-off']).toEqual(expect.any(String));
+    expect(iconShapes['connection-off']).not.toEqual(iconShapes.connection);
+    expect(iconShapes['connection-off']).not.toEqual(iconShapes.link);
+    const html = await renderToString(createSSRApp(MarIcon, { name: 'connection-off', size: 28 }));
+    expect(html).toContain('data-mar-icon="connection-off"');
+    expect(html).not.toContain('mar-icon--spinning');
+  });
+
   it('distinguishes the workspace, host and new conversation without changing button semantics', async () => {
     expect(iconShapes.workspace).not.toEqual(iconShapes.node);
     expect(iconShapes['session-add']).not.toEqual(iconShapes.conversation);

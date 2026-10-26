@@ -138,6 +138,12 @@ export function thirdPartyNoticesPlugin(options: { readonly outputDirectory: str
       notices.push(
         `Material Icon Theme (subset)\n${readFileSync(resolve(materialRoot, 'UPSTREAM_LICENSE.txt'), 'utf8').trim()}`
       );
+      notices.push(
+        readFileSync(
+          resolve(import.meta.dirname, '../src/util/icon-shapes.NOTICE.txt'),
+          'utf8'
+        ).trim()
+      );
       this.emitFile({
         type: 'asset',
         fileName: 'THIRD_PARTY_NOTICES.txt',

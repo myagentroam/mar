@@ -389,6 +389,53 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Offline Workspace uses a static disconnected icon in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1`);
+      const offline = page.locator('.workspace-offline-placeholder');
+      await expect(offline).toBeVisible();
+      await expect(offline).toHaveAttribute('role', 'status');
+      const offlineIcon = offline.locator('[data-mar-icon="connection-off"]');
+      await expect(offlineIcon).toBeVisible();
+      await expect(offlineIcon).toBeInViewport({ ratio: 1 });
+      await expect(offline.locator('svg')).toHaveCount(1);
+      await expect(offlineIcon).toHaveAttribute('aria-hidden', 'true');
+      await expect(offlineIcon).toHaveCSS('animation-name', 'none');
+      const geometry = await offlineIcon.evaluate((element) => {
+        const bounds = (element as SVGSVGElement).getBBox();
+        const viewportBounds = element.getBoundingClientRect();
+        const hitTarget = document.elementFromPoint(
+          viewportBounds.x + viewportBounds.width / 2,
+          viewportBounds.y + viewportBounds.height / 2
+        );
+        const style = getComputedStyle(element);
+        const stroke = parseFloat(style.strokeWidth);
+        return {
+          color: style.color,
+          stroke: style.stroke,
+          width: parseFloat(style.width),
+          height: parseFloat(style.height),
+          rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          min: Math.min(bounds.x, bounds.y) - stroke / 2,
+          max: Math.max(bounds.x + bounds.width, bounds.y + bounds.height) + stroke / 2,
+          unobscured: hitTarget === element || element.contains(hitTarget),
+          pseudoContent: getComputedStyle(element, '::after').content
+        };
+      });
+      const expectedSize = geometry.rootFontSize * (width < 768 ? 1.5 : 1.75);
+      expect(geometry.width).toBeCloseTo(expectedSize, 1);
+      expect(geometry.height).toBeCloseTo(expectedSize, 1);
+      expect(geometry.stroke).toBe(geometry.color);
+      expect(geometry.min).toBeGreaterThan(0);
+      expect(geometry.max).toBeLessThan(24);
+      expect(geometry.unobscured).toBe(true);
+      expect(['none', 'normal']).toContain(geometry.pseudoContent);
+      await offline.screenshot({ path: testInfo.outputPath('offline-connection-icon.png') });
+    });
+
     test(`Session row feedback stays immediate in ${theme} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));

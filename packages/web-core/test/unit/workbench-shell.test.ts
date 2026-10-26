@@ -106,6 +106,8 @@ describe('Shared workbench shell', () => {
     expect(placeholder).toBeDefined();
     expect(placeholder?.[1]).toContain(message);
     expect(placeholder?.[1]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
+    expect(placeholder?.[1]).toContain('data-mar-icon="connection-off"');
+    expect(placeholder?.[1]).not.toContain('data-mar-icon="connection"');
   });
 
   it.each(['en-US', 'zh-CN'] as const)('owns every static shell message: %s', (locale) => {

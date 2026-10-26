@@ -10,6 +10,7 @@ import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue'
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const composerFixture = new URL(location.href).searchParams.has('composer');
+const offlineFixture = new URL(location.href).searchParams.has('offline');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
@@ -169,7 +170,7 @@ if (composerFixture) {
 </script>
 
 <template>
-  <Surface v-if="composerFixture" :page="surfacePage as never" />
+  <Surface v-if="composerFixture || offlineFixture" :page="surfacePage as never" />
   <main v-else>
     <section aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
