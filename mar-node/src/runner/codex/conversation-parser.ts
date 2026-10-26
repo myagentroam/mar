@@ -1577,6 +1577,7 @@ export function extractCodexThreads(result: unknown): readonly {
   readonly cwd: unknown;
   readonly title: string | undefined;
   readonly titleOrigin: 'OFFICIAL' | 'PREVIEW' | undefined;
+  readonly lastActivityAt: number;
 }[] {
   if (typeof result !== 'object' || result === null || !('data' in result)) return [];
   const data = (result as { data?: unknown }).data;
@@ -1590,6 +1591,7 @@ export function extractCodexThreads(result: unknown): readonly {
       cwd?: unknown;
       name?: unknown;
       preview?: unknown;
+      updatedAt?: unknown;
     };
     if (typeof value.id !== 'string') return [];
     const source =
@@ -1612,7 +1614,17 @@ export function extractCodexThreads(result: unknown): readonly {
     const preview = typeof value.preview === 'string' ? value.preview.trim() : '';
     const title = name || preview || undefined;
     const titleOrigin = name ? 'OFFICIAL' : preview ? 'PREVIEW' : undefined;
-    return [{ id: value.id, source, derived, cwd: value.cwd, title, titleOrigin }];
+    return [
+      {
+        id: value.id,
+        source,
+        derived,
+        cwd: value.cwd,
+        title,
+        titleOrigin,
+        lastActivityAt: codexTimestamp(value.updatedAt) ?? 0
+      }
+    ];
   });
 }
 

@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-25
+lastUpdated: 2026-10-26
 ---
 
 # Create and Manage Sessions
@@ -35,9 +35,11 @@ The first session load after a Node restart waits for native Agent discovery. Se
 
 ## Clean up sessions
 
-Choose **Clean up sessions** from the current Workspace session list's More menu, enter 1–365 days (30 by default), and confirm. Sessions whose activity predates the selected cutoff and sessions with unknown activity times, shown as `—`, are included. Unknown activity times are included regardless of the number of days. Pinned, running, queued, restarting, or currently viewed sessions are kept. Internal records without a discovered native session are removed only after an available Agent confirms the native session no longer exists.
+Choose **Clean up sessions** from the current Workspace session list's More menu, enter 1–365 days (30 by default), and confirm. Sessions whose activity predates the selected cutoff and sessions with unknown activity times, shown as `—`, are included. Unknown activity times are included regardless of the number of days. Pinned, running, queued, restarting, or currently viewed sessions are kept. After complete discovery succeeds, local-only records belonging to an available Agent are removed directly, without extra native-presence probes. This does not delete undiscovered native content.
 
 Cleanup permanently deletes matching native sessions and cannot be undone; it does not delete Workspace files. The dialog shows the actual deleted, skipped, and failed counts, including deletions by Agent.
+
+Cleanup runs within a time budget. When the budget is reached, the dialog shows **Cleanup partially complete** and actual settled counts, not a failure. Unprocessed records are not counted as failed; **Not processed** shows the remaining count when known. Run cleanup again to process the remainder. An admitted deletion settles before the response, and no new deletions start afterward. An offline Node or unavailable result still produces an error.
 
 ## Share a work session
 

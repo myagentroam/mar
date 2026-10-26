@@ -93,6 +93,47 @@ async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
 
+for (const locale of ['en-US', 'zh-CN']) {
+  for (const viewport of [viewports[0]!, viewports[1]!]) {
+    test(`Workspace cleanup displays partial counts without a timeout error: ${locale} ${viewport.width}`, async ({
+      page
+    }) => {
+      await page.setViewportSize(viewport);
+      const theme = viewport.width < 768 ? 'vscode-dark-2026' : 'daylight';
+      await page.goto(
+        `${fixture.url}dialog-layout.html?kind=cleanup&theme=${theme}&locale=${locale}`
+      );
+      await page.waitForLoadState('networkidle');
+      await page.getByRole('button', { name: 'Open content' }).click();
+      const dialog = page.getByRole('dialog');
+      await expectBounded(dialog);
+      await expect(dialog.locator('input')).toHaveValue('30');
+      await dialog
+        .getByRole('button', {
+          name: locale === 'en-US' ? 'Clean up sessions' : '清理会话',
+          exact: true
+        })
+        .click();
+      await expect(
+        dialog.getByRole('heading', {
+          name: locale === 'en-US' ? 'Cleanup partially complete' : '已完成部分清理'
+        })
+      ).toBeVisible();
+      await expect(
+        dialog.getByText(locale === 'en-US' ? 'Not processed' : '待处理', { exact: true })
+      ).toBeVisible();
+      await expect(dialog.getByText('7', { exact: true })).toBeVisible();
+      await expect(dialog.getByText('Codex 3', { exact: true })).toBeVisible();
+      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expectBounded(dialog);
+      await dialog
+        .getByRole('button', { name: locale === 'en-US' ? 'Close' : '关闭', exact: true })
+        .click();
+      await expect(dialog).toHaveCount(0);
+    });
+  }
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const resource of ['Skills', 'MCP']) {
     test(`Loaded ${resource} scrolls inside its dialog without overlay scrolling: ${theme}`, async ({

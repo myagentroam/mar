@@ -318,8 +318,10 @@ export class CodexAppServerClient {
     });
   }
 
-  listThreads(): Promise<unknown> {
-    return this.request('thread/list', {});
+  listThreads(
+    params: { readonly cursor?: string; readonly limit?: number } = {}
+  ): Promise<unknown> {
+    return this.request('thread/list', params);
   }
 
   readThread(threadId: string): Promise<unknown> {

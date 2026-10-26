@@ -351,6 +351,32 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const activeCatalog = catalog;
       const listed = await activeCatalog.list({ limit: 200 });
+      if (context.cleanup) {
+        const sessions = [...listed.sessions];
+        let cursor = listed.nextCursor;
+        while (cursor !== undefined) {
+          const next = await activeCatalog.list({ limit: 200, cursor });
+          sessions.push(...next.sessions);
+          cursor = next.nextCursor;
+        }
+        const workspaces = workspace ? [workspace] : context.workspaces;
+        return sessions.flatMap((session) => {
+          const target = workspaces.find(
+            (candidate) => resolve(candidate.path) === resolve(session.workspace)
+          );
+          return target
+            ? [
+                context.createProjection({
+                  workspace: target,
+                  runner: this.name,
+                  externalSessionId: session.id,
+                  cwd: session.workspace,
+                  lastActivityAt: Date.parse(session.lastActivityAt)
+                })
+              ]
+            : [];
+        });
+      }
       const workspaces = workspace ? [workspace] : context.workspaces;
       return (
         await Promise.all(
@@ -385,7 +411,8 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
           })
         )
       ).flat();
-    } catch {
+    } catch (error) {
+      if (context.cleanup) throw error;
       return [];
     } finally {
       await catalog?.close().catch(() => undefined);

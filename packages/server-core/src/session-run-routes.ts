@@ -629,7 +629,9 @@ export function registerSessionRunRoutes(input: {
         {
           workspaceId: request.params.workspaceId,
           inactiveDays
-        }
+        },
+        undefined,
+        30_000
       );
       return reply.send(workspaceSessionCleanupResultSchema.parse(result));
     } catch (error) {

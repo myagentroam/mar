@@ -210,11 +210,6 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     });
   }
 
-  async isNativeSessionMissing(session: NodeAgentSession): Promise<boolean> {
-    void session;
-    return false;
-  }
-
   async removeNative(
     session: NodeAgentSession,
     nativeSessionId: string
@@ -429,6 +424,7 @@ export interface RunnerApprovalDecision {
 }
 
 export interface RunnerDiscoveryContext {
+  readonly cleanup?: boolean;
   readonly workspaces: readonly NodeWorkspace[];
   createProjection(input: {
     readonly workspace: NodeWorkspace;

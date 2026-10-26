@@ -3,7 +3,7 @@ import type { NodeAgentSession } from '../../src/database.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
-import { CodexAppServerRpcError, type CodexAppServerClient } from '../../src/codex-app-server.js';
+import { type CodexAppServerClient } from '../../src/codex-app-server.js';
 import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
 import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
 import { SessionDomainState } from '../../src/service/session-domain-state.js';
@@ -810,7 +810,7 @@ describe('SessionCatalogService workspace session cleanup', () => {
     }
   );
 
-  it('removes only confirmed-missing persisted sessions and keeps protected or readable records', async () => {
+  it('clears unprotected local-only records after full discovery without probing or deleting native content', async () => {
     const database = new NodeDatabase(':memory:', 'cleanup-missing');
     const workspace = database.saveWorkspace({
       path: '/workspace/cleanup',
@@ -819,12 +819,10 @@ describe('SessionCatalogService workspace session cleanup', () => {
     });
     const ids = [
       'missing',
-      'readable',
       'unavailable',
       'not-loaded',
       'pinned',
       'watched',
-      'watched-during-read',
       'queued',
       'busy',
       'runtime',
@@ -850,32 +848,17 @@ describe('SessionCatalogService workspace session cleanup', () => {
     );
     const forgotten: string[] = [];
     const removeNative = vi.fn();
-    let watchedDuringRead = false;
-    const readThread = vi.fn(async (id: string) => {
-      if (id === 'watched-during-read') watchedDuringRead = true;
-      if (id === 'readable') return { thread: { id } };
-      if (id === 'unavailable') throw new Error('RUNNER_UNAVAILABLE');
-      if (id === 'not-loaded')
-        throw new CodexAppServerRpcError({
-          code: -32600,
-          message: 'thread not loaded: not-loaded'
-        });
-      throw new CodexAppServerRpcError({
-        code: -32600,
-        message: `no rollout found for thread id ${id}`
-      });
-    });
-    const runner = new CodexRunner({
-      start: async () => undefined,
-      readThread
-    } as unknown as CodexAppServerClient);
+    const readThread = vi.fn();
+    const runner = new CodexRunner({ readThread } as unknown as CodexAppServerClient);
     vi.spyOn(runner, 'removeNative').mockImplementation(removeNative);
+    const requireRunner = vi.fn(() => runner);
+    const refreshActivity = vi.fn(async () => undefined);
     const service = new SessionCatalogService({
       runnerAvailable: (runner) => runner !== 'opencode',
       database: () => database,
       nodeId: () => 'node-1',
       runtime,
-      runners: { require: () => runner } as never,
+      runners: { require: requireRunner } as never,
       projection: { projectionsForNative: () => new Map() } as never,
       cachedNative: () => [],
       cachedWorkspace: async () => [],
@@ -886,9 +869,9 @@ describe('SessionCatalogService workspace session cleanup', () => {
       forget: (value) => {
         forgotten.push(value.id);
       },
-      refreshActivity: async () => undefined,
+      refreshActivity,
       externalActivity: (id) => (id === 'busy' ? 'BUSY' : undefined),
-      isWatching: (id) => id === 'watched' || (id === 'watched-during-read' && watchedDuringRead),
+      isWatching: (id) => id === 'watched',
       invalidateHistory: () => undefined,
       invalidateWorkspaceSessions: () => undefined,
       history: vi.fn(),
@@ -899,26 +882,19 @@ describe('SessionCatalogService workspace session cleanup', () => {
         workspaceId: workspace.id,
         inactiveDays: 30
       })
-    ).resolves.toEqual({ deleted: 1, skipped: 8, failed: 2, deletedByRunner: { codex: 1 } });
-    expect(forgotten).toEqual(['missing']);
+    ).resolves.toEqual({ deleted: 3, skipped: 6, failed: 0, deletedByRunner: { codex: 3 } });
+    expect(forgotten.toSorted()).toEqual(['missing', 'not-loaded', 'unavailable']);
     expect(
       database
         .listSessionRecords(workspace.id)
         .map((record) => record.id)
         .sort()
-    ).toEqual(ids.filter((id) => id !== 'missing').sort());
+    ).toEqual(ids.filter((id) => !forgotten.includes(id)).sort());
     expect(removeNative).not.toHaveBeenCalled();
-    for (const id of ['readable', 'unavailable', 'not-loaded', 'watched-during-read']) {
-      const release = runtime.beginSessionHistoryMutation(id);
-      release();
-    }
-    expect(readThread.mock.calls.map(([id]) => id).sort()).toEqual([
-      'missing',
-      'not-loaded',
-      'readable',
-      'unavailable',
-      'watched-during-read'
-    ]);
+    expect(readThread).not.toHaveBeenCalled();
+    expect(requireRunner).not.toHaveBeenCalled();
+    expect(refreshActivity).not.toHaveBeenCalled();
+    database.close();
   });
 
   it('invalidates the workspace after a partial native removal failure and preserves the error', async () => {

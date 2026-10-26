@@ -436,6 +436,8 @@ export const workspaceSessionCleanupResultSchema = z
     deleted: nonnegativeSafeIntegerSchema,
     skipped: nonnegativeSafeIntegerSchema,
     failed: nonnegativeSafeIntegerSchema,
+    timedOut: z.literal(true).optional(),
+    remaining: nonnegativeSafeIntegerSchema.optional(),
     deletedByRunner: z
       .object({
         codex: nonnegativeSafeIntegerSchema,
@@ -448,6 +450,12 @@ export const workspaceSessionCleanupResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
+    if (result.remaining !== undefined && result.timedOut !== true)
+      context.addIssue({
+        code: 'custom',
+        path: ['remaining'],
+        message: 'Remaining candidates are only reported for a time-limited cleanup'
+      });
     const runnerDeleted = Object.values(result.deletedByRunner).reduce<number>(
       (total, count) => total + (count ?? 0),
       0

@@ -189,7 +189,8 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
       let official: Awaited<ReturnType<ClaudeAgentSdkAdapter['listSessions']>> = [];
       try {
         official = await this.listSessions(target.path);
-      } catch {
+      } catch (error) {
+        if (context.cleanup) throw error;
         // Native transcripts remain authoritative when SDK listing is unavailable.
       }
       const native = await discoverNativeSessions(this.name, target.path);

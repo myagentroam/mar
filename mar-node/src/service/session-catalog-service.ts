@@ -1,5 +1,6 @@
 import { resolveSessionRollbackTarget } from './session-rollback-target.js';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentSession, NodeDatabase } from '../database.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
@@ -11,6 +12,10 @@ import type { NativeSessionProjectionService } from './native-session-projection
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { latestSessionActivityAt } from './session-presentation-service.js';
 import { marctlSessionSummary } from './session-recent-activity.js';
+import {
+  WorkspaceSessionCleanupBudget,
+  WorkspaceSessionCleanupDeadline
+} from './workspace-session-cleanup-budget.js';
 
 interface SessionCatalogServiceOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
@@ -23,7 +28,10 @@ interface SessionCatalogServiceOptions {
   readonly cachedNative: () => readonly NodeAgentSession[];
   readonly cachedWorkspace: (workspaceId: string) => Promise<readonly NodeAgentSession[]>;
   readonly discoveryPending: (workspaceId: string) => boolean;
-  readonly discoverWorkspace: (workspaceId: string) => Promise<readonly NodeAgentSession[]>;
+  readonly discoverWorkspace: (
+    workspaceId: string,
+    cleanup?: boolean
+  ) => Promise<readonly NodeAgentSession[]>;
   readonly present: (session: NodeAgentSession) => NodeAgentSession;
   readonly nativeIds: (session: NodeAgentSession) => ReadonlySet<string>;
   readonly forget: (session: NodeAgentSession, nativeIds: ReadonlySet<string>) => void;
@@ -53,8 +61,7 @@ export class SessionCatalogService {
       'session.list': (data) => this.list(record(data)),
       'session.graph': (data) => this.graph(record(data)),
       'session.remove': (data) => this.enqueueMutation(() => this.remove(record(data))),
-      'workspace.sessions.cleanup': (data) =>
-        this.enqueueMutation(() => this.cleanupWorkspaceSessions(record(data))),
+      'workspace.sessions.cleanup': (data) => this.cleanupWorkspaceSessions(record(data)),
       'session.rewind': (data) => this.enqueueMutation(() => this.rewind(record(data))),
       'session.rollback': (data) => this.enqueueMutation(() => this.rollback(record(data)))
     };
@@ -421,21 +428,54 @@ export class SessionCatalogService {
     if (this.options.database().getWorkspace(input.workspaceId) === undefined)
       throw new Error('WORKSPACE_NOT_FOUND');
 
-    const cutoff = Date.now() - inactiveDays * 24 * 60 * 60 * 1000;
-    const nativeSessions = await this.options.discoverWorkspace(input.workspaceId);
-    const candidates = new Map<string, NodeAgentSession>();
-    for (const native of deduplicateNativeSessions(nativeSessions)) {
-      if (native.workspaceId !== input.workspaceId) continue;
-      const session = this.cleanupCandidate(native);
-      candidates.set(session.id, session);
+    const workspaceId = input.workspaceId;
+    const budget = new WorkspaceSessionCleanupBudget();
+    const started = Promise.withResolvers<void>();
+    const work = this.enqueueMutation(() => {
+      started.resolve();
+      return this.performWorkspaceSessionCleanup(workspaceId, inactiveDays, budget);
+    });
+    // A queued cleanup may expire before acquiring the mutation queue. Its late
+    // callback still checks the budget and cannot start discovery or deletion.
+    void work.catch(() => undefined);
+    try {
+      await budget.read(() => started.promise);
+    } catch (error) {
+      if (!(error instanceof WorkspaceSessionCleanupDeadline)) throw error;
+      return { deleted: 0, skipped: 0, failed: 0, deletedByRunner: {}, timedOut: true };
     }
-    this.mergePersisted(candidates, input.workspaceId, false);
+    return work;
+  }
+
+  private async performWorkspaceSessionCleanup(
+    workspaceId: string,
+    inactiveDays: number,
+    budget: WorkspaceSessionCleanupBudget
+  ): Promise<WorkspaceSessionCleanupResult> {
+    const startedAt = performance.now();
+    const cutoff = Date.now() - inactiveDays * 24 * 60 * 60 * 1000;
     let deleted = 0;
     let skipped = 0;
     let failed = 0;
     const deletedByRunner: Partial<Record<NodeAgentSession['runner'], number>> = {};
+    let candidateCount: number | undefined;
+    let timedOut = false;
+    let discoveryMs = 0;
     try {
+      const nativeSessions = await budget.read(() =>
+        this.options.discoverWorkspace(workspaceId, true)
+      );
+      discoveryMs = Math.round(performance.now() - startedAt);
+      const candidates = new Map<string, NodeAgentSession>();
+      for (const native of deduplicateNativeSessions(nativeSessions)) {
+        if (native.workspaceId !== workspaceId) continue;
+        const session = this.cleanupCandidate(native);
+        candidates.set(session.id, session);
+      }
+      this.mergePersisted(candidates, workspaceId, false);
+      candidateCount = candidates.size;
       for (const session of candidates.values()) {
+        budget.check();
         const missingCandidate = session.externalDiscovered === false;
         if (
           session.externalSessionId === null ||
@@ -459,16 +499,17 @@ export class SessionCatalogService {
           continue;
         }
         try {
-          if ((await this.removeResolved(session, true)) === 'deleted') {
+          if ((await this.removeResolved(session, true, budget)) === 'deleted') {
             deleted += 1;
             deletedByRunner[session.runner] = (deletedByRunner[session.runner] ?? 0) + 1;
           } else skipped += 1;
         } catch (error) {
+          if (error instanceof WorkspaceSessionCleanupDeadline) throw error;
           if (isCleanupSkip(error)) skipped += 1;
           else {
             failed += 1;
             nodeLog('workspace.session.cleanup.failed', {
-              workspaceId: input.workspaceId,
+              workspaceId,
               sessionId: session.id,
               runner: session.runner,
               ...cleanupFailureDiagnostic(error)
@@ -476,10 +517,34 @@ export class SessionCatalogService {
           }
         }
       }
-      return { deleted, skipped, failed, deletedByRunner };
+    } catch (error) {
+      if (!(error instanceof WorkspaceSessionCleanupDeadline)) throw error;
+      if (candidateCount === undefined) discoveryMs = Math.round(performance.now() - startedAt);
+      timedOut = true;
     } finally {
-      this.options.invalidateWorkspaceSessions(input.workspaceId);
+      this.options.invalidateWorkspaceSessions(workspaceId);
     }
+    const result: WorkspaceSessionCleanupResult = {
+      deleted,
+      skipped,
+      failed,
+      deletedByRunner,
+      ...(timedOut
+        ? {
+            timedOut: true,
+            ...(candidateCount === undefined
+              ? {}
+              : { remaining: candidateCount - deleted - skipped - failed })
+          }
+        : {})
+    };
+    nodeLog('workspace.sessions.cleanup.completed', {
+      workspaceId,
+      ...result,
+      discoveryMs,
+      durationMs: Math.round(performance.now() - startedAt)
+    });
+    return result;
   }
 
   private cleanupCandidate(native: NodeAgentSession): NodeAgentSession {
@@ -496,7 +561,8 @@ export class SessionCatalogService {
 
   private async removeResolved(
     session: NodeAgentSession,
-    requireCleanupSafety = false
+    requireCleanupSafety = false,
+    budget?: WorkspaceSessionCleanupBudget
   ): Promise<'deleted' | 'skipped'> {
     if (session.externalSessionId === null) throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
     const releaseMutation = this.options.runtime.beginSessionHistoryMutation(
@@ -505,23 +571,31 @@ export class SessionCatalogService {
     );
     try {
       if (this.options.isRecovering?.(session.id)) throw new Error('SESSION_RESTART_PENDING');
-      const runner = this.options.runners.require(session.runner);
       const missingCandidate = requireCleanupSafety && session.externalDiscovered === false;
-      if (missingCandidate && !(await runner.isNativeSessionMissing(session))) return 'skipped';
       if (
         this.options.runtime
           .listRunsForSession(session.id)
           .some((run) => !isTerminalRunStatus(run.status))
       )
         throw new Error('SESSION_ACTIVE');
-      if (session.nativeControl === 'EXTERNAL') {
-        await this.options.refreshActivity(session);
+      if (session.nativeControl === 'EXTERNAL' && !missingCandidate) {
+        const refresh = () => this.options.refreshActivity(session);
+        await (budget ? budget.read(refresh) : refresh());
         if (this.options.externalActivity(session.id) === 'BUSY') throw new Error('SESSION_ACTIVE');
       }
       if (requireCleanupSafety) {
         if (this.options.isWatching(session.id)) throw new Error('SESSION_WATCHING');
         if (this.options.runtime.sessionQueue(session.id).itemIds.length > 0)
           throw new Error('SESSION_QUEUE_NOT_EMPTY');
+        // Pin updates do not share the cleanup mutation queue.
+        const pinOrder = this.options
+          .database()
+          .getNativeSessionMetadata(
+            session.runner,
+            session.externalSessionId,
+            session.workspaceId
+          )?.pinOrder;
+        if (pinOrder !== undefined && pinOrder !== null) return 'skipped';
         if (
           this.options.runtime
             .listRunsForSession(session.id)
@@ -529,12 +603,14 @@ export class SessionCatalogService {
         )
           throw new Error('SESSION_ACTIVE');
       }
+      budget?.check();
       const nativeIds = this.options.nativeIds(session);
       if (missingCandidate) {
         this.options.database().deleteSessionRecord(session.id);
         this.options.forget(session, nativeIds);
         return 'deleted';
       }
+      const runner = this.options.runners.require(session.runner);
       let deleted = false;
       for (const externalSessionId of nativeIds) {
         try {

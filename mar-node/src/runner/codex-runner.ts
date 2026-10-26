@@ -1,7 +1,6 @@
 import { withMarctlGuide } from '../mcp/marctl-guide.js';
 import {
   CodexAppServerClient,
-  CodexAppServerRpcError,
   isCodexRolloutMissingError,
   type CodexComposerInput,
   type CodexRunConfiguration,
@@ -390,23 +389,6 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     return input.title;
   }
 
-  override async isNativeSessionMissing(session: NodeAgentSession): Promise<boolean> {
-    if (session.externalSessionId === null) return false;
-    await this.start();
-    try {
-      await this.client.readThread(session.externalSessionId);
-      return false;
-    } catch (error) {
-      if (
-        error instanceof CodexAppServerRpcError &&
-        error.code === -32600 &&
-        /^no rollout found for thread id\b/i.test(error.rpcMessage)
-      )
-        return true;
-      throw error;
-    }
-  }
-
   override async readConversationHistory(
     readers: RunnerConversationHistoryReaders
   ): Promise<RunnerConversationHistoryPage | undefined> {
@@ -595,25 +577,65 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     }
   }
 
+  private async cleanupThreads(): Promise<ReturnType<typeof extractCodexThreads>> {
+    await this.start();
+    const threads: ReturnType<typeof extractCodexThreads>[number][] = [];
+    const cursors = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const result = await this.client.listThreads({
+        limit: 200,
+        ...(cursor === undefined ? {} : { cursor })
+      });
+      if (
+        !isPlainRecord(result) ||
+        !Array.isArray(result.data) ||
+        result.data.some(
+          (entry) =>
+            !isPlainRecord(entry) ||
+            typeof entry.id !== 'string' ||
+            entry.id.length === 0 ||
+            typeof entry.cwd !== 'string' ||
+            entry.cwd.length === 0
+        )
+      )
+        throw new Error('CODEX_THREAD_LIST_INVALID');
+      threads.push(...extractCodexThreads(result));
+      const next = result.nextCursor;
+      if (next === null || next === undefined) return threads;
+      if (typeof next !== 'string' || next.length === 0 || cursors.has(next))
+        throw new Error('CODEX_THREAD_LIST_INVALID');
+      cursors.add(next);
+      cursor = next;
+    } while (true);
+  }
+
   async discoverSessions(
     context: RunnerDiscoveryContext,
     workspace?: NodeWorkspace
   ): Promise<readonly NodeAgentSession[]> {
-    let threads = [] as ReturnType<typeof extractCodexThreads>;
-    try {
-      await this.start();
-      const result = await this.listThreads();
-      threads = extractCodexThreads(result);
-    } catch {
-      // Native transcripts remain a valid read-only discovery source.
-    }
+    const [threads, nativeSessions] = context.cleanup
+      ? ([await this.cleanupThreads(), []] as const)
+      : await Promise.all([
+          (async () => {
+            try {
+              await this.start();
+              return extractCodexThreads(await this.listThreads());
+            } catch {
+              // Native transcripts remain a valid read-only discovery source.
+              return [];
+            }
+          })(),
+          discoverAllNativeSessions(this.name)
+        ]);
     const sessions: NodeAgentSession[] = [];
     for (const thread of threads) {
       if (thread.derived || (thread.source !== 'cli' && thread.source !== 'vscode')) continue;
       let cwd: string;
       try {
         cwd = codexThreadCwd(thread.cwd);
-      } catch {
+      } catch (error) {
+        if (context.cleanup) throw error;
         continue;
       }
       const target =
@@ -625,12 +647,13 @@ export class CodexRunner extends AbstractRunner<'codex'> {
           runner: this.name,
           externalSessionId: thread.id,
           cwd,
+          ...(context.cleanup ? { lastActivityAt: thread.lastActivityAt } : {}),
           ...(thread.title === undefined ? {} : { title: thread.title }),
           ...(thread.titleOrigin === undefined ? {} : { titleOrigin: thread.titleOrigin })
         })
       );
     }
-    for (const entry of await discoverAllNativeSessions(this.name)) {
+    for (const entry of nativeSessions) {
       const target =
         workspace ??
         context.workspaces.find((candidate) => isWithinWorkspace(entry.cwd, candidate.path));

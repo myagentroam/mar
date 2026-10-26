@@ -306,7 +306,8 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
       let sessions: readonly unknown[];
       try {
         sessions = await this.client.sessions(target.path);
-      } catch {
+      } catch (error) {
+        if (context.cleanup) throw error;
         continue;
       }
       for (const value of sessions) {
@@ -317,7 +318,9 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
           !isWithinWorkspace(session.directory, target.path)
         )
           continue;
-        const title = await this.sessionTitle(session);
+        const title = context.cleanup
+          ? { title: session.title, titleOrigin: 'OFFICIAL' as const }
+          : await this.sessionTitle(session);
         result.push(
           context.createProjection({
             workspace: target,

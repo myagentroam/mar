@@ -32,6 +32,13 @@ const formRef = ref<FormInstance>();
 const form = reactive<CleanupForm>({ inactiveDays: 30 });
 const loading = ref(false);
 const result = ref<WorkspaceSessionCleanupResult>();
+const resultTitle = computed(() =>
+  translate(
+    result.value?.timedOut
+      ? 'generated.workspaceSessionCleanupDialog.partiallyCompleted'
+      : 'generated.workspaceSessionCleanupDialog.completed'
+  )
+);
 
 const rules: FormRules<CleanupForm> = {
   inactiveDays: [
@@ -132,11 +139,11 @@ async function submit(): Promise<void> {
       </template>
 
       <template v-else>
-        <section
-          class="workspace-session-cleanup-result"
-          :aria-label="translate('generated.workspaceSessionCleanupDialog.completed')"
-        >
-          <h3>{{ translate('generated.workspaceSessionCleanupDialog.completed') }}</h3>
+        <section class="workspace-session-cleanup-result" :aria-label="resultTitle">
+          <h3>{{ resultTitle }}</h3>
+          <p v-if="result.timedOut" class="workspace-session-cleanup-description">
+            {{ translate('generated.workspaceSessionCleanupDialog.timeLimitReached') }}
+          </p>
           <dl class="workspace-session-cleanup-statistics">
             <div>
               <dt>{{ translate('generated.workspaceSessionCleanupDialog.deleted') }}</dt>
@@ -149,6 +156,10 @@ async function submit(): Promise<void> {
             <div :class="{ failed: result.failed > 0 }">
               <dt>{{ translate('generated.workspaceSessionCleanupDialog.failed') }}</dt>
               <dd>{{ result.failed }}</dd>
+            </div>
+            <div v-if="result.remaining !== undefined">
+              <dt>{{ translate('generated.workspaceSessionCleanupDialog.remaining') }}</dt>
+              <dd>{{ result.remaining }}</dd>
             </div>
           </dl>
           <dl v-if="deletedByRunner.length > 0" class="workspace-session-cleanup-by-runner">

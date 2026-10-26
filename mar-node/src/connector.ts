@@ -1278,8 +1278,8 @@ export class NodeConnector {
       cachedNative: () => [...this.sessionState.directNative.values()],
       cachedWorkspace: (workspaceId) => this.workspaceCoordinator.cachedSessions(workspaceId),
       discoveryPending: (workspaceId) => this.workspaceSessionService.discoveryPending(workspaceId),
-      discoverWorkspace: (workspaceId) =>
-        this.nativeSessionProjectionService.discoverWorkspace(workspaceId),
+      discoverWorkspace: (workspaceId, cleanup) =>
+        this.nativeSessionProjectionService.discoverWorkspace(workspaceId, undefined, cleanup),
       present: (session) => this.sessionPresentationService.present(session),
       nativeIds: (session) => this.nativeSessionProjectionService.nativeIds(session),
       forget: (session, nativeIds) => {
