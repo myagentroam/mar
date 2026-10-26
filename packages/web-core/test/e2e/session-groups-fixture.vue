@@ -73,7 +73,7 @@ service.notifications.value = ['MAIN', 'CHILD'].map((sessionGroup) => ({
     targetType: 'WORKSPACE_SESSION',
     nodeId: 'node',
     workspaceId: 'workspace',
-    sessionId: sessionGroup,
+    sessionId: sessionGroup === 'MAIN' ? 'main' : 'child-1',
     sessionGroup,
     sessionTitle: 'Project'
   }

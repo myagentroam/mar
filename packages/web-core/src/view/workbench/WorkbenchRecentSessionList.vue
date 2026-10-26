@@ -11,6 +11,7 @@ defineProps<{
     { running: number; unread: boolean }
   >;
   readonly runs: readonly RecentRun[];
+  readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
 }>();
@@ -74,12 +75,19 @@ function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warn
           type="button"
           @click="emit('openRecentRun', run)"
         >
-          <span class="recent-session-title">{{
-            translate('workbenchNotificationCenter.recentRunTitle', {
-              value0: run.workspaceName ?? run.workspaceId,
-              value1: run.sessionTitle
-            })
-          }}</span>
+          <span class="recent-session-heading">
+            <span class="recent-session-title">{{
+              translate('workbenchNotificationCenter.recentRunTitle', {
+                value0: run.workspaceName ?? run.workspaceId,
+                value1: run.sessionTitle
+              })
+            }}</span>
+            <span
+              v-if="hasUnreadSession(run.nodeId, run.workspaceId, run.sessionId)"
+              class="recent-session-unread mar-unread-label"
+              >{{ translate('sessionGroups.unread') }}</span
+            >
+          </span>
           <el-tag size="small" :type="runStatusType(run)">{{
             translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
           }}</el-tag>
@@ -157,6 +165,12 @@ function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warn
 .recent-sessions-list button:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
+}
+.recent-session-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
 }
 .recent-session-title,
 .recent-sessions-list small {
