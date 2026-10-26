@@ -792,6 +792,8 @@ describe('Code Mode conversation projection', () => {
         const live = new Map(
           events.flatMap((event) => normalizer.normalize(event)).map((item) => [item.itemId, item])
         );
+        for (const item of [...live.values()].filter((item) => item.kind === 'file_change'))
+          expect(item).not.toHaveProperty('parentItemId');
         expect([...live.values()].filter((item) => item.kind === 'file_change')).toEqual([
           expect.objectContaining({
             status: 'COMPLETED',
@@ -862,6 +864,8 @@ describe('Code Mode conversation projection', () => {
             history.entries
           );
           const items = turns.flatMap((turn) => turn.items);
+          for (const item of items.filter((item) => item.kind === 'file_change'))
+            expect(item.parentItemId).toBeNull();
           expect(items.filter((item) => item.kind === 'file_change')).toEqual([
             expect.objectContaining({
               status: 'COMPLETED',

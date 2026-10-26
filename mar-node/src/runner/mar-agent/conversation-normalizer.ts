@@ -16,7 +16,6 @@ import { runnerErrorProjection } from '../../util/runner-error.js';
 import { toolPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 
 export interface MarAgentNormalizedItem {
-  readonly parentItemId?: string;
   readonly itemId: string;
   readonly kind:
     | 'user_message'
@@ -561,11 +560,8 @@ export class MarAgentConversationNormalizer {
       if (projected.length === 0) continue;
       if (observation.id !== undefined) this.#codeModeObservationIds.add(observation.id);
       this.#codeModeSourceCallIds.add(observation.source.callId);
-      items.push(
-        ...projected.map((item) =>
-          'callId' in event ? { ...item, parentItemId: itemId('tool', event.callId) } : item
-        )
-      );
+      // An execution/observation container does not own these public tool records.
+      items.push(...projected);
     }
     return items;
   }
