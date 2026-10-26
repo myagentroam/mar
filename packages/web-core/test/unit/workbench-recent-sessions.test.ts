@@ -40,7 +40,53 @@ function run(sessionId: string, sessionGroup: SessionGroup, runIndex: number): R
 }
 
 describe('Workbench recent session groups', () => {
+  it.each([
+    {
+      locale: 'en-US' as const,
+      mobileMode: false,
+      canceled: 'Canceled',
+      interrupted: 'Interrupted'
+    },
+    {
+      locale: 'en-US' as const,
+      mobileMode: true,
+      canceled: 'Canceled',
+      interrupted: 'Interrupted'
+    },
+    { locale: 'zh-CN' as const, mobileMode: false, canceled: '已取消', interrupted: '已中断' },
+    { locale: 'zh-CN' as const, mobileMode: true, canceled: '已取消', interrupted: '已中断' }
+  ])(
+    'distinguishes user stops from other interruptions in $locale mobile=$mobileMode',
+    ({ locale, mobileMode, canceled, interrupted }) => {
+      localePreferenceService().setLocale(locale);
+      const mounted = mountSessionGroupTestComponent(WorkbenchRecentSessionList, {
+        sessionGroup: 'MAIN',
+        groupState: { MAIN: { running: 0, unread: false }, CHILD: { running: 0, unread: false } },
+        runs: [
+          {
+            ...run('manual-stop', 'MAIN', 1),
+            status: 'INTERRUPTED',
+            interruptionReason: 'USER_STOP'
+          },
+          { ...run('other-interruption', 'MAIN', 2), status: 'INTERRUPTED' },
+          { ...run('legacy-cancellation', 'MAIN', 3), status: 'CANCELLED' }
+        ],
+        hasUnreadSession: () => false,
+        mobileMode,
+        runTime: () => 'Just now'
+      });
+      mountedApps.push(mounted.app);
+      const list = mounted.container.findAll(
+        (node) => node.props.get('class') === 'recent-sessions-list'
+      )[0]!;
+      const tags = list.findAll((node) => node.type === 'span' && node.props.has('type'));
+      expect(tags.map((node) => node.textContent)).toEqual([canceled, interrupted, canceled]);
+      expect(tags.map((node) => node.props.get('type'))).toEqual(['info', 'warning', 'info']);
+    }
+  );
+
   it('uses primary for ongoing runs, success for completion, and preserves other status semantics', () => {
+    localePreferenceService().setLocale('en-US');
     const statuses: RecentRun['status'][] = [
       'STARTING',
       'RUNNING',
@@ -70,6 +116,15 @@ describe('Workbench recent session groups', () => {
       'warning',
       'warning',
       'info'
+    ]);
+    expect(tags.map((node) => node.textContent)).toEqual([
+      'Starting',
+      'Running',
+      'Completed',
+      'Failed',
+      'Stopping',
+      'Interrupted',
+      'Canceled'
     ]);
   });
 

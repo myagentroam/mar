@@ -1044,6 +1044,23 @@ describe('Web Workbench notification state', () => {
     expect(state.recentRuns.value).toEqual([]);
   });
 
+  it('keeps the authoritative stop reason on load and clears it when the recent Run is replaced', async () => {
+    let recentRuns: RecentRun[] = [
+      { ...workspaceRun('INTERRUPTED'), interruptionReason: 'USER_STOP', completedAt: 200 }
+    ];
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
+      request: async <T>() => ({ notifications: [], recentRuns }) as T
+    });
+    await state.load();
+    expect(state.recentRuns.value[0]?.interruptionReason).toBe('USER_STOP');
+    expect(state.recentRuns.value[0]?.status).toBe('INTERRUPTED');
+    recentRuns = [{ ...workspaceRun(), runId: 'replacement' }];
+    await state.load();
+    expect(state.recentRuns.value[0]?.runId).toBe('replacement');
+    expect(state.recentRuns.value[0]).not.toHaveProperty('interruptionReason');
+    state.dispose();
+  });
+
   it('orders active tasks first and terminal tasks by completion time with a last-update fallback', async () => {
     const recentRuns = [
       ['completed-early', 'SUCCEEDED', 900, 300, 1000],

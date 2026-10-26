@@ -28,9 +28,14 @@ const RUN_STATUS_KEYS = {
   INTERRUPTED: 'workbenchNotificationCenter.runStatus.INTERRUPTED'
 } as const satisfies Record<RecentRun['status'], string>;
 
-function runStatusType(
-  status: RecentRun['status']
-): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
+function runDisplayStatus(run: RecentRun): RecentRun['status'] {
+  return run.status === 'INTERRUPTED' && run.interruptionReason === 'USER_STOP'
+    ? 'CANCELLED'
+    : run.status;
+}
+
+function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
+  const status = runDisplayStatus(run);
   if (status === 'SUCCEEDED') return 'success';
   if (status === 'FAILED') return 'danger';
   if (status === 'STARTING' || status === 'RUNNING') return 'primary';
@@ -75,8 +80,8 @@ function runStatusType(
               value1: run.sessionTitle
             })
           }}</span>
-          <el-tag size="small" :type="runStatusType(run.status)">{{
-            translate(RUN_STATUS_KEYS[run.status])
+          <el-tag size="small" :type="runStatusType(run)">{{
+            translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
           }}</el-tag>
           <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
           <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{

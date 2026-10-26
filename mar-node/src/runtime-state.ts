@@ -945,6 +945,9 @@ export class NodeRuntimeState {
     const value = {
       ...current,
       status: next,
+      ...(next === 'INTERRUPTED' && current.status === 'CANCELLING'
+        ? { interruptionReason: 'USER_STOP' as const }
+        : {}),
       version: current.version + 1,
       completedAt: terminal(next) ? now : current.completedAt,
       updatedAt: now
@@ -982,7 +985,7 @@ export class NodeRuntimeState {
   }): RuntimeRunEvent | undefined {
     const execution = this.executions.get(input.runId);
     const runId = execution?.runId ?? input.runId;
-    this.requireRun(runId);
+    const run = this.requireRun(runId);
     const priorSequence = this.runSequences.get(runId) ?? 0;
     if (input.sequence <= priorSequence) return undefined;
     if (input.sequence > priorSequence + 1) throw new Error('EVENT_SEQUENCE_GAP');
@@ -1003,7 +1006,8 @@ export class NodeRuntimeState {
         completedAt: terminal(input.status) ? value.createdAt : execution.completedAt
       });
     }
-    if (input.status !== undefined && !terminal(input.status))
+    // Runner startup can arrive after a user stop; keep the Run cancelling.
+    if (input.status !== undefined && !terminal(input.status) && run.status !== 'CANCELLING')
       this.transitionRun(runId, input.status);
     this.projectEvent(value, execution?.turnId);
     if (input.status !== undefined && terminal(input.status) && execution !== undefined)

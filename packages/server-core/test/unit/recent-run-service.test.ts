@@ -49,6 +49,38 @@ function database(allowed: boolean | ((userId: number, nodeId: string) => boolea
 }
 
 describe('Server recent-run in-memory index', () => {
+  it.each(['UPDATE', 'SNAPSHOT'] as const)(
+    'preserves an explicit user stop reason through %s without changing the Run status',
+    async (kind) => {
+      const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+      const stopped = {
+        ...projection({ status: 'INTERRUPTED' }).run,
+        interruptionReason: 'USER_STOP'
+      };
+      try {
+        await expect(
+          service.consume(
+            'node-1',
+            kind === 'UPDATE' ? { kind, run: stopped } : { kind, runs: [stopped] }
+          )
+        ).resolves.toBe(true);
+        await expect(service.list(7)).resolves.toEqual([
+          expect.objectContaining({ status: 'INTERRUPTED', interruptionReason: 'USER_STOP' })
+        ]);
+
+        await service.consume(
+          'node-1',
+          projection({ runId: 'next-run', status: 'INTERRUPTED', sortAt: 200 })
+        );
+        const [next] = await service.list(7);
+        expect(next?.status).toBe('INTERRUPTED');
+        expect(next).not.toHaveProperty('interruptionReason');
+      } finally {
+        service.dispose();
+      }
+    }
+  );
+
   it('rejects malformed projections and projections with a mismatched connected Node identity', async () => {
     const db = database();
     const service = new RecentRunService(db as never, vi.fn());

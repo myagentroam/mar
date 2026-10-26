@@ -1595,6 +1595,7 @@ export const recentRunSchema = z.object({
   userMessage: z.string().max(500).optional(),
   runner: runnerNameSchema,
   status: agentRunStatusSchema,
+  interruptionReason: z.literal('USER_STOP').optional(),
   createdAt: z.number().int().nonnegative(),
   startedAt: z.number().int().nonnegative(),
   completedAt: z.number().int().nonnegative().nullable(),

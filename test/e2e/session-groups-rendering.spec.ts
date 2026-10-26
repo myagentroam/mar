@@ -219,3 +219,37 @@ for (const [width, theme, locale] of [
     }
   });
 }
+
+for (const [width, theme, locale] of [
+  [1280, 'daylight', 'en-US'],
+  [390, 'vscode-dark-2026', 'en-US'],
+  [1280, 'vscode-dark-2026', 'zh-CN'],
+  [390, 'daylight', 'zh-CN']
+] as const) {
+  test(`Recent session stops distinguish Canceled from Interrupted at ${width}px ${locale}`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto(
+        `${fixture.url}session-groups.html?theme=${theme}&locale=${locale}&stop-statuses`
+      );
+      if (width === 1280) await page.locator('.recent-sessions-trigger').click();
+      const recent = page.locator('.recent-sessions-panel');
+      const statuses = recent.locator('.recent-sessions-list .el-tag');
+      await expect(statuses).toHaveText(
+        locale === 'zh-CN' ? ['已取消', '已中断'] : ['Canceled', 'Interrupted']
+      );
+      await expect(statuses.first()).toHaveClass(/el-tag--info/);
+      await expect(statuses.last()).toHaveClass(/el-tag--warning/);
+      const directory = resolve(process.env.MAR_TEST_RUN_DIR ?? 'test/runs');
+      await mkdir(directory, { recursive: true });
+      await recent.screenshot({
+        path: resolve(directory, `recent-session-stops-${width}-${theme}-${locale}.png`)
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+}

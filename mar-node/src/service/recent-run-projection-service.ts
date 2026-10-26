@@ -47,6 +47,9 @@ export class RecentRunProjectionService {
       ...(latestUserMessage === undefined ? {} : { userMessage: latestUserMessage }),
       runner: run.runner,
       status: run.status,
+      ...(run.interruptionReason === undefined
+        ? {}
+        : { interruptionReason: run.interruptionReason }),
       createdAt: run.createdAt,
       startedAt,
       completedAt,
