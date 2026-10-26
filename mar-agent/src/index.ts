@@ -306,6 +306,7 @@ export type {
   ApplyPatchFileResult,
   ApplyPatchResult,
   ApplyPatchPartialResult,
+  ExecOutputSnapshot,
   ClientToolDefinition,
   MarAgentToolArtifact,
   MarAgentToolImageArtifact,

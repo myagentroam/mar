@@ -281,6 +281,26 @@ class BlockingExecutionAdapter implements ModelAdapter {
 }
 
 describe('resource lifecycle', () => {
+  it('never buffers best-effort live values while keeping ordinary events in order', async () => {
+    const queue = new AsyncQueue<number>();
+    for (let i = 0; i < 10_000; i++) queue.pushIfWaiting(i);
+    expect(queue.bufferedSize).toBe(0);
+    const iterator = queue[Symbol.asyncIterator]();
+    queue.push(1);
+    queue.pushIfWaiting(2);
+    expect(await iterator.next()).toEqual({ value: 1, done: false });
+    expect(queue.bufferedSize).toBe(0);
+    const waiting = iterator.next();
+    queue.pushIfWaiting(3);
+    expect(await waiting).toEqual({ value: 3, done: false });
+    queue.pushIfWaiting(4);
+    queue.push(5);
+    queue.close();
+    queue.pushIfWaiting(6);
+    expect(await iterator.next()).toEqual({ value: 5, done: false });
+    expect(await iterator.next()).toEqual({ value: undefined, done: true });
+  });
+
   it('drops buffered execution events when callers select the result-only API', async () => {
     const queue = new AsyncQueue<{ payload: string }>();
     for (let index = 0; index < 10_000; index++) queue.push({ payload: `event-${index}` });

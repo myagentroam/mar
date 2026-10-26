@@ -594,7 +594,8 @@ export function createSessionOpener(services: SessionServices) {
               if (message) messageSources.set(message, stored);
             }
           }
-          queue.push(full);
+          if (full.type === 'tool.output') queue.pushIfWaiting(full);
+          else queue.push(full);
           compactRequests.publish(full);
           if (internal.publishHostEvents !== false) {
             try {
@@ -624,7 +625,8 @@ export function createSessionOpener(services: SessionServices) {
             }
           }
         });
-        emitTail = operation.catch(() => undefined);
+        // Best-effort previews follow prior durable events without delaying later results.
+        if (full.type !== 'tool.output') emitTail = operation.catch(() => undefined);
         return operation;
       };
       const recordModelAttempt =
@@ -2765,6 +2767,7 @@ export function createSessionOpener(services: SessionServices) {
             await releaseSession?.();
           } catch (error) {
             // Preserve the first failure/cancellation; successful executions still report release errors.
+            // eslint-disable-next-line no-unsafe-finally -- Successful results must not hide writer lease release failures.
             if (!failedExecution) throw error;
           } finally {
             // Writer release cannot skip owner-safe deactivation; the event stream closes last.

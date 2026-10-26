@@ -75,10 +75,23 @@ export async function executeCapturedTool(
       ...(context.expectedMcpTool ? { expectedTool: context.expectedMcpTool } : {})
     });
   }
+  const { name, callId } = call;
   return context.host.executeTool(call, {
     mode: context.mode,
     signal: context.signal,
     waitInterrupt: context.waitInterrupt,
+    ...((name === 'exec' || name === 'exec_wait') && callId !== undefined
+      ? {
+          onOutput: (output: import('./contracts.js').ExecOutputSnapshot) =>
+            context.emit({
+              type: 'tool.output',
+              toolName: name,
+              callId,
+              ...(context.parentCallId === undefined ? {} : { parentCallId: context.parentCallId }),
+              output
+            })
+        }
+      : {}),
     sessionId: context.sessionId,
     executionId: context.executionId,
     ...(context.modelId === undefined ? {} : { modelId: context.modelId }),

@@ -17,6 +17,7 @@ export function toolEventSummary(text: string): { summary: string; truncated: bo
 export function eventForPersistence(event: MarAgentEvent): MarAgentEvent | undefined {
   if (
     event.type === 'message.delta' ||
+    event.type === 'tool.output' ||
     event.type === 'input.received' ||
     (event.type === 'context.compacting' && event.async !== true && event.stage === undefined) ||
     event.type === 'model.performance' ||

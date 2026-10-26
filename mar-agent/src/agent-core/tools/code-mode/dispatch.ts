@@ -18,7 +18,7 @@ import type { createSessionToolScheduler } from '../scheduler.js';
 
 type ToolEvent = Extract<
   MarAgentEvent,
-  { type: 'tool.started' | 'tool.completed' | 'tool.failed' }
+  { type: 'tool.started' | 'tool.output' | 'tool.completed' | 'tool.failed' }
 >;
 type Payload<T = ToolEvent> = T extends ToolEvent
   ? Omit<T, 'eventId' | 'sequence' | 'timestamp' | 'sessionId' | 'executionId' | 'turnId'>
@@ -59,6 +59,8 @@ export function createCodeToolDispatch(input: {
           callId,
           {
             ...input.context,
+            emit: (event) =>
+              event.type === 'tool.output' ? input.emit(event) : input.context.emit(event),
             parentCallId: input.parentCallId,
             signal,
             ...(expected ? { expectedMcpTool: expected } : {})

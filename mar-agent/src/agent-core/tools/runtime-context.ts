@@ -5,6 +5,13 @@ import type { SubagentController, SubagentLatestMessage } from '../subagent/sche
 import type { TodoStore } from './agent/todo.js';
 
 export type ToolRuntimeEvent =
+  | {
+      type: 'tool.output';
+      toolName: 'exec' | 'exec_wait';
+      callId: string;
+      parentCallId?: string;
+      output: import('./contracts.js').ExecOutputSnapshot;
+    }
   | { type: 'sleep.started'; callId: string; durationMs: number; startedAt: string }
   | { type: 'todo.updated'; revision: number; items: readonly import('./agent/todo.js').TodoItem[] }
   | { type: 'user_input.requested'; requestId: string; questions: unknown[] }

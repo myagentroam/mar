@@ -82,7 +82,7 @@ it.each([
       ...(outcome === 'failed'
         ? {
             errorCode: 'ORIGINAL_MODEL_FAILURE',
-            errorMessage: 'ORIGINAL_MODEL_FAILURE: Original model failure.'
+            errorMessage: 'Original model failure.'
           }
         : {}),
       ...(outcome === 'completed' ? { finalAnswer: 'done' } : {})
@@ -246,7 +246,7 @@ it('keeps a completed terminal append failure on the Store failure path', async 
   await expect(handle.result()).resolves.toMatchObject({
     status: 'failed',
     errorCode: 'ENOSPC',
-    errorMessage: 'ENOSPC: Terminal append failed before writing.'
+    errorMessage: 'Terminal append failed before writing.'
   });
   const terminals = events.filter((event) => terminalTypes.includes(event.type));
   expect(terminals.map((event) => event.type)).toEqual(['execution.failed']);

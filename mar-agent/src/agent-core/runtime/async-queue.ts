@@ -6,6 +6,10 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
   #closed = false;
   #observed = false;
   #discarded = false;
+  /** Best-effort live values are delivered only to an actively waiting consumer. */
+  pushIfWaiting(value: T) {
+    if (this.#waiterOffset < this.#waiters.length) this.push(value);
+  }
   push(value: T) {
     if (this.#closed || this.#discarded) return;
     const waiter = this.#waiters[this.#waiterOffset];

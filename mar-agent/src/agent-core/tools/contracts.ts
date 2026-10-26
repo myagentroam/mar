@@ -32,6 +32,8 @@ export interface ToolExecutionContext {
   mode: ExecutionMode;
   signal: AbortSignal;
   waitInterrupt?: import('./wait.js').ToolWaitInterrupt | undefined;
+  /** Live-only process output; does not consume the eventual tool result. */
+  onOutput?: (output: ExecOutputSnapshot) => Promise<void>;
   sessionId: string;
   executionId: string;
   /** Current model identity for neutral Host-owned tool policies. */
@@ -97,6 +99,13 @@ export interface MarAgentToolImageArtifact {
   fileName: string;
 }
 export type MarAgentToolArtifact = MarAgentToolImageArtifact;
+export interface ExecOutputSnapshot {
+  processId: string;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+}
+
 export interface ToolExecutionResult {
   calls?: readonly import('./code-mode/observations.js').CodeToolCallRecord[];
   content: string;
