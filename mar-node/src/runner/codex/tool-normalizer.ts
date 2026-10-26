@@ -1,5 +1,11 @@
 import { compactRunnerText } from '../../util/node-operation-parsers.js';
 
+export function normalizeCodexApproval(method: string) {
+  return method === 'item/commandExecution/requestApproval'
+    ? { toolName: 'command_execution', reason: 'Command execution requires approval.' }
+    : { toolName: 'file_change', reason: 'File changes require approval.' };
+}
+
 export type CodexNormalizedTool = {
   readonly kind: 'command_execution' | 'file_change' | 'tool_call';
   readonly payload: Record<string, unknown>;

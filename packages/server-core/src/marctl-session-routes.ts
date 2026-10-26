@@ -52,6 +52,24 @@ const commandSchema = z
       })
       .strict(),
     z.object({ action: z.literal('show'), sessionId: id }).strict(),
+    z.object({ action: z.literal('prompt.get'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('prompt.set'),
+        sessionId: id,
+        content: z.string().trim().min(1).max(20_000)
+      })
+      .strict(),
+    z.object({ action: z.literal('prompt.clear'), sessionId: id }).strict(),
+    z
+      .object({
+        action: z.literal('approval.decide'),
+        sessionId: id,
+        runId: id,
+        approvalId: id,
+        decision: z.enum(['APPROVED', 'REJECTED'])
+      })
+      .strict(),
     z
       .object({
         action: z.literal('rename'),
@@ -199,7 +217,17 @@ export function registerMarctlSessionRoutes(
         );
         if (authenticated === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
         const command = commandSchema.safeParse(request.body);
-        if (!command.success) return sendError(reply, 400, 'MARCTL_SESSION_INPUT_INVALID');
+        if (!command.success)
+          return sendError(reply, 400, 'MARCTL_SESSION_INPUT_INVALID', {
+            details: command.error.issues
+              .slice(0, 4)
+              .map(
+                (issue) =>
+                  `${issue.path.join('.') || 'command'}: ${issue.code === 'unrecognized_keys' ? 'Unexpected fields; use only documented options.' : issue.message}`
+              )
+              .join(' ')
+              .slice(0, 2000)
+          });
         const { user, scope, scheduled, channel } = authenticated;
         if (scope === undefined) return sendError(reply, 403, 'MARCTL_SESSION_CONTEXT_REQUIRED');
         if (!(await input.authorizedNode(user, scope.nodeId)))
@@ -282,6 +310,55 @@ export function registerMarctlSessionRoutes(
             return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
         }
         const sessionId = session?.id;
+        if (
+          body.action === 'prompt.get' ||
+          body.action === 'prompt.set' ||
+          body.action === 'prompt.clear'
+        ) {
+          const capabilities = object(session?.runtime).capabilities;
+          if (!Array.isArray(capabilities) || !capabilities.includes('session.prompt'))
+            return sendError(reply, 400, 'NODE_OPERATION_UNSUPPORTED');
+          const saved =
+            body.action === 'prompt.get'
+              ? session
+              : object(
+                  object(
+                    await call('session.metadata.update', {
+                      sessionId,
+                      sessionPrompt: body.action === 'prompt.clear' ? null : body.content
+                    })
+                  ).session
+                );
+          return reply.send({ sessionId, sessionPrompt: saved?.sessionPrompt ?? null });
+        }
+        if (body.action === 'approval.decide') {
+          const capabilities = object(session?.runtime).capabilities;
+          if (!Array.isArray(capabilities) || !capabilities.includes('approval.respond'))
+            return sendError(reply, 400, 'NODE_OPERATION_UNSUPPORTED');
+          const runs = object(await call('session.runs', { sessionId })).runs;
+          const run = Array.isArray(runs)
+            ? runs.find(
+                (value) =>
+                  isObject(value) && value.id === body.runId && value.sessionId === sessionId
+              )
+            : undefined;
+          if (!isObject(run)) return sendError(reply, 404, 'RUN_NOT_FOUND');
+          const approval = object(
+            object(
+              await call('run.approval.decide', {
+                runId: body.runId,
+                approvalId: body.approvalId,
+                decision: body.decision
+              })
+            ).approval
+          );
+          return reply.send({
+            sessionId,
+            runId: body.runId,
+            approvalId: approval.id,
+            decision: approval.status
+          });
+        }
         if (body.action === 'rename')
           return reply.send(
             await call('session.metadata.update', { sessionId, customTitle: body.title })

@@ -12,7 +12,7 @@ import {
 import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
 import type { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 
-function fixture() {
+function fixture(start = true) {
   let now = 1_000;
   let sequence = 0;
   const runtime = new NodeRuntimeState(
@@ -37,7 +37,7 @@ function fixture() {
     clientMessageId: 'input',
     content: 'Private user input'
   });
-  runtime.transitionRun(run.id, 'RUNNING');
+  if (start) runtime.transitionRun(run.id, 'RUNNING');
   const emit = (itemId: string, kind: string, status: string, payload: unknown, extra = {}) => {
     now += 100;
     return runtime.appendRunEvent({
@@ -58,6 +58,93 @@ function fixture() {
 }
 
 describe('bounded marctl Session views', () => {
+  it('projects only live pending approvals with public Run IDs and no raw input', () => {
+    const { runtime, session, run, detail, emit } = fixture(false);
+    const execution = runtime.createExecution(run.id);
+    runtime.transitionRun(run.id, 'RUNNING');
+    const approval = runtime.createApproval({
+      runId: execution.id,
+      approvalId: 'approval',
+      expiresAt: 100_000,
+      payload: { toolName: 'exec', reason: 'Need access', input: 'DO_NOT_INCLUDE_INPUT' }
+    });
+    const value = detail();
+    expect(value.pendingApprovals).toEqual([
+      {
+        approvalId: approval.id,
+        runId: run.id,
+        name: 'exec',
+        summary: 'Need access',
+        truncated: false
+      }
+    ]);
+    expect(marctlSessionProgress(runtime, session.id)?.pendingApprovals).toEqual(
+      value.pendingApprovals
+    );
+    expect(JSON.stringify(value)).not.toContain('DO_NOT_INCLUDE');
+    expect(JSON.stringify(value)).not.toContain(execution.id);
+    runtime.decideApproval(approval.id, 'REJECTED');
+    expect(detail().pendingApprovals).toEqual([]);
+    const expired = runtime.createApproval({
+      runId: execution.id,
+      approvalId: 'expired',
+      expiresAt: 1050,
+      payload: {}
+    });
+    emit('later', 'assistant_message', 'COMPLETED', { text: 'Continuing' });
+    expect(detail().pendingApprovals).toEqual([]);
+    expect(runtime.getApproval(expired.id)?.status).toBe('EXPIRED');
+    runtime.createApproval({
+      runId: execution.id,
+      approvalId: 'old',
+      expiresAt: 100_000,
+      payload: {}
+    });
+    runtime.appendRunEvent({
+      runId: execution.id,
+      sequence: 1,
+      eventType: 'run.completed',
+      payload: {},
+      status: 'SUCCEEDED'
+    });
+    runtime.createQueueItem({ sessionId: session.id, clientMessageId: 'next', content: 'Next' });
+    runtime.claimNextQueueItem(session.id);
+    runtime.createExecution(run.id);
+    expect(detail().pendingApprovals).toEqual([]);
+  });
+
+  it('bounds approval summaries and carries their changes over the existing Watch projection', () => {
+    const { runtime, session, run, emit, detail } = fixture();
+    for (let index = 0; index < 21; index++)
+      runtime.createApproval({
+        runId: run.id,
+        approvalId: 'approval-' + index,
+        expiresAt: 100_000,
+        payload: { toolName: '😀'.repeat(130), reason: '😀'.repeat(150), input: 'private' }
+      });
+    expect(detail().pendingApprovals).toHaveLength(20);
+    expect(detail().pendingApprovalsTruncated).toBe(true);
+    expect([...detail().pendingApprovals[0]!.summary]).toHaveLength(100);
+    expect(detail().pendingApprovals[0]?.truncated).toBe(true);
+    const event = emit('request', 'approval_request', 'PENDING', { approvalId: 'request' });
+    const projected = projectWorkbenchPayload(
+      {
+        getRun: (id) => runtime.getRun(id),
+        conversationTurnForRun: (id) => runtime.conversationTurnForRun(id),
+        progress: (id) => marctlSessionProgress(runtime, id)
+      },
+      'conversation',
+      { event }
+    );
+    expect(projected).toMatchObject({
+      sessionId: session.id,
+      progress: {
+        pendingApprovals: detail().pendingApprovals,
+        pendingApprovalsTruncated: true
+      }
+    });
+  });
+
   it('keeps a strict whitelist and bounded Unicode messages and tools without raw bodies', () => {
     const { runtime, run, emit, detail, summary } = fixture();
     expect(detail()).toMatchObject({
@@ -94,7 +181,9 @@ describe('bounded marctl Session views', () => {
         'effort',
         'queuedCount',
         'latestMessage',
-        'recentTools'
+        'recentTools',
+        'pendingApprovals',
+        'pendingApprovalsTruncated'
       ].sort()
     );
     expect(Object.keys(summary()).sort()).toEqual(
@@ -379,7 +468,8 @@ describe('bounded marctl Session views', () => {
       internals.runtime.createQueueItem({
         sessionId: session.id,
         clientMessageId: 'goal:internal',
-        content: 'Internal continuation'
+        content: 'Internal continuation',
+        goalInput: true
       });
       const event = internals.runtime.appendRunEvent({
         runId: run.id,

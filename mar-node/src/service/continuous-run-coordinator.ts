@@ -57,6 +57,8 @@ interface AcceptedMessage {
 }
 
 interface EnqueueDisposition {
+  readonly externalInput?: boolean;
+  readonly queuePauseVersion?: number;
   readonly onNativeAccepted?: () => void;
   readonly submissionId: string;
   readonly intent: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
@@ -130,6 +132,7 @@ export class ContinuousRunCoordinator<TAttachment> {
     Promise<{ readonly run: NodeAgentRun; readonly delivery: string }>
   >();
   private readonly steerInFlight = new Map<string, NativeSteerAdmission>();
+  private readonly deferredQueueResumes = new Map<string, number>();
   private suspended = false;
 
   constructor(private readonly options: ContinuousRunCoordinatorOptions) {}
@@ -304,8 +307,25 @@ export class ContinuousRunCoordinator<TAttachment> {
       this.canSteer(active) &&
       (input.steerTarget.executionId === undefined ||
         this.options.runtime.currentExecutionId(active.id) === input.steerTarget.executionId);
-    const intent = input.steerTarget !== undefined && !steering ? 'SEND' : input.intent;
-    if (active?.status === 'CANCELLING' && intent !== 'REPLACE_CURRENT') return 'QUEUED';
+    const pauseVersion = this.options.runtime.sessionQueuePauseVersion(sessionId);
+    // An explicit pause after this input's admission takes precedence over automatic recovery.
+    if (
+      input.externalInput &&
+      pauseVersion !== undefined &&
+      pauseVersion !== input.queuePauseVersion
+    )
+      return 'QUEUED';
+    const intent =
+      input.steerTarget !== undefined && !steering
+        ? 'SEND'
+        : input.externalInput && input.queueBefore.paused && input.intent === 'QUEUE'
+          ? 'SEND'
+          : input.intent;
+    if (active?.status === 'CANCELLING' && intent !== 'REPLACE_CURRENT') {
+      if (input.externalInput && item && pauseVersion !== undefined)
+        this.deferredQueueResumes.set(item.id, pauseVersion);
+      return 'QUEUED';
+    }
     if (steering) this.prepareSteering(input.submissionId);
     const executionEnded =
       active !== undefined &&
@@ -691,6 +711,8 @@ export class ContinuousRunCoordinator<TAttachment> {
     if (this.suspended || this.options.stopped()) return;
     if ([...this.steerInFlight.values()].some((entry) => entry.sessionId === sessionId)) return;
     const active = this.options.runtime.activeSessionRun(sessionId);
+    if (active?.status === 'CANCELLING') return;
+    this.resumeDeferredQueue(sessionId);
     if (active === undefined) {
       await this.startIdleQueue(sessionId);
       return;
@@ -885,6 +907,7 @@ export class ContinuousRunCoordinator<TAttachment> {
   }
 
   remove(id: string): void {
+    this.deferredQueueResumes.delete(id);
     this.immediateQueueItems.delete(id);
     this.environmentLeases.get(id)?.();
     this.environmentLeases.delete(id);
@@ -931,8 +954,32 @@ export class ContinuousRunCoordinator<TAttachment> {
     this.startedExecutions.clear();
     this.immediateQueueItems.clear();
     this.queueExecutionAdmissions.clear();
+    this.deferredQueueResumes.clear();
     for (const timer of this.scheduledSessions.values()) clearTimeout(timer);
     this.scheduledSessions.clear();
+  }
+
+  runTerminated(sessionId: string): void {
+    const queue = this.options.runtime.sessionQueue(sessionId);
+    if (
+      (!queue.paused && queue.itemIds.length > 0) ||
+      [...this.deferredQueueResumes.keys()].some(
+        (id) => this.options.runtime.getQueueItem(id)?.sessionId === sessionId
+      )
+    )
+      this.schedule(sessionId);
+  }
+
+  private resumeDeferredQueue(sessionId: string): void {
+    for (const [id, pauseVersion] of this.deferredQueueResumes) {
+      const item = this.options.runtime.getQueueItem(id);
+      if (item?.sessionId !== sessionId) continue;
+      this.deferredQueueResumes.delete(id);
+      if (this.options.runtime.sessionQueuePauseVersion(sessionId) !== pauseVersion) continue;
+      this.options.runtime.resumeSessionQueue(sessionId);
+      if (!this.options.goalActive?.(sessionId)) this.options.runtime.prioritizeQueueItem(id);
+      this.publish(sessionId);
+    }
   }
 
   private async startIdleQueue(

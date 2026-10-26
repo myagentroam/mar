@@ -36,7 +36,13 @@ function fixture(runner: RunnerName = 'codex') {
     runner,
     cwd: '/workspace'
   });
-  return { runtime, session };
+  return {
+    runtime,
+    session,
+    advance: (ms: number) => {
+      now += ms;
+    }
+  };
 }
 
 describe('Node Runtime history boundaries', () => {
@@ -3021,6 +3027,305 @@ describe('Node continuous Run lifecycle', () => {
     });
     expect(JSON.stringify(claimed?.turn)).not.toContain('dataBase64');
   });
+});
+
+describe('external QUEUE recovery', () => {
+  function setup(goalActive = false) {
+    const { runtime, session } = fixture();
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      control,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => [],
+      goalActive: () => goalActive
+    });
+    const add = (id: string) => {
+      const before = runtime.sessionQueue(session.id);
+      const pauseVersion = runtime.sessionQueuePauseVersion(session.id);
+      const accepted = coordinator.accept({
+        runId: id,
+        sessionId: session.id,
+        clientMessageId: id,
+        content: id
+      });
+      const submissionId = accepted.queueItem?.id ?? accepted.run.id;
+      coordinator.prepare(submissionId, { ...prepared(id, session.id), input: id });
+      return {
+        sessionId: session.id,
+        submissionId,
+        queueBefore: before,
+        ...(pauseVersion === undefined ? {} : { queuePauseVersion: pauseVersion }),
+        intent: 'QUEUE' as const,
+        externalInput: true,
+        accepted
+      };
+    };
+    return { runtime, session, coordinator, control, add };
+  }
+
+  it.each([false, true])(
+    'keeps active input running and recovers a paused FIFO=%s',
+    async (paused) => {
+      const { runtime, session, coordinator, control, add } = setup();
+      const initial = add('initial');
+      await coordinator.settle(initial);
+      await coordinator.dispatch(session.id);
+      const first = add('old-first');
+      await coordinator.settle(first);
+      const second = add('old-second');
+      await coordinator.settle(second);
+      if (paused) runtime.pauseSessionQueue(session.id);
+      const next = add('new');
+      expect(await coordinator.settle(next)).toBe('QUEUED');
+      expect(runtime.sessionQueue(session.id)).toMatchObject({
+        paused: false,
+        itemIds: [first.submissionId, second.submissionId, next.submissionId]
+      });
+      expect(control.mock.calls.map((call) => call[0])).toEqual(['run.start']);
+      coordinator.suspend();
+    }
+  );
+
+  it('starts a new external QUEUE ahead of the stopped FIFO and retains old relative order', async () => {
+    const { runtime, session, coordinator, control, add } = setup();
+    const initial = add('initial');
+    await coordinator.settle(initial);
+    await coordinator.dispatch(session.id);
+    const first = add('old-first');
+    await coordinator.settle(first);
+    const second = add('old-second');
+    await coordinator.settle(second);
+    runtime.pauseSessionQueue(session.id);
+    runtime.finishRun(initial.accepted.run.id, 'INTERRUPTED');
+    runtime.removeTerminalRun(initial.accepted.run.id);
+    const next = add('new');
+    expect(await coordinator.settle(next)).toBe('STARTED');
+    await coordinator.dispatch(session.id);
+    expect(runtime.sessionQueue(session.id)).toMatchObject({
+      paused: false,
+      itemIds: [first.submissionId, second.submissionId]
+    });
+    expect(
+      control.mock.calls.filter((call) => call[0] === 'run.start').map((call) => call[1].input)
+    ).toEqual(['initial', 'new']);
+    coordinator.suspend();
+  });
+
+  it.each([false, true])(
+    'defers cancellation recovery and honors a later explicit pause=%s',
+    async (pauseAgain) => {
+      const { runtime, session, coordinator, control, add } = setup();
+      const initial = add('initial');
+      await coordinator.settle(initial);
+      await coordinator.dispatch(session.id);
+      const old = add('old');
+      await coordinator.settle(old);
+      runtime.pauseSessionQueue(session.id);
+      runtime.transitionRun(initial.accepted.run.id, 'CANCELLING');
+      const next = add('new');
+      expect(await coordinator.settle(next)).toBe('QUEUED');
+      const duplicate = coordinator.accept({
+        runId: 'duplicate',
+        sessionId: session.id,
+        clientMessageId: 'new',
+        content: 'new'
+      });
+      expect(duplicate.created).toBe(false);
+      expect(duplicate.queueItem?.id).toBe(next.submissionId);
+      await coordinator.dispatch(session.id);
+      expect(runtime.sessionQueue(session.id).paused).toBe(true);
+      expect(control).toHaveBeenCalledTimes(1);
+      if (pauseAgain) runtime.pauseSessionQueue(session.id);
+      runtime.finishRun(initial.accepted.run.id, 'INTERRUPTED');
+      runtime.removeTerminalRun(initial.accepted.run.id);
+      coordinator.runTerminated(session.id);
+      if (pauseAgain) {
+        await coordinator.dispatch(session.id);
+        expect(runtime.sessionQueue(session.id)).toMatchObject({
+          paused: true,
+          itemIds: [old.submissionId, next.submissionId]
+        });
+        expect(control).toHaveBeenCalledTimes(1);
+      } else {
+        await vi.waitFor(() => expect(control).toHaveBeenCalledTimes(2));
+        expect(control.mock.calls[1]?.[1].input).toBe('new');
+        expect(runtime.sessionQueue(session.id)).toMatchObject({
+          paused: false,
+          itemIds: [old.submissionId]
+        });
+      }
+      coordinator.suspend();
+    }
+  );
+
+  it('retains Goal FIFO admission and does not resume for internal QUEUE input', async () => {
+    const { runtime, session, coordinator, add } = setup(true);
+    const initial = add('initial');
+    await coordinator.settle(initial);
+    await coordinator.dispatch(session.id);
+    const old = add('old');
+    await coordinator.settle(old);
+    runtime.pauseSessionQueue(session.id);
+    const internal = add('goal:next');
+    expect(await coordinator.settle({ ...internal, externalInput: false })).toBe('QUEUED');
+    expect(runtime.sessionQueue(session.id).paused).toBe(true);
+    const next = add('user');
+    expect(await coordinator.settle(next)).toBe('QUEUED');
+    expect(runtime.sessionQueue(session.id)).toMatchObject({
+      paused: false,
+      itemIds: [old.submissionId, internal.submissionId, next.submissionId]
+    });
+    coordinator.suspend();
+  });
+});
+
+describe('explicit queue recovery during cancellation', () => {
+  it('dispatches resumed input after a cancellation-time dispatch returns without starting work', async () => {
+    const { runtime, session } = fixture();
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      control,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      markInterrupted: vi.fn(),
+      mcps: () => [],
+      stopped: () => false
+    });
+    const initial = coordinator.accept({
+      runId: 'initial',
+      sessionId: session.id,
+      clientMessageId: 'initial',
+      content: 'initial'
+    });
+    coordinator.prepare(initial.run.id, prepared(initial.run.id, session.id));
+    await coordinator.dispatch(session.id);
+    const executionId = runtime.currentExecutionId(initial.run.id)!;
+    runtime.pauseSessionQueue(session.id);
+    runtime.transitionRun(initial.run.id, 'CANCELLING');
+    const dispatch = vi.spyOn(coordinator, 'dispatch');
+    await coordinator.resume(session.id);
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalled());
+    const queueBefore = runtime.sessionQueue(session.id);
+    const next = coordinator.accept({
+      runId: 'next',
+      sessionId: session.id,
+      clientMessageId: 'next',
+      content: 'next'
+    });
+    coordinator.prepare(next.queueItem!.id, { ...prepared('next', session.id), input: 'next' });
+    expect(
+      await coordinator.settle({
+        submissionId: next.queueItem!.id,
+        intent: 'QUEUE',
+        externalInput: true,
+        queueBefore
+      })
+    ).toBe('QUEUED');
+    expect(control).toHaveBeenCalledOnce();
+    runtime.appendRunEvent({
+      runId: executionId,
+      sequence: 1,
+      eventType: 'run.completed',
+      payload: {},
+      status: 'INTERRUPTED'
+    });
+    coordinator.remove(executionId);
+    runtime.finishRun(initial.run.id, 'INTERRUPTED');
+    runtime.removeTerminalRun(initial.run.id);
+    coordinator.runTerminated(session.id);
+    await vi.waitFor(() => expect(control).toHaveBeenCalledTimes(2));
+    expect(control.mock.calls[1]![1].input).toBe('next');
+    coordinator.suspend();
+  });
+});
+
+describe('public Run approval decisions', () => {
+  it.each(['APPROVED', 'REJECTED'] as const)(
+    'delivers %s to the actual Execution and preserves ownership checks',
+    (decision) => {
+      const { runtime, session, advance } = fixture();
+      const run = runtime.createMessageRun({
+        sessionId: session.id,
+        clientMessageId: 'approval',
+        content: 'Please work',
+        initiatedByUserId: 7
+      }).run;
+      const execution = runtime.createExecution(run.id);
+      const approval = runtime.createApproval({
+        runId: execution.id,
+        approvalId: 'approval',
+        expiresAt: 10_000,
+        payload: { toolName: 'exec', input: 'private' }
+      });
+      const control = vi.fn();
+      const service = new RunWorkbenchService({
+        runtime,
+        control,
+        readImage: async () => undefined,
+        respondUserInput: vi.fn(),
+        pauseQueue: vi.fn(),
+        runInterrupted: vi.fn(),
+        emitRun: vi.fn(),
+        markInterrupted: vi.fn()
+      });
+      const decide = service.operations()['run.approval.decide']!;
+      const input = { runId: run.id, approvalId: approval.id, decision, __requestUserId: 7 };
+      expect(() => decide({ ...input, __requestUserId: 8 })).toThrow('RUN_OWNED_BY_ANOTHER_USER');
+      expect(control).not.toHaveBeenCalled();
+      expect(() => decide({ ...input, runId: 'wrong-run' })).toThrow('APPROVAL_NOT_FOUND');
+      expect(decide(input)).toMatchObject({ approval: { id: approval.id, status: decision } });
+      expect(control).toHaveBeenCalledWith('run.approval.decision', {
+        runId: execution.id,
+        approvalId: approval.id,
+        decision
+      });
+      expect(() => decide(input)).toThrow();
+      expect(control).toHaveBeenCalledTimes(1);
+      const expired = runtime.createApproval({
+        runId: execution.id,
+        approvalId: 'expired',
+        expiresAt: 10_000,
+        payload: {}
+      });
+      advance(20_000);
+      expect(() => decide({ ...input, approvalId: expired.id })).toThrow('APPROVAL_EXPIRED');
+      const pending = runtime.createApproval({
+        runId: execution.id,
+        approvalId: 'pending',
+        expiresAt: 50_000,
+        payload: {}
+      });
+      runtime.appendRunEvent({
+        runId: execution.id,
+        sequence: 1,
+        eventType: 'run.completed',
+        payload: {},
+        status: 'SUCCEEDED'
+      });
+      runtime.createQueueItem({
+        sessionId: session.id,
+        clientMessageId: 'next',
+        content: 'Next',
+        initiatedByUserId: 7
+      });
+      runtime.claimNextQueueItem(session.id);
+      runtime.createExecution(run.id);
+      expect(() => decide({ ...input, approvalId: pending.id })).toThrow('APPROVAL_NOT_FOUND');
+    }
+  );
 });
 
 function prepared(runId: string, sessionId: string) {

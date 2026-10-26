@@ -102,7 +102,41 @@ function activity(runtime: NodeRuntimeState, sessionId: string) {
 
 export function marctlSessionProgress(runtime: NodeRuntimeState, sessionId: string) {
   const { latestActivity: _latest, ...progress } = activity(runtime, sessionId);
-  return progress;
+  return { ...progress, ...pendingApprovals(runtime, sessionId) };
+}
+
+/** Summarizes current approval facts without exposing tool input or native payloads. */
+function pendingApprovals(runtime: NodeRuntimeState, sessionId: string) {
+  const run = runtime.activeSessionRun(sessionId);
+  const executionId = run && runtime.currentExecutionId(run.id);
+  const approvals =
+    run && !isTerminalRunStatus(run.status)
+      ? runtime
+          .listApprovals(run.id)
+          .filter(
+            (approval) =>
+              approval.status === 'PENDING' &&
+              (approval.runId === run.id || approval.runId === executionId)
+          )
+      : [];
+  return {
+    pendingApprovals: approvals.slice(0, 20).map((approval) => {
+      const payload = isPlainRecord(approval.payload) ? approval.payload : {};
+      const name = clip(typeof payload.toolName === 'string' ? payload.toolName : 'Approval', 128);
+      const summary = clip(
+        typeof payload.reason === 'string' ? payload.reason : 'Approval required',
+        100
+      );
+      return {
+        runId: run!.id,
+        approvalId: approval.id,
+        name: name.text,
+        summary: summary.text,
+        truncated: name.truncated || summary.truncated
+      };
+    }),
+    pendingApprovalsTruncated: approvals.length > 20
+  };
 }
 
 function identity(session: NodeAgentSession) {
@@ -134,7 +168,8 @@ export function marctlSessionDetail(
     effort: session.effort,
     queuedCount,
     latestMessage,
-    recentTools
+    recentTools,
+    ...pendingApprovals(runtime, session.id)
   };
 }
 

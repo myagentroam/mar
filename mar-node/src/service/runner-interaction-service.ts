@@ -175,10 +175,38 @@ export class RunnerInteractionService {
       );
   }
 
+  createCodexApproval(input: Parameters<NodeRuntimeState['createApproval']>[0]): void {
+    this.options.runtime.createApproval(input);
+    const approvals = this.options.codex().execution.approvals;
+    const pending = approvals.get(input.approvalId)!;
+    const expire = () => {
+      const current = approvals.get(input.approvalId);
+      if (current === undefined) return;
+      try {
+        this.options.runtime.expireApproval(input.approvalId);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'APPROVAL_NOT_EXPIRED') {
+          const timer = setTimeout(expire, Math.max(1, input.expiresAt - Date.now()));
+          timer.unref();
+          approvals.set(input.approvalId, { ...current, timer });
+          return;
+        }
+        approvals.delete(input.approvalId);
+        return;
+      }
+      this.options.emitRun(input.runId, 'approval.expired', { approvalId: input.approvalId });
+      this.decideCodexApproval(input.approvalId, 'REJECTED');
+    };
+    const timer = setTimeout(expire, Math.max(1, input.expiresAt - Date.now()));
+    timer.unref();
+    approvals.set(input.approvalId, { ...pending, timer });
+  }
+
   decideCodexApproval(approvalId: string, decision: 'APPROVED' | 'REJECTED'): boolean {
     const codex = this.options.codex();
     const approval = codex.execution.approvals.get(approvalId);
     if (approval === undefined) return false;
+    clearTimeout(approval.timer);
     try {
       codex.respond(
         approval.requestId,

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CodexAppServerClient } from '../../src/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
@@ -28,10 +31,17 @@ function createCodexClient(
 }
 
 describe('Workspace Session Prompt', () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'mar-session-prompt-'));
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
   it('updates and clears independent session prompts in Node metadata', async () => {
     const database = new NodeDatabase(':memory:', 'node-session-prompt-metadata');
     const workspace = database.saveWorkspace({
-      path: '/workspace/session-prompts',
+      path: root,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -112,7 +122,7 @@ describe('Workspace Session Prompt', () => {
   it('preserves Session Prompt through native discovery projection and external-session recovery', async () => {
     const database = new NodeDatabase(':memory:', 'node-session-prompt-recovery');
     const workspace = database.saveWorkspace({
-      path: '/workspace/session-prompt-recovery',
+      path: root,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -180,7 +190,7 @@ describe('Workspace Session Prompt', () => {
   it('merges instructions once per execution, keeps them out of message text, and refreshes queued work', async () => {
     const database = new NodeDatabase(':memory:', 'node-session-prompt-execution');
     const workspace = database.saveWorkspace({
-      path: '/workspace/session-prompt-execution',
+      path: root,
       kind: 'DIRECTORY',
       gitSummary: null
     });
