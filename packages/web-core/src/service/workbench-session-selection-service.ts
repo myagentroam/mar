@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { Ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
@@ -82,6 +82,10 @@ export interface WorkbenchSessionSelectionOptions {
 
 const EMPTY_QUEUE: WorkspaceQueue = { version: 0, paused: false, items: [] };
 export function createWorkbenchSessionSelectionService(options: WorkbenchSessionSelectionOptions) {
+  const restoredContent = ref(false);
+  const loadingInitialContent = computed(
+    () => options.loadingInitial.value && !restoredContent.value
+  );
   function current(
     requestId: number,
     nodeId: string,
@@ -159,6 +163,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     options.loadingInitial.value = true;
     options.initialLoadFailed.value = false;
     const { switching } = prepare(sessionId, nodeId, openOptions);
+    const hasContent = options.turns.value.some((turn) => turn.items.length > 0);
+    // Cached content stays readable; Watch synchronization has its own status.
+    restoredContent.value = hasContent;
     const isCurrent = () =>
       current(
         requestId,
@@ -190,7 +197,6 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       }
       const watchable = options.canWatch(sessionResult.session);
       let page: ConversationTurnPage | undefined;
-      const initialRender = options.beginInitialRender();
       if (watchable) {
         const loaded = await options.beginWatch(sessionId);
         if (!loaded)
@@ -212,9 +218,10 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
             ? options.applySnapshot(sessionResult.session.id, page)
             : options.mergeTurns(page);
       options.saveCurrent();
-      await initialRender;
+      if (!hasContent) await options.beginInitialRender();
       if (!isCurrent()) return;
-      if (switching || changed || !openOptions.deferInitialScroll) {
+      // Restored content was already positioned; synchronization must not interrupt reading.
+      if (!hasContent && (switching || changed || !openOptions.deferInitialScroll)) {
         options.positioning.value = true;
         await options.scrollLatest();
       }
@@ -266,7 +273,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     await openSession(sessionId, { markReadAfterOpen: true });
   }
 
-  return { openSession, selectSession, openWorkspaceTabSession };
+  return { openSession, selectSession, openWorkspaceTabSession, loadingInitialContent };
 }
 
 function activeRun(runs: readonly AgentRun[], sessionId: string): AgentRun | undefined {

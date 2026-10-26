@@ -32,6 +32,9 @@ const previewFixture = new URL(location.href).searchParams.has('reasoning-previe
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
+const loadingFixture = new URL(location.href).searchParams.has('loading-lifecycle');
+const synchronized = ref(previewFixture);
+const renderedVersion = ref(0);
 const timelineVisible = ref(true);
 const initializing = ref(false);
 const renderVersion = ref(0);
@@ -181,6 +184,49 @@ async function loadStressHistory() {
   initializing.value = false;
 }
 
+function loadLifecycleHistory(sessionId = 'initial-session') {
+  initializing.value = sessionId === 'initial-session';
+  synchronized.value = false;
+  if (initializing.value) renderVersion.value++;
+  const groupId = `loading-process-${sessionId}`;
+  const startedAt = Date.now() - 65_000;
+  turns.value = [
+    {
+      id: `turn-${sessionId}`,
+      sessionId,
+      runId: 'run',
+      status: 'RUNNING',
+      items: [
+        {
+          id: `reasoning-${sessionId}`,
+          kind: 'reasoning',
+          status: 'COMPLETED',
+          startedAt,
+          processGroup: { id: groupId, isStart: true },
+          payload: { representation: 'summary', sections: [{ text: 'Current public progress' }] }
+        },
+        ...Array.from({ length: 64 }, (_, index): ConversationItem => ({
+          id: `command-${sessionId}-${index}`,
+          kind: 'command_execution',
+          status: 'COMPLETED',
+          startedAt: startedAt + (index + 1) * 1_000,
+          completedAt: startedAt + (index + 2) * 1_000,
+          processGroup: { id: groupId },
+          payload: {
+            command: `echo ${sessionId}-${index}`,
+            outputPreview: 'bounded output '.repeat(2_000)
+          }
+        }))
+      ]
+    }
+  ];
+}
+
+function synchronizeLifecycleHistory() {
+  synchronized.value = true;
+  turns.value = turns.value.map((turn) => ({ ...turn, items: [...turn.items] }));
+}
+
 async function toggleTimeline() {
   if (timelineVisible.value) {
     timelineVisible.value = false;
@@ -299,8 +345,8 @@ function finishPreview() {
     <ConversationTimeline
       v-if="timelineVisible"
       :turns="turns"
-      :runs="previewFixture ? [{ id: 'run', status: previewRunStatus }] : []"
-      :synchronized="previewFixture"
+      :runs="previewFixture || loadingFixture ? [{ id: 'run', status: previewRunStatus }] : []"
+      :synchronized="synchronized"
       :loading="false"
       :initializing="initializing"
       :initial-render-version="renderVersion"
@@ -311,10 +357,44 @@ function finishPreview() {
       :node-ready="false"
       :rewind-enabled="false"
       :rollback-enabled="false"
+      @initial-rendered="renderedVersion = $event"
     />
+    <template v-if="loadingFixture">
+      <button data-testid="load-lifecycle-history" @click="loadLifecycleHistory()">
+        Load history
+      </button>
+      <button data-testid="finish-lifecycle-initial" @click="initializing = false">
+        Reveal initial history
+      </button>
+      <button data-testid="switch-cached-history" @click="loadLifecycleHistory('cached-session')">
+        Restore cached history
+      </button>
+      <button data-testid="synchronize-history" @click="synchronizeLifecycleHistory">
+        Synchronize history
+      </button>
+      <button
+        data-testid="omit-process-start"
+        @click="turns = turns.map((turn) => ({ ...turn, items: turn.items.slice(1) }))"
+      >
+        Show incomplete history
+      </button>
+      <output data-testid="rendered-version">{{ renderedVersion }}</output>
+    </template>
     <template v-if="stressFixture">
       <button data-testid="load-stress-history" @click="loadStressHistory">Load history</button>
       <button data-testid="toggle-stress-timeline" @click="toggleTimeline">Toggle timeline</button>
+      <button
+        data-testid="toggle-cached-stress-timeline"
+        @click="timelineVisible = !timelineVisible"
+      >
+        Toggle cached timeline
+      </button>
+      <button
+        data-testid="switch-stress-session"
+        @click="turns = turns.map((turn) => ({ ...turn, sessionId: 'another-stress-session' }))"
+      >
+        Switch cached session
+      </button>
     </template>
     <button v-if="previewFixture" data-testid="publish-reasoning-summary" @click="publishSummary">
       Publish summary

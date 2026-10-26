@@ -199,6 +199,115 @@ it.each([false, true])(
 );
 
 describe('Shared session selection', () => {
+  it('keeps restored content readable and preserves reading position across Watch synchronization', async () => {
+    const f = tabSessionFixture();
+    let scrollTop = 0;
+    vi.mocked(f.options.scrollLatest).mockImplementation(async () => {
+      scrollTop = 1_000;
+    });
+    const cachedTurns = [
+      turn('cached-turn', {
+        items: [
+          {
+            id: 'cached-reply',
+            kind: 'assistant_message',
+            status: 'COMPLETED',
+            payload: { text: 'Cached reply' }
+          }
+        ]
+      })
+    ];
+    vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
+      f.options.turns.value = cachedTurns;
+      return {
+        sessionId: f.session.id,
+        runs: [],
+        turns: cachedTurns,
+        nextCursor: null,
+        contextUsage: undefined,
+        lastAccessedAt: 1
+      };
+    });
+    let resolveWatch!: (loaded: boolean) => void;
+    vi.spyOn(f.options, 'beginWatch').mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveWatch = resolve;
+        })
+    );
+    vi.spyOn(f.options, 'hasInitialSnapshot').mockReturnValue(false);
+    const opening = f.service.openWorkspaceTabSession(f.session.id);
+    await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+    expect(f.options.turns.value).toEqual(cachedTurns);
+    expect(f.options.loadingInitial.value).toBe(true);
+    expect(f.service.loadingInitialContent.value).toBe(false);
+    expect(f.options.beginInitialRender).not.toHaveBeenCalled();
+    expect(f.options.scrollLatest).toHaveBeenCalledOnce();
+    // The user can read cached history before the authoritative snapshot arrives.
+    scrollTop = 120;
+    await f.service.openWorkspaceTabSession(f.session.id);
+    expect(f.options.beginWatch).toHaveBeenCalledOnce();
+    resolveWatch(true);
+    await opening;
+    expect(f.options.beginInitialRender).not.toHaveBeenCalled();
+    expect(scrollTop).toBe(120);
+    expect(f.options.scrollLatest).toHaveBeenCalledOnce();
+  });
+
+  it('retains readable content and exposes retry after background synchronization fails', async () => {
+    const f = tabSessionFixture();
+    f.options.selectedSessionId.value = f.session.id;
+    const cachedTurns = [
+      turn('cached-turn', {
+        items: [
+          {
+            id: 'reply',
+            kind: 'assistant_message',
+            status: 'COMPLETED',
+            payload: { text: 'Cached reply' }
+          }
+        ]
+      })
+    ];
+    f.options.turns.value = cachedTurns;
+    vi.mocked(f.options.beginWatch).mockRejectedValue(new Error('HISTORY_UNAVAILABLE'));
+    await f.service.openSession(f.session.id);
+    expect(f.options.turns.value).toEqual(cachedTurns);
+    expect(f.options.initialLoadFailed.value).toBe(true);
+    expect(f.options.loadingInitial.value).toBe(false);
+    expect(f.service.loadingInitialContent.value).toBe(false);
+    expect(f.options.beginInitialRender).not.toHaveBeenCalled();
+    expect(f.options.notice).toHaveBeenCalledOnce();
+  });
+
+  it('waits for the snapshot before requesting the first layout and keeps loading until layout completes', async () => {
+    const f = tabSessionFixture();
+    let resolveWatch!: (loaded: boolean) => void;
+    let resolveRender!: () => void;
+    vi.spyOn(f.options, 'beginWatch').mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveWatch = resolve;
+        })
+    );
+    vi.spyOn(f.options, 'beginInitialRender').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRender = resolve;
+        })
+    );
+    const opening = f.service.openSession(f.session.id);
+    await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+    expect(f.options.beginInitialRender).not.toHaveBeenCalled();
+    expect(f.options.loadingInitial.value).toBe(true);
+    resolveWatch(true);
+    await vi.waitFor(() => expect(f.options.beginInitialRender).toHaveBeenCalledOnce());
+    expect(f.options.loadingInitial.value).toBe(true);
+    resolveRender();
+    await opening;
+    expect(f.options.loadingInitial.value).toBe(false);
+  });
+
   it.each([false, true])(
     'keeps Watch cancellation silent without reporting transactional success: %s',
     async (throwOnFailure) => {
@@ -356,6 +465,7 @@ describe('Shared session selection', () => {
       f.controller.handleEvent(f.frame());
       expect(f.snapshot).toHaveBeenCalledOnce();
       expect(f.readPosts).toEqual([]);
+      await vi.waitFor(() => expect(f.options.beginInitialRender).toHaveBeenCalledOnce());
       render();
       await opening;
       expect(f.readPosts).toEqual([f.session.id]);
@@ -530,7 +640,6 @@ describe('Shared session selection', () => {
     const requests: string[] = [];
     const saveCurrent = vi.fn();
     let confirmInitialRender!: () => void;
-    const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
     const service = createWorkbenchSessionSelectionService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' },
@@ -607,7 +716,7 @@ describe('Shared session selection', () => {
     } as never);
 
     const opening = service.openSession('session-1', { skipSaveCurrent: true });
-    await vi.waitFor(() => expect(order).toEqual(['render', 'merge']));
+    await vi.waitFor(() => expect(order).toEqual(['merge', 'render']));
     expect(backfill).not.toHaveBeenCalled();
     confirmInitialRender();
     await opening;
@@ -623,7 +732,7 @@ describe('Shared session selection', () => {
     expect(backfill).not.toHaveBeenCalled();
     expect(requests).not.toContain('/api/agent-sessions/session-1/runs?nodeId=node-1');
     expect(requests).not.toContain('/api/agent-sessions/session-1/context?nodeId=node-1');
-    expect(order).toEqual(['render', 'merge', 'scroll']);
+    expect(order).toEqual(['merge', 'render', 'scroll']);
   });
   it('applies the initial Watch snapshot and marks notifications read when switching to a cached session', async () => {
     const order: string[] = [];
@@ -702,7 +811,7 @@ describe('Shared session selection', () => {
 
     expect(markSessionRead).toHaveBeenCalledWith('node-1', 'workspace-1', 'session-1');
     expect(applySnapshot).toHaveBeenCalledWith('session-1', initialPage);
-    expect(order).toEqual(['render', 'snapshot']);
+    expect(order).toEqual(['snapshot', 'render']);
   });
   it('replaces provisional Composer configuration with authoritative session details', async () => {
     const provisional: Session = {

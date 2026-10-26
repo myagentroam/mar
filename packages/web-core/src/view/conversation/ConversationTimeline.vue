@@ -214,9 +214,28 @@ let renderFrame: number | undefined;
 let progressiveRenderPending = false;
 let renderGeneration = 0;
 let preparedInitialRenderVersion = 0;
+let renderedSessionId: string | undefined;
 
 const renderedTurns = computed(() => latestConversationItems(props.turns, renderedItemCount.value));
-const renderBudgetBlocks = computed(() => conversationWorkProcessBlocks(props.turns, props.runs));
+const runDurations = computed(() => {
+  const labels = new Map<string, string>();
+  for (const [turnId, duration] of completedConversationDurations(props.turns)) {
+    labels.set(
+      turnId,
+      translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
+    );
+  }
+  return labels;
+});
+const renderBudgetBlocks = computed(() =>
+  conversationWorkProcessBlocks(props.turns, props.runs, new Set(runDurations.value.keys()))
+);
+const processMetadata = computed(
+  () =>
+    new Map(
+      renderBudgetBlocks.value.filter((block) => block.groupId).map((block) => [block.id, block])
+    )
+);
 const processViews = new Map<string, InstanceType<typeof ConversationWorkProcess>>();
 function setProcessView(id: string, instance: Element | ComponentPublicInstance | null): void {
   if (instance) processViews.set(id, instance as InstanceType<typeof ConversationWorkProcess>);
@@ -253,6 +272,10 @@ function scheduleProgressiveRender(): void {
   const generation = renderGeneration;
   const total = conversationItemCount(props.turns);
   if (renderedItemCount.value >= total) return;
+  if (typeof requestAnimationFrame === 'undefined') {
+    renderedItemCount.value = total;
+    return;
+  }
   progressiveRenderPending = true;
   renderFrame = requestAnimationFrame(async () => {
     if (generation !== renderGeneration) return;
@@ -291,12 +314,20 @@ async function prepareInitialRender(version: number, turns: readonly Conversatio
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   if (generation !== renderGeneration || props.initialRenderVersion !== version) return;
   emit('initialRendered', version);
+  if (!props.initializing) scheduleProgressiveRender();
 }
 
 watch(
   [() => props.initialRenderVersion, () => props.turns],
   ([version, turns]) => {
     const total = conversationItemCount(turns);
+    const sessionId = turns[0]?.sessionId;
+    const switching = sessionId !== renderedSessionId;
+    if (switching) {
+      cancelProgressiveRender();
+      renderedSessionId = sessionId;
+      renderedItemCount.value = initialConversationRenderItemCount(turns);
+    }
     if (version > 0 && version !== preparedInitialRenderVersion) {
       void prepareInitialRender(version, turns);
       return;
@@ -304,6 +335,10 @@ watch(
     if (props.initializing) {
       if (progressiveRenderPending) cancelProgressiveRender();
       renderedItemCount.value = initialConversationRenderItemCount(turns);
+      return;
+    }
+    if (switching) {
+      scheduleProgressiveRender();
       return;
     }
     if (!progressiveRenderPending) renderedItemCount.value = total;
@@ -484,19 +519,19 @@ function messageTimeTitle(timestamp: number): string {
   return absoluteMessageTime(timestamp);
 }
 
-const runDurations = computed(() => {
-  const labels = new Map<string, string>();
-  for (const [turnId, duration] of completedConversationDurations(props.turns)) {
-    labels.set(
-      turnId,
-      translate('conversationActivity.total', { value: preciseElapsedDurationLabel(duration) })
-    );
-  }
-  return labels;
+const processBlocks = computed(() => {
+  if (renderedItemCount.value >= conversationItemCount(props.turns))
+    return renderBudgetBlocks.value;
+  return conversationWorkProcessBlocks(
+    renderedTurns.value,
+    props.runs,
+    new Set(runDurations.value.keys())
+  ).map((block) => {
+    const complete = processMetadata.value.get(block.id);
+    // DOM backfill is not missing history: only entries are subject to the render budget.
+    return complete === undefined ? block : { ...complete, entries: block.entries };
+  });
 });
-const processBlocks = computed(() =>
-  conversationWorkProcessBlocks(renderedTurns.value, props.runs, new Set(runDurations.value.keys()))
-);
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
 const processNow = createWorkbenchSecondClock(
   computed(
@@ -519,6 +554,9 @@ function stepDuration(item: ConversationItem): string | undefined {
     v-if="renderedTurns.length"
     ref="timelineElement"
     class="conversation-timeline"
+    :class="{ 'is-initializing': initializing }"
+    :aria-hidden="initializing"
+    :inert="initializing"
     @click="animateDisclosure"
   >
     <ConversationWorkProcess
@@ -1572,6 +1610,10 @@ function stepDuration(item: ConversationItem): string | undefined {
   display: grid;
   min-width: 0;
   gap: var(--conversation-record-gap);
+}
+
+.conversation-timeline.is-initializing {
+  visibility: hidden;
 }
 
 .conversation-turn {
