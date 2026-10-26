@@ -9,6 +9,95 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Read groups expand individual files lazily and preserve raw call details in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 900 },
+        isMobile: width < 768,
+        hasTouch: width < 768
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&read-files=1`);
+        await page.locator('.conversation-timeline .process-heading').click();
+        const group = page.locator('[data-tool-presentation="READ"].conversation-record-group');
+        const heading = group.locator(':scope > summary');
+        const rows = group.locator(':scope > details');
+        await expect(heading).toContainText('5 files');
+        await expect(heading).not.toContainText('calls');
+        await expect(rows).toHaveCount(0);
+        await heading.click();
+        await expect(rows).toHaveCount(6);
+        const paths = await rows.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute('data-read-path'))
+        );
+        expect(paths.slice(0, 3)).toEqual(['src/a.ts', 'test/a.ts', 'C:\\src\\b.ts']);
+        expect(paths[3]).toContain('long-file-name-');
+        expect(paths.slice(4)).toEqual(['src/a.ts', null]);
+        await expect(group.locator('.conversation-record-detail')).toHaveCount(0);
+        await expect(group).not.toContainText('more files');
+        const first = rows.nth(0);
+        await first.locator(':scope > summary').click();
+        await expect(first.locator('p')).toContainText('Original batch ranges: offset 2, limit 8');
+        await expect(first.locator('p')).toContainText('Original batch output');
+        await expect(rows.nth(1).locator('p')).toHaveCount(0);
+        await rows.nth(1).locator(':scope > summary').click();
+        await expect(rows.nth(1).locator('p')).toContainText('Original batch output');
+        await rows.nth(1).locator(':scope > summary').click();
+        await expect(rows.nth(1).locator('p')).toHaveCount(0);
+        await expect(rows.nth(4).locator(':scope > summary')).toContainText('Failed');
+        await rows.nth(5).locator(':scope > summary').click();
+        await expect(rows.nth(5).locator('p')).toContainText('Original pathless read failure');
+        await page.getByTestId('append-read-file').click();
+        await expect(heading).toContainText('6 files');
+        await expect(rows).toHaveCount(7);
+        await expect(first).toHaveAttribute('open', '');
+        await expect(first.locator('p')).toContainText('Original batch output');
+        await page.getByTestId('read-files-chinese').click();
+        await expect(heading).toContainText('读取文件');
+        await expect(heading).toContainText('6 个文件');
+        await expect(first.locator(':scope > summary')).toContainText('src/a.ts');
+        const layout = await rows
+          .nth(3)
+          .locator(':scope > summary')
+          .evaluate((element) => {
+            const title = element.querySelector('.conversation-tool-preview')!;
+            const status = element.querySelector('.conversation-record-meta')!;
+            return {
+              titleRight: title.getBoundingClientRect().right,
+              statusLeft: status.getBoundingClientRect().left,
+              scrollWidth: document.documentElement.scrollWidth,
+              width: innerWidth
+            };
+          });
+        expect(layout.titleRight).toBeLessThanOrEqual(layout.statusLeft + 1);
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
+        await heading.click();
+        await expect(rows).toHaveCount(0);
+        await heading.click();
+        await expect(first.locator('p')).toContainText('Original batch output');
+        await expect(first.locator('p')).toBeVisible();
+        await expect
+          .poll(() =>
+            group.evaluate(
+              (element) =>
+                element
+                  .getAnimations({ subtree: true })
+                  .filter((animation) => animation.playState === 'running').length
+            )
+          )
+          .toBe(0);
+        await group.screenshot({ path: testInfo.outputPath(`read-files-${width}.png`) });
+      } finally {
+        await context.close();
+      }
+    }
+  });
+}
+
 test('Process headings reveal content without a redundant status tooltip', async ({ page }) => {
   await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1`);
   const process = page.locator('[data-process-id="preview-process"]');

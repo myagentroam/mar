@@ -12,6 +12,7 @@ import { translate } from '../service/locale-preference-service.js';
 import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
+  toolPresentationReadPaths,
   toolPresentationTitle,
   toolPresentationText,
   toolPresentationDetails
@@ -279,6 +280,21 @@ export function reasoningDisclosureOpen(
 ): boolean {
   if (previousTurnActive === undefined) return false;
   return currentOpen ?? false;
+}
+
+export function conversationToolEntries(
+  items: readonly ConversationItem[]
+): readonly { readonly id: string; readonly item: ConversationItem; readonly path?: string }[] {
+  return items.flatMap((item) => {
+    const paths = toolPresentationReadPaths(item.payload);
+    return paths.length
+      ? paths.map((path) => ({ id: JSON.stringify([item.id, path]), item, path }))
+      : [{ id: item.id, item }];
+  });
+}
+
+export function conversationReadFileCount(items: readonly ConversationItem[]): number {
+  return items.reduce((count, item) => count + toolPresentationReadPaths(item.payload).length, 0);
 }
 
 export function conversationFileChangeEntries(

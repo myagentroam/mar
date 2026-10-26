@@ -46,6 +46,8 @@ import {
   type ConversationDisplayItem,
   conversationApproval,
   conversationFileChangeEntries,
+  conversationToolEntries,
+  conversationReadFileCount,
   conversationItemDetail,
   conversationItemLabel,
   composerMessageSource,
@@ -377,9 +379,18 @@ const reasoningDisclosure = reactive<Record<string, boolean>>({});
 const groupedItemDisclosure = reactive<Record<string, boolean>>({});
 
 watch(
-  () => props.turns.flatMap((turn) => turn.items.map((item) => item.id)),
+  () =>
+    props.turns.flatMap((turn) =>
+      turn.items.flatMap((item) => [
+        item.id,
+        `group:${item.id}`,
+        ...(item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ'
+          ? conversationToolEntries([item]).map(({ id }) => id)
+          : [])
+      ])
+    ),
   (itemIds) => {
-    const currentIds = new Set(itemIds.flatMap((id) => [id, `group:${id}`]));
+    const currentIds = new Set(itemIds);
     for (const id of Object.keys(groupedItemDisclosure)) {
       if (!currentIds.has(id)) delete groupedItemDisclosure[id];
     }
@@ -761,39 +772,50 @@ function stepDuration(item: ConversationItem): string | undefined {
                   ? translate('toolPresentation.title.READ')
                   : conversationItemLabel('tool_call')
               }}</strong>
-              <span class="conversation-group-meta">
+              <span
+                v-if="
+                  displayItem.type !== 'read_group' || conversationReadFileCount(displayItem.items)
+                "
+                class="conversation-group-meta"
+              >
                 <span>{{
-                  translate('toolPresentation.calls', { count: displayItem.items.length })
+                  displayItem.type === 'read_group'
+                    ? translate('toolPresentation.files', {
+                        count: conversationReadFileCount(displayItem.items)
+                      })
+                    : translate('toolPresentation.calls', { count: displayItem.items.length })
                 }}</span>
               </span>
             </summary>
             <details
-              v-for="toolItem in groupedItemDisclosure[`group:${displayItem.id}`]
-                ? displayItem.items
+              v-for="entry in groupedItemDisclosure[`group:${displayItem.id}`]
+                ? conversationToolEntries(displayItem.items)
                 : []"
-              :key="toolItem.id"
+              :key="entry.id"
               class="conversation-tool-detail"
-              :open="groupedItemDisclosure[toolItem.id] === true"
-              @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
+              :data-read-path="entry.path"
+              :open="groupedItemDisclosure[entry.id] === true"
+              @toggle="updateGroupedItemDisclosure(entry.id, $event)"
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                 <span class="conversation-tool-preview">{{
-                  conversationItemText(toolItem.kind, toolItem.payload, toolItem.status) ||
-                  conversationItemLabel(toolItem.kind, toolItem.payload)
+                  entry.path ||
+                  conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
+                  conversationItemLabel(entry.item.kind, entry.item.payload)
                 }}</span>
                 <span class="conversation-record-meta">{{
-                  toolPresentationStatus(toolItem.status)
+                  toolPresentationStatus(entry.item.status)
                 }}</span>
               </summary>
               <p
                 class="conversation-record-detail"
                 v-if="
-                  groupedItemDisclosure[toolItem.id] &&
-                  conversationItemDetail(toolItem.kind, toolItem.payload)
+                  groupedItemDisclosure[entry.id] &&
+                  conversationItemDetail(entry.item.kind, entry.item.payload)
                 "
               >
-                {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
+                {{ conversationItemDetail(entry.item.kind, entry.item.payload) }}
               </p>
             </details>
           </details>

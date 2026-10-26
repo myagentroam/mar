@@ -15,6 +15,13 @@ export function toolPresentationTitle(payload: unknown): string {
   return value ? translate(`toolPresentation.title.${value.kind}`) : '';
 }
 
+export function toolPresentationReadPaths(payload: unknown): readonly string[] {
+  const value = toolPresentation(payload);
+  return value?.kind === 'READ'
+    ? [...new Set((value.paths ?? []).filter((path) => path.length > 0))]
+    : [];
+}
+
 export function toolPresentationStatus(status: string): string {
   const key =
     status === 'COMPLETED'
@@ -56,7 +63,7 @@ export function toolPresentationText(payload: unknown, status: string): string {
   if (!value) return '';
   const exceptional = ['FAILED', 'DECLINED', 'CANCELLED', 'INTERRUPTED'].includes(status);
   if (value.kind === 'READ') {
-    const paths = [...new Set((value.paths ?? []).filter((path) => path.length > 0))];
+    const paths = toolPresentationReadPaths(payload);
     const first = paths[0];
     if (!first) return '';
     const name = first.split(/[\\/]/u).at(-1) || first;
