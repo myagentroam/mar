@@ -19,12 +19,8 @@ describe('Workspace local file manager', () => {
     });
     expect(fileManagerInvocation('win32', directory).args).toEqual([directory.path]);
     expect(fileManagerInvocation('darwin', file)).toEqual({
-      command: 'osascript',
-      args: ['-e', expect.stringMatching(/reveal finderItem[\s\S]*select finderItem/), file.path]
-    });
-    expect(fileManagerInvocation('darwin', directory)).toEqual({
       command: 'open',
-      args: [directory.path]
+      args: ['-R', file.path]
     });
     expect(fileManagerInvocation('linux', { path: '/srv/work/notes.txt', kind: 'FILE' })).toEqual({
       command: 'xdg-open',

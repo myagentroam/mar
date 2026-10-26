@@ -132,13 +132,21 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
           `tell application "Finder"
              if (count of Finder windows) is 0 then return ""
              set folderPath to POSIX path of (target of front Finder window as alias)
-             set selectedName to ""
-             if (count of selection) > 0 then set selectedName to name of item 1 of selection
-             return folderPath & linefeed & selectedName
-           end tell`
+           end tell
+           tell application "System Events"
+             tell process "Finder"
+               set fileSelected to false
+               repeat with uiElement in (get entire contents of window 1)
+                 try
+                   if selected of uiElement and name of uiElement is "notes.txt" then set fileSelected to true
+                 end try
+               end repeat
+             end tell
+           end tell
+           return folderPath & linefeed & fileSelected`
         ]);
-        const [currentFolder = '', selectedName = ''] = stdout.trimEnd().split('\n');
-        return { currentFolder, selectedName };
+        const [currentFolder = '', fileSelected = ''] = stdout.trimEnd().split('\n');
+        return { currentFolder, fileSelected: fileSelected === 'true' };
       };
       const closeFinderWindows = () =>
         command('/usr/bin/osascript', [
@@ -163,22 +171,12 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
             .poll(
               async () => {
                 const state = await finderState();
-                return state.currentFolder === `${folder}/` && state.selectedName === 'notes.txt';
+                return state.currentFolder === `${folder}/` && state.fileSelected;
               },
               { timeout: 15_000 }
             )
             .toBe(true);
         } catch (error) {
-          const { stdout: frontmost } = await command('/usr/bin/osascript', [
-            '-e',
-            'tell application "System Events" to get name of first process whose frontmost is true'
-          ]);
-          const screenshot = join(root, 'finder-selection.png');
-          await command('/usr/sbin/screencapture', ['-x', screenshot]);
-          console.error(`FINDER_FRONTMOST ${frontmost.trim()}`);
-          console.error(
-            `FINDER_SCREENSHOT_BASE64 ${(await readFile(screenshot)).toString('base64')}`
-          );
           throw new Error(
             `Finder file selection mismatch: ${JSON.stringify(await finderState())}`,
             {

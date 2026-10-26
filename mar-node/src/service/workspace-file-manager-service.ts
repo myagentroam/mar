@@ -28,24 +28,8 @@ export function fileManagerInvocation(
       command: 'explorer.exe',
       args: target.kind === 'FILE' ? ['/select,', target.path] : [target.path]
     };
-  if (platform === 'darwin') {
-    if (target.kind === 'DIRECTORY') return { command: 'open', args: [target.path] };
-    return {
-      command: 'osascript',
-      args: [
-        '-e',
-        `on run argv
-           tell application "Finder"
-             activate
-             set finderItem to POSIX file (item 1 of argv) as alias
-             reveal finderItem
-             select finderItem
-           end tell
-         end run`,
-        target.path
-      ]
-    };
-  }
+  if (platform === 'darwin')
+    return { command: 'open', args: target.kind === 'FILE' ? ['-R', target.path] : [target.path] };
   if (platform === 'linux')
     return {
       command: 'xdg-open',
