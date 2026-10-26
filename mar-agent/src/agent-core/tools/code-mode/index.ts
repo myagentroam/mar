@@ -62,7 +62,7 @@ Built-in namespaces:
 - catalog.tools() returns a read-only array of the tools callable in this cell, including name, description and inputSchema. It does not discover or authorize additional tools.
 - await cell.sleep(ms) performs a cancellable delay up to ${limits.codeSleepMaxMs} ms.
 - await cell.yield_control() returns accumulated output to the model immediately while this cell continues running.
-- Optionally start source with // @options: {"yieldMs": ${limits.codeDefaultYieldMs}}. yieldMs defaults to ${limits.codeDefaultYieldMs} ms and controls this call's wait window (0..${limits.codeMaxYieldMs}), not nested tool timeouts or wait windows. A running result includes cellId; use direct code_exec_wait for new output, completion or termination.
+- Optionally start source with // @options: {"yieldMs": ${limits.codeDefaultYieldMs}}. yieldMs defaults to ${limits.codeDefaultYieldMs} ms and controls this call's wait window (0..${limits.codeMaxYieldMs}), not nested tool timeouts or wait windows. A running result includes cellId (c_ plus 12 lowercase hex characters); use direct code_exec_wait for new output, completion or termination.
 - waitOutcome separates snapshot, completion, timeout, and yield from the cell status. A foreground steer returns interrupted with reason=steer without stopping the cell or its internal tool waits.
 - Registered cells are Session warm resources: ending or cancelling the model Execution cancels its wait, not the cell. Reuse retained cellId; do not start duplicate work. Host cleanup or explicit termination stops the cell.
 - tools, observe, state, catalog and cell are frozen bindings. Do not shadow their names.
@@ -103,7 +103,11 @@ export const codeExecWaitToolDefinition: ClientToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
-      cellId: { type: 'string' },
+      cellId: {
+        type: 'string',
+        description:
+          'Copy the complete cellId returned by code_exec (c_ followed by 12 lowercase hex characters). Never use a processId (p_); use exec_wait for processes.'
+      },
       yieldMs: {
         type: 'integer',
         minimum: 0,

@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { RuntimeResourceHandles } from '../runtime-resource-handles.js';
 import { StringDecoder } from 'node:string_decoder';
 import { MarAgentError } from '../../error.js';
 import {
@@ -104,7 +104,7 @@ export const execToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId, status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, call exec_wait directly with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, timeout, and yield. A foreground wait may return interrupted with reason=steer; the process keeps running.',
+    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, call exec_wait directly with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, timeout, and yield. A foreground wait may return interrupted with reason=steer; the process keeps running.',
   outputSchema: {
     type: 'object',
     required: ['content', 'data'],
@@ -191,7 +191,8 @@ export const execWaitToolDefinition: ClientToolDefinition = {
       processId: {
         type: 'string',
         minLength: 1,
-        description: 'Stable processId returned by exec.'
+        description:
+          'Copy the complete processId returned by exec (p_ followed by 12 lowercase hex characters). Never use a cellId (c_); use code_exec_wait for cells.'
       },
       action: { enum: ['poll', 'write', 'cancel'], default: 'poll' },
       yieldMs: {
@@ -226,6 +227,10 @@ export function execToolInput(name: 'exec' | 'exec_wait', value: unknown): ExecI
 export class ExecTool {
   readonly #processes = new Map<string, ManagedProcess>();
   readonly #completed = new Map<string, CompletedProcess>();
+  readonly #handles = new RuntimeResourceHandles(
+    'process',
+    (id) => this.#processes.has(id) || this.#completed.has(id)
+  );
   readonly #startingProcesses = new Set<StartingProcess>();
   constructor(
     private readonly paths: WorkspacePathResolver,
@@ -246,6 +251,7 @@ export class ExecTool {
     if (signal?.aborted) throw executionAbortReason(signal);
     const input = parseExecInput(arguments_);
     if ('processId' in input) {
+      this.#handles.assertType(input.processId);
       const process = this.#processes.get(input.processId);
       const completed = this.#completed.get(input.processId);
       if (completed) {
@@ -405,7 +411,7 @@ export class ExecTool {
           }
         );
       }
-      const id = randomUUID();
+      const id = this.#handles.create();
       let resolveExited!: () => void;
       let resolveSettled!: () => void;
       const managed: ManagedProcess = {

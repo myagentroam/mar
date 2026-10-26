@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-10-25
+lastUpdated: 2026-10-26
 ---
 
 # 配置和使用 MAR Agent
@@ -175,6 +175,8 @@ Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host �
 `code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用、120 秒。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程用 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `tools.exec_wait` 调用，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic；Only 模式下通过 Code Mode 调用，不作为顶层工具暴露。cell 内等待仍受 cell 总执行期限约束。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
 
 后台 cell 属于 Session 温资源。`code_exec` 首次默认等待 30 秒，`code_exec_wait` 默认等待 10 秒；显式等待值不改变内部工具的等待窗口。`cell.yield_control()` 只结束当前等待并返回已有输出，JS 继续后台执行；也可通过首行 `// @options: {"yieldMs":30000,"maxOutputTokens":10000}` 设置等待窗口和文本预算。返回 `cellId` 后直接调用 `code_exec_wait` 获取增量或终态，`action` 默认 `poll` 等待，传 `action: "cancel"` 才显式终止。当前 Execution 结束或取消不会终止已登记的 cell；后续 Execution 可从保留资源提示接管。Session 资源回收、超时或 Host 退出会终止 cell，进程重启不恢复 JS 执行状态。终态结果仅有界缓存，重复领取带 `cached: true`。
+
+临时资源句柄带类型前缀：`cellId` 为 `c_` 加 12 位小写十六进制字符，`processId` 为 `p_` 加 12 位小写十六进制字符。请完整原样使用工具返回的 ID，不要截断或互换。cell 仅通过 `code_exec_wait` 接管，进程仅通过 `exec_wait` 控制；传错类型会返回 `MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH` 和对应工具提示，不会自动转调。前缀不代表资源仍存活或有权访问，原有 Session 归属和清理规则不变。
 
 Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和本次调用输出，不拆解内部工具。`code_exec_wait` 仍以普通工具卡显示等待或取消结果；命令卡返回不表示 yield 后的后台 cell 已结束。
 

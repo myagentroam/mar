@@ -39,6 +39,59 @@ async function fixture() {
 }
 
 describe('Code Exec retained cells', () => {
+  it('uses typed short handles and rejects cross-type controls without touching either resource', async () => {
+    const host = await fixture();
+    const ctx = context();
+    const cell = await host.executeTool(
+      { name: 'code_exec', arguments: 'observe.text("retained cell");' },
+      ctx
+    );
+    const process = await host.executeTool(
+      {
+        name: 'exec',
+        arguments: {
+          command: `${JSON.stringify(globalThis.process.execPath)} -e "process.stdout.write('retained process')"`,
+          yieldMs: 10000
+        }
+      },
+      ctx
+    );
+    const cellId = data(cell).cellId;
+    const processId = (process.data as { processId: string }).processId;
+    expect(cellId).toMatch(/^c_[0-9a-f]{12}$/u);
+    expect(processId).toMatch(/^p_[0-9a-f]{12}$/u);
+    for (const action of ['poll', 'cancel']) {
+      await expect(
+        host.executeTool({ name: 'code_exec_wait', arguments: { cellId: processId, action } }, ctx)
+      ).rejects.toMatchObject({
+        code: 'MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH',
+        publicMessage: expect.stringContaining('exec_wait')
+      });
+    }
+    for (const action of ['poll', 'write', 'cancel']) {
+      await expect(
+        host.executeTool(
+          {
+            name: 'exec_wait',
+            arguments: { processId: cellId, action, ...(action === 'write' ? { data: 'no' } : {}) }
+          },
+          ctx
+        )
+      ).rejects.toMatchObject({
+        code: 'MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH',
+        publicMessage: expect.stringContaining('code_exec_wait')
+      });
+    }
+    const later = { ...ctx, executionId: 'later' };
+    const replay = await host.executeTool({ name: 'code_exec_wait', arguments: { cellId } }, later);
+    expect(replay.data).toMatchObject({ cellId, status: 'completed', cached: true });
+    expect(replay.observations).toEqual(cell.observations);
+    expect(
+      (await host.executeTool({ name: 'exec_wait', arguments: { processId, yieldMs: 0 } }, later))
+        .data
+    ).toMatchObject({ processId, stdout: 'retained process', cached: true });
+  });
+
   it('reuses direct exec formatting for original observations and terminal replay', async () => {
     const host = await fixture();
     const input = context();
