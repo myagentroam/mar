@@ -156,7 +156,6 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
         await expect
           .poll(async () => (await finderState()).currentFolder, { timeout: 15_000 })
           .toBe(`${folder}/`);
-        await closeFinderWindows();
 
         await revealWorkspaceFileInFileManager(root, 'folder with space/notes.txt');
         try {
