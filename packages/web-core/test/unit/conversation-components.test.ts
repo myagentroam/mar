@@ -37,6 +37,16 @@ vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
   }
 }));
 
+// Dialog tests verify preview inputs; loading and decoding have dedicated component/browser tests.
+vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
+  default: {
+    name: 'DecodedPreviewImageStub',
+    props: ['source', 'name', 'original'],
+    template:
+      '<div class="decoded-preview-image-stub" :data-source="source" :data-name="name" :data-original="original"></div>'
+  }
+}));
+
 const originalLocale = localePreferenceService().locale.value;
 
 // The custom host renderer has no CSS engine; browser tests cover transition timing.
@@ -1923,15 +1933,15 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(previews).toContain('data-dialog-title="upload.png"');
-    expect(previews).toContain('src="/uploads/upload.png"');
+    expect(previews).toContain('data-source="/uploads/upload.png" data-name="upload.png"');
     expect(previews).toContain('data-dialog-title="generated.png"');
-    expect(previews).toContain('src="/runs/generated.png"');
+    expect(previews).toContain('data-source="/runs/generated.png" data-name="generated.png"');
     expect(empty).toContain(
       `data-dialog-title="${i18n.global.t('generated.imagePreviewDialogs.attachmentPreview')}"`
     );
     expect(empty).toContain(
       `data-dialog-title="${i18n.global.t('generated.imagePreviewDialogs.imagePreview')}"`
     );
-    expect(empty).not.toContain('attachment-preview-image');
+    expect(empty).not.toContain('decoded-preview-image-stub');
   });
 });
