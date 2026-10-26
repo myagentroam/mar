@@ -41,6 +41,7 @@ describe('AgentMarkdown workspace images', () => {
     });
     app.use(i18n);
     const html = await renderToString(app);
+    expect(html).toContain('href="#"');
     expect(html).toContain('data-workspace-file="docs/design/SDK.md"');
     expect(html).toContain('data-workspace-line="25"');
     expect(html.match(/data-workspace-file=/gu)).toHaveLength(1);
@@ -54,9 +55,28 @@ describe('AgentMarkdown workspace images', () => {
     const path =
       'my-agent-roam/packages/web-core/src/view/conversation/HostedConversationEntryPage.vue';
     const html = await render(`[HostedConversationEntryPage.vue](${path}#L47-L59)`);
-    expect(html).toContain(`href="${path}#L47-L59"`);
+    expect(html).toContain('href="#"');
     expect(html).toContain(`data-workspace-file="${path}"`);
     expect(html).toContain('data-workspace-line="47"');
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  it.each([
+    ['[protocol](E:/project/docs/design/BLE_PROTOCOL.md#L7)', 'docs/design/BLE_PROTOCOL.md', 7],
+    ['README.md:10', 'README.md', 10],
+    ['[relative](docs/guide.md#L3)', 'docs/guide.md', 3],
+    ['[temporary](/tmp/note.txt)', '/tmp/note.txt', undefined],
+    ['[sandbox](sandbox:/tmp/note.txt)', '/tmp/note.txt', undefined]
+  ])('keeps a safe link target for %s', async (content, path, line) => {
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const app = createSSRApp({
+      render: () => h(AgentMarkdown, { content, workspaceRoot: 'E:/project' })
+    });
+    app.use(i18n);
+    const html = await renderToString(app);
+    expect(html).toContain('href="#"');
+    expect(html).toContain(`data-workspace-file="${path}"`);
+    if (line !== undefined) expect(html).toContain(`data-workspace-line="${line}"`);
     expect(html).not.toContain('target="_blank"');
   });
 

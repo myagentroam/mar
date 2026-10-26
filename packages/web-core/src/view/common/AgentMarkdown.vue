@@ -113,7 +113,7 @@ renderer.renderer.rules.link_open = (tokens, index, options, environment, self) 
   const sandboxReference = /^sandbox:/iu.test(href);
   const fileTarget = workspaceFileTarget(href, props.workspaceRoot, window.location.origin);
   if (fileTarget !== undefined) {
-    if (sandboxReference) token.attrSet('href', '#');
+    token.attrSet('href', '#');
     token.attrSet('data-workspace-file', fileTarget.path);
     if (fileTarget.line !== undefined)
       token.attrSet('data-workspace-line', String(fileTarget.line));
@@ -503,6 +503,10 @@ function onLinkClick(event: MouseEvent): void {
   color: var(--mar-color-brand-text);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.agent-markdown :deep(a[href]) {
+  cursor: pointer;
 }
 
 .agent-markdown :deep(a:focus-visible) {

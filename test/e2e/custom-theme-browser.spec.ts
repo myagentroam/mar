@@ -104,6 +104,53 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
+for (const scheme of ['Light', 'Dark']) {
+  test(`Conversation file links retain pointer and keyboard activation in ${scheme}`, async ({
+    page
+  }) => {
+    const theme = page.locator('.theme-option').filter({
+      has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
+    });
+    if (scheme === 'Light')
+      await theme.getByRole('button', { name: 'Apply theme', exact: true }).click();
+    const section = page.getByRole('region', { name: 'Conversation file links' });
+    const output = section.getByLabel('Opened Markdown files');
+    const opened: { path: string; line?: number; external: boolean }[] = [];
+    for (const [name, path, line] of [
+      ['Windows protocol', 'docs/design/BLE_PROTOCOL.md', 7],
+      ['README.md:10', 'README.md', 10],
+      ['Relative file', 'docs/guide.md', 3],
+      ['Temporary file', '/tmp/note.txt', undefined]
+    ] as const) {
+      const link = section.getByRole('link', { name, exact: true });
+      await expect(link).toHaveAttribute('href', '#');
+      await expect(link).toHaveCSS('cursor', 'pointer');
+      await link.click();
+      opened.push({ path, line, external: false });
+      await expect(output).toHaveText(JSON.stringify(opened));
+      await link.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(link).toBeFocused();
+      await page.keyboard.press('Enter');
+      opened.push({ path, line, external: false });
+      await expect(output).toHaveText(JSON.stringify(opened));
+      await expect(page).toHaveURL(/custom-theme\.html$/u);
+    }
+    await section.getByRole('link', { name: 'Windows protocol', exact: true }).click({
+      modifiers: ['Control']
+    });
+    opened.push({ path: 'docs/design/BLE_PROTOCOL.md', line: 7, external: true });
+    await expect(output).toHaveText(JSON.stringify(opened));
+    await expect(page).toHaveURL(/custom-theme\.html$/u);
+    const external = section.getByRole('link', { name: 'External website', exact: true });
+    await expect(external).toHaveAttribute('href', 'https://example.com/help');
+    await expect(external).toHaveAttribute('target', '_blank');
+    await expect(external).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(external).toHaveCSS('cursor', 'pointer');
+    await expect(section.locator('a[href^="javascript:"]')).toHaveCount(0);
+  });
+}
+
 test('custom theme JSON flows through warnings, save, Appearance, reload, export, import and deletion', async ({
   page,
   context
