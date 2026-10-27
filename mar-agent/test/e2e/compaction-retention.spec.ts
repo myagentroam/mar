@@ -2,12 +2,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LocalAgentHost, parseModelCatalog } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelAdapter, type ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { parseModelCatalog } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelAdapter, type ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
 
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
 const expected = {
@@ -86,12 +87,14 @@ describe.runIf(enabled)('compaction retention real-model E2E', () => {
         };
       };
       const create = () =>
-        createMarAgent({
-          mode: 'normal',
-          host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [model],
-          adapterFactory: factory
-        });
+        createMarAgent(
+          {
+            mode: 'normal',
+            host: new LocalAgentHost({ homeDirectory: home, workspace }),
+            models: [model]
+          },
+          factory
+        );
       let agent: Awaited<ReturnType<typeof create>> | undefined;
       let store: JsonlSessionStore | undefined;
       try {

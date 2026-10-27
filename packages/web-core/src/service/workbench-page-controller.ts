@@ -1025,6 +1025,13 @@ export function createWorkbenchPageController<
     }
     const target = notification.target;
     if (target === undefined) return;
+    await navigateWorkbenchTarget(target);
+  }
+
+  async function navigateWorkbenchTarget(
+    target: NonNullable<WorkbenchNotification['target']>,
+    markSessionReadAfterOpen = false
+  ): Promise<void> {
     try {
       await navigateWorkbenchNotification(target, {
         workspaceTarget: () => workspaceTarget.value,
@@ -1038,9 +1045,22 @@ export function createWorkbenchPageController<
           ),
         showNodes: () => (view.value = 'nodes'),
         showConversations: () => (view.value = 'conversations'),
-        activateWorkspace: (target) => selectWorkspace(target),
+        activateWorkspace: (target) => {
+          const current = workspaceTarget.value;
+          if (
+            markSessionReadAfterOpen &&
+            current?.nodeId === target.nodeId &&
+            current.workspaceId === target.workspaceId
+          )
+            return Promise.resolve(true);
+          return markSessionReadAfterOpen
+            ? selectWorkspace(target, false)
+            : selectWorkspace(target);
+        },
         synchronizeSessions: syncWorkspaceSessions,
-        openSession,
+        openSession: markSessionReadAfterOpen
+          ? (sessionId) => workbenchSessionSelectionService.openWorkspaceTabSession(sessionId)
+          : openSession,
         openHostedConversation: openHostedConversationTarget
       });
     } catch (error) {
@@ -1075,6 +1095,28 @@ export function createWorkbenchPageController<
         sessionName: run.sessionTitle
       }
     });
+  }
+
+  async function openSessionGroupTarget(target: {
+    nodeId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<void> {
+    await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, true);
+  }
+
+  function activateWorkspaceSessionGroupMarker(
+    group: import('@myagentroam/protocol').SessionGroup
+  ): void {
+    const target = workspaceTarget.value;
+    if (target === undefined) return;
+    const session = workbenchNotificationService.sessionGroupTarget(group, {
+      nodeId: target.nodeId,
+      workspaceId: target.workspaceId,
+      ...(selectedSessionId.value === undefined ? {} : { lastSessionId: selectedSessionId.value })
+    });
+    if (session !== undefined)
+      void workbenchSessionSelectionService.openWorkspaceTabSession(session.sessionId);
   }
 
   async function openSessionFromList(sessionId: string): Promise<void> {
@@ -3554,6 +3596,7 @@ export function createWorkbenchPageController<
     openSessionFromList,
     openWorkbenchNotification: workbenchNotificationService.openNotification,
     openRecentRun,
+    openSessionGroupTarget,
     openWorkspaceFromTree,
     openWorkspaceTools,
     orderedWorkspaces,
@@ -3585,6 +3628,7 @@ export function createWorkbenchPageController<
     workspaceSessionGroup,
     workspaceSessionGroupState,
     selectWorkspaceSessionGroup,
+    activateWorkspaceSessionGroupMarker,
     rollbackConversation,
     rollbackConversationEnabled,
     rewindConversationEnabled,

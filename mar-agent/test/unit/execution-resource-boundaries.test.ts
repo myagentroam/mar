@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import type { ModelEvent } from '../../src/model/contracts.js';
+import { AgentError } from '../../src/error.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { CompactCoordinator } from '../../src/runtime/compaction/coordinator.js';
+import { SessionExecution } from '../../src/sdk/session-execution.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(async () => {
@@ -9,8 +11,90 @@ afterEach(async () => {
   await cleanupCoreFixtures();
 });
 
+it.each([false, true])(
+  'preserves the compact generation error over close failure (generationFails=%s)',
+  async (generationFails) => {
+    const f = await fixture([], answer);
+    const generationError = new Error('generation failed');
+    const closeError = new Error('compact turn close failed');
+    const close = vi.fn(async () => {
+      throw closeError;
+    });
+    Object.assign(f.adapter, {
+      createTurnSession: () => ({ start: f.adapter.start.bind(f.adapter), close })
+    });
+    const execution = new SessionExecution(
+      'session',
+      'execution',
+      'turn',
+      'run',
+      'user',
+      {
+        modelId: 'test',
+        mode: 'run',
+        models: new Map(),
+        generation: 0,
+        instruction: undefined
+      },
+      new Set()
+    );
+    await expect(
+      execution.withCompactTurn(f.adapter, async () => {
+        if (generationFails) throw generationError;
+        return 'summary';
+      })
+    ).rejects.toBe(generationFails ? generationError : closeError);
+    expect(close).toHaveBeenCalledOnce();
+  }
+);
+
+it('joins main turn and releases the writer after compact close fails, preserving the first cleanup error', async () => {
+  const f = await fixture([], answer);
+  const compactError = new Error('compact close failed');
+  const releaseError = new Error('writer release failed');
+  const order: string[] = [];
+  const compactClose = vi
+    .spyOn(CompactCoordinator.prototype, 'close')
+    .mockImplementationOnce(async () => {
+      order.push('compact.close');
+      throw compactError;
+    });
+  const close = vi.fn(async () => {
+    order.push('turn.close');
+  });
+  Object.assign(f.adapter, {
+    createTurnSession: () => ({ start: f.adapter.start.bind(f.adapter), close })
+  });
+  const acquire = JsonlSessionStore.prototype.acquireSessionLease;
+  const lease = vi
+    .spyOn(JsonlSessionStore.prototype, 'acquireSessionLease')
+    .mockImplementation(async function (this: JsonlSessionStore, ...args) {
+      const release = await acquire.apply(this, args);
+      return async () => {
+        order.push('lease.release');
+        await release();
+        throw releaseError;
+      };
+    });
+  const handle = f.session.run({ prompt: 'cleanup failure' });
+  const events = (async () => {
+    const result = [];
+    for await (const event of handle) result.push(event.type);
+    return result;
+  })();
+  try {
+    await expect(handle.result()).rejects.toBe(compactError);
+    expect(await events).toContain('execution.completed');
+    expect(order).toEqual(['compact.close', 'turn.close', 'lease.release']);
+  } finally {
+    compactClose.mockRestore();
+    lease.mockRestore();
+  }
+  expect((await f.session.run({ prompt: 'next execution' }).result()).status).toBe('completed');
+});
+
 it('finishes an old writer release failure before activating a queued successor', async () => {
-  let context!: import('../../src/index.js').CoreSessionExtensionContext;
+  let context!: import('../../src/index.js').SessionExtensionContext;
   const f = await fixture(
     [
       {
@@ -84,16 +168,18 @@ it('finishes an old writer release failure before activating a queued successor'
 });
 
 describe.each(['turn', 'adapter'] as const)('Execution-owned %s cleanup', (resource) => {
-  it.each([
-    { outcome: 'completed', leaseFails: false },
-    { outcome: 'failed', leaseFails: false },
-    { outcome: 'cancelled', leaseFails: false },
-    { outcome: 'completed', leaseFails: true },
-    { outcome: 'failed', leaseFails: true },
-    { outcome: 'cancelled', leaseFails: true }
-  ] as const)(
-    'keeps $outcome terminal semantics and warm resources when close rejects (leaseFails=$leaseFails)',
-    async ({ outcome, leaseFails }) => {
+  it.each(
+    [
+      { outcome: 'completed', leaseFails: false },
+      { outcome: 'failed', leaseFails: false },
+      { outcome: 'cancelled', leaseFails: false },
+      { outcome: 'completed', leaseFails: true },
+      { outcome: 'failed', leaseFails: true },
+      { outcome: 'cancelled', leaseFails: true }
+    ].flatMap((test) => [false, true].map((synchronous) => ({ ...test, synchronous })))
+  )(
+    'keeps $outcome terminal semantics and warm resources when close fails (leaseFails=$leaseFails, synchronous=$synchronous)',
+    async ({ outcome, leaseFails, synchronous }) => {
       const order: string[] = [];
       const warmDisposed = vi.fn();
       const f = await fixture(
@@ -115,7 +201,7 @@ describe.each(['turn', 'adapter'] as const)('Execution-owned %s cleanup', (resou
         .mockImplementation(async function* (_request, signal): AsyncGenerator<ModelEvent> {
           started.resolve();
           if (firstExecution && outcome === 'failed')
-            throw new MarAgentError('ORIGINAL_MODEL_FAILURE', 'Original model failure.');
+            throw new AgentError('ORIGINAL_MODEL_FAILURE', 'Original model failure.');
           if (firstExecution && outcome === 'cancelled') {
             if (!signal.aborted)
               await new Promise<void>((resolve) =>
@@ -125,9 +211,14 @@ describe.each(['turn', 'adapter'] as const)('Execution-owned %s cleanup', (resou
           }
           yield* answer();
         });
-      const close = vi.fn(async () => {
+      const close = vi.fn(() => {
         order.push(resource + '.close');
-        if (firstExecution) throw new Error('secondary model close failure');
+        if (firstExecution) {
+          const error = new Error('secondary model close failure');
+          if (synchronous) throw error;
+          return Promise.reject(error);
+        }
+        return Promise.resolve();
       });
       const borrowedAdapterClose = vi.fn(async () => undefined);
       if (resource === 'turn') {

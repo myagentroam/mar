@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CoreAgentsApi, CoreSessionExtensionContext } from '../../src/index.js';
-import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { LocalAgentHost } from '../../src/index.js';
+import type { ExtensionAgentsApi, SessionExtensionContext } from '../../src/extensions.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
+import { allowsToolCaller } from '../../src/tools/callers.js';
 import {
   fixture,
   answer,
@@ -18,10 +20,10 @@ afterEach(async () => {
   await cleanupCoreFixtures();
 });
 
-async function nativeFixture(extra?: (context: CoreSessionExtensionContext) => void) {
-  let api!: CoreAgentsApi;
-  let context!: CoreSessionExtensionContext;
-  const extension: CoreRuntimeExtension = {
+async function nativeFixture(extra?: (context: SessionExtensionContext) => void) {
+  let api!: ExtensionAgentsApi;
+  let context!: SessionExtensionContext;
+  const extension: AgentExtension = {
     id: 'native-agents',
     apiVersion: '1.0',
     attachSession: (current) => {
@@ -39,9 +41,9 @@ async function nativeFixture(extra?: (context: CoreSessionExtensionContext) => v
 }
 
 async function mailboxFixture() {
-  let receiver!: CoreAgentsApi;
-  let sender!: CoreAgentsApi;
-  let child!: CoreSessionExtensionContext;
+  let receiver!: ExtensionAgentsApi;
+  let sender!: ExtensionAgentsApi;
+  let child!: SessionExtensionContext;
   let entered!: () => void;
   let release!: () => void;
   const ready = new Promise<void>((resolve) => (entered = resolve));
@@ -157,22 +159,24 @@ describe('native extension Agent API', () => {
       }
     });
     await f.agent.dispose();
-    let restoredApi!: CoreAgentsApi;
-    const replay = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: f.home, workspace: f.home }),
-      models: [f.adapter.configuration],
-      adapterFactory: () => f.adapter,
-      runtimeExtensions: [
-        {
-          id: 'restored-reader',
-          apiVersion: '1.0',
-          attachSession: (context) => {
-            if (context.agents) restoredApi = context.agents;
+    let restoredApi!: ExtensionAgentsApi;
+    const replay = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: f.home, workspace: f.home }),
+        models: [f.adapter.configuration],
+        extensions: [
+          {
+            id: 'restored-reader',
+            apiVersion: '1.0',
+            attachSession: (context) => {
+              if (context.agents) restoredApi = context.agents;
+            }
           }
-        }
-      ]
-    });
+        ]
+      },
+      () => f.adapter
+    );
     agents.push(replay);
     const parent = await replay.openSession(f.session.id);
     await parent.run({ prompt: 'restore native receipt' }).result();
@@ -202,8 +206,8 @@ describe('native extension Agent API', () => {
   });
 
   it('projects child capabilities truthfully and isolates unmet Agent requirements', async () => {
-    let root!: CoreSessionExtensionContext;
-    let child!: CoreSessionExtensionContext;
+    let root!: SessionExtensionContext;
+    let child!: SessionExtensionContext;
     const requiredAttachments: string[] = [];
     const f = await fixture(
       [
@@ -314,8 +318,8 @@ describe('native extension Agent API', () => {
   it.each([false, true])(
     'keeps native child input provenance inside an active parent (Code Mode: %s)',
     async (codeMode) => {
-      let api!: CoreAgentsApi;
-      const extension: CoreRuntimeExtension = {
+      let api!: ExtensionAgentsApi;
+      const extension: AgentExtension = {
         id: 'active-native',
         apiVersion: '1.0',
         attachSession: (context) => {
@@ -417,7 +421,7 @@ describe('native extension Agent API', () => {
   it.each([false, true])(
     'carries actual model/Code Mode parent ancestry (codeMode=%s)',
     async (codeMode) => {
-      let rootApi!: CoreAgentsApi;
+      let rootApi!: ExtensionAgentsApi;
       const facts: Array<{ executionId?: string | undefined; entry: string }> = [];
       const f = await fixture(
         [
@@ -501,7 +505,7 @@ describe('native extension Agent API', () => {
   it.each(['native-api', 'direct', 'programmatic'] as const)(
     'preserves Agent interception facts and caller boundaries for the %s ingress',
     async (entry) => {
-      let api!: CoreAgentsApi;
+      let api!: ExtensionAgentsApi;
       const facts: Array<{ operation: string; agentId: string; status: string; entry: string }> =
         [];
       const f = await fixture(
@@ -560,9 +564,9 @@ describe('native extension Agent API', () => {
       if (entry === 'programmatic') {
         expect(facts).toEqual([]);
         expect(await api.list()).toEqual([]);
-        expect(
-          f.adapter.requests[0]!.tools.find((tool) => tool.name === 'agent_start')?.allowedCallers
-        ).toEqual(['direct']);
+        const declaration = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'agent_start')!;
+        expect(allowsToolCaller(declaration, 'direct')).toBe(true);
+        expect(allowsToolCaller(declaration, 'programmatic')).toBe(false);
         const result = f.adapter.requests[1]!.messages.find(
           (message) => message.role === 'tool' && message.callId === 'call'
         )!;

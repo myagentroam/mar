@@ -2,18 +2,14 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  MarAgentError,
-  SecretValue,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
   type CloseableServer
@@ -48,7 +44,7 @@ function configuration(
     invalidate(revision: number): void;
     close(): Promise<void>;
   }
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'codex',
     name: 'Codex',
@@ -160,7 +156,7 @@ function finalResponseEvents() {
 
 class PreludeEarlyEofAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     id: 'codex',
     name: 'Codex',
     protocol: 'OPENAI_RESPONSES',
@@ -183,7 +179,7 @@ class PreludeEarlyEofAdapter implements ModelAdapter {
     if (request.retryState !== undefined)
       request.retryState.attempts = request.retryState.maxAttempts ?? 8;
     yield* [] as ModelEvent[];
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_MODEL_PROTOCOL_ERROR',
       'OpenAI Responses stream ended without a terminal event.',
       {
@@ -201,12 +197,14 @@ describe('MAR Agent WebSocket EOF recovery', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const adapter = new PreludeEarlyEofAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
 
     try {
       const session = await agent.createSession({ workspace, title: 'Prelude EOF boundary' });

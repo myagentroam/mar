@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelEvent, type ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { effectiveInstructions } from './support/model-context.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelEvent, type ModelRequest } from '../../src/model/contracts.js';
 
 const roots: string[] = [];
 
@@ -24,7 +26,7 @@ describe('tool Agent scope', () => {
     let parentCalls = 0;
     let childCalls = 0;
     const invokeHidden = vi.fn(async () => ({ content: 'unexpected' }));
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       id: 'image',
       name: 'Image model',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -36,6 +38,7 @@ describe('tool Agent scope', () => {
       inputCapabilities: ['TEXT', 'IMAGE'],
       outputCapabilities: ['TEXT'],
       reasoningEfforts: ['low'],
+      hostedWebSearch: false,
       enabled: true
     };
     const host = new LocalAgentHost({
@@ -70,15 +73,17 @@ describe('tool Agent scope', () => {
       ],
       callMcp: invokeHidden
     });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      (configuration) => ({
         configuration,
         async *start(request): AsyncIterable<ModelEvent> {
           requests.push(request);
-          const child = request.system.includes('non-recursive subagent');
+          const child = effectiveInstructions(request).includes('non-recursive subagent');
           if (child) {
             if (childCalls++ === 0) {
               for (const name of ['mcp__root__action', 'host_root_action'])
@@ -135,7 +140,7 @@ describe('tool Agent scope', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
 
     try {
       const session = await agent.createSession({ workspace, title: 'scope' });
@@ -144,14 +149,18 @@ describe('tool Agent scope', () => {
       });
       const parent = requests.find(
         (request) =>
-          !request.system.includes('non-recursive subagent') &&
+          !effectiveInstructions(request).includes('non-recursive subagent') &&
           request.tools.some((tool) => tool.name === 'mcp__root__action')
       );
-      const child = requests.find((request) => request.system.includes('non-recursive subagent'));
+      const child = requests.find((request) =>
+        effectiveInstructions(request).includes('non-recursive subagent')
+      );
+      expect(parent).toBeDefined();
+      expect(child).toBeDefined();
       expect(parent?.tools.map((tool) => tool.name)).toContain('mcp__root__action');
-      expect(parent?.system).toContain('root-workflow');
+      expect(effectiveInstructions(parent!)).toContain('root-workflow');
       expect(child?.tools.map((tool) => tool.name)).not.toContain('mcp__root__action');
-      expect(child?.system).not.toContain('root-workflow');
+      expect(effectiveInstructions(child!)).not.toContain('root-workflow');
       expect(child?.tools.map((tool) => tool.name)).not.toContain('host_root_action');
       expect(invokeHidden).not.toHaveBeenCalled();
     } finally {

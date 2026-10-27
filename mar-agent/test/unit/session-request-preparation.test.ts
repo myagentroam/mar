@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/index.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { prepareSessionModelRequest } from '../../src/agent-core/sdk/request-preparation.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
+import type { SessionExtensionContext } from '../../src/extensions.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
+import { prepareSessionModelRequest } from '../../src/sdk/request-preparation.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -54,7 +54,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     it.each(['complete', 'fail', 'cancel'] as const)(
       'keeps late steer durable and only publishes a dispatched candidate after a suspended Hook (%s)',
       async (outcome) => {
-        let context!: CoreSessionExtensionContext;
+        let context!: SessionExtensionContext;
         const f = await fixture(
           [
             {

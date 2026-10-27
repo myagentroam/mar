@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelMessage, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
+import type { ModelMessage, ModelRequest } from '../../src/model/contracts.js';
+import { ResourceInputProjection } from '../../src/sdk/resource-input.js';
+import { assertInlineMediaBudget } from '../../src/model/inline-media-budget.js';
+import { projectModelRequest } from '../../src/sdk/model-input-projection.js';
 import {
   INLINE_MEDIA_POLICY,
   inlineMediaGcAnchored,
   inlineMediaHistory
-} from '../../src/agent-core/session/inline-media.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/types.js';
-import { forkedPayload } from '../../src/agent-core/session/store/history.js';
+} from '../../src/session/inline-media.js';
+import type { SessionRecord } from '../../src/session/store/types.js';
+import { forkedPayload } from '../../src/session/store/jsonl/history.js';
 
 const MiB = 1_048_576;
 function imageMessage(id: string, bytes = 3 * MiB): ModelMessage {
@@ -92,9 +94,12 @@ describe('inline media window', () => {
 
   it('rejects three available maximum legal images before they can be sent', async () => {
     const { projection, store } = fixture();
-    await expect(
-      projection.prepare(request(['a', 'b', 'c'].map((id) => imageMessage(id))))
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_INLINE_MEDIA_LIMIT' });
+    const prepared = await projection.prepare(
+      request(['a', 'b', 'c'].map((id) => imageMessage(id)))
+    );
+    expect(() => assertInlineMediaBudget(projectModelRequest(prepared))).toThrow(
+      expect.objectContaining({ code: 'MAR_AGENT_INLINE_MEDIA_LIMIT' })
+    );
     expect(store.readResource).toHaveBeenCalledTimes(3);
     expect(projection.hasPendingImages([imageMessage('a')])).toBe(true);
   });
@@ -147,9 +152,10 @@ describe('inline media window', () => {
     projection.observe(candidate.messages);
     const proposal = await projection.gcCandidate(candidate);
     expect(proposal?.reason).toBe('HARD_LIMIT');
-    await expect(projection.prepare(candidate)).rejects.toMatchObject({
-      code: 'MAR_AGENT_INLINE_MEDIA_LIMIT'
-    });
+    const prepared = await projection.prepare(candidate);
+    expect(() => assertInlineMediaBudget(projectModelRequest(prepared))).toThrow(
+      expect.objectContaining({ code: 'MAR_AGENT_INLINE_MEDIA_LIMIT' })
+    );
     projection.adoptGc(proposal!.state);
     const next = await projection.prepare(candidate);
     expect(next.messages.map((m) => m.images?.length)).toEqual([0, 1, 1]);
@@ -311,7 +317,7 @@ describe('inline media window', () => {
 
   it('remaps Code Mode observation image indices and puts release notices on matching observations', async () => {
     const { projection } = fixture();
-    const encoded = 'x'.repeat(3 * MiB);
+    const encoded = 'x'.repeat(3 * MiB - 1024);
     const code = {
       ...imageMessage('code'),
       images: ['a', 'b', 'c'].map((resourceId) => ({

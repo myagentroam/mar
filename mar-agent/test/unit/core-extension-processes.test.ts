@@ -1,17 +1,18 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ExecTool } from '../../src/agent-core/tools/local/exec.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+import { ExecTool } from '../../src/host/local-exec-tool.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 import {
   directLocalProcessExecutor,
   type LocalProcessSpawnRequest
-} from '../../src/agent-core/host/local-process-executor.js';
-import { LocalAgentHost } from '../../src/index.js';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreProcessHandle } from '../../src/agent-core/extensions/processes.js';
+} from '../../src/host/local-process-executor.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionProcessHandle } from '../../src/extensions/processes.js';
 import {
   fixture as sdkFixture,
   answer,
@@ -49,9 +50,10 @@ async function fixture(maxProcesses = 8, wrap = false) {
     }
   );
   tools.push(tool);
-  let context!: CoreSessionExtensionContext;
+  let context!: SessionExtensionContext;
   const facts: unknown[] = [];
   const manager = new ExtensionManager({
+    toolRuntime: extensionToolRuntime,
     extensions: [
       {
         id: 'processes',
@@ -83,7 +85,7 @@ async function bytes(stream: AsyncIterable<Uint8Array>) {
   for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks);
 }
-async function complete(handle: CoreProcessHandle) {
+async function complete(handle: ExtensionProcessHandle) {
   return Promise.all([handle.wait(), bytes(handle.stdout), bytes(handle.stderr)]);
 }
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -395,8 +397,9 @@ describe('Core native managed processes', () => {
   });
 
   it('does not invent a facade when the Host has no native process port', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'none',
@@ -415,7 +418,7 @@ describe('Core native managed processes', () => {
   });
 
   it('handles an asynchronous executor returning an already-exited child instead of waiting forever', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await sdkFixture(
       [
         {
@@ -452,8 +455,9 @@ describe('Core native managed processes', () => {
   it('preserves a primary stream failure when independent handle cleanup also fails', async () => {
     const primary = new Error('primary-stream-failure');
     const cleanup = new Error('cleanup-failure');
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'fault',
@@ -508,7 +512,7 @@ describe('Core native managed processes', () => {
       entered = resolve;
     });
     let pid!: number;
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { agent, session } = await sdkFixture(
       [
         {
@@ -550,7 +554,7 @@ describe('Core native managed processes', () => {
     const started = new Promise<void>((resolve) => {
       entered = resolve;
     });
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await sdkFixture(
       [
         {
@@ -591,10 +595,11 @@ describe('Core native managed processes', () => {
   });
 
   it.each(['rejected', 'invalid'])('releases a spawn handle when wait fails (%s)', async (mode) => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let cancelled = 0;
     const primary = new Error('wait-failed');
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'wait-fault',
@@ -637,8 +642,9 @@ describe('Core native managed processes', () => {
   });
 
   it('reports cleanup-only failure as a stable domain error without exposing the backend message', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'cleanup-fault',
@@ -678,7 +684,7 @@ describe('Core native managed processes', () => {
   it.each([false, true])(
     'uses the same SDK lineage for model/Code Mode and idle calls (Code Mode=%s)',
     async (codeMode) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const requests: LocalProcessSpawnRequest[] = [];
       const { session, host, adapter } = await sdkFixture(
         [

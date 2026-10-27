@@ -576,13 +576,13 @@ export function resolveMarAgentDefaultReasoningEffort(
   return first.success ? first.data : 'medium';
 }
 export const marAgentResponsesTransportSchema = z.discriminatedUnion('transport', [
-  z.object({ transport: z.literal('WEBSOCKET') }).strict(),
+  z.object({ transport: z.literal('WEBSOCKET') }).strip(),
   z
     .object({
       transport: z.literal('HTTP'),
       httpVersion: runtimeCredentialHttpVersionSchema
     })
-    .strict()
+    .strip()
 ]);
 export type MarAgentResponsesTransport = z.infer<typeof marAgentResponsesTransportSchema>;
 export const runtimeCredentialTicketSchema = z
@@ -1003,7 +1003,7 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
           promptCacheKey: z.boolean(),
           nativeTools: z.boolean().optional()
         })
-        .strict()
+        .strip()
         .optional(),
       imageGeneration: marAgentImageGenerationSchema.optional()
     })
@@ -3535,6 +3535,7 @@ export const workspaceChangesRepositorySchema = z
     locked: z.boolean().optional(),
     prunable: z.boolean().optional(),
     error: z.lazy(() => publicErrorSchema).optional(),
+    changesTruncated: z.boolean().optional(),
     changes: z.array(workspaceChangeSchema)
   })
   .superRefine((repository, context) => {

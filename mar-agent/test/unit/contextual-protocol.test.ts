@@ -1,17 +1,10 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import {
-  OpenAiResponsesAdapter,
-  openAiInput
-} from '../../src/agent-core/model/openai-responses.js';
-import type {
-  ModelContextualBlock,
-  ModelEvent,
-  ModelMessage
-} from '../../src/agent-core/model/contracts.js';
-import { renderSubagentUpdate } from '../../src/agent-core/subagent/model-update.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
+import type { ModelContextualBlock, ModelEvent, ModelMessage } from '../../src/model/contracts.js';
+import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 
@@ -40,9 +33,9 @@ function contextualMessage(content: string, authority: ContextualBlock['authorit
 }
 
 function configuration(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   baseUrl: string
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'coding',
     name: 'Coding',
@@ -92,7 +85,7 @@ async function collect(source: AsyncIterable<ModelEvent>) {
   for await (const _event of source) void _event;
 }
 
-function completionEvents(protocol: MarAgentModelConfiguration['protocol']): unknown[] {
+function completionEvents(protocol: AgentModelConfiguration['protocol']): unknown[] {
   return protocol === 'OPENAI_RESPONSES'
     ? [{ type: 'response.completed', response: { id: 'response-1', usage: {} } }]
     : [

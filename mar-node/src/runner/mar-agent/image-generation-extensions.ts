@@ -1,9 +1,6 @@
 import { dirname } from 'node:path';
-import {
-  MarAgentError,
-  type LocalAgentExecutionExtensions,
-  type MarAgentHost
-} from '@myagentroam/agent';
+import { AgentError } from '@myagentroam/agent';
+import type { LocalAgentExecutionExtensions, AgentHost } from '@myagentroam/agent/host';
 import {
   codexImageGenToolDefinition,
   bytedArkImageGenToolDefinition,
@@ -20,7 +17,7 @@ export function createImageGenerationExtensions(input: {
   readonly configuration?: ImageGenerationConfiguration | undefined;
   readonly homeDirectory: string;
   readonly displayDirectory?: string;
-  readonly host: () => MarAgentHost;
+  readonly host: () => AgentHost;
 }): LocalAgentExecutionExtensions {
   const imageGeneration = input.configuration;
   if (imageGeneration === undefined) return {};
@@ -28,7 +25,7 @@ export function createImageGenerationExtensions(input: {
   const displayDirectory = normalizeGeneratedImageDisplayDirectory(input.displayDirectory);
   const codex = imageGeneration.provider === 'CODEX';
   if (!codex && imageGeneration.provider !== 'BYTED_ARK')
-    throw new MarAgentError('MAR_AGENT_MODEL_CONFIG_INVALID', 'Unsupported image provider.');
+    throw new AgentError('MAR_AGENT_MODEL_CONFIG_INVALID', 'Unsupported image provider.');
   const tool = codex ? codexImageGenToolDefinition : bytedArkImageGenToolDefinition;
   return {
     tools: [tool],
@@ -47,11 +44,11 @@ export function createImageGenerationExtensions(input: {
     ],
     executeTool: async (call, context) => {
       if (call.name !== tool.name)
-        throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Image tool is unavailable.');
+        throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Image tool is unavailable.');
       context.signal.throwIfAborted();
       const directory = marAgentGeneratedImagesDirectory(input.homeDirectory, context.sessionId);
       if (directory === undefined || call.callId === undefined)
-        throw new MarAgentError(
+        throw new AgentError(
           'MAR_AGENT_TOOL_INPUT_INVALID',
           'Image execution identity is invalid.'
         );
@@ -68,13 +65,13 @@ export function createImageGenerationExtensions(input: {
             .executeTool({ name: 'view_image', arguments: { path } }, context);
           const image = output.images?.length === 1 ? output.images[0] : undefined;
           if (image === undefined || image.dataBase64 === undefined)
-            throw new MarAgentError(
+            throw new AgentError(
               'MAR_AGENT_TOOL_OUTPUT_INVALID',
               'Referenced image result is invalid.'
             );
           const data = Buffer.from(image.dataBase64, 'base64');
           if (data.byteLength === 0)
-            throw new MarAgentError(
+            throw new AgentError(
               'MAR_AGENT_TOOL_OUTPUT_INVALID',
               'Referenced image result is invalid.'
             );

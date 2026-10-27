@@ -168,6 +168,8 @@ export async function checkPublicBoundary(directory = root) {
       if (entry.isSymbolicLink()) {
         failures.push(`${relative(directory, absolute)}: PUBLIC_SOURCE_SYMLINK_FORBIDDEN`);
       } else if (entry.isDirectory()) {
+        // The server's staged Web bundle is generated output, not public source.
+        if (local === 'mar-server/web') continue;
         await visit(absolute);
       } else if (entry.isFile()) {
         const source = decodeText(await readFile(absolute));

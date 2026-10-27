@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ViewImageTool, viewResourceImage } from '../../src/agent-core/tools/local/view-image.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+import { ViewImageTool, viewResourceImage } from '../../src/tools/local/view-image.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs/promises')>();

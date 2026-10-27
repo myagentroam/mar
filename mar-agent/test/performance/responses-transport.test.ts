@@ -4,12 +4,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  createMarAgent,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
+import { SecretValue, createAgent, type AgentModelConfiguration } from '../../src/index.js';
+import { LocalAgentHost } from '../../src/host.js';
 import { startResponsesWebSocketServer } from '../unit/support/responses-transport-servers.js';
 
 const EXECUTIONS = 20;
@@ -64,10 +60,10 @@ function completedResponse(index: number) {
 
 function configuration(
   baseUrl: string,
-  transport: MarAgentModelConfiguration['responsesTransport'],
+  transport: AgentModelConfiguration['responsesTransport'],
   continuation: boolean,
   acquire: ReturnType<typeof vi.fn>
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'codex',
     name: 'Codex',
@@ -140,7 +136,7 @@ async function runScenario(kind: 'WEBSOCKET_CONTINUATION' | 'HTTP_FULL_HISTORY')
   homes.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
-  const agent = await createMarAgent({
+  const agent = await createAgent({
     mode: 'normal',
     host: new LocalAgentHost({ homeDirectory: home, workspace }),
     workspaceMapping: {

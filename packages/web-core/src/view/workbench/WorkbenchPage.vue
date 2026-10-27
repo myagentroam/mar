@@ -181,6 +181,7 @@ function closeStandaloneFileWindow(): void {
         @rename-workspace="page.renameWorkspace"
         @open-notification="page.openWorkbenchNotification"
         @open-recent-run="page.openRecentRun"
+        @open-session-target="page.openSessionGroupTarget"
         @retry-upload="page.retryWorkspaceUpload"
         @cancel-upload="page.cancelWorkspaceUpload"
         @remove-upload="page.deleteWorkspaceUpload"

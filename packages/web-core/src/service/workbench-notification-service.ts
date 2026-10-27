@@ -118,6 +118,10 @@ export interface WorkbenchNotificationService {
     workspaceId: string,
     lastSessionId?: string
   ): string | undefined;
+  sessionGroupTarget(
+    group: import('@myagentroam/protocol').SessionGroup,
+    scope?: { nodeId: string; workspaceId: string; lastSessionId?: string }
+  ): { nodeId: string; workspaceId: string; sessionId: string } | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
   hasUnreadConversation(nodeId: string, conversationId: string): boolean;
   notify(input: WorkbenchNotificationInput): void;
@@ -728,6 +732,36 @@ export function createWorkbenchNotificationService(
     );
   }
 
+  function sessionGroupTarget(
+    group: import('@myagentroam/protocol').SessionGroup,
+    scope?: { nodeId: string; workspaceId: string; lastSessionId?: string }
+  ): { nodeId: string; workspaceId: string; sessionId: string } | undefined {
+    const matches = (target: {
+      nodeId: string;
+      workspaceId: string;
+      sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
+    }) =>
+      (target.sessionGroup ?? 'MAIN') === group &&
+      (scope === undefined ||
+        (target.nodeId === scope.nodeId && target.workspaceId === scope.workspaceId));
+    const unread = notifications.value.find(
+      (notification) =>
+        notification.source === 'server' &&
+        !notification.read &&
+        notification.expiresAt > Date.now() &&
+        notification.target.targetType === 'WORKSPACE_SESSION' &&
+        matches(notification.target)
+    );
+    if (unread?.target?.targetType === 'WORKSPACE_SESSION') return unread.target;
+    const active = recentRuns.value.filter(
+      (run) => matches(run) && activeRecentRunStatus(run.status)
+    );
+    const run = active.find((item) => item.sessionId === scope?.lastSessionId) ?? active[0];
+    return run === undefined
+      ? undefined
+      : { nodeId: run.nodeId, workspaceId: run.workspaceId, sessionId: run.sessionId };
+  }
+
   function hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean {
     const expiresAt = unreadSessionExpirations.value.get(
       JSON.stringify([nodeId, workspaceId, sessionId])
@@ -842,6 +876,7 @@ export function createWorkbenchNotificationService(
     hasActiveWorkspaceRun,
     hasUnreadWorkspace,
     workspaceTabSession,
+    sessionGroupTarget,
     hasUnreadSession,
     hasUnreadConversation,
     notify,

@@ -84,6 +84,7 @@ export function changeRepositories(value: unknown): readonly ChangeRepository[] 
       locked: repository.locked === true,
       prunable: repository.prunable === true,
       ...(groupError.success ? { error: groupError.data } : {}),
+      ...(repository.changesTruncated === true ? { changesTruncated: true } : {}),
       changes:
         repository.status === 'UNAVAILABLE'
           ? []

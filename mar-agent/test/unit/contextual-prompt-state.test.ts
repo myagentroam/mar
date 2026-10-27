@@ -2,22 +2,24 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
 import {
   contextualChanges,
   splitContextualPrompt,
   type ContextualPart
-} from '../../src/agent-core/runtime/context/contextual-blocks.js';
+} from '../../src/runtime/context/contextual-blocks.js';
 import {
   parsePersistedContextualWorldState,
   persistContextualWorldState,
   updatePromptWorldState
-} from '../../src/agent-core/runtime/context/world-state.js';
-import { ExtensionRequestBridge } from '../../src/agent-core/extensions/model-request.js';
+} from '../../src/runtime/context/world-state.js';
+import { ExtensionRequestBridge } from '../../src/extensions/model-request.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -31,7 +33,7 @@ const part = (id: string, content: string): ContextualPart => ({
   source: 'host',
   authority: 'instruction'
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'contextual',
   name: 'Contextual',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -53,12 +55,14 @@ describe('Contextual prompt state', () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-contextual-budget-'));
     roots.push(home);
     const requests: ModelRequest[] = [];
-    const agent = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-      models: [{ ...model, contextWindowTokens: 50_000 }],
-      systemInstruction: 'HOST_POLICY '.repeat(30_000),
-      adapterFactory: () => ({
+    const agent = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [{ ...model, contextWindowTokens: 50_000 }],
+        systemInstruction: 'HOST_POLICY '.repeat(30_000)
+      },
+      () => ({
         async *start(request) {
           requests.push(request);
           yield* answer();
@@ -68,7 +72,7 @@ describe('Contextual prompt state', () => {
           };
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({ workspace: home });
       expect((await session.run({ prompt: 'first' }).result()).status).toBe('completed');
@@ -287,12 +291,14 @@ describe('Contextual prompt state', () => {
     await mkdir(workspace);
     const requests: ModelRequest[] = [];
     const create = (systemInstruction?: string) =>
-      createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        systemInstruction,
-        adapterFactory: () => ({
+      createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model],
+          systemInstruction
+        },
+        () => ({
           async *start(request) {
             requests.push(request);
             yield {
@@ -303,7 +309,7 @@ describe('Contextual prompt state', () => {
             yield { type: 'completed' as const, reason: 'completed' as const };
           }
         })
-      });
+      );
     let agent = await create('HOST_A');
     let id = '';
     try {
@@ -336,7 +342,7 @@ describe('Contextual prompt state', () => {
       }
       expect(
         await readFile(
-          join(home, '.mar', 'agent', 'sessions', id, 'context-world-state.json'),
+          join(await activeSessionDirectory(home, id), 'context-world-state.json'),
           'utf8'
         )
       ).toContain('HOST_A');

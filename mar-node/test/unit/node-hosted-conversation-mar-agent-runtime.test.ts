@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  HostDescription,
-  MarAgentEvent,
-  MarAgentHost,
-  MarAgentSession
-} from '../../../mar-agent/src/index.js';
-import { MarAgentError } from '../../../mar-agent/src/index.js';
+import type { HostDescription, AgentHost } from '../../../mar-agent/src/host.js';
+import type { AgentEvent, AgentSession } from '../../../mar-agent/src/index.js';
+import { AgentError } from '../../../mar-agent/src/index.js';
 import {
   conversationTurnSchema,
   type MarAgentRuntimeModelConfiguration
@@ -74,7 +70,7 @@ describe('MAR Agent hosted conversation runtime', () => {
       list: listCatalog,
       close: closeCatalog
     }));
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     const runtime = new MarAgentHostedConversationRuntime({
       createAgent: createAgent as never,
       createHost,
@@ -489,7 +485,7 @@ describe('MAR Agent hosted conversation runtime', () => {
       createHost: vi.fn() as never,
       openCatalog: vi.fn(async () => ({
         rollback: vi.fn(async () => {
-          throw new MarAgentError(
+          throw new AgentError(
             'MAR_AGENT_ROLLBACK_TARGET_INVALID',
             'Session rollback target was not found.'
           );
@@ -859,8 +855,8 @@ const model: MarAgentRuntimeModelConfiguration = {
 };
 
 function agent(overrides: {
-  readonly createSession?: () => Promise<MarAgentSession>;
-  readonly openSession?: () => Promise<MarAgentSession>;
+  readonly createSession?: () => Promise<AgentSession>;
+  readonly openSession?: () => Promise<AgentSession>;
 }) {
   return {
     createSession: vi.fn(overrides.createSession),
@@ -881,7 +877,7 @@ function agent(overrides: {
   };
 }
 
-function session(id: string, handle: ReturnType<typeof execution>): MarAgentSession {
+function session(id: string, handle: ReturnType<typeof execution>): AgentSession {
   return {
     id,
     run: vi.fn(() => handle),
@@ -893,7 +889,7 @@ function session(id: string, handle: ReturnType<typeof execution>): MarAgentSess
 }
 
 function execution(
-  events: MarAgentEvent[] = [
+  events: AgentEvent[] = [
     {
       eventId: 'event-1',
       sequence: 1,
@@ -916,7 +912,7 @@ function execution(
     readonly after: number;
     readonly promise: Promise<void>;
   },
-  remainingEvents: MarAgentEvent[] = []
+  remainingEvents: AgentEvent[] = []
 ) {
   let completed = false;
   return {
@@ -969,7 +965,7 @@ function historyEntries(index: number) {
   ];
 }
 
-function generatedImageEvents(): MarAgentEvent[] {
+function generatedImageEvents(): AgentEvent[] {
   return [
     {
       eventId: 'event-image-start',
@@ -1028,7 +1024,7 @@ function generatedImageEvents(): MarAgentEvent[] {
   ];
 }
 
-function host(input: HostedLocalAgentHostInput): MarAgentHost {
+function host(input: HostedLocalAgentHostInput): AgentHost {
   return {
     describe: vi.fn(async (): Promise<HostDescription> => ({
       apiVersion: '1.0',

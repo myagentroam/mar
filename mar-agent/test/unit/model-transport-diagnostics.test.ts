@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   SecretValue,
   generateModelText,
-  testMarAgentModelTransport,
-  type MarAgentModelConfiguration
+  testAgentModelTransport,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { parseSse } from '../../src/agent-core/model/sse.js';
-import { modelCredentialSensitiveValues } from '../../src/agent-core/model/runtime-credential.js';
+import { parseSse } from '../../src/model/sse.js';
+import { modelCredentialSensitiveValues } from '../../src/model/runtime-credential.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -23,7 +23,7 @@ afterEach(async () => {
 });
 
 async function fixture(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   body: string,
   status = 426,
   onRequest = () => {}
@@ -57,7 +57,7 @@ async function fixture(
     hostedWebSearch: false,
     responsesPreviousResponseId: false,
     enabled: true
-  } satisfies MarAgentModelConfiguration;
+  } satisfies AgentModelConfiguration;
 }
 
 describe('Model transport HTTP diagnostics', () => {
@@ -114,10 +114,7 @@ describe('Model transport HTTP diagnostics', () => {
       close: async () => undefined
     };
     await expect(
-      testMarAgentModelTransport(
-        { ...configuration, credentialProvider },
-        AbortSignal.timeout(5000)
-      )
+      testAgentModelTransport({ ...configuration, credentialProvider }, AbortSignal.timeout(5000))
     ).rejects.toMatchObject({
       message: 'MAR_AGENT_MODEL_PROTOCOL_ERROR: Rejected [REDACTED] and [REDACTED]',
       details: { body: '{"error":"Rejected [REDACTED] and [REDACTED]"}' }
@@ -158,7 +155,7 @@ describe('Model transport HTTP diagnostics', () => {
       const body = JSON.stringify({ error: 'Your Grok CLI version is outdated.' });
       const configuration = await fixture(protocol, body);
       await expect(
-        testMarAgentModelTransport(configuration, AbortSignal.timeout(5000))
+        testAgentModelTransport(configuration, AbortSignal.timeout(5000))
       ).rejects.toMatchObject({
         message: 'MAR_AGENT_MODEL_PROTOCOL_ERROR: Your Grok CLI version is outdated.',
         details: {
@@ -182,7 +179,7 @@ describe('Model transport HTTP diagnostics', () => {
         })
       );
       try {
-        await testMarAgentModelTransport(configuration, AbortSignal.timeout(5000));
+        await testAgentModelTransport(configuration, AbortSignal.timeout(5000));
         expect.fail('Expected transport failure');
       } catch (error) {
         const failure = error as { message: string; details: Record<string, unknown> };

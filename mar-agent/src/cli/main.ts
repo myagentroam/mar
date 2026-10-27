@@ -3,26 +3,21 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
-import { describeMarAgentError, MarAgentError } from '../agent-core/error.js';
-import { LocalAgentHost } from '../agent-core/host/local-agent-host.js';
-import { AnthropicMessagesAdapter } from '../agent-core/model/anthropic-messages.js';
+import { describeAgentError } from '../error.js';
+import { LocalAgentHost } from '../host.js';
+import { readModelCatalog, writeModelCatalog, type CliModelConfiguration } from './catalog-file.js';
 import {
-  readModelCatalog,
-  writeModelCatalog,
-  type CliModelConfiguration
-} from '../agent-core/model/catalog-file.js';
-import {
-  marAgentReasoningEffortSchema,
+  AgentError,
+  createAgent,
+  agentReasoningEffortSchema,
   resolveModelDefaultReasoningEffort,
   SecretValue,
-  type MarAgentModelConfiguration,
-  type MarAgentReasoningEffort
-} from '../agent-core/model/configuration.js';
-import { OpenAiResponsesAdapter } from '../agent-core/model/openai-responses.js';
-import { DEFAULT_COMPACTION_FOCUS } from '../agent-core/runtime/compaction/history.js';
-import type { RunInput } from '../agent-core/runtime/contracts.js';
-import { createMarAgent } from '../agent-core/sdk/agent.js';
-import type { ExecutionHandle } from '../agent-core/sdk/types.js';
+  testAgentModelTransport,
+  type RunInput,
+  type ExecutionHandle,
+  type AgentModelConfiguration,
+  type AgentReasoningEffort
+} from '../index.js';
 import { CodexAuthFileCredentialProvider } from './codex-auth-file.js';
 import { generateSessionTitle } from '../shared/auto-title.js';
 
@@ -40,10 +35,9 @@ function takeOption(arguments_: string[], name: string) {
   const index = arguments_.indexOf(name);
   if (index < 0) return undefined;
   if (arguments_.indexOf(name, index + 1) >= 0)
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} cannot be repeated.`);
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} cannot be repeated.`);
   const value = arguments_[index + 1];
-  if (!value)
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} requires a value.`);
+  if (!value) throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} requires a value.`);
   arguments_.splice(index, 2);
   return value;
 }
@@ -61,7 +55,7 @@ function booleanFlag(arguments_: string[], enabled: string, disabled: string, fa
   const on = takeFlag(arguments_, enabled);
   const off = takeFlag(arguments_, disabled);
   if (on && off)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       `${enabled} and ${disabled} cannot be combined.`
     );
@@ -70,15 +64,12 @@ function booleanFlag(arguments_: string[], enabled: string, disabled: string, fa
 
 async function readApiKey() {
   if (stdin.isTTY)
-    throw new MarAgentError(
-      'MAR_AGENT_CLI_ARGUMENT_INVALID',
-      '--api-key-stdin requires piped stdin.'
-    );
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--api-key-stdin requires piped stdin.');
   stdin.setEncoding('utf8');
   let value = '';
   for await (const chunk of stdin) value += chunk;
   if (!value.trim())
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'API key stdin was empty.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'API key stdin was empty.');
   return value.trim();
 }
 
@@ -91,12 +82,12 @@ async function modelsCommand(
     arguments_.includes('--high-density-compaction') ||
     arguments_.includes('--no-high-density-compaction')
   )
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       'High-density compaction is no longer a model option.'
     );
   if (arguments_.includes('--responses-encoding'))
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       'Responses encoding is no longer configurable.'
     );
@@ -110,12 +101,12 @@ async function modelsCommand(
     return;
   }
   const id = arguments_[2];
-  if (!id) throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Model id is required.');
+  if (!id) throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Model id is required.');
   const existing = catalog.models.find((model) => model.id === id);
   if (action === 'remove') {
-    if (!existing) throw new MarAgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
+    if (!existing) throw new AgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
     if (!takeFlag(arguments_, '--yes') && !stdin.isTTY)
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_CLI_ARGUMENT_INVALID',
         'Non-interactive removal requires --yes.'
       );
@@ -129,20 +120,15 @@ async function modelsCommand(
     return;
   }
   if (action === 'test') {
-    if (!existing) throw new MarAgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
+    if (!existing) throw new AgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
     assertExternalCredentialAvailable(existing, codexAuthFile);
     const runtime = runtimeModels([existing], codexAuthFile);
-    const adapter =
-      existing.protocol === 'OPENAI_RESPONSES'
-        ? new OpenAiResponsesAdapter(runtime.models[0]!)
-        : new AnthropicMessagesAdapter(runtime.models[0]!);
     try {
-      let response = '';
-      for await (const event of adapter.start(
-        { system: 'Reply OK.', messages: [{ role: 'user', content: 'Reply OK.' }], tools: [] },
-        AbortSignal.timeout(30_000)
-      ))
-        if (event.type === 'text.completed') response = event.text;
+      const { response } = await testAgentModelTransport(
+        runtime.models[0]!,
+        AbortSignal.timeout(30_000),
+        { system: 'Reply OK.', prompt: 'Reply OK.' }
+      );
       stdout.write(
         `${JSON.stringify({ success: true, modelId: id, response: response.slice(0, 80) })}\n`
       );
@@ -152,24 +138,24 @@ async function modelsCommand(
     }
   }
   if (action !== 'add' && action !== 'edit')
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Unknown model command.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Unknown model command.');
   if (action === 'add' && existing)
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Model id already exists.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Model id already exists.');
   if (action === 'edit' && !existing)
-    throw new MarAgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
+    throw new AgentError('MAR_AGENT_MODEL_NOT_FOUND', 'Model was not found.');
   const option = (name: string, fallback?: string) => takeOption(arguments_, name) ?? fallback;
   const integer = (name: string, fallback: number) => {
     const raw = takeOption(arguments_, name);
     const value = raw === undefined ? fallback : Number(raw);
     if (!Number.isSafeInteger(value) || value <= 0)
-      throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} is invalid.`);
+      throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} is invalid.`);
     return value;
   };
   const protocol = option('--protocol', existing?.protocol ?? 'ANTHROPIC_MESSAGES');
   if (protocol !== 'OPENAI_RESPONSES' && protocol !== 'ANTHROPIC_MESSAGES')
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--protocol is invalid.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--protocol is invalid.');
   const required = (value: string | undefined, name: string) => {
-    if (!value) throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} is required.`);
+    if (!value) throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${name} is required.`);
     return value;
   };
   const credential =
@@ -178,7 +164,7 @@ async function modelsCommand(
       existing?.credentialSource === 'CODEX_AUTH_FILE' ? 'codex-auth-file' : 'api-key'
     ) ?? 'api-key';
   if (credential !== 'api-key' && credential !== 'codex-auth-file')
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--credential is invalid.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--credential is invalid.');
   const hasFastModeOption =
     arguments_.includes('--fast-mode') || arguments_.includes('--no-fast-mode');
   const fastMode = booleanFlag(
@@ -188,10 +174,10 @@ async function modelsCommand(
     credential === 'codex-auth-file' ? (existing?.fastMode ?? false) : false
   );
   if (hasFastModeOption && (protocol !== 'OPENAI_RESPONSES' || credential !== 'codex-auth-file'))
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--fast-mode requires Codex.');
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--fast-mode requires Codex.');
   const readsApiKey = takeFlag(arguments_, '--api-key-stdin');
   if (credential === 'codex-auth-file' && readsApiKey)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       '--api-key-stdin cannot be combined with an external credential.'
     );
@@ -281,21 +267,21 @@ async function modelsCommand(
   });
 }
 
-function parseReasoningEffort(value: string, optionName: string): MarAgentReasoningEffort {
-  const parsed = marAgentReasoningEffortSchema.safeParse(value.trim());
+function parseReasoningEffort(value: string, optionName: string): AgentReasoningEffort {
+  const parsed = agentReasoningEffortSchema.safeParse(value.trim());
   if (!parsed.success)
-    throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${optionName} is invalid.`);
+    throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', `${optionName} is invalid.`);
   return parsed.data;
 }
 
 function parseResponsesTransport(
   value: string | undefined,
-  protocol: MarAgentModelConfiguration['protocol'],
-  existing: MarAgentModelConfiguration['responsesTransport']
-): MarAgentModelConfiguration['responsesTransport'] {
+  protocol: AgentModelConfiguration['protocol'],
+  existing: AgentModelConfiguration['responsesTransport']
+): AgentModelConfiguration['responsesTransport'] {
   if (protocol !== 'OPENAI_RESPONSES') {
     if (value !== undefined)
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_CLI_ARGUMENT_INVALID',
         '--responses-transport requires OPENAI_RESPONSES.'
       );
@@ -307,7 +293,7 @@ function parseResponsesTransport(
   if (selected === 'http2') return { transport: 'HTTP', httpVersion: '2' };
   if (selected === 'http1' || selected === 'http1.1')
     return { transport: 'HTTP', httpVersion: '1.1' };
-  throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--responses-transport is invalid.');
+  throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', '--responses-transport is invalid.');
 }
 
 async function main() {
@@ -337,13 +323,13 @@ async function main() {
     permissionModeOption !== 'auto' &&
     permissionModeOption !== 'full-access'
   )
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       '--permission-mode must be auto or full-access.'
     );
   const permissionMode = permissionModeOption as RunInput['permissionMode'];
   if (legacyAccess !== undefined && legacyAccess !== 'full-access')
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       'The deprecated --access option only accepts full-access.'
     );
@@ -354,7 +340,7 @@ async function main() {
   );
   if (selectedModel !== undefined) assertExternalCredentialAvailable(selectedModel, codexAuthFile);
   if (reasoningEffort && selectedModel && !selectedModel.reasoningEfforts.includes(reasoningEffort))
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_CLI_ARGUMENT_INVALID',
       `Reasoning effort "${reasoningEffort}" is not supported by model "${selectedModel.id}".`
     );
@@ -370,7 +356,7 @@ async function main() {
     workspace,
     question: async (request) => {
       if (!stdin.isTTY)
-        throw new MarAgentError(
+        throw new AgentError(
           'MAR_AGENT_USER_INPUT_UNAVAILABLE',
           'Interactive input is unavailable.'
         );
@@ -386,7 +372,7 @@ async function main() {
     }
   });
   const runtime = runtimeModels(catalog.models, codexAuthFile);
-  const agent = await createMarAgent({
+  const agent = await createAgent({
     mode: 'normal',
     host,
     models: runtime.models,
@@ -401,7 +387,7 @@ async function main() {
     }
     if (command === 'sessions' && arguments_[1] === 'delete' && arguments_[2]) {
       if (!takeFlag(arguments_, '--yes') && !stdin.isTTY)
-        throw new MarAgentError(
+        throw new AgentError(
           'MAR_AGENT_CLI_ARGUMENT_INVALID',
           'Non-interactive deletion requires --yes.'
         );
@@ -409,11 +395,11 @@ async function main() {
       return;
     }
     if (command === 'sessions')
-      throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Unknown sessions command.');
+      throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Unknown sessions command.');
     let resumeId = command === 'resume' ? arguments_[1] : undefined;
     if (command === 'resume' && !resumeId) {
       if (!stdin.isTTY)
-        throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'resume requires a session id.');
+        throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'resume requires a session id.');
       const listed = (await agent.listSessions()) as {
         sessions?: { id: string; title: string; lastActivityAt: string }[];
       };
@@ -421,7 +407,7 @@ async function main() {
         stdout.write(`${item.id}\t${item.title}\t${item.lastActivityAt}\n`);
       resumeId = (await requireTerminal().question('Session ID: ')).trim();
       if (!resumeId)
-        throw new MarAgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Session id is required.');
+        throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Session id is required.');
     }
     const session = resumeId
       ? await agent.openSession(resumeId)
@@ -446,12 +432,12 @@ async function main() {
         if (interactive) prompt = await requireTerminal().question('> ');
         if (!prompt.trim()) break;
         const invocation = parseExecutionInvocation(prompt);
-        const runInput: RunInput = {
+        const executionOptions = {
           ...(permissionMode === undefined ? {} : { permissionMode }),
-          prompt: invocation.prompt,
           ...(modelId === undefined ? {} : { modelId }),
           ...(reasoningEffort === undefined ? {} : { reasoningEffort })
         };
+        const runInput: RunInput = { ...executionOptions, prompt: invocation.prompt };
         const metadata =
           !resumeId && invocation.mode !== 'compact'
             ? await agent.getSession(session.id).catch(() => undefined)
@@ -462,7 +448,7 @@ async function main() {
           invocation.mode === 'plan'
             ? session.plan(runInput)
             : invocation.mode === 'compact'
-              ? session.compact(runInput)
+              ? session.compact(invocation.prompt ? runInput : executionOptions)
               : session.run(runInput);
         activeHandle = handle;
         for await (const event of handle) {
@@ -519,7 +505,7 @@ function runtimeModels(
   models: readonly CliModelConfiguration[],
   codexAuthFile: string | undefined
 ): {
-  readonly models: readonly MarAgentModelConfiguration[];
+  readonly models: readonly AgentModelConfiguration[];
   readonly providers: readonly CodexAuthFileCredentialProvider[];
 } {
   const provider =
@@ -550,7 +536,7 @@ function assertExternalCredentialAvailable(
   codexAuthFile: string | undefined
 ): void {
   if (model.credentialSource === 'CODEX_AUTH_FILE' && codexAuthFile === undefined)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_MODEL_AUTH_FAILED',
       'Codex auth file is required for the selected model.'
     );
@@ -584,12 +570,12 @@ function parseExecutionInvocation(input: string): {
       argument ||
       (mode === 'plan'
         ? 'Investigate the current objective, resolve discoverable uncertainty, and produce an executable implementation and verification plan without claiming the work is complete.'
-        : DEFAULT_COMPACTION_FOCUS)
+        : '')
   };
 }
 
 main().catch((error: unknown) => {
-  const diagnostic = describeMarAgentError(error, 'MAR_AGENT_CLI_FAILED', 'CLI command failed.');
+  const diagnostic = describeAgentError(error, 'MAR_AGENT_CLI_FAILED', 'CLI command failed.');
   process.stderr.write(`${diagnostic.code}: ${diagnostic.message}\n`);
   process.exitCode = cliExitCode(diagnostic.code);
 });

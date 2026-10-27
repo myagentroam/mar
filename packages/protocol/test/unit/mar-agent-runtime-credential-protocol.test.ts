@@ -397,6 +397,55 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     ).toBe(false);
   });
 
+  it.each([
+    { transport: 'WEBSOCKET', future: 'transport-secret' },
+    { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' }
+  ])('projects future Responses options for %j', (responsesTransport) => {
+    const parsed = marAgentRuntimeModelConfigurationSchema.parse({
+      ...baseModel,
+      apiKey: 'key',
+      responsesTransport,
+      responsesOptionalParameters: {
+        reasoningEffort: true,
+        reasoningSummary: false,
+        textVerbosity: true,
+        promptCacheKey: false,
+        future: 'parameter-secret'
+      }
+    });
+    expect(parsed.responsesTransport).not.toHaveProperty('future');
+    expect(parsed.responsesOptionalParameters).toEqual({
+      reasoningEffort: true,
+      reasoningSummary: false,
+      textVerbosity: true,
+      promptCacheKey: false
+    });
+    expect(JSON.stringify(parsed)).not.toMatch(/transport-secret|parameter-secret/);
+  });
+
+  it.each([
+    { responsesTransport: { transport: 'UNKNOWN' } },
+    { responsesTransport: { transport: 'HTTP' } },
+    { responsesTransport: { transport: 'HTTP', httpVersion: '3' } },
+    { responsesOptionalParameters: { reasoningEffort: true } },
+    {
+      responsesOptionalParameters: {
+        reasoningEffort: 'yes',
+        reasoningSummary: false,
+        textVerbosity: true,
+        promptCacheKey: false
+      }
+    }
+  ])('rejects invalid known Responses options: %j', (override) => {
+    expect(
+      marAgentRuntimeModelConfigurationSchema.safeParse({
+        ...baseModel,
+        apiKey: 'key',
+        ...override
+      }).success
+    ).toBe(false);
+  });
+
   it('keeps runtime configuration compatible with legacy static keys and strict inline or ticket credentials', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({

@@ -1094,6 +1094,7 @@ export class NodeConnector {
       persist: (session, nativeSessionId) => {
         this.database?.saveNativeSessionMetadata({
           ...(session.parentSessionId == null ? {} : { parentSessionId: session.parentSessionId }),
+          initializeParent: session.externalSessionId === null,
           runner: session.runner,
           externalSessionId: nativeSessionId,
           workspaceId: session.workspaceId,

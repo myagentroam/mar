@@ -19,6 +19,26 @@ afterEach(() => {
 });
 
 describe('Session group tabs', () => {
+  it('activates a marker without selecting its group', () => {
+    const selections: SessionGroup[] = [];
+    const markers: SessionGroup[] = [];
+    const mounted = mountSessionGroupTestComponent(InteractiveSessionGroupTabs, {
+      modelValue: 'MAIN',
+      state: { MAIN: { running: 0, unread: false }, CHILD: { running: 1, unread: true } },
+      'onUpdate:modelValue': (group: SessionGroup) => selections.push(group),
+      onActivateMarker: (group: SessionGroup) => markers.push(group)
+    });
+    mountedApps.push(mounted.app);
+    const badge = mounted.container.findAll((node) =>
+      String(node.props.get('class')).includes('session-state-badge')
+    )[0];
+    const stopPropagation = vi.fn();
+    badge?.invoke('onClick', { stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(markers).toEqual(['CHILD']);
+    expect(selections).toEqual([]);
+  });
+
   it.each([
     { running: 3, unread: true, count: '3', label: true },
     { running: 3, unread: false, count: '3', label: false },

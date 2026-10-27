@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  MarAgentError,
+  AgentError,
   SecretValue,
-  createMarAgent,
+  createAgent,
   parseModelCatalog,
-  testMarAgentModelTransport,
-  type CreateMarAgentOptions
+  testAgentModelTransport,
+  type CreateAgentOptions
 } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { usesResponsesConfigurationUpdates } from '../../src/agent-core/model/configuration.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import {
+  normalizeRuntimeModelConfiguration,
+  resolveModelDefaultReasoningEffort,
+  usesResponsesConfigurationUpdates
+} from '../../src/model/configuration.js';
+import { prepareModelConfiguration } from '../../src/model/request-configuration.js';
 
 const model = {
   id: 'coding',
@@ -30,9 +35,9 @@ const model = {
 describe('public model boundary', () => {
   it('rejects custom adapter injection through the public factory', async () => {
     await expect(
-      createMarAgent({
+      createAgent({
         adapterFactory: () => ({})
-      } as unknown as CreateMarAgentOptions)
+      } as unknown as CreateAgentOptions)
     ).rejects.toMatchObject({ code: 'MAR_AGENT_MODEL_CONFIG_INVALID' });
   });
 
@@ -45,10 +50,15 @@ describe('public model boundary', () => {
         expect(receivedSignal).toBe(signal);
         expect(request.tools).toEqual([]);
         expect(request.allowTools).toBe(false);
+        yield { type: 'text.completed', itemId: 'first', text: 'first' };
+        yield { type: 'text.completed', itemId: 'last', text: '  final text\n' };
         yield { type: 'completed', reason: 'completed' };
       });
     try {
-      await expect(testMarAgentModelTransport(configuration, signal)).resolves.toBe(true);
+      await expect(testAgentModelTransport(configuration, signal)).resolves.toEqual({
+        completed: true,
+        response: '  final text\n'
+      });
       expect(start).toHaveBeenCalledTimes(1);
     } finally {
       start.mockRestore();
@@ -64,8 +74,8 @@ describe('public model boundary', () => {
       });
     try {
       await expect(
-        testMarAgentModelTransport(configuration, new AbortController().signal)
-      ).resolves.toBe(false);
+        testAgentModelTransport(configuration, new AbortController().signal)
+      ).resolves.toEqual({ completed: false, response: '' });
     } finally {
       start.mockRestore();
     }
@@ -94,14 +104,67 @@ describe('model catalog', () => {
     expect(catalog.defaultModelId).toBe('coding');
   });
 
-  it('rejects the removed high-density compaction model option', () => {
+  it.each([
+    { transport: 'HTTP', httpVersion: '2', futureTransportOption: 'transport-secret' },
+    { transport: 'WEBSOCKET', futureTransportOption: 'transport-secret' }
+  ])('strips unknown options without leaking them from %j', (responsesTransport) => {
+    const parsed = parseModelCatalog({
+      version: 1,
+      models: [
+        {
+          ...model,
+          protocol: 'OPENAI_RESPONSES',
+          highDensityCompaction: true,
+          futureModelOption: 'model-secret',
+          responsesConfigurationUpdates: true,
+          responsesTransport,
+          responsesOptionalParameters: {
+            reasoningEffort: true,
+            reasoningSummary: false,
+            textVerbosity: true,
+            promptCacheKey: false,
+            futureParameter: 'parameter-secret'
+          }
+        }
+      ]
+    }).models[0]!;
+    expect(parsed).not.toHaveProperty('highDensityCompaction');
+    expect(parsed).not.toHaveProperty('futureModelOption');
+    expect(parsed.responsesTransport).not.toHaveProperty('futureTransportOption');
+    expect(parsed.responsesOptionalParameters).toEqual({
+      reasoningEffort: true,
+      reasoningSummary: false,
+      textVerbosity: true,
+      promptCacheKey: false
+    });
+    expect(parsed.responsesConfigurationUpdates).toBe(true);
+    expect(JSON.stringify(parsed)).not.toMatch(/model-secret|transport-secret|parameter-secret/);
+  });
+
+  it.each([
+    { protocol: 'UNKNOWN' },
+    { protocol: 'OPENAI_RESPONSES', responsesTransport: { transport: 'QUIC' } },
+    { protocol: 'OPENAI_RESPONSES', responsesTransport: { transport: 'HTTP' } },
+    { protocol: 'OPENAI_RESPONSES', responsesTransport: { transport: 'HTTP', httpVersion: '3' } },
+    { protocol: 'OPENAI_RESPONSES', responsesConfigurationUpdates: 'yes' },
+    {
+      protocol: 'OPENAI_RESPONSES',
+      responsesOptionalParameters: {
+        reasoningEffort: 'yes',
+        reasoningSummary: false,
+        textVerbosity: true,
+        promptCacheKey: false
+      }
+    },
+    { protocol: 'OPENAI_RESPONSES', responsesOptionalParameters: { reasoningEffort: true } },
+    { credentialProvider: { acquire: () => {} } },
+    { credential: { type: 'CODEX_AUTH_FILE' } },
+    { modelId: undefined },
+    { baseUrl: 'https://user:pass@example.test' }
+  ])('still rejects invalid known fields and credential conflicts: %j', (overrides) => {
     expect(() =>
-      parseModelCatalog({
-        version: 1,
-        defaultModelId: 'coding',
-        models: [{ ...model, highDensityCompaction: true }]
-      })
-    ).toThrow('Model catalog is invalid.');
+      parseModelCatalog({ version: 1, models: [{ ...model, ...overrides }] })
+    ).toThrowError('MAR_AGENT_MODEL_CONFIG_INVALID');
   });
 
   it('accepts Fast mode only for Responses models', () => {
@@ -145,7 +208,7 @@ describe('model catalog', () => {
         version: 1,
         models: [model, { ...model, id: 'fast', name: 'coding', modelId: 'coding-flash' }]
       })
-    ).toThrowError(MarAgentError);
+    ).toThrowError(AgentError);
     expect(() =>
       parseModelCatalog({
         version: 1,
@@ -264,5 +327,109 @@ describe('model catalog', () => {
         models: [{ ...model, reasoningEfforts: [], defaultReasoningEffort: 'medium' }]
       }).models[0]?.defaultReasoningEffort
     ).toBe('medium');
+  });
+});
+
+describe('runtime model configuration', () => {
+  const provider = { acquire: vi.fn(), invalidate: vi.fn(), close: vi.fn() };
+  const runtimeModel = {
+    ...model,
+    protocol: 'OPENAI_RESPONSES',
+    apiKey: undefined,
+    credentialProvider: provider,
+    responsesTransport: { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' },
+    responsesOptionalParameters: {
+      reasoningEffort: true,
+      reasoningSummary: false,
+      textVerbosity: true,
+      promptCacheKey: false,
+      future: 'parameter-secret'
+    },
+    future: 'model-secret'
+  };
+
+  it('ignores the obsolete credential flag and enables native updates only by explicit capability', () => {
+    const obsolete = normalizeRuntimeModelConfiguration({ ...runtimeModel, codexCredential: true });
+    expect(obsolete).not.toHaveProperty('codexCredential');
+    expect(usesResponsesConfigurationUpdates(obsolete)).toBe(false);
+    const context = { baselineEffort: 'low' as const, messages: [] };
+    expect(prepareModelConfiguration(obsolete, 'high', context).updates).toEqual([]);
+
+    const enabled = normalizeRuntimeModelConfiguration({
+      ...runtimeModel,
+      codexCredential: false,
+      responsesConfigurationUpdates: true
+    });
+    expect(enabled).not.toHaveProperty('codexCredential');
+    expect(usesResponsesConfigurationUpdates(enabled)).toBe(true);
+    expect(prepareModelConfiguration(enabled, 'high', context).updates).toEqual([
+      expect.objectContaining({
+        item: { type: 'configuration_update', reasoning: { effort: 'high' } }
+      })
+    ]);
+  });
+
+  it('projects known fields while preserving the original credential object', () => {
+    const normalized = normalizeRuntimeModelConfiguration(runtimeModel);
+    expect(normalized.credentialProvider).toBe(provider);
+    expect(normalized.responsesTransport).toEqual({ transport: 'HTTP', httpVersion: '2' });
+    expect(normalized.responsesOptionalParameters).toEqual({
+      reasoningEffort: true,
+      reasoningSummary: false,
+      textVerbosity: true,
+      promptCacheKey: false
+    });
+    expect(normalized).not.toHaveProperty('future');
+    const key = new SecretValue('runtime-secret');
+    expect(
+      normalizeRuntimeModelConfiguration({
+        ...runtimeModel,
+        apiKey: key,
+        credentialProvider: undefined
+      }).apiKey
+    ).toBe(key);
+    expect(
+      normalizeRuntimeModelConfiguration({ ...runtimeModel, baseUrl: 'http://example.test' })
+        .baseUrl
+    ).toBe('http://example.test');
+  });
+
+  it.each([
+    { protocol: 'UNKNOWN' },
+    { responsesTransport: { transport: 'UNKNOWN' } },
+    { responsesTransport: { transport: 'HTTP' } },
+    { responsesOptionalParameters: { reasoningEffort: 'yes' } },
+    { enabled: 'yes' },
+    { modelId: undefined },
+    { credentialProvider: undefined },
+    { apiKey: new SecretValue('conflict') },
+    { credentialProvider: {} },
+    { credential: { type: 'CODEX_AUTH_FILE' } }
+  ])('rejects invalid runtime models: %j', (overrides) => {
+    expect(() =>
+      normalizeRuntimeModelConfiguration({ ...runtimeModel, ...overrides })
+    ).toThrowError('MAR_AGENT_MODEL_CONFIG_INVALID');
+  });
+
+  it('retains the direct SDK defaults for omitted optional settings', () => {
+    const normalized = normalizeRuntimeModelConfiguration({
+      ...runtimeModel,
+      defaultReasoningEffort: undefined,
+      conversationModel: undefined,
+      responsesPreviousResponseId: undefined
+    });
+    expect(normalized.defaultReasoningEffort).toBeUndefined();
+    expect(normalized.conversationModel).toBe(true);
+    expect(normalized.responsesPreviousResponseId).toBe(false);
+    expect(resolveModelDefaultReasoningEffort(normalized)).toBe('medium');
+    expect(
+      resolveModelDefaultReasoningEffort(
+        normalizeRuntimeModelConfiguration({
+          ...runtimeModel,
+          reasoningEfforts: ['low'],
+          defaultReasoningEffort: 'high'
+        })
+      )
+    ).toBe('low');
   });
 });

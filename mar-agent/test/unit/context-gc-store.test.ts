@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
 import {
   contextGcCheckpointIntervalEligible,
   normalizeContextGcReplacements,
@@ -10,13 +10,14 @@ import {
   type ContextGcCheckpointDraft,
   type ContextGcReplacement,
   type ContextGcMetrics
-} from '../../src/agent-core/session/context-gc-checkpoint.js';
+} from '../../src/session/context-gc-checkpoint.js';
 import {
   contextGcApplyPatchInputReplacement,
   contextGcStaleReadReplacement
-} from '../../src/agent-core/session/context-gc-replacements.js';
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/session/context-gc-replacements.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 
@@ -389,7 +390,7 @@ describe('context GC checkpoint store', () => {
     const { home, store, session, draft } = await createFixture('Changed source');
     try {
       const records = (await store.readExecutionState(session.id)).contextRecords;
-      const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+      const path = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
       const contents = await readFile(path, 'utf8');
       await writeFile(
         path,

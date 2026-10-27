@@ -2,13 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { createSubagentBackend } from '../../src/agent-core/sdk/subagent-backend.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { createSubagentBackend } from '../../src/sdk/subagent-backend.js';
 import {
   SubagentSessionController,
   type SubagentParentExecution
-} from '../../src/agent-core/subagent/session-controller.js';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
+} from '../../src/subagent/session-controller.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
 
 /** Disk-backed history keeps benchmark fixtures from retaining the released result bodies. */
 export async function residencyFixture(bytes = 128, durable = true) {
@@ -56,7 +56,7 @@ export async function residencyFixture(bytes = 128, durable = true) {
         async *[Symbol.asyncIterator]() {
           const event = async (
             payload: Omit<
-              MarAgentEvent,
+              AgentEvent,
               'eventId' | 'sequence' | 'timestamp' | 'sessionId' | 'executionId' | 'turnId'
             >
           ) => {
@@ -68,7 +68,7 @@ export async function residencyFixture(bytes = 128, durable = true) {
               sessionId: input.sessionId,
               executionId,
               turnId: input.turnId
-            } as MarAgentEvent;
+            } as AgentEvent;
             if (durable)
               await store.append(input.sessionId, {
                 type: full.type,
@@ -96,27 +96,27 @@ export async function residencyFixture(bytes = 128, durable = true) {
             });
           }
           input.delivery?.applied();
-          yield await event({ type: 'execution.started', mode: 'run' } as MarAgentEvent);
+          yield await event({ type: 'execution.started', mode: 'run' } as AgentEvent);
           yield await event({
             type: 'tool.completed',
             toolName: 'read',
             callId: 'read',
             summary: 'read',
             data: { results: [{ path: 'source.ts', startLine: 2, endLine: 9 }] }
-          } as MarAgentEvent);
+          } as AgentEvent);
           yield await event({
             type: 'tool.completed',
             toolName: 'exec',
             callId: 'exec',
             summary: 'tests passed'
-          } as MarAgentEvent);
+          } as AgentEvent);
           yield await event({
             type: 'message.completed',
             itemId: 'answer',
             phase: 'final_answer',
             text
-          } as MarAgentEvent);
-          yield await event({ type: 'execution.completed' } as MarAgentEvent);
+          } as AgentEvent);
+          yield await event({ type: 'execution.completed' } as AgentEvent);
           persisted = durable;
         },
         result: async () => ({ executionId, status: 'completed' as const, finalAnswer: text }),

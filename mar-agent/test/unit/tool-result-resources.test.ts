@@ -1,15 +1,32 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { ApplyPatchTool } from '../../src/agent-core/tools/local/apply-patch.js';
+import { describe, expect, it, vi } from 'vitest';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { readToolResultResource } from '../../src/session/tool-result-resources.js';
+import { ApplyPatchTool } from '../../src/tools/local/apply-patch.js';
 import {
   withToolResultExtensions,
   failedToolResultExtensions
-} from '../../src/agent-core/tools/result-extensions.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+} from '../../src/tools/result-extensions.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+
+const resourceGate = vi.hoisted(() => ({ path: '', entered: () => {}, resume: Promise.resolve() }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...fs,
+    readFile: async (...args: Parameters<typeof fs.readFile>) => {
+      if (args[0] === resourceGate.path) {
+        resourceGate.entered();
+        await resourceGate.resume;
+      }
+      return fs.readFile(...args);
+    }
+  };
+});
 
 describe('immutable tool resource storage', () => {
   async function fixture(
@@ -22,7 +39,7 @@ describe('immutable tool resource storage', () => {
       await run(
         store,
         session.id,
-        join(home, '.mar', 'agent', 'sessions', session.id, 'tool_results')
+        join(await activeSessionDirectory(home, session.id), 'tool_results')
       );
     } finally {
       await store.close();
@@ -48,6 +65,53 @@ describe('immutable tool resource storage', () => {
         ]
       }
     ]
+  });
+
+  it('checks the owning record once while reading a resource', async () => {
+    await fixture(async (store, sessionId, folder) => {
+      const diff = await store.writeToolResultResource(sessionId, 'one record lookup');
+      const record = await store.append(sessionId, {
+        type: 'tool.completed',
+        payload: payload(diff)
+      });
+      const readRecord = vi.fn(async () => record);
+      const page = await readToolResultResource(
+        join(folder, '..'),
+        sessionId,
+        { resourceRef: diff.resourceRef },
+        readRecord
+      );
+      expect(page.content).toBe('one record lookup');
+      expect(readRecord).toHaveBeenCalledTimes(1);
+      expect(readRecord).toHaveBeenCalledWith(record.sequence);
+    });
+  });
+
+  it('holds the Store read pin across resource bytes while clear waits', async () => {
+    await fixture(async (store, sessionId, folder) => {
+      const diff = await store.writeToolResultResource(sessionId, 'read before clear');
+      await store.append(sessionId, { type: 'tool.completed', payload: payload(diff) });
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      resourceGate.path = join(folder, `${diff.resourceRef}.diff`);
+      resourceGate.entered = entered.resolve;
+      resourceGate.resume = resume.promise;
+      const reading = store.readToolResultResource(sessionId, { resourceRef: diff.resourceRef });
+      let clearing: Promise<unknown> | undefined;
+      try {
+        await entered.promise;
+        clearing = store.clearSession(sessionId);
+        const gate = join(folder, '../../../..', '.read-pins', `${sessionId}.lock`);
+        await vi.waitFor(async () => expect((await stat(gate)).isFile()).toBe(true));
+        resume.resolve();
+        expect((await reading).content).toBe('read before clear');
+        await clearing;
+      } finally {
+        resourceGate.path = '';
+        resume.resolve();
+        await Promise.allSettled([reading, ...(clearing ? [clearing] : [])]);
+      }
+    });
   });
 
   it('paginates UTF-8 without changing content, validates cursors and rejects cross-Session reads', async () => {

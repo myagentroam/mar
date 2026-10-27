@@ -2,8 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { openMarAgentSessionCatalog } from '../../src/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { openAgentSessionCatalog } from '../../src/index.js';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -16,7 +16,7 @@ async function fixture() {
   const store = await JsonlSessionStore.open(home);
   cleanups.push(() => store.close());
   const session = await store.createSession({ workspace: home });
-  const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+  const catalog = await openAgentSessionCatalog({ homeDirectory: home });
   cleanups.push(() => catalog.close());
   const append = (turnId: string, type: string, payload: Record<string, unknown>) =>
     store.append(session.id, { turnId, executionId: turnId, type, payload });

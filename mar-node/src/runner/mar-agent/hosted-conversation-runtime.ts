@@ -1,19 +1,21 @@
 import { createHash } from 'node:crypto';
 import {
   LocalAgentHost,
-  MarAgentError,
-  createMarAgent,
-  generateSessionTitle,
-  openMarAgentSessionCatalog,
-  type CreateMarAgentOptions,
   type LocalProcessExecutor,
-  type MarAgent,
-  type MarAgentEvent,
-  type MarAgentHistoryEntry,
-  type MarAgentHost,
-  type MarAgentSessionCatalog,
-  type ToolExecutionResult,
+  type AgentHost,
   type WorkspacePathMount
+} from '@myagentroam/agent/host';
+import {
+  AgentError,
+  createAgent,
+  generateSessionTitle,
+  openAgentSessionCatalog,
+  type CreateAgentOptions,
+  type Agent,
+  type AgentEvent,
+  type AgentSessionHistoryEntry,
+  type AgentSessionCatalog,
+  type ToolExecutionResult
 } from '@myagentroam/agent';
 import type { NodeAgentSession } from '../../database.js';
 import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
@@ -58,7 +60,7 @@ import {
 import type { WebFetchHandler } from '../../service/web-fetch-contracts.js';
 
 export interface HostedLocalAgentHostInput {
-  readonly publishModelResource?: MarAgentHost['publishModelResource'];
+  readonly publishModelResource?: AgentHost['publishModelResource'];
   readonly modelUsage?: import('@myagentroam/agent').ModelUsageObserver;
   readonly mode: 'node';
   readonly homeDirectory: string;
@@ -70,27 +72,27 @@ export interface HostedLocalAgentHostInput {
   readonly workspaceWritable: false;
   readonly pathMounts: readonly WorkspacePathMount[];
   readonly modelFactory?: Pick<MarAgentRuntimeModelFactory, 'create'>;
-  readonly mcpTools?: readonly import('@myagentroam/agent').ClientToolDefinition[];
+  readonly mcpTools?: readonly import('@myagentroam/agent/host').ClientToolDefinition[];
   readonly callMcp?: (
     call: { name: string; arguments: unknown },
     signal: AbortSignal
   ) => Promise<ToolExecutionResult>;
-  readonly extensions?: import('@myagentroam/agent').LocalAgentExecutionExtensions;
+  readonly extensions?: import('@myagentroam/agent/host').LocalAgentExecutionExtensions;
 }
 
 interface MarAgentHostedConversationRuntimeOptions {
   readonly publishModelResource?: (
-    image: Parameters<NonNullable<MarAgentHost['publishModelResource']>>[0],
-    context: Parameters<NonNullable<MarAgentHost['publishModelResource']>>[1] & {
+    image: Parameters<NonNullable<AgentHost['publishModelResource']>>[0],
+    context: Parameters<NonNullable<AgentHost['publishModelResource']>>[1] & {
       conversationId: string;
     }
-  ) => ReturnType<NonNullable<MarAgentHost['publishModelResource']>>;
-  readonly createAgent?: typeof createMarAgent;
+  ) => ReturnType<NonNullable<AgentHost['publishModelResource']>>;
+  readonly createAgent?: typeof createAgent;
   readonly generateTitle?: typeof generateSessionTitle;
-  readonly createHost?: (input: HostedLocalAgentHostInput) => MarAgentHost;
-  readonly openCatalog?: typeof openMarAgentSessionCatalog;
+  readonly createHost?: (input: HostedLocalAgentHostInput) => AgentHost;
+  readonly openCatalog?: typeof openAgentSessionCatalog;
   readonly now?: () => number;
-  readonly onEvent?: (conversationId: string, event: MarAgentEvent) => Promise<void> | void;
+  readonly onEvent?: (conversationId: string, event: AgentEvent) => Promise<void> | void;
   readonly webSearch?: (
     input: { query: string; maxResults: number },
     signal: AbortSignal
@@ -115,14 +117,14 @@ interface ActiveExecution {
  * boundaries. Conversation-scoped tmp and Session history may remain available to later Runs.
  */
 export class MarAgentHostedConversationRuntime implements HostedConversationRuntime {
-  readonly #createAgent: typeof createMarAgent;
+  readonly #createAgent: typeof createAgent;
   readonly #generateTitle: typeof generateSessionTitle;
-  readonly #createHost: (input: HostedLocalAgentHostInput) => MarAgentHost;
+  readonly #createHost: (input: HostedLocalAgentHostInput) => AgentHost;
   readonly #publishModelResource: MarAgentHostedConversationRuntimeOptions['publishModelResource'];
-  readonly #openCatalog: typeof openMarAgentSessionCatalog;
+  readonly #openCatalog: typeof openAgentSessionCatalog;
   readonly #now: () => number;
   readonly #onEvent:
-    ((conversationId: string, event: MarAgentEvent) => Promise<void> | void) | undefined;
+    ((conversationId: string, event: AgentEvent) => Promise<void> | void) | undefined;
   readonly #webSearch:
     | ((
         input: { query: string; maxResults: number },
@@ -142,10 +144,10 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
 
   constructor(options: MarAgentHostedConversationRuntimeOptions = {}) {
     this.#publishModelResource = options.publishModelResource;
-    this.#createAgent = options.createAgent ?? createMarAgent;
+    this.#createAgent = options.createAgent ?? createAgent;
     this.#generateTitle = options.generateTitle ?? generateSessionTitle;
     this.#createHost = options.createHost ?? ((input) => new LocalAgentHost(input));
-    this.#openCatalog = options.openCatalog ?? openMarAgentSessionCatalog;
+    this.#openCatalog = options.openCatalog ?? openAgentSessionCatalog;
     this.#now = options.now ?? Date.now;
     this.#onEvent = options.onEvent;
     this.#webSearch = options.webSearch;
@@ -204,7 +206,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         input.cursor === undefined
           ? undefined
           : decodeHostedHistoryCursor(input.cursor, input.sessionId);
-      let entries: MarAgentHistoryEntry[] = [];
+      let entries: AgentSessionHistoryEntry[] = [];
       let turns = projectMarAgentHistory(historySession(input), entries);
       do {
         const page = await catalog.history(input.sessionId, {
@@ -252,7 +254,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
       );
       return { lastActivityAt: Date.parse(rolledBack.lastActivityAt) };
     } catch (error) {
-      if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });
+      if (error instanceof AgentError) throw new Error(error.code, { cause: error });
       throw error;
     } finally {
       await catalog.close().catch(() => undefined);
@@ -267,8 +269,8 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     const titleController = new AbortController();
     let titleTask: Promise<string | undefined> | undefined;
     const metadata = await agent.getSession(input.sessionId).catch(() => undefined);
-    let execution: ReturnType<Awaited<ReturnType<MarAgent['openSession']>>['run']>;
-    let session: Awaited<ReturnType<MarAgent['openSession']>>;
+    let execution: ReturnType<Awaited<ReturnType<Agent['openSession']>>['run']>;
+    let session: Awaited<ReturnType<Agent['openSession']>>;
     try {
       session = await agent.openSession(input.sessionId);
       execution = session.run({
@@ -448,7 +450,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
   async #createRuntime(
     input: HostedConversationRuntimeSessionInput | HostedConversationRuntimeRunInput
   ): Promise<{
-    readonly agent: MarAgent;
+    readonly agent: Agent;
     readonly mcp?: MarAgentMcpClientPool;
     readonly closeImages: () => Promise<void>;
     readonly models: readonly MarAgentRuntimeModel[];
@@ -468,7 +470,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
             }
           })
         : undefined;
-    let host: MarAgentHost;
+    let host: AgentHost;
     let models: MarAgentRuntimeModel[] = [];
     const compact = 'compact' in input ? input.compact : undefined;
     const compactState: MarAgentCompactState = { revision: 0 };
@@ -537,7 +539,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
               callMcp: (
                 call: { name: string; arguments: unknown },
                 signal: AbortSignal,
-                context?: import('@myagentroam/agent').McpToolCallContext
+                context?: import('@myagentroam/agent/host').McpToolCallContext
               ) => mcp.call(call.name, call.arguments, signal, context?.expectedTool)
             })
       });
@@ -552,13 +554,13 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
       throw error;
     }
     try {
-      const options: CreateMarAgentOptions = {
+      const options: CreateAgentOptions = {
         mode: 'node',
         host,
         models: sdkModelConfigurations(
           models.filter((model) => input.models.some((candidate) => candidate.id === model.id))
         ),
-        runtimeExtensions: marAgentCompactExtensionSource(compactState),
+        extensions: marAgentCompactExtensionSource(compactState),
         defaultModelId: 'defaultModelId' in input ? input.defaultModelId : input.modelId,
         workspaceMapping: {
           logicalPath: '/workspace',
@@ -611,7 +613,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
       HostedConversationRuntimeHistoryInput,
       'conversationId' | 'sessionId' | 'homeDirectory'
     >,
-    entry: Extract<MarAgentHistoryEntry, { readonly kind: 'user' }>
+    entry: Extract<AgentSessionHistoryEntry, { readonly kind: 'user' }>
   ): readonly (Record<string, unknown> | undefined)[] {
     if (
       entry.sessionId !== input.sessionId ||
@@ -660,7 +662,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     imageIndex: number,
     expected: { readonly name: string; readonly mimeType: string; readonly byteSize: number }
   ) {
-    let catalog: MarAgentSessionCatalog | undefined;
+    let catalog: AgentSessionCatalog | undefined;
     try {
       catalog = await this.#openCatalog({ homeDirectory });
       const image = await catalog.readImage(sessionId, { sequence, imageIndex });
@@ -693,7 +695,7 @@ function historySession(input: HostedConversationRuntimeHistoryInput): NodeAgent
   } as NodeAgentSession;
 }
 
-function historyEntryTurnId(entry: MarAgentHistoryEntry): string | undefined {
+function historyEntryTurnId(entry: AgentSessionHistoryEntry): string | undefined {
   return entry.kind === 'user' ? entry.turnId : entry.event.turnId;
 }
 
@@ -727,7 +729,7 @@ function decodeHostedHistoryCursor(cursor: string, sessionId: string): string {
 
 function projectHostedEvent(
   normalizer: MarAgentConversationNormalizer,
-  event: MarAgentEvent,
+  event: AgentEvent,
   userMessage: {
     readonly clientMessageId: string;
     readonly prompt: string;

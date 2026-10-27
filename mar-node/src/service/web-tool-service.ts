@@ -1,4 +1,4 @@
-import { MarAgentError, type ToolExecutionResult } from '@myagentroam/agent';
+import { AgentError, type ToolExecutionResult } from '@myagentroam/agent';
 import type { NodeConfig } from '../config.js';
 import { readWebSearchError } from './web-search-error.js';
 import { WebFetchService } from './web-fetch-service.js';
@@ -29,10 +29,7 @@ export class WebToolService {
     });
     const parsed = webFetchResultSchema.safeParse(result);
     if (!parsed.success)
-      throw new MarAgentError(
-        'MAR_AGENT_WEB_FETCH_FAILED',
-        'Web fetch returned an invalid result.'
-      );
+      throw new AgentError('MAR_AGENT_WEB_FETCH_FAILED', 'Web fetch returned an invalid result.');
     return parsed.data;
   };
 
@@ -70,14 +67,14 @@ export class WebToolService {
       if (content === undefined) throw invalidResult();
       return { content, data: result };
     } catch (error) {
-      if (error instanceof MarAgentError || signal.aborted) throw error;
-      throw new MarAgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
+      if (error instanceof AgentError || signal.aborted) throw error;
+      throw new AgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
         cause: error
       });
     }
   }
 }
 
-function invalidResult(): MarAgentError {
-  return new MarAgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search returned an invalid result.');
+function invalidResult(): AgentError {
+  return new AgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search returned an invalid result.');
 }

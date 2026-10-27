@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CompactCoordinator } from '../../src/agent-core/runtime/compaction/coordinator.js';
+import { CompactCoordinator } from '../../src/runtime/compaction/coordinator.js';
 
 describe('Compact coordinator', () => {
   it('generates in the background and installs only at a checkpoint without reentry', async () => {

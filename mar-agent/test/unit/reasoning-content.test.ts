@@ -3,15 +3,15 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  createMarAgent,
-  openMarAgentSessionCatalog,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  createAgent,
+  openAgentSessionCatalog,
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const servers: Server[] = [];
 const homes: string[] = [];
@@ -55,8 +55,8 @@ async function startFakeSseServer(responses: readonly (readonly unknown[])[]) {
 
 function modelConfiguration(
   baseUrl: string,
-  protocol: MarAgentModelConfiguration['protocol']
-): MarAgentModelConfiguration {
+  protocol: AgentModelConfiguration['protocol']
+): AgentModelConfiguration {
   return {
     id: protocol === 'OPENAI_RESPONSES' ? 'responses' : 'anthropic',
     name: protocol === 'OPENAI_RESPONSES' ? 'Responses' : 'Anthropic',
@@ -89,9 +89,9 @@ async function isolatedWorkspace() {
   return { home, workspace };
 }
 
-function reasoningEvents(events: readonly MarAgentEvent[]) {
+function reasoningEvents(events: readonly AgentEvent[]) {
   return events.filter(
-    (event): event is Extract<MarAgentEvent, { type: 'reasoning.completed' }> =>
+    (event): event is Extract<AgentEvent, { type: 'reasoning.completed' }> =>
       event.type === 'reasoning.completed'
   );
 }
@@ -122,11 +122,11 @@ function responseTurn(responseId: string, summaries: readonly unknown[]) {
 }
 
 async function collectRun(
-  session: Awaited<ReturnType<Awaited<ReturnType<typeof createMarAgent>>['createSession']>>,
+  session: Awaited<ReturnType<Awaited<ReturnType<typeof createAgent>>['createSession']>>,
   prompt: string
 ) {
   const execution = session.run({ prompt });
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of execution) events.push(event);
   await expect(execution.result()).resolves.toMatchObject({ status: 'completed' });
   return events;
@@ -166,13 +166,13 @@ describe('reasoning content identity and projection', () => {
       ]
     ]);
     const { home, workspace } = await isolatedWorkspace();
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [modelConfiguration(server.baseUrl, 'OPENAI_RESPONSES')]
     });
     let sessionId = '';
-    let events: MarAgentEvent[] = [];
+    let events: AgentEvent[] = [];
     try {
       const session = await agent.createSession({ workspace, title: 'Leading whitespace' });
       sessionId = session.id;
@@ -189,7 +189,7 @@ describe('reasoning content identity and projection', () => {
     expect(
       events.flatMap((event) => (event.type === 'message.delta' ? [event.delta] : [])).join('')
     ).toBe(' \nFinished. ');
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(sessionId);
       const visibleTypes = new Set(['reasoning.completed', 'message.started', 'message.completed']);
@@ -259,13 +259,13 @@ describe('reasoning content identity and projection', () => {
       ])
     ]);
     const { home, workspace } = await isolatedWorkspace();
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [modelConfiguration(server.baseUrl, 'OPENAI_RESPONSES')]
     });
     let sessionId = '';
-    const publicEvents: MarAgentEvent[] = [];
+    const publicEvents: AgentEvent[] = [];
     try {
       const session = await agent.createSession({ workspace, title: 'Reasoning parts' });
       sessionId = session.id;
@@ -291,7 +291,7 @@ describe('reasoning content identity and projection', () => {
     ]);
     expect(new Set(reasoning.map((event) => event.itemId)).size).toBe(4);
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(sessionId);
       const persisted = history.entries.flatMap((entry) =>
@@ -386,13 +386,13 @@ describe('reasoning content identity and projection', () => {
       ]
     ]);
     const { home, workspace } = await isolatedWorkspace();
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [modelConfiguration(server.baseUrl, 'ANTHROPIC_MESSAGES')]
     });
     let sessionId = '';
-    let publicEvents: MarAgentEvent[] = [];
+    let publicEvents: AgentEvent[] = [];
     try {
       const session = await agent.createSession({ workspace, title: 'Visible thinking' });
       sessionId = session.id;
@@ -412,7 +412,7 @@ describe('reasoning content identity and projection', () => {
     ]);
     expect(new Set(reasoning.map((event) => event.itemId)).size).toBe(2);
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(sessionId);
       const persisted = history.entries.flatMap((entry) =>
@@ -495,7 +495,7 @@ describe('reasoning content identity and projection', () => {
       await store.close();
     }
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(session.id);
       const projected = history.entries.flatMap((entry) =>

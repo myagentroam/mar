@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAgentHost } from '../../../mar-agent/src/index.js';
-import type { LocalProcessSpawnRequest } from '../../../mar-agent/src/index.js';
-import { directLocalProcessExecutor } from '../../../mar-agent/src/agent-core/host/local-process-executor.js';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
+import type { LocalProcessSpawnRequest } from '../../../mar-agent/src/host.js';
+import { directLocalProcessExecutor } from '../../../mar-agent/src/host/local-process-executor.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MarAgentMcpClientCache,

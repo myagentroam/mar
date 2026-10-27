@@ -8,9 +8,5 @@
     "declarationMap": false,
     "allowJs": true
   },
-  "include": [
-    "src/**/*.ts",
-    "src/agent-core/tools/code-mode/*.js",
-    "src/agent-core/tools/input-diagnostics/*.js"
-  ]
+  "include": ["src/**/*.ts", "src/tools/code-mode/*.js", "src/tools/input-diagnostics/*.js"]
 }

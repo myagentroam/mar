@@ -2,16 +2,16 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
   type ExecutionHandle,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelAdapter, type ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelAdapter, type ModelRequest } from '../../src/model/contracts.js';
 import { createE2eWebExtensions } from '../support/web-fetch.js';
 
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
@@ -23,13 +23,13 @@ const loadModel = async () => {
   return model;
 };
 async function finish(handle: ExecutionHandle) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   return { events, result: await handle.result() };
 }
 const internalGuidancePattern =
   /\b(?:rollout budget|budget|thresholds?|remaining (?:amount|tokens?)|weighted tokens?)\b/iu;
-function visibleText(events: readonly MarAgentEvent[]): string {
+function visibleText(events: readonly AgentEvent[]): string {
   return events
     .flatMap((event) =>
       event.type === 'message.delta' || event.type === 'message.completed'
@@ -38,10 +38,7 @@ function visibleText(events: readonly MarAgentEvent[]): string {
     )
     .join('\n');
 }
-function captureRequests(
-  model: MarAgentModelConfiguration,
-  requests: ModelRequest[]
-): ModelAdapter {
+function captureRequests(model: AgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
   const delegate = new OpenAiResponsesAdapter(model);
   return {
     configuration: model,
@@ -95,25 +92,27 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
     const requests: ModelRequest[] = [];
     const adapter = captureRequests(model, requests);
     const questions: { readonly question: string; readonly options: readonly unknown[] }[][] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({
-        homeDirectory: home,
-        workspace,
-        question: async (request) => {
-          questions.push(request.questions);
-          return Object.fromEntries(
-            request.questions.map((question) => [
-              question.id,
-              question.options[0]?.label ?? 'Use the recommended option'
-            ])
-          );
-        }
-      }),
-      models: [model],
-      defaultModelId: model.id,
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({
+          homeDirectory: home,
+          workspace,
+          question: async (request) => {
+            questions.push(request.questions);
+            return Object.fromEntries(
+              request.questions.map((question) => [
+                question.id,
+                question.options[0]?.label ?? 'Use the recommended option'
+              ])
+            );
+          }
+        }),
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({
         workspace,
@@ -244,13 +243,15 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
     const model = await loadModel();
     const requests: ModelRequest[] = [];
     const adapter = captureRequests(model, requests);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id,
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({
         workspace,
@@ -309,18 +310,15 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
     const model = await loadModel();
     const requests: ModelRequest[] = [];
     const adapter = captureRequests(model, requests);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id,
-      rolloutBudget: {
-        limitTokens: 2,
-        conserveAtRemainingTokens: 1,
-        finalizeAtRemainingTokens: 0
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     try {
       const session = await agent.createSession({
         workspace,
@@ -366,18 +364,15 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
     const model = await loadModel();
     const requests: ModelRequest[] = [];
     const adapter = captureRequests(model, requests);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id,
-      rolloutBudget: {
-        limitTokens: 2,
-        conserveAtRemainingTokens: 1,
-        finalizeAtRemainingTokens: 0
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     try {
       const session = await agent.createSession({
         workspace,

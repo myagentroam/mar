@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createMarAgent, LocalAgentHost, SecretValue } from '@myagentroam/agent';
+import { createAgent, SecretValue } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
 import {
   MarAgentManagedRunController,
   resolveRunModels
@@ -22,7 +23,7 @@ import {
   serializeComposerTag,
   type MarAgentRuntimeModelConfiguration
 } from '../../../packages/protocol/src/index.js';
-import type { MarAgentEvent } from '../../../mar-agent/src/index.js';
+import type { AgentEvent } from '../../../mar-agent/src/index.js';
 
 const base = {
   eventId: 'event',
@@ -71,13 +72,13 @@ describe('MAR Agent managed run projection', () => {
         response.end();
       })();
     });
-    let agent: Awaited<ReturnType<typeof createMarAgent>> | undefined;
+    let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
     try {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
       const address = server.address();
       if (address === null || typeof address === 'string')
         throw new Error('Missing fake HTTP port.');
-      agent = await createMarAgent({
+      agent = await createAgent({
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
         models: [
@@ -118,7 +119,7 @@ describe('MAR Agent managed run projection', () => {
         webSearch: vi.fn()
       });
       const project = controller as unknown as {
-        project(runId: string, event: MarAgentEvent): void;
+        project(runId: string, event: AgentEvent): void;
       };
       const session = await agent.createSession({ workspace });
       const execution = session.run({ prompt: 'Measure output.' });
@@ -604,7 +605,7 @@ describe('MAR Agent managed run projection', () => {
   it.each([undefined, 'any', 'all'] as const)(
     'restores task metadata across historical Turns for wait mode %s',
     (mode) => {
-      const events: MarAgentEvent[] = [
+      const events: AgentEvent[] = [
         {
           ...base,
           type: 'tool.started',
@@ -687,7 +688,7 @@ describe('MAR Agent managed run projection', () => {
   );
 
   it('preserves the original start receipt when replaying child lifecycle events', () => {
-    const events: MarAgentEvent[] = [
+    const events: AgentEvent[] = [
       {
         ...base,
         eventId: 'start-started',
@@ -770,7 +771,7 @@ describe('MAR Agent managed run projection', () => {
   it('retains Subagent model metadata without copying old messages across historical Turns', () => {
     const firstTurn = 'turn-start';
     const secondTurn = 'turn-status';
-    const events: MarAgentEvent[] = [
+    const events: AgentEvent[] = [
       {
         ...base,
         turnId: firstTurn,
@@ -853,7 +854,7 @@ describe('MAR Agent managed run projection', () => {
       exitCode: 0,
       truncated: false
     }).slice(0, 2_000);
-    const events: MarAgentEvent[] = [
+    const events: AgentEvent[] = [
       {
         ...base,
         type: 'tool.started',
@@ -939,7 +940,7 @@ describe('MAR Agent managed run projection', () => {
   });
 
   it('projects a structured SDK execution failure as a user-visible error item', () => {
-    const event: MarAgentEvent = {
+    const event: AgentEvent = {
       ...base,
       type: 'execution.failed',
       code: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
@@ -1002,10 +1003,10 @@ describe('MAR Agent managed run projection', () => {
       commandStates: vi.fn(() => []),
       webSearch: vi.fn()
     });
-    const project = (event: MarAgentEvent) =>
+    const project = (event: AgentEvent) =>
       (
         controller as unknown as {
-          project(runId: string, event: MarAgentEvent): void;
+          project(runId: string, event: AgentEvent): void;
         }
       ).project('run', event);
 
@@ -1195,10 +1196,10 @@ describe('MAR Agent managed run projection', () => {
       commandStates: vi.fn(() => []),
       webSearch: vi.fn()
     });
-    const project = (event: MarAgentEvent) =>
+    const project = (event: AgentEvent) =>
       (
         controller as unknown as {
-          project(runId: string, event: MarAgentEvent): void;
+          project(runId: string, event: AgentEvent): void;
         }
       ).project('run', event);
     project({

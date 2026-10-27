@@ -13,10 +13,11 @@ import type {
   McpToolCatalog,
   McpCatalogTool,
   McpToolCallContext,
-  LocalProcessExecutor,
-  ToolExecutionResult
-} from '@myagentroam/agent';
-import { assertMcpToolDefinition, assertMcpToolCatalog, MarAgentError } from '@myagentroam/agent';
+  LocalProcessExecutor
+} from '@myagentroam/agent/host';
+import type { ToolExecutionResult } from '@myagentroam/agent';
+import { assertMcpToolDefinition, assertMcpToolCatalog } from '@myagentroam/agent/host';
+import { AgentError } from '@myagentroam/agent';
 import type { ResolvedMcpServer } from '../../mcp/model.js';
 import { canonicalJson } from '../../util/canonical-json.js';
 import { ExecutorStdioClientTransport } from './executor-stdio-client-transport.js';
@@ -250,13 +251,13 @@ export class MarAgentMcpClientPool {
   ): Promise<ToolExecutionResult> {
     const binding = this.#tools.get(name);
     if (!binding || this.#closed)
-      throw new MarAgentError('MAR_AGENT_MCP_TOOL_NOT_FOUND', 'MCP tool is no longer available.');
+      throw new AgentError('MAR_AGENT_MCP_TOOL_NOT_FOUND', 'MCP tool is no longer available.');
     if (
       expectedTool &&
       (binding.metadata.sourceIdentity !== expectedTool.sourceIdentity ||
         binding.metadata.definitionRevision !== expectedTool.definitionRevision)
     )
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_MCP_TOOL_DEFINITION_CHANGED',
         'MCP tool binding or definition changed.'
       );

@@ -2,17 +2,16 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SecretValue, LocalAgentHost } from '@myagentroam/agent';
-import { createMarAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/agent-core/sdk/agent.js';
-import type {
-  ModelRequest,
-  ModelEvent
-} from '../../../mar-agent/dist/agent-core/model/contracts.js';
+import { SecretValue } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/sdk/agent.js';
+import type { ModelRequest, ModelEvent } from '../../../mar-agent/dist/model/contracts.js';
 import {
   executeCodexImageGen,
   type ImageGenerationConfiguration
 } from '../../src/runner/mar-agent/image-generation.js';
 import { createImageGenerationExtensions } from '../../src/runner/mar-agent/image-generation-extensions.js';
+import { skillCatalog } from '../support/skill-catalog.js';
 const PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 afterEach(() => vi.restoreAllMocks());
@@ -107,6 +106,7 @@ describe('BYTED_ARK image generation', () => {
       try {
         const image = { ...configuration(), provider };
         let system = '';
+        let catalog: string | undefined;
         let toolNames: string[] = [];
         const model = {
           id: 'coding',
@@ -133,20 +133,23 @@ describe('BYTED_ARK image generation', () => {
             host: () => host
           })
         );
-        const agent = await createMarAgent({
-          mode: 'normal',
-          host,
-          models: [model],
-          adapterFactory: () => ({
+        const agent = await createMarAgent(
+          {
+            mode: 'normal',
+            host,
+            models: [model]
+          },
+          () => ({
             configuration: model,
             async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
               system = request.system;
+              catalog = skillCatalog(request);
               toolNames = request.tools.map((t) => t.name);
               yield { type: 'text.completed', itemId: 'answer', text: 'Ready' };
               yield { type: 'completed', reason: 'completed' };
             }
           })
-        });
+        );
         try {
           const session = await agent.createSession({ workspace: home });
           await session.run({ prompt: 'List image tools' }).result();
@@ -154,8 +157,9 @@ describe('BYTED_ARK image generation', () => {
           const other = provider === 'CODEX' ? 'byted_ark' : 'codex';
           expect(toolNames).toContain(`${selected}_image_gen`);
           expect(toolNames).not.toContain(`${other}_image_gen`);
-          expect(system).toContain(`${selected}-imagegen`);
-          expect(system).not.toContain(`${other}-imagegen`);
+          expect(system).not.toContain(`${selected}-imagegen`);
+          expect(catalog).toContain(`${selected}-imagegen`);
+          expect(catalog).not.toContain(`${other}-imagegen`);
         } finally {
           await agent.dispose();
         }

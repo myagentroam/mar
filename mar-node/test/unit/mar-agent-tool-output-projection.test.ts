@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { conversationItemSchema } from '@myagentroam/protocol';
-import type { MarAgentEvent } from '@myagentroam/agent';
+import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 
 describe('MAR Agent live tool output projection', () => {
@@ -539,7 +539,7 @@ describe('MAR Agent live tool output projection', () => {
 
 let sequence = 0;
 
-function toolEvent(fields: Record<string, unknown>): MarAgentEvent {
+function toolEvent(fields: Record<string, unknown>): AgentEvent {
   sequence += 1;
   return {
     eventId: `output-event-${sequence}`,
@@ -549,7 +549,7 @@ function toolEvent(fields: Record<string, unknown>): MarAgentEvent {
     executionId: 'execution-1',
     turnId: 'turn-1',
     ...fields
-  } as unknown as MarAgentEvent;
+  } as unknown as AgentEvent;
 }
 
 function toolOutput(
@@ -558,7 +558,7 @@ function toolOutput(
   processId = 'process-1',
   parentCallId?: string,
   toolName: 'exec' | 'exec_wait' = 'exec'
-): MarAgentEvent {
+): AgentEvent {
   return toolEvent({
     type: 'tool.output',
     toolName,

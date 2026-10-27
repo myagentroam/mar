@@ -13,15 +13,14 @@ vi.mock('@myagentroam/agent', async (importOriginal) => {
 });
 
 import {
-  MarAgentError,
+  AgentError,
   SecretValue,
   buildCompactEvidence,
   countModelTokens,
-  type CoreCompactContext,
-  type CoreExtensionSource,
-  type MarAgentModelConfiguration,
-  type MarAgentReasoningEffort
+  type AgentModelConfiguration,
+  type AgentReasoningEffort
 } from '@myagentroam/agent';
+import type { ExtensionCompactContext, ExtensionSource } from '@myagentroam/agent/extensions';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
 import { highDensityCompactionPrompt } from '../../src/runner/mar-agent/compact-prompt.js';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
@@ -35,7 +34,7 @@ import {
   type MarAgentCompactState
 } from '../../src/runner/mar-agent/compact-extensions.js';
 
-function model(overrides: Partial<MarAgentModelConfiguration> = {}): MarAgentModelConfiguration {
+function model(overrides: Partial<AgentModelConfiguration> = {}): AgentModelConfiguration {
   return {
     id: 'compact-model',
     name: 'Compact',
@@ -58,7 +57,7 @@ function model(overrides: Partial<MarAgentModelConfiguration> = {}): MarAgentMod
     ...overrides
   };
 }
-function compactContext(overrides: Partial<CoreCompactContext> = {}): CoreCompactContext {
+function compactContext(overrides: Partial<ExtensionCompactContext> = {}): ExtensionCompactContext {
   return {
     operationId: 'operation',
     reason: 'manual',
@@ -79,15 +78,15 @@ function compactContext(overrides: Partial<CoreCompactContext> = {}): CoreCompac
     ...overrides
   };
 }
-const selected = (overrides: Partial<MarAgentModelConfiguration> = {}) => ({
+const selected = (overrides: Partial<AgentModelConfiguration> = {}) => ({
   model: model(overrides),
-  reasoningEffort: 'high' as MarAgentReasoningEffort
+  reasoningEffort: 'high' as AgentReasoningEffort
 });
 type CompactAttachContext = {
   hooks: {
     intercept: (
       key: string,
-      handler: (input: CoreCompactContext, call: { signal: AbortSignal }) => unknown
+      handler: (input: ExtensionCompactContext, call: { signal: AbortSignal }) => unknown
     ) => { dispose: () => Promise<void> };
   };
 };
@@ -137,7 +136,7 @@ describe('MAR Agent compact extension', () => {
           retryable: true,
           transport: 'HTTP'
         });
-        throw new MarAgentError('MAR_AGENT_MODEL_REQUEST_FAILED', 'SECRET_PROVIDER_ERROR', {
+        throw new AgentError('MAR_AGENT_MODEL_REQUEST_FAILED', 'SECRET_PROVIDER_ERROR', {
           retryable: true,
           details: { status: 503, authorization: 'SECRET_AUTH' }
         });
@@ -236,7 +235,7 @@ describe('MAR Agent compact extension', () => {
     async (credentialType) => {
       const root = await mkdtemp(join(tmpdir(), 'mar-hidden-compact-rebind-'));
       const reconfigureModels = vi.fn(
-        async (_input: { models: readonly MarAgentModelConfiguration[]; defaultModelId: string }) =>
+        async (_input: { models: readonly AgentModelConfiguration[]; defaultModelId: string }) =>
           undefined
       );
       const handle = () => ({
@@ -250,9 +249,9 @@ describe('MAR Agent compact extension', () => {
         cancel: vi.fn()
       });
       const session = { id: 'native', run: handle, plan: handle, compact: handle, cancel: vi.fn() };
-      let compactSource!: CoreExtensionSource;
-      const createAgent = vi.fn(async (options: { runtimeExtensions: CoreExtensionSource }) => {
-        compactSource = options.runtimeExtensions;
+      let compactSource!: ExtensionSource;
+      const createAgent = vi.fn(async (options: { extensions: ExtensionSource }) => {
+        compactSource = options.extensions;
         return {
           createSession: async () => session,
           openSession: async () => session,
@@ -405,10 +404,10 @@ describe('MAR Agent compact extension', () => {
     expect(result).toMatchObject({ summary: 'durable summary', usage: { outputTokens: 5 } });
     expect(generateModelText).toHaveBeenCalledTimes(1);
     const input = generateModelText.mock.calls[0]![0] as {
-      model: MarAgentModelConfiguration;
+      model: AgentModelConfiguration;
       system: string;
       messages: readonly { role: string; content: string }[];
-      reasoningEffort: MarAgentReasoningEffort;
+      reasoningEffort: AgentReasoningEffort;
       outputLimit: number;
       signal: AbortSignal;
     };
@@ -666,7 +665,7 @@ describe('MAR Agent compact extension', () => {
     const extension = snapshot.extensions[0]!;
     expect(extension).toMatchObject({ id: 'mar.node.compact', apiVersion: '1.0' });
     let handler:
-      ((input: CoreCompactContext, call: { signal: AbortSignal }) => unknown) | undefined;
+      ((input: ExtensionCompactContext, call: { signal: AbortSignal }) => unknown) | undefined;
     const attach = extension.attachSession as ((context: CompactAttachContext) => void) | undefined;
     attach?.({
       hooks: {
@@ -753,9 +752,7 @@ describe('MAR Agent compact extension', () => {
   });
 });
 
-function runtimeModel(
-  configuration: MarAgentModelConfiguration
-): MarAgentRuntimeModelConfiguration {
+function runtimeModel(configuration: AgentModelConfiguration): MarAgentRuntimeModelConfiguration {
   const { apiKey, ...rest } = configuration;
   return {
     ...rest,

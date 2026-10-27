@@ -3,27 +3,22 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost, type McpToolCatalog } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
-  type MarAgentEvent,
-  type McpToolCatalog,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import type {
-  ModelAdapter,
-  ModelRequest,
-  ModelTurnSession
-} from '../../src/agent-core/model/contracts.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import type { ModelAdapter, ModelRequest, ModelTurnSession } from '../../src/model/contracts.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 
 const roots: string[] = [];
 afterAll(async () => {
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
-function capture(model: MarAgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
+function capture(model: AgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
   if (model.protocol === 'ANTHROPIC_MESSAGES') {
     const delegate = new AnthropicMessagesAdapter(model);
     return {
@@ -129,7 +124,7 @@ describe.runIf(process.env.MAR_AGENT_REAL_E2E === '1')('real MCP discovery', () 
         if (!response.ok) throw new Error('Fixture HTTP request failed.');
         return ((await response.json()) as { result: T }).result;
       };
-      let agent: Awaited<ReturnType<typeof createMarAgentWithAdapter>> | undefined;
+      let agent: Awaited<ReturnType<typeof createAgentWithAdapter>> | undefined;
       try {
         const listed = await rpc<{ tools: typeof definitions }>('tools/list');
         const catalog: McpToolCatalog = {
@@ -161,14 +156,16 @@ describe.runIf(process.env.MAR_AGENT_REAL_E2E === '1')('real MCP discovery', () 
             return { content: result.content[0].text };
           }
         });
-        agent = await createMarAgentWithAdapter({
-          mode: 'normal',
-          host,
-          models: [model],
-          defaultModelId: model.id,
-          adapterFactory: () => capture(model, requests)
-        });
-        const events: MarAgentEvent[] = [];
+        agent = await createAgentWithAdapter(
+          {
+            mode: 'normal',
+            host,
+            models: [model],
+            defaultModelId: model.id
+          },
+          () => capture(model, requests)
+        );
+        const events: AgentEvent[] = [];
         const session = await agent.createSession({ workspace, title: 'MCP fixture discovery' });
         const run = async (prompt: string) => {
           const handle = session.run({ prompt });

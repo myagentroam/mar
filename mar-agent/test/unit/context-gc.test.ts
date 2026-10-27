@@ -1,6 +1,8 @@
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { describe, expect, it } from 'vitest';
-import type { ModelMessage, ModelUsage } from '../../src/agent-core/model/contracts.js';
+import { HISTORY_INPUT_LIMITS } from '../../src/session/history-input-limits.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
   CONTEXT_GC_POLICY,
   contextGcEarliestReplacementSequence,
@@ -8,30 +10,27 @@ import {
   evaluateContextGcEconomics,
   inspectContextGc,
   planContextGc
-} from '../../src/agent-core/runtime/context/gc.js';
+} from '../../src/runtime/context/gc.js';
 import {
   applyContextGcReplacementsToMessages,
   buildContextProjection,
   restoreModelContext
-} from '../../src/agent-core/runtime/context/projection.js';
+} from '../../src/runtime/context/projection.js';
 import type {
   ContextGcCheckpointPayload,
   ContextGcReplacement
-} from '../../src/agent-core/session/context-gc-checkpoint.js';
+} from '../../src/session/context-gc-checkpoint.js';
 import {
   ContextGcCheckpointCache,
   parseContextGcCheckpoint,
   validateContextGcCheckpoint
-} from '../../src/agent-core/session/context-gc-checkpoint.js';
+} from '../../src/session/context-gc-checkpoint.js';
 import {
   contextGcCodeModeInputReplacement,
   contextGcCodeModeOutputReplacement
-} from '../../src/agent-core/session/context-gc-replacements.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
-import {
-  parseReadContextOutput,
-  replaceReadContextItems
-} from '../../src/agent-core/tools/local/read-context.js';
+} from '../../src/session/context-gc-replacements.js';
+import type { SessionRecord } from '../../src/session/store/index.js';
+import { parseReadContextOutput, replaceReadContextItems } from '../../src/prompts/read-context.js';
 
 function records() {
   let sequence = 0;
@@ -42,7 +41,6 @@ function records() {
     input: { executionId?: string; turnId?: string } = {}
   ) => {
     const record: SessionRecord = {
-      schemaVersion: 1,
       recordId: `record-${++sequence}`,
       sequence,
       timestamp: new Date(1_800_000_000_000 + sequence).toISOString(),
@@ -661,7 +659,10 @@ describe('context GC planner', () => {
               item: { type: 'custom_tool_call', call_id: 'call', name, input: code }
             };
       const largeSource = '\n'.repeat(600_000);
+      expect(HISTORY_INPUT_LIMITS.codeMaxInputBytes).toBe(TOOL_EXECUTION_LIMITS.codeMaxInputBytes);
+      expect(HISTORY_INPUT_LIMITS.patchMaxBytes).toBe(TOOL_EXECUTION_LIMITS.patchMaxBytes);
       expect(restoreModelContext(payload('code_exec', largeSource))).toBeDefined();
+      expect(restoreModelContext(payload('apply_patch', largeSource))).toBeDefined();
       expect(restoreModelContext(payload('code_mode', largeSource))).toBeUndefined();
       const short = restoreModelContext(payload('code_mode', 'fixture'));
       expect(short).toBeDefined();

@@ -2,9 +2,10 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openMarAgentSessionCatalog } from '@myagentroam/agent';
+import { openAgentSessionCatalog } from '@myagentroam/agent';
 import type { ModelResourceReadInput } from '@myagentroam/protocol';
-import { JsonlSessionStore } from '../../../mar-agent/src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../../mar-agent/src/session/store/index.js';
+import { activeSessionDirectory } from '../../../mar-agent/test/support/jsonl-session-path.js';
 import { ModelResourcePublicationService } from '../../src/service/model-resource-publication-service.js';
 
 type ResourceReadInput = Extract<ModelResourceReadInput, { resourceId: string }>;
@@ -84,7 +85,7 @@ describe('model image publication', () => {
     expect(await service.publish(source, resource)).toEqual(first);
     await expect(service.read(readInput(first.url))).resolves.toEqual(image);
 
-    const sessionDirectory = join(directory, '.mar', 'agent', 'sessions', sessionId);
+    const sessionDirectory = await activeSessionDirectory(directory, sessionId);
     const imageDirectory = join(sessionDirectory, 'resources');
     const imageFiles = await readdir(imageDirectory);
     expect(imageFiles.filter((name) => name.endsWith('.bin'))).toEqual([
@@ -211,7 +212,7 @@ describe('model image publication', () => {
       resource
     );
     expect(published).toBeDefined();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: directory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: directory });
     try {
       await catalog.delete(sessionId);
     } finally {

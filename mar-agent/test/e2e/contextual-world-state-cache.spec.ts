@@ -3,23 +3,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost, type McpToolCatalog } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
   type ExecutionHandle,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration,
-  type McpToolCatalog
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest,
   type ModelTurnSession
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
 const directories: string[] = [];
@@ -29,17 +28,17 @@ afterAll(async () => {
 });
 
 async function finish(handle: ExecutionHandle) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   return { events, result: await handle.result() };
 }
 
-function latestUsage(events: readonly MarAgentEvent[]) {
+function latestUsage(events: readonly AgentEvent[]) {
   return events.findLast((event) => event.type === 'usage.updated');
 }
 
 function captureAdapter(
-  model: MarAgentModelConfiguration,
+  model: AgentModelConfiguration,
   requests: ModelRequest[],
   wireBodies: Record<string, unknown>[]
 ): ModelAdapter {
@@ -149,22 +148,24 @@ describe.runIf(enabled)('contextual world-state cache E2E', () => {
         }))
       });
       const create = () =>
-        createMarAgent({
-          mode: 'normal',
-          host: new LocalAgentHost({
-            homeDirectory: home,
-            workspace,
-            mcpCatalog,
-            callMcp: async () => ({ content: 'Unused fixture.' })
-          }),
-          models: [model],
-          defaultModelId: model.id,
-          adapterFactory: () => captureAdapter(model, requests, wireBodies)
-        });
+        createMarAgent(
+          {
+            mode: 'normal',
+            host: new LocalAgentHost({
+              homeDirectory: home,
+              workspace,
+              mcpCatalog,
+              callMcp: async () => ({ content: 'Unused fixture.' })
+            }),
+            models: [model],
+            defaultModelId: model.id
+          },
+          () => captureAdapter(model, requests, wireBodies)
+        );
 
       let agent = await create();
       let sessionId = '';
-      let firstEvents: MarAgentEvent[] = [];
+      let firstEvents: AgentEvent[] = [];
       try {
         const session = await agent.createSession({ workspace, title: `${id} cache restart` });
         sessionId = session.id;
@@ -184,7 +185,7 @@ describe.runIf(enabled)('contextual world-state cache E2E', () => {
       reverseCatalog = true;
 
       agent = await create();
-      let secondEvents: MarAgentEvent[] = [];
+      let secondEvents: AgentEvent[] = [];
       try {
         const session = await agent.openSession(sessionId);
         const second = await finish(

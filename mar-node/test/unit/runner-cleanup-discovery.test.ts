@@ -17,7 +17,7 @@ const catalog = vi.hoisted(() => ({
 }));
 vi.mock('@myagentroam/agent', async (original) => ({
   ...(await original<typeof import('@myagentroam/agent')>()),
-  openMarAgentSessionCatalog: async () => catalog
+  openAgentSessionCatalog: async () => catalog
 }));
 vi.mock('../../src/native-session-history.js', async (original) => ({
   ...(await original<typeof import('../../src/native-session-history.js')>()),

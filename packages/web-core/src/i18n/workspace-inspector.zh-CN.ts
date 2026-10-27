@@ -126,7 +126,8 @@ export const workspaceInspectorZhCN = {
     locked: '已锁定',
     prunable: '可清理',
     detachedHead: 'detached HEAD · {head}',
-    truncated: '仅显示部分 Git 工作树'
+    truncated: '仅显示部分 Git 工作树',
+    changesTruncated: '变更过多，部分文件未显示'
   },
   workspaceWatch: {
     loadingSessions: '会话列表加载中…',

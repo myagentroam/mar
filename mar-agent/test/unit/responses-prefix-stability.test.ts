@@ -2,27 +2,23 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type MarAgentModelConfiguration,
-  type McpToolCatalog
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost, type McpToolCatalog } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import {
   codeModeToolDefinition,
   projectCodeModeTools,
   projectCodeModeSearchResult
-} from '../../src/agent-core/tools/code-mode/index.js';
-import { agentStartToolDefinitionWithModels } from '../../src/agent-core/tools/agent/agent-start.js';
+} from '../../src/tools/code-mode/index.js';
+import { agentStartToolDefinitionWithModels } from '../../src/tools/agent/agent-start.js';
 import type {
   ModelAttemptDiagnostic,
   ModelEvent,
   ModelMessage,
   ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
   type CloseableServer
@@ -49,7 +45,7 @@ afterEach(async () => {
   );
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-const configuration = (baseUrl: string): MarAgentModelConfiguration => ({
+const configuration = (baseUrl: string): AgentModelConfiguration => ({
   id: 'prefix',
   name: 'Prefix',
   protocol: 'OPENAI_RESPONSES',

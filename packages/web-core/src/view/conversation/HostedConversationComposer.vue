@@ -154,6 +154,18 @@ const composerReadonly = computed(
     submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
+const syncingOnly = computed(
+  () =>
+    !props.draft &&
+    props.connected !== false &&
+    snapshot.value !== undefined &&
+    !props.workspace.watchReady.value &&
+    props.workspace.watchFailureCode.value === undefined &&
+    !props.readonly &&
+    !props.workspace.templateChanging.value &&
+    !submitting.value &&
+    (activeRun.value === undefined || canReplaceCurrent.value)
+);
 const working = clockWorking;
 const workingLabel = computed(() =>
   conversationActivityLabel(activeRun.value, props.readonly ? [] : props.workspace.turns.value)
@@ -626,7 +638,7 @@ onBeforeUnmount(() => {
 <template>
   <ConversationComposer
     ref="composer"
-    :class="{ 'hosted-draft-composer': draft }"
+    :class="{ 'hosted-draft-composer': draft, 'hosted-syncing': syncingOnly }"
     v-model:input="input"
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
@@ -954,6 +966,16 @@ onBeforeUnmount(() => {
   }
 }
 
+.hosted-syncing :deep(.composer-shell.readonly) {
+  border-color: var(--mar-border-medium);
+  background: var(--mar-bg-panel);
+}
+
+.hosted-syncing :deep(.composer-shell.readonly .composer-input) {
+  background: transparent;
+  cursor: text;
+}
+
 .hosted-send-button {
   margin-left: auto;
   background: var(--mar-color-brand);
@@ -1010,7 +1032,10 @@ onBeforeUnmount(() => {
 }
 
 .hosted-model-trigger {
+  border-radius: 6px;
   padding-right: 0.35rem;
+  background: transparent;
+  color: var(--mar-text-primary);
   cursor: pointer;
 }
 
@@ -1036,12 +1061,18 @@ onBeforeUnmount(() => {
 
 .hosted-model-trigger:hover:not(:disabled) {
   background: var(--mar-fill-soft);
-  color: var(--mar-text-primary);
+  box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
+}
+
+.hosted-model-trigger[aria-expanded='true']:not(:disabled) {
+  background: var(--mar-fill-soft);
+  box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
 }
 
 .hosted-model-trigger:focus-visible {
-  outline: 2px solid var(--mar-color-brand-text);
-  outline-offset: 1px;
+  background: var(--mar-fill-soft);
+  outline: 1px solid var(--mar-color-brand);
+  outline-offset: -1px;
 }
 
 .hosted-model-trigger:disabled {
@@ -1057,6 +1088,8 @@ onBeforeUnmount(() => {
 .hosted-template-name {
   overflow: hidden;
   white-space: nowrap;
+  background: transparent;
+  color: var(--mar-text-primary);
 }
 
 .hosted-model-unavailable {

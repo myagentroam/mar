@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { structuredToolEventData } from '../../src/agent-core/tools/output-projection.js';
-import { publicHostedToolEvents } from '../../src/agent-core/runtime/event-projection.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
+import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 describe('public tool metadata', () => {
   it('projects required image dimensions and only validated transform facts', () => {

@@ -4,8 +4,8 @@ import {
   type ToolApprovalDecision,
   type ToolApprovalHandler,
   type ToolApprovalRequest
-} from '../../src/agent-core/tools/permissions.js';
-import type { ClientToolDefinition, ToolCall } from '../../src/agent-core/tools/contracts.js';
+} from '../../src/tools/permissions.js';
+import type { ClientToolDefinition, ToolCall } from '../../src/tools/contracts.js';
 
 const tool: ClientToolDefinition = {
   name: 'exec',

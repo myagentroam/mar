@@ -2,7 +2,8 @@ import { appendFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 afterEach(async () => {
@@ -15,7 +16,7 @@ async function fixture() {
   homes.push(home);
   const store = await JsonlSessionStore.open(home);
   const session = await store.createSession({ workspace: home });
-  const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+  const path = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
   return { store, session, path };
 }
 

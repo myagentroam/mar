@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  MarAgentError,
+  AgentError,
   type ToolApprovalRequest,
   type ToolApprovalDecision
 } from '../../../mar-agent/src/index.js';
@@ -103,7 +103,7 @@ describe('MAR online approval adapter', () => {
       const cancellation = new AbortController();
       const waiting = f.internal.requestApproval('run', f.request, cancellation.signal);
       const checked = expect(waiting).rejects.toMatchObject({ code });
-      cancellation.abort(new MarAgentError(code, 'Approval is no longer available.'));
+      cancellation.abort(new AgentError(code, 'Approval is no longer available.'));
       await checked;
       expect(f.host.emit).toHaveBeenCalledTimes(code === 'MAR_AGENT_APPROVAL_EXPIRED' ? 1 : 0);
       expect(

@@ -6,7 +6,7 @@ import { NodeDatabase } from '../../mar-node/src/database.js';
 import { ModelUsageOutbox } from '../../mar-node/src/service/model-usage-outbox.js';
 import { NodeModelUsageService } from '../../mar-node/src/service/model-usage-service.js';
 import { normalizeMarAgentUsage } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
-import { observeModelRequestUsage } from '../../mar-agent/src/agent-core/model/usage-observer.js';
+import { observeModelRequestUsage } from '../../mar-agent/src/model/usage-observer.js';
 import { ModelUsageGrants } from '../../packages/server-core/src/model-usage-grant.js';
 import { ModelUsageStore } from '../../packages/server-core/src/model-usage-store.js';
 import { ModelUsageQueryService } from '../../packages/server-core/src/model-usage-query.js';

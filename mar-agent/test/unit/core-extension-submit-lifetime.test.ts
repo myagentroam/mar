@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreSessionReceipt } from '../../src/agent-core/extensions/session-input.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionSessionReceipt } from '../../src/extensions/session-input.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(async () => {
@@ -11,7 +11,7 @@ afterEach(async () => {
 
 describe('Core accepted prompt lifetime', () => {
   it('settles an idle commit waiter cancelled before the input writer runs', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let enabled = false;
     let entered!: () => void;
     const ready = new Promise<void>((resolve) => {
@@ -67,7 +67,7 @@ describe('Core accepted prompt lifetime', () => {
   it.each(['start', 'commit'] as const)(
     'distinguishes idle %s from the actual input commit',
     async (waitFor) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let held = false;
       let entered!: () => void;
       let release!: () => void;
@@ -110,7 +110,7 @@ describe('Core accepted prompt lifetime', () => {
         return result;
       });
       held = true;
-      let receipt: CoreSessionReceipt | undefined;
+      let receipt: ExtensionSessionReceipt | undefined;
       const submitted = context
         .session!.submit({ text: 'held input', delivery: 'idle', waitFor })
         .then((value) => {
@@ -144,7 +144,7 @@ describe('Core accepted prompt lifetime', () => {
   it.each([false, true])(
     'keeps only physical idle input facts after failure (written=%s)',
     async (written) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let enabled = false;
       const f = await fixture(
         [
@@ -191,8 +191,8 @@ describe('Core accepted prompt lifetime', () => {
   it.each([false, true])(
     'preserves explicit lifetime after a failed caller: %s',
     async (durable) => {
-      let context!: CoreSessionExtensionContext;
-      let receipt!: CoreSessionReceipt;
+      let context!: SessionExtensionContext;
+      let receipt!: ExtensionSessionReceipt;
       let first = true;
       const lifetime = new AbortController();
       const f = await fixture(
@@ -247,7 +247,7 @@ describe('Core accepted prompt lifetime', () => {
   );
 
   it('cancels accepted work on the explicit lifetime without cancelling its caller', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const lifetime = new AbortController();
     const f = await fixture(
       [
@@ -282,7 +282,7 @@ describe('Core accepted prompt lifetime', () => {
   });
 
   it('returns an actual idle start receipt and retains owner cancellation', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let held = false;
     let entered!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -335,7 +335,7 @@ describe('Core accepted prompt lifetime', () => {
   });
 
   it('rejects invalid and pre-cancelled lifetimes without creating queue entries', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {

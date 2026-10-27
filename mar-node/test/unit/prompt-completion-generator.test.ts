@@ -3,7 +3,7 @@ import {
   SecretValue,
   generateModelText,
   type GenerateModelTextInput,
-  type MarAgentModelConfiguration
+  type AgentModelConfiguration
 } from '@myagentroam/agent';
 import { generatePromptCompletion } from '../../src/service/prompt-completion-generator.js';
 import { safePublicError } from '../../src/util/safe-error.js';
@@ -13,7 +13,7 @@ vi.mock('@myagentroam/agent', async (importOriginal) => ({
   generateModelText: vi.fn()
 }));
 
-const baseModel: MarAgentModelConfiguration = {
+const baseModel: AgentModelConfiguration = {
   id: 'completion-test',
   name: 'Completion test',
   protocol: 'OPENAI_RESPONSES',
@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 function fakeModel(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   response: string,
   options: {
     readonly reason?: 'completed' | 'max_output';
@@ -66,7 +66,7 @@ function fakeModel(
 }
 
 function input(
-  model: MarAgentModelConfiguration,
+  model: AgentModelConfiguration,
   overrides: Partial<Parameters<typeof generatePromptCompletion>[0]> = {}
 ): Parameters<typeof generatePromptCompletion>[0] {
   return {

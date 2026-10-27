@@ -1,14 +1,11 @@
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ExtensionRequestBridge } from '../../src/agent-core/extensions/model-request.js';
+import { ExtensionRequestBridge } from '../../src/extensions/model-request.js';
 import { effectiveInstructions } from './support/model-context.js';
-import type {
-  CoreRuntimeExtension,
-  CoreSessionExtensionContext
-} from '../../src/agent-core/extensions/contracts.js';
+import type { AgentExtension, SessionExtensionContext } from '../../src/extensions/contracts.js';
 import {
   fixture,
   answer,
@@ -62,7 +59,7 @@ describe('Core Extension SDK composition', () => {
   );
 
   it('supports scoped clock sleep during attach and independent child cancellation', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await fixture(
       [
         {
@@ -90,7 +87,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('cancels independent generation with an explicit child signal without retiring its extension', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const controller = new AbortController();
     const reason = new Error('explicit generation cancellation');
     let cancel = false;
@@ -159,7 +156,7 @@ describe('Core Extension SDK composition', () => {
   ])(
     'rejects malformed tool artifacts (%j) across native and Code Mode callers',
     async (artifacts) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const { session } = await fixture(
         [
           {
@@ -209,7 +206,7 @@ describe('Core Extension SDK composition', () => {
     let resolved = 0;
     let attached = 0;
     let compacted = 0;
-    let context: CoreSessionExtensionContext | undefined;
+    let context: SessionExtensionContext | undefined;
     const { session } = await fixture(
       {
         resolve: async () => {
@@ -303,7 +300,7 @@ describe('Core Extension SDK composition', () => {
   it.each(['delete', 'dispose'] as const)(
     'stops extension scopes before %s waits on model adapter cleanup',
     async (action) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const { agent, session, adapter } = await fixture(
         [
           {
@@ -383,7 +380,7 @@ describe('Core Extension SDK composition', () => {
   );
 
   it('notifies state observers with the actual committed JSON snapshot', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await fixture(
       [
         {
@@ -412,7 +409,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('preserves the primary model hook failure when adapter cleanup also fails', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let fail = false;
     const primary = new Error('primary model hook failure');
     const { agent, session, adapter } = await fixture(
@@ -453,7 +450,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('returns final-answer text without mixing commentary into independent generation', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await fixture(
       [
         {
@@ -489,7 +486,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('accepts explicit messages derived from an owned request snapshot without inheriting omitted messages', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session, adapter } = await fixture(
       [
         {
@@ -530,7 +527,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('uses raw file ports in idle and model operations without creating extra model history', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const identities: { entry: string; executionId?: string }[] = [];
     const { agent, session, adapter, home } = await fixture(
       [
@@ -588,9 +585,9 @@ describe('Core Extension SDK composition', () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-sdk-installed-store-'));
     homes.push(directory);
     let revision = '1';
-    let agentStore!: import('../../src/index.js').CoreStoreApi;
-    const contexts = new Map<string, CoreSessionExtensionContext>();
-    const extension: CoreRuntimeExtension = {
+    let agentStore!: import('../../src/index.js').ExtensionStoreApi;
+    const contexts = new Map<string, SessionExtensionContext>();
+    const extension: AgentExtension = {
       id: 'installation-data',
       apiVersion: '1.0',
       dataDirectory: directory,
@@ -637,7 +634,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('transforms model events through the same boundary for main, compact, and independent generation', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let texts = 0;
     const { session } = await fixture(
       [
@@ -672,7 +669,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('fails incomplete independent streams when a hook removes the real terminal event', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let omit = false;
     const { session } = await fixture(
       [
@@ -697,7 +694,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('captures only actual main requests and forks their frozen context without changing main history', async () => {
-    const contexts = new Map<string, CoreSessionExtensionContext>();
+    const contexts = new Map<string, SessionExtensionContext>();
     let first = true;
     const { agent, session, adapter, home } = await fixture(
       [
@@ -773,7 +770,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('cancels accepted work on explicit execution cancellation without later writes', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let accepted!: () => void;
     const ready = new Promise<void>((resolve) => {
       accepted = resolve;
@@ -816,7 +813,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('reports failed queued hooks, retains a successful write, and never silently replays it', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { agent, session } = await fixture(
       [
         {
@@ -859,7 +856,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('uses one compact hook for SDK, idle native, and automatic compaction, including actual request transforms', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let compacts = 0;
     const { session, adapter } = await fixture(
       [
@@ -925,7 +922,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('drains input accepted by the final request hook even when the model has no further tool step', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let accepted = false;
     const { session } = await fixture(
       [
@@ -962,7 +959,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('writes checkpoint from an active tool using its existing Session writer', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await fixture(
       [
         {
@@ -996,7 +993,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('commits queued append after the complete tool pair and resumes submit in the same execution', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let appendStatus = '';
     let submitStatus = '';
     let appended = 0;
@@ -1082,7 +1079,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('commits idle append without inventing an execution and launches idle submit through the existing SDK', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { agent, session, adapter } = await fixture(
       [
         {
@@ -1134,7 +1131,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('executes compact-append-compact independently with each focus and no compact hook self-wait', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let compacts = 0;
     const receipts: string[] = [];
     const { session, adapter } = await fixture(
@@ -1229,9 +1226,9 @@ describe('Core Extension SDK composition', () => {
 
   it('persists namespaced checkpoints atomically across reload, isolates state, and invalidates cleared owners', async () => {
     let revision = '1';
-    const contexts = new Map<string, CoreSessionExtensionContext>();
+    const contexts = new Map<string, SessionExtensionContext>();
     const restored: number[] = [];
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'data',
       apiVersion: '1.0',
       async attachSession(context) {
@@ -1304,7 +1301,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('runs independent generation while idle with real usage and an output cap, without creating history', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session, adapter } = await fixture(
       [
         {
@@ -1355,7 +1352,7 @@ describe('Core Extension SDK composition', () => {
   });
 
   it('distinguishes empty independent output and rejects invalid limits without calling the model', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session, adapter } = await fixture(
       [
         {
@@ -1386,7 +1383,7 @@ describe('Core Extension SDK composition', () => {
   it('projects prompts and tools, invokes captured Host tools, and publishes one outer history result', async () => {
     const facts: string[] = [];
     const entries: string[] = [];
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'workflow',
       apiVersion: '1.0',
       attachSession(context) {
@@ -1444,7 +1441,7 @@ describe('Core Extension SDK composition', () => {
     let revision = '1';
     const attached: string[] = [];
     const released: string[] = [];
-    const contexts: CoreSessionExtensionContext[] = [];
+    const contexts: SessionExtensionContext[] = [];
     const { agent, session, home } = await fixture(
       {
         resolve: async () => ({

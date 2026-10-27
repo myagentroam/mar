@@ -1,4 +1,5 @@
-import type { ClientToolDefinition, ToolCall, ToolExecutionContext } from '../../src/index.js';
+import type { ClientToolDefinition, ToolExecutionContext } from '../../src/host.js';
+import type { ToolCall } from '../../src/index.js';
 
 export const e2eWebFetchTool: ClientToolDefinition = {
   name: 'web_fetch',

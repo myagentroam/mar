@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import type {
-  ModelEvent,
-  ModelRequest,
-  ModelTurnSession
-} from '../../src/agent-core/model/contracts.js';
-import { generateCompactionCandidate } from '../../src/agent-core/runtime/compaction/generate.js';
-import { CompactionOperation } from '../../src/agent-core/runtime/compaction/operation.js';
+import { AgentError } from '../../src/error.js';
+import type { ModelEvent, ModelRequest, ModelTurnSession } from '../../src/model/contracts.js';
+import { generateCompactionCandidate } from '../../src/runtime/compaction/generate.js';
+import { CompactionOperation } from '../../src/runtime/compaction/operation.js';
 
 const snapshot = () => ({
   history: [
@@ -75,7 +71,7 @@ describe('compaction candidate generation', () => {
   it('retries an overflowing native prefix as bounded text without re-entering the extension', async () => {
     let requests = 0;
     const d = dependencies(async function* () {
-      if (++requests === 1) throw new MarAgentError('context_length_exceeded', 'Overflow.');
+      if (++requests === 1) throw new AgentError('context_length_exceeded', 'Overflow.');
       yield* answer;
     });
     await expect(generateCompactionCandidate(snapshot(), d)).resolves.toHaveProperty(

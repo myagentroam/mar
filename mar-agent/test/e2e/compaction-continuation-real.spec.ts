@@ -4,17 +4,17 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelAdapter, type ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelAdapter, type ModelRequest } from '../../src/model/contracts.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const execFileAsync = promisify(execFile);
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
@@ -59,24 +59,26 @@ describe.runIf(enabled)('compaction real development continuation', () => {
     const catalog = parseModelCatalog(JSON.parse(await readFile('.e2e/models.local.json', 'utf8')));
     const configured = catalog.models.find((candidate) => candidate.id === 'gpt-5.6-luna');
     if (!configured) throw new Error('MAR_AGENT_E2E_RESPONSES_MODEL_MISSING');
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       ...configured,
       hostedWebSearch: false,
       maxOutputTokens: Math.min(configured.maxOutputTokens, 10_240)
     };
     const capture: Capture = { requests: [], toolCalls: [] };
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({
-          homeDirectory: home,
-          workspace,
-          environment: { HOME: home, PATH: process.env.PATH, LANG: 'C.UTF-8' }
-        }),
-        models: [model],
-        defaultModelId: model.id,
-        adapterFactory: () => captureAdapter(model, capture)
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({
+            homeDirectory: home,
+            workspace,
+            environment: { HOME: home, PATH: process.env.PATH, LANG: 'C.UTF-8' }
+          }),
+          models: [model],
+          defaultModelId: model.id
+        },
+        () => captureAdapter(model, capture)
+      );
 
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ workspace, title: `${variant} compact task` });
@@ -104,7 +106,7 @@ describe.runIf(enabled)('compaction real development continuation', () => {
       await agent.dispose();
     }
 
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     agent = await create();
     let finalAnswer = '';
     try {
@@ -173,7 +175,7 @@ describe.runIf(enabled)('compaction real development continuation', () => {
       prePatchExecCalls,
       toolFailures: events
         .filter(
-          (event): event is Extract<MarAgentEvent, { type: 'tool.failed' }> =>
+          (event): event is Extract<AgentEvent, { type: 'tool.failed' }> =>
             event.type === 'tool.failed'
         )
         .map((event) => ({ tool: event.toolName, code: event.code })),
@@ -197,7 +199,7 @@ describe.runIf(enabled)('compaction real development continuation', () => {
   }, 600_000);
 });
 
-function captureAdapter(model: MarAgentModelConfiguration, capture: Capture): ModelAdapter {
+function captureAdapter(model: AgentModelConfiguration, capture: Capture): ModelAdapter {
   const delegate = new OpenAiResponsesAdapter(model);
   return {
     configuration: model,

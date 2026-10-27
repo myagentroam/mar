@@ -65,6 +65,31 @@ async function gitlink(path: string, name: string, mapped = false) {
 }
 
 describe('Git Changes partial success', () => {
+  it('bounds the returned changes and marks a truncated repository', async () => {
+    const path = await repository();
+    const source = await repository();
+    await git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', source, 'child');
+    await writeFile(join(path, 'child', 'root.txt'), 'child changes\n');
+    await Promise.all(
+      Array.from({ length: 1001 }, (_, index) =>
+        writeFile(join(path, `extra-${String(index).padStart(4, '0')}.txt`), '')
+      )
+    );
+    const result = await current(path);
+    const root = result.repositories[0];
+    expect(root?.changes).toHaveLength(1000);
+    expect(root?.changesTruncated).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.changes).toEqual(root?.changes);
+    expect(result.repositories.find((group) => group.repositoryPath === 'child')).toMatchObject({
+      changes: [],
+      changesTruncated: true
+    });
+    expect(result.repositories.reduce((count, group) => count + group.changes.length, 0)).toBe(
+      1000
+    );
+  }, 30000);
+
   it.each(['CLEAN', 'DIRTY'] as const)(
     'returns the actual detached HEAD for a %s submodule and preserves named branches',
     async (status) => {

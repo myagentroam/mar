@@ -861,6 +861,54 @@ describe('Web Workbench notification state', () => {
     expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('session-1');
   });
 
+  it('selects group marker targets with unread priority and workspace scope', async () => {
+    const f = recoveryFixture([
+      {
+        ...notification('child', 'child-unread'),
+        target: { ...notification('child', 'child-unread').target!, sessionGroup: 'CHILD' }
+      },
+      notification('main', 'main-unread')
+    ]);
+    f.server.recentRuns = [
+      { ...workspaceRun(), sessionId: 'main-active' },
+      { ...workspaceRun(), sessionId: 'child-active', sessionGroup: 'CHILD' },
+      { ...workspaceRun(), nodeId: 'node-2', sessionId: 'other', sessionGroup: 'CHILD' }
+    ];
+    await f.state.load();
+    expect(f.state.sessionGroupTarget('CHILD')?.sessionId).toBe('child-unread');
+    expect(
+      f.state.sessionGroupTarget('MAIN', { nodeId: 'node-1', workspaceId: 'workspace-1' })
+        ?.sessionId
+    ).toBe('main-unread');
+    expect(
+      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-2', workspaceId: 'workspace-1' })
+        ?.sessionId
+    ).toBe('other');
+    await f.state.markSessionRead('node-1', 'workspace-1', 'child-unread');
+    expect(
+      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-1', workspaceId: 'workspace-1' })
+        ?.sessionId
+    ).toBe('child-active');
+    expect(
+      f.state.sessionGroupTarget('MAIN', {
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        lastSessionId: 'main-active'
+      })?.sessionId
+    ).toBe('main-unread');
+    await f.state.markSessionRead('node-1', 'workspace-1', 'main-unread');
+    expect(
+      f.state.sessionGroupTarget('MAIN', {
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        lastSessionId: 'main-active'
+      })?.sessionId
+    ).toBe('main-active');
+    expect(
+      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-3', workspaceId: 'workspace-1' })
+    ).toBeUndefined();
+  });
+
   it('chooses same-identity active Run sessions and follows authoritative terminal changes', async () => {
     let recentRuns = [
       { ...workspaceRun('SUCCEEDED'), runId: 'terminal', sortAt: 500 },

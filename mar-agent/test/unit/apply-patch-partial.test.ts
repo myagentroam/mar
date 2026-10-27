@@ -2,27 +2,24 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type {
-  ModelAdapter,
-  ModelMessage,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore, type SessionRecord } from '../../src/agent-core/session/store/index.js';
-import { planContextGc } from '../../src/agent-core/runtime/context/gc.js';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import { validateContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
-import { contextGcApplyPatchInputReplacement } from '../../src/agent-core/session/context-gc-replacements.js';
-import { retainedCodeInputs } from '../../src/agent-core/session/context-gc-observations.js';
-import { structuredToolFailureData } from '../../src/agent-core/tools/output-projection.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelMessage, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore, type SessionRecord } from '../../src/session/store/index.js';
+import { planContextGc } from '../../src/runtime/context/gc.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import { validateContextGcCheckpoint } from '../../src/session/context-gc-checkpoint.js';
+import { contextGcApplyPatchInputReplacement } from '../../src/session/context-gc-replacements.js';
+import { retainedCodeInputs } from '../../src/session/context-gc-observations.js';
+import { structuredToolFailureData } from '../../src/tools/output-projection.js';
+import { AgentError } from '../../src/error.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import {
   renderObservations,
   type CodeObservation
-} from '../../src/agent-core/tools/code-mode/observations.js';
+} from '../../src/session/code-observation-projection.js';
 
 const patch =
   '*** Begin Patch\n*** Update File: applied.txt\n@@\n-before\n+after\n*** Update File: failed.txt\n@@\n-missing\n+after\n*** Update File: pending.txt\n@@\n-before\n+after\n*** End Patch';
@@ -35,7 +32,7 @@ const partialData = {
 
 describe('partial patch execution facts', () => {
   it('projects only validated patch facts, not arbitrary error details or ordinary failures', () => {
-    const error = new MarAgentError('MAR_AGENT_PATCH_PARTIAL', 'partial', {
+    const error = new AgentError('MAR_AGENT_PATCH_PARTIAL', 'partial', {
       details: { ...partialData, privateDetail: 'not public' }
     });
     expect(structuredToolFailureData('apply_patch', error)).toEqual(partialData);
@@ -43,7 +40,7 @@ describe('partial patch execution facts', () => {
     expect(
       structuredToolFailureData(
         'apply_patch',
-        new MarAgentError('MAR_AGENT_PATCH_CONFLICT', 'conflict', { details: partialData })
+        new AgentError('MAR_AGENT_PATCH_CONFLICT', 'conflict', { details: partialData })
       )
     ).toBeUndefined();
   });
@@ -67,7 +64,7 @@ describe('partial patch execution facts', () => {
       await mkdir(workspace);
       for (const path of ['applied.txt', 'failed.txt', 'pending.txt'])
         await writeFile(join(workspace, path), 'before\n');
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'coding',
         name: 'Coding',
         modelId: 'test',
@@ -108,12 +105,14 @@ describe('partial patch execution facts', () => {
           }
         }
       };
-      const agent = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Partial patch' });
         const run = session.run({ prompt: 'Apply the patch.' });
@@ -151,24 +150,33 @@ describe('partial patch execution facts', () => {
         )!;
         expect(output.content).toContain('MAR_AGENT_PATCH_PARTIAL');
         if (!codeMode) expect(JSON.parse(output.content)).toMatchObject({ data: partialData });
-        else
-          expect(output.calls).toContainEqual(
-            expect.objectContaining({ toolName: 'apply_patch', status: 'failed' })
-          );
-        if (codeMode && observeError)
-          expect(output.observations?.[0]).toMatchObject({
-            type: 'tool_result',
-            outcome: 'failed',
-            result: { data: partialData }
-          });
         const restored = await restoreMessages(store, session.id, records, {
           includeImages: false
         });
-        expect(
-          restored.messages.find(
-            (message) => message.role === 'tool' && message.callId === 'patch-call'
-          )
-        ).toMatchObject({ content: output.content });
+        const restoredOutput = restored.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'patch-call'
+        );
+        expect(restoredOutput).toMatchObject({ content: output.content });
+        if (codeMode) {
+          expect(output).not.toHaveProperty('calls');
+          expect(output).not.toHaveProperty('observations');
+          expect(restoredOutput?.calls).toContainEqual(
+            expect.objectContaining({ toolName: 'apply_patch', status: 'failed' })
+          );
+          if (observeError) {
+            expect(restoredOutput?.observations?.[0]).toMatchObject({
+              type: 'tool_result',
+              outcome: 'failed',
+              result: { data: partialData }
+            });
+            expect(output.contentParts).toContainEqual(
+              expect.objectContaining({
+                type: 'text',
+                text: expect.stringContaining('MAR_AGENT_PATCH_PARTIAL')
+              })
+            );
+          }
+        }
         await store.close();
       } finally {
         await agent.dispose();

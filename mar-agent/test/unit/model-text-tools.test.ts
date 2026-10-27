@@ -1,13 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
-import {
-  generateModelText,
-  SecretValue,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { generateModelText, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 
 afterEach(() => vi.restoreAllMocks());
 const tool = {
@@ -26,7 +22,7 @@ const call: ModelEvent = {
   callId: 'call-1',
   arguments: { value: 'ok' }
 };
-function fixture(protocol: MarAgentModelConfiguration['protocol'], events: readonly ModelEvent[]) {
+function fixture(protocol: AgentModelConfiguration['protocol'], events: readonly ModelEvent[]) {
   const requests: ModelRequest[] = [];
   let closed = false;
   const adapter =
@@ -39,7 +35,7 @@ function fixture(protocol: MarAgentModelConfiguration['protocol'], events: reado
       closed = true;
     }
   });
-  const model: MarAgentModelConfiguration = {
+  const model: AgentModelConfiguration = {
     id: 'test',
     name: 'Test',
     protocol,
@@ -128,7 +124,7 @@ describe('standalone declarative tools', () => {
       try {
         const address = server.address();
         if (!address || typeof address === 'string') throw new Error('Missing fixture address');
-        const model: MarAgentModelConfiguration = {
+        const model: AgentModelConfiguration = {
           id: 'wire-test',
           name: 'Wire test',
           protocol,

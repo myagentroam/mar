@@ -3,18 +3,19 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type MarAgent,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type Agent,
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
 
 const homes: string[] = [];
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
@@ -25,7 +26,7 @@ async function fixture() {
   homes.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
-  const model: MarAgentModelConfiguration = {
+  const model: AgentModelConfiguration = {
     id: 'fake',
     name: 'Fake',
     protocol: 'OPENAI_RESPONSES',
@@ -47,15 +48,17 @@ async function fixture() {
     yield { type: 'text.completed' as const, itemId: 'answer', text: 'Done' };
     yield { type: 'completed' as const, reason: 'completed' as const };
   });
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [model],
-    adapterFactory: () => ({ configuration: model, start })
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [model]
+    },
+    () => ({ configuration: model, start })
+  );
   agents.push(agent);
   const session = await agent.createSession({ workspace });
-  const transcript = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+  const transcript = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
   return { home, workspace, model, session, transcript, emit, start };
 }
 
@@ -71,7 +74,7 @@ describe('Execution Session write lease', () => {
         const before = await readFile(transcript, 'utf8');
         const handle = session[mode]({ prompt: 'Rejected input' });
         rejectedExecutionId = handle.executionId;
-        const events: MarAgentEvent[] = [];
+        const events: AgentEvent[] = [];
         for await (const event of handle) events.push(event);
         await expect(handle.result()).resolves.toMatchObject({
           status: 'failed',
@@ -111,7 +114,7 @@ describe('Execution Session write lease', () => {
       const before = await readFile(transcript, 'utf8');
       const handle = session.run({ prompt: 'Cancelled conflicting writer' });
       handle.cancel();
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       for await (const event of handle) events.push(event);
       await expect(handle.result()).resolves.toMatchObject({ status: 'cancelled' });
       expect(events).toEqual([expect.objectContaining({ type: 'execution.cancelled' })]);
@@ -137,8 +140,9 @@ describe('Execution Session write lease', () => {
       });
       const before = await readFile(transcript, 'utf8');
       const { apiKey: _, ...configuration } = model;
-      const agentUrl = new URL('../../src/agent-core/sdk/agent.ts', import.meta.url).href;
+      const agentUrl = new URL('../../src/sdk/agent.ts', import.meta.url).href;
       const indexUrl = new URL('../../src/index.ts', import.meta.url).href;
+      const hostUrl = new URL('../../src/host.ts', import.meta.url).href;
       const child = spawnSync(
         process.execPath,
         [
@@ -146,17 +150,17 @@ describe('Execution Session write lease', () => {
           'tsx',
           '--input-type=module',
           '-e',
-          `import { createMarAgentWithAdapter } from ${JSON.stringify(agentUrl)};
-           import { LocalAgentHost, SecretValue } from ${JSON.stringify(indexUrl)};
+          `import { createAgentWithAdapter } from ${JSON.stringify(agentUrl)};
+           import { SecretValue } from ${JSON.stringify(indexUrl)};
+           import { LocalAgentHost } from ${JSON.stringify(hostUrl)};
            const model = { ...${JSON.stringify(configuration)}, apiKey: new SecretValue('unused') };
-           const agent = await createMarAgentWithAdapter({
+           const agent = await createAgentWithAdapter({
              mode: 'normal',
              host: new LocalAgentHost({ homeDirectory: process.argv[1], workspace: process.argv[2] }),
-             models: [model],
-             adapterFactory: () => ({ configuration: model, async *start() {
+             models: [model]
+           }, () => ({ configuration: model, async *start() {
                throw new Error('Rejected execution must not access the model');
-             } })
-           });
+             } }));
            try {
              const session = await agent.openSession(process.argv[3]);
              const result = await session.run({ prompt: 'Conflicting writer' }).result();

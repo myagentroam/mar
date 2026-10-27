@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, type ToolExecutionContext, type ToolCall } from '@myagentroam/agent';
+import { LocalAgentHost, type ToolExecutionContext } from '@myagentroam/agent/host';
+import type { ToolCall } from '@myagentroam/agent';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

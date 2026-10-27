@@ -1,9 +1,10 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { createServer, type Server, type RequestListener } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreNetworkBackend } from '../../src/agent-core/extensions/network.js';
-import { LocalNetworkAccess } from '../../src/agent-core/host/local-network-access.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionNetworkBackend } from '../../src/extensions/network.js';
+import { LocalNetworkAccess } from '../../src/host/local-network-access.js';
 import {
   fixture as sdkFixture,
   answer,
@@ -26,11 +27,12 @@ afterEach(async () => {
     )
   );
 });
-async function fixture(network?: CoreNetworkBackend, wrap = false) {
-  let context!: CoreSessionExtensionContext;
+async function fixture(network?: ExtensionNetworkBackend, wrap = false) {
+  let context!: SessionExtensionContext;
   const identities: { entry: string; executionId?: string }[] = [];
   const facts: unknown[] = [];
   const manager = new ExtensionManager({
+    toolRuntime: extensionToolRuntime,
     extensions: [
       {
         id: 'http',
@@ -75,7 +77,7 @@ describe('Core native HTTP port', () => {
       response.writeHead(200);
       response.end(bytes);
     });
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const identities: { entry: string; executionId?: string }[] = [];
     const { session, adapter } = await sdkFixture(
       [
@@ -117,7 +119,7 @@ describe('Core native HTTP port', () => {
     expect(identities.at(-1)).toEqual({ entry: 'native-api' });
     expect(adapter.requests).toHaveLength(2);
     expect(JSON.stringify(adapter.requests.at(-1)!.messages)).toBe(history);
-    let disabled!: CoreSessionExtensionContext;
+    let disabled!: SessionExtensionContext;
     const other = await sdkFixture(
       [
         {
@@ -244,7 +246,7 @@ describe('Core native HTTP port', () => {
     await expect(context.network!.fetch({ url: 'file:///tmp/not-http' })).rejects.toMatchObject({
       code: 'MAR_AGENT_NETWORK_REQUEST_INVALID'
     });
-    const missing = await fixture({} as CoreNetworkBackend);
+    const missing = await fixture({} as ExtensionNetworkBackend);
     await expect(
       missing.context.network!.fetch({ url: 'https://example.test' })
     ).rejects.toMatchObject({ code: 'MAR_AGENT_HOST_PORT_UNAVAILABLE' });

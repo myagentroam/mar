@@ -304,6 +304,67 @@ describe('Node session records and external discovery merge', () => {
       await connector.stop();
     }
   });
+  it.each(['mar-agent', 'codex'] as const)(
+    'keeps a %s creation parent when native discovery registers before identity promotion',
+    async (runner) => {
+      const root = await mkdtemp(join(tmpdir(), 'mar-session-parent-race-'));
+      roots.push(root);
+      const database = new NodeDatabase(':memory:', 'parent-race');
+      const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+      const connector = new NodeConnector({ reconnect: false, database });
+      const node = connector as unknown as {
+        executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
+        nativeSessionProjectionService: NativeSessionProjectionService;
+        sessionIdentityService: { promote(id: string, nativeId: string): void };
+      };
+      const execute = node.executeNodeOperation.bind(connector);
+      try {
+        database.saveNativeSessionMetadata({
+          runner,
+          externalSessionId: 'parent',
+          workspaceId: workspace.id
+        });
+        const { session } = (await execute('session.create', {
+          workspaceId: workspace.id,
+          runner,
+          cwd: root,
+          model: 'test-model',
+          effort: 'high',
+          access: runner === 'mar-agent' ? 'auto' : 'read-only',
+          parentSessionId: 'parent'
+        })) as { session: NodeAgentSession };
+        node.nativeSessionProjectionService.remember([
+          {
+            ...session,
+            id: 'child',
+            externalSessionId: 'child',
+            parentSessionId: null
+          }
+        ]);
+        expect(database.getSessionRecord('child')?.metadata.parentSessionId).toBeNull();
+        node.sessionIdentityService.promote(session.id, 'child');
+        expect(database.getSessionRecord('child')?.metadata.parentSessionId).toBe('parent');
+        const graph = await execute('session.graph', {
+          workspaceId: workspace.id,
+          sessionId: 'parent'
+        });
+        expect(graph).toMatchObject({
+          nodes: [{ id: 'parent' }, { id: 'child', parentSessionId: 'parent' }]
+        });
+        await execute('session.metadata.update', { sessionId: 'child', clearParent: true });
+        database.saveNativeSessionMetadata({
+          runner,
+          externalSessionId: 'child',
+          workspaceId: workspace.id,
+          parentSessionId: 'parent'
+        });
+        node.sessionIdentityService.promote('child', 'child');
+        expect(database.getSessionRecord('child')?.metadata.parentSessionId).toBeNull();
+      } finally {
+        await connector.stop();
+      }
+    }
+  );
   it('records canonical creation parents and reads bounded local descendants without discovery', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-session-parents-'));
     roots.push(root);

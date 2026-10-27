@@ -1,33 +1,30 @@
 import { randomUUID } from 'node:crypto';
-import { MarAgentError } from '../agent-core/error.js';
-import { AnthropicMessagesAdapter } from '../agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../agent-core/model/openai-responses.js';
+import { AgentError } from '../error.js';
+import { AnthropicMessagesAdapter } from '../model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../model/openai-responses.js';
+import { projectModelRequest } from '../sdk/model-input-projection.js';
 import {
   resolveModelDefaultReasoningEffort,
-  type MarAgentModelConfiguration,
-  type MarAgentReasoningEffort
-} from '../agent-core/model/configuration.js';
-import type {
-  ModelAdapter,
-  ModelAttemptDiagnostic,
-  ModelUsage
-} from '../agent-core/model/contracts.js';
-import type { CoreCompactMessage } from '../agent-core/extensions/compaction.js';
-import type { ClientToolDefinition, ToolCall } from '../agent-core/tools/contracts.js';
+  type AgentModelConfiguration,
+  type AgentReasoningEffort
+} from '../model/configuration.js';
+import type { ModelAdapter, ModelAttemptDiagnostic, ModelUsage } from '../model/contracts.js';
+import type { ExtensionCompactMessage } from '../extensions/compaction.js';
+import type { ClientToolDefinition, ToolCall } from '../tools/contracts.js';
 
 export interface GenerateModelTextInput {
   readonly onModelUsage?: (
-    usage: import('../agent-core/model/usage-observer.js').ModelRequestUsage
+    usage: import('../model/usage-observer.js').ModelRequestUsage
   ) => Promise<void> | void;
   readonly onModelUsageFailure?: () => void;
-  readonly model: MarAgentModelConfiguration;
+  readonly model: AgentModelConfiguration;
   readonly system: string;
-  readonly messages: readonly CoreCompactMessage[];
+  readonly messages: readonly ExtensionCompactMessage[];
   /** Declarative client tools only. Returned calls are never executed or continued here. */
   readonly tools?: readonly ClientToolDefinition[];
   readonly promptCacheKey?: string;
   readonly cachePrefixMessages?: number;
-  readonly reasoningEffort?: MarAgentReasoningEffort;
+  readonly reasoningEffort?: AgentReasoningEffort;
   readonly outputLimit?: number;
   readonly signal: AbortSignal;
   readonly onAttemptDiagnostic?: (diagnostic: ModelAttemptDiagnostic) => Promise<void> | void;
@@ -58,7 +55,7 @@ export async function generateModelText(
   let usage: ModelUsage | undefined;
   try {
     for await (const event of adapter.start(
-      {
+      projectModelRequest({
         retryState: { attempts: 0, maxAttempts: 1 },
         usageRequestId: randomUUID(),
         ...(input.onModelUsage === undefined ? {} : { onModelUsage: input.onModelUsage }),
@@ -77,7 +74,7 @@ export async function generateModelText(
         ...(input.promptCacheKey === undefined ? {} : { promptCacheKey: input.promptCacheKey }),
         ...(input.onAttemptDiagnostic ? { onAttemptDiagnostic: input.onAttemptDiagnostic } : {}),
         ...(input.outputLimit === undefined ? {} : { outputLimit: input.outputLimit })
-      },
+      }),
       input.signal
     )) {
       input.signal.throwIfAborted();
@@ -89,7 +86,7 @@ export async function generateModelText(
           event.reason === 'completed' || (event.reason === 'tool_use' && toolCalls.length > 0);
       else if (event.type === 'client_tool.call') {
         if (!tools.some((tool) => tool.name === event.name) || event.argumentError !== undefined)
-          throw new MarAgentError(
+          throw new AgentError(
             'MAR_AGENT_MODEL_PROTOCOL_ERROR',
             'Standalone generation returned an undeclared tool or invalid tool arguments.'
           );

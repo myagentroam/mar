@@ -1,23 +1,24 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import type { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
+import type { SessionExtensionContext } from '../../src/extensions.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import type { ExtensionResourceScope } from '../../src/extensions/resources.js';
 import {
   normalizeSessionMessagesInput,
   sessionMessagesPage
-} from '../../src/agent-core/extensions/session-messages.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import { ContextGcRuntime } from '../../src/agent-core/runtime/context/gc-runtime.js';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
+} from '../../src/extensions/session-messages.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
 async function messagesFixture(codeMode = false) {
-  let context!: CoreSessionExtensionContext;
-  const contexts = new Map<string, CoreSessionExtensionContext>();
+  let context!: SessionExtensionContext;
+  const contexts = new Map<string, SessionExtensionContext>();
   const f = await fixture(
     [
       {
@@ -152,7 +153,7 @@ describe('Core Session active message views', () => {
   it.each([false, true])(
     'merges immediate notes around a GC read without duplication (included=%s)',
     async (included) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const f = await fixture(
         [
           {
@@ -297,7 +298,7 @@ describe('Core Session active message views', () => {
   });
 
   it('commits immediate model notes inside a request hook without waking another round', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let written = false;
     const f = await fixture(
       [
@@ -438,7 +439,7 @@ describe('Core Session active message views', () => {
   });
 
   it('commits a queued notice without starting an extra model round', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -480,7 +481,7 @@ describe('Core Session active message views', () => {
   });
 
   it('reads the current normalized request source during execution and releases it afterward', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let comparisons = 0;
     const f = await fixture(
       [
@@ -752,8 +753,8 @@ describe('Core Session active message views', () => {
   });
 
   it('rejects a child target when the real child-controller capability is absent', async () => {
-    let childContext!: CoreSessionExtensionContext;
-    let rootContext!: CoreSessionExtensionContext;
+    let childContext!: SessionExtensionContext;
+    let rootContext!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -787,7 +788,7 @@ describe('Core Session active message views', () => {
   ] as const)(
     'keeps a single actual tool pair in the %s conversation view with Code Mode %s',
     async (protocol, codeMode) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const f = await fixture(
         [
           {
@@ -887,7 +888,7 @@ describe('Core Session active message views', () => {
       f.adapter.requests.map(
         (request) => request.messages.flatMap((message) => message.images ?? []).length
       )
-    ).toEqual([1, 0]);
+    ).toEqual([1, 1]);
   });
 
   it.each(['missing', 'corrupt', 'legacy'] as const)(
@@ -913,13 +914,9 @@ describe('Core Session active message views', () => {
           }
         });
         const path = join(
-          f.home,
-          '.mar',
-          'agent',
-          'sessions',
-          f.session.id,
+          await activeSessionDirectory(f.home, f.session.id),
           'resources',
-          images[0]!.fileName
+          `${images[0]!.resourceId}.bin`
         );
         if (mode === 'missing') await rm(path);
         if (mode === 'corrupt') await writeFile(path, 'bad');
@@ -928,9 +925,13 @@ describe('Core Session active message views', () => {
           expect(
             (await f.api.messages({ includeImages: true })).messages.at(-1)
           ).not.toHaveProperty('images');
-        else
+        else if (mode === 'missing')
           await expect(f.api.messages({ includeImages: true })).rejects.toMatchObject({
-            code: 'MAR_AGENT_SESSION_CORRUPT'
+            code: 'MAR_AGENT_IMAGE_UNAVAILABLE'
+          });
+        else
+          expect((await f.api.messages({ includeImages: true })).messages.at(-1)).toMatchObject({
+            images: [expect.objectContaining({ dataBase64: Buffer.from('bad').toString('base64') })]
           });
         const requestView = await f.api.messages({
           view: 'request',
@@ -948,6 +949,65 @@ describe('Core Session active message views', () => {
       }
     }
   );
+
+  it('continues with the remaining image and tool result when one resource is missing', async () => {
+    const missing = Buffer.from('missing image').toString('base64');
+    const healthy = Buffer.from('healthy image').toString('base64');
+    const f = await fixture(
+      [],
+      (_request, index) =>
+        index === 0 ? call('read', { reads: [{ path: 'input.txt' }] }) : answer(),
+      false,
+      true,
+      {},
+      'OPENAI_RESPONSES',
+      ['TEXT', 'IMAGE']
+    );
+    expect(
+      await f.session
+        .run({
+          prompt: 'Inspect both images and the file',
+          images: [
+            { name: 'missing.png', mimeType: 'image/png', dataBase64: missing },
+            { name: 'healthy.png', mimeType: 'image/png', dataBase64: healthy }
+          ]
+        })
+        .result()
+    ).toMatchObject({ status: 'completed' });
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      const user = (await store.read(f.session.id)).find((record) => record.type === 'turn.user');
+      const images = (user?.payload as { images: Array<{ resourceId: string }> }).images;
+      await rm(
+        join(
+          await activeSessionDirectory(f.home, f.session.id),
+          'resources',
+          `${images[0]!.resourceId}.bin`
+        )
+      );
+      expect(await f.session.run({ prompt: 'Continue' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      const messages = f.adapter.requests.at(-1)!.messages;
+      const imageMessage = messages.find((message) =>
+        message.content.includes('Inspect both images and the file')
+      );
+      expect(imageMessage?.content).toContain('Image unavailable');
+      expect(imageMessage?.images).toMatchObject([{ dataBase64: healthy }]);
+      expect(imageMessage?.images).toHaveLength(1);
+      expect(messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'tool',
+            content: expect.stringContaining('extension-data')
+          }),
+          expect.objectContaining({ role: 'user', content: 'Continue' })
+        ])
+      );
+    } finally {
+      await store.close();
+    }
+  });
 
   it('loads explicit media and follows the same Compact replacement boundary', async () => {
     const f = await messagesFixture();
@@ -968,7 +1028,7 @@ describe('Core Session active message views', () => {
         type: 'compact.completed',
         payload: { summary: 'replacement summary' }
       });
-      await rm(join(f.home, '.mar', 'agent', 'sessions', f.session.id, 'resources'), {
+      await rm(join(await activeSessionDirectory(f.home, f.session.id), 'resources'), {
         recursive: true
       });
       const page = await f.api.messages({ view: 'conversation', includeImages: true });

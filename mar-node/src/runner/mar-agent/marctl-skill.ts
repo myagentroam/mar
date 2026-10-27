@@ -1,5 +1,5 @@
 import { hasMarctlContext, marctlDescription, marctlInstructions } from '../../marctl-guidance.js';
-import type { HostSkill } from '@myagentroam/agent';
+import type { HostSkill } from '@myagentroam/agent/host';
 
 export function marctlExecutionEnvironment(
   environment: Readonly<Record<string, string>> = {}

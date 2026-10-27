@@ -1,11 +1,8 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  MarAgentError,
-  openMarAgentSessionCatalog,
-  type SessionResource
-} from '@myagentroam/agent';
+import { AgentError, openAgentSessionCatalog } from '@myagentroam/agent';
+import type { SessionResource } from '@myagentroam/agent/host';
 import { modelResourceReadInputSchema, type ModelResourceReadInput } from '@myagentroam/protocol';
 
 const TTL_MS = 24 * 60 * 60_000;
@@ -118,13 +115,13 @@ export class ModelResourcePublicationService {
       this.identity(record.source, record.resourceId) !== this.identity(source, input.resourceId)
     )
       return undefined;
-    const catalog = await openMarAgentSessionCatalog({
+    const catalog = await openAgentSessionCatalog({
       homeDirectory: record.source.homeDirectory
     });
     try {
       return await catalog.readResource(record.source.sessionId, record.resourceId);
     } catch (error) {
-      if (error instanceof MarAgentError && error.code === 'MAR_AGENT_SESSION_NOT_FOUND')
+      if (error instanceof AgentError && error.code === 'MAR_AGENT_SESSION_NOT_FOUND')
         return undefined;
       throw error;
     } finally {

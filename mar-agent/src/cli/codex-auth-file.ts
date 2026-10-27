@@ -5,14 +5,14 @@ import type { FileHandle } from 'node:fs/promises';
 import { lstat, open } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { MarAgentError } from '../agent-core/error.js';
 import {
+  AgentError,
   SecretValue,
   type ModelCredential,
   type ModelCredentialAcquireReason,
   type ModelCredentialProvider
-} from '../agent-core/model/configuration.js';
-import { productUserAgent } from '../agent-core/model/product-user-agent.js';
+} from '../index.js';
+import { productUserAgent } from '../network/product-user-agent.js';
 
 const MAX_AUTH_FILE_BYTES = 1024 * 1024;
 const TOKEN_MAX_BYTES = 131_072;
@@ -48,7 +48,7 @@ export class CodexAuthFileCredentialProvider implements ModelCredentialProvider 
 
   constructor(path: string) {
     if (!path)
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_CREDENTIAL_FILE_INVALID',
         'Codex auth file path is required.'
       );
@@ -57,7 +57,7 @@ export class CodexAuthFileCredentialProvider implements ModelCredentialProvider 
 
   async acquire(reason: ModelCredentialAcquireReason): Promise<ModelCredential> {
     if (this.#closed)
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_CREDENTIAL_FILE_INVALID',
         'Codex auth file provider is closed.'
       );
@@ -224,7 +224,7 @@ foreach ($rule in $acl.Access) {
     )
       throw unsafeFile();
   } catch (cause) {
-    if (cause instanceof MarAgentError) throw cause;
+    if (cause instanceof AgentError) throw cause;
     throw unsafeFile(cause);
   }
 }
@@ -260,7 +260,7 @@ function parseAuthFile(content: Uint8Array): {
   const expiresAt = tokenExpiration ?? fallbackExpiration;
   if (expiresAt === undefined) throw invalidFile();
   if (expiresAt <= Date.now())
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_MODEL_AUTH_FAILED',
       'Codex auth file access credential is expired.'
     );
@@ -281,7 +281,7 @@ function jwtClaims(token: string): Record<string, unknown> {
     const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(decoded));
     return record(value);
   } catch (cause) {
-    if (cause instanceof MarAgentError) throw cause;
+    if (cause instanceof AgentError) throw cause;
     throw invalidFile(cause);
   }
 }
@@ -309,16 +309,16 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function unsafeFile(cause?: unknown): MarAgentError {
-  return new MarAgentError(
+function unsafeFile(cause?: unknown): AgentError {
+  return new AgentError(
     'MAR_AGENT_CREDENTIAL_FILE_UNSAFE',
     'Codex auth file permissions or file type are unsafe.',
     cause === undefined ? {} : { cause }
   );
 }
 
-function invalidFile(cause?: unknown): MarAgentError {
-  return new MarAgentError(
+function invalidFile(cause?: unknown): AgentError {
+  return new AgentError(
     'MAR_AGENT_CREDENTIAL_FILE_INVALID',
     'Codex auth file is invalid.',
     cause === undefined ? {} : { cause }

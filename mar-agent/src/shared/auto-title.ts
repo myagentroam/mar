@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { MarAgentError } from '../agent-core/error.js';
-import { AnthropicMessagesAdapter } from '../agent-core/model/anthropic-messages.js';
+import { AgentError } from '../error.js';
+import { AnthropicMessagesAdapter } from '../model/anthropic-messages.js';
 import {
   resolveModelDefaultReasoningEffort,
-  type MarAgentModelConfiguration
-} from '../agent-core/model/configuration.js';
-import type { ModelAdapter } from '../agent-core/model/contracts.js';
-import { OpenAiResponsesAdapter } from '../agent-core/model/openai-responses.js';
+  type AgentModelConfiguration
+} from '../model/configuration.js';
+import type { ModelAdapter } from '../model/contracts.js';
+import { OpenAiResponsesAdapter } from '../model/openai-responses.js';
 
 const sessionTitlePrompt = `You are a session title generator. Output only one title and nothing else.
 
@@ -20,10 +20,10 @@ Create a brief title that helps the user find this conversation later.
 
 export interface GenerateSessionTitleInput {
   readonly onModelUsage?: (
-    usage: import('../agent-core/model/usage-observer.js').ModelRequestUsage
+    usage: import('../model/usage-observer.js').ModelRequestUsage
   ) => Promise<void> | void;
   readonly onModelUsageFailure?: () => void;
-  readonly models: readonly MarAgentModelConfiguration[];
+  readonly models: readonly AgentModelConfiguration[];
   readonly currentModelId: string;
   readonly prompt: string;
   /** Used only when the user message does not establish a language. */
@@ -37,13 +37,13 @@ export async function generateSessionTitle(
 ): Promise<string | undefined> {
   const defaultLanguage = input.defaultLanguage?.trim();
   if (input.defaultLanguage !== undefined && (!defaultLanguage || defaultLanguage.length > 128))
-    throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Default title language is invalid.');
+    throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Default title language is invalid.');
   const models = input.models.filter((model) => model.enabled);
   const model =
     models.find((candidate) => candidate.titleGeneration) ??
     models.find((candidate) => candidate.id === input.currentModelId);
   if (!model)
-    throw new MarAgentError('MAR_AGENT_MODEL_DISABLED', 'Selected title model is unavailable.');
+    throw new AgentError('MAR_AGENT_MODEL_DISABLED', 'Selected title model is unavailable.');
   const signal = AbortSignal.any([input.signal, AbortSignal.timeout(30_000)]);
   signal.throwIfAborted();
   const adapter: ModelAdapter =

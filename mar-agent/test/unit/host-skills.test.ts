@@ -2,15 +2,13 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  loadAgentInstructions,
-  loadAgentSkill
-} from '../../src/agent-core/runtime/context/instructions.js';
-import { executeRegisteredTool } from '../../src/agent-core/tools/runtime.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelEvent, type ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { loadAgentInstructions, loadAgentSkill } from '../../src/runtime/context/instructions.js';
+import { executeRegisteredTool } from '../../src/tools/runtime.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelEvent, type ModelRequest } from '../../src/model/contracts.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -66,7 +64,7 @@ describe('Host-provided skills', () => {
       invalidate: vi.fn(),
       close: vi.fn(async () => undefined)
     };
-    const imageModel: MarAgentModelConfiguration = {
+    const imageModel: AgentModelConfiguration = {
       id: 'image',
       name: 'Image',
       modelId: 'test-image',
@@ -79,11 +77,12 @@ describe('Host-provided skills', () => {
       inputCapabilities: ['TEXT', 'IMAGE'],
       outputCapabilities: ['TEXT'],
       reasoningEfforts: ['medium'],
+      hostedWebSearch: false,
       codeMode: true
     };
     const { credentialProvider, ...common } = imageModel;
     void credentialProvider;
-    const textModel: MarAgentModelConfiguration = {
+    const textModel: AgentModelConfiguration = {
       ...common,
       id: 'text',
       inputCapabilities: ['TEXT'],
@@ -95,11 +94,13 @@ describe('Host-provided skills', () => {
       workspace: paths.workspace
     });
     let binding = host.bindExecutionExtensions(hostExtensions);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [imageModel, textModel],
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [imageModel, textModel]
+      },
+      (configuration) => ({
         configuration,
         async *start(request): AsyncIterable<ModelEvent> {
           requests.push(request);
@@ -118,7 +119,7 @@ describe('Host-provided skills', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({
         workspace: paths.workspace,
@@ -175,26 +176,29 @@ describe('Host-provided skills', () => {
         ...hostExtensions,
         skills: [{ ...hostSkill, load }]
       });
-      return createMarAgent({
-        mode: 'normal',
-        host,
-        models: [
-          {
-            id: 'test',
-            name: 'Test',
-            modelId: 'test-model',
-            protocol: 'OPENAI_RESPONSES',
-            baseUrl: 'https://example.test',
-            apiKey: new SecretValue('unused'),
-            enabled: true,
-            contextWindowTokens: 200_000,
-            maxOutputTokens: 4096,
-            inputCapabilities: ['TEXT'],
-            outputCapabilities: ['TEXT'],
-            reasoningEfforts: ['medium']
-          }
-        ],
-        adapterFactory: (configuration) => ({
+      return createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [
+            {
+              id: 'test',
+              name: 'Test',
+              modelId: 'test-model',
+              protocol: 'OPENAI_RESPONSES',
+              baseUrl: 'https://example.test',
+              apiKey: new SecretValue('unused'),
+              enabled: true,
+              contextWindowTokens: 200_000,
+              maxOutputTokens: 4096,
+              inputCapabilities: ['TEXT'],
+              outputCapabilities: ['TEXT'],
+              reasoningEfforts: ['medium'],
+              hostedWebSearch: false
+            }
+          ]
+        },
+        (configuration) => ({
           configuration,
           async *start(request): AsyncIterable<ModelEvent> {
             requests.push(request);
@@ -213,7 +217,7 @@ describe('Host-provided skills', () => {
             yield { type: 'completed', reason: 'completed' };
           }
         })
-      });
+      );
     };
     const bodies = (request: ModelRequest) =>
       request.messages.flatMap((message) =>

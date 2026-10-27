@@ -2,15 +2,12 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost } from '../../src/agent-core/host/local-agent-host.js';
-import { CodeCells } from '../../src/agent-core/tools/code-mode/cells.js';
-import { TOOL_EXECUTION_LIMITS as limits } from '../../src/agent-core/tools/execution-limits.js';
-import {
-  execToolDefinition,
-  execWaitToolDefinition
-} from '../../src/agent-core/tools/local/exec.js';
-import { applyPatchToolDefinition } from '../../src/agent-core/tools/local/apply-patch.js';
-import type { ToolExecutionContext, ToolExecutionResult } from '../../src/agent-core/sdk/types.js';
+import { LocalAgentHost } from '../../src/host/local-agent-host.js';
+import { CodeCells } from '../../src/tools/code-mode/cells.js';
+import { TOOL_EXECUTION_LIMITS as limits } from '../../src/tools/execution-limits.js';
+import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
+import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
+import type { ToolExecutionContext, ToolExecutionResult } from '../../src/sdk/types.js';
 
 const hosts: LocalAgentHost[] = [];
 const roots: string[] = [];

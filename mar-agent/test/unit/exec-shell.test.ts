@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost } from '../../src/index.js';
-import { execToolDefinition, execToolInput } from '../../src/agent-core/tools/local/exec.js';
-import type { ExecResult } from '../../src/agent-core/tools/contracts.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
-import { prepareLocalShellProcess } from '../../src/agent-core/host/local-shell.js';
-import type { LocalProcessSpawnRequest } from '../../src/agent-core/host/local-process-executor.js';
-import { LocalSessionEnvironment } from '../../src/agent-core/host/local-session-environment.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { execToolDefinition, execToolInput } from '../../src/tools/local/exec.js';
+import type { ExecResult } from '../../src/tools/contracts.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
+import { prepareLocalShellProcess } from '../../src/host/local-shell.js';
+import type { LocalProcessSpawnRequest } from '../../src/host/local-process-executor.js';
+import { LocalSessionEnvironment } from '../../src/host/local-session-environment.js';
 
 const roots: string[] = [];
 const hosts: LocalAgentHost[] = [];
@@ -51,7 +51,7 @@ async function exec(host: LocalAgentHost, command: string, login?: boolean) {
   return data;
 }
 
-const operation: CoreOperationContext = {
+const operation: ExtensionOperationContext = {
   sessionId: 'session',
   executionId: 'execution',
   operationId: 'environment',

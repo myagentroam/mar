@@ -486,6 +486,40 @@ test('Hosted model labels preserve dropdown semantics and keyboard selection', a
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 });
 
+for (const theme of ['daylight', 'dark']) {
+  test(`Hosted model selector matches workspace selector states in ${theme}`, async ({ page }) => {
+    await page.goto(`${fixture.url}visual-alignment.html?hosted=1&model-options=1&theme=${theme}`);
+    const hosted = page.locator('.hosted-model-slot .hosted-model-trigger');
+    const workspace = page.locator('.composer-model-effort-select .el-select__wrapper');
+    await expect(hosted).toBeEnabled();
+    await expect(workspace).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(hosted).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(workspace).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await hosted.hover();
+    const hostedHover = await hosted.evaluate((element) => ({
+      background: getComputedStyle(element).backgroundColor,
+      shadow: getComputedStyle(element).boxShadow
+    }));
+    await workspace.hover();
+    await expect(workspace).toHaveCSS('background-color', hostedHover.background);
+    await expect(workspace).toHaveCSS('box-shadow', hostedHover.shadow);
+    await hosted.click();
+    await expect(hosted).toHaveAttribute('aria-expanded', 'true');
+    const expandedShadow = await hosted.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.append(probe);
+      probe.style.boxShadow = '0 0 0 1px var(--mar-color-brand) inset';
+      const value = getComputedStyle(probe).boxShadow;
+      probe.remove();
+      return value;
+    });
+    await expect(hosted).toHaveCSS('box-shadow', expandedShadow);
+    await hosted.click();
+    await expect(hosted).toHaveAttribute('aria-expanded', 'false');
+  });
+}
+
 test('Theme action hints do not replace dropdown semantics', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?menus=1`);
   const trigger = page.locator('.theme-settings .el-dropdown button').first();

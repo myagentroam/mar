@@ -3,21 +3,21 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  openMarAgentSessionCatalog,
-  type MarAgentModelConfiguration
+  openAgentSessionCatalog,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelAdapter, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { ApplyPatchTool } from '../../src/agent-core/tools/local/apply-patch.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelRequest } from '../../src/model/contracts.js';
+import { ApplyPatchTool } from '../../src/tools/local/apply-patch.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 import {
   failedToolResultExtensions,
   withToolResultExtensions,
   type ToolResultResourceWriter
-} from '../../src/agent-core/tools/result-extensions.js';
+} from '../../src/tools/result-extensions.js';
 
 describe('tool result extension evidence', () => {
   it('creates, overwrites and deletes empty files without inventing a newline', async () => {
@@ -75,7 +75,7 @@ describe('tool result extension evidence', () => {
       const workspace = join(home, 'workspace');
       await mkdir(workspace);
       await writeFile(join(workspace, 'file.txt'), 'A\n');
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'test',
         name: 'Test',
         modelId: 'test',
@@ -87,6 +87,7 @@ describe('tool result extension evidence', () => {
         inputCapabilities: ['TEXT'],
         outputCapabilities: ['TEXT'],
         reasoningEfforts: ['high'],
+        hostedWebSearch: false,
         defaultReasoningEffort: 'high',
         codeMode,
         enabled: true
@@ -113,12 +114,14 @@ describe('tool result extension evidence', () => {
           }
         }
       };
-      const agent = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Diff' });
         const run = session.run({ prompt: 'Apply the change.' });
@@ -145,7 +148,7 @@ describe('tool result extension evidence', () => {
         ).not.toContain('resultExtensions');
         await writeFile(join(workspace, 'file.txt'), 'C\n');
         await agent.dispose();
-        const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+        const catalog = await openAgentSessionCatalog({ homeDirectory: home });
         try {
           const page = await catalog.readToolResultResource(session.id, { resourceRef });
           expect(page.content).toContain('-A\n+B\n');

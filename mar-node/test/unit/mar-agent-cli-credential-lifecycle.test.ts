@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it, vi } from 'vitest';
 import type { MarAgentRuntimeModelConfiguration } from '../../../packages/protocol/src/index.js';
-import type { MarAgentHost, ToolExecutionContext } from '../../../mar-agent/src/index.js';
+import type { AgentHost, ToolExecutionContext } from '../../../mar-agent/src/host.js';
 import {
   MarAgentManagedRunController,
   resolveRunModels
@@ -36,7 +36,7 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
   const observed: Array<{ credential: string; oldCredential?: string; mcp?: string }> = [];
   const retained: string[] = [];
   const catalogSources: string[][] = [];
-  const hosts: MarAgentHost[] = [];
+  const hosts: AgentHost[] = [];
   let execution = 0;
   const disposed = vi.fn();
   const createAgent: CreateAgent = vi.fn(async ({ host }) => {

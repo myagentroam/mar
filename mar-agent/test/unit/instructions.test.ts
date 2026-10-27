@@ -4,22 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type HostSessionResourceSnapshot,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { loadAgentInstructions } from '../../src/agent-core/runtime/context/instructions.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import { buildCompactedHistory } from '../../src/agent-core/runtime/compaction/history.js';
+} from '../../src/model/contracts.js';
+import { loadAgentInstructions } from '../../src/runtime/context/instructions.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import { buildCompactedHistory } from '../../src/runtime/compaction/history.js';
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -28,7 +24,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'instructions',
   name: 'Instructions',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -62,7 +58,7 @@ class RecordingAdapter implements ModelAdapter {
 }
 
 class ResponsesRecordingAdapter implements ModelAdapter {
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     ...model,
     protocol: 'OPENAI_RESPONSES',
     responsesPreviousResponseId: true
@@ -413,13 +409,15 @@ describe('AGENTS model context', () => {
     await mkdir(otherWorkspace);
     const adapter = new RecordingAdapter();
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        systemInstruction: 'HOST_CONTRACT',
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model],
+          systemInstruction: 'HOST_CONTRACT'
+        },
+        () => adapter
+      );
     let agent = await create();
     let secondId = '';
     try {
@@ -481,12 +479,14 @@ describe('AGENTS model context', () => {
     const { home, workspace } = await fixture('mar-instructions-role-');
     await writeFile(join(workspace, 'AGENTS.md'), 'CURRENT_RULE');
     const adapter = new RecordingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     let sessionId = '';
 
     try {
@@ -530,12 +530,14 @@ describe('AGENTS model context', () => {
     const { home, workspace } = await fixture('mar-instructions-responses-');
     await writeFile(join(workspace, 'AGENTS.md'), 'FIRST_RULE');
     const adapter = new ResponsesRecordingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
 
     try {
       const session = await agent.createSession({ workspace, title: 'Instructions' });
@@ -572,12 +574,14 @@ describe('AGENTS model context', () => {
     const { home, workspace } = await fixture('mar-resources-responses-');
     const adapter = new ResponsesRecordingAdapter();
     const host = new ChangingResourceHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
 
     try {
       const session = await agent.createSession({ workspace, title: 'Resources' });
@@ -601,12 +605,14 @@ describe('AGENTS model context', () => {
     const { home, workspace } = await fixture('mar-instructions-compact-');
     await writeFile(join(workspace, 'AGENTS.md'), 'RULE_MUST_NOT_ENTER_COMPACT');
     const adapter = new RecordingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new ChangingResourceHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new ChangingResourceHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
 
     let sessionId = '';
     try {
@@ -655,12 +661,14 @@ describe('AGENTS model context', () => {
     const { home, workspace } = await fixture('mar-compact-resource-once-');
     const adapter = new RecordingAdapter();
     const host = new ChangingResourceHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     let sessionId = '';
     try {
       const session = await agent.createSession({ workspace, title: 'Resource baseline' });
@@ -689,12 +697,14 @@ describe('AGENTS model context', () => {
       await agent.dispose();
     }
     const resumedHost = new ChangingResourceHost({ homeDirectory: home, workspace });
-    const reopened = await createMarAgent({
-      mode: 'normal',
-      host: resumedHost,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const reopened = await createMarAgent(
+      {
+        mode: 'normal',
+        host: resumedHost,
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await reopened.openSession(sessionId);
       expect((await session.run({ prompt: 'restart' }).result()).status).toBe('completed');
@@ -722,12 +732,14 @@ describe('AGENTS model context', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Failed compact' });
       await session.run({ prompt: 'seed' }).result();
@@ -777,10 +789,9 @@ describe('AGENTS model context', () => {
       const options = {
         mode: 'normal' as const,
         host: new ChangingResourceHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => adapter
+        models: [model]
       };
-      const agent = await createMarAgent(options);
+      const agent = await createMarAgent(options, () => adapter);
       let sessionId = '';
       try {
         const session = await agent.createSession({ workspace, title: 'Ordered compact' });
@@ -818,10 +829,10 @@ describe('AGENTS model context', () => {
       expect(resumed.messages[userIndex]?.content).toBe(
         mode === 'mid-turn' ? 'REAL_ORDER_INPUT' : 'LATEST_ORDER_INPUT'
       );
-      const reopenedAgent = await createMarAgent({
-        ...options,
-        host: new LocalAgentHost({ homeDirectory: home, workspace })
-      });
+      const reopenedAgent = await createMarAgent(
+        { ...options, host: new LocalAgentHost({ homeDirectory: home, workspace }) },
+        () => adapter
+      );
       try {
         const reopened = await reopenedAgent.openSession(sessionId);
         expect((await reopened.run({ prompt: 'REOPENED_INPUT' }).result()).status).toBe(
@@ -914,12 +925,14 @@ describe('AGENTS model context', () => {
     await store.compact(stored.id, { summary: 'OLD_RULE_FROM_COMPACT' });
     await store.close();
     const adapter = new RecordingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
 
     try {
       const session = await agent.openSession(stored.id);
@@ -945,12 +958,14 @@ describe('AGENTS model context', () => {
     });
     await store.close();
     const adapter = new RecordingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
 
     try {
       const session = await agent.openSession(stored.id);

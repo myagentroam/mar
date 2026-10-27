@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
-import { MarAgentError } from '../../../mar-agent/src/index.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AgentError } from '../../../mar-agent/src/index.js';
 import type { RuntimeCredentialTicket } from '../../../packages/protocol/src/index.js';
 import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
 import { MarAgentModelTransportTestService } from '../../src/service/mar-agent-model-transport-test-service.js';
 
 type ModelConfiguration = ReturnType<MarAgentRuntimeModelFactory['create']>[number];
 type CredentialProvider = NonNullable<ModelConfiguration['credentialProvider']>;
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('Node MAR Agent model transport test', () => {
   it('relays standard service tiers to the SDK without a credential-specific speed conversion', async () => {
@@ -35,6 +37,7 @@ describe('Node MAR Agent model transport test', () => {
   });
   it('executes the selected transport through the shared runtime model factory', async () => {
     const close = vi.fn(async () => undefined);
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
     const credentialProvider = testCredentialProvider(close);
     const configuration: ModelConfiguration = {
       id: 'model-1',
@@ -56,7 +59,7 @@ describe('Node MAR Agent model transport test', () => {
       enabled: true
     };
     const create = vi.fn(() => [configuration]);
-    const testTransport = vi.fn(async () => true);
+    const testTransport = vi.fn(async () => ({ completed: true, response: 'OK' }));
     const service = new MarAgentModelTransportTestService({
       modelFactory: { create },
       testTransport
@@ -81,6 +84,34 @@ describe('Node MAR Agent model transport test', () => {
       executionId: 'test-1'
     });
     expect(testTransport).toHaveBeenCalledWith(configuration, expect.any(AbortSignal));
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    timeout.mockRestore();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('projects a stream without a completion marker as a connection failure and closes the provider', async () => {
+    const close = vi.fn(async () => undefined);
+    const [base] = new MarAgentRuntimeModelFactory({ resolve: vi.fn() }).create([runtimeModel()], {
+      runtimeScopeId: 'scope-1',
+      executionId: 'test-1'
+    });
+    await base?.credentialProvider?.close();
+    const configuration = {
+      ...base!,
+      credentialProvider: testCredentialProvider(close)
+    };
+    const service = new MarAgentModelTransportTestService({
+      modelFactory: { create: vi.fn(() => [configuration]) },
+      testTransport: vi.fn(async () => ({ completed: false, response: 'partial' }))
+    });
+    await expect(
+      service.test({ runtimeScopeId: 'scope-1', executionId: 'test-1', model: runtimeModel() })
+    ).resolves.toEqual({
+      success: false,
+      code: 'MAR_AGENT_MODEL_CONNECTION_FAILED',
+      message: 'Model transport test ended without completion.',
+      httpStatus: null
+    });
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -108,10 +139,10 @@ describe('Node MAR Agent model transport test', () => {
     const service = new MarAgentModelTransportTestService({
       modelFactory: { create: vi.fn(() => [configuration]) },
       testTransport: vi.fn(async () => {
-        const upstream = new MarAgentError('invalid_request_error', 'Store must be set to false', {
+        const upstream = new AgentError('invalid_request_error', 'Store must be set to false', {
           details: { status: 400 }
         });
-        throw new MarAgentError('invalid_request_error', 'Store must be set to false', {
+        throw new AgentError('invalid_request_error', 'Store must be set to false', {
           details: {
             status: 400,
             credentialRevision: 1,

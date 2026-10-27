@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { MarAgentModelConfiguration } from '../../src/agent-core/model/configuration.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
+import type { AgentModelConfiguration } from '../../src/model/configuration.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import {
   observeModelRequestUsage,
   type ModelRequestUsage
-} from '../../src/agent-core/model/usage-observer.js';
+} from '../../src/model/usage-observer.js';
 
-const configuration: MarAgentModelConfiguration = {
+const configuration: AgentModelConfiguration = {
   id: 'configuration-1',
   name: 'Configured model',
   protocol: 'OPENAI_RESPONSES',

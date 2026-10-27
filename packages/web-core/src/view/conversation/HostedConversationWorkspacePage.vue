@@ -975,13 +975,13 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.refreshHistory')"
             :disabled="loadingDirectory"
             :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
+            :aria-busy="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
+            :icon="marIcon('refresh')"
             size="small"
             text
             @click="refreshDirectory"
             :loading-icon="marIcon('loading-action')"
-          >
-            <MarIcon name="refresh" />
-          </el-button>
+          />
         </div>
       </div>
       <div
@@ -1100,10 +1100,7 @@ onBeforeUnmount(() => {
                   <MarIcon name="edit" />
                   {{ translate('hostedConversations.editTitle') }}
                 </el-dropdown-item>
-                <el-dropdown-item
-                  class="session-delete-menu-item"
-                  @click="deleteConversation(conversation)"
-                >
+                <el-dropdown-item divided @click="deleteConversation(conversation)">
                   <MarIcon name="delete" />
                   {{ translate('hostedConversations.delete') }}
                 </el-dropdown-item>
@@ -1714,16 +1711,6 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-:global(.session-action-menu .session-delete-menu-item) {
-  color: var(--mar-color-danger-text);
-}
-
-:global(.session-action-menu .session-delete-menu-item:not(.is-disabled):focus),
-:global(.session-action-menu .session-delete-menu-item:not(.is-disabled):hover) {
-  background: var(--mar-color-danger-bg);
-  color: var(--mar-color-danger-text);
-}
-
 :global(.session-action-menu .el-dropdown-menu__item) {
   gap: 0.4rem;
 }
@@ -2087,7 +2074,7 @@ onBeforeUnmount(() => {
     width: min(300px, calc(100vw - 48px));
     flex: none;
     border: 0;
-    border-right: 1px solid var(--mar-border-strong);
+    border-right: 1px solid var(--mar-border-subtle);
     box-shadow: 0 8px 24px var(--mar-shadow-medium);
     transform: translateX(-100%);
     visibility: hidden;

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { MarAgentEvent } from '@myagentroam/agent';
+import type { AgentEvent } from '@myagentroam/agent';
 import { toolPresentationSchema } from '@myagentroam/protocol';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 
-function event(payload: Record<string, unknown>): MarAgentEvent {
+function event(payload: Record<string, unknown>): AgentEvent {
   return {
     eventId: 'event',
     sequence: 1,
@@ -12,7 +12,7 @@ function event(payload: Record<string, unknown>): MarAgentEvent {
     executionId: 'execution',
     turnId: 'turn',
     ...payload
-  } as MarAgentEvent;
+  } as AgentEvent;
 }
 
 describe('MAR tool presentation projection', () => {

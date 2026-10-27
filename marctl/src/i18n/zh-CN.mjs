@@ -118,9 +118,11 @@ ${configurationHelp}
 投递与等待：
   start/send 返回 clientMessageId。
   send 必须二选一：--steer 或 --queue，空闲时也需指定。
-  --steer 优先补充新信息，可能切换当前执行；
-    Node 按实际状态裁决，仅用于影响当前工作的必要更新。
-  --queue 排入后续轮次；有活动 Goal 时可能等待 Goal 退出才处理。
+  --steer 优先补充影响当前工作的及时信息，可能切换当前执行；
+    Node 按实际状态裁决。
+  --queue 不打断活动执行；正常运行时等待当前执行和前面的队列项；
+    有活动 Goal 时可能等待 Goal 退出才处理。
+    当前工作需要及时获知的信息应使用 --steer。
     新输入自动恢复暂停的 FIFO，不打断活动执行；取消收敛后才恢复。
   示例：
     marctl sessions send <session-id> --steer \\

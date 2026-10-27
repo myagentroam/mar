@@ -1,10 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { publicHostedToolEvents } from '../../src/agent-core/runtime/event-projection.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import type { ModelEvent } from '../../src/model/contracts.js';
+import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
 
 const servers: Server[] = [];
 
@@ -31,9 +31,9 @@ async function sseServer(events: readonly unknown[]): Promise<string> {
 }
 
 function configuration(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   baseUrl: string
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'test-model',
     name: 'Test model',

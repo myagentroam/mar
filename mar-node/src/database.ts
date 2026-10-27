@@ -488,6 +488,8 @@ export class NodeDatabase {
 
   saveNativeSessionMetadata(input: {
     readonly parentSessionId?: string | null;
+    // Only for the initial promotion of a newly created Session, never for a resume.
+    readonly initializeParent?: boolean;
     readonly runner: RunnerName;
     readonly externalSessionId: string;
     readonly workspaceId: string;
@@ -531,7 +533,9 @@ export class NodeDatabase {
     const effort = input.effort === undefined ? (current?.effort ?? null) : input.effort;
     const access = input.access === undefined ? (current?.access ?? null) : input.access;
     const parentSessionId =
-      current === undefined ? (input.parentSessionId ?? null) : (current.parentSessionId ?? null);
+      current === undefined || input.initializeParent === true
+        ? (current?.parentSessionId ?? input.parentSessionId ?? null)
+        : (current.parentSessionId ?? null);
     const metadata = JSON.stringify({
       version: 1,
       parentSessionId,

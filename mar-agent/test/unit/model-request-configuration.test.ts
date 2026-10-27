@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { prepareModelConfiguration } from '../../src/agent-core/model/request-configuration.js';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
+import { prepareModelConfiguration } from '../../src/model/request-configuration.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
 
 const model = {
   id: 'main',

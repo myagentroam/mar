@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countModelTokens, truncateModelText } from '../../src/agent-core/runtime/token-budget.js';
+import { countModelTokens, truncateModelText } from '../../src/runtime/token-budget.js';
 
 describe('model token budget', () => {
   it('counts and bounds mixed code and multilingual tool output with a shared byte estimate', () => {

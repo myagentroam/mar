@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MarAgentEvent, CoreAgentsApi } from '../../src/index.js';
-import type { ToolExecutionContext } from '../../src/agent-core/tools/contracts.js';
+import type { AgentEvent } from '../../src/index.js';
+import type { ExtensionAgentsApi } from '../../src/extensions.js';
+import type { ToolExecutionContext } from '../../src/tools/contracts.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -19,7 +20,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         const entered = Promise.withResolvers<void>();
         const waiting = Promise.withResolvers<void>();
         const release = Promise.withResolvers<void>();
-        let api: CoreAgentsApi | undefined;
+        let api: ExtensionAgentsApi | undefined;
         let parentRound = 0;
         let agentId: string | undefined;
         const f = await fixture(
@@ -80,7 +81,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             prompt: 'wait for children',
             permissionMode: 'full-access'
           });
-          const events: MarAgentEvent[] = [];
+          const events: AgentEvent[] = [];
           const collecting = (async () => {
             for await (const event of execution) {
               events.push(event);
@@ -128,7 +129,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       'wakes the foreground wait without cancelling retained work (code mode: %s)',
       async (codeMode) => {
         const entered = Promise.withResolvers<void>();
-        const events: MarAgentEvent[] = [];
+        const events: AgentEvent[] = [];
         const code = `const process = await tools.exec(${JSON.stringify({ command: childCommand, yieldMs: 0 })}); observe.result(process); const final = await tools.exec_wait({ processId: process.data.processId, yieldMs: 300000 }); observe.result(final);`;
         const f = await fixture(
           [],

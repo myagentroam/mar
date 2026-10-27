@@ -2,11 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  createMarAgent,
-  type MarAgentModelConfiguration
+  createAgent,
+  type AgentModelConfiguration
 } from '../../../mar-agent/src/index.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
@@ -87,7 +87,7 @@ it.each(
       tools: Array<{ name: string; description: string }>;
       toolSetId?: string;
     }> = [];
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       ...configuration,
       id: 'fake',
       name: 'Fake',
@@ -195,7 +195,7 @@ it.each(
         headers: { 'content-type': 'text/event-stream' }
       });
     });
-    let agent: Awaited<ReturnType<typeof createMarAgent>> | undefined;
+    let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
     const pools: MarAgentMcpClientPool[] = [];
     const prepare = (id: string) =>
       coordinator.prepare(id, {
@@ -230,7 +230,7 @@ it.each(
       });
     };
     try {
-      agent = await createMarAgent({ mode: 'normal', host, models: [model] });
+      agent = await createAgent({ mode: 'normal', host, models: [model] });
       const sdkSession = await agent.createSession({ workspace: home, title: 'Queued schedule' });
       const first = coordinator.accept({
         runId: 'first-run',

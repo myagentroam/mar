@@ -3,15 +3,16 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { ResourceInputProjection } from '../../src/sdk/resource-input.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 
-type Protocol = MarAgentModelConfiguration['protocol'];
+type Protocol = AgentModelConfiguration['protocol'];
 type ToolAction =
   | {
       readonly type: 'tool';
@@ -20,7 +21,7 @@ type ToolAction =
     }
   | { readonly type: 'code'; readonly source: string }
   | { readonly type: 'final'; readonly text?: string };
-type Agent = Awaited<ReturnType<typeof createMarAgentWithAdapter>>;
+type Agent = Awaited<ReturnType<typeof createAgentWithAdapter>>;
 
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -54,7 +55,7 @@ function configuration(
   protocol: Protocol,
   baseUrl: string,
   responsesTransport: 'HTTP' | 'WEBSOCKET' = 'HTTP'
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'vision',
     name: 'Vision',
@@ -256,15 +257,15 @@ function objectsOfType(value: unknown, type: string): Record<string, unknown>[] 
 async function createAgent(
   home: string,
   workspace: string,
-  model: MarAgentModelConfiguration,
+  model: AgentModelConfiguration,
   publishModelResource?: ConstructorParameters<typeof LocalAgentHost>[0]['publishModelResource'],
-  runtimeExtensions?: Parameters<typeof createMarAgentWithAdapter>[0]['runtimeExtensions']
+  extensions?: Parameters<typeof createAgentWithAdapter>[0]['extensions']
 ) {
-  const agent = await createMarAgentWithAdapter({
+  const agent = await createAgentWithAdapter({
     mode: 'normal',
     host: new LocalAgentHost({ homeDirectory: home, workspace, publishModelResource }),
     models: [model],
-    ...(runtimeExtensions === undefined ? {} : { runtimeExtensions })
+    ...(extensions === undefined ? {} : { extensions })
   });
   agents.push(agent);
   return agent;

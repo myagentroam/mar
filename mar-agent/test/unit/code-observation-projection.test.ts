@@ -1,22 +1,21 @@
 import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import type { ModelAdapter, ModelMessage } from '../../src/agent-core/model/contracts.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import type { ModelAdapter } from '../../src/model/contracts.js';
+import type { SessionModelMessage as ModelMessage } from '../../src/session/model-request.js';
+import { projectModelRequest } from '../../src/sdk/model-input-projection.js';
+import { boundObservations } from '../../src/tools/code-mode/observations.js';
 import {
-  boundObservations,
   observationModelParts,
   renderObservations,
   type CodeObservation
-} from '../../src/agent-core/tools/code-mode/observations.js';
-import {
-  estimatedRequestTokens,
-  stableJson
-} from '../../src/agent-core/runtime/context/request-budget.js';
-import { contextGcMessageTokens } from '../../src/agent-core/runtime/context/gc-tokens.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
-import { shouldUseNativeCompaction } from '../../src/agent-core/runtime/context/usage.js';
+} from '../../src/session/code-observation-projection.js';
+import { estimatedRequestTokens, stableJson } from '../../src/runtime/context/request-budget.js';
+import { contextGcMessageTokens } from '../../src/runtime/context/gc-tokens.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
+import { shouldUseNativeCompaction } from '../../src/runtime/context/usage.js';
 
 const body = JSON.stringify({
   status: 'completed',
@@ -59,6 +58,51 @@ function modelText(message: ModelMessage) {
 }
 
 describe('Code Mode model observation projection', () => {
+  it('projects ordered images and nested tool declarations without changing logical input', () => {
+    const message = fixture();
+    const first = message.observations![0] as Extract<CodeObservation, { type: 'tool_result' }>;
+    first.result.imageIndices = [1, 0];
+    message.images = [
+      { mimeType: 'image/png', dataBase64: 'first' },
+      { mimeType: 'image/png', dataBase64: 'second' }
+    ];
+    const declaration = {
+      name: 'search_result',
+      description: 'Search result',
+      inputSchema: { type: 'object' },
+      nativeType: 'tool_search' as const,
+      inputMode: 'json' as const,
+      allowedCallers: ['direct' as const],
+      agentScope: 'ROOT_ONLY' as const
+    };
+    message.toolSearchTools = [declaration];
+    const request = { system: 'test', messages: [message], tools: [declaration] };
+    const before = structuredClone(request);
+    const projected = projectModelRequest(request);
+    expect(projected.messages[0]!.contentParts?.filter((part) => part.type === 'image')).toEqual([
+      { type: 'image', image: message.images[1] },
+      { type: 'image', image: message.images[0] }
+    ]);
+    expect(projected.messages[0]!.toolSearchTools).toEqual([
+      {
+        name: 'search_result',
+        description: 'Search result',
+        inputSchema: { type: 'object' },
+        nativeType: 'tool_search',
+        inputMode: 'json'
+      }
+    ]);
+    expect(projected.tools).toEqual(projected.messages[0]!.toolSearchTools);
+    expect(request).toEqual(before);
+
+    const edited = projectModelRequest({
+      ...request,
+      messages: [{ ...message, textBlocks: [{ text: 'edited' }] }]
+    });
+    expect(edited.messages[0]!.contentParts).toBeUndefined();
+    expect(edited.messages[0]!.textBlocks).toEqual([{ text: 'edited' }]);
+  });
+
   it('uses an explicit edited text projection without changing observation facts', () => {
     const message = fixture();
     const before = structuredClone(message.observations);
@@ -330,7 +374,7 @@ describe('Code Mode model observation projection', () => {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('Missing fixture address');
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'test',
         name: 'Test',
         protocol,
@@ -359,7 +403,7 @@ describe('Code Mode model observation projection', () => {
       }
       try {
         for await (const event of adapter.start(
-          {
+          projectModelRequest({
             system: 'Fixture.',
             tools: [],
             messages: [
@@ -373,7 +417,7 @@ describe('Code Mode model observation projection', () => {
               },
               message
             ]
-          },
+          }),
           new AbortController().signal
         )) {
           void event;

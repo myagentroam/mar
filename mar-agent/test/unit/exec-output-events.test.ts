@@ -2,9 +2,9 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { directLocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { answer, call, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -84,7 +84,7 @@ describe('exec live output and model observation separation', () => {
           }
         }
       );
-      const published: MarAgentEvent[] = [];
+      const published: AgentEvent[] = [];
       const observer = vi.spyOn(f.host, 'emit').mockImplementation(async (event) => {
         published.push(event);
       });
@@ -163,7 +163,7 @@ describe('exec live output and model observation separation', () => {
           }
         }
       );
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       const execution = f.session.run({ prompt: 'Run the fixture.' });
       const collecting = (async () => {
         for await (const event of execution) events.push(event);

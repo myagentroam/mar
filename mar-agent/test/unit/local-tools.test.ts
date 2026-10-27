@@ -7,25 +7,21 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, MarAgentError, type LocalProcessSpawnRequest } from '../../src/index.js';
-import { LocalWorkspaceTools } from '../../src/agent-core/tools/local/workspace-tools.js';
-import { directLocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
-import { AGENT_EXECUTION_POLICY } from '../../src/agent-core/runtime/execution-policy.js';
-import { modelTokenBudgetBytes } from '../../src/agent-core/runtime/token-budget.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import { ExecTool, execToolDefinition } from '../../src/agent-core/tools/local/exec.js';
-import {
-  ApplyPatchTool,
-  applyPatchToolInput
-} from '../../src/agent-core/tools/local/apply-patch.js';
-import { readToolDefinition } from '../../src/agent-core/tools/local/read.js';
-import { parseReadContextOutput } from '../../src/agent-core/tools/local/read-context.js';
-import { viewImageToolDefinition } from '../../src/agent-core/tools/local/view-image.js';
-import {
-  AGENT_TOOL_HANDLERS,
-  BUILTIN_TOOL_DEFINITIONS
-} from '../../src/agent-core/tools/registry.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+import { LocalAgentHost, type LocalProcessSpawnRequest } from '../../src/host.js';
+import { AgentError } from '../../src/index.js';
+import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
+import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
+import { AGENT_EXECUTION_POLICY } from '../../src/runtime/execution-policy.js';
+import { modelTokenBudgetBytes } from '../../src/runtime/token-budget.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { ExecTool } from '../../src/host/local-exec-tool.js';
+import { execToolDefinition } from '../../src/tools/local/exec.js';
+import { ApplyPatchTool, applyPatchToolInput } from '../../src/tools/local/apply-patch.js';
+import { readToolDefinition } from '../../src/tools/local/read.js';
+import { parseReadContextOutput } from '../../src/prompts/read-context.js';
+import { viewImageToolDefinition } from '../../src/tools/local/view-image.js';
+import { AGENT_TOOL_HANDLERS, BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 
 const roots: string[] = [];
 afterEach(async () =>
@@ -1464,7 +1460,7 @@ describe('local workspace tools', () => {
     });
     expect(done).toMatchObject({ status: 'completed', stdout: 'ok', exitCode: 0 });
     await expect(tools.exec({ action: 'poll', processId: 'missing' })).rejects.toBeInstanceOf(
-      MarAgentError
+      AgentError
     );
     await tools.dispose();
   });
@@ -2034,7 +2030,7 @@ describe('local workspace tools', () => {
       workspace: root,
       beforeToolExecute: async (_call, context) => {
         seen.push(context.signal);
-        throw new MarAgentError('TEST_TOOL_POLICY_DENIED', 'Tool policy denied execution.');
+        throw new AgentError('TEST_TOOL_POLICY_DENIED', 'Tool policy denied execution.');
       },
       question: async (_input, signal) => {
         seen.push(signal);
@@ -2106,7 +2102,7 @@ describe('local workspace tools', () => {
       workspace,
       processExecutor: {
         async spawn() {
-          throw new MarAgentError('SANDBOX_UNAVAILABLE', 'Sandbox is unavailable.');
+          throw new AgentError('SANDBOX_UNAVAILABLE', 'Sandbox is unavailable.');
         }
       }
     });

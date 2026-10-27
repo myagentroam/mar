@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { answer, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);

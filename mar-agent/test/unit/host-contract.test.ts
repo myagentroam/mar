@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAR_AGENT_HOST_API_VERSION,
-  MarAgentError,
+  AGENT_HOST_API_VERSION,
   negotiateHost,
   selectExecutionShell,
   type HostDescription,
-  type MarAgentHostCapability
-} from '../../src/index.js';
+  type AgentHostCapability
+} from '../../src/host.js';
+import { AgentError } from '../../src/index.js';
 
 const capabilities = [
   'workspace.read',
@@ -18,7 +18,7 @@ const capabilities = [
 
 const host = (
   apiVersion: string,
-  values: readonly MarAgentHostCapability[] = capabilities
+  values: readonly AgentHostCapability[] = capabilities
 ): HostDescription => ({
   apiVersion,
   mode: 'normal',
@@ -34,13 +34,13 @@ describe('host negotiation', () => {
   });
 
   it('accepts the same version and higher compatible minor', () => {
-    expect(MAR_AGENT_HOST_API_VERSION).toBe('1.0');
+    expect(AGENT_HOST_API_VERSION).toBe('1.0');
     expect(negotiateHost(host('1.0')).apiVersion).toBe('1.0');
     expect(negotiateHost(host('1.7')).apiVersion).toBe('1.7');
   });
 
   it('ignores unknown optional capabilities', () => {
-    const description = host('1.0', [...capabilities, 'future.optional' as MarAgentHostCapability]);
+    const description = host('1.0', [...capabilities, 'future.optional' as AgentHostCapability]);
     expect(negotiateHost(description)).toBe(description);
   });
 
@@ -59,8 +59,8 @@ describe('host negotiation', () => {
         negotiateHost(description);
         expect.fail('expected incompatible host');
       } catch (error) {
-        expect(error).toBeInstanceOf(MarAgentError);
-        expect((error as MarAgentError).code).toBe('MAR_AGENT_HOST_INCOMPATIBLE');
+        expect(error).toBeInstanceOf(AgentError);
+        expect((error as AgentError).code).toBe('MAR_AGENT_HOST_INCOMPATIBLE');
       }
     }
   });

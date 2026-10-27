@@ -1,12 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  executeSleep as runSleep,
-  sleepToolDefinition
-} from '../../src/agent-core/tools/agent/sleep.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
-import { createToolWaitInterrupt } from '../../src/agent-core/tools/wait.js';
-import { structuredToolEventData } from '../../src/agent-core/tools/output-projection.js';
+import { executeSleep as runSleep, sleepToolDefinition } from '../../src/tools/agent/sleep.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
 
 afterEach(() => {
   vi.restoreAllMocks();

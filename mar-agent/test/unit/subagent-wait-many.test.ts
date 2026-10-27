@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import type { ExecutionResult } from '../../src/agent-core/runtime/contracts.js';
-import { SubagentSessionController } from '../../src/agent-core/subagent/session-controller.js';
-import { executeAgentWait } from '../../src/agent-core/tools/agent/agent-wait.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
-import type { CoreAgentsApi, CoreAgentCompletion } from '../../src/index.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import type { ExecutionResult } from '../../src/runtime/contracts.js';
+import { SubagentSessionController } from '../../src/subagent/session-controller.js';
+import { executeAgentWait } from '../../src/tools/agent/agent-wait.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
+import type { ExtensionAgentsApi, ExtensionAgentCompletion } from '../../src/extensions.js';
 import {
   fixture as sdkFixture,
   answer,
   cleanupCoreFixtures
 } from './support/core-extension-fixture.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { SubagentScheduler } from '../../src/agent-core/subagent/scheduler.js';
-import { normalizeContextGcSubagentSnapshot } from '../../src/agent-core/session/context-gc-subagent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { createTestSubagents } from './support/subagent-controller.js';
+import { normalizeContextGcSubagentSnapshot } from '../../src/session/context-gc-subagent.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -27,7 +27,7 @@ describe('multi-agent SDK integration', () => {
     async (waitFor) => {
       let parentCalls = 0;
       let groupResult: unknown;
-      const facts: CoreAgentCompletion[] = [];
+      const facts: ExtensionAgentCompletion[] = [];
       const f = await sdkFixture(
         [
           {
@@ -87,7 +87,7 @@ describe('multi-agent SDK integration', () => {
         true
       );
       const execution = f.session.run({ prompt: 'Delegate both inspections and join.' });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       for await (const event of execution) events.push(event);
       const executionResult = await execution.result();
       expect(executionResult, JSON.stringify(executionResult)).toHaveProperty(
@@ -132,11 +132,11 @@ describe('multi-agent SDK integration', () => {
   );
 
   it('shares group waits across native and tool entry points without stealing each other’s terminal evidence', async () => {
-    let api!: CoreAgentsApi;
+    let api!: ExtensionAgentsApi;
     let modelIds: string[] | undefined;
     let modelWaited = false;
     let modelResult: unknown;
-    const facts: CoreAgentCompletion[] = [];
+    const facts: ExtensionAgentCompletion[] = [];
     const f = await sdkFixture(
       [
         {
@@ -217,8 +217,8 @@ describe('multi-agent SDK integration', () => {
     });
   });
 
-  it('keeps compatibility scheduler completion waits and rejects unsupported message waits', async () => {
-    const scheduler = new SubagentScheduler(async () => ({
+  it('reports completion for already settled controller tasks even when waiting for messages', async () => {
+    const scheduler = await createTestSubagents(async () => ({
       summary: 'done',
       changedFiles: [],
       evidence: [],
@@ -232,13 +232,13 @@ describe('multi-agent SDK integration', () => {
     ).toMatchObject({ waitOutcome: 'completion', pendingAgentIds: [] });
     await expect(
       scheduler.outputMany([a.agentId], { waitFor: 'message', waitMs: 10000 })
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_NOT_AVAILABLE' });
+    ).resolves.toMatchObject({ waitOutcome: 'completion', pendingAgentIds: [] });
   });
 });
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function childTurn(turnId: string) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   let wake: (() => void) | undefined;
   let closed = false;
   let resolve!: (value: ExecutionResult) => void;
@@ -249,7 +249,7 @@ function childTurn(turnId: string) {
     resolve({ executionId: turnId, status, finalAnswer: `finished ${turnId}` });
   };
   return {
-    emit(event: MarAgentEvent) {
+    emit(event: AgentEvent) {
       events.push(event);
       wake?.();
     },
@@ -261,7 +261,7 @@ function childTurn(turnId: string) {
         phase: 'commentary',
         text,
         timestamp: new Date().toISOString()
-      } as MarAgentEvent);
+      } as AgentEvent);
       wake?.();
     },
     finish,
@@ -333,7 +333,7 @@ describe('explicit multi-agent waiting', () => {
     let notifications = 0;
     const unsubscribe = controller.modelMessages.subscribe(() => notifications++);
     expect(controller.modelMessages.pending()).toBe(false);
-    first.turn.emit({ type: 'tool.started', toolName: 'read', callId: 'read' } as MarAgentEvent);
+    first.turn.emit({ type: 'tool.started', toolName: 'read', callId: 'read' } as AgentEvent);
     first.turn.finish();
     await tick();
     expect(notifications).toBe(0);
@@ -459,7 +459,7 @@ describe('explicit multi-agent waiting', () => {
       toolName: 'read',
       callId: 'read',
       timestamp: new Date().toISOString()
-    } as MarAgentEvent);
+    } as AgentEvent);
     await tick();
     expect(settled).toBe(false);
     b.turn.finish();

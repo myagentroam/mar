@@ -3,23 +3,16 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type HostSessionResourceSnapshot,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import {
-  OpenAiResponsesAdapter,
-  openAiInput
-} from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelMessage
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
   type CloseableServer
@@ -63,9 +56,9 @@ afterEach(async () => {
 
 function configuration(
   baseUrl: string,
-  credentialProvider: MarAgentModelConfiguration['credentialProvider'],
-  transport: MarAgentModelConfiguration['responsesTransport'] = { transport: 'WEBSOCKET' }
-): MarAgentModelConfiguration {
+  credentialProvider: AgentModelConfiguration['credentialProvider'],
+  transport: AgentModelConfiguration['responsesTransport'] = { transport: 'WEBSOCKET' }
+): AgentModelConfiguration {
   return {
     id: 'codex',
     name: 'Codex',
@@ -709,16 +702,18 @@ describe('OpenAI Responses turn sessions', () => {
       }
     }
     const adapters: CountingResponsesAdapter[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [configuration(server.baseUrl, provider())],
-      adapterFactory: (modelConfiguration) => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [configuration(server.baseUrl, provider())]
+      },
+      (modelConfiguration) => {
         const adapter = new CountingResponsesAdapter(modelConfiguration);
         adapters.push(adapter);
         return adapter;
       }
-    });
+    );
     let disposed = false;
 
     try {
@@ -750,11 +745,13 @@ describe('OpenAI Responses turn sessions', () => {
     await mkdir(workspace);
     let factoryCalls = 0;
     const closeCalls: Array<ReturnType<typeof vi.fn>> = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [configuration('http://127.0.0.1:1', provider())],
-      adapterFactory: (modelConfiguration): ModelAdapter => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [configuration('http://127.0.0.1:1', provider())]
+      },
+      (modelConfiguration): ModelAdapter => {
         const adapterNumber = ++factoryCalls;
         const close = vi.fn(async () => undefined);
         closeCalls.push(close);
@@ -771,7 +768,7 @@ describe('OpenAI Responses turn sessions', () => {
           close
         };
       }
-    });
+    );
 
     try {
       const session = await agent.createSession({ workspace, title: 'Stateless factory' });
@@ -795,11 +792,13 @@ describe('OpenAI Responses turn sessions', () => {
     await mkdir(workspace);
     const closeCalls: Array<ReturnType<typeof vi.fn>> = [];
     let factoryCalls = 0;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [configuration('http://127.0.0.1:1', provider())],
-      adapterFactory: (modelConfiguration): ModelAdapter => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [configuration('http://127.0.0.1:1', provider())]
+      },
+      (modelConfiguration): ModelAdapter => {
         const adapterNumber = ++factoryCalls;
         const close = vi.fn(async () => undefined);
         closeCalls.push(close);
@@ -816,7 +815,7 @@ describe('OpenAI Responses turn sessions', () => {
           close
         };
       }
-    });
+    );
 
     try {
       const session = await agent.createSession({ workspace });

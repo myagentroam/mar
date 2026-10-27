@@ -2,34 +2,35 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  openMarAgentSessionCatalog,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  openAgentSessionCatalog,
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { createSubagentBackend } from '../../src/agent-core/sdk/subagent-backend.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { createSubagentBackend } from '../../src/sdk/subagent-backend.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelMessage,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { effectiveInstructions } from './support/model-context.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import {
   SubagentSessionController,
   type SubagentTurnHandle
-} from '../../src/agent-core/subagent/session-controller.js';
+} from '../../src/subagent/session-controller.js';
 
 const roots: string[] = [];
 afterEach(async () =>
   Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 );
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'review',
   name: 'Review Agent',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -290,7 +291,7 @@ class FailureBoundaryHost extends LocalAgentHost {
     });
   }
 
-  override async emit(event: MarAgentEvent): Promise<void> {
+  override async emit(event: AgentEvent): Promise<void> {
     super.emit(event);
     if (event.type !== 'execution.failed') return;
     this.#resolveFailureObserved();
@@ -333,11 +334,11 @@ describe('persistent subagent sessions', () => {
         if (scenario === 'deleted') await store.delete(id);
         if (scenario === 'corrupt')
           await writeFile(
-            join(home, '.mar', 'agent', 'sessions', id, 'events-000001.jsonl'),
+            join(await activeSessionDirectory(home, id), 'events-000001.jsonl'),
             '{broken}\n{}\n'
           );
         if (scenario === 'unreadable') {
-          const path = join(home, '.mar', 'agent', 'sessions', id, 'events-000001.jsonl');
+          const path = join(await activeSessionDirectory(home, id), 'events-000001.jsonl');
           await rm(path);
           await mkdir(path);
         }
@@ -471,12 +472,14 @@ describe('persistent subagent sessions', () => {
       resolveChildStarted,
       resolveReleaseChild
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new PersistentSubagentAdapter(state, true)
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new PersistentSubagentAdapter(state, true)
+    );
     const root = await agent.createSession({ workspace, title: 'Root' });
 
     const started = await runAndCollect(root.run({ prompt: 'start child' }));
@@ -634,7 +637,7 @@ describe('persistent subagent sessions', () => {
       ])
     );
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.history(agentId)).resolves.toMatchObject({
       entries: expect.arrayContaining([
         expect.objectContaining({
@@ -668,12 +671,14 @@ describe('persistent subagent sessions', () => {
     const { home, workspace } = await fixture('restart');
     await writeFile(join(workspace, 'AGENTS.md'), 'SUBAGENT_RESTART_RULE');
     const state: SharedAdapterState = { requests: [] };
-    let agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new PersistentSubagentAdapter(state)
-    });
+    let agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new PersistentSubagentAdapter(state)
+    );
     const root = await agent.createSession({ workspace, title: 'Root' });
 
     const started = await runAndCollect(root.run({ prompt: 'start child' }));
@@ -691,12 +696,14 @@ describe('persistent subagent sessions', () => {
     await runAndCollect(root.run({ prompt: 'wait child' }));
     await agent.dispose();
 
-    agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new PersistentSubagentAdapter(state)
-    });
+    agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new PersistentSubagentAdapter(state)
+    );
     const read = vi.spyOn(JsonlSessionStore.prototype, 'read');
     let reopened;
     try {
@@ -791,12 +798,14 @@ describe('persistent subagent sessions', () => {
     await store.close();
 
     const adapter = new InterruptedSubagentAdapter(child.id);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const reopened = await agent.openSession(root.id);
 
     const resumed = await runAndCollect(reopened.run({ prompt: 'resume interrupted child' }));
@@ -857,12 +866,14 @@ describe('persistent subagent sessions', () => {
       }
     });
     await store.close();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new ForeignSubagentControlAdapter(child.id)
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new ForeignSubagentControlAdapter(child.id)
+    );
     const foreign = await agent.openSession(foreignParent.id);
 
     for (const operation of ['wait', 'message', 'cancel']) {
@@ -893,12 +904,14 @@ describe('persistent subagent sessions', () => {
         resolveChildStarted,
         resolveReleaseChild
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => new PersistentSubagentAdapter(state, true)
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => new PersistentSubagentAdapter(state, true)
+      );
       const root = await agent.createSession({ workspace, title: 'Root' });
 
       await runAndCollect(root.run({ prompt: 'start child' }));
@@ -966,12 +979,14 @@ describe('persistent subagent sessions', () => {
       });
       await store.close();
       await agent.dispose();
-      const restarted = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => new PersistentSubagentAdapter(state)
-      });
+      const restarted = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => new PersistentSubagentAdapter(state)
+      );
       try {
         const parent = await restarted.openSession(root.id);
         const restored = await runAndCollect(parent.run({ prompt: 'wait child' }));
@@ -1094,7 +1109,7 @@ describe('persistent subagent sessions', () => {
       toolName: 'read',
       summary: 'read source',
       timestamp: '2026-09-14T08:00:00.000Z'
-    } as MarAgentEvent);
+    } as AgentEvent);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect({ messageSettled, completionSettled }).toEqual({
       messageSettled: false,
@@ -1108,7 +1123,7 @@ describe('persistent subagent sessions', () => {
       phase: 'commentary',
       text: 'Protocol analysis completed.',
       timestamp: '2026-09-14T08:00:01.000Z'
-    } as MarAgentEvent);
+    } as AgentEvent);
     await expect(messageWait).resolves.toMatchObject({
       status: 'running',
       waitOutcome: 'message',
@@ -1152,7 +1167,7 @@ describe('persistent subagent sessions', () => {
         phase: 'commentary',
         text: 'The child is still running after finding a useful result.',
         timestamp: '2026-09-16T08:00:00.000Z'
-      } as MarAgentEvent);
+      } as AgentEvent);
       await vi.advanceTimersByTimeAsync(10_000);
 
       await expect(completion).resolves.toMatchObject({
@@ -1175,7 +1190,7 @@ describe('persistent subagent sessions', () => {
         phase: 'commentary',
         text: 'Untargeted waits also expose the latest useful result.',
         timestamp: '2026-09-16T08:00:01.000Z'
-      } as MarAgentEvent);
+      } as AgentEvent);
       await vi.advanceTimersByTimeAsync(10_000);
       await expect(untargetedCompletion).resolves.toMatchObject({
         agentId: started.agentId,
@@ -1228,7 +1243,7 @@ describe('persistent subagent sessions', () => {
       phase: 'commentary',
       text: 'Progress remains available.',
       timestamp: '2026-09-14T08:01:00.000Z'
-    } as MarAgentEvent);
+    } as AgentEvent);
     await new Promise<void>((resolve) => setImmediate(resolve));
     await expect(
       controller.output(started.agentId, { waitFor: 'message', waitMs: 10_000 })
@@ -1245,7 +1260,7 @@ describe('persistent subagent sessions', () => {
       phase: 'commentary',
       text: 'Old progress before the new guidance.',
       timestamp: '2026-09-15T09:00:01.000Z'
-    } as MarAgentEvent);
+    } as AgentEvent);
     await new Promise<void>((resolve) => setImmediate(resolve));
     const receipt = await controller.message(started.agentId, 'Use the new direction.');
     expect(receipt).not.toHaveProperty('latestMessage');
@@ -1264,7 +1279,7 @@ describe('persistent subagent sessions', () => {
       phase: 'commentary',
       text: 'Fresh progress after the new guidance.',
       timestamp: '2026-09-15T09:00:02.000Z'
-    } as MarAgentEvent);
+    } as AgentEvent);
     await expect(followupWait).resolves.toMatchObject({
       waitOutcome: 'message',
       latestMessage: { itemId: 'progress-after-followup' }
@@ -1318,7 +1333,7 @@ describe('persistent subagent sessions', () => {
       phase: 'commentary',
       text: 'Intermediate progress.',
       timestamp: '2026-09-14T08:02:00.000Z'
-    } as MarAgentEvent;
+    } as AgentEvent;
     const { controller, releaseStart, releaseResult } = await openingControllerFixture(4, [
       progress
     ]);
@@ -1355,14 +1370,14 @@ describe('persistent subagent sessions', () => {
           phase: 'commentary',
           text: commentary,
           timestamp: '2026-09-13T08:00:00.000Z'
-        } as MarAgentEvent,
+        } as AgentEvent,
         {
           type: 'tool.completed',
           callId: 'verification-exec',
           toolName: 'exec',
           summary: 'verification passed',
           timestamp: '2026-09-13T08:00:01.000Z'
-        } as MarAgentEvent,
+        } as AgentEvent,
         {
           type: 'tool.completed',
           callId: 'evidence-read',
@@ -1372,7 +1387,7 @@ describe('persistent subagent sessions', () => {
           data: {
             results: [{ path: 'src/a.ts', startLine: 1, endLine: 20 }]
           }
-        } as MarAgentEvent
+        } as AgentEvent
       ]);
     const started = await controller.run({
       description: 'Compact running observation',
@@ -1650,12 +1665,14 @@ describe('persistent subagent sessions', () => {
     });
     await store.close();
     const host = new FailureBoundaryHost(home, workspace);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => new FailingSubagentAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => new FailingSubagentAdapter()
+    );
     const session = await agent.openSession(child.id);
     const handle = session.run({ prompt: 'Fail now.' }) as ReturnType<typeof session.run> & {
       enqueueMessage(message: string): boolean;
@@ -1677,10 +1694,8 @@ async function fixture(name: string) {
   return { home, workspace };
 }
 
-async function runAndCollect(
-  handle: ReturnType<import('../../src/index.js').MarAgentSession['run']>
-) {
-  const events: MarAgentEvent[] = [];
+async function runAndCollect(handle: ReturnType<import('../../src/index.js').AgentSession['run']>) {
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   const result = await handle.result();
   expect(result.status).toBe('completed');
@@ -1738,7 +1753,7 @@ function latestAgentId(messages: readonly ModelMessage[]): string {
 
 async function openingControllerFixture(
   maxConcurrent = 4,
-  events: readonly MarAgentEvent[] | AsyncIterable<MarAgentEvent> = []
+  events: readonly AgentEvent[] | AsyncIterable<AgentEvent> = []
 ) {
   let releaseStart!: () => void;
   let releaseResult!: (status: 'completed' | 'cancelled' | 'failed') => void;
@@ -1817,14 +1832,14 @@ async function openingControllerFixture(
 }
 
 function controlledEventSource() {
-  const queued: MarAgentEvent[] = [];
-  const waiters: Array<(value: IteratorResult<MarAgentEvent>) => void> = [];
+  const queued: AgentEvent[] = [];
+  const waiters: Array<(value: IteratorResult<AgentEvent>) => void> = [];
   let closed = false;
   return {
     events: {
       [Symbol.asyncIterator]() {
         return {
-          next(): Promise<IteratorResult<MarAgentEvent>> {
+          next(): Promise<IteratorResult<AgentEvent>> {
             const event = queued.shift();
             if (event) return Promise.resolve({ value: event, done: false });
             if (closed) return Promise.resolve({ value: undefined, done: true });
@@ -1832,8 +1847,8 @@ function controlledEventSource() {
           }
         };
       }
-    } as AsyncIterable<MarAgentEvent>,
-    emit(event: MarAgentEvent) {
+    } as AsyncIterable<AgentEvent>,
+    emit(event: AgentEvent) {
       const waiter = waiters.shift();
       if (waiter) waiter({ value: event, done: false });
       else queued.push(event);

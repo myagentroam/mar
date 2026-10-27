@@ -182,8 +182,26 @@ test('shows offline bilingual help with the invoked alias or marctl subcommand o
 
 test('sessions help explains JSON fields and delivery tradeoffs offline in both languages', async () => {
   for (const [locale, descriptions] of [
-    ['en_US.UTF-8', ['may switch the current execution', 'Goal exits', 'RUNNING/IDLE/SLEEPING']],
-    ['zh_CN.UTF-8', ['切换当前执行', 'Goal 退出', 'RUNNING/IDLE/SLEEPING']]
+    [
+      'en_US.UTF-8',
+      [
+        'switch the current execution',
+        'waits for that execution and earlier queued work',
+        'Use --steer instead',
+        'Goal exits',
+        'RUNNING/IDLE/SLEEPING'
+      ]
+    ],
+    [
+      'zh_CN.UTF-8',
+      [
+        '切换当前执行',
+        '等待当前执行和前面的队列项',
+        '应使用 --steer',
+        'Goal 退出',
+        'RUNNING/IDLE/SLEEPING'
+      ]
+    ]
   ]) {
     let output = '';
     assert.equal(

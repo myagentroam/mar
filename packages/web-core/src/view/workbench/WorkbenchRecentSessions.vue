@@ -19,7 +19,7 @@ import { formatDateTime } from '../../util/time-presentation.js';
 const props = defineProps<{
   readonly service: Pick<
     WorkbenchNotificationService,
-    'recentRuns' | 'load' | 'sessionGroupState' | 'hasUnreadSession'
+    'recentRuns' | 'load' | 'sessionGroupState' | 'hasUnreadSession' | 'sessionGroupTarget'
   >;
   readonly mobileMode: boolean;
   readonly mobileOpen?: boolean;
@@ -28,6 +28,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
+  openSessionTarget: [target: { nodeId: string; workspaceId: string; sessionId: string }];
   'update:mobileOpen': [open: boolean];
 }>();
 const desktopOpen = ref(false);
@@ -111,6 +112,13 @@ function openSession(run: RecentRun): void {
   emit('openRecentRun', run);
 }
 
+function activateGroupMarker(group: import('@myagentroam/protocol').SessionGroup): void {
+  const target = props.service.sessionGroupTarget(group);
+  if (target === undefined) return;
+  open.value = false;
+  emit('openSessionTarget', target);
+}
+
 function runTime(run: RecentRun): string {
   if (!activeRecentRunStatus(run.status)) return formatDateTime(recentRunTimeReference(run));
   return translate('workbenchNotificationCenter.runningElapsed', {
@@ -142,6 +150,7 @@ function runTime(run: RecentRun): string {
         :session-group="sessionGroup"
         :group-state="groupState"
         @select-group="sessionGroup = $event"
+        @activate-group-marker="activateGroupMarker"
         :mobile-mode="false"
         :run-time="runTime"
         @open-recent-run="openSession"
@@ -174,6 +183,7 @@ function runTime(run: RecentRun): string {
           <span
             v-else-if="activeSessionCount > 0 || hasUnreadSessions"
             class="recent-sessions-badge recent-sessions-mobile-badge"
+            :class="{ 'recent-sessions-unread-only': activeSessionCount === 0 }"
             aria-hidden="true"
           >
             <SessionStateBadge :running="activeSessionCount" :unread="false" />
@@ -191,6 +201,7 @@ function runTime(run: RecentRun): string {
         :session-group="sessionGroup"
         :group-state="groupState"
         @select-group="sessionGroup = $event"
+        @activate-group-marker="activateGroupMarker"
         :mobile-mode="true"
         :run-time="runTime"
         @open-recent-run="openSession"
@@ -294,6 +305,12 @@ function runTime(run: RecentRun): string {
   border-radius: 2px;
   background: var(--mar-text-secondary);
   box-shadow: 0 0 0 1px var(--recent-sessions-marker-surface);
+}
+.recent-sessions-unread-only .recent-sessions-mobile-unread {
+  top: 3px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

@@ -3,15 +3,15 @@ import {
   formatReadContextItem,
   parseReadContextOutput,
   replaceReadContextItems
-} from '../../src/agent-core/tools/local/read-context.js';
+} from '../../src/prompts/read-context.js';
 import {
   decodeMarkupText,
   markupAttributes,
   parseMarkupAttributes
-} from '../../src/agent-core/prompts/markup.js';
-import { formatBatchReadOutput } from '../../src/agent-core/tools/local/read.js';
-import { AGENT_EXECUTION_POLICY } from '../../src/agent-core/runtime/execution-policy.js';
-import { modelTokenBudgetBytes } from '../../src/agent-core/runtime/token-budget.js';
+} from '../../src/prompts/markup.js';
+import { formatBatchReadOutput } from '../../src/tools/local/read.js';
+import { AGENT_EXECUTION_POLICY } from '../../src/runtime/execution-policy.js';
+import { modelTokenBudgetBytes } from '../../src/runtime/token-budget.js';
 
 describe('read markup', () => {
   it('budgets serialized entity expansion without changing structured source data', () => {

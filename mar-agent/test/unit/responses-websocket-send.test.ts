@@ -1,20 +1,20 @@
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import type {
   ModelAttemptDiagnostic,
   ModelEvent,
   ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
   startSocks5Proxy,
   type CloseableServer
 } from './support/responses-transport-servers.js';
 
-vi.mock('../../src/agent-core/model/http.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../src/agent-core/model/http.js')>();
+vi.mock('../../src/model/http.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/model/http.js')>();
   return {
     ...original,
     waitForModelRetry: vi.fn(async (_retryAfter: unknown, _attempt: number, signal: AbortSignal) =>
@@ -36,7 +36,7 @@ afterEach(async () => {
   );
 });
 
-function configuration(baseUrl: string): MarAgentModelConfiguration {
+function configuration(baseUrl: string): AgentModelConfiguration {
   return {
     id: 'responses',
     name: 'Responses',
@@ -379,7 +379,7 @@ describe('Responses WebSocket request framing', () => {
       const configured = configuration(proxy ? `http://model.internal:${port}` : server.baseUrl);
       const { apiKey, ...baseModel } = configured;
       void apiKey;
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         ...baseModel,
         credentialProvider: {
           acquire: async () => ({

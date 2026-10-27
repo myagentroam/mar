@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import type { CoreAgentsApi } from '../../src/index.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import type { ExtensionAgentsApi } from '../../src/extensions.js';
 import type {
   ToolCall,
   ToolExecutionContext,
   ToolExecutionResult
-} from '../../src/agent-core/tools/contracts.js';
+} from '../../src/tools/contracts.js';
 import { effectiveInstructions, latestUserText } from './support/model-context.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import {
   fixture as sdkFixture,
   answer,
@@ -60,7 +60,7 @@ async function sdkFixtureWithTools(
   handlers: Readonly<Record<string, ToolHandler>>,
   extensions: readonly {
     id: string;
-    attachSession(context: { agents?: CoreAgentsApi }): void;
+    attachSession(context: { agents?: ExtensionAgentsApi }): void;
   }[] = []
 ) {
   const f = await sdkFixture(
@@ -97,8 +97,8 @@ function updates(request: ModelRequest) {
 }
 
 function observeHost(
-  host: { emit(event: MarAgentEvent): Promise<void> | void },
-  listener: (event: MarAgentEvent) => void | Promise<void>
+  host: { emit(event: AgentEvent): Promise<void> | void },
+  listener: (event: AgentEvent) => void | Promise<void>
 ) {
   const emit = host.emit.bind(host);
   host.emit = async (event) => {
@@ -123,7 +123,7 @@ describe('subagent automatic context injection through the SDK', () => {
       const finalEntered = deferred();
       const finalRelease = deferred();
       const childCompleted = deferred();
-      let api: CoreAgentsApi | undefined;
+      let api: ExtensionAgentsApi | undefined;
       let childRounds = 0;
       let parentRounds = 0;
       const parentRequests: ModelRequest[] = [];
@@ -333,7 +333,7 @@ describe('subagent automatic context injection through the SDK', () => {
     const lateRelease = deferred();
     let childRounds = 0;
     let parentRounds = 0;
-    let api: CoreAgentsApi | undefined;
+    let api: ExtensionAgentsApi | undefined;
     let childId = '';
     let onParentFinal: (() => Promise<void>) | undefined;
     const parentRequests: ModelRequest[] = [];
@@ -473,7 +473,7 @@ describe('subagent automatic context injection through the SDK', () => {
   it('keeps native Extension observations independent from automatic and model-wait consumption', async () => {
     const messageEntered = deferred();
     const messageRelease = deferred();
-    const apis = new Map<string, CoreAgentsApi>();
+    const apis = new Map<string, ExtensionAgentsApi>();
     let childRounds = 0;
     let parentRounds = 0;
     let childId = '';
@@ -490,7 +490,7 @@ describe('subagent automatic context injection through the SDK', () => {
     };
     const extensions = ['native-reader-before', 'native-reader-after'].map((id) => ({
       id,
-      attachSession(context: { agents?: CoreAgentsApi }) {
+      attachSession(context: { agents?: ExtensionAgentsApi }) {
         if (context.agents) apis.set(id, context.agents);
       }
     }));
@@ -575,7 +575,7 @@ describe('subagent automatic context injection through the SDK', () => {
     const message = 'The message must survive a failed context commit.';
     const entered = deferred();
     const release = deferred();
-    let api: CoreAgentsApi | undefined;
+    let api: ExtensionAgentsApi | undefined;
     let parentRounds = 0;
     let deliveredRequest: ModelRequest | undefined;
     const f = await sdkFixtureWithTools(
@@ -653,7 +653,7 @@ describe('subagent automatic context injection through the SDK', () => {
   });
 
   it('confirms only committed entries when the second update in a batch fails', async () => {
-    let api!: CoreAgentsApi;
+    let api!: ExtensionAgentsApi;
     const f = await sdkFixture(
       [
         {

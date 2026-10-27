@@ -2,11 +2,11 @@ import { getEventListeners } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import {
   SessionInputCoordinator,
-  type CoreSessionAction
-} from '../../src/agent-core/extensions/session-input.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
+  type ExtensionSessionAction
+} from '../../src/extensions/session-input.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
 
-const source = (signal = new AbortController().signal): CoreOperationContext => ({
+const source = (signal = new AbortController().signal): ExtensionOperationContext => ({
   operationId: 'operation',
   sessionId: 'session',
   sessionEpoch: 1,
@@ -18,15 +18,47 @@ const source = (signal = new AbortController().signal): CoreOperationContext => 
   entry: 'native-api',
   signal
 });
-const action: CoreSessionAction = (request, call, next) => next(request, call);
+const action: ExtensionSessionAction = (request, call, next) => next(request, call);
 
 describe('Session input coordination', () => {
+  it('does not let restoring reentry overtake an in-flight idle prompt', async () => {
+    const inputs = new SessionInputCoordinator();
+    const seen: string[] = [];
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    inputs.accept(
+      { kind: 'submit', input: { text: 'first', delivery: 'idle' } },
+      source(),
+      action,
+      'queued'
+    );
+    const leaf: Parameters<SessionInputCoordinator['drain']>[0] = async (_entry, request) => {
+      if (request.kind === 'submit') {
+        entered.resolve();
+        await release.promise;
+        await inputs.drain(leaf, {
+          executionId: 'new',
+          turnId: 'turn',
+          signal: source().signal,
+          restoring: true
+        });
+        seen.push(request.input.text);
+      } else if (request.kind === 'append') seen.push(request.input.content);
+      return { changed: true };
+    };
+    const draining = inputs.drain(leaf);
+    await entered.promise;
+    inputs.accept({ kind: 'append', input: { content: 'second' } }, source(), action, 'queued');
+    release.resolve();
+    await draining;
+    expect(seen).toEqual(['first', 'second']);
+  });
   it('commits immediate records without consuming or reordering the default FIFO', async () => {
     const inputs = new SessionInputCoordinator();
     const seen: string[] = [];
     for (const content of ['first', 'second'])
       inputs.accept({ kind: 'append', input: { content } }, source(), action, 'queued');
-    const leaf = async (_entry: unknown, request: Parameters<CoreSessionAction>[0]) => {
+    const leaf = async (_entry: unknown, request: Parameters<ExtensionSessionAction>[0]) => {
       if (request.kind !== 'append') throw new Error('Unexpected request');
       seen.push(request.input.content);
       return { changed: true, recordId: request.input.content };

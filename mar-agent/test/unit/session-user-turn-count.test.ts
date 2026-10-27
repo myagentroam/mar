@@ -3,7 +3,8 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
@@ -236,7 +237,7 @@ describe('Session user turn count', () => {
     async (newSegment) => {
       const { home, store, sessionId } = await fixture();
       const first = await appendUserTurn(store, sessionId, 'first');
-      const directory = join(home, '.mar', 'agent', 'sessions', sessionId);
+      const directory = await activeSessionDirectory(home, sessionId);
       const segment = (await actualFs.readdir(directory))
         .filter((name) => name.endsWith('.jsonl'))
         .sort()
@@ -309,7 +310,7 @@ describe('Session user turn count', () => {
       await acquireWriter(store, sessionId);
       await expect(store.userTurnCount(sessionId)).resolves.toBe(1);
 
-      const directory = join(home, '.mar', 'agent', 'sessions', sessionId);
+      const directory = await activeSessionDirectory(home, sessionId);
       const segment = (await actualFs.readdir(directory))
         .filter((name) => name.endsWith('.jsonl'))
         .sort()

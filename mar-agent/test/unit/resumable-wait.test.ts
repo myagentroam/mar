@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CodeCells } from '../../src/agent-core/tools/code-mode/cells.js';
-import { structuredToolEventData } from '../../src/agent-core/tools/output-projection.js';
-import type { ToolExecutionContext } from '../../src/agent-core/tools/contracts.js';
-import { createToolWaitInterrupt, waitForToolCondition } from '../../src/agent-core/tools/wait.js';
+import { CodeCells } from '../../src/tools/code-mode/cells.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
+import type { ToolExecutionContext } from '../../src/tools/contracts.js';
+import { createToolWaitInterrupt, waitForToolCondition } from '../../src/tools/wait.js';
 
 afterEach(() => vi.useRealTimers());
 

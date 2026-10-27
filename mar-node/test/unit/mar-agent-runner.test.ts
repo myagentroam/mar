@@ -1,19 +1,18 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../../mar-agent/src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../../mar-agent/src/agent-core/sdk/agent.js';
-import type {
-  ModelAdapter,
-  ModelEvent
-} from '../../../mar-agent/src/agent-core/model/contracts.js';
-import { openMarAgentSessionCatalog } from '../../../mar-agent/src/agent-core/session/catalog.js';
-import { JsonlSessionStore } from '../../../mar-agent/src/agent-core/session/store/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/src/sdk/agent.js';
+import type { ModelAdapter, ModelEvent } from '../../../mar-agent/src/model/contracts.js';
+import { openAgentSessionCatalog } from '../../../mar-agent/src/index.js';
+import { JsonlSessionStore } from '../../../mar-agent/src/session/store/index.js';
+import { JsonlSessionStore as RuntimeJsonlSessionStore } from '../../../mar-agent/dist/session/store/index.js';
+import { activeSessionDirectory } from '../../../mar-agent/test/support/jsonl-session-path.js';
 import { describe, expect, it, vi } from 'vitest';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { unavailableCapabilities } from '../../src/capabilities.js';
@@ -76,14 +75,14 @@ function codeModeEvents(
     calls?: readonly unknown[];
     omitObservations?: boolean;
   } = {}
-): MarAgentEvent[] {
+): AgentEvent[] {
   const common = {
     timestamp: '2026-10-02T00:00:00.000Z',
     sessionId: 'observation-session',
     executionId: options.executionId ?? `execution-${callId}`,
     turnId: `turn-${callId}`
   };
-  const started: MarAgentEvent = {
+  const started: AgentEvent = {
     ...common,
     eventId: `${callId}-started`,
     sequence: 1,
@@ -101,7 +100,7 @@ function codeModeEvents(
     eventId: `${callId}-terminal`,
     sequence: 2
   };
-  let terminal: MarAgentEvent;
+  let terminal: AgentEvent;
   if (status === 'completed') {
     const data = {
       cellId: 'code-cell',
@@ -145,7 +144,7 @@ describe('MAR Agent Node Runner', () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-agent-exec-replay-'));
     const workspace = join(root, 'workspace');
     await mkdir(workspace);
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       id: 'exec-replay',
       name: 'Exec replay',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -188,17 +187,19 @@ describe('MAR Agent Node Runner', () => {
         }
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: join(root, 'home'), workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: join(root, 'home'), workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Retained exec' });
       const normalizer = new MarAgentConversationNormalizer();
       const first = session.run({ prompt: 'Run a command.' });
-      const firstEvents: MarAgentEvent[] = [];
+      const firstEvents: AgentEvent[] = [];
       for await (const event of first) firstEvents.push(event);
       await expect(first.result()).resolves.toMatchObject({ status: 'completed' });
       const started = firstEvents.find(
@@ -213,7 +214,7 @@ describe('MAR Agent Node Runner', () => {
         }
       });
       processId = (
-        (started as Extract<MarAgentEvent, { type: 'tool.completed' }>).data as {
+        (started as Extract<AgentEvent, { type: 'tool.completed' }>).data as {
           processId?: string;
         }
       ).processId;
@@ -226,7 +227,7 @@ describe('MAR Agent Node Runner', () => {
       });
 
       const resumed = session.run({ prompt: 'Check the previous command.' });
-      const resumedEvents: MarAgentEvent[] = [];
+      const resumedEvents: AgentEvent[] = [];
       for await (const event of resumed) resumedEvents.push(event);
       await expect(resumed.result()).resolves.toMatchObject({ status: 'completed' });
       const replayed = resumedEvents.find(
@@ -246,7 +247,7 @@ describe('MAR Agent Node Runner', () => {
         payload: expect.objectContaining({ outputPreview: 'RETAINED', exitCode: 0 })
       });
 
-      const catalog = await openMarAgentSessionCatalog({ homeDirectory: join(root, 'home') });
+      const catalog = await openAgentSessionCatalog({ homeDirectory: join(root, 'home') });
       try {
         const history = await catalog.history(session.id, { limit: 200 });
         const turns = projectMarAgentHistory(
@@ -815,7 +816,7 @@ describe('MAR Agent Node Runner', () => {
           changes: [{ path: 'shared.ts', change: 'MODIFIED' }]
         });
       }
-      const project = (projectionEvents: readonly MarAgentEvent[]) =>
+      const project = (projectionEvents: readonly AgentEvent[]) =>
         projectMarAgentHistory({ id: 'node-session', runner: 'mar-agent' } as NodeAgentSession, [
           {
             kind: 'user',
@@ -841,7 +842,7 @@ describe('MAR Agent Node Runner', () => {
       expect(historical[0]!.processGroup?.id).toBeDefined();
       expect(historical[1]!.processGroup?.id).toBe(historical[0]!.processGroup?.id);
 
-      const boundary: MarAgentEvent = {
+      const boundary: AgentEvent = {
         type: 'message.completed',
         eventId: 'public-boundary',
         sequence: 4,
@@ -1102,11 +1103,7 @@ describe('MAR Agent Node Runner', () => {
       }
       await writeFile(indexPath, JSON.stringify(index));
       const corruptPath = join(
-        home,
-        '.mar',
-        'agent',
-        'sessions',
-        corrupt.id,
+        await activeSessionDirectory(home, corrupt.id),
         'events-000001.jsonl'
       );
       await writeFile(corruptPath, '{invalid}\n' + (await readFile(corruptPath, 'utf8')));
@@ -2337,13 +2334,17 @@ describe('MAR Agent Node Runner', () => {
           }
         ]
       });
-      const writer = await JsonlSessionStore.open(home);
+      // Use the Runner's installed SDK instance so the in-process lease is visible to its catalog.
+      const writer = await RuntimeJsonlSessionStore.open(home);
       const release = await writer.acquireSessionLease(native.id);
-      await expect(
-        runner.forkNative(sessions[0]!, 'turn', 'Persisted (Busy Copy)')
-      ).rejects.toMatchObject({ message: 'MAR_AGENT_SESSION_LOCKED' });
-      await release();
-      await writer.close();
+      try {
+        await expect(
+          runner.forkNative(sessions[0]!, 'turn', 'Persisted (Busy Copy)')
+        ).rejects.toMatchObject({ message: 'MAR_AGENT_SESSION_LOCKED' });
+      } finally {
+        await release();
+        await writer.close();
+      }
       const forkedId = await runner.forkNative(sessions[0]!, 'turn', 'Persisted (Copy 1)');
       const forkedSession = {
         ...sessions[0]!,

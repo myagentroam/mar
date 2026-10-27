@@ -4,9 +4,9 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ExtensionStore } from '../../src/agent-core/extensions/store.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
-import type { CoreJsonValue } from '../../src/agent-core/extensions/data.js';
+import { ExtensionStore } from '../../src/extensions/store.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
+import type { ExtensionJsonValue } from '../../src/extensions/data.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -147,7 +147,7 @@ describe('Installation durable store', () => {
     await expect(
       store.set({ key: 'invalid-special', value: Object.fromEntries([['__proto__', Number.NaN]]) })
     ).rejects.toThrow(/DATA_INVALID/);
-    const value: CoreJsonValue = { nested: { count: 1 } };
+    const value: ExtensionJsonValue = { nested: { count: 1 } };
     await store.set({ key: 'copy', value });
     (value as { nested: { count: number } }).nested.count = 7;
     const first = await store.get({ key: 'copy' });

@@ -4,16 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import {
-  LocalAgentHost,
-  SecretValue,
-  createMarAgent,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import * as modelHttp from '../../src/agent-core/model/http.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { type ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, createAgent, type AgentModelConfiguration } from '../../src/index.js';
+import * as modelHttp from '../../src/model/http.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { type ModelEvent } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import {
   startHttp2ResponsesServer,
   startHttps1ResponsesServer,
@@ -156,11 +152,11 @@ function dynamicConfiguration(
     invalidate(revision: number): void;
     close(): Promise<void>;
   },
-  responsesTransport: MarAgentModelConfiguration['responsesTransport'] = {
+  responsesTransport: AgentModelConfiguration['responsesTransport'] = {
     transport: 'HTTP',
     httpVersion: '1.1'
   }
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'codex',
     name: 'Codex',
@@ -177,7 +173,7 @@ function dynamicConfiguration(
     responsesTransport,
     responsesPreviousResponseId: true,
     enabled: true
-  } as unknown as MarAgentModelConfiguration;
+  } as unknown as AgentModelConfiguration;
 }
 
 async function collect(source: AsyncIterable<ModelEvent>) {
@@ -920,7 +916,7 @@ describe('MAR Agent runtime credentials', () => {
     homes.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [
@@ -1375,7 +1371,7 @@ describe('MAR Agent runtime credentials', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const configuration = dynamicConfiguration(`http://model.internal:${modelUrl.port}`, provider);
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({
         homeDirectory: home,
@@ -1684,7 +1680,7 @@ describe('MAR Agent runtime credentials', () => {
     homes.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [

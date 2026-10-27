@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  generateModelText,
-  SecretValue,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { generateModelText, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -22,7 +18,7 @@ describe('standalone text cache parameters', () => {
         yield { type: 'text.completed', itemId: 'text', text: 'result' };
         yield { type: 'completed', reason: 'completed' };
       });
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         id: 'text-test',
         name: 'Text test',
         protocol,

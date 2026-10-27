@@ -1,10 +1,11 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { describe, expect, it } from 'vitest';
 import {
   ExtensionTools,
-  type CoreToolBinding,
-  type CoreToolSpec
-} from '../../src/agent-core/extensions/tools.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
+  type ExtensionToolBinding,
+  type ExtensionToolSpec
+} from '../../src/extensions/tools.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
 const context = () => ({
   operationId: 'op',
   sessionId: 's',
@@ -13,7 +14,7 @@ const context = () => ({
   entry: 'native-api' as const,
   signal: new AbortController().signal
 });
-const spec = (value: number): CoreToolSpec => ({
+const spec = (value: number): ExtensionToolSpec => ({
   name: 'value',
   description: 'value',
   inputSchema: { type: 'object' },
@@ -23,13 +24,13 @@ const call = { name: 'value', arguments: {} };
 
 describe('Extension tool source registry', () => {
   it('preserves dual exposure in native definitions and inherited wrappers', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     tools.register(scope, 'owner', { ...spec(1), codeModeExposure: 'both' });
     scope.activate();
     const base = tools.capture().get('value')!;
     expect(base.definition.codeModeExposure).toBe('both');
-    const wrappers = new ExtensionTools();
+    const wrappers = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     wrappers.register(scope, 'wrapper', {
       ...spec(0),
       override: 'wrap',
@@ -40,7 +41,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('validates inputs and structured output without applying schema defaults', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     let calls = 0;
     tools.register(scope, 'validated', {
@@ -81,7 +82,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('reports unsupported schema conversion and accepts an explicit native validator', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     const inputSchema = {
       type: 'object',
@@ -98,7 +99,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('freezes nested metadata, hides mutation methods, and restores a revoked same-owner replacement', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     tools.register(scope, 'owner', spec(1));
     const replacement = tools.register(scope, 'owner', spec(2));
@@ -117,7 +118,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('reuses captured bindings across same-source replacement but rejects retired owners', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     tools.register(scope, 'counter', spec(1));
     expect(tools.capture().size).toBe(0);
@@ -135,9 +136,9 @@ describe('Extension tool source registry', () => {
   });
 
   it('requires explicit cross-source replacement and preserves a Host caller policy', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
-    const base: CoreToolBinding = {
+    const base: ExtensionToolBinding = {
       definition: { ...spec(0), allowedCallers: ['direct'] },
       source: { kind: 'host', id: 'host', revision: '1' },
       invoke: async () => ({ content: 'host' })
@@ -151,7 +152,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('keeps startup wrapper dependency validation but omits missing runtime sources', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
     tools.register(scope, 'wrapper', {
       ...spec(0),
@@ -161,7 +162,7 @@ describe('Extension tool source registry', () => {
     expect(() => tools.capture([], true)).toThrow(/DEPENDENCY_MISSING/);
     scope.activate();
     expect(tools.capture().has('value')).toBe(false);
-    const base: CoreToolBinding = {
+    const base: ExtensionToolBinding = {
       definition: spec(0),
       source: { kind: 'host', id: 'backend', revision: '1' },
       invoke: async () => ({ content: 'backend' })
@@ -172,9 +173,9 @@ describe('Extension tool source registry', () => {
   });
 
   it('inherits lower tool scope for wrappers but not explicit replacements', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();
-    const base: CoreToolBinding = {
+    const base: ExtensionToolBinding = {
       definition: { ...spec(0), agentScope: 'ROOT_ONLY' },
       source: { kind: 'host', id: 'root', revision: '1' },
       invoke: async () => ({ content: 'root' })
@@ -192,7 +193,7 @@ describe('Extension tool source registry', () => {
   });
 
   it('rebuilds wrapper layers for future snapshots without changing an in-flight chain', async () => {
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const a = new ExtensionResourceScope();
     const b = new ExtensionResourceScope();
     const c = new ExtensionResourceScope();

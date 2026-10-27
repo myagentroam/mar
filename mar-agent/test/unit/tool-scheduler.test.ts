@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { ClientToolDefinition } from '../../src/agent-core/model/contracts.js';
-import { execToolDefinition } from '../../src/agent-core/tools/local/exec.js';
+import type { ClientToolDefinition } from '../../src/model/contracts.js';
+import { execToolDefinition } from '../../src/tools/local/exec.js';
 import {
   createToolCallScheduler,
   createSessionToolScheduler,
   scheduleToolCallBatch,
   withIndependentSessionTools
-} from '../../src/agent-core/tools/scheduler.js';
-import { BUILTIN_TOOL_DEFINITIONS } from '../../src/agent-core/tools/registry.js';
+} from '../../src/tools/scheduler.js';
+import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
 
 function definition(
   name: string,

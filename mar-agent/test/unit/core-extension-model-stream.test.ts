@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   transformCoreModelStream,
-  type CoreModelEvent
-} from '../../src/agent-core/extensions/model-stream.js';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
+  type ExtensionModelEvent
+} from '../../src/extensions/model-stream.js';
+import type { ModelEvent } from '../../src/model/contracts.js';
 
 describe('Extension model event boundary', () => {
   it('preserves the primary hook failure when upstream cleanup also fails', async () => {
@@ -97,7 +97,7 @@ describe('Extension model event boundary', () => {
       yield item;
       yield { type: 'output.delta' };
     };
-    let privateRef!: CoreModelEvent;
+    let privateRef!: ExtensionModelEvent;
     const stream = transformCoreModelStream(start, new AbortController().signal, async (event) => {
       expect(JSON.stringify(event)).not.toContain('provider-private');
       if (event.type === 'opaque') privateRef = event;

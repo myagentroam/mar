@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
-import { normalizeMessagesForModel } from '../../src/agent-core/runtime/context/normalize.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
+import { normalizeMessagesForModel } from '../../src/runtime/context/normalize.js';
 
 const image = { mimeType: 'image/png', dataBase64: 'AAAA' };
 

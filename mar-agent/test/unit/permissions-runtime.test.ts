@@ -1,34 +1,34 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost, type ClientToolDefinition } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type ClientToolDefinition,
   type ExecutionResult,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration,
+  type AgentEvent,
+  type AgentModelConfiguration,
   type ToolApprovalDecision,
   type ToolApprovalHandler,
   type ToolApprovalRequest
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore, type SessionRecord } from '../../src/session/store/index.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 import {
   SubagentSessionController,
   type PersistedSubagentSession
-} from '../../src/agent-core/subagent/session-controller.js';
+} from '../../src/subagent/session-controller.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   vi.useRealTimers();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -221,9 +221,7 @@ describe('Auto subagent stop lifecycle', () => {
 async function fixture(
   rounds: ModelEvent[][] | ((request: ModelRequest) => readonly ModelEvent[]),
   tools: ClientToolDefinition[] = [effect],
-  runtimeExtensions: NonNullable<
-    Parameters<typeof createMarAgentWithAdapter>[0]['runtimeExtensions']
-  > = [],
+  extensions: NonNullable<Parameters<typeof createAgentWithAdapter>[0]['extensions']> = [],
   approval?: ToolApprovalHandler
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-auto-'));
@@ -242,12 +240,14 @@ async function fixture(
       }
     }
   });
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [model],
-    runtimeExtensions,
-    adapterFactory: () => ({
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [model],
+      extensions
+    },
+    () => ({
       configuration: model,
       async *start(request) {
         const index = requests.length;
@@ -257,10 +257,27 @@ async function fixture(
           yield event;
       }
     })
-  });
+  );
   cleanups.push(() => agent.dispose());
   const session = await agent.createSession({ workspace: home });
   return { agent, session, requests, effects, home };
+}
+
+async function persistedToolResult(home: string, sessionId: string, callId: string) {
+  const store = await JsonlSessionStore.open(home);
+  try {
+    const records = await store.read(sessionId);
+    const record = records.find(
+      (entry) =>
+        entry.type === 'model.context' &&
+        (entry.payload as { role?: string; callId?: string }).role === 'tool' &&
+        (entry.payload as { callId?: string }).callId === callId
+    );
+    expect(record).toBeDefined();
+    return record!.payload;
+  } finally {
+    await store.close();
+  }
 }
 
 describe('Auto execution and ordinary-message continuation', () => {
@@ -325,7 +342,7 @@ describe('Auto execution and ordinary-message continuation', () => {
       cleanups.push(() => rm(home, { recursive: true, force: true }));
       const approval = vi.fn<ToolApprovalHandler>();
       const executeTool = vi.fn(async () => ({ content: 'unexpected client tool' }));
-      const agent = await createMarAgentWithAdapter({
+      const agent = await createAgentWithAdapter({
         mode: 'normal',
         host: new LocalAgentHost({
           homeDirectory: home,
@@ -349,7 +366,7 @@ describe('Auto execution and ordinary-message continuation', () => {
       cleanups.push(() => agent.dispose());
       const session = await agent.createSession({ workspace: home, title: 'Hosted search' });
       const run = session.run({ prompt: 'Search the official documentation.', permissionMode });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       for await (const event of run) events.push(event);
       expect(await run.result()).toMatchObject({ status: 'completed', finalAnswer: 'done' });
       expect(requests).toHaveLength(1);
@@ -520,7 +537,7 @@ describe('Auto execution and ordinary-message continuation', () => {
       async () => 'REJECTED'
     );
 
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     const handle = f.session.run({ prompt: 'work', permissionMode: 'auto' });
     for await (const event of handle) events.push(event);
     const result = await handle.result();
@@ -727,7 +744,7 @@ describe('Auto execution and ordinary-message continuation', () => {
     expect(f.requests).toHaveLength(1);
     const records = (
       await readFile(
-        join(f.home, '.mar/agent/sessions', f.session.id, 'events-000001.jsonl'),
+        join(await activeSessionDirectory(f.home, f.session.id), 'events-000001.jsonl'),
         'utf8'
       )
     )
@@ -828,7 +845,7 @@ describe('Auto execution and ordinary-message continuation', () => {
       ],
       final
     ]);
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     const handle = f.session.run({ prompt: 'work', permissionMode: 'auto' });
     for await (const event of handle) events.push(event);
     const result = await handle.result();
@@ -851,14 +868,23 @@ describe('Auto execution and ordinary-message continuation', () => {
       type: 'tool.completed',
       data: { status: 'completed' }
     });
-    // UI event projection omits custom tool details; the model result retains their audit.
-    const modelMessage = f.requests[1]!.messages.find((message) => message.role === 'tool')!;
-    expect(modelMessage.calls).toEqual(
-      expect.arrayContaining([
+    // The durable logical result retains the audit; the adapter sees only model input.
+    expect(await persistedToolResult(f.home, f.session.id, 'cell')).toMatchObject({
+      calls: expect.arrayContaining([
         expect.objectContaining({
           toolName: 'effect',
           status: 'failed',
           error: expect.objectContaining({ code: 'MAR_AGENT_PERMISSION_DENIED' })
+        })
+      ])
+    });
+    const modelMessage = f.requests[1]!.messages.find((message) => message.role === 'tool')!;
+    expect(modelMessage).not.toHaveProperty('calls');
+    expect(modelMessage.contentParts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'text',
+          text: expect.stringContaining('MAR_AGENT_PERMISSION_DENIED')
         })
       ])
     );
@@ -897,7 +923,7 @@ describe('Auto execution and ordinary-message continuation', () => {
       final
     ]);
 
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     const handle = f.session.run({ prompt: 'work', permissionMode: 'auto' });
     for await (const event of handle) events.push(event);
     const result = await handle.result();
@@ -962,10 +988,16 @@ describe('Auto execution and ordinary-message continuation', () => {
       expect(f.requests).toHaveLength(2);
       if (codeMode) {
         const message = f.requests[1]!.messages.find((message) => message.role === 'tool')!;
-        expect(message.calls).toEqual(
-          expect.arrayContaining([
+        expect(await persistedToolResult(f.home, f.session.id, 'cell')).toMatchObject({
+          calls: expect.arrayContaining([
             expect.objectContaining({ toolName: 'forwarded_effect', status: 'failed' }),
             expect.objectContaining({ toolName: 'effect', status: 'completed' })
+          ])
+        });
+        expect(message).not.toHaveProperty('calls');
+        expect(message.contentParts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'text', text: expect.stringContaining('completed') })
           ])
         );
       } else {

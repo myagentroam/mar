@@ -2,20 +2,21 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   currentLocalTimeContext,
   environmentContextUpdate,
   restoreEnvironmentState
-} from '../../src/agent-core/runtime/context/environment.js';
-import { buildCompactionInput } from '../../src/agent-core/runtime/compaction/history.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/runtime/context/environment.js';
+import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const state = {
   platform: 'linux',
@@ -116,7 +117,7 @@ describe('environment context state', () => {
   });
 });
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'environment',
   name: 'Environment',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -153,12 +154,14 @@ describe('environment context persistence', () => {
     await mkdir(workspace);
     const adapter = new RecordingAdapter();
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
     let agent = await create();
     let id = '';
     try {
@@ -212,12 +215,14 @@ describe('environment context persistence', () => {
     await mkdir(workspace);
     const adapter = new RecordingAdapter();
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
     let agent = await create();
     let id = '';
     try {
@@ -288,12 +293,14 @@ describe('environment context persistence', () => {
         ...(await original()),
         shell: { name: shellName, path: `/bin/${shellName}` }
       });
-      return createMarAgent({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      return createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => adapter
+      );
     };
     let agent = await create('bash');
     let id = '';

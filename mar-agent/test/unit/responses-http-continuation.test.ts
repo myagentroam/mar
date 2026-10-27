@@ -1,26 +1,22 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { renderSubagentUpdate } from '../../src/agent-core/subagent/model-update.js';
-import type {
-  ModelEvent,
-  ModelMessage,
-  ModelTurnSession
-} from '../../src/agent-core/model/contracts.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
+import type { ModelEvent, ModelMessage, ModelTurnSession } from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
   type CloseableServer
 } from './support/responses-transport-servers.js';
 
-vi.mock('../../src/agent-core/model/http.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/agent-core/model/http.js')>();
+vi.mock('../../src/model/http.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/model/http.js')>();
   return { ...actual, waitForModelRetry: vi.fn(async () => {}) };
 });
 
 type ResponsesBody = Record<string, unknown>;
 type ResponsesConfigurationOptions = Partial<
-  Pick<MarAgentModelConfiguration, 'responsesPreviousResponseId' | 'responsesTransport'>
+  Pick<AgentModelConfiguration, 'responsesPreviousResponseId' | 'responsesTransport'>
 >;
 
 const servers: CloseableServer[] = [];
@@ -45,7 +41,7 @@ afterEach(async () => {
 function configuration(
   baseUrl: string,
   options: ResponsesConfigurationOptions = {}
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'responses-http',
     name: 'Responses HTTP',
@@ -122,7 +118,7 @@ async function startHttpResponsesServer(
   return { baseUrl: `http://127.0.0.1:${address.port}`, requests };
 }
 
-function createAdapter(modelConfiguration: MarAgentModelConfiguration) {
+function createAdapter(modelConfiguration: AgentModelConfiguration) {
   const adapter = new OpenAiResponsesAdapter(modelConfiguration);
   adapters.push(adapter);
   return adapter;

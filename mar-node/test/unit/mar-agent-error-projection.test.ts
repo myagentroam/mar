@@ -2,15 +2,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAgentHost, MarAgentError, SecretValue } from '../../../mar-agent/src/index.js';
-import { createMarAgentWithAdapter } from '../../../mar-agent/src/agent-core/sdk/agent.js';
-import type { ModelEvent } from '../../../mar-agent/src/agent-core/model/contracts.js';
-import { openMarAgentSessionCatalog } from '../../../mar-agent/src/agent-core/session/catalog.js';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
+import { AgentError, SecretValue } from '../../../mar-agent/src/index.js';
+import { createAgentWithAdapter } from '../../../mar-agent/src/sdk/agent.js';
+import type { ModelEvent } from '../../../mar-agent/src/model/contracts.js';
+import { openAgentSessionCatalog } from '../../../mar-agent/src/index.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { conversationItemSchema } from '../../../packages/protocol/src/index.js';
-import type { MarAgentEvent, MarAgentModelConfiguration } from '../../../mar-agent/src/index.js';
+import type { AgentEvent, AgentModelConfiguration } from '../../../mar-agent/src/index.js';
 
 const homes: string[] = [];
 afterEach(async () =>
@@ -30,7 +31,7 @@ describe('MAR Agent error projection', () => {
   it('preserves a real SDK model failure through live, protocol and restored history projections', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-node-model-error-'));
     homes.push(home);
-    const configuration: MarAgentModelConfiguration = {
+    const configuration: AgentModelConfiguration = {
       id: 'fixture',
       name: 'Fixture',
       protocol: 'OPENAI_RESPONSES' as const,
@@ -48,21 +49,23 @@ describe('MAR Agent error projection', () => {
       responsesPreviousResponseId: false,
       enabled: true
     };
-    const agent = await createMarAgentWithAdapter({
-      mode: 'node',
-      host: new LocalAgentHost({ mode: 'node', homeDirectory: home, workspace: home }),
-      models: [configuration],
-      adapterFactory: () => ({
+    const agent = await createAgentWithAdapter(
+      {
+        mode: 'node',
+        host: new LocalAgentHost({ mode: 'node', homeDirectory: home, workspace: home }),
+        models: [configuration]
+      },
+      () => ({
         configuration,
         async *start(): AsyncIterable<ModelEvent> {
           yield { type: 'text.completed', itemId: 'answer', text: 'Partial result.' };
-          throw new MarAgentError(
+          throw new AgentError(
             'MAR_AGENT_MODEL_PROTOCOL_ERROR',
             'Model stream ended unexpectedly.'
           );
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({ workspace: home });
       const handle = session.run({ prompt: 'Work until the model stream fails.' });
@@ -81,7 +84,7 @@ describe('MAR Agent error projection', () => {
         payload: { code: result.errorCode, message: result.errorMessage }
       });
       expectNormalizedItemsValid(errors);
-      const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+      const catalog = await openAgentSessionCatalog({ homeDirectory: home });
       try {
         const history = await catalog.history(session.id, { limit: 200 });
         const turns = projectMarAgentHistory(
@@ -102,7 +105,7 @@ describe('MAR Agent error projection', () => {
   });
 
   it('projects a detailed SDK tool failure reason onto the tool card', () => {
-    const event: MarAgentEvent = {
+    const event: AgentEvent = {
       ...base,
       type: 'tool.failed',
       toolName: 'read',
@@ -151,7 +154,7 @@ describe('MAR Agent error projection', () => {
       errorCode: 'EACCES',
       errorMessage: 'EACCES: Failed to open AGENTS.md: access denied.'
     };
-    const event: MarAgentEvent = {
+    const event: AgentEvent = {
       ...base,
       type: 'subagent.completed',
       ...failure

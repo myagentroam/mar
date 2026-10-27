@@ -4,7 +4,9 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { buildAgent } from '../support/build-agent.js';
 
 const execute = promisify(execFile);
 const servers: Array<ReturnType<typeof createServer>> = [];
@@ -32,7 +34,7 @@ function executeWithClosedStdin(file: string, arguments_: string[], cwd: string)
 }
 const homes: string[] = [];
 beforeAll(async () => {
-  await execute('pnpm', ['build'], { cwd: process.cwd() });
+  await buildAgent();
 });
 afterEach(async () =>
   Promise.all([
@@ -111,6 +113,52 @@ async function responsesServer(requests: unknown[], permission?: 'ask' | 'deny')
           .map((event) => `data: ${JSON.stringify(event)}\n\n`)
           .join('')
       );
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('server unavailable');
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function modelTestServer(
+  requests: unknown[],
+  protocol: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES',
+  text: string,
+  fail = false
+) {
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => (body += chunk));
+    request.on('end', () => {
+      requests.push(JSON.parse(body));
+      if (fail) {
+        response.writeHead(401, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: { message: 'Rejected test credential' } }));
+        return;
+      }
+      const events =
+        protocol === 'OPENAI_RESPONSES'
+          ? [
+              { type: 'response.created', response: { id: 'smoke' } },
+              { type: 'response.output_text.done', item_id: 'answer', phase: 'final_answer', text },
+              {
+                type: 'response.completed',
+                response: { id: 'smoke', status: 'completed', output: [] }
+              }
+            ]
+          : [
+              { type: 'message_start', message: { id: 'smoke', usage: {} } },
+              { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+              { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+              { type: 'content_block_stop', index: 0 },
+              { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: {} },
+              { type: 'message_stop' }
+            ];
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
     });
   });
   servers.push(server);
@@ -214,6 +262,106 @@ async function writeCodexAuthFile(root: string, mode = 0o600) {
 }
 
 describe('maragent CLI', () => {
+  it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
+    'tests %s through the shared model probe and truncates only the displayed response',
+    async (protocol) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-cli-model-test-'));
+      homes.push(home);
+      const requests: unknown[] = [];
+      const rawResponse = `  ${'response'.repeat(15)}  `;
+      await writeResponsesModel(home, await modelTestServer(requests, protocol, rawResponse));
+      const path = join(home, '.mar', 'agent', 'models.json');
+      const saved = JSON.parse(await readFile(path, 'utf8'));
+      saved.models[0].protocol = protocol;
+      if (protocol === 'ANTHROPIC_MESSAGES') delete saved.models[0].responsesPreviousResponseId;
+      await writeFile(path, JSON.stringify(saved));
+
+      const result = await execute(
+        process.execPath,
+        ['dist/cli/main.js', '--home', home, 'models', 'test', 'reasoning'],
+        { cwd: process.cwd() }
+      );
+      expect(JSON.parse(result.stdout)).toEqual({
+        success: true,
+        modelId: 'reasoning',
+        response: rawResponse.slice(0, 80)
+      });
+      expect(requests).toHaveLength(1);
+      if (protocol === 'OPENAI_RESPONSES')
+        expect(requests[0]).toMatchObject({
+          input: [
+            { role: 'developer', content: [{ type: 'input_text', text: 'Reply OK.' }] },
+            { role: 'user', content: 'Reply OK.' }
+          ]
+        });
+      else
+        expect(requests[0]).toMatchObject({
+          system: expect.arrayContaining([expect.objectContaining({ text: 'Reply OK.' })]),
+          messages: [
+            expect.objectContaining({
+              role: 'user',
+              content: expect.arrayContaining([expect.objectContaining({ text: 'Reply OK.' })])
+            })
+          ]
+        });
+    }
+  );
+
+  it.each([false, true])(
+    'uses a 30-second signal and closes the credential provider after failure=%s',
+    async (fail) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-cli-probe-provider-'));
+      homes.push(home);
+      const requests: unknown[] = [];
+      await writeCodexAuthModel(
+        home,
+        await modelTestServer(requests, 'OPENAI_RESPONSES', 'OK', fail)
+      );
+      const authFile = await writeCodexAuthFile(home);
+      const evidence = join(home, 'probe-evidence.txt');
+      const preload = join(home, 'probe-preload.mjs');
+      const providerModule = pathToFileURL(join(process.cwd(), 'dist/cli/codex-auth-file.js')).href;
+      await writeFile(
+        preload,
+        `
+      import { appendFileSync } from 'node:fs';
+      import { CodexAuthFileCredentialProvider } from ${JSON.stringify(providerModule)};
+      const originalTimeout = AbortSignal.timeout;
+      AbortSignal.timeout = function (ms) { appendFileSync(${JSON.stringify(evidence)}, 'timeout:' + ms + '\\n'); return originalTimeout.call(this, ms); };
+      const originalClose = CodexAuthFileCredentialProvider.prototype.close;
+      CodexAuthFileCredentialProvider.prototype.close = async function () { appendFileSync(${JSON.stringify(evidence)}, 'provider:close\\n'); return originalClose.call(this); };
+    `
+      );
+      const result = await executeWithClosedStdin(
+        process.execPath,
+        [
+          '--import',
+          preload,
+          'dist/cli/main.js',
+          '--home',
+          home,
+          '--codex-auth-file',
+          authFile,
+          'models',
+          'test',
+          'codex'
+        ],
+        process.cwd()
+      );
+      expect(result.code).toBe(fail ? 4 : 0);
+      if (fail) expect(result.stderr).toContain('MAR_AGENT_MODEL_AUTH_FAILED');
+      else
+        expect(JSON.parse(result.stdout)).toEqual({
+          success: true,
+          modelId: 'codex',
+          response: 'OK'
+        });
+      const lines = (await readFile(evidence, 'utf8')).trim().split('\n');
+      expect(lines).toContain('timeout:30000');
+      expect(lines.filter((line) => line === 'provider:close')).toHaveLength(1);
+    }
+  );
+
   it.each(['ask', 'deny'] as const)(
     'returns the Auto %s outcome without executing the denied call',
     async (action) => {
@@ -352,7 +500,13 @@ describe('maragent CLI', () => {
         { cwd: process.cwd() }
       );
       expect(requests).toHaveLength(1);
-      expect(Object.hasOwn(requests[0] as object, 'instructions')).toBe(true);
+      expect(requests[0]).not.toHaveProperty('instructions');
+      expect(requests[0]).toMatchObject({
+        input: [
+          { role: 'developer', content: [{ type: 'input_text', text: 'Reply OK.' }] },
+          { role: 'user', content: 'Reply OK.' }
+        ]
+      });
       expect(JSON.stringify(requests)).not.toContain('additional_tools');
       await execute(
         process.execPath,
@@ -749,10 +903,9 @@ describe('maragent CLI', () => {
     expect(reasoningRequest).toMatchObject({
       reasoning: { effort: 'high', summary: 'auto' }
     });
-    expect(reasoningRequest?.input.at(-1)).toEqual({
-      role: 'user',
-      content: 'Inspect the current task'
-    });
+    expect(reasoningRequest?.input).toEqual(
+      expect.arrayContaining([{ role: 'user', content: 'Inspect the current task' }])
+    );
     expect(JSON.stringify(reasoningRequest?.input)).not.toContain('--reasoning-effort');
     expect(JSON.stringify(reasoningRequest?.input)).not.toContain('--access');
     expect(
@@ -911,10 +1064,16 @@ describe('maragent CLI', () => {
       originator: 'myagentroam'
     });
     expect(requests[0]?.body).toMatchObject({
-      parallel_tool_calls: true,
-      instructions: expect.any(String),
-      tools: expect.any(Array)
+      tools: [],
+      input: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'developer',
+          content: [{ type: 'input_text', text: expect.any(String) }]
+        })
+      ])
     });
+    expect(requests[0]?.body).not.toHaveProperty('instructions');
+    expect(requests[0]?.body).not.toHaveProperty('parallel_tool_calls');
     expect(requests[0]?.headers).not.toHaveProperty('x-openai-internal-codex-responses-lite');
     expect(requests[0]?.headers).not.toHaveProperty('x-openai-fedramp');
     expect(await readFile(join(home, '.mar', 'agent', 'models.json'), 'utf8')).not.toContain(

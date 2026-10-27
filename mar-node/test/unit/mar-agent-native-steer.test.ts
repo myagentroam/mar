@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { MarAgentEvent, SteerResult } from '@myagentroam/agent';
+import type { AgentEvent, SteerResult } from '@myagentroam/agent';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
@@ -200,7 +200,7 @@ describe('MAR native steer integration', () => {
       eventId: 'live-event',
       type: 'input.received',
       entry
-    } as MarAgentEvent)[0]!;
+    } as AgentEvent)[0]!;
     for (const [index, item] of [normalizer.input(entry), live].entries())
       runtime.appendRunEvent({
         runId: execution.id,

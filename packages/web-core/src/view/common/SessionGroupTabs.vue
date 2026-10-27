@@ -7,7 +7,10 @@ const props = defineProps<{
   modelValue: SessionGroup;
   state: Record<SessionGroup, { running: number; unread: boolean }>;
 }>();
-const emit = defineEmits<{ 'update:modelValue': [value: SessionGroup] }>();
+const emit = defineEmits<{
+  'update:modelValue': [value: SessionGroup];
+  activateMarker: [value: SessionGroup];
+}>();
 const groups: readonly SessionGroup[] = ['MAIN', 'CHILD'];
 function label(group: SessionGroup): string {
   return translate(group === 'MAIN' ? 'sessionGroups.main' : 'sessionGroups.child');
@@ -61,6 +64,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
           class="group-markers"
           :running="state[group].running"
           :unread="state[group].unread"
+          @click.stop="emit('activateMarker', group)"
         />
       </button>
     </div>

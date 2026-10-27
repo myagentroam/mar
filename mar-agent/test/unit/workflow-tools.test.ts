@@ -1,41 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SubagentScheduler } from '../../src/agent-core/subagent/scheduler.js';
-import { TodoStore } from '../../src/agent-core/tools/agent/todo.js';
-import { restoreTodoStore } from '../../src/agent-core/tools/agent/todo.js';
-import { applyPatchToolDefinition } from '../../src/agent-core/tools/local/apply-patch.js';
-import {
-  execToolDefinition,
-  execWaitToolDefinition
-} from '../../src/agent-core/tools/local/exec.js';
-import { agentWaitToolDefinition } from '../../src/agent-core/tools/agent/agent-wait.js';
+import { createTestSubagents } from './support/subagent-controller.js';
+import { TodoStore } from '../../src/tools/agent/todo.js';
+import { restoreTodoStore } from '../../src/tools/agent/todo.js';
+import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
+import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
+import { agentWaitToolDefinition } from '../../src/tools/agent/agent-wait.js';
 import {
   agentStartToolDefinition,
   agentStartToolDefinitionWithModels,
   executeAgentStart
-} from '../../src/agent-core/tools/agent/agent-start.js';
-import { executeAgentWait } from '../../src/agent-core/tools/agent/agent-wait.js';
+} from '../../src/tools/agent/agent-start.js';
+import { executeAgentWait } from '../../src/tools/agent/agent-wait.js';
 import {
   executeAgentCancel,
   agentCancelToolDefinition
-} from '../../src/agent-core/tools/agent/agent-cancel.js';
+} from '../../src/tools/agent/agent-cancel.js';
 import {
   executeAgentMessage,
   agentMessageToolDefinition
-} from '../../src/agent-core/tools/agent/agent-message.js';
-import {
-  executeTodoWrite,
-  todoWriteToolDefinition
-} from '../../src/agent-core/tools/agent/todo-write.js';
-import {
-  executeQuestion,
-  questionToolDefinition
-} from '../../src/agent-core/tools/agent/question.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import {
-  AGENT_TOOL_HANDLERS,
-  BUILTIN_TOOL_DEFINITIONS
-} from '../../src/agent-core/tools/registry.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
+} from '../../src/tools/agent/agent-message.js';
+import { executeTodoWrite, todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { executeQuestion, questionToolDefinition } from '../../src/tools/agent/question.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { AGENT_TOOL_HANDLERS, BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
 
 describe('workflow tools', () => {
   it('exposes only agent lifecycle names and rejects taskId or processId inputs', async () => {
@@ -120,7 +108,7 @@ describe('workflow tools', () => {
     let started!: () => void;
     const childStarted = new Promise<void>((resolve) => (started = resolve));
     const childWork = new Promise<void>((resolve) => (release = resolve));
-    const scheduler = new SubagentScheduler(async () => {
+    const scheduler = await createTestSubagents(async () => {
       started();
       await childWork;
       return { summary: 'child verified', changedFiles: [], verification: [], evidence: [] };
@@ -182,7 +170,7 @@ describe('workflow tools', () => {
     const secondCompletion = new Promise<void>((resolve) => {
       releaseSecond = resolve;
     });
-    const scheduler = new SubagentScheduler(async (task) => {
+    const scheduler = await createTestSubagents(async (task) => {
       await (task.description === 'first' ? firstCompletion : secondCompletion);
       return {
         summary: `${task.description} done`,
@@ -226,14 +214,13 @@ describe('workflow tools', () => {
     expect(latest.data).toMatchObject({
       agentId: second.agentId,
       status: 'completed',
-      waitOutcome: 'completion',
-      summary: 'second done'
+      waitOutcome: 'completion'
     });
     await scheduler.dispose();
   });
 
-  it('rejects message waits on the compatibility scheduler without a Session message stream', async () => {
-    const scheduler = new SubagentScheduler(async () => ({
+  it('observes a streamed child message through the Session controller', async () => {
+    const scheduler = await createTestSubagents(async () => ({
       summary: 'done',
       changedFiles: [],
       verification: [],
@@ -247,7 +234,7 @@ describe('workflow tools', () => {
     });
     await expect(
       scheduler.output(started.agentId, { waitFor: 'message', waitMs: 10_000 })
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_NOT_AVAILABLE' });
+    ).resolves.toMatchObject({ waitOutcome: 'message', latestMessage: { text: 'done' } });
     await scheduler.dispose();
   });
 
@@ -451,7 +438,7 @@ describe('workflow tools', () => {
   it('limits subagents, forbids recursion and cancels with the parent', async () => {
     let running = 0,
       maximum = 0;
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (task, signal) => {
         running++;
         maximum = Math.max(maximum, running);
@@ -497,7 +484,7 @@ describe('workflow tools', () => {
 
   it('passes an optional reasoning effort override to the subagent runner', async () => {
     let receivedTask: unknown;
-    const scheduler = new SubagentScheduler(async (task) => {
+    const scheduler = await createTestSubagents(async (task) => {
       receivedTask = task;
       return { summary: 'done', changedFiles: [], verification: [], evidence: [] };
     });
@@ -507,18 +494,19 @@ describe('workflow tools', () => {
       emit: async () => undefined
     } as never;
 
-    await expect(
-      executeAgentStart(
-        {
-          description: 'Review effort',
-          prompt: 'Review with the selected effort.',
-          role: 'general-purpose',
-          modelId: 'review',
-          reasoningEffort: ' high '
-        },
-        context
-      )
-    ).resolves.toMatchObject({ data: { status: 'completed' } });
+    const started = await executeAgentStart(
+      {
+        description: 'Review effort',
+        prompt: 'Review with the selected effort.',
+        role: 'general-purpose',
+        modelId: 'review',
+        reasoningEffort: ' high '
+      },
+      context
+    );
+    await expect(scheduler.output(started.data.agentId, { waitMs: 10_000 })).resolves.toMatchObject(
+      { status: 'completed' }
+    );
     expect(receivedTask).toMatchObject({
       modelId: 'review',
       reasoningEffort: 'high'
@@ -528,7 +516,7 @@ describe('workflow tools', () => {
 
   it('waits for a running subagent to reach cancelled before returning from cancel', async () => {
     let abortObserved = false;
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (_task, signal) =>
         new Promise<never>((_resolve, reject) => {
           const abort = () => {
@@ -555,7 +543,7 @@ describe('workflow tools', () => {
   });
 
   it('interrupts agent_wait waiting with the Execution signal without cancelling the subagent', async () => {
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (_task, signal) =>
         new Promise<never>((_resolve, reject) => {
           const abort = () => reject(signal.reason ?? new Error('cancelled'));
@@ -594,7 +582,7 @@ describe('workflow tools', () => {
     const completion = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const scheduler = new SubagentScheduler(async () => {
+    const scheduler = await createTestSubagents(async () => {
       await completion;
       return { summary: 'done', changedFiles: [], verification: [], evidence: [] };
     });
@@ -634,7 +622,7 @@ describe('workflow tools', () => {
     const completion = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const scheduler = new SubagentScheduler(async () => {
+    const scheduler = await createTestSubagents(async () => {
       await completion;
       return { summary: 'done', changedFiles: [], verification: [], evidence: [] };
     });
@@ -689,7 +677,7 @@ describe('workflow tools', () => {
 
   it('reports an explicit timeout outcome while leaving the child running', async () => {
     vi.useFakeTimers();
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (_task, signal) =>
         new Promise<never>((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(signal.reason), { once: true });
@@ -730,7 +718,7 @@ describe('workflow tools', () => {
       verification: string[];
       evidence: never[];
     }>((resolve) => (release = resolve));
-    const scheduler = new SubagentScheduler(async () => {
+    const scheduler = await createTestSubagents(async () => {
       started();
       return result;
     });
@@ -767,9 +755,9 @@ describe('workflow tools', () => {
     await scheduler.dispose();
   });
 
-  it('cancels a subagent when publishing its created state fails', async () => {
+  it('removes the unstarted child when publishing its created state fails', async () => {
     let agentId = '';
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (_task, signal) =>
         new Promise<never>((_resolve, reject) => {
           const abort = () => reject(signal.reason ?? new Error('cancelled'));
@@ -794,12 +782,14 @@ describe('workflow tools', () => {
         }
       )
     ).rejects.toThrow('publish failed');
-    await expect(scheduler.output(agentId)).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(scheduler.output(agentId)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SUBAGENT_NOT_FOUND'
+    });
     await scheduler.dispose();
   });
 
   it('strictly validates agent-owned workflow tool inputs at runtime', async () => {
-    const scheduler = new SubagentScheduler(async () => ({
+    const scheduler = await createTestSubagents(async () => ({
       summary: 'done',
       changedFiles: [],
       verification: [],

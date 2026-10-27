@@ -1169,10 +1169,14 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       assert.ok(deliveryStart >= 0 && scopeStart > deliveryStart);
       const delivery = output.slice(deliveryStart, scopeStart).replace(/\s+/gu, ' ').toLowerCase();
       const steerStart = delivery.indexOf(
-        locale.startsWith('zh') ? '--steer 优先补充新信息' : '--steer prioritizes new context'
+        locale.startsWith('zh')
+          ? '--steer 优先补充影响当前工作'
+          : '--steer prioritizes time-sensitive'
       );
       const queueStart = delivery.indexOf(
-        locale.startsWith('zh') ? '--queue 排入后续轮次' : '--queue schedules a subsequent turn'
+        locale.startsWith('zh')
+          ? '--queue 不打断活动执行'
+          : '--queue does not interrupt active execution'
       );
       assert.ok(steerStart >= 0 && queueStart > steerStart);
       const steering = delivery.slice(steerStart, queueStart);
@@ -1186,7 +1190,7 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         delivery
           .slice(queueStart)
           .includes(
-            locale.startsWith('zh') ? '不打断活动执行' : 'without interrupting active execution'
+            locale.startsWith('zh') ? '不打断活动执行' : 'does not interrupt active execution'
           )
       );
       for (const line of output.split('\n')) {

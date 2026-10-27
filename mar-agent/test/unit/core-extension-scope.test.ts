@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

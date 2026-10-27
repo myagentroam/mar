@@ -4,29 +4,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type MarAgentModelConfiguration,
-  type MarAgentEvent,
-  type McpToolCatalogContext
-} from '../../src/index.js';
-import { LocalWorkspaceTools } from '../../src/agent-core/tools/local/workspace-tools.js';
-import { SubagentScheduler } from '../../src/agent-core/subagent/scheduler.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost, type McpToolCatalogContext } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration, type AgentEvent } from '../../src/index.js';
+import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
+import { createTestSubagents } from './support/subagent-controller.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { AsyncQueue } from '../../src/agent-core/runtime/async-queue.js';
+} from '../../src/model/contracts.js';
+import { AsyncQueue } from '../../src/runtime/async-queue.js';
 
 const roots: string[] = [];
 afterEach(async () =>
   Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 );
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'coding',
   name: 'Coding',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -214,7 +209,7 @@ class ReconfigurableBackgroundAdapter implements ModelAdapter {
   readonly close = vi.fn(async () => undefined);
 
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly state: {
       childStarted: Promise<void>;
       resolveChildStarted(): void;
@@ -258,7 +253,7 @@ class ReconfigurableBackgroundAdapter implements ModelAdapter {
 
 class BlockingExecutionAdapter implements ModelAdapter {
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly started: () => void
   ) {}
 
@@ -403,12 +398,14 @@ describe('resource lifecycle', () => {
       rejection: process.listenerCount('unhandledRejection')
     };
     for (let index = 0; index < 20; index++) {
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => new ImmediateAdapter()
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => new ImmediateAdapter()
+      );
       const session = await agent.createSession({ workspace });
       await expect(session.run({ prompt: `turn-${index}` }).result()).resolves.toMatchObject({
         status: 'completed'
@@ -438,13 +435,15 @@ describe('resource lifecycle', () => {
       ...model,
       apiKey: undefined,
       credentialProvider
-    } as unknown as MarAgentModelConfiguration;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [dynamicModel, { ...dynamicModel, id: 'review', name: 'Review' }],
-      adapterFactory: () => new ImmediateAdapter()
-    });
+    } as unknown as AgentModelConfiguration;
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [dynamicModel, { ...dynamicModel, id: 'review', name: 'Review' }]
+      },
+      () => new ImmediateAdapter()
+    );
 
     await agent.dispose();
     await agent.dispose();
@@ -473,22 +472,24 @@ describe('resource lifecycle', () => {
       ...model,
       apiKey: undefined,
       credentialProvider: firstProvider
-    } as MarAgentModelConfiguration;
+    } as AgentModelConfiguration;
     const secondModel = {
       ...model,
       apiKey: undefined,
       credentialProvider: secondProvider
-    } as MarAgentModelConfiguration;
-    const configurations: MarAgentModelConfiguration[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [firstModel],
-      adapterFactory: (configuration) => {
+    } as AgentModelConfiguration;
+    const configurations: AgentModelConfiguration[] = [];
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [firstModel]
+      },
+      (configuration) => {
         configurations.push(configuration);
         return new ImmediateAdapter();
       }
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Reconfigured models' });
 
     await expect(session.run({ prompt: 'first' }).result()).resolves.toMatchObject({
@@ -522,12 +523,14 @@ describe('resource lifecycle', () => {
     let resume!: () => void;
     const firstStarted = new Promise<void>((resolve) => (started = resolve));
     const firstResumed = new Promise<void>((resolve) => (resume = resolve));
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      systemInstruction: 'ORIGINAL_HOST_INSTRUCTION',
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model],
+        systemInstruction: 'ORIGINAL_HOST_INSTRUCTION'
+      },
+      (configuration) => ({
         configuration,
         async *start(request) {
           systems.push(effectiveInstructions(request));
@@ -547,7 +550,7 @@ describe('resource lifecycle', () => {
           }
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({ workspace });
       const first = session.run({ prompt: 'first' });
@@ -591,12 +594,14 @@ describe('resource lifecycle', () => {
     const childStarted = new Promise<void>((resolve) => (started = resolve));
     const childResumed = new Promise<void>((resolve) => (resume = resolve));
     const childFinished = new Promise<void>((resolve) => (finished = resolve));
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      systemInstruction: 'ORIGINAL_HOST_INSTRUCTION',
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        systemInstruction: 'ORIGINAL_HOST_INSTRUCTION'
+      },
+      (configuration) => ({
         configuration,
         async *start(request) {
           if (effectiveInstructions(request).includes('non-recursive subagent')) {
@@ -637,7 +642,7 @@ describe('resource lifecycle', () => {
           }
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({ workspace });
       await expect(session.run({ prompt: 'start child' }).result()).resolves.toMatchObject({
@@ -680,7 +685,7 @@ describe('resource lifecycle', () => {
         invalidate: vi.fn(),
         close: firstClose
       }
-    } as MarAgentModelConfiguration;
+    } as AgentModelConfiguration;
     const secondModel = {
       ...model,
       apiKey: undefined,
@@ -689,13 +694,15 @@ describe('resource lifecycle', () => {
         invalidate: vi.fn(),
         close: secondClose
       }
-    } as MarAgentModelConfiguration;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [firstModel],
-      adapterFactory: () => new ImmediateAdapter()
-    });
+    } as AgentModelConfiguration;
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [firstModel]
+      },
+      () => new ImmediateAdapter()
+    );
     const session = await agent.createSession({ workspace, title: 'Provider close retry' });
 
     await expect(session.run({ prompt: 'first' }).result()).resolves.toMatchObject({
@@ -730,28 +737,30 @@ describe('resource lifecycle', () => {
       ...model,
       apiKey: undefined,
       credentialProvider: firstProvider
-    } as MarAgentModelConfiguration;
+    } as AgentModelConfiguration;
     const secondModel = {
       ...model,
       apiKey: undefined,
       credentialProvider: secondProvider
-    } as MarAgentModelConfiguration;
+    } as AgentModelConfiguration;
     let resolveChildStarted!: () => void;
     const state = {
       childStarted: new Promise<void>((resolve) => (resolveChildStarted = resolve)),
       resolveChildStarted
     };
     const adapters: ReconfigurableBackgroundAdapter[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [firstModel],
-      adapterFactory: (configuration) => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [firstModel]
+      },
+      (configuration) => {
         const adapter = new ReconfigurableBackgroundAdapter(configuration, state);
         adapters.push(adapter);
         return adapter;
       }
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Active background task' });
 
     await expect(session.run({ prompt: 'start background task' }).result()).resolves.toMatchObject({
@@ -792,13 +801,15 @@ describe('resource lifecycle', () => {
       name: 'Second configuration',
       modelId: 'coding-next'
     };
-    const configurations: MarAgentModelConfiguration[] = [];
+    const configurations: AgentModelConfiguration[] = [];
     let factoryCalls = 0;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [firstModel],
-      adapterFactory: (configuration) => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [firstModel]
+      },
+      (configuration) => {
         configurations.push(configuration);
         const rejectClose = factoryCalls++ === 0;
         const adapter: ModelAdapter = {
@@ -817,7 +828,7 @@ describe('resource lifecycle', () => {
         });
         return adapter;
       }
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Close failure' });
 
     await expect(session.run({ prompt: 'first' }).result()).resolves.toMatchObject({
@@ -844,12 +855,14 @@ describe('resource lifecycle', () => {
     await mkdir(workspace);
     let markStarted!: () => void;
     const started = new Promise<void>((resolve) => (markStarted = resolve));
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: (configuration) => new BlockingExecutionAdapter(configuration, markStarted)
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      (configuration) => new BlockingExecutionAdapter(configuration, markStarted)
+    );
     const session = await agent.createSession({ workspace, title: 'Active main execution' });
     const handle = session.run({ prompt: 'wait' });
 
@@ -893,12 +906,14 @@ describe('resource lifecycle', () => {
       await mkdir(workspace);
 
       await expect(
-        createMarAgent({
-          mode: 'normal',
-          host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [configure() as MarAgentModelConfiguration],
-          adapterFactory: () => new ImmediateAdapter()
-        })
+        createMarAgent(
+          {
+            mode: 'normal',
+            host: new LocalAgentHost({ homeDirectory: home, workspace }),
+            models: [configure() as AgentModelConfiguration]
+          },
+          () => new ImmediateAdapter()
+        )
       ).rejects.toMatchObject({
         code: 'MAR_AGENT_MODEL_CONFIG_INVALID'
       });
@@ -916,22 +931,24 @@ describe('resource lifecycle', () => {
       invalidate: vi.fn(),
       close
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [
-        model,
-        {
-          ...model,
-          id: 'disabled',
-          name: 'Disabled',
-          enabled: false,
-          apiKey: undefined,
-          credentialProvider
-        } as MarAgentModelConfiguration
-      ],
-      adapterFactory: () => new ImmediateAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [
+          model,
+          {
+            ...model,
+            id: 'disabled',
+            name: 'Disabled',
+            enabled: false,
+            apiKey: undefined,
+            credentialProvider
+          } as AgentModelConfiguration
+        ]
+      },
+      () => new ImmediateAdapter()
+    );
 
     await agent.dispose();
 
@@ -955,13 +972,15 @@ describe('resource lifecycle', () => {
           throw new Error('credential close failed');
         })
       }
-    } as unknown as MarAgentModelConfiguration;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [dynamicModel],
-      adapterFactory: () => new ImmediateAdapter()
-    });
+    } as unknown as AgentModelConfiguration;
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [dynamicModel]
+      },
+      () => new ImmediateAdapter()
+    );
 
     await expect(agent.dispose()).rejects.toThrow('credential close failed');
 
@@ -970,7 +989,7 @@ describe('resource lifecycle', () => {
 
   it('waits for aborted running subagents before disposal completes', async () => {
     let settled = false;
-    const scheduler = new SubagentScheduler(
+    const scheduler = await createTestSubagents(
       async (_task, signal) =>
         new Promise<never>((_resolve, reject) => {
           const finish = () => {
@@ -1013,12 +1032,14 @@ describe('resource lifecycle', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Warm resources' });
 
     await expect(session.run({ prompt: 'start warm resources' }).result()).resolves.toMatchObject({
@@ -1070,8 +1091,8 @@ describe('resource lifecycle', () => {
       ])
     );
     await agent.dispose();
-    const store = await import('../../src/agent-core/session/store/index.js').then(
-      ({ JsonlSessionStore }) => JsonlSessionStore.open(home)
+    const store = await import('../../src/session/store/index.js').then(({ JsonlSessionStore }) =>
+      JsonlSessionStore.open(home)
     );
     const records = await store.read(session.id);
     await store.close();
@@ -1085,12 +1106,14 @@ describe('resource lifecycle', () => {
     await mkdir(workspace);
     const adapter = new WarmResourceAdapter();
     const host = new McpScopeTrackingHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Interrupted warm resources' });
 
     const interrupted = session.run({
@@ -1160,12 +1183,14 @@ describe('resource lifecycle', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Foreground disposal' });
     const handle = session.run({ prompt: 'start subagent and wait' });
     await adapter.childStarted;
@@ -1188,15 +1213,17 @@ describe('resource lifecycle', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Foreground cancellation' });
     const handle = session.run({ prompt: 'start subagent and wait' });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     let resolveStarted!: () => void;
     const started = new Promise<void>((resolve) => (resolveStarted = resolve));
     const consume = (async () => {
@@ -1252,7 +1279,7 @@ describe('resource lifecycle', () => {
       const resumed = session.run({
         prompt: 'inspect retained waiting subagent'
       });
-      const resumedEvents: MarAgentEvent[] = [];
+      const resumedEvents: AgentEvent[] = [];
       for await (const event of resumed) resumedEvents.push(event);
       await expect(resumed.result()).resolves.toMatchObject({ status: 'completed' });
       expect(resumedEvents).toEqual(
@@ -1291,12 +1318,14 @@ describe('resource lifecycle', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Delete active Session' });
     const handle = session.run({ prompt: 'start subagent and wait' });
     await adapter.childStarted;

@@ -1,11 +1,11 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { type ModelEvent, type ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { fetchModelResponse, modelRetryDelay } from '../../src/agent-core/model/http.js';
-import { parseSse } from '../../src/agent-core/model/sse.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { type ModelEvent, type ModelRequest } from '../../src/model/contracts.js';
+import { fetchModelResponse, modelRetryDelay } from '../../src/model/http.js';
+import { parseSse } from '../../src/model/sse.js';
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 
@@ -92,9 +92,9 @@ async function sequencedSseServer(
 }
 
 function configuration(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   baseUrl: string
-): MarAgentModelConfiguration {
+): AgentModelConfiguration {
   return {
     id: 'coding',
     name: 'Coding',

@@ -2,11 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { afterEach, expect, it, vi } from 'vitest';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
-import type { MarAgentEvent } from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { AgentError } from '../../src/error.js';
+import type { ModelEvent } from '../../src/model/contracts.js';
+import type { AgentEvent } from '../../src/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { answer, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
+import * as modelContext from '../../src/sdk/execution-model-context.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -14,6 +16,64 @@ afterEach(async () => {
 });
 
 const terminalTypes = ['execution.completed', 'execution.failed', 'execution.cancelled'];
+
+it('retains a committed idle input when its active projection fails and restores it on the next execution', async () => {
+  let context!: import('../../src/index.js').SessionExtensionContext;
+  const f = await fixture(
+    [
+      {
+        id: 'projection-failure',
+        apiVersion: '1.0',
+        attachSession(value) {
+          context = value;
+        }
+      }
+    ],
+    answer
+  );
+  await f.session.run({ prompt: 'initialize' }).result();
+  const create = modelContext.createExecutionModelContext;
+  const projection = vi
+    .spyOn(modelContext, 'createExecutionModelContext')
+    .mockImplementation((ports) => {
+      const result = create(ports);
+      result.rememberInput = () => {
+        throw new Error('projection failed after input commit');
+      };
+      return result;
+    });
+  const submitted = await context.session!.submit({ text: 'committed-before-projection' });
+  await vi.waitFor(async () => {
+    const receipt = (await context.session!.inspect()).operations.find(
+      (item) => item.operationId === submitted.operationId
+    );
+    expect(receipt).toMatchObject({
+      status: 'failed',
+      changed: true,
+      recordId: expect.any(String)
+    });
+  });
+  projection.mockRestore();
+  const store = await JsonlSessionStore.open(f.home);
+  try {
+    const records = await store.read(f.session.id);
+    expect(
+      records.filter((record) =>
+        JSON.stringify(record.payload).includes('committed-before-projection')
+      )
+    ).toHaveLength(1);
+  } finally {
+    await store.close();
+  }
+  expect((await f.session.run({ prompt: 'after recovery' }).result()).status).toBe('completed');
+  expect(
+    f.adapter.requests
+      .at(-1)!
+      .messages.filter(
+        (message) => message.role === 'user' && message.content === 'committed-before-projection'
+      )
+  ).toHaveLength(1);
+});
 
 it.each([
   { outcome: 'completed', publication: 'sync' },
@@ -42,7 +102,7 @@ it.each([
       async function* (_request, signal): AsyncGenerator<ModelEvent> {
         started.resolve();
         if (firstExecution && outcome === 'failed')
-          throw new MarAgentError('ORIGINAL_MODEL_FAILURE', 'Original model failure.');
+          throw new AgentError('ORIGINAL_MODEL_FAILURE', 'Original model failure.');
         if (firstExecution && outcome === 'cancelled') {
           if (!signal.aborted)
             await new Promise<void>((resolve) =>
@@ -58,7 +118,7 @@ it.each([
       createTurnSession: () => ({ start: f.adapter.start.bind(f.adapter), close })
     });
     const warning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
-    const failure = new MarAgentError('HOST_OFFLINE', 'Host observation failed.');
+    const failure = new AgentError('HOST_OFFLINE', 'Host observation failed.');
     const emit = f.host.emit.bind(f.host);
     const publish = vi.spyOn(f.host, 'emit').mockImplementation((event) => {
       if (firstExecution && event.type === `execution.${outcome}`) {
@@ -68,7 +128,7 @@ it.each([
       return emit(event);
     });
     const handle = f.session.run({ prompt: 'Finish the isolated task.' });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     const stream = (async () => {
       for await (const event of handle) events.push(event);
     })();
@@ -92,11 +152,7 @@ it.each([
     const terminals = events.filter((event) => terminalTypes.includes(event.type));
     expect(terminals.map((event) => event.type)).toEqual([`execution.${outcome}`]);
     const transcript = join(
-      f.home,
-      '.mar',
-      'agent',
-      'sessions',
-      f.session.id,
+      await activeSessionDirectory(f.home, f.session.id),
       'events-000001.jsonl'
     );
     const records = (await readFile(transcript, 'utf8'))
@@ -150,7 +206,7 @@ it.each(['error-with-cause', 'unbounded-code', 'string'] as const)(
       kind === 'error-with-cause'
         ? new Error(privateMessage, { cause: new Error(privateCause) })
         : kind === 'unbounded-code'
-          ? new MarAgentError(externalCode, privateMessage, {
+          ? new AgentError(externalCode, privateMessage, {
               cause: new Error(privateCause),
               details: { privateText: privateCause }
             })
@@ -163,7 +219,7 @@ it.each(['error-with-cause', 'unbounded-code', 'string'] as const)(
     });
     const warning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
     const handle = f.session.run({ prompt: 'Finish without publishing private Host data.' });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     await expect(handle.result()).resolves.toMatchObject({
       status: 'completed',
@@ -184,7 +240,7 @@ it.each(['error-with-cause', 'unbounded-code', 'string'] as const)(
       await store.close();
     }
     expect(warning).toHaveBeenCalledTimes(1);
-    const diagnostic = warning.mock.calls[0]![0] as MarAgentError;
+    const diagnostic = warning.mock.calls[0]![0] as AgentError;
     const output = inspect(warning.mock.calls[0], { depth: null, showHidden: true });
     expect(output).not.toContain(privateMessage);
     expect(output).not.toContain(privateCause);
@@ -208,12 +264,12 @@ it('does not isolate a nonterminal Host failure as a committed terminal publicat
   const emit = f.host.emit.bind(f.host);
   vi.spyOn(f.host, 'emit').mockImplementation((event) => {
     if (event.type === 'execution.started')
-      throw new MarAgentError('HOST_START_FAILED', 'Host start failed.');
+      throw new AgentError('HOST_START_FAILED', 'Host start failed.');
     return emit(event);
   });
   const warning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
   const handle = f.session.run({ prompt: 'Fail before completion.' });
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   await expect(handle.result()).resolves.toMatchObject({
     status: 'failed',
@@ -241,7 +297,7 @@ it('keeps a completed terminal append failure on the Store failure path', async 
   const publish = vi.spyOn(f.host, 'emit');
   const warning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
   const handle = f.session.run({ prompt: 'Fail terminal persistence.' });
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   await expect(handle.result()).resolves.toMatchObject({
     status: 'failed',
@@ -276,7 +332,7 @@ it('does not let a failing publication diagnostic sink rewrite a committed succe
     throw new Error('Diagnostic sink failed.');
   });
   const handle = f.session.run({ prompt: 'Finish despite observation failures.' });
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   await expect(handle.result()).resolves.toMatchObject({ status: 'completed' });
   expect(

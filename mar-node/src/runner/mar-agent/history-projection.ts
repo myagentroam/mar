@@ -1,4 +1,4 @@
-import type { ExecutionResult, MarAgentHistoryEntry } from '@myagentroam/agent';
+import type { ExecutionResult, AgentSessionHistoryEntry } from '@myagentroam/agent';
 import type { NodeAgentSession } from '../../database.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../../runtime-model.js';
 import {
@@ -10,7 +10,7 @@ import { boundedConversationItemId } from '../../util/node-operation-parsers.js'
 
 interface MarAgentHistoryProjectionOptions {
   readonly registerInputImages?: (
-    entry: Extract<MarAgentHistoryEntry, { readonly kind: 'user' }>
+    entry: Extract<AgentSessionHistoryEntry, { readonly kind: 'user' }>
   ) => readonly (Record<string, unknown> | undefined)[];
   readonly registerGeneratedImages?: (
     sessionId: string,
@@ -25,7 +25,7 @@ type MarAgentHistoryItem = NodeConversationItem & {
 
 export function projectMarAgentHistory(
   session: NodeAgentSession,
-  entries: readonly MarAgentHistoryEntry[],
+  entries: readonly AgentSessionHistoryEntry[],
   options: MarAgentHistoryProjectionOptions = {}
 ): NodeConversationTurn[] {
   const turns = new Map<string, NodeConversationTurn>();

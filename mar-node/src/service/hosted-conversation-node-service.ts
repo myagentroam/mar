@@ -54,7 +54,7 @@ import {
   type MarAgentRuntimeModelConfiguration,
   type WorkbenchEvent
 } from '@myagentroam/protocol';
-import type { LocalProcessExecutor, WorkspacePathMount } from '@myagentroam/agent';
+import type { LocalProcessExecutor, WorkspacePathMount } from '@myagentroam/agent/host';
 import type { NodeOperationHandler } from '../connector/node-operation-router.js';
 import type { NodeDatabase } from '../database.js';
 import type { ResolvedMcpServer } from '../mcp/model.js';

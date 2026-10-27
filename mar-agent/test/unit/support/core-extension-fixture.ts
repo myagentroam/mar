@@ -1,24 +1,14 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type MarAgentModelConfiguration
-} from '../../../src/index.js';
-import { createMarAgentWithAdapter } from '../../../src/agent-core/sdk/agent.js';
-import type { MarAgent } from '../../../src/agent-core/sdk/types.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../../src/agent-core/model/contracts.js';
-import type {
-  CoreExtensionSnapshot,
-  CoreRuntimeExtension
-} from '../../../src/agent-core/extensions/contracts.js';
+import { LocalAgentHost } from '../../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../../src/index.js';
+import { createAgentWithAdapter } from '../../../src/sdk/agent.js';
+import type { Agent } from '../../../src/sdk/types.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../../src/model/contracts.js';
+import type { ExtensionSnapshot, AgentExtension } from '../../../src/extensions/contracts.js';
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -37,7 +27,7 @@ const model: MarAgentModelConfiguration = {
   responsesPreviousResponseId: false,
   enabled: true
 };
-export const agents: MarAgent[] = [];
+export const agents: Agent[] = [];
 export const homes: string[] = [];
 export async function cleanupCoreFixtures() {
   const results = await Promise.allSettled(agents.splice(0).map((agent) => agent.dispose()));
@@ -48,7 +38,7 @@ export async function cleanupCoreFixtures() {
 class Adapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     readonly script: (request: ModelRequest, index: number) => ModelEvent[]
   ) {}
   async *start(request: ModelRequest, _signal: AbortSignal): AsyncIterable<ModelEvent> {
@@ -67,8 +57,8 @@ export const call = (name: string, args: unknown): ModelEvent[] => [
 ];
 export async function fixture(
   extensions:
-    | readonly CoreRuntimeExtension[]
-    | { resolve(input: { signal: AbortSignal }): Promise<CoreExtensionSnapshot> },
+    | readonly AgentExtension[]
+    | { resolve(input: { signal: AbortSignal }): Promise<ExtensionSnapshot> },
   script: Adapter['script'],
   codeMode = false,
   retainAdapter = false,
@@ -88,8 +78,8 @@ export async function fixture(
     | 'extensions'
     | 'callMcp'
   > = {},
-  protocol: MarAgentModelConfiguration['protocol'] = model.protocol,
-  inputCapabilities: MarAgentModelConfiguration['inputCapabilities'] = model.inputCapabilities
+  protocol: AgentModelConfiguration['protocol'] = model.protocol,
+  inputCapabilities: AgentModelConfiguration['inputCapabilities'] = model.inputCapabilities
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-core-sdk-'));
   homes.push(home);
@@ -100,13 +90,15 @@ export async function fixture(
       createTurnSession: () => ({ start: adapter.start.bind(adapter), close: async () => {} })
     });
   const host = new LocalAgentHost({ ...hostOptions, homeDirectory: home, workspace: home });
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [adapter.configuration],
-    runtimeExtensions: extensions,
-    adapterFactory: () => adapter
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [adapter.configuration],
+      extensions: extensions
+    },
+    () => adapter
+  );
   agents.push(agent);
   const session = await agent.createSession({ workspace: home, title: 'Extension test' });
   return { agent, session, adapter, home, host };

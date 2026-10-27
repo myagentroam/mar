@@ -2,14 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { LocalAgentHost, parseModelCatalog, type HostSkill } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelEvent } from '../../src/agent-core/model/contracts.js';
-import {
-  loadAgentInstructions,
-  loadAgentSkill
-} from '../../src/agent-core/runtime/context/instructions.js';
-import { directLocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
+import { LocalAgentHost, type HostSkill } from '../../src/host.js';
+import { parseModelCatalog } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelEvent } from '../../src/model/contracts.js';
+import { loadAgentInstructions, loadAgentSkill } from '../../src/runtime/context/instructions.js';
+import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -110,12 +108,14 @@ it('uses the selected child model for generic Host policies and tool execution',
     }
   });
   const rounds = new Map<string, number>();
-  const agent = await createMarAgent({
-    mode: 'normal',
-    host,
-    models,
-    defaultModelId: 'parent',
-    adapterFactory: (configuration) => ({
+  const agent = await createMarAgent(
+    {
+      mode: 'normal',
+      host,
+      models,
+      defaultModelId: 'parent'
+    },
+    (configuration) => ({
       configuration,
       async *start(request): AsyncIterable<ModelEvent> {
         catalogs[configuration.id] = request.tools.map((entry) => entry.name);
@@ -151,7 +151,7 @@ it('uses the selected child model for generic Host policies and tool execution',
         }
       }
     })
-  });
+  );
   try {
     const session = await agent.createSession({
       workspace: paths.workspace,
@@ -538,11 +538,13 @@ it.each([
         }
       }
     });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      (configuration) => ({
         configuration,
         async *start(): AsyncIterable<ModelEvent> {
           round++;
@@ -573,7 +575,7 @@ it.each([
           }
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({
         workspace: paths.workspace,

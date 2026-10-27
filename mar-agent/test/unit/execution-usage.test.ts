@@ -4,27 +4,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type CoreAgentsApi,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentEvent, type AgentModelConfiguration } from '../../src/index.js';
+import { type ExtensionAgentsApi } from '../../src/extensions.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const homes: string[] = [];
 afterEach(async () =>
   Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })))
 );
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'coding',
   name: 'Coding',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -111,7 +107,7 @@ class ToolAtBudgetAdapter implements ModelAdapter {
 }
 
 class StagedPromptAdapter implements ModelAdapter {
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     ...model,
     protocol: 'OPENAI_RESPONSES',
     responsesPreviousResponseId: true
@@ -145,7 +141,7 @@ class CompactBudgetAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   normalCalls = 0;
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     readonly compactOutputTokens = 6_000
   ) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
@@ -362,12 +358,14 @@ describe('Execution usage without token limits', () => {
   it('completes more than 128 tool rounds above the former cumulative token limit', async () => {
     const { home, workspace } = await fixture('long-execution');
     const adapter = new LongExecutionAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
 
     await expect(
       (await agent.createSession({ workspace, title: 'Long execution' }))
@@ -383,22 +381,19 @@ describe('Execution usage without token limits', () => {
 
   it('accepts final answers regardless of provider budget units', async () => {
     const { home, workspace } = await fixture('final-boundary');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget: {
-        limitTokens: 80,
-        conserveAtRemainingTokens: 40,
-        finalizeAtRemainingTokens: 20
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
       },
-      adapterFactory: () => new FinalAtBudgetAdapter()
-    });
+      () => new FinalAtBudgetAdapter()
+    );
 
     const handle = (await agent.createSession({ workspace, title: 'Final boundary' })).run({
       prompt: 'finish'
     });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     expect(await handle.result()).toMatchObject({
       status: 'completed'
@@ -412,20 +407,17 @@ describe('Execution usage without token limits', () => {
   it('persists every tool result and continues after the former configured token limit', async () => {
     const { home, workspace } = await fixture('tool-boundary');
     const adapter = new ToolAtBudgetAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget: {
-        limitTokens: 100,
-        conserveAtRemainingTokens: 50,
-        finalizeAtRemainingTokens: 25
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Tool boundary' });
     const handle = session.run({ prompt: 'read twice' });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
 
     expect(await handle.result()).toMatchObject({
@@ -456,17 +448,14 @@ describe('Execution usage without token limits', () => {
   it('keeps request prefixes and tools stable without forced finalization guidance', async () => {
     const { home, workspace } = await fixture('stages');
     const adapter = new StagedPromptAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      rolloutBudget: {
-        limitTokens: 100,
-        conserveAtRemainingTokens: 70,
-        finalizeAtRemainingTokens: 30
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
 
     await expect(
       (await agent.createSession({ workspace, title: 'Stages' })).run({ prompt: 'work' }).result()
@@ -500,19 +489,16 @@ describe('Execution usage without token limits', () => {
       const { home, workspace } = await fixture('compact');
       const compactModel = { ...model, contextWindowTokens: 9_000, maxOutputTokens: 1_000 };
       const adapter = new CompactBudgetAdapter(compactModel, compactOutputTokens);
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [compactModel],
-        rolloutBudget: {
-          limitTokens: 10_000,
-          conserveAtRemainingTokens: 4_000,
-          finalizeAtRemainingTokens: 2_000
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [compactModel]
         },
-        adapterFactory: () => adapter
-      });
+        () => adapter
+      );
       const session = await agent.createSession({ workspace, title: 'Compact budget' });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       const seed = session.run({ prompt: 'seed' });
       for await (const event of seed) events.push(event);
       await expect(seed.result()).resolves.toMatchObject({
@@ -538,17 +524,18 @@ describe('Execution usage without token limits', () => {
   it('commits manual Compact regardless of cumulative usage', async () => {
     const { home, workspace } = await fixture('manual-compact');
     const adapter = new CompactBudgetAdapter(model, 10_000);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget: { limitTokens: 10_000 },
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Manual compact budget' });
     await session.run({ prompt: 'seed' }).result();
     const handle = session.compact();
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     expect(await handle.result()).toMatchObject({
       status: 'completed'
@@ -567,22 +554,19 @@ describe('Execution usage without token limits', () => {
     async (role) => {
       const { home, workspace } = await fixture('subagent');
       const adapter = new SubagentBudgetAdapter(role);
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        rolloutBudget: {
-          limitTokens: 100,
-          conserveAtRemainingTokens: 50,
-          finalizeAtRemainingTokens: 25
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
         },
-        adapterFactory: () => adapter
-      });
+        () => adapter
+      );
       const session = await agent.createSession({ workspace, title: 'Subagent budget' });
       const handle = session.run({
         prompt: 'delegate'
       });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       for await (const event of handle) events.push(event);
 
       expect(await handle.result()).toMatchObject({
@@ -644,22 +628,23 @@ describe('Execution usage without token limits', () => {
   it('does not budget native Extension child turns or follow-up messages', async () => {
     const { home, workspace } = await fixture('native-subagent');
     const childAdapter = new SubagentBudgetAdapter('general-purpose');
-    let api: CoreAgentsApi | undefined;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget: { limitTokens: 100 },
-      runtimeExtensions: [
-        {
-          id: 'native-budget-regression',
-          apiVersion: '1.0',
-          attachSession: (context) => {
-            if (context.agents) api = context.agents;
+    let api: ExtensionAgentsApi | undefined;
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        extensions: [
+          {
+            id: 'native-budget-regression',
+            apiVersion: '1.0',
+            attachSession: (context) => {
+              if (context.agents) api = context.agents;
+            }
           }
-        }
-      ],
-      adapterFactory: () => ({
+        ]
+      },
+      () => ({
         configuration: model,
         async *start(request) {
           if (effectiveInstructions(request).includes('non-recursive subagent')) {
@@ -671,7 +656,7 @@ describe('Execution usage without token limits', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Native child budget' });
       await expect(session.run({ prompt: 'initialize' }).result()).resolves.toMatchObject({
@@ -705,17 +690,18 @@ describe('Execution usage without token limits', () => {
   it('does not budget reopened child runs or automatic and manual Compact', async () => {
     const { home, workspace } = await fixture('subagent-compact');
     let adapter: ModelAdapter = new SubagentBudgetAdapter('general-purpose');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget: { limitTokens: 100 },
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const parent = await agent.createSession({ workspace, title: 'Child compact budget' });
       const handle = parent.run({ prompt: 'delegate' });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       for await (const event of handle) events.push(event);
       expect(await handle.result()).toMatchObject({ status: 'completed' });
       const childEvent = events.find((event) => event.type === 'subagent.completed');
@@ -726,7 +712,7 @@ describe('Execution usage without token limits', () => {
       adapter = compactAdapter;
       agent.reconfigureModels({ models: [compactModel] });
       const child = await agent.openSession(childEvent.agentId);
-      const childEvents: MarAgentEvent[] = [];
+      const childEvents: AgentEvent[] = [];
       const seed = child.run({ prompt: 'seed' });
       for await (const event of seed) childEvents.push(event);
       await expect(seed.result()).resolves.toMatchObject({
@@ -758,27 +744,24 @@ describe('Execution usage without token limits', () => {
     async (parentOutputTokens) => {
       const { home, workspace } = await fixture('background-subagent-detached');
       const adapter = new DetachedBackgroundSubagentBudgetAdapter(parentOutputTokens);
-      let api: CoreAgentsApi | undefined;
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        rolloutBudget: {
-          limitTokens: 100,
-          conserveAtRemainingTokens: 50,
-          finalizeAtRemainingTokens: 25
-        },
-        runtimeExtensions: [
-          {
-            id: 'background-budget-regression',
-            apiVersion: '1.0',
-            attachSession: (context) => {
-              if (context.agents) api = context.agents;
+      let api: ExtensionAgentsApi | undefined;
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model],
+          extensions: [
+            {
+              id: 'background-budget-regression',
+              apiVersion: '1.0',
+              attachSession: (context) => {
+                if (context.agents) api = context.agents;
+              }
             }
-          }
-        ],
-        adapterFactory: () => adapter
-      });
+          ]
+        },
+        () => adapter
+      );
       try {
         const handle = (await agent.createSession({ workspace, title: 'Background budget' })).run({
           prompt: 'delegate in background'
@@ -815,45 +798,38 @@ describe('Execution usage without token limits', () => {
     }
   );
 
-  it.each([undefined, false, { limitTokens: 2 }] as const)(
-    'ignores deprecated rollout configuration %# during high-usage runs',
-    async (rolloutBudget) => {
-      const { home, workspace } = await fixture('disabled');
-      const adapter = new DisabledBudgetAdapter();
-      const agent = await createMarAgent({
+  it('does not impose a cumulative budget during high-usage runs', async () => {
+    const { home, workspace } = await fixture('disabled');
+    const adapter = new DisabledBudgetAdapter();
+    const agent = await createMarAgent(
+      {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        rolloutBudget,
-        adapterFactory: () => adapter
-      });
+        models: [model]
+      },
+      () => adapter
+    );
 
-      await expect(
-        (await agent.createSession({ workspace, title: 'Budget disabled' }))
-          .run({ prompt: 'continue' })
-          .result()
-      ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'budget disabled' });
-      expect(adapter.calls).toBe(4);
-      await agent.dispose();
-    }
-  );
+    await expect(
+      (await agent.createSession({ workspace, title: 'Budget disabled' }))
+        .run({ prompt: 'continue' })
+        .result()
+    ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'budget disabled' });
+    expect(adapter.calls).toBe(4);
+    await agent.dispose();
+  });
 
-  it.each([
-    { limitTokens: 0 },
-    { limitTokens: 100, conserveAtRemainingTokens: 100 },
-    { limitTokens: 100, conserveAtRemainingTokens: 40, finalizeAtRemainingTokens: 40 },
-    { samplingTokenWeight: -1 },
-    { prefillTokenWeight: Number.POSITIVE_INFINITY }
-  ])('ignores invalid deprecated rollout budget configuration %#', async (rolloutBudget) => {
+  it('completes a final answer without a cumulative budget', async () => {
     const { home, workspace } = await fixture('invalid');
 
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      rolloutBudget,
-      adapterFactory: () => new FinalAtBudgetAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new FinalAtBudgetAdapter()
+    );
     await expect(
       (await agent.createSession({ workspace })).run({ prompt: 'finish' }).result()
     ).resolves.toMatchObject({ status: 'completed' });

@@ -1,3 +1,4 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { baseMessages, effectiveInstructions } from './support/model-context.js';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -6,26 +7,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
-import {
-  LocalAgentHost,
-  MarAgentError,
-  SecretValue,
-  type HostSessionResourceSnapshot,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { observeModelStreamEvent } from '../../src/agent-core/model/sse.js';
-import { modelRetryMaxAttempts } from '../../src/agent-core/model/http.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
+import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { observeModelStreamEvent } from '../../src/model/sse.js';
+import { modelRetryMaxAttempts } from '../../src/model/http.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import { openMarAgentSessionCatalog } from '../../src/agent-core/session/catalog.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
+} from '../../src/model/contracts.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { openAgentSessionCatalog } from '../../src/sdk/session-catalog.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
 
 const homes: string[] = [];
 const modelServers: Server[] = [];
@@ -40,7 +36,7 @@ afterEach(async () => {
   );
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'coding',
   name: 'Coding',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -274,7 +270,7 @@ class TitleAdapter implements ModelAdapter {
 
 class ResponsesHistoryAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     ...model,
     protocol: 'OPENAI_RESPONSES',
     responsesPreviousResponseId: true
@@ -300,7 +296,7 @@ class ResponsesHistoryAdapter implements ModelAdapter {
 
 class CompletedCommentaryEarlyEofAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     ...model,
     protocol: 'OPENAI_RESPONSES',
     responsesPreviousResponseId: true
@@ -334,7 +330,7 @@ class CompletedCommentaryEarlyEofAdapter implements ModelAdapter {
         phase: 'commentary',
         text: 'Preparing the document structure.'
       };
-      throw new MarAgentError(
+      throw new AgentError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'OpenAI Responses stream ended without a terminal event.',
         {
@@ -356,7 +352,7 @@ class CompletedCommentaryEarlyEofAdapter implements ModelAdapter {
 
 class ToolCallEarlyEofAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  readonly configuration: MarAgentModelConfiguration = {
+  readonly configuration: AgentModelConfiguration = {
     ...model,
     protocol: 'OPENAI_RESPONSES',
     responsesPreviousResponseId: true
@@ -386,7 +382,7 @@ class ToolCallEarlyEofAdapter implements ModelAdapter {
         '*** End Patch'
       ].join('\n')
     };
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_MODEL_PROTOCOL_ERROR',
       'OpenAI Responses stream ended without a terminal event.',
       {
@@ -771,7 +767,7 @@ class MalformedToolRecoveryAdapter implements ModelAdapter {
 class CompactAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly initialAnswerCharacters = 400
   ) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
@@ -791,7 +787,7 @@ class CalibratedNativeCompactAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   private seeded = false;
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly automatic: boolean,
     private readonly reportOutputTokens = true
   ) {}
@@ -829,7 +825,7 @@ class CalibratedNativeCompactAdapter implements ModelAdapter {
 class AppendOnlyToolCompactAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   private normalCalls = 0;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
@@ -878,7 +874,7 @@ class AppendOnlyToolCompactAdapter implements ModelAdapter {
 
 class StaleUsageCompactAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
@@ -909,12 +905,12 @@ class StaleUsageCompactAdapter implements ModelAdapter {
 class CompactOverflowFallbackAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   normalCalls = 0;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
       if (baseMessages(request).length > 2)
-        throw new (await import('../../src/agent-core/error.js')).MarAgentError(
+        throw new (await import('../../src/error.js')).AgentError(
           'context_length_exceeded',
           'Native compact exceeded the provider context window.'
         );
@@ -944,7 +940,7 @@ class MidExecutionCompactAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   compacted = false;
   normalCalls = 0;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
@@ -980,7 +976,7 @@ class MidExecutionCompactAdapter implements ModelAdapter {
 class ProviderUsageAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly reportedContextTokens = 1_000
   ) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
@@ -1016,7 +1012,7 @@ class ProviderUsageAdapter implements ModelAdapter {
 class PersistedUsageAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     public reportedContextTokens: number
   ) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
@@ -1042,7 +1038,7 @@ class PersistedUsageAdapter implements ModelAdapter {
 class PostCompactUsageAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   private normalCalls = 0;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
@@ -1062,8 +1058,8 @@ class PostCompactUsageAdapter implements ModelAdapter {
 
 class ResetUsageAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  readonly configuration: MarAgentModelConfiguration;
-  constructor(configuration: MarAgentModelConfiguration) {
+  readonly configuration: AgentModelConfiguration;
+  constructor(configuration: AgentModelConfiguration) {
     this.configuration = configuration;
   }
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
@@ -1095,7 +1091,7 @@ class ContextOverflowAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   private normalCalls = 0;
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly overflowAfterCompaction = false,
     private readonly overflowCode = 'context_length_exceeded',
     private readonly overflowMessage = 'The request exceeds the context window.',
@@ -1115,7 +1111,7 @@ class ContextOverflowAdapter implements ModelAdapter {
       return;
     }
     if (this.normalCalls === 2 || this.overflowAfterCompaction)
-      throw new (await import('../../src/agent-core/error.js')).MarAgentError(
+      throw new (await import('../../src/error.js')).AgentError(
         this.overflowCode,
         this.overflowMessage,
         this.overflowStatus === undefined ? {} : { details: { status: this.overflowStatus } }
@@ -1131,7 +1127,7 @@ class PartialOutputOverflowAdapter implements ModelAdapter {
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     yield { type: 'text.delta', itemId: 'partial', phase: 'final_answer', delta: 'partial' };
-    throw new (await import('../../src/agent-core/error.js')).MarAgentError(
+    throw new (await import('../../src/error.js')).AgentError(
       'context_length_exceeded',
       'The request exceeds the context window.'
     );
@@ -1178,7 +1174,7 @@ class MaxOutputContinuationAdapter implements ModelAdapter {
 class MaxOutputContinuationCompactionAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   calls = 0;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     this.calls++;
@@ -1264,7 +1260,7 @@ class MaxOutputContinuationWithToolAdapter implements ModelAdapter {
 class ModelSwitchOverflowAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   private overflowPending = true;
-  constructor(readonly configuration: MarAgentModelConfiguration) {}
+  constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.toolChoice === 'none') {
@@ -1274,7 +1270,7 @@ class ModelSwitchOverflowAdapter implements ModelAdapter {
     }
     if (this.overflowPending) {
       this.overflowPending = false;
-      throw new (await import('../../src/agent-core/error.js')).MarAgentError(
+      throw new (await import('../../src/error.js')).AgentError(
         'context_length_exceeded',
         'The switched model has a smaller context window.'
       );
@@ -1293,7 +1289,7 @@ describe('agent runtime', () => {
     const imageBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
     await writeFile(join(workspace, 'pixel.png'), Buffer.from(imageBase64, 'base64'));
-    const visionModel: MarAgentModelConfiguration = {
+    const visionModel: AgentModelConfiguration = {
       ...model,
       id: 'vision',
       inputCapabilities: ['TEXT', 'IMAGE']
@@ -1337,12 +1333,14 @@ describe('agent runtime', () => {
     }
     const adapter = new ImageAdapter();
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [visionModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [visionModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Image' });
     await expect(
       session
@@ -1353,7 +1351,7 @@ describe('agent runtime', () => {
         .result()
     ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'seen' });
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     const userRecord = persisted
@@ -1368,37 +1366,41 @@ describe('agent runtime', () => {
           name: 'pixel.png',
           mimeType: 'image/png',
           byteSize: 68,
-          fileName: expect.stringMatching(/\.bin$/u),
+          resourceInputVersion: 1,
+          resourceId: expect.stringMatching(/^[a-f0-9]{64}$/u),
           sha256: createHash('sha256').update(Buffer.from(imageBase64, 'base64')).digest('hex')
         }
       ]
     });
+    expect((userRecord?.payload as { images: unknown[] }).images[0]).not.toHaveProperty('fileName');
     expect(persisted).toContain('image/png');
     expect(persisted).not.toContain(imageBase64);
     await agent.dispose();
 
     const textAdapter = new HistoryAdapter();
     const textHost = new LocalAgentHost({ homeDirectory: join(home, 'text-home'), workspace });
-    const textAgent = await createMarAgent({
-      mode: 'normal',
-      host: textHost,
-      models: [model],
-      adapterFactory: () => textAdapter
-    });
+    const textAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: textHost,
+        models: [model]
+      },
+      () => textAdapter
+    );
     const textSession = await textAgent.createSession({ workspace, title: 'Text' });
     await textSession.run({ prompt: 'inspect tools' }).result();
     expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('view_image');
     expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('skill');
     await textAgent.dispose();
   });
-  it('retains recent inline pixels across restart and fails explicitly on corrupt retained bytes', async () => {
+  it('retains recent inline pixels across restart and degrades a missing resource', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-image-history-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const imageBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-    const visionModel: MarAgentModelConfiguration = {
+    const visionModel: AgentModelConfiguration = {
       ...model,
       id: 'vision-history',
       inputCapabilities: ['TEXT', 'IMAGE']
@@ -1414,12 +1416,14 @@ describe('agent runtime', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const firstAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [visionModel],
-      adapterFactory: () => firstAdapter
-    });
+    const firstAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [visionModel]
+      },
+      () => firstAdapter
+    );
     const session = await firstAgent.createSession({ workspace, title: 'Image history' });
     await expect(
       session
@@ -1431,7 +1435,7 @@ describe('agent runtime', () => {
     ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'Microsoft logo' });
     await firstAgent.dispose();
 
-    const eventsPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const eventsPath = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
     const persisted = await readFile(eventsPath, 'utf8');
     const userRecord = persisted
       .trim()
@@ -1444,7 +1448,8 @@ describe('agent runtime', () => {
             name: string;
             mimeType: string;
             byteSize: number;
-            fileName?: string;
+            resourceInputVersion?: number;
+            resourceId?: string;
             sha256?: string;
           }>
         | undefined
@@ -1453,18 +1458,16 @@ describe('agent runtime', () => {
       name: 'logo.png',
       mimeType: 'image/png',
       byteSize: 68,
-      fileName: expect.stringMatching(/\.bin$/u),
+      resourceInputVersion: 1,
+      resourceId: expect.stringMatching(/^[a-f0-9]{64}$/u),
       sha256: createHash('sha256').update(Buffer.from(imageBase64, 'base64')).digest('hex')
     });
     expect(persisted).not.toContain(imageBase64);
+    expect(storedImage).not.toHaveProperty('fileName');
     const storedImagePath = join(
-      home,
-      '.mar',
-      'agent',
-      'sessions',
-      session.id,
+      await activeSessionDirectory(home, session.id),
       'resources',
-      storedImage!.fileName!
+      `${storedImage!.resourceId!}.bin`
     );
     await expect(readFile(storedImagePath)).resolves.toEqual(Buffer.from(imageBase64, 'base64'));
     if (process.platform !== 'win32')
@@ -1490,12 +1493,14 @@ describe('agent runtime', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const secondAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [visionModel],
-      adapterFactory: () => secondAdapter
-    });
+    const secondAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [visionModel]
+      },
+      () => secondAdapter
+    );
     const reopened = await secondAgent.openSession(session.id);
     await expect(reopened.run({ prompt: 'Look at it again.' }).result()).resolves.toMatchObject({
       status: 'completed',
@@ -1503,13 +1508,15 @@ describe('agent runtime', () => {
     });
     await secondAgent.dispose();
 
-    await writeFile(storedImagePath, 'corrupt');
+    await rm(storedImagePath);
     const degradedRequests: ModelRequest[] = [];
-    const thirdAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [visionModel],
-      adapterFactory: () => ({
+    const thirdAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [visionModel]
+      },
+      () => ({
         configuration: visionModel,
         async *start(request) {
           degradedRequests.push(request);
@@ -1517,13 +1524,27 @@ describe('agent runtime', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
     const reopenedAgain = await thirdAgent.openSession(session.id);
     await expect(reopenedAgain.run({ prompt: 'Continue.' }).result()).resolves.toMatchObject({
-      status: 'failed',
-      finalAnswer: ''
+      status: 'completed',
+      finalAnswer: 'Continued without the image'
     });
-    expect(degradedRequests).toEqual([]);
+    expect(degradedRequests).toHaveLength(1);
+    expect(degradedRequests[0]!.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('What is in the image?')
+        }),
+        expect.objectContaining({ role: 'user', content: 'Continue.' })
+      ])
+    );
+    const missingImageMessage = degradedRequests[0]!.messages.find((message) =>
+      message.content.includes('What is in the image?')
+    );
+    expect(missingImageMessage?.content).toContain('Image unavailable');
+    expect(missingImageMessage?.images ?? []).toEqual([]);
     const warningRecord = (await readFile(eventsPath, 'utf8'))
       .trim()
       .split('\n')
@@ -1539,22 +1560,24 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const imageBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-    const visionModel: MarAgentModelConfiguration = {
+    const visionModel: AgentModelConfiguration = {
       ...model,
       id: 'vision-switch',
       inputCapabilities: ['TEXT', 'IMAGE']
     };
-    const textModel: MarAgentModelConfiguration = {
+    const textModel: AgentModelConfiguration = {
       ...model,
       id: 'text-switch'
     };
     const modelCalls: string[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [visionModel, textModel],
-      defaultModelId: visionModel.id,
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [visionModel, textModel],
+        defaultModelId: visionModel.id
+      },
+      (configuration) => ({
         configuration,
         async *start() {
           modelCalls.push(configuration.id);
@@ -1562,7 +1585,7 @@ describe('agent runtime', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Image model switch' });
     await expect(
       session
@@ -1593,7 +1616,7 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     for (const hostedWebSearch of [false, true]) {
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         ...model,
         id: `web-${hostedWebSearch}`,
         protocol: 'OPENAI_RESPONSES',
@@ -1630,21 +1653,23 @@ describe('agent runtime', () => {
         }
       };
       const extensionTools = hostedWebSearch ? [fetchTool] : [searchTool, fetchTool];
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({
-          homeDirectory: join(home, String(hostedWebSearch)),
-          workspace,
-          extensions: {
-            tools: extensionTools,
-            executeTool: async () => ({ content: '{}' })
-          }
-        }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({
+            homeDirectory: join(home, String(hostedWebSearch)),
+            workspace,
+            extensions: {
+              tools: extensionTools,
+              executeTool: async () => ({ content: '{}' })
+            }
+          }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       const session = await agent.createSession({ workspace });
-      await session.run({ prompt: 'test', access: 'full-access' }).result();
+      await session.run({ prompt: 'test' }).result();
       const tools = requests
         .find((request) => !request.system.includes('session title generator'))!
         .tools.map((tool) => tool.name);
@@ -1665,13 +1690,15 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new TitleAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      systemInstruction: 'private project context',
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        systemInstruction: 'private project context'
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await expect(
       session.run({ prompt: prompt!, reasoningEffort: 'high' }).result()
@@ -1711,17 +1738,19 @@ describe('agent runtime', () => {
     const adapters = new Map<string, TitleAdapter>();
     const titleModel = { ...model, id: 'title-model', name: 'Title model', titleGeneration: true };
     const currentModel = { ...model, id: 'current-model', name: 'Current model' };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [titleModel, currentModel],
-      defaultModelId: currentModel.id,
-      adapterFactory: (configuration) => {
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [titleModel, currentModel],
+        defaultModelId: currentModel.id
+      },
+      (configuration) => {
         const adapter = new TitleAdapter();
         adapters.set(configuration.id, adapter);
         return adapter;
       }
-    });
+    );
     const session = await agent.createSession({ workspace });
     await session
       .run({
@@ -1748,12 +1777,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new TitleAdapter(true);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await expect(session.run({ prompt: 'hello' }).result()).resolves.toMatchObject({
       status: 'completed'
@@ -1788,12 +1819,14 @@ describe('agent runtime', () => {
         active--;
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'History' });
     expect((await session.run({ prompt: 'read both' }).result()).status).toBe('completed');
     expect(maximumActive).toBe(2);
@@ -1832,12 +1865,14 @@ describe('agent runtime', () => {
         activeExec--;
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Parallel exec' });
 
     await expect(session.run({ prompt: 'run both' }).result()).resolves.toMatchObject({
@@ -1880,11 +1915,13 @@ describe('agent runtime', () => {
         status,
         summary: {}
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => ({
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => ({
           configuration: model,
           async *start(): AsyncIterable<ModelEvent> {
             yield hosted;
@@ -1892,7 +1929,7 @@ describe('agent runtime', () => {
             yield { type: 'completed', reason: 'completed' };
           }
         })
-      });
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Hosted tool' });
         const execution = session.run({ prompt: 'Find the phrase.' });
@@ -1933,7 +1970,7 @@ describe('agent runtime', () => {
           );
         const persisted = (
           await readFile(
-            join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+            join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
             'utf8'
           )
         )
@@ -1968,11 +2005,13 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'input.txt'), 'content\n');
     const adapter = new ScriptedAdapter();
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => ({
         configuration: model,
         async *start(): AsyncIterable<ModelEvent> {
           const observedAt = performance.now();
@@ -1980,7 +2019,7 @@ describe('agent runtime', () => {
             yield observeModelStreamEvent(event, observedAt);
         }
       })
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Runtime' });
     const handle = session.run({ prompt: 'read it' });
     const events = [];
@@ -1999,7 +2038,7 @@ describe('agent runtime', () => {
       ])
     );
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted).toContain('"type":"message.completed"');
@@ -2053,12 +2092,14 @@ describe('agent runtime', () => {
         }
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Performance' });
       const handle = session.run({ prompt: 'read it' });
@@ -2079,7 +2120,7 @@ describe('agent runtime', () => {
       expect(measurements[2]).not.toHaveProperty('tokensPerSecond');
       expect(measurements.every((event) => !('itemId' in event))).toBe(true);
       const persisted = await readFile(
-        join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+        join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
         'utf8'
       );
       expect(persisted).not.toContain('"type":"model.performance"');
@@ -2118,12 +2159,14 @@ describe('agent runtime', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Reasoning latency' });
       const handle = session.run({ prompt: 'think first' });
@@ -2168,12 +2211,14 @@ describe('agent runtime', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Empty response' });
       const events = [];
@@ -2220,12 +2265,14 @@ describe('agent runtime', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Live performance' });
       const handle = session.run({ prompt: 'stream it' });
@@ -2262,12 +2309,14 @@ describe('agent runtime', () => {
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const disposeSessionResources = vi.spyOn(host, 'disposeSessionResources');
     const adapter = new HistoryAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Kept title' });
     await await session.run({ prompt: 'history to clear' }).result();
 
@@ -2302,12 +2351,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'content\n');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new CommentaryAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new CommentaryAdapter()
+    );
     const handle = (await agent.createSession({ workspace })).run({
       prompt: 'inspect it'
     });
@@ -2346,7 +2397,7 @@ describe('agent runtime', () => {
       homeDirectory: home,
       workspace,
       beforeToolExecute: async () => {
-        throw new MarAgentError('TEST_TOOL_POLICY_DENIED', 'Tool policy denied execution.');
+        throw new AgentError('TEST_TOOL_POLICY_DENIED', 'Tool policy denied execution.');
       }
     });
     await expect(
@@ -2405,12 +2456,14 @@ describe('agent runtime', () => {
       question: async () => ({ choice: 'A' })
     });
     const adapter = new WorkflowAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Continuation' });
     const handle = session.plan({ prompt: 'workflow' });
     const events = [];
@@ -2451,12 +2504,14 @@ describe('agent runtime', () => {
       [{ id: 'inspect', step: 'Inspect implementation', status: 'in_progress' }],
       'cancel'
     );
-    const firstAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => firstAdapter
-    });
+    const firstAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => firstAdapter
+    );
     const session = await firstAgent.createSession({ workspace, title: 'Session Todo' });
     const firstHandle = session.run({ prompt: 'start work' });
     const firstEvents = [];
@@ -2483,12 +2538,14 @@ describe('agent runtime', () => {
       ],
       'fail'
     );
-    const secondAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => secondAdapter
-    });
+    const secondAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => secondAdapter
+    );
     const reopened = await secondAgent.openSession(session.id);
     const secondHandle = reopened.run({
       prompt: 'continue with one more change'
@@ -2519,12 +2576,14 @@ describe('agent runtime', () => {
       { id: 'fix', step: 'Implement requested change', status: 'completed' },
       { id: 'verify', step: 'Verify requested change', status: 'in_progress' }
     ]);
-    const thirdAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => thirdAdapter
-    });
+    const thirdAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => thirdAdapter
+    );
     const resumed = await thirdAgent.openSession(session.id);
     const thirdHandle = resumed.run({
       prompt: 'continue after the failed execution'
@@ -2563,27 +2622,31 @@ describe('agent runtime', () => {
     homes.push(home);
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const firstAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({
-        homeDirectory: home,
-        workspace,
-        question: async () => ({ choice: 'A' })
-      }),
-      models: [model],
-      adapterFactory: () => new WorkflowAdapter()
-    });
+    const firstAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({
+          homeDirectory: home,
+          workspace,
+          question: async () => ({ choice: 'A' })
+        }),
+        models: [model]
+      },
+      () => new WorkflowAdapter()
+    );
     const session = await firstAgent.createSession({ workspace, title: 'Plan recovery' });
     expect((await session.plan({ prompt: 'workflow' }).result()).finalAnswer).toBe('selected');
     await firstAgent.dispose();
 
     const resumedAdapter = new HistoryAdapter();
-    const resumedAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => resumedAdapter
-    });
+    const resumedAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => resumedAdapter
+    );
     await (await resumedAgent.openSession(session.id)).run({ prompt: 'continue' }).result();
     expect(resumedAdapter.requests[0]?.messages).toEqual(
       expect.arrayContaining([
@@ -2610,12 +2673,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new HistoryAdapter();
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
     let agent = await create();
     const session = await agent.createSession({ workspace, title: 'Instructions' });
     expect(
@@ -2689,7 +2754,7 @@ describe('agent runtime', () => {
     });
     expect(adapter.requests[2]?.messages.at(-1)?.content).toContain('Output only the handoff.');
     expect(adapter.requests[2]?.promptCacheKey).toBe(sessionId);
-    const persisted = await import('../../src/agent-core/session/store/index.js').then(
+    const persisted = await import('../../src/session/store/index.js').then(
       async ({ JsonlSessionStore }) => {
         const store = await JsonlSessionStore.open(home);
         const records = await store.read(sessionId);
@@ -2825,12 +2890,14 @@ describe('agent runtime', () => {
       await store.close();
 
       const adapter = new HistoryAdapter();
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
       await (await agent.openSession(session.id)).run({ prompt: 'continue' }).result();
 
       expect(baseMessages(adapter.requests[0]!)).toEqual([
@@ -2866,12 +2933,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ResponsesHistoryAdapter();
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [adapter.configuration],
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [adapter.configuration]
+        },
+        () => adapter
+      );
     let agent = await create();
     const session = await agent.createSession({ workspace, title: 'Subagent' });
     await session.run({ prompt: 'first' }).result();
@@ -2904,12 +2973,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new CompletedCommentaryEarlyEofAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Commentary recovery' });
     const handle = session.run({ prompt: 'write the document' });
     const events = [];
@@ -2955,12 +3026,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new CompletedCommentaryEarlyEofAdapter(8);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Commentary recovery limit' });
 
     await expect(session.run({ prompt: 'write the document' }).result()).resolves.toMatchObject({
@@ -2977,12 +3050,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ToolCallEarlyEofAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [adapter.configuration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [adapter.configuration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Tool EOF boundary' });
     const handle = session.run({ prompt: 'apply the patch' });
     const events = [];
@@ -3057,12 +3132,14 @@ describe('agent runtime', () => {
       symlink(outsideResource, join(skill, 'references', 'outside-link.md'))
     );
     const adapter = new SkillSelectingAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Instructions' });
     await session.run({ prompt: 'Release the application safely.' }).result();
     const system = effectiveInstructions(adapter.requests[0]!);
@@ -3115,29 +3192,31 @@ describe('agent runtime', () => {
       writeFile(join(skill, 'references', 'checklist.md'), 'HOSTED_RESOURCE')
     ]);
     const adapter = new SkillSelectingAdapter();
-    const agent = await createMarAgent({
-      mode: 'node',
-      host: new LocalAgentHost({
-        homeDirectory: home,
-        workspace: physicalWorkspace,
+    const agent = await createMarAgent(
+      {
         mode: 'node',
-        restrictPaths: true,
-        workspaceWritable: false,
-        pathMounts: [
-          {
-            logicalPath: '/workspace',
-            physicalPath: physicalWorkspace,
-            writable: false
-          }
-        ]
-      }),
-      models: [model],
-      workspaceMapping: {
-        physicalPath: physicalWorkspace,
-        logicalPath: '/workspace'
+        host: new LocalAgentHost({
+          homeDirectory: home,
+          workspace: physicalWorkspace,
+          mode: 'node',
+          restrictPaths: true,
+          workspaceWritable: false,
+          pathMounts: [
+            {
+              logicalPath: '/workspace',
+              physicalPath: physicalWorkspace,
+              writable: false
+            }
+          ]
+        }),
+        models: [model],
+        workspaceMapping: {
+          physicalPath: physicalWorkspace,
+          logicalPath: '/workspace'
+        }
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     const session = await agent.createSession({
       workspace: '/workspace',
       title: 'Hosted instructions'
@@ -3174,34 +3253,36 @@ describe('agent runtime', () => {
     const { mkdir } = await import('node:fs/promises');
     await Promise.all([mkdir(physicalWorkspace), mkdir(physicalOutput)]);
     const adapter = new HostedExecResourceAdapter();
-    const agent = await createMarAgent({
-      mode: 'node',
-      host: new LocalAgentHost({
-        homeDirectory: home,
-        workspace: physicalWorkspace,
+    const agent = await createMarAgent(
+      {
         mode: 'node',
-        restrictPaths: true,
-        workspaceWritable: false,
-        pathMounts: [
-          {
-            logicalPath: '/workspace',
-            physicalPath: physicalWorkspace,
-            writable: false
-          },
-          {
-            logicalPath: '/workspace/output',
-            physicalPath: physicalOutput,
-            writable: true
-          }
-        ]
-      }),
-      models: [model],
-      workspaceMapping: {
-        physicalPath: physicalWorkspace,
-        logicalPath: '/workspace'
+        host: new LocalAgentHost({
+          homeDirectory: home,
+          workspace: physicalWorkspace,
+          mode: 'node',
+          restrictPaths: true,
+          workspaceWritable: false,
+          pathMounts: [
+            {
+              logicalPath: '/workspace',
+              physicalPath: physicalWorkspace,
+              writable: false
+            },
+            {
+              logicalPath: '/workspace/output',
+              physicalPath: physicalOutput,
+              writable: true
+            }
+          ]
+        }),
+        models: [model],
+        workspaceMapping: {
+          physicalPath: physicalWorkspace,
+          logicalPath: '/workspace'
+        }
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     const session = await agent.createSession({
       workspace: '/workspace',
       title: 'Hosted resources'
@@ -3238,12 +3319,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'AGENTS.md'), 'SUBAGENT_SCOPED_RULE\n');
     await writeFile(join(workspace, 'src', 'AGENTS.md'), 'SUBAGENT_NESTED_RULE_NOT_AUTOLOADED\n');
     const requests: ModelRequest[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new SubagentAdapter(requests)
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new SubagentAdapter(requests)
+    );
     const session = await agent.createSession({ workspace, title: 'Subagent' });
     const handle = session.run({ prompt: 'delegate' });
     const events = [];
@@ -3323,7 +3406,7 @@ describe('agent runtime', () => {
     expect(taskResult).not.toHaveProperty('evidence');
     expect(taskResult.changedFiles).toEqual(['move.txt', 'moved.txt']);
     await agent.dispose();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(session.id);
       expect(history.entries).toEqual(
@@ -3353,12 +3436,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'subagent content\n');
     const adapter = new EmptyFinalSubagentAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Subagent empty final' });
     const handle = session.run({ prompt: 'delegate' });
     const events = [];
@@ -3401,16 +3486,18 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'unchanged\n');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new NoProgressAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new NoProgressAdapter()
+    );
     const handle = (await agent.createSession({ workspace, title: 'No progress' })).run({
       prompt: 'loop'
     });
-    const events: import('../../src/index.js').MarAgentEvent[] = [];
+    const events: import('../../src/index.js').AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     const result = await handle.result();
     expect(result).toMatchObject({ status: 'completed', finalAnswer: 'repeated checks complete' });
@@ -3431,12 +3518,14 @@ describe('agent runtime', () => {
     const looping = new BatchedNoProgressAdapter();
     const recovered = new HistoryAdapter();
     let adapter: ModelAdapter = looping;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Batch no progress' });
     await expect(session.run({ prompt: 'loop' }).result()).resolves.toMatchObject({
       status: 'completed',
@@ -3496,12 +3585,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'before\n');
     const adapter = new ToolRecoveryAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Tool correction' });
     const handle = session.run({
       prompt: 'fix it'
@@ -3563,7 +3654,7 @@ describe('agent runtime', () => {
       )
     ).toBe('after\n');
     await agent.dispose();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     const history = await catalog.history(session.id);
     expect(history.entries).toEqual(
       expect.arrayContaining([
@@ -3588,12 +3679,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ExecPersistenceAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Exec persistence' });
     const handle = session.run({ prompt: 'run it' });
     const events = [];
@@ -3657,12 +3750,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new LargeExecPreviewAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Exec preview' });
     const handle = session.run({ prompt: 'run it' });
     const events = [];
@@ -3726,12 +3821,14 @@ describe('agent runtime', () => {
     };
     const adapter = new PersistedUsageAdapter(smallModel, 100);
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [smallModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [smallModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Automatic compact' });
     expect(
       (
@@ -3842,12 +3939,14 @@ describe('agent runtime', () => {
       maxOutputTokens: 1_000
     };
     const adapter = new CompactOverflowFallbackAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'seed' }).result();
     expect(await session.run({ prompt: 'continue' }).result()).toMatchObject({
@@ -3869,12 +3968,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 20_000, maxOutputTokens: 1_000 };
     const adapter = new CalibratedNativeCompactAdapter(compactModel, true);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'seed' }).result();
     expect(await session.run({ prompt: 'continue' }).result()).toMatchObject({
@@ -3895,17 +3996,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'small.txt'), 'small append-only tool evidence\n');
     const compactModel = { ...model, contextWindowTokens: 19_500, maxOutputTokens: 1_000 };
     const adapter = new AppendOnlyToolCompactAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      rolloutBudget: {
-        limitTokens: 100,
-        conserveAtRemainingTokens: 70,
-        finalizeAtRemainingTokens: 30
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
       },
-      adapterFactory: () => adapter
-    });
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Append-only compact' });
     expect(await session.run({ prompt: 'read the small file' }).result()).toMatchObject({
       status: 'completed',
@@ -3931,12 +4029,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new MalformedToolRecoveryAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Malformed tool correction' });
     const handle = session.run({ prompt: 'inspect it' });
     const events = [];
@@ -3981,12 +4081,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const compactModel = { ...model, contextWindowTokens: 9_000, maxOutputTokens: 1_000 };
     const adapter = new PostCompactUsageAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Post compact usage' });
     await session.run({ prompt: 'first' }).result();
     await session.run({ prompt: 'second' }).result();
@@ -4006,12 +4108,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const largeOutputModel = { ...model, contextWindowTokens: 20_000, maxOutputTokens: 18_000 };
     const adapter = new CompactAdapter(largeOutputModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [largeOutputModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [largeOutputModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Separate output limit' });
     expect((await session.run({ prompt: 'answer briefly' }).result()).status).toBe('completed');
     expect(adapter.requests.some((request) => request.toolChoice === 'none')).toBe(false);
@@ -4027,12 +4131,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'large.txt'), `${'x'.repeat(500)}\n`.repeat(200));
     const constrainedModel = { ...model, contextWindowTokens: 12_000, maxOutputTokens: 1_000 };
     const adapter = new MidExecutionCompactAdapter(constrainedModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new StaticResourceHost({ homeDirectory: home, workspace }),
-      models: [constrainedModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new StaticResourceHost({ homeDirectory: home, workspace }),
+        models: [constrainedModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Mid execution compact' });
     const handle = session.run({ prompt: 'inspect the large file only as far as useful' });
     const events = [];
@@ -4083,12 +4189,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'calibrated.txt'), 'one two three four '.repeat(2_500));
     const calibratedModel = { ...model, contextWindowTokens: 30_000, maxOutputTokens: 1_000 };
     const adapter = new ProviderUsageAdapter(calibratedModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [calibratedModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [calibratedModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Usage calibrated' });
     const result = await session.run({ prompt: 'alpha beta gamma delta '.repeat(6_000) }).result();
     expect(result).toMatchObject({
@@ -4107,12 +4215,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'calibrated.txt'), 'one two three four '.repeat(2_500));
     const calibratedModel = { ...model, contextWindowTokens: 30_000, maxOutputTokens: 1_000 };
     const adapter = new ProviderUsageAdapter(calibratedModel, 27_000);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [calibratedModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [calibratedModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Usage threshold' });
     expect((await session.run({ prompt: 'inspect calibrated.txt' }).result()).status).toBe(
       'completed'
@@ -4129,12 +4239,14 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'first.txt'), 'first');
     const zeroUsageModel = { ...model, contextWindowTokens: 30_000 };
     const adapter = new ResetUsageAdapter(zeroUsageModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [zeroUsageModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [zeroUsageModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Zero usage' });
     expect(await session.run({ prompt: 'read both files' }).result()).toMatchObject({
       status: 'completed',
@@ -4151,12 +4263,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ContextOverflowAdapter(model);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Overflow recovery' });
     await session.run({ prompt: 'seed history' }).result();
     const result = await session.run({ prompt: 'continue after overflow' }).result();
@@ -4174,12 +4288,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ContextOverflowAdapter(model, false, 'string_above_max_length');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'String limit recovery' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(
@@ -4204,12 +4320,14 @@ describe('agent runtime', () => {
       'Request rejected.',
       413
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'HTTP 413 recovery' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'continue' }).result()).resolves.toMatchObject({
@@ -4232,12 +4350,14 @@ describe('agent runtime', () => {
       'k3-256k supports only 256K context. (request id: test)',
       401
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'K3 context recovery' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'continue' }).result()).resolves.toMatchObject({
@@ -4260,12 +4380,14 @@ describe('agent runtime', () => {
       'k3-256k supports only 256K context. (request id: test)',
       403
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'K3 status boundary' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'continue' }).result()).resolves.toMatchObject({
@@ -4288,12 +4410,14 @@ describe('agent runtime', () => {
       'Access denied while validating the context window.',
       401
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Overflow code boundary' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'continue' }).result()).resolves.toMatchObject({
@@ -4315,12 +4439,14 @@ describe('agent runtime', () => {
       'invalid_request_error',
       'Rate limit: too many tokens requested per minute.'
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Overflow exclusion' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'continue' }).result()).resolves.toMatchObject({
@@ -4337,12 +4463,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new ContextOverflowAdapter(model, true);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Overflow terminal' });
     await session.run({ prompt: 'seed history' }).result();
     await expect(session.run({ prompt: 'still too large' }).result()).resolves.toMatchObject({
@@ -4359,12 +4487,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new PartialOutputOverflowAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Partial overflow' });
     await expect(session.run({ prompt: 'do not replay me' }).result()).resolves.toMatchObject({
       status: 'failed',
@@ -4380,12 +4510,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new EmptyCompletedAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Empty completion' });
     await expect(session.run({ prompt: 'answer me' }).result()).resolves.toMatchObject({
       status: 'failed',
@@ -4401,12 +4533,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new MaxOutputContinuationAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Max output continuation' });
 
     await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
@@ -4428,12 +4562,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new MaxOutputContinuationAdapter(2);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Max output terminal' });
 
     await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
@@ -4451,12 +4587,14 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const compactModel = { ...model, contextWindowTokens: 30_000 };
     const adapter = new MaxOutputContinuationCompactionAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Max output compact' });
 
     await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
@@ -4469,7 +4607,7 @@ describe('agent runtime', () => {
       content:
         'Continue the previous response from exactly where it stopped. Do not repeat completed content.'
     });
-    const records = await import('../../src/agent-core/session/store/index.js').then(
+    const records = await import('../../src/session/store/index.js').then(
       async ({ JsonlSessionStore }) => {
         const store = await JsonlSessionStore.open(home);
         const value = await store.read(session.id);
@@ -4491,12 +4629,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new IncompleteToolMaxOutputAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Max output tool' });
     const handle = session.run({ prompt: 'read the file' });
     const events = [];
@@ -4520,12 +4660,14 @@ describe('agent runtime', () => {
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const adapter = new MaxOutputContinuationWithToolAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Max output tool round' });
 
     await expect(session.run({ prompt: 'finish the task' }).result()).resolves.toMatchObject({
@@ -4595,12 +4737,14 @@ describe('agent runtime', () => {
       baseUrl: `http://127.0.0.1:${address.port}`,
       maxOutputTokens: 8
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [lowOutputModel],
-      adapterFactory: (configuration) => new AnthropicMessagesAdapter(configuration)
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [lowOutputModel]
+      },
+      (configuration) => new AnthropicMessagesAdapter(configuration)
+    );
     const session = await agent.createSession({ workspace, title: 'Anthropic max output' });
 
     await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
@@ -4614,7 +4758,7 @@ describe('agent runtime', () => {
     );
     await agent.dispose();
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted.match(/"type":"turn\.user"/gu)).toHaveLength(1);
@@ -4637,13 +4781,14 @@ describe('agent runtime', () => {
     };
     const sourceAdapter = new PersistedUsageAdapter(sourceModel, 180_000);
     const targetAdapter = new ModelSwitchOverflowAdapter(targetModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [sourceModel, targetModel],
-      adapterFactory: (configuration) =>
-        configuration.id === sourceModel.id ? sourceAdapter : targetAdapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [sourceModel, targetModel]
+      },
+      (configuration) => (configuration.id === sourceModel.id ? sourceAdapter : targetAdapter)
+    );
     const session = await agent.createSession({ workspace, title: 'Model switch overflow' });
     await session.run({ prompt: 'seed history', modelId: sourceModel.id }).result();
     expect(
@@ -4655,7 +4800,7 @@ describe('agent runtime', () => {
     expect(targetAdapter.requests.filter((request) => request.toolChoice !== 'none')).toHaveLength(
       2
     );
-    const records = await import('../../src/agent-core/session/store/index.js').then(
+    const records = await import('../../src/session/store/index.js').then(
       async ({ JsonlSessionStore }) => {
         const store = await JsonlSessionStore.open(home);
         const value = await store.read(session.id);
@@ -4687,12 +4832,14 @@ describe('agent runtime', () => {
       maxOutputTokens: 1_000
     };
     const adapter = new CompactAdapter(compactModel, 40_000);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Cancellation' });
     expect((await session.run({ prompt: 'durable objective' }).result()).status).toBe('completed');
     expect(
@@ -4710,7 +4857,7 @@ describe('agent runtime', () => {
         `${compactRequest.system}${JSON.stringify(compactRequest.messages)}${JSON.stringify(compactRequest.tools)}`
       )
     ).toBeLessThanOrEqual(compactModel.contextWindowTokens);
-    const records = await import('../../src/agent-core/session/store/index.js').then(
+    const records = await import('../../src/session/store/index.js').then(
       async ({ JsonlSessionStore }) => {
         const store = await JsonlSessionStore.open(home);
         const value = await store.read(session.id);
@@ -4729,12 +4876,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 30_000 };
     const adapter = new CompactOverflowFallbackAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'durable objective' }).result();
     expect(await session.compact({ prompt: 'preserve exact state' }).result()).toMatchObject({
@@ -4755,12 +4904,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 10_000, maxOutputTokens: 1_000 };
     const adapter = new CalibratedNativeCompactAdapter(compactModel, false);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'durable objective' }).result();
     expect(await session.compact({ prompt: 'preserve exact state' }).result()).toMatchObject({
@@ -4779,12 +4930,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 10_000, maxOutputTokens: 1_000 };
     const seedAdapter = new CalibratedNativeCompactAdapter(compactModel, false);
-    const seedAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => seedAdapter
-    });
+    const seedAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => seedAdapter
+    );
     const session = await seedAgent.createSession({ workspace, title: 'Orphan tool calibration' });
     await session.run({ prompt: 'durable objective' }).result();
     await seedAgent.dispose();
@@ -4797,12 +4950,14 @@ describe('agent runtime', () => {
     await store.close();
 
     const compactAdapter = new CalibratedNativeCompactAdapter(compactModel, false);
-    const compactAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => compactAdapter
-    });
+    const compactAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => compactAdapter
+    );
     const reopened = await compactAgent.openSession(session.id);
     expect(await reopened.compact({ prompt: 'preserve exact state' }).result()).toMatchObject({
       status: 'completed'
@@ -4822,12 +4977,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 10_000, maxOutputTokens: 1_000 };
     const seedAdapter = new CalibratedNativeCompactAdapter(compactModel, false);
-    const seedAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => seedAdapter
-    });
+    const seedAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => seedAdapter
+    );
     const session = await seedAgent.createSession({ workspace, title: 'Paired tool calibration' });
     await session.run({ prompt: 'durable objective' }).result();
     await seedAgent.dispose();
@@ -4858,12 +5015,14 @@ describe('agent runtime', () => {
     await store.close();
 
     const compactAdapter = new CalibratedNativeCompactAdapter(compactModel, false);
-    const compactAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => compactAdapter
-    });
+    const compactAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => compactAdapter
+    );
     const reopened = await compactAgent.openSession(session.id);
     expect(await reopened.compact({ prompt: 'preserve exact state' }).result()).toMatchObject({
       status: 'completed'
@@ -4883,12 +5042,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 10_000, maxOutputTokens: 1_000 };
     const adapter = new CalibratedNativeCompactAdapter(compactModel, false, false);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'durable objective' }).result();
     await session.compact().result();
@@ -4905,12 +5066,14 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const compactModel = { ...model, contextWindowTokens: 10_000, maxOutputTokens: 1_000 };
     const adapter = new StaleUsageCompactAdapter(compactModel);
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [compactModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [compactModel]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace });
     await session.run({ prompt: 'first' }).result();
     await session.run({ prompt: 'second' }).result();
@@ -4928,13 +5091,13 @@ describe('agent runtime', () => {
     await mkdir(workspace);
     const imageBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-    const visionModel: MarAgentModelConfiguration = {
+    const visionModel: AgentModelConfiguration = {
       ...model,
       id: 'vision-compact',
       modelId: 'vision-compact',
       inputCapabilities: ['TEXT', 'IMAGE']
     };
-    const textCompactModel: MarAgentModelConfiguration = {
+    const textCompactModel: AgentModelConfiguration = {
       ...model,
       id: 'text-compact',
       modelId: 'text-compact',
@@ -4943,12 +5106,14 @@ describe('agent runtime', () => {
     };
     const visionRequests: ModelRequest[] = [];
     const compactRequests: ModelRequest[] = [];
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [visionModel, textCompactModel],
-      defaultModelId: visionModel.id,
-      adapterFactory: (configuration) => ({
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [visionModel, textCompactModel],
+        defaultModelId: visionModel.id
+      },
+      (configuration) => ({
         configuration,
         async *start(request) {
           if (configuration.id === visionModel.id) {
@@ -4961,7 +5126,7 @@ describe('agent runtime', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       })
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Manual image compact' });
     await expect(
       session
@@ -4971,7 +5136,7 @@ describe('agent runtime', () => {
         })
         .result()
     ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'image described' });
-    await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'resources'), {
+    await rm(join(await activeSessionDirectory(home, session.id), 'resources'), {
       recursive: true,
       force: true
     });
@@ -5012,7 +5177,7 @@ describe('agent runtime', () => {
     const defaultRequests: ModelRequest[] = [];
     const reviewRequests: ModelRequest[] = [];
     let requestedReasoningEffort: string | undefined = 'low';
-    const reviewModel: MarAgentModelConfiguration = {
+    const reviewModel: AgentModelConfiguration = {
       ...model,
       id: 'review',
       name: 'Review Mini',
@@ -5020,16 +5185,18 @@ describe('agent runtime', () => {
       reasoningEfforts: ['low', 'high'],
       defaultReasoningEffort: 'low'
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model, reviewModel],
-      adapterFactory: (configuration) =>
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model, reviewModel]
+      },
+      (configuration) =>
         new SubagentModelAdapter(
           configuration.id === 'review' ? reviewRequests : defaultRequests,
           configuration.id === 'review' ? undefined : () => requestedReasoningEffort
         )
-    });
+    );
     const session = await agent.createSession({ workspace, title: 'Subagent model' });
     const handle = session.run({
       prompt: 'delegate',

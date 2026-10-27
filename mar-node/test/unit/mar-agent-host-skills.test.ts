@@ -30,6 +30,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   expect(skill.description).toContain('MAR-managed Workspace');
   expect(skill.description).toContain('scheduled tasks');
   expect(skill.description).toContain('status/history/results');
+  expect(skill.description).toContain('independent Sessions');
   expect(skill.description).toContain('for the current or other Sessions');
   expect(skill.description).toContain('other authorized MAR Nodes');
   expect(skill.description).toContain('Ordinary local shell work');
@@ -51,6 +52,8 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'may switch the current execution',
     'Choose exactly one of --steer or --queue, even when idle',
     'Use --queue to place input in a subsequent turn',
+    'during normal active work it waits for the current execution and earlier queued work',
+    'Do not use it when the recipient needs the information during current work',
     'Additional context: focus on the resume path.',
     'missing, conflicting, repeated, or obsolete options are rejected locally',
     'when fresh state is needed',
@@ -64,7 +67,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'session.status',
     'sessions rename <session-id> --title <name>',
     'sessions schedule list/get/create/update',
-    'send/goal/stop/wait always require explicit target IDs',
+    'send/goal/stop/wait/approval always require explicit target IDs',
     'Other-owner edits return a PENDING proposal',
     'session.model',
     'session.effort',
@@ -89,7 +92,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'Follow the repository workflow for development and review',
     'Prefer --timeout 5m',
     'reuse its process/cell handle',
-    'Session Prompt is edited in the Web UI only',
+    'sessions prompt get/set/clear [session-id]',
     'no queue-item edit/delete/reorder commands'
   ])
     expect(content).toContain(instruction);
@@ -106,7 +109,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     expect(content).toContain(instruction);
   expect(content).not.toContain('--forced');
   expect(content).not.toContain('urgent corrections');
-  expect(content).not.toContain('without interrupting');
+  expect(content).not.toContain('--steer without interrupting');
   expect(content).not.toContain('not live steering');
   expect(content).not.toContain('Start with marctl sessions current');
   expect(content).not.toContain('--delivery');

@@ -21,6 +21,7 @@ const REPOSITORY_READ_CONCURRENCY = 4;
 const WORKTREE_READ_CONCURRENCY = 4;
 const CHANGE_VISIBILITY_CONCURRENCY = 16;
 const SUBMODULE_LIMIT = 128;
+const CHANGE_RESULT_LIMIT = 1000;
 
 type RepositoryResult = CurrentChangesRepository & {
   readonly dirty: boolean;
@@ -126,6 +127,7 @@ export class WorkspaceChangeService {
             ...(summary.tracking === undefined ? {} : { tracking: summary.tracking }),
             dirty: summary.changes.length > 0,
             status: summary.changes.length > 0 ? 'DIRTY' : 'CLEAN',
+            ...(summary.changesTruncated ? { changesTruncated: true } : {}),
             changes
           };
         };
@@ -237,6 +239,7 @@ export class WorkspaceChangeService {
                 branch: repository.branch,
                 ...(repository.tracking === undefined ? {} : { tracking: repository.tracking }),
                 status: repository.dirty ? ('DIRTY' as const) : ('CLEAN' as const),
+                ...(repository.changesTruncated ? { changesTruncated: true } : {}),
                 changes: repository.changes
               };
             } catch (cause) {
@@ -278,6 +281,33 @@ export class WorkspaceChangeService {
           binary: false,
           diffAvailable: true
         });
+        let remainingChanges = CHANGE_RESULT_LIMIT;
+        const repositories = [
+          {
+            ...root,
+            source: 'ROOT' as const,
+            physicalPath: currentWorktree?.path ?? repositoryRoot,
+            current: true,
+            ...(currentWorktree === undefined ? {} : { head: currentWorktree.head }),
+            status: root.dirty ? ('DIRTY' as const) : ('CLEAN' as const),
+            locked: currentWorktree?.locked ?? false,
+            prunable: currentWorktree?.prunable ?? false
+          },
+          ...children.map((repository) => ({ ...repository, source: 'SUBMODULE' as const })),
+          ...linkedRepositories
+        ].map(({ dirty: _dirty, ...repository }) => {
+          void _dirty;
+          const changes = repository.changes.slice(0, remainingChanges).map(decorate);
+          remainingChanges -= changes.length;
+          return {
+            ...repository,
+            changes,
+            ...(('changesTruncated' in repository && repository.changesTruncated) ||
+            changes.length < repository.changes.length
+              ? { changesTruncated: true }
+              : {})
+          };
+        });
         const value = {
           repositoryRoot,
           workspace: {
@@ -290,27 +320,12 @@ export class WorkspaceChangeService {
             errors.length > 0 ||
             children.some((group) => group.status === 'UNAVAILABLE') ||
             linkedRepositories.some((group) => group.status === 'UNAVAILABLE') ||
-            worktreeList.truncated,
+            worktreeList.truncated ||
+            repositories.some((group) => group.changesTruncated === true),
           ...(errors.length === 0 ? {} : { errors }),
           branch: root.branch,
-          changes: root.changes.map(decorate),
-          repositories: [
-            {
-              ...root,
-              source: 'ROOT' as const,
-              physicalPath: currentWorktree?.path ?? repositoryRoot,
-              current: true,
-              ...(currentWorktree === undefined ? {} : { head: currentWorktree.head }),
-              status: root.dirty ? ('DIRTY' as const) : ('CLEAN' as const),
-              locked: currentWorktree?.locked ?? false,
-              prunable: currentWorktree?.prunable ?? false
-            },
-            ...children.map((repository) => ({ ...repository, source: 'SUBMODULE' as const })),
-            ...linkedRepositories
-          ].map(({ dirty: _dirty, ...repository }) => {
-            void _dirty;
-            return { ...repository, changes: repository.changes.map(decorate) };
-          }),
+          changes: repositories[0]?.changes ?? [],
+          repositories,
           worktrees,
           worktreesTruncated: worktreeList.truncated
         };

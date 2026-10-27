@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { renderSubagentUpdate } from '../../src/agent-core/subagent/model-update.js';
-import { decodeMarkupText, parseMarkupAttributes } from '../../src/agent-core/prompts/markup.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import type { SubagentTaskSnapshot } from '../../src/agent-core/subagent/contracts.js';
+import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
+import { decodeMarkupText, parseMarkupAttributes } from '../../src/prompts/markup.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import type { SubagentTaskSnapshot } from '../../src/subagent/contracts.js';
 
 const snapshot: SubagentTaskSnapshot = {
   agentId: 'child',

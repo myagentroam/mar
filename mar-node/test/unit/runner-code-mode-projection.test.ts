@@ -2,19 +2,16 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type MarAgentEvent,
-  type MarAgentHistoryEntry,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentSessionHistoryEntry,
+  type AgentModelConfiguration
 } from '../../../mar-agent/src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../../mar-agent/src/agent-core/sdk/agent.js';
-import type {
-  ModelAdapter,
-  ModelEvent
-} from '../../../mar-agent/src/agent-core/model/contracts.js';
-import { openMarAgentSessionCatalog } from '../../../mar-agent/src/agent-core/session/catalog.js';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/src/sdk/agent.js';
+import type { ModelAdapter, ModelEvent } from '../../../mar-agent/src/model/contracts.js';
+import { openAgentSessionCatalog } from '../../../mar-agent/src/index.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import {
   codexLiveConversationItem,
@@ -55,7 +52,7 @@ describe('Code Mode conversation projection', () => {
           ]
         }
       ]
-    } as MarAgentEvent;
+    } as AgentEvent;
     expect(normalizer.normalize(event)).toEqual([
       expect.objectContaining({
         kind: 'file_change',
@@ -170,7 +167,7 @@ describe('Code Mode conversation projection', () => {
           data: todo
         }
       ];
-      const started: MarAgentEvent = {
+      const started: AgentEvent = {
         ...base,
         eventId: 'outer-started',
         sequence: 1,
@@ -179,7 +176,7 @@ describe('Code Mode conversation projection', () => {
         callId: 'outer',
         input: toolName === 'code_exec' ? 'await tools.todo_read({});' : { cellId: 'cell' }
       };
-      const terminal: MarAgentEvent =
+      const terminal: AgentEvent =
         type === 'tool.completed'
           ? {
               ...base,
@@ -228,7 +225,7 @@ describe('Code Mode conversation projection', () => {
         }
       ]);
 
-      const updates: MarAgentEvent[] = [1, 2].map((revision) => ({
+      const updates: AgentEvent[] = [1, 2].map((revision) => ({
         ...base,
         eventId: `native-todo-${revision}`,
         sequence: revision + 2,
@@ -242,10 +239,10 @@ describe('Code Mode conversation projection', () => {
       ]);
       expect(normalizer.normalize(terminal).some((item) => item.kind === 'todo_list')).toBe(false);
 
-      const history = (input: MarAgentEvent[]) =>
+      const history = (input: AgentEvent[]) =>
         projectMarAgentHistory(
           { id: 'node-session', runner: 'mar-agent' } as NodeAgentSession,
-          input.map((event): MarAgentHistoryEntry => ({
+          input.map((event): AgentSessionHistoryEntry => ({
             kind: 'event',
             sequence: event.sequence,
             event
@@ -352,7 +349,7 @@ describe('Code Mode conversation projection', () => {
       turnId: 'turn',
       timestamp: '2026-10-01T00:00:00.000Z'
     };
-    const events: MarAgentEvent[] = [
+    const events: AgentEvent[] = [
       {
         ...base,
         eventId: 'started',
@@ -390,7 +387,7 @@ describe('Code Mode conversation projection', () => {
     });
     const [turn] = projectMarAgentHistory(
       { id: 'node-session', runner: 'mar-agent' } as NodeAgentSession,
-      events.map((event): MarAgentHistoryEntry => ({
+      events.map((event): AgentSessionHistoryEntry => ({
         kind: 'event',
         sequence: event.sequence,
         event
@@ -420,7 +417,7 @@ describe('Code Mode conversation projection', () => {
         turnId: 'turn',
         timestamp: '2026-10-01T00:00:00.000Z'
       };
-      const events: MarAgentEvent[] = [
+      const events: AgentEvent[] = [
         {
           ...base,
           eventId: 'outer-started',
@@ -475,7 +472,7 @@ describe('Code Mode conversation projection', () => {
       ]);
       const [turn] = projectMarAgentHistory(
         { id: 'node-session', runner: 'mar-agent' } as NodeAgentSession,
-        events.map((event): MarAgentHistoryEntry => ({
+        events.map((event): AgentSessionHistoryEntry => ({
           kind: 'event',
           sequence: event.sequence,
           event
@@ -646,7 +643,7 @@ describe('Code Mode conversation projection', () => {
       executionId: 'execution',
       turnId: 'turn'
     };
-    const entries: MarAgentHistoryEntry[] = [
+    const entries: AgentSessionHistoryEntry[] = [
       {
         kind: 'event',
         sequence: 1,
@@ -706,7 +703,7 @@ describe('Code Mode conversation projection', () => {
         'observe.text(command.data.stdout);'
       ].join('\n');
       const input = protocol === 'OPENAI_RESPONSES' ? code : { code };
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         id: 'projection',
         name: 'Projection',
         protocol,
@@ -756,16 +753,18 @@ describe('Code Mode conversation projection', () => {
           })
         })
       );
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'code_exec projection' });
         const execution = session.run({ prompt: 'Compose tools, then run a direct command.' });
-        const events: MarAgentEvent[] = [];
+        const events: AgentEvent[] = [];
         for await (const event of execution) events.push(event);
         await expect(execution.result()).resolves.toMatchObject({ status: 'completed' });
         const toolEvents = events.filter(
@@ -856,7 +855,7 @@ describe('Code Mode conversation projection', () => {
           }),
           expect.objectContaining({ itemId: 'mar-agent-tool:direct-command' })
         ]);
-        const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+        const catalog = await openAgentSessionCatalog({ homeDirectory: home });
         try {
           const history = await catalog.history(session.id, { limit: 200 });
           const turns = projectMarAgentHistory(

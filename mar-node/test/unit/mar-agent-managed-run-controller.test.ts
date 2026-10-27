@@ -14,11 +14,8 @@ import {
   type MarAgentRuntimeModelConfiguration,
   type RuntimeCredentialTicket
 } from '../../../packages/protocol/src/index.js';
-import type {
-  ClientToolDefinition,
-  MarAgentEvent,
-  MarAgentHost
-} from '../../../mar-agent/src/index.js';
+import type { ClientToolDefinition, AgentHost } from '../../../mar-agent/src/host.js';
+import type { AgentEvent } from '../../../mar-agent/src/index.js';
 
 type CreateAgent = NonNullable<
   NonNullable<ConstructorParameters<typeof MarAgentManagedRunController>[2]>['createAgent']
@@ -132,7 +129,7 @@ describe('MAR Agent managed run projection', () => {
     };
     (
       controller as unknown as {
-        project(runId: string, event: MarAgentEvent): void;
+        project(runId: string, event: AgentEvent): void;
       }
     ).project('run-start', {
       eventId: 'event',
@@ -590,7 +587,7 @@ describe('MAR Agent managed run projection', () => {
     try {
       await run({ ...input, runId: 'run-1', mcpServers: [mcpServer('first')] });
       const createdHost = (createAgent as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
-        .host as MarAgentHost;
+        .host as AgentHost;
       await expect(
         createdHost.callMcpTool?.(
           { name: 'mcp__execution_server__echo', arguments: { value: 'stale' } },
@@ -693,7 +690,7 @@ describe('MAR Agent managed run projection', () => {
               });
               expect(
                 extensions?.skills?.map(
-                  (skill: import('@myagentroam/agent').HostSkill) => skill.name
+                  (skill: import('@myagentroam/agent/host').HostSkill) => skill.name
                 )
               ).toContain('computer-use');
               await options.host.callMcpTool?.(
@@ -1599,14 +1596,14 @@ describe('MAR Agent managed run projection', () => {
       type: 'tool.started',
       toolName: 'apply_patch',
       callId: 'legacy-patch'
-    } as MarAgentEvent);
+    } as AgentEvent);
     const completed = normalizer.normalize({
       ...base,
       type: 'tool.completed',
       toolName: 'apply_patch',
       callId: 'legacy-patch',
       summary: 'patched'
-    } as MarAgentEvent);
+    } as AgentEvent);
 
     expect(started[0]?.kind).toBe('tool_call');
     expect(completed[0]).toMatchObject({
@@ -1647,7 +1644,7 @@ describe('MAR Agent managed run projection', () => {
           }
         ]
       }
-    } as unknown as MarAgentEvent);
+    } as unknown as AgentEvent);
 
     expect(item).toMatchObject({
       kind: 'file_change',
@@ -1665,14 +1662,14 @@ describe('MAR Agent managed run projection', () => {
   });
 
   it('registers image attachments only after Node registration and reuses the same reference for realtime and history', () => {
-    const started: MarAgentEvent = {
+    const started: AgentEvent = {
       ...base,
       type: 'tool.started',
       toolName: 'codex_image_gen',
       callId: 'image-call',
       input: { prompt: 'A lighthouse in a storm.' }
     };
-    const completed: MarAgentEvent = {
+    const completed: AgentEvent = {
       ...base,
       eventId: 'image-completed',
       sequence: 2,
@@ -1740,10 +1737,10 @@ describe('MAR Agent managed run projection', () => {
       webSearch: vi.fn(),
       registerGeneratedImages
     });
-    const project = (event: MarAgentEvent) =>
+    const project = (event: AgentEvent) =>
       (
         controller as unknown as {
-          project(runId: string, event: MarAgentEvent): void;
+          project(runId: string, event: AgentEvent): void;
         }
       ).project('managed-run', event);
     project(started);
@@ -1847,7 +1844,7 @@ describe('MAR Agent managed run projection', () => {
   });
 
   it('reuses the MAR Normalizer for history and produces the same exec projection as realtime events', () => {
-    const started: MarAgentEvent = {
+    const started: AgentEvent = {
       ...base,
       type: 'tool.started',
       toolName: 'exec',
@@ -1865,7 +1862,7 @@ describe('MAR Agent managed run projection', () => {
       stdoutDroppedBytes: 0,
       stderrDroppedBytes: 0
     };
-    const completed: MarAgentEvent = {
+    const completed: AgentEvent = {
       ...base,
       eventId: 'completed',
       sequence: 2,

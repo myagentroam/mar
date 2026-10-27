@@ -1,18 +1,11 @@
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  SecretValue,
-  parseModelCatalog,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import {
-  OpenAiResponsesAdapter,
-  openAiInput
-} from '../../src/agent-core/model/openai-responses.js';
-import { projectCodeModeSearchResult } from '../../src/agent-core/tools/code-mode/index.js';
-import { projectPermissionTool } from '../../src/agent-core/tools/permissions.js';
-import { agentWaitToolDefinition } from '../../src/agent-core/tools/agent/agent-wait.js';
+import { SecretValue, parseModelCatalog, type AgentModelConfiguration } from '../../src/index.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
+import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
+import { projectPermissionTool } from '../../src/tools/permissions.js';
+import { agentWaitToolDefinition } from '../../src/tools/agent/agent-wait.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 
 type WebSocketFixture = Awaited<ReturnType<typeof startResponsesWebSocketServer>>;
@@ -383,16 +376,23 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     }
   );
 
-  it('rejects an obsolete encoding field in SDK model catalogs', () => {
+  it('strips obsolete encoding without changing the standard SDK model configuration', () => {
     const model = {
       ...configuration('https://api.openai.com/v1'),
       apiKey: 'fake-key',
       responsesToolNamespace: 'mar'
     };
-    expect(() => parseModelCatalog({ version: 1, models: [model] })).not.toThrow();
-    expect(() =>
-      parseModelCatalog({ version: 1, models: [{ ...model, responsesEncoding: 'LITE' }] })
-    ).toThrow(expect.objectContaining({ code: 'MAR_AGENT_MODEL_CONFIG_INVALID' }));
+    const standard = parseModelCatalog({ version: 1, models: [model] });
+    const parsed = parseModelCatalog({
+      version: 1,
+      models: [{ ...model, responsesEncoding: 'LITE' }]
+    });
+    expect(parsed).toEqual(standard);
+    expect(parsed.models[0]).not.toHaveProperty('responsesEncoding');
+    expect(parsed.models[0]).toMatchObject({
+      protocol: 'OPENAI_RESPONSES',
+      responsesToolNamespace: 'mar'
+    });
   });
   it('encodes client tools under mar while keeping hosted web_search top-level over HTTP', async () => {
     const fixture = await startHttpResponsesServer(completedEvents('http-response'));
@@ -602,6 +602,8 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
 
     try {
       await collect(turn.start(toolRequest(tools), new AbortController().signal));
+      // The runtime commits native output and all tool calls before executing the tools.
+      turn.commitContinuationInput(5);
       await collect(
         turn.start(
           {
@@ -617,17 +619,17 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
                 arguments: { path: 'README.md' }
               },
               {
-                role: 'tool',
-                callId: 'function-call',
-                name: 'read',
-                content: 'README contents'
-              },
-              {
                 role: 'tool_call',
                 callId: 'freeform-call',
                 name: 'apply_patch',
                 arguments: freeformCall.input,
                 inputMode: 'freeform'
+              },
+              {
+                role: 'tool',
+                callId: 'function-call',
+                name: 'read',
+                content: 'README contents'
               },
               {
                 role: 'tool',
@@ -786,8 +788,8 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
 
 function configuration(
   baseUrl: string,
-  overrides: Partial<MarAgentModelConfiguration> = {}
-): MarAgentModelConfiguration {
+  overrides: Partial<AgentModelConfiguration> = {}
+): AgentModelConfiguration {
   return {
     id: 'standard',
     name: 'Standard Responses',

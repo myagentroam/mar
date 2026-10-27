@@ -3,6 +3,61 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+for (const width of [390, 1280]) {
+  test(`Group badges open a session without selecting the group at ${width}px`, async ({
+    browser
+  }) => {
+    const fixture = await startCustomThemeFixture();
+    const context = await browser.newContext({
+      viewport: { width, height: 850 },
+      hasTouch: width === 390
+    });
+    const page = await context.newPage();
+    const activate = (locator: import('@playwright/test').Locator) =>
+      width === 390 ? locator.tap() : locator.click();
+    try {
+      await page.goto(`${fixture.url}session-groups.html?theme=daylight&locale=en-US`);
+      const chats = page.locator('.conversation-sidebar');
+      const chatTabs = chats.getByRole('tab');
+      await activate(chatTabs.nth(1).locator('.session-state-badge'));
+      await expect(chatTabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('.conversation > p').first()).toHaveText('child-1');
+      await activate(chatTabs.nth(0).locator('.session-state-badge'));
+      await expect(page.locator('.conversation > p').first()).toHaveText('main');
+      if (width === 1280) await page.locator('.recent-sessions-trigger').click();
+      const recent = page.locator('.recent-sessions-panel');
+      await activate(recent.getByRole('tab').nth(1).locator('.session-state-badge'));
+      await expect(page.locator('.conversation > p').first()).toHaveText('child-1');
+    } finally {
+      await context.close();
+      await fixture.close();
+    }
+  });
+}
+
+test('Unread-only group badges open their session in both lists', async ({ page }) => {
+  const fixture = await startCustomThemeFixture();
+  try {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.goto(`${fixture.url}session-groups.html?locale=en-US&unread-only`);
+    const chats = page.locator('.conversation-sidebar');
+    const childBadge = chats.getByRole('tab').nth(1).locator('.session-state-badge');
+    await expect(childBadge.locator('.session-state-count')).toHaveCount(0);
+    await childBadge.click();
+    await expect(page.locator('.conversation > p').first()).toHaveText('child-1');
+    await page.locator('.recent-sessions-trigger').click();
+    await page
+      .locator('.recent-sessions-panel')
+      .getByRole('tab')
+      .nth(0)
+      .locator('.session-state-badge')
+      .click();
+    await expect(page.locator('.conversation > p').first()).toHaveText('main');
+  } finally {
+    await fixture.close();
+  }
+});
+
 for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'en-US'],
   [320, 'vscode-dark-2026', 'en-US'],

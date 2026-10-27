@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DeferredMcpRegistry,
-  parseToolSearchInput
-} from '../../src/agent-core/tools/mcp/tool-search.js';
-import type { McpCatalogTool, McpToolCatalog } from '../../src/agent-core/sdk/types.js';
-import {
-  codeModeToolDefinition,
-  projectCodeModeTools
-} from '../../src/agent-core/tools/code-mode/index.js';
+import { DeferredMcpRegistry, parseToolSearchInput } from '../../src/tools/mcp/tool-search.js';
+import type { McpCatalogTool, McpToolCatalog } from '../../src/sdk/types.js';
+import { codeModeToolDefinition, projectCodeModeTools } from '../../src/tools/code-mode/index.js';
 
 function catalog(): McpToolCatalog {
   return {

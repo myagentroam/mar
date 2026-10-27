@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseSse } from '../../src/agent-core/model/sse.js';
+import { parseSse } from '../../src/model/sse.js';
 
 const encoder = new TextEncoder();
 

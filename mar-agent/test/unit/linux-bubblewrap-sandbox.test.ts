@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost } from '../../src/index.js';
+import { LocalAgentHost } from '../../src/host.js';
 import {
   BubblewrapSandboxExecutor,
   LINUX_BUBBLEWRAP_SANDBOX_POLICY_VERSION,

@@ -1,15 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type MarAgent,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type Agent,
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
 
 type Fault = 'partial' | 'sync' | 'close' | 'write-close' | 'open';
@@ -21,6 +22,19 @@ const io = vi.hoisted(() => ({
   opens: 0,
   indexPath: '',
   indexFailures: 0,
+  indexGate: undefined as
+    { entered: PromiseWithResolvers<void>; resume: PromiseWithResolvers<void> } | undefined,
+  historyFault: undefined as
+    | {
+        primary: Error;
+        indexFailed: boolean;
+        readFailure?: 'io' | 'missing';
+        restoreFailure?: boolean;
+        readGate?: { entered: PromiseWithResolvers<void>; resume: PromiseWithResolvers<void> };
+        laterCommit?: PromiseWithResolvers<void>;
+      }
+    | undefined,
+  journalCleanupFailure: undefined as Error | undefined,
   failure: Object.assign(new Error('Simulated session disk failure.'), { code: 'ENOSPC' })
 }));
 
@@ -28,14 +42,65 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rm: (async (...args: Parameters<typeof fs.rm>) => {
+      if (
+        typeof args[0] === 'string' &&
+        args[0].endsWith('/storage-transaction.json') &&
+        io.journalCleanupFailure
+      ) {
+        const failure = io.journalCleanupFailure;
+        io.journalCleanupFailure = undefined;
+        throw failure;
+      }
+      return fs.rm(...args);
+    }) as typeof fs.rm,
+    readFile: (async (...args: Parameters<typeof fs.readFile>) => {
+      const fault = io.historyFault;
+      if (args[0] === io.indexPath && fault?.indexFailed && fault.readGate) {
+        const gate = fault.readGate;
+        fault.readGate = undefined;
+        gate.entered.resolve();
+        await gate.resume.promise;
+      }
+      if (args[0] === io.indexPath && fault?.indexFailed && fault.readFailure) {
+        const code = fault.readFailure === 'missing' ? 'ENOENT' : 'EIO';
+        fault.readFailure = undefined;
+        throw Object.assign(new Error('Secondary index read failed.'), { code });
+      }
+      return fs.readFile(...args);
+    }) as typeof fs.readFile,
     rename: async (...args: Parameters<typeof fs.rename>) => {
+      const fault = io.historyFault;
+      if (args[1] === io.indexPath && fault && !fault.indexFailed) {
+        fault.indexFailed = true;
+        throw fault.primary;
+      }
+      if (
+        fault?.indexFailed &&
+        fault.restoreFailure &&
+        typeof args[0] === 'string' &&
+        args[0].includes('.clear-backup') &&
+        typeof args[1] === 'string' &&
+        args[1].endsWith('.jsonl')
+      ) {
+        fault.restoreFailure = false;
+        throw Object.assign(new Error('Secondary segment restore failed.'), { code: 'EIO' });
+      }
+      if (args[1] === io.indexPath && io.indexGate) {
+        const gate = io.indexGate;
+        io.indexGate = undefined;
+        gate.entered.resolve();
+        await gate.resume.promise;
+      }
       if (args[1] === io.indexPath && io.injected && io.indexFailures === 0) {
         io.indexFailures++;
         throw Object.assign(new Error('Simulated secondary index persistence failure.'), {
           code: 'EIO'
         });
       }
-      return fs.rename(...args);
+      const result = await fs.rename(...args);
+      if (args[1] === io.indexPath && fault?.indexFailed) fault.laterCommit?.resolve();
+      return result;
     },
     open: async (...args: Parameters<typeof fs.open>) => {
       if (args[0] !== io.path || args[1] !== 'a') return fs.open(...args);
@@ -85,8 +150,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const homes: string[] = [];
 const stores: JsonlSessionStore[] = [];
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 afterEach(async () => {
+  io.indexGate?.resume.resolve();
+  io.indexGate = undefined;
+  io.historyFault = undefined;
+  io.journalCleanupFailure = undefined;
   io.path = '';
   io.indexPath = '';
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
@@ -105,9 +174,218 @@ async function fixture() {
   homes.push(home);
   const store = await openStore(home);
   const session = await store.createSession({ workspace: home, title: 'Write fault' });
-  const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+  const path = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
   return { home, store, session, path };
 }
+
+it('keeps a newly opened Store usable when the last close is flushing its index', async () => {
+  const { home, store, session } = await fixture();
+  await store.append(session.id, { type: 'test.record', payload: { value: 1 } });
+  io.indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  const disk = JSON.parse(await readFile(io.indexPath, 'utf8'));
+  delete disk.sessions[0].resume.firstUserMessageIndexed;
+  await writeFile(io.indexPath, JSON.stringify(disk));
+  await store.firstUserMessagePreview(session.id);
+  io.injected = false;
+  const gate = { entered: Promise.withResolvers<void>(), resume: Promise.withResolvers<void>() };
+  io.indexGate = gate;
+  const closing = store.close();
+  try {
+    await gate.entered.promise;
+    const reopening = openStore(home);
+    gate.resume.resolve();
+    await closing;
+    const reopened = await reopening;
+    const record = await reopened.append(session.id, {
+      type: 'test.record',
+      payload: { value: 2 }
+    });
+    expect((await reopened.read(session.id)).at(-1)?.recordId).toBe(record.recordId);
+  } finally {
+    gate.resume.resolve();
+    await closing;
+  }
+});
+
+it('restores the previous transaction identity after a definitely uncommitted clear', async () => {
+  const { home, store, session } = await fixture();
+  await store.clearSession(session.id);
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'keep' }, turnId: 't1' });
+  const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+  const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  const before = JSON.parse(await readFile(indexPath, 'utf8'));
+  const previous = before.sessions.find(
+    (item: { id: string }) => item.id === session.id
+  ).storageTransactionId;
+  expect(previous).toEqual(expect.any(String));
+  const primary = new Error('Index commit failed.');
+  io.indexPath = indexPath;
+  io.historyFault = { primary, indexFailed: false };
+  try {
+    await expect(store.clearSession(session.id, holding)).rejects.toBe(primary);
+  } finally {
+    io.historyFault = undefined;
+    await holding.release();
+  }
+  const after = JSON.parse(await readFile(indexPath, 'utf8'));
+  expect(
+    after.sessions.find((item: { id: string }) => item.id === session.id).storageTransactionId
+  ).toBe(previous);
+  expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(true);
+});
+
+it('preserves the original rollback failure and both turns after an uncommitted index write', async () => {
+  const { home, store, session } = await fixture();
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'one' }, turnId: 't1' });
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'two' }, turnId: 't2' });
+  const primary = new Error('Rollback index commit failed.');
+  io.indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  io.historyFault = { primary, indexFailed: false };
+  try {
+    await expect(store.rollbackSession(session.id, { boundaryTurnId: 't1' })).rejects.toBe(primary);
+  } finally {
+    io.historyFault = undefined;
+  }
+  expect(
+    (await store.read(session.id))
+      .filter((record) => record.type === 'turn.user')
+      .map((record) => record.turnId)
+  ).toEqual(['t1', 't2']);
+});
+
+it.each(['io', 'missing'] as const)(
+  'preserves the first failure and prevents writes when transaction outcome is unknown (%s)',
+  async (readFailure) => {
+    const { home, store, session } = await fixture();
+    await store.append(session.id, {
+      type: 'turn.user',
+      payload: { prompt: 'keep' },
+      turnId: 't1'
+    });
+    const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+    const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+    const journal = join(
+      await activeSessionDirectory(home, session.id),
+      'storage-transaction.json'
+    );
+    const primary = new Error('Index commit failed.');
+    io.indexPath = indexPath;
+    io.historyFault = { primary, indexFailed: false, readFailure };
+    try {
+      await expect(store.clearSession(session.id, holding)).rejects.toBe(primary);
+      await expect(store.append(session.id, { type: 'test.blocked', payload: {} })).rejects.toBe(
+        primary
+      );
+      await expect(store.read(session.id)).rejects.toBe(primary);
+      await expect(store.readExecutionState(session.id)).rejects.toBe(primary);
+      await expect(store.writeContextualWorldState(session.id, { blocked: true })).rejects.toBe(
+        primary
+      );
+      expect(JSON.parse(await readFile(journal, 'utf8')).kind).toBe('clear');
+    } finally {
+      io.historyFault = undefined;
+      await holding.release();
+    }
+    const release = await store.acquireSessionLease(session.id);
+    try {
+      expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(true);
+      expect((await store.read(session.id)).some((record) => record.type === 'test.blocked')).toBe(
+        false
+      );
+    } finally {
+      await release();
+    }
+  }
+);
+
+it('retains the first commit error when segment restoration also fails', async () => {
+  const { home, store, session } = await fixture();
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'keep' }, turnId: 't1' });
+  const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+  const primary = new Error('Index commit failed.');
+  io.indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  io.historyFault = { primary, indexFailed: false, restoreFailure: true };
+  try {
+    await expect(store.clearSession(session.id, holding)).rejects.toBe(primary);
+    await expect(store.append(session.id, { type: 'test.blocked', payload: {} })).rejects.toBe(
+      primary
+    );
+  } finally {
+    io.historyFault = undefined;
+    await holding.release();
+  }
+  const release = await store.acquireSessionLease(session.id);
+  try {
+    expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(true);
+  } finally {
+    await release();
+  }
+});
+
+it('keeps a committed clear after post-commit journal cleanup fails', async () => {
+  const { store, session } = await fixture();
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'clear' }, turnId: 't1' });
+  const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+  const failure = new Error('Journal cleanup failed.');
+  io.journalCleanupFailure = failure;
+  try {
+    await expect(store.clearSession(session.id, holding)).rejects.toBe(failure);
+    await expect(store.append(session.id, { type: 'test.blocked', payload: {} })).rejects.toBe(
+      failure
+    );
+    await expect(store.read(session.id)).rejects.toBe(failure);
+  } finally {
+    io.journalCleanupFailure = undefined;
+    await holding.release();
+  }
+  const release = await store.acquireSessionLease(session.id);
+  try {
+    expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(false);
+    await store.append(session.id, { type: 'test.after-recovery', payload: {} });
+  } finally {
+    await release();
+  }
+});
+
+it('does not publish an unconfirmed transaction through another Session index flush', async () => {
+  const { home, store, session } = await fixture();
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'keep' }, turnId: 't1' });
+  const other = await store.createSession({ workspace: home });
+  const otherLease = await store.acquireSessionLease(other.id);
+  await store.append(other.id, { type: 'test.other', payload: { ok: true } });
+  const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+  const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  const before = JSON.parse(await readFile(indexPath, 'utf8'));
+  const previous = before.sessions.find(
+    (item: { id: string }) => item.id === session.id
+  ).storageTransactionId;
+  const primary = new Error('Index commit failed.');
+  const gate = { entered: Promise.withResolvers<void>(), resume: Promise.withResolvers<void>() };
+  const laterCommit = Promise.withResolvers<void>();
+  io.indexPath = indexPath;
+  io.historyFault = { primary, indexFailed: false, readGate: gate, laterCommit };
+  const clearing = store.clearSession(session.id, holding);
+  let releasing: Promise<void> | undefined;
+  try {
+    await gate.entered.promise;
+    releasing = otherLease();
+    await Promise.race([
+      laterCommit.promise,
+      new Promise<void>((resolve) => setTimeout(resolve, 250))
+    ]);
+    const during = JSON.parse(await readFile(indexPath, 'utf8'));
+    expect(
+      during.sessions.find((item: { id: string }) => item.id === session.id).storageTransactionId
+    ).toBe(previous);
+  } finally {
+    gate.resume.resolve();
+    await expect(clearing).rejects.toBe(primary);
+    await releasing;
+    io.historyFault = undefined;
+    await holding.release();
+  }
+  expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(true);
+});
 
 function arm(path: string, fault: Fault) {
   Object.assign(io, { path, fault, injected: false, writes: 0, opens: 0 });
@@ -290,7 +568,7 @@ describe('Session writer uncertain append failure', () => {
       const { home, store, session, path } = await fixture();
       const workspace = join(home, 'workspace');
       await mkdir(workspace);
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         id: 'fake',
         name: 'Fake',
         protocol: 'OPENAI_RESPONSES',
@@ -311,12 +589,14 @@ describe('Session writer uncertain append failure', () => {
         yield { type: 'text.completed' as const, itemId: 'answer', text: 'Done' };
         yield { type: 'completed' as const, reason: 'completed' as const };
       });
-      const agent = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => ({ configuration: model, start })
-      });
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => ({ configuration: model, start })
+      );
       agents.push(agent);
       const sdkSession = await agent.openSession(session.id);
       const before = await readFile(path);
@@ -343,11 +623,11 @@ describe('Session writer uncertain append failure', () => {
           : {
               status: 'failed',
               errorCode: 'ENOSPC',
-              errorMessage: `ENOSPC: ${error.message}`
+              errorMessage: error.message
             };
         // A secondary release failure must not replace the first outcome or leave the stream open.
         if (indexFault) await expect(handle.result()).resolves.toMatchObject(expected);
-        const events: MarAgentEvent[] = [];
+        const events: AgentEvent[] = [];
         for await (const event of handle) events.push(event);
         await expect(handle.result()).resolves.toMatchObject(expected);
         expect(io.indexFailures).toBe(indexFault ? 1 : 0);

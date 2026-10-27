@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { publicSourceViolations } from '../../scripts/check-public-boundary.mjs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  checkPublicBoundary,
+  publicSourceViolations
+} from '../../scripts/check-public-boundary.mjs';
+
+test('ignores staged Web output without excluding Server source', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'mar-public-source-'));
+  try {
+    await mkdir(join(root, 'mar-server', 'web'), { recursive: true });
+    await writeFile(join(root, 'mar-server', 'web', 'bundle.js'), "const localized = '译文';");
+    await checkPublicBoundary(root);
+    await mkdir(join(root, 'mar-server', 'src'), { recursive: true });
+    await writeFile(join(root, 'mar-server', 'src', 'label.ts'), "const label = '译文';");
+    await assert.rejects(checkPublicBoundary(root), /PUBLIC_NON_I18N_CHINESE_FORBIDDEN/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('product composition can import EE but public cores cannot, and no import may escape', () => {
   assert.deepEqual(

@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { LocalAgentHost, parseModelCatalog } from '../../dist/index.js';
-import { OpenAiResponsesAdapter } from '../../dist/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../dist/agent-core/sdk/agent.js';
-import { countModelTokens } from '../../dist/agent-core/runtime/token-budget.js';
-import { JsonlSessionStore } from '../../dist/agent-core/session/store/index.js';
+import { parseModelCatalog } from '../../dist/index.js';
+import { LocalAgentHost } from '../../dist/host.js';
+import { OpenAiResponsesAdapter } from '../../dist/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../dist/sdk/agent.js';
+import { countModelTokens } from '../../dist/runtime/token-budget.js';
+import { JsonlSessionStore } from '../../dist/session/store/index.js';
 
 const arguments_ = process.argv.slice(2);
 if (arguments_[0] === '--') arguments_.shift();
@@ -115,18 +116,20 @@ try {
     },
     close() {}
   };
-  agent = await createMarAgent({
-    mode: 'normal',
-    host: new LocalAgentHost({
-      homeDirectory: home,
-      workspace,
-      environment: { HOME: home, PATH: process.env.PATH, LANG: 'C.UTF-8' },
-      restrictPaths: true
-    }),
-    models: [model],
-    defaultModelId: model.id,
-    adapterFactory: () => captureAdapter
-  });
+  agent = await createMarAgent(
+    {
+      mode: 'normal',
+      host: new LocalAgentHost({
+        homeDirectory: home,
+        workspace,
+        environment: { HOME: home, PATH: process.env.PATH, LANG: 'C.UTF-8' },
+        restrictPaths: true
+      }),
+      models: [model],
+      defaultModelId: model.id
+    },
+    () => captureAdapter
+  );
   const compactResult = await (
     await agent.openSession(sessionId)
   )

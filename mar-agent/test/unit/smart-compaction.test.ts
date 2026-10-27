@@ -2,24 +2,25 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { MarAgent } from '../../src/agent-core/sdk/types.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore, type SessionRecord } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { Agent } from '../../src/sdk/types.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore, type SessionRecord } from '../../src/session/store/index.js';
 import {
   latestSmartContextTokens,
   projectSmartCompactionMessage,
   requestSmartCompaction
-} from '../../src/agent-core/runtime/compaction/smart.js';
-import { restoreCompactTail } from '../../src/agent-core/runtime/compaction/retained-context.js';
+} from '../../src/runtime/compaction/smart.js';
+import { restoreCompactTail } from '../../src/runtime/compaction/retained-context.js';
 
 const marker = [
   '<mar_runtime>',
   '  <smart_compaction>For this message only, smart_compact may be considered at a clear transition into sustained new work, when the previous phase is largely complete and its details have low continuation value.</smart_compaction>',
   '</mar_runtime>'
 ].join(String.fromCharCode(10));
-const configuration: MarAgentModelConfiguration = {
+const configuration: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   modelId: 'test',
@@ -37,7 +38,7 @@ const configuration: MarAgentModelConfiguration = {
   hostedWebSearch: false,
   codeMode: false
 };
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 const homes: string[] = [];
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
@@ -65,30 +66,32 @@ async function fixture(
   const requests: ModelRequest[] = [];
   let generations = 0;
   const makeAgent = () =>
-    createMarAgentWithAdapter({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      runtimeExtensions: [
-        {
-          id: 'smart-fixture',
-          apiVersion: '1.0',
-          attachSession(context) {
-            if (generate)
-              context.hooks.intercept('compact.generate', async (_input, call) => {
-                generations++;
-                return generate(call.signal);
-              });
+    createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        extensions: [
+          {
+            id: 'smart-fixture',
+            apiVersion: '1.0',
+            attachSession(context) {
+              if (generate)
+                context.hooks.intercept('compact.generate', async (_input, call) => {
+                  generations++;
+                  return generate(call.signal);
+                });
+            }
           }
-        }
-      ],
-      adapterFactory: () => ({
+        ]
+      },
+      () => ({
         configuration: model,
         async *start(request) {
           yield* script(request, requests.push(request));
         }
       })
-    });
+    );
   const agent = await makeAgent();
   agents.push(agent);
   const session = await agent.createSession({ workspace, title: 'Smart compact' });

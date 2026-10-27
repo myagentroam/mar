@@ -1,17 +1,126 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
+import { createServer } from 'node:http';
+import type { ModelEvent } from '../../src/model/contracts.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import type {
-  CoreModelEvent,
-  CoreOperationContext,
-  CoreSessionExtensionContext
-} from '../../src/index.js';
-import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
+  ExtensionModelEvent,
+  ExtensionOperationContext,
+  SessionExtensionContext
+} from '../../src/extensions.js';
+import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
 describe('Core normalized model fact observation', () => {
+  it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
+    'projects the same captured Code observation for independent %s generation',
+    async (protocol) => {
+      let context!: SessionExtensionContext;
+      const f = await fixture(
+        [
+          {
+            id: 'snapshot-projection',
+            apiVersion: '1.0',
+            attachSession(value) {
+              context = value;
+            }
+          }
+        ],
+        (_request, index) =>
+          index === 0 ? call('code_exec', { code: "observe.text('captured output');" }) : answer(),
+        true,
+        false,
+        {},
+        protocol
+      );
+      expect((await f.session.run({ prompt: 'capture' }).result()).status).toBe('completed');
+      const snapshot = (await context.session!.captureRequest())!;
+      const before = structuredClone(snapshot.request);
+      const sent = f.adapter.requests[1]!;
+      const toolOutput = sent.messages.find((message) => message.role === 'tool')!;
+      expect(toolOutput.contentParts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining('captured output')
+          })
+        ])
+      );
+      expect(toolOutput).not.toHaveProperty('observations');
+      expect(toolOutput).not.toHaveProperty('calls');
+      await context.models!.generate({ requestSnapshot: snapshot, retainToolCatalog: true });
+      const replay = f.adapter.requests[2]!;
+      expect(replay.messages).toEqual(sent.messages);
+      expect(replay.tools).toEqual(sent.tools);
+      expect(snapshot.request).toEqual(before);
+
+      const bodies: Array<{ input?: unknown; messages?: unknown }> = [];
+      const server = createServer((request, response) => {
+        let body = '';
+        request.setEncoding('utf8');
+        request.on('data', (chunk) => {
+          body += chunk;
+        });
+        request.on('end', () => {
+          bodies.push(JSON.parse(body));
+          const events =
+            protocol === 'OPENAI_RESPONSES'
+              ? [
+                  {
+                    type: 'response.completed',
+                    response: { id: 'fixture', status: 'completed', output: [] }
+                  }
+                ]
+              : [
+                  {
+                    type: 'message_start',
+                    message: {
+                      id: 'fixture',
+                      role: 'assistant',
+                      content: [],
+                      usage: { input_tokens: 1, output_tokens: 0 }
+                    }
+                  },
+                  {
+                    type: 'message_delta',
+                    delta: { stop_reason: 'end_turn' },
+                    usage: { output_tokens: 0 }
+                  },
+                  { type: 'message_stop' }
+                ];
+          response.writeHead(200, { 'content-type': 'text/event-stream' });
+          response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('Missing fixture address');
+        const config = { ...f.adapter.configuration, baseUrl: `http://127.0.0.1:${address.port}` };
+        const adapter =
+          protocol === 'OPENAI_RESPONSES'
+            ? new OpenAiResponsesAdapter(config)
+            : new AnthropicMessagesAdapter(config);
+        for (const request of [sent, replay]) {
+          for await (const _event of adapter.start(request, new AbortController().signal)) {
+            /* consume */
+          }
+        }
+        expect(bodies).toHaveLength(2);
+        expect(protocol === 'OPENAI_RESPONSES' ? bodies[1]!.input : bodies[1]!.messages).toEqual(
+          protocol === 'OPENAI_RESPONSES' ? bodies[0]!.input : bodies[0]!.messages
+        );
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve()))
+        );
+      }
+    }
+  );
+
   it('keeps metering callbacks on dispatch but out of request snapshots and generates a new fork identity', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const sink = vi.fn();
     const f = await fixture(
       [
@@ -41,7 +150,7 @@ describe('Core normalized model fact observation', () => {
   it.each([false, true])(
     'preserves observer backpressure and closes the upstream on cancellation=%s',
     async (cancel) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let armed = false;
       let intercepted = 0;
       let entered!: () => void;
@@ -137,8 +246,8 @@ describe('Core normalized model fact observation', () => {
   );
 
   it('observes actual events before rewrite or omission and isolates observer mutation and failure', async () => {
-    let context!: CoreSessionExtensionContext;
-    const facts: CoreModelEvent[] = [];
+    let context!: SessionExtensionContext;
+    const facts: ExtensionModelEvent[] = [];
     const f = await fixture(
       [
         {
@@ -194,7 +303,7 @@ describe('Core normalized model fact observation', () => {
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     'keeps %s source payload opaque in actual fact delivery',
     async (protocol) => {
-      const facts: CoreModelEvent[] = [];
+      const facts: ExtensionModelEvent[] = [];
       const f = await fixture(
         [
           {
@@ -231,8 +340,8 @@ describe('Core normalized model fact observation', () => {
   );
 
   it('observes independent generate and Compact on the shared entry without inventing an Execution', async () => {
-    let context!: CoreSessionExtensionContext;
-    const facts: Array<{ event: CoreModelEvent; call: CoreOperationContext }> = [];
+    let context!: SessionExtensionContext;
+    const facts: Array<{ event: ExtensionModelEvent; call: ExtensionOperationContext }> = [];
     const f = await fixture(
       [
         {
@@ -272,7 +381,7 @@ describe('Core normalized model fact observation', () => {
   });
 
   it('lets an observer call nested generate while skipping only its own active registration', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let armed = false;
     const self: string[] = [];
     const other: string[] = [];

@@ -2,15 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CompactionOperation,
   type CompactionProgress
-} from '../../src/agent-core/runtime/compaction/operation.js';
-import type { ModelAdapter, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
+} from '../../src/runtime/compaction/operation.js';
+import type { ModelAdapter, ModelRequest } from '../../src/model/contracts.js';
+import { AgentError } from '../../src/error.js';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAgentHost, SecretValue } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const request: ModelRequest = {
   system: 'Summarize.',
@@ -126,12 +127,14 @@ describe('compaction operation boundary', () => {
         }
       };
       const host = new LocalAgentHost({ homeDirectory: home, workspace });
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [adapter.configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [adapter.configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Deadline test' });
         expect((await session.run({ prompt: 'Keep the task state.' }).result()).status).toBe(
@@ -222,7 +225,7 @@ describe('compaction operation boundary', () => {
     const adapter = {
       async *start() {
         yield { type: 'text.completed' as const, itemId: 'text', text: 'Partial' };
-        throw new MarAgentError('server_is_overloaded', 'Overload.', { retryable: true });
+        throw new AgentError('server_is_overloaded', 'Overload.', { retryable: true });
       }
     };
     await expect(collect(operation.start(adapter, request))).rejects.toMatchObject({
@@ -257,7 +260,7 @@ describe('compaction operation boundary', () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(parent.signal.aborted).toBe(false);
     const cancelled = new CompactionOperation(parent.signal, () => {});
-    parent.abort(new MarAgentError('MAR_AGENT_CANCELLED', 'Cancelled.'));
+    parent.abort(new AgentError('MAR_AGENT_CANCELLED', 'Cancelled.'));
     await expect(collect(cancelled.start(adapter, request))).rejects.toMatchObject({
       code: 'MAR_AGENT_CANCELLED'
     });

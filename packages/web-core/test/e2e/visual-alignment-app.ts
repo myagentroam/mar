@@ -1,4 +1,8 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
+import {
+  bilingualNotificationMessage,
+  bilingualNotificationTitle
+} from '../support/unicode-layout-fixtures.js';
 import type { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
@@ -48,10 +52,10 @@ const service = createWorkbenchNotificationService(ref('fixture'), {
           id: 'notice',
           kind: 'agent',
           title: new URLSearchParams(location.search).has('long-notification')
-            ? 'MyAgentRoam: 检查通知布局与完整内容 Review notification layout and complete content'
+            ? bilingualNotificationTitle
             : 'Review ready',
           message: new URLSearchParams(location.search).has('long-notification')
-            ? `Run completed. Open the related session to review all results.\n完整通知内容不应被截断。${'LongUnbrokenDetail'.repeat(20)}\nEnd of notification.`
+            ? bilingualNotificationMessage
             : 'A complete notification message',
           createdAt: Date.now(),
           updatedAt: Date.now(),
