@@ -167,6 +167,7 @@ function runTime(run: RecentRun): string {
           <SessionStateBadge
             v-if="!mobileMode"
             class="recent-sessions-badge"
+            :class="{ 'recent-sessions-count-only': activeSessionCount > 0 && !hasUnreadSessions }"
             :running="activeSessionCount"
             :unread="hasUnreadSessions"
           />
@@ -249,6 +250,10 @@ function runTime(run: RecentRun): string {
   right: 0;
   max-width: calc(100% + 2px);
   pointer-events: none;
+}
+.recent-sessions-count-only {
+  right: 4px;
+  max-width: calc(100% - 4px);
 }
 .recent-sessions-badge :deep(.session-state-count) {
   flex: none;
